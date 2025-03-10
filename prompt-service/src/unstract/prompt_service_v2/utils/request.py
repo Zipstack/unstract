@@ -4,7 +4,11 @@ from typing import Any, Optional
 
 import requests as pyrequests
 from requests.exceptions import RequestException
-from unstract.prompt_service_v2.exceptions import APIError
+from unstract.prompt_service_v2.exceptions import (
+    APIError,
+    BadRequest,
+    MissingFieldError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,3 +52,13 @@ def make_http_request(
     except Exception as e:
         logger.error(f"An unexpected error occurred: {e}")
         raise e
+
+
+def validate_request_payload(payload):
+    if not payload:
+        raise BadRequest()
+
+    # Validate required fields
+    missing_fields = [field for field in REQUIRED_FIELDS if field not in payload]
+    if missing_fields:
+        raise MissingFieldError(missing_fields)

@@ -11,7 +11,7 @@ from flask import current_app as app
 from flask import request
 from unstract.prompt_service_v2.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service_v2.constants import RunLevel
-from unstract.prompt_service_v2.exceptions import APIError, NoPayloadError
+from unstract.prompt_service_v2.exceptions import APIError, BadRequest
 from unstract.prompt_service_v2.helper.auth_helper import AuthHelper
 from unstract.prompt_service_v2.helper.plugin_helper import PluginManager
 from unstract.prompt_service_v2.helper.prompt_ide_base_tool import PromptServiceBaseTool
@@ -19,6 +19,7 @@ from unstract.prompt_service_v2.helper.usage_helper import UsageHelper
 from unstract.prompt_service_v2.services.answer_prompt_service import (
     AnswerPromptService,
 )
+from unstract.prompt_service_v2.services.retrieval_service import RetrievalService
 from unstract.prompt_service_v2.services.variable_replacement_service import (
     VariableReplacementService,
 )
@@ -40,7 +41,7 @@ def prompt_processor() -> Any:
     platform_key = AuthHelper.get_token_from_auth_header(request)
     payload: dict[Any, Any] = request.json
     if not payload:
-        raise NoPayloadError
+        raise BadRequest
     tool_settings = payload.get(PSKeys.TOOL_SETTINGS, {})
     enable_challenge = tool_settings.get(PSKeys.ENABLE_CHALLENGE, False)
     # TODO: Rename "outputs" to "prompts" in payload
@@ -242,7 +243,7 @@ def prompt_processor() -> Any:
         try:
             if chunk_size == 0:
                 # We can do this only for chunkless indexes
-                context: set[str] = AnswerPromptService.fetch_context_from_vector_db(
+                context: set[str] = RetrievalService.fetch_context_from_vector_db(
                     index=index,
                     output=output,
                     doc_id=doc_id,
@@ -294,7 +295,7 @@ def prompt_processor() -> Any:
 
                 if retrieval_strategy in {PSKeys.SIMPLE, PSKeys.SUBQUESTION}:
                     vector_index = vector_db.get_vector_store_index()
-                    answer, context = AnswerPromptService.run_retrieval(
+                    answer, context = RetrievalService.run_retrieval(
                         tool_settings=tool_settings,
                         output=output,
                         doc_id=doc_id,
