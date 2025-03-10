@@ -3,9 +3,9 @@ from typing import Any, Optional
 from flask import Blueprint, request
 from unstract.prompt_service_v2.constants import IndexingConstants as IKeys
 from unstract.prompt_service_v2.constants import PromptServiceContants as PSKeys
-from unstract.prompt_service_v2.exceptions import BadRequest, MissingFieldError
 from unstract.prompt_service_v2.helper.auth_helper import AuthHelper
 from unstract.prompt_service_v2.services.indexing_service import IndexingService
+from unstract.prompt_service_v2.utils.request import validate_request_payload
 from unstract.sdk.dto import (
     ChunkingConfig,
     FileInfo,
@@ -26,6 +26,7 @@ REQUIRED_FIELDS = [
     "chunk_size",
     "chunk_overlap",
     "execution_source",
+    "run_id",
 ]
 
 
@@ -46,13 +47,7 @@ def index() -> Any:
     """
     platform_key = AuthHelper.get_token_from_auth_header(request)
     payload: dict[Any, Any] = request.json
-    if not payload:
-        raise BadRequest()
-
-    # Validate required fields
-    missing_fields = [field for field in REQUIRED_FIELDS if field not in payload]
-    if missing_fields:
-        raise MissingFieldError(missing_fields)
+    validate_request_payload(payload, REQUIRED_FIELDS)
 
     tool_id: str = payload.get(IKeys.TOOL_ID, "")
     embedding_instance_id: str = payload.get(IKeys.EMBEDDING_INSTANCE_ID, "")
@@ -60,7 +55,6 @@ def index() -> Any:
     x2text_instance_id: str = payload.get(IKeys.X2TEXT_INSTANCE_ID, "")
     file_path: str = payload.get(IKeys.FILE_PATH, "")
     file_hash: Optional[str] = payload.get(IKeys.FILE_HASH)
-    output_file_path: Optional[str] = payload.get(IKeys.OUTPUT_FILE_PATH, "")
     chunk_size: int = payload.get(IKeys.CHUNK_SIZE, 512)  # Default chunk size
     chunk_overlap: int = payload.get(IKeys.CHUNK_OVERLAP, 128)  # Default chunk overlap
     reindex: bool = payload.get(IKeys.REINDEX, False)
@@ -79,9 +73,7 @@ def index() -> Any:
         tags=tags,
     )
 
-    file_info = FileInfo(
-        file_path=file_path, output_file_path=output_file_path, file_hash=file_hash
-    )
+    file_info = FileInfo(file_path=file_path, file_hash=file_hash)
 
     chunking_config = ChunkingConfig(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
 

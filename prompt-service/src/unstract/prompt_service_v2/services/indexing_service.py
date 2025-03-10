@@ -1,4 +1,4 @@
-from unstract.prompt_service.prompt_ide_base_tool import PromptServiceBaseTool
+from unstract.prompt_service_v2.helper.prompt_ide_base_tool import PromptServiceBaseTool
 from unstract.prompt_service_v2.utils.file_utils import FileUtils
 from unstract.sdk.dto import (
     ChunkingConfig,
@@ -36,7 +36,6 @@ class IndexingService:
                 fs=fs_instance,
             )
 
-            # TODO Write a Util to get triad instances
             embedding = Embedding(
                 tool=util,
                 adapter_instance_id=instance_identifiers.embedding_instance_id,
