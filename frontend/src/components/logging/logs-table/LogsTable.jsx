@@ -2,6 +2,11 @@ import { Table, Tooltip, Typography } from "antd";
 import "./LogsTable.css";
 import { useNavigate } from "react-router-dom";
 import PropTypes from "prop-types";
+import {
+  CloseCircleFilled,
+  HourglassOutlined,
+  InfoCircleFilled,
+} from "@ant-design/icons";
 
 const LogsTable = ({
   tableData,
@@ -42,15 +47,20 @@ const LogsTable = ({
       title: "Execution Name",
       dataIndex: "pipelineName",
       key: "executionName",
-      render: (_, record) => (
-        <>
-          <Typography.Text strong>{record?.pipelineName}</Typography.Text>
-          <br />
-          <Typography.Text type="secondary" className="p-or-d-typography">
-            from {record?.workflowName}
-          </Typography.Text>
-        </>
-      ),
+      render: (_, record) =>
+        activeTab === "WF" ? (
+          <>
+            <Typography.Text strong>{record?.workflowName}</Typography.Text>
+          </>
+        ) : (
+          <>
+            <Typography.Text strong>{record?.pipelineName}</Typography.Text>
+            <br />
+            <Typography.Text type="secondary" className="p-or-d-typography">
+              from {record?.workflowName}
+            </Typography.Text>
+          </>
+        ),
     },
     {
       title: "Status",
@@ -59,15 +69,26 @@ const LogsTable = ({
       render: (_, record) => (
         <span>
           <Tooltip title="Successful files">
-            <span>{record?.successfulFiles} ✅</span>
+            <span className="status-container">
+              <InfoCircleFilled className="gen-index-success" />{" "}
+              {record?.successfulFiles}
+            </span>
           </Tooltip>
-          {" / "}
           <Tooltip title="Failed files">
-            <span>{record?.failedFiles} ❌</span>
+            <span className="status-container">
+              <CloseCircleFilled className="gen-index-fail" />{" "}
+              {record?.failedFiles}
+            </span>
           </Tooltip>
-          {" / "}
           <Tooltip title="Total files">
-            <span>{record?.total} 📜</span>
+            {record?.total - (record?.successfulFiles + record?.failedFiles) >
+              0 && (
+              <span className="status-container">
+                <HourglassOutlined className="gen-index-progress" />{" "}
+                {record?.total -
+                  (record?.successfulFiles + record?.failedFiles)}
+              </span>
+            )}
           </Tooltip>
         </span>
       ),
@@ -89,6 +110,9 @@ const LogsTable = ({
       // Determine ascending or descending order
       const order = sorter.order === "ascend" ? "created_at" : "-created_at";
       setOrdering(order);
+      setPagination((prev) => {
+        return { ...prev, ...pagination, current: 1 };
+      });
     } else {
       setOrdering(null); // Default ordering if sorting is cleared
     }

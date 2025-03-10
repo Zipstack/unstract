@@ -28,7 +28,7 @@ import {
   formattedDateTimeWithSeconds,
 } from "../../../helpers/GetStaticData";
 import { LogModal } from "../log-modal/LogModal";
-import { FilterDropdown, FilterIcon } from "../filter-dropdown/FilterDropdown";
+import { FilterIcon } from "../filter-dropdown/FilterDropdown";
 
 const DetailedLogs = () => {
   const { id, type } = useParams(); // Get the ID from the URL
@@ -50,15 +50,7 @@ const DetailedLogs = () => {
   const [ordering, setOrdering] = useState(null);
   const [columnsVisibility, setColumnsVisibility] = useState({});
   const [statusFilter, setStatusFilter] = useState(null);
-  const filterOptions = [
-    "COMPLETED",
-    "PENDING",
-    "ERROR",
-    "QUEUED",
-    "INITIATED",
-    "EXECUTING",
-    "STOPPED",
-  ];
+  const filterOptions = ["COMPLETED", "PENDING", "ERROR", "EXECUTING"];
 
   const fetchExecutionDetails = async (id) => {
     try {
@@ -97,7 +89,7 @@ const DetailedLogs = () => {
           page_size: pagination.pageSize,
           page,
           ordering,
-          status: statusFilter,
+          status: statusFilter ? statusFilter.join(",") : null,
         },
       });
       // Replace with your actual API URL
@@ -128,10 +120,6 @@ const DetailedLogs = () => {
       setLoading(false);
     }
   };
-  const handleClearFilter = (confirm) => {
-    setStatusFilter(null);
-    confirm();
-  };
 
   const columnsDetailedTable = [
     {
@@ -159,14 +147,10 @@ const DetailedLogs = () => {
       title: "Status",
       dataIndex: "status",
       key: "status",
-      filterDropdown: (props) => (
-        <FilterDropdown
-          {...props}
-          handleClearFilter={handleClearFilter}
-          filterOptions={filterOptions}
-        />
-      ),
-      filteredValue: statusFilter ? [statusFilter] : [],
+      filters: filterOptions.map((filter) => ({
+        text: filter,
+        value: filter,
+      })),
       filterIcon: (filtered) => <FilterIcon filtered={filtered} />,
     },
     {
@@ -179,11 +163,15 @@ const DetailedLogs = () => {
       dataIndex: "executionTime",
       key: "executionTime",
     },
-    {
-      title: "File Path",
-      dataIndex: "filePath",
-      key: "filePath",
-    },
+    ...(type !== "API"
+      ? [
+          {
+            title: "File Path",
+            dataIndex: "filePath",
+            key: "filePath",
+          },
+        ]
+      : []),
     {
       title: "Action",
       dataIndex: "action",
@@ -212,7 +200,9 @@ const DetailedLogs = () => {
       setOrdering(null); // Default ordering if sorting is cleared
     }
     if (filters?.status) {
-      setStatusFilter(filters.status[0]);
+      setStatusFilter(filters.status);
+    } else {
+      setStatusFilter(null);
     }
   };
 
@@ -279,7 +269,11 @@ const DetailedLogs = () => {
             <Flex justify="flex-start" align="center">
               <ClockCircleOutlined className="logging-card-icons" />
               <div>
-                <Typography className="logging-card-title">Ran for</Typography>
+                <Typography className="logging-card-title">
+                  {executionDetails?.status.toLowerCase() === "executing"
+                    ? "Running for"
+                    : "Ran for"}
+                </Typography>
                 <Typography>{executionDetails?.ranFor}</Typography>
               </div>
             </Flex>
@@ -289,7 +283,9 @@ const DetailedLogs = () => {
               <FileTextOutlined className="logging-card-icons" />
               <div>
                 <Typography className="logging-card-title">
-                  Processed files
+                  {executionDetails?.status.toLowerCase() === "executing"
+                    ? "Processing files"
+                    : "Processed files"}
                 </Typography>
                 <Typography>
                   {executionDetails?.processed}/{executionDetails?.total}{" "}

@@ -36,6 +36,7 @@ function ExecutionLogs() {
   });
   const [selectedDateRange, setSelectedDateRange] = useState([]);
   const [ordering, setOrdering] = useState(null);
+  const [pollingIds, setPollingIds] = useState(new Set());
   const currentPath = location.pathname !== `/${sessionDetails?.orgName}/logs`;
   const items = [
     {
@@ -85,6 +86,73 @@ function ExecutionLogs() {
     }
   };
 
+  const pollExecutingRecord = async (id) => {
+    try {
+      const url = `/api/v1/unstract/${sessionDetails?.orgId}/execution/${id}/`;
+      const response = await axiosPrivate.get(url);
+      const item = response?.data;
+
+      // Update the record in the dataList
+      setDataList((prevData) => {
+        const newData = [...prevData];
+        const index = newData.findIndex((record) => record.key === id);
+        if (index !== -1) {
+          const total = item.total_files || 0;
+          const processed =
+            (item?.successful_files || 0) + (item?.failed_files || 0);
+          const progress =
+            total > 0 ? Math.round((processed / total) * 100) : 0;
+
+          newData[index] = {
+            ...newData[index],
+            progress,
+            processed,
+            total,
+            success: item?.status === "COMPLETED",
+            isError: item?.status === "ERROR",
+            status: item?.status,
+            successfulFiles: item?.successful_files,
+            failedFiles: item?.failed_files,
+          };
+
+          // If status is no longer executing, remove from polling
+          if (item?.status.toLowerCase() !== "executing") {
+            setPollingIds((prev) => {
+              const newSet = new Set(prev);
+              newSet.delete(id);
+              return newSet;
+            });
+          }
+        }
+        return newData;
+      });
+
+      // Continue polling if still executing
+      if (item?.status === "EXECUTING") {
+        setTimeout(() => pollExecutingRecord(id), 5000); // Poll every 5 seconds
+      }
+    } catch (err) {
+      setPollingIds((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(id);
+        return newSet;
+      });
+    }
+  };
+
+  const startPollingForExecuting = (records) => {
+    records.forEach((record) => {
+      if (record.status === "EXECUTING" && !pollingIds.has(record.key)) {
+        setPollingIds((prev) => {
+          const newSet = new Set(prev);
+          newSet.add(record.key);
+          return newSet;
+        });
+        pollExecutingRecord(record.key);
+      }
+    });
+  };
+
   const fetchLogs = async (page) => {
     try {
       setLoading(true);
@@ -123,9 +191,11 @@ function ExecutionLogs() {
           pipelineName: item?.pipeline_name || "Pipeline name not found",
           successfulFiles: item?.successful_files,
           failedFiles: item?.failed_files,
+          status: item?.status,
         };
       });
       setDataList(formattedData);
+      startPollingForExecuting(formattedData);
     } catch (err) {
       setAlertDetails(handleException(err));
     } finally {

@@ -1,3 +1,21 @@
 .title-name-redirect{
   word-break: break-all;
 }
+
+
+.gen-index-progress {
+  color: #FAAD14;
+}
+
+.gen-index-success {
+  color: #52C41A;
+}
+
+.gen-index-fail {
+  color: #ff4242;
+}
+
+.status-container {
+  display: inline-block;
+  margin-right: 10px;
+}
