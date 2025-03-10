@@ -1,7 +1,7 @@
 import { create } from "zustand";
+import axios from "axios";
 
 import { useSessionStore } from "./session-store";
-import axios from "axios";
 
 const STORE_VARIABLES = {
   logs: [],

@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+
 import { LogsHeader } from "./LogsHeader";
 import "./DisplayLogsAndNotifications.css";
 import { LogsAndNotificationsTable } from "./LogsAndNotificationsTable";
