@@ -2,6 +2,8 @@ from enum import Enum
 
 
 class PromptServiceConstants:
+    """Constants used in the prompt service."""
+
     WORD = "word"
     SYNONYMS = "synonyms"
     OUTPUTS = "outputs"
@@ -77,6 +79,8 @@ class PromptServiceConstants:
     EXECUTION_SOURCE = "execution_source"
     METRICS = "metrics"
     LINE_ITEM = "line-item"
+    LINE_NUMBERS = "line_numbers"
+    WHISPER_HASH = "whisper_hash"
     PAID_FEATURE_MSG = (
         "It is a cloud / enterprise feature. If you have purchased a plan and still "
         "face this issue, please contact support"
@@ -112,26 +116,35 @@ class DBTableV2:
 
 
 class FileStorageKeys:
+    """File storage keys."""
+
     PERMANENT_REMOTE_STORAGE = "PERMANENT_REMOTE_STORAGE"
     TEMPORARY_REMOTE_STORAGE = "TEMPORARY_REMOTE_STORAGE"
 
 
 class FileStorageType(Enum):
+    """File storage type."""
+
     PERMANENT = "permanent"
     TEMPORARY = "temporary"
 
 
 class ExecutionSource(Enum):
+    """Execution source."""
+
     IDE = "ide"
     TOOL = "tool"
 
 
 class VariableType(str, Enum):
+    """Type of variable."""
+
     STATIC = "STATIC"
     DYNAMIC = "DYNAMIC"
 
 
 class VariableConstants:
+    """Constants for variable extraction."""
 
     VARIABLE_REGEX = "{{(.+?)}}"
     DYNAMIC_VARIABLE_DATA_REGEX = r"\[(.*?)\]"
