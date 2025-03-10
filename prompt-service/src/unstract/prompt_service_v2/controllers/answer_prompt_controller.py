@@ -502,7 +502,6 @@ def prompt_processor() -> Any:
                             tool_settings=tool_settings,
                             output=output,
                             structured_output=structured_output,
-                            logger=app.logger,
                             platform_key=platform_key,
                             metadata=metadata,
                         )
@@ -559,7 +558,6 @@ def prompt_processor() -> Any:
                             "",
                             output,
                             structured_output,
-                            app.logger,
                             platform_key,
                         )
                         # Will inline replace the structured output passed.

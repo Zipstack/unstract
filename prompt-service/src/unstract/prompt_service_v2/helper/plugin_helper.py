@@ -75,13 +75,6 @@ class PluginManager:
         """Get the plugin metadata by name."""
         return self.plugins.get(name, {})
 
-    def initialize_plugin_endpoints(self) -> None:
-        """Enables plugins if available."""
-        simple_prompt_studio = self.get_plugin(PSKeys.SIMPLE_PROMPT_STUDIO)
-
-        if simple_prompt_studio:
-            simple_prompt_studio["entrypoint_cls"](app=self.app)
-
     def get_cleaned_context(self, context: set[str]) -> list[str]:
         """Returns cleaned context from the clean context plugin."""
         clean_context_plugin = self.get_plugin(PSKeys.CLEAN_CONTEXT)
@@ -93,4 +86,3 @@ class PluginManager:
 def plugin_loader(app: Flask) -> None:
     manager = PluginManager(app)
     manager.load_plugins()
-    manager.initialize_plugin_endpoints()
