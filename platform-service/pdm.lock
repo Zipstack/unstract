@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:50e2fce89b89690bc657fb70fa2016e383ec87cfada6fa21cdd61b1067fd2d01"
+content_hash = "sha256:a1083876cda07ef56465af8c3e2f8c47a92bbff0d0fcba0071ef13923cc588d6"
 
 [[package]]
 name = "adlfs"
@@ -1162,7 +1162,7 @@ files = [
 
 [[package]]
 name = "googleapis-common-protos"
-version = "1.69.0"
+version = "1.69.1"
 requires_python = ">=3.7"
 summary = "Common protobufs used in Google APIs"
 groups = ["default"]
@@ -1170,24 +1170,24 @@ dependencies = [
     "protobuf!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5,<6.0.0.dev0,>=3.20.2",
 ]
 files = [
-    {file = "googleapis_common_protos-1.69.0-py2.py3-none-any.whl", hash = "sha256:17835fdc4fa8da1d61cfe2d4d5d57becf7c61d4112f8d81c67eaa9d7ce43042d"},
-    {file = "googleapis_common_protos-1.69.0.tar.gz", hash = "sha256:5a46d58af72846f59009b9c4710425b9af2139555c71837081706b213b298187"},
+    {file = "googleapis_common_protos-1.69.1-py2.py3-none-any.whl", hash = "sha256:4077f27a6900d5946ee5a369fab9c8ded4c0ef1c6e880458ea2f70c14f7b70d5"},
+    {file = "googleapis_common_protos-1.69.1.tar.gz", hash = "sha256:e20d2d8dda87da6fe7340afbbdf4f0bcb4c8fae7e6cadf55926c31f946b0b9b1"},
 ]
 
 [[package]]
 name = "googleapis-common-protos"
-version = "1.69.0"
+version = "1.69.1"
 extras = ["grpc"]
 requires_python = ">=3.7"
 summary = "Common protobufs used in Google APIs"
 groups = ["default"]
 dependencies = [
-    "googleapis-common-protos==1.69.0",
+    "googleapis-common-protos==1.69.1",
     "grpcio<2.0.0.dev0,>=1.44.0",
 ]
 files = [
-    {file = "googleapis_common_protos-1.69.0-py2.py3-none-any.whl", hash = "sha256:17835fdc4fa8da1d61cfe2d4d5d57becf7c61d4112f8d81c67eaa9d7ce43042d"},
-    {file = "googleapis_common_protos-1.69.0.tar.gz", hash = "sha256:5a46d58af72846f59009b9c4710425b9af2139555c71837081706b213b298187"},
+    {file = "googleapis_common_protos-1.69.1-py2.py3-none-any.whl", hash = "sha256:4077f27a6900d5946ee5a369fab9c8ded4c0ef1c6e880458ea2f70c14f7b70d5"},
+    {file = "googleapis_common_protos-1.69.1.tar.gz", hash = "sha256:e20d2d8dda87da6fe7340afbbdf4f0bcb4c8fae7e6cadf55926c31f946b0b9b1"},
 ]
 
 [[package]]
@@ -1684,7 +1684,7 @@ files = [
 
 [[package]]
 name = "llama-cloud"
-version = "0.1.13"
+version = "0.1.14"
 requires_python = "<4,>=3.8"
 summary = ""
 groups = ["default"]
@@ -1694,8 +1694,8 @@ dependencies = [
     "pydantic>=1.10",
 ]
 files = [
-    {file = "llama_cloud-0.1.13-py3-none-any.whl", hash = "sha256:c36d9e9288cb7298faae68797f9789615b7c72409af8f3315e3098a479c09e17"},
-    {file = "llama_cloud-0.1.13.tar.gz", hash = "sha256:cb6522fbd0f5e4c1cd2825e70bb943d0d8916816e232a5ce3be3a7272f329a8c"},
+    {file = "llama_cloud-0.1.14-py3-none-any.whl", hash = "sha256:187672847dedc018b4d2620a8d26d6bf213e425e8b91569773de48e5c2f3ca5a"},
+    {file = "llama_cloud-0.1.14.tar.gz", hash = "sha256:90741a19ba96967fa2484084928e326ae957736780a15b67bc3ad5f52e94782d"},
 ]
 
 [[package]]
@@ -1930,7 +1930,7 @@ files = [
 
 [[package]]
 name = "llama-index-llms-azure-openai"
-version = "0.3.0"
+version = "0.3.1"
 requires_python = "<4.0,>=3.9"
 summary = "llama-index llms azure openai integration"
 groups = ["default"]
@@ -1941,8 +1941,8 @@ dependencies = [
     "llama-index-llms-openai<0.4.0,>=0.3.0",
 ]
 files = [
-    {file = "llama_index_llms_azure_openai-0.3.0-py3-none-any.whl", hash = "sha256:24091aedf7ba24a7b217d17c4358e62b5d6b43a4d3ca44750d442b02a440d26e"},
-    {file = "llama_index_llms_azure_openai-0.3.0.tar.gz", hash = "sha256:0feea9319d832c8b5e8e0f397c905e45df54c529b6a778825adcd0d254bd7d63"},
+    {file = "llama_index_llms_azure_openai-0.3.1-py3-none-any.whl", hash = "sha256:f9cc1f275288b17f44ce81939d71481a1b26b39e525c7233515147452d596b9e"},
+    {file = "llama_index_llms_azure_openai-0.3.1.tar.gz", hash = "sha256:d846e72017480739d385a420b3432f5f2bdd0e4fe7ce1dc5f25deac7d0a81f70"},
 ]
 
 [[package]]
@@ -1993,17 +1993,17 @@ files = [
 
 [[package]]
 name = "llama-index-llms-openai"
-version = "0.3.17"
+version = "0.3.25"
 requires_python = "<4.0,>=3.9"
 summary = "llama-index llms openai integration"
 groups = ["default"]
 dependencies = [
-    "llama-index-core<0.13.0,>=0.12.4",
+    "llama-index-core<0.13.0,>=0.12.17",
     "openai<2.0.0,>=1.58.1",
 ]
 files = [
-    {file = "llama_index_llms_openai-0.3.17-py3-none-any.whl", hash = "sha256:06ae687bfbe17f9eadc09c7167ac2a67d8ff5548164166746be251698f5e7b58"},
-    {file = "llama_index_llms_openai-0.3.17.tar.gz", hash = "sha256:19f478054a017e5e3c16f4335a7e149a1f28cc59871c9873adc49a46b594ac99"},
+    {file = "llama_index_llms_openai-0.3.25-py3-none-any.whl", hash = "sha256:b21ea58f20c82f442b910b8f878bbbfd4937f601aa436cbe55b26c1d490762a6"},
+    {file = "llama_index_llms_openai-0.3.25.tar.gz", hash = "sha256:1e4fd1d166bb635ca7c03f0486c04d80978948c5b8d89c8b469ae5d02852cf4b"},
 ]
 
 [[package]]
@@ -4013,7 +4013,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.60.0"
+version = "0.60.1"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
@@ -4029,11 +4029,11 @@ dependencies = [
     "llama-index-embeddings-vertex==0.3.1",
     "llama-index-llms-anthropic==0.6.3",
     "llama-index-llms-anyscale==0.3.0",
-    "llama-index-llms-azure-openai==0.3.0",
+    "llama-index-llms-azure-openai==0.3.1",
     "llama-index-llms-bedrock==0.3.3",
     "llama-index-llms-mistralai==0.3.1",
     "llama-index-llms-ollama==0.5.0",
-    "llama-index-llms-openai==0.3.17",
+    "llama-index-llms-openai==0.3.25",
     "llama-index-llms-palm==0.3.0",
     "llama-index-llms-replicate==0.4.0",
     "llama-index-llms-vertex==0.4.2",
@@ -4055,13 +4055,13 @@ dependencies = [
     "transformers==4.37.0",
 ]
 files = [
-    {file = "unstract_sdk-0.60.0-py3-none-any.whl", hash = "sha256:0d261b2250ae74142acd94d4298f95780567545a919e18584b505d9bd14cb873"},
-    {file = "unstract_sdk-0.60.0.tar.gz", hash = "sha256:767333e1847f43c7de99b0aa802f9358168eb742e43c35e744f12baab690a364"},
+    {file = "unstract_sdk-0.60.1-py3-none-any.whl", hash = "sha256:a77f484f2d2114ec710b1e8b413d8eee0e29ce280ef4be0c43c946e5abf56a2c"},
+    {file = "unstract_sdk-0.60.1.tar.gz", hash = "sha256:df86dc341eba18358e82ab961ea09fc095b1637ee83285262be10268b714125a"},
 ]
 
 [[package]]
 name = "unstract-sdk"
-version = "0.60.0"
+version = "0.60.1"
 extras = ["aws", "azure", "gcs"]
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
@@ -4071,11 +4071,11 @@ dependencies = [
     "boto3~=1.34.131",
     "gcsfs~=2024.10.0",
     "s3fs[boto3]~=2024.10.0",
-    "unstract-sdk==0.60.0",
+    "unstract-sdk==0.60.1",
 ]
 files = [
-    {file = "unstract_sdk-0.60.0-py3-none-any.whl", hash = "sha256:0d261b2250ae74142acd94d4298f95780567545a919e18584b505d9bd14cb873"},
-    {file = "unstract_sdk-0.60.0.tar.gz", hash = "sha256:767333e1847f43c7de99b0aa802f9358168eb742e43c35e744f12baab690a364"},
+    {file = "unstract_sdk-0.60.1-py3-none-any.whl", hash = "sha256:a77f484f2d2114ec710b1e8b413d8eee0e29ce280ef4be0c43c946e5abf56a2c"},
+    {file = "unstract_sdk-0.60.1.tar.gz", hash = "sha256:df86dc341eba18358e82ab961ea09fc095b1637ee83285262be10268b714125a"},
 ]
 
 [[package]]
