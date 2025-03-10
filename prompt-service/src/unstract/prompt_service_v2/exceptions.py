@@ -1,3 +1,4 @@
+import json
 from dataclasses import asdict, dataclass
 from typing import Any, Optional
 
@@ -14,6 +15,10 @@ class ErrorResponse:
     name: str = "PromptServiceError"
     code: int = 500
     payload: Optional[Any] = None
+
+    def to_json(self) -> str:
+        """Returns a JSON representation of the error response."""
+        return json.dumps(asdict(self))
 
 
 class APIError(HTTPException):

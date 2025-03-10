@@ -1,9 +1,7 @@
-import json
 import traceback
 
 from flask import Flask, jsonify, request
-from unstract.prompt_service_v2.exceptions import APIError
-from unstract.prompt_service_v2.helper.errorhandler import ErrorResponse
+from unstract.prompt_service_v2.exceptions import APIError, ErrorResponse
 from werkzeug.exceptions import HTTPException
 
 
@@ -44,9 +42,9 @@ def register_error_handler(app: Flask):
             return jsonify(e.to_dict()), e.code
         else:
             response = e.get_response()
-            response.data = json.dumps(
-                ErrorResponse(error=e.description, name=e.name, code=e.code)
-            )
+            response.data = ErrorResponse(
+                error=e.description, name=e.name, code=e.code
+            ).to_json()
             response.content_type = "application/json"
             return response
 
