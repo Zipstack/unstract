@@ -5,7 +5,8 @@ from typing import Any, Optional
 from flask import current_app as app
 from unstract.prompt_service.exceptions import APIError, RateLimitError
 from unstract.prompt_service_v2.constants import ExecutionSource, FileStorageKeys
-from unstract.prompt_service_v2.constants import PromptServiceContants as PSKeys
+from unstract.prompt_service_v2.constants import PromptServiceConstants as PSKeys
+from unstract.prompt_service_v2.constants import RunLevel
 from unstract.prompt_service_v2.helper.plugin_helper import PluginManager
 from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError
 from unstract.sdk.exceptions import SdkError
@@ -157,11 +158,14 @@ class AnswerPromptService:
             answer: str = completion[PSKeys.RESPONSE].text
             highlight_data = completion.get(PSKeys.HIGHLIGHT_DATA, [])
             confidence_data = completion.get(PSKeys.CONFIDENCE_DATA)
+            line_numbers = completion.get(PSKeys.LINE_NUMBERS, [])
+            whisper_hash = completion.get(PSKeys.WHISPER_HASH, "")
             if metadata is not None and prompt_key:
                 metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})[
                     prompt_key
                 ] = highlight_data
-
+                metadata.setdefault(PSKeys.LINE_NUMBERS, {})[prompt_key] = line_numbers
+                metadata[PSKeys.WHISPER_HASH] = whisper_hash
                 if confidence_data:
                     metadata.setdefault(PSKeys.CONFIDENCE_DATA, {})[
                         prompt_key

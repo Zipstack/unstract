@@ -3,7 +3,7 @@ import warnings
 from typing import Optional
 
 from flask import current_app
-from unstract.prompt_service_v2.constants import PromptServiceContants
+from unstract.prompt_service_v2.constants import PromptServiceConstants
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.tool.stream import StreamMixin
 from unstract.sdk.utils.common_utils import PY_TO_UNSTRACT_LOG_LEVEL
@@ -46,7 +46,7 @@ class PromptServiceBaseTool(StreamMixin):
             str: Value of the env
         """
         # HACK: Adding platform key for multitenancy
-        if env_key == PromptServiceContants.PLATFORM_SERVICE_API_KEY:
+        if env_key == PromptServiceConstants.PLATFORM_SERVICE_API_KEY:
             if not self.platform_key:
                 current_app.logger.error(f"{env_key} is required")
             else:

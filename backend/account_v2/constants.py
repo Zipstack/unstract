@@ -18,6 +18,8 @@ class Common:
     USER_ROLE = "role"
     MAX_EMAIL_IN_REQUEST = 10
     LOG_EVENTS_ID = "log_events_id"
+    REQUEST_ID = "request_id"
+    X_REQUEST_ID = "X-Request-ID"
 
 
 class UserModel:

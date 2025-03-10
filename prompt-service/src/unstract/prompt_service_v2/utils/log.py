@@ -1,4 +1,4 @@
-from unstract.prompt_service.constants import RunLevel
+from unstract.prompt_service_v2.constants import RunLevel
 from unstract.sdk.constants import LogLevel
 
 from unstract.core.pubsub_helper import LogPublisher

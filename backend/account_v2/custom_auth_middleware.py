@@ -16,6 +16,8 @@ class CustomAuthMiddleware:
         # One-time configuration and initialization.
 
     def __call__(self, request: HttpRequest) -> HttpResponse:
+        # Add request_id in StateStore
+        StateStore.set(Common.REQUEST_ID, request.id)
         # Returns result without authenticated if added in whitelisted paths
         if any(request.path.startswith(path) for path in settings.WHITELISTED_PATHS):
             return self.get_response(request)

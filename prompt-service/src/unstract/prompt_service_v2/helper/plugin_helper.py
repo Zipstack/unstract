@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from flask import Flask
-from unstract.prompt_service_v2.constants import PromptServiceContants as PSKeys
+from unstract.prompt_service_v2.constants import PromptServiceConstants as PSKeys
 
 
 class PluginManager:
@@ -16,18 +16,12 @@ class PluginManager:
             cls._instance = super().__new__(cls)
             cls._instance.plugins = {}
             cls._instance.plugins_dir = (
-                Path(
-                    # Temporary change for v2 and will be removed once tested
-                    os.path.dirname(__file__).replace(
-                        "prompt_service_v2", "prompt_service"
-                    )
-                ).parent
-                / "plugins"
+                Path(os.path.dirname(__file__)).parent / "plugins"
             )
-            cls._instance.plugins_pkg = "unstract.prompt_service.plugins"
-            # Always update `app` if provided
-            if app:
-                cls._instance.app = app
+            cls._instance.plugins_pkg = "unstract.prompt_service_v2.plugins"
+        # Always update `app` if provided
+        if app:
+            cls._instance.app = app
         return cls._instance
 
     def load_plugins(self) -> None:
@@ -67,6 +61,9 @@ class PluginManager:
                     "entrypoint_cls": metadata["entrypoint_cls"],
                     "exception_cls": metadata["exception_cls"],
                 }
+                blueprint = metadata.get("blueprint")
+                if blueprint:
+                    self.app.register_blueprint(blueprint)
                 self.app.logger.info(f"Loaded plugin: {pkg} v{metadata['version']}")
             except KeyError as e:
                 self.app.logger.error(f"Invalid metadata for plugin '{pkg}': {str(e)}")
@@ -77,24 +74,6 @@ class PluginManager:
     def get_plugin(self, name: str) -> dict[str, Any]:
         """Get the plugin metadata by name."""
         return self.plugins.get(name, {})
-
-    def initialize_plugin_endpoints(self) -> None:
-        """Enables plugins if available."""
-        single_pass_extration_plugin = self.get_plugin(PSKeys.SINGLE_PASS_EXTRACTION)
-        summarize_plugin = self.get_plugin(PSKeys.SUMMARIZE)
-        simple_prompt_studio = self.get_plugin(PSKeys.SIMPLE_PROMPT_STUDIO)
-
-        if single_pass_extration_plugin:
-            single_pass_extration_plugin["entrypoint_cls"](
-                app=self.app,
-                challenge_plugin=self.get_plugin(PSKeys.CHALLENGE),
-                get_cleaned_context=self.get_cleaned_context,
-                highlight_data_plugin=self.get_plugin(PSKeys.HIGHLIGHT_DATA_PLUGIN),
-            )
-        if summarize_plugin:
-            summarize_plugin["entrypoint_cls"](app=self.app)
-        if simple_prompt_studio:
-            simple_prompt_studio["entrypoint_cls"](app=self.app)
 
     def get_cleaned_context(self, context: set[str]) -> list[str]:
         """Returns cleaned context from the clean context plugin."""
@@ -107,4 +86,3 @@ class PluginManager:
 def plugin_loader(app: Flask) -> None:
     manager = PluginManager(app)
     manager.load_plugins()
-    manager.initialize_plugin_endpoints()

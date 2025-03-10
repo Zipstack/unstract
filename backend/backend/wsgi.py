@@ -12,10 +12,7 @@ import time
 
 from django.conf import settings
 from django.core.wsgi import get_wsgi_application
-from dotenv import load_dotenv
 from utils.log_events import start_server
-
-load_dotenv()
 
 logger = logging.getLogger(__name__)
 

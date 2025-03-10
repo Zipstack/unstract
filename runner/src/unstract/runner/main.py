@@ -28,17 +28,19 @@ def run_container() -> Optional[Any]:
     organization_id = data["organization_id"]
     workflow_id = data["workflow_id"]
     execution_id = data["execution_id"]
-    run_id = data["run_id"]
+    file_execution_id = data["file_execution_id"]
+    container_name = data["container_name"]
     settings = data["settings"]
     envs = data["envs"]
     messaging_channel = data["messaging_channel"]
 
     runner = UnstractRunner(image_name, image_tag, app)
     result = runner.run_container(
+        container_name=container_name,
         organization_id=organization_id,
         workflow_id=workflow_id,
         execution_id=execution_id,
-        run_id=run_id,
+        file_execution_id=file_execution_id,
         settings=settings,
         envs=envs,
         messaging_channel=messaging_channel,

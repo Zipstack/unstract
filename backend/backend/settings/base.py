@@ -12,7 +12,6 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 import os
 from pathlib import Path
 from typing import Optional
-from urllib.parse import quote_plus
 
 from dotenv import find_dotenv, load_dotenv
 from utils.common_utils import CommonUtils
@@ -130,8 +129,8 @@ LOG_HISTORY_CONSUMER_INTERVAL = int(
     get_required_setting("LOG_HISTORY_CONSUMER_INTERVAL", "60")
 )
 LOGS_BATCH_LIMIT = int(get_required_setting("LOGS_BATCH_LIMIT", "30"))
-CELERY_BROKER_URL = get_required_setting(
-    "CELERY_BROKER_URL", f"redis://{REDIS_HOST}:{REDIS_PORT}"
+LOGS_EXPIRATION_TIME_IN_SECOND = int(
+    get_required_setting("LOGS_EXPIRATION_TIME_IN_SECOND", "86400")
 )
 
 INDEXING_FLAG_TTL = int(get_required_setting("INDEXING_FLAG_TTL"))
@@ -305,7 +304,7 @@ DATABASES = {
 }
 
 MIDDLEWARE = [
-    "log_request_id.middleware.RequestIDMiddleware",
+    "middleware.request_id.CustomRequestIDMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     TENANT_MIDDLEWARE,
     "django.middleware.security.SecurityMiddleware",
@@ -366,20 +365,6 @@ SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
 RQ_QUEUES = {
     "default": {"USE_REDIS_CACHE": "default"},
 }
-
-
-# CELERY_RESULT_BACKEND = f"redis://{REDIS_HOST}:{REDIS_PORT}/1"
-# Postgres as result backend
-CELERY_RESULT_BACKEND = (
-    f"db+postgresql://{DB_USER}:{quote_plus(DB_PASSWORD)}"
-    f"@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-)
-CELERY_ACCEPT_CONTENT = ["json"]
-CELERY_TASK_SERIALIZER = "json"
-CELERY_RESULT_SERIALIZER = "json"
-CELERY_TIMEZONE = "UTC"
-CELERY_TASK_MAX_RETRIES = 3
-CELERY_TASK_RETRY_BACKOFF = 60  # Time in seconds before retrying the task
 
 # Feature Flag
 FEATURE_FLAG_SERVICE_URL = {"evaluate": f"{FLIPT_BASE_URL}/api/v1/flags/evaluate/"}
@@ -508,6 +493,11 @@ SOCIAL_AUTH_GOOGLE_OAUTH2_AUTH_EXTRA_ARGUMENTS = {
 }
 SOCIAL_AUTH_GOOGLE_OAUTH2_USE_UNIQUE_USER_ID = True
 
+# request_id settings
+LOG_REQUEST_ID_HEADER = "X-Request-ID"
+REQUEST_ID_RESPONSE_HEADER = "X-Request-ID"
+GENERATE_REQUEST_ID_IF_NOT_IN_HEADER = True
+NO_REQUEST_ID = "N/A"
 
 # Always keep this line at the bottom of the file.
 if missing_settings:

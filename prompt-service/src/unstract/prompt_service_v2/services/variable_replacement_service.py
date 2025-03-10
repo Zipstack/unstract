@@ -2,7 +2,7 @@ from typing import Any
 
 from flask import current_app as app
 from unstract.prompt_service.utils.log import publish_log
-from unstract.prompt_service_v2.constants import PromptServiceContants as PSKeys
+from unstract.prompt_service_v2.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service_v2.constants import RunLevel, VariableType
 from unstract.prompt_service_v2.helper.variable_replacement_helper import (
     VariableReplacementHelper,
