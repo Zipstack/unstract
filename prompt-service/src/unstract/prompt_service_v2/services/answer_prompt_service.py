@@ -6,7 +6,6 @@ from flask import current_app as app
 from unstract.prompt_service.exceptions import APIError, RateLimitError
 from unstract.prompt_service_v2.constants import ExecutionSource, FileStorageKeys
 from unstract.prompt_service_v2.constants import PromptServiceConstants as PSKeys
-from unstract.prompt_service_v2.constants import RunLevel
 from unstract.prompt_service_v2.helper.plugin_helper import PluginManager
 from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError
 from unstract.sdk.exceptions import SdkError
