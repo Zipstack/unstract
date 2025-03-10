@@ -29,7 +29,6 @@ export function DisplayLogsAndNotifications() {
       if (window.getComputedStyle(parent).position === "static") {
         parent.style.position = "relative";
       }
-      parent.style.overflow = "hidden";
     }
   }, []);
 
@@ -57,22 +56,45 @@ export function DisplayLogsAndNotifications() {
     return parent ? parent.getBoundingClientRect().height : 0;
   }, []);
 
+  // Minimizes the logs (height = 0).
   const minimize = useCallback(() => {
     setContentHeight(0);
   }, []);
 
+  // Sets the logs height to "semi" (30% of parent minus 40).
   const semiExpand = useCallback(() => {
     const parentHeight = getParentHeight();
-    const semiHeight = 0.3 * parentHeight;
-    const newHeight = Math.max(0, semiHeight - 40);
+    const height = 0.3 * parentHeight;
+    const semiHeight = height - 40;
+    const newHeight = Math.max(0, semiHeight);
     setContentHeight(newHeight);
   }, [getParentHeight]);
 
+  // Sets the logs height to "full" (parent minus 40).
   const fullExpand = useCallback(() => {
     const parentHeight = getParentHeight();
     const newHeight = Math.max(0, parentHeight - 40);
     setContentHeight(newHeight);
   }, [getParentHeight]);
+
+  const handleToggleExpand = useCallback(() => {
+    const parentHeight = getParentHeight();
+    const height = 0.3 * parentHeight;
+    const semiHeight = height - 40;
+    const fullHeight = parentHeight - 40;
+
+    const isCurrentlyFull = contentHeight >= fullHeight - 1;
+
+    if (isCurrentlyFull) {
+      semiExpand();
+    } else {
+      if (contentHeight < semiHeight) {
+        semiExpand();
+      } else {
+        fullExpand();
+      }
+    }
+  }, [contentHeight, getParentHeight, semiExpand, fullExpand]);
 
   const onMouseDown = useCallback(
     (e) => {
@@ -101,7 +123,11 @@ export function DisplayLogsAndNotifications() {
     draggingRef.current = false;
     document.removeEventListener("mousemove", onMouseMove);
     document.removeEventListener("mouseup", onMouseUp);
-  }, [onMouseMove, getParentHeight, contentHeight]);
+  }, [onMouseMove]);
+
+  const parentHeight = getParentHeight();
+  const fullHeight = parentHeight - 40;
+  const isFull = contentHeight >= fullHeight - 1; // a small tolerance
 
   return (
     <div
@@ -112,9 +138,9 @@ export function DisplayLogsAndNotifications() {
       <div className="logs-handle" onMouseDown={onMouseDown}>
         <LogsHeader
           isMinimized={contentHeight === 0}
+          isFull={isFull}
           errorCount={errorCount}
-          onSemiExpand={semiExpand}
-          onFullExpand={fullExpand}
+          onToggleExpand={handleToggleExpand}
           onMinimize={minimize}
         />
       </div>
