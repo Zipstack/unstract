@@ -81,6 +81,21 @@ class FilePattern:
         "*.tif",
         "*.tiff",
     ]
+    UNSUPPORTED_FILE_EXTENSIONS = [
+        # Archive formats
+        "*.zip",
+        "*.tar",
+        "*.gz",
+        "*.tar.gz",
+        "*.xz",
+        "*.tar.xz",
+        "*.7z",
+        "*.rar",
+        "*.bz2",
+        "*.tar.bz2",
+        "*.tgz",
+        "*.tbz2",
+    ]
 
 
 class SourceConstant:

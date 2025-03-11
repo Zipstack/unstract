@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
-import { getTimeForLogs } from "../helpers/GetStaticData";
+import { useSessionStore } from "./session-store";
+import axios from "axios";
 
 const STORE_VARIABLES = {
   logs: [],
@@ -8,34 +9,56 @@ const STORE_VARIABLES = {
 
 const useSocketLogsStore = create((setState, getState) => ({
   ...STORE_VARIABLES,
-  pushLogMessages: (messages) => {
+  pushLogMessages: (messages, isStoreNotifications = true) => {
     const existingState = { ...getState() };
+    const { sessionDetails } = useSessionStore.getState();
     let logsData = [...(existingState?.logs || [])];
 
     const newLogs = messages.map((msg, index) => ({
-      timestamp: getTimeForLogs(),
+      timestamp: msg?.timestamp,
       key: logsData?.length + index + 1,
       level: msg?.level,
       stage: msg?.stage,
       step: msg?.step,
+      state: msg?.state,
+      prompt_key: msg?.component?.prompt_key,
+      doc_name: msg?.component?.doc_name,
       message: msg?.message,
-      cost_type: msg?.cost_type,
-      cost_units: msg?.cost_units,
       cost_value: msg?.cost,
       iteration: msg?.iteration,
       iteration_total: msg?.iteration_total,
+      type: msg?.type,
     }));
 
     logsData = [...logsData, ...newLogs];
 
-    // Remove the previous logs if the length exceeds 200
+    newLogs.forEach((newLog) => {
+      if (
+        newLog?.type === "NOTIFICATION" &&
+        sessionDetails?.isLoggedIn &&
+        isStoreNotifications
+      ) {
+        const requestOptions = {
+          method: "POST",
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/logs/`,
+          headers: {
+            "X-CSRFToken": sessionDetails?.csrfToken,
+          },
+          data: { log: JSON.stringify(newLog) },
+        };
+        axios(requestOptions).catch((err) => {});
+      }
+    });
+
+    // Remove the previous logs if the length exceeds 1000
     const logsDataLength = logsData?.length;
-    if (logsDataLength > 200) {
-      const index = logsDataLength - 200;
+    if (logsDataLength > 1000) {
+      const index = logsDataLength - 1000;
       logsData = logsData.slice(index);
     }
 
     existingState.logs = logsData;
+
     setState(existingState);
   },
   emptyLogs: () => {
