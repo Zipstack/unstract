@@ -331,8 +331,8 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             )
 
             logger.error(
-                f"Error calculating cost for execution '{execution_id}': "
-                f"{str(e)}. Total cost: {total_cost}, Total files: {total_files}"
+                f"Error calculating cost for execution '{execution_id}' of '{total_files}' files : "
+                f"{str(e)}.\nContinuing execution"
             )
 
     def log_total_cost_per_file(self, run_id, file_name):
