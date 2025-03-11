@@ -83,7 +83,7 @@ class RetrievalService:
                 # Note: This will not fix the issue. Since this issue is inconsistent
                 # and not reproducible easily, this is just a safety net.
                 time.sleep(2)
-                context = AnswerPromptService._retrieve_context(
+                context = RetrievalService._retrieve_context(
                     output, doc_id, vector_index, prompt
                 )
 

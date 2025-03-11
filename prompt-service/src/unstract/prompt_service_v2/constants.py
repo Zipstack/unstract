@@ -169,3 +169,6 @@ class IndexingConstants:
     TAGS = "tags"
     EXECUTION_SOURCE = "execution_source"
     DOC_ID = "doc_id"
+    TOOL_EXECUTION_METATADA = "tool_execution_metadata"
+    EXECUTION_DATA_DIR = "execution_data_dir"
+    METADATA_FILE = "METADATA.json"

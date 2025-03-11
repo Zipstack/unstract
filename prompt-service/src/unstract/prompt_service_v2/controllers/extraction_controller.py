@@ -14,6 +14,7 @@ REQUIRED_FIELDS = [
     "file_path",
     "execution_source",
     "run_id",
+    "tags",
 ]
 
 
@@ -31,9 +32,12 @@ def extract() -> Any:
     usage_kwargs: dict[Any, Any] = payload.get(IKeys.USAGE_KWARGS, {})
     run_id: str = payload.get(PSKeys.RUN_ID, "")
     execution_source = payload.get(IKeys.EXECUTION_SOURCE, None)
-    run_id: str = payload.get(PSKeys.RUN_ID, "")
+    tags: str = payload.get(IKeys.TAGS, "")
 
-    extracted_text = ExtractionService(
+    if enable_highlight:
+        tool_exec_metadata = payload.get(IKeys.TOOL_EXECUTION_METATADA, {})
+        execution_run_data_folder = payload.get(IKeys.EXECUTION_DATA_DIR, "")
+    extracted_text = ExtractionService.perform_extraction(
         file_path=file_path,
         x2text_instance_id=x2text_instance_id,
         output_file_path=output_file_path,
@@ -42,6 +46,9 @@ def extract() -> Any:
         run_id=run_id,
         execution_source=execution_source,
         platform_key=platform_key,
+        tags=tags,
+        tool_exec_metadata=tool_exec_metadata,
+        execution_run_data_folder=execution_run_data_folder,
     )
     response = {IKeys.EXTRACTED_TEXT: extracted_text}
     return response
