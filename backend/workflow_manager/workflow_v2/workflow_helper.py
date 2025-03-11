@@ -213,12 +213,12 @@ class WorkflowHelper:
             execution_service.update_execution(ExecutionStatus.COMPLETED)
 
         workflow_execution = execution_service.get_execution_instance()
-        
+
         execution_service.publish_final_workflow_logs(
             total_files=total_files,
             successful_files=successful_files,
             failed_files=failed_files,
-            execution_id=workflow_execution.id
+            execution_id=workflow_execution.id,
         )
 
         return workflow_execution

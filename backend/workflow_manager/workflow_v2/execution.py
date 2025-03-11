@@ -290,7 +290,11 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         )
 
     def publish_final_workflow_logs(
-        self, total_files: int, successful_files: int, failed_files: int, execution_id: str
+        self,
+        total_files: int,
+        successful_files: int,
+        failed_files: int,
+        execution_id: str,
     ) -> None:
         """Publishes the final logs for the workflow.
 
@@ -300,10 +304,10 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         self.publish_average_cost_log(
             execution_id=execution_id, total_files=successful_files
         )
-  
+
         # To not associate final logs with a file execution
         self.file_execution_id = None
-      
+
         self.publish_update_log(LogState.END_WORKFLOW, "1", LogComponent.STATUS_BAR)
         self.publish_update_log(
             LogState.SUCCESS, "Executed successfully", LogComponent.WORKFLOW
