@@ -337,7 +337,8 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             )
 
             logger.error(
-                f"Error calculating cost for execution '{execution_id}' of '{total_files}' files : "
+                f"Error calculating cost for execution '{execution_id}' "
+                f"of '{total_files}' files : "
                 f"{str(e)}.\nContinuing execution"
             )
 
