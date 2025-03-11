@@ -39,7 +39,7 @@ class QueueResult:
     workflow_id: str
     file_content: str
     whisper_hash: Optional[str] = None
-    execution_id: Optional[str] = None
+    file_execution_id: Optional[str] = None
 
     def to_dict(self) -> Any:
         return {
@@ -49,5 +49,5 @@ class QueueResult:
             "result": self.result,
             "workflow_id": self.workflow_id,
             "file_content": self.file_content,
-            "execution_id": self.execution_id,
+            "file_execution_id": self.file_execution_id,
         }
