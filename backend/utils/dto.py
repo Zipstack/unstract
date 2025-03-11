@@ -1,8 +1,9 @@
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
+from django.utils import timezone as dj_timezone
 from unstract.workflow_execution.enums import LogType
 
 from unstract.core.constants import LogFieldName
@@ -35,7 +36,9 @@ class LogDataDTO:
         self.file_execution_id: Optional[str] = file_execution_id
         self.organization_id: str = organization_id
         self.timestamp: int = timestamp
-        self.event_time: datetime = datetime.fromtimestamp(timestamp)
+        self.event_time: datetime = dj_timezone.make_aware(
+            datetime.fromtimestamp(timestamp), timezone.utc
+        )
         self.log_type: LogType = log_type
         self.data: dict[str, Any] = data
 

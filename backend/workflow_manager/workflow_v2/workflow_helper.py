@@ -277,6 +277,7 @@ class WorkflowHelper:
             input_file_path=input_file,
             error=error,
             use_file_history=execution_service.use_file_history,
+            file_execution_id=file_execution_id,
         )
 
         execution_service.log_total_cost_per_file(
