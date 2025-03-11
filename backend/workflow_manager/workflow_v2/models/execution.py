@@ -2,11 +2,11 @@ import logging
 import uuid
 from datetime import timedelta
 from typing import Optional
-from django.db.models import Sum
 
 from api_v2.models import APIDeployment
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
+from django.db.models import Sum
 from pipeline_v2.models import Pipeline
 from tags.models import Tag
 from usage_v2.constants import UsageKeys
@@ -159,7 +159,7 @@ class WorkflowExecution(BaseModel):
             else CommonUtils.time_since(self.created_at)
         )
         return str(timedelta(seconds=time_in_secs)).split(".")[0]
-    
+
     @property
     def get_aggregated_usage_cost(self) -> Optional[float]:
         """Retrieve aggregated cost for the given execution_id.
