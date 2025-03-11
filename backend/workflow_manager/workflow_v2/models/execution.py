@@ -2,12 +2,15 @@ import logging
 import uuid
 from datetime import timedelta
 from typing import Optional
+from django.db.models import Sum
 
 from api_v2.models import APIDeployment
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
 from pipeline_v2.models import Pipeline
 from tags.models import Tag
+from usage_v2.constants import UsageKeys
+from usage_v2.models import Usage
 from utils.common_utils import CommonUtils
 from utils.models.base_model import BaseModel
 from workflow_manager.workflow_v2.enums import ExecutionStatus
@@ -156,6 +159,45 @@ class WorkflowExecution(BaseModel):
             else CommonUtils.time_since(self.created_at)
         )
         return str(timedelta(seconds=time_in_secs)).split(".")[0]
+    
+    @property
+    def get_aggregated_usage_cost(self) -> Optional[float]:
+        """Retrieve aggregated cost for the given execution_id.
+
+        Args:
+            execution_id (str): The identifier for the
+            total cost of a particular execution.
+
+        Returns:
+        Optional[float]: The total cost in dollars if available, else None.
+
+        Raises:
+            APIException: For unexpected errors during database operations.
+        """
+        try:
+            # Aggregate the cost for the given execution_id
+            total_cost = Usage.objects.filter(execution_id=self.id).aggregate(
+                cost_in_dollars=Sum(UsageKeys.COST_IN_DOLLARS)
+            )[UsageKeys.COST_IN_DOLLARS]
+
+            logger.debug(
+                f"Cost aggregated successfully for execution_id: {self.id}"
+                f", Total cost: {total_cost}"
+            )
+
+            return total_cost
+
+        except Usage.DoesNotExist:
+            # Handle the case where no usage data is found for the given execution_id
+            logger.warning(
+                f"Usage data not found for the specified execution_id: {self.id}"
+            )
+            return None
+        except Exception as e:
+            logger.warning(
+                f"An unexpected error occurred for execution {self.id}: {str(e)}"
+            )
+            return None
 
     def __str__(self) -> str:
         return (
