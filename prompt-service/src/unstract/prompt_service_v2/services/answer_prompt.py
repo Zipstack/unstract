@@ -9,7 +9,7 @@ from unstract.prompt_service.exceptions import APIError, RateLimitError
 from unstract.prompt_service_v2.constants import ExecutionSource, FileStorageKeys
 from unstract.prompt_service_v2.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service_v2.constants import RunLevel
-from unstract.prompt_service_v2.helper.plugin_helper import PluginManager
+from unstract.prompt_service_v2.helpers.plugin import PluginManager
 from unstract.prompt_service_v2.utils.log import publish_log
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError

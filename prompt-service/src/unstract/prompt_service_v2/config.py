@@ -7,9 +7,9 @@ from flask import Flask
 from flask.logging import default_handler
 from unstract.prompt_service_v2.controllers import api
 from unstract.prompt_service_v2.extensions import db
-from unstract.prompt_service_v2.helper.errorhandler import register_error_handler
-from unstract.prompt_service_v2.helper.lifecycle_helper import register_lifecycle_hooks
-from unstract.prompt_service_v2.helper.plugin_helper import plugin_loader
+from unstract.prompt_service_v2.helpers.errorhandler import register_error_handler
+from unstract.prompt_service_v2.helpers.lifecycle import register_lifecycle_hooks
+from unstract.prompt_service_v2.helpers.plugin import plugin_loader
 from unstract.prompt_service_v2.utils.env_loader import get_env_or_die
 from unstract.prompt_service_v2.utils.request_id_filter import RequestIDFilter
 from unstract.sdk.constants import LogLevel

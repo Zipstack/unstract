@@ -1,7 +1,7 @@
 from flask import Blueprint
 
-from .answer_prompt_controller import answer_prompt_bp
-from .health_controller import health_bp
+from .answer_prompt import answer_prompt_bp
+from .health import health_bp
 
 api = Blueprint("api", __name__)
 
