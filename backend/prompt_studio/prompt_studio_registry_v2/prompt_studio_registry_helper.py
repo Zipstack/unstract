@@ -416,8 +416,8 @@ class PromptStudioRegistryHelper:
     @staticmethod
     def fetch_prompt_studio_tool_count(user: User) -> int:
         """
-            Get count of valid prompt studio tools.
-            Only counts tools that have UUID as function names.
+        Get count of valid prompt studio tools.
+        Only counts tools that have UUID as function names.
         """
         try:
             # Filter the Prompt studio registry based on the users and org flag

@@ -45,7 +45,7 @@ urlpatterns = format_suffix_patterns(
         path(
             "tool/prompt-studio/",
             views.get_prompt_studio_tool_count,
-            name="prompt_studio_tool_count"
+            name="prompt_studio_tool_count",
         ),
     ]
 )
