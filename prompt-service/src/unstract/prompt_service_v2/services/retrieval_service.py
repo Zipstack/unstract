@@ -4,7 +4,7 @@ from typing import Any, Optional
 from flask import current_app as app
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
 from unstract.prompt_service.exceptions import APIError
-from unstract.prompt_service_v2.constants import PromptServiceContants as PSKeys
+from unstract.prompt_service_v2.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service_v2.constants import RunLevel
 from unstract.prompt_service_v2.services.answer_prompt_service import (
     AnswerPromptService,

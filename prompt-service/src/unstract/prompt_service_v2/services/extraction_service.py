@@ -10,14 +10,13 @@ from unstract.sdk.adapters.x2text.llm_whisperer_v2.src import LLMWhispererV2
 from unstract.sdk.exceptions import X2TextError
 from unstract.sdk.file_storage import FileStorage, FileStorageProvider
 from unstract.sdk.utils import ToolUtils
-from unstract.sdk.utils.common_utils import capture_metrics, log_elapsed
+from unstract.sdk.utils.common_utils import log_elapsed
 from unstract.sdk.x2txt import TextExtractionResult, X2Text
 
 
 class ExtractionService:
 
     @staticmethod
-    @capture_metrics
     @log_elapsed(operation="EXTRACTION")
     def perform_extraction(
         x2text_instance_id: str,

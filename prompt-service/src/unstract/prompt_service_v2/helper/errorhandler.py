@@ -2,8 +2,7 @@ import json
 import traceback
 
 from flask import Flask, jsonify, request
-from unstract.prompt_service_v2.exceptions import APIError
-from unstract.prompt_service_v2.helper.errorhandler import ErrorResponse
+from unstract.prompt_service_v2.exceptions import APIError, ErrorResponse
 from werkzeug.exceptions import HTTPException
 
 

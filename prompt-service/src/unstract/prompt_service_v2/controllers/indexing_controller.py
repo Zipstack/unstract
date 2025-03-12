@@ -1,8 +1,9 @@
+import logging
 from typing import Any, Optional
 
 from flask import Blueprint, request
 from unstract.prompt_service_v2.constants import IndexingConstants as IKeys
-from unstract.prompt_service_v2.constants import PromptServiceContants as PSKeys
+from unstract.prompt_service_v2.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service_v2.helper.auth_helper import AuthHelper
 from unstract.prompt_service_v2.services.indexing_service import IndexingService
 from unstract.prompt_service_v2.utils.request import validate_request_payload
@@ -14,7 +15,7 @@ from unstract.sdk.dto import (
 )
 
 indexing_bp = Blueprint("index", __name__)
-
+logger = logging.getLogger(__name__)
 
 REQUIRED_FIELDS = [
     "tool_id",
@@ -31,7 +32,7 @@ REQUIRED_FIELDS = [
 
 
 @AuthHelper.auth_required
-@indexing_bp.route("index", methods=["POST"])
+@indexing_bp.route("/index", methods=["POST"])
 def index() -> Any:
     """
     Endpoint for indexing documents into the vector database.
@@ -71,6 +72,7 @@ def index() -> Any:
         x2text_instance_id=x2text_instance_id,
         tool_id=tool_id,
         tags=tags,
+        llm_instance_id=None,
     )
 
     file_info = FileInfo(file_path=file_path, file_hash=file_hash)
@@ -80,7 +82,7 @@ def index() -> Any:
     processing_options = ProcessingOptions(
         reindex=reindex, enable_highlight=enable_highlight, usage_kwargs=usage_kwargs
     )
-
+    logger.info("Indexing document")
     doc_id = IndexingService.index(
         chuking_config=chunking_config,
         execution_source=execution_source,

@@ -2,7 +2,7 @@ from typing import Any, Optional
 
 from flask import Blueprint, request
 from unstract.prompt_service_v2.constants import IndexingConstants as IKeys
-from unstract.prompt_service_v2.constants import PromptServiceContants as PSKeys
+from unstract.prompt_service_v2.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service_v2.helper.auth_helper import AuthHelper
 from unstract.prompt_service_v2.services.extraction_service import ExtractionService
 from unstract.prompt_service_v2.utils.request import validate_request_payload
@@ -19,7 +19,7 @@ REQUIRED_FIELDS = [
 
 
 @AuthHelper.auth_required
-@extraction_bp.route("extract", methods=["POST"])
+@extraction_bp.route("/extract", methods=["POST"])
 def extract() -> Any:
     platform_key = AuthHelper.get_token_from_auth_header(request)
     payload: dict[Any, Any] = request.json
@@ -33,10 +33,9 @@ def extract() -> Any:
     run_id: str = payload.get(PSKeys.RUN_ID, "")
     execution_source = payload.get(IKeys.EXECUTION_SOURCE, None)
     tags: str = payload.get(IKeys.TAGS, "")
+    tool_exec_metadata = payload.get(IKeys.TOOL_EXECUTION_METATADA, {})
+    execution_run_data_folder = payload.get(IKeys.EXECUTION_DATA_DIR, "")
 
-    if enable_highlight:
-        tool_exec_metadata = payload.get(IKeys.TOOL_EXECUTION_METATADA, {})
-        execution_run_data_folder = payload.get(IKeys.EXECUTION_DATA_DIR, "")
     extracted_text = ExtractionService.perform_extraction(
         file_path=file_path,
         x2text_instance_id=x2text_instance_id,

@@ -1,3 +1,6 @@
+import logging
+
+from unstract.prompt_service_v2.exceptions import APIError
 from unstract.prompt_service_v2.helper.prompt_ide_base_tool import PromptServiceBaseTool
 from unstract.prompt_service_v2.utils.file_utils import FileUtils
 from unstract.sdk.dto import (
@@ -9,6 +12,8 @@ from unstract.sdk.dto import (
 from unstract.sdk.embedding import Embedding
 from unstract.sdk.index_v2 import Index
 from unstract.sdk.vector_db import VectorDB
+
+logger = logging.getLogger(__name__)
 
 
 class IndexingService:
@@ -24,7 +29,6 @@ class IndexingService:
         run_id: str,
         extracted_text: str,
     ) -> str:
-
         try:
             fs_instance = FileUtils.get_fs_instance(execution_source=execution_source)
             util = PromptServiceBaseTool(platform_key=platform_key)
@@ -35,7 +39,6 @@ class IndexingService:
                 instance_identifiers=instance_identifiers,
                 fs=fs_instance,
             )
-
             embedding = Embedding(
                 tool=util,
                 adapter_instance_id=instance_identifiers.embedding_instance_id,
@@ -67,5 +70,8 @@ class IndexingService:
                 doc_id_found=doc_id_found,
             )
             return doc_id
+        except Exception as e:
+            raise APIError(f"Error while indexing : {str(e)}") from e
         finally:
-            vector_db.close()
+            if "vector_db" in locals():
+                vector_db.close()

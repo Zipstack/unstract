@@ -54,7 +54,7 @@ def make_http_request(
         raise e
 
 
-def validate_request_payload(payload):
+def validate_request_payload(payload, REQUIRED_FIELDS):
     if not payload:
         raise BadRequest()
 
