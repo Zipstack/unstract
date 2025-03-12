@@ -191,9 +191,7 @@ class WorkflowExecution(BaseModel):
             )
             return None
         except Exception as e:
-            logger.warning(
-                f"Unable to get aggregated cost for '{self.id}': {str(e)}"
-            )
+            logger.warning(f"Unable to get aggregated cost for '{self.id}': {str(e)}")
             return None
 
     def __str__(self) -> str:
