@@ -42,5 +42,10 @@ urlpatterns = format_suffix_patterns(
             name="tool_instance_reorder",
         ),
         path("tool/", views.get_tool_list, name="tool_list"),
+        path(
+            "tool/prompt-studio/",
+            views.get_prompt_studio_tool_count,
+            name="prompt_studio_tool_count"
+        ),
     ]
 )

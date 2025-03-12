@@ -16,12 +16,14 @@ import { useNavigate } from "react-router-dom";
 import { deploymentApiTypes, displayURL } from "../../../helpers/GetStaticData";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
+import { usePromptStudioStore } from "../../../store/prompt-studio-store";
 import { workflowService } from "../../workflows/workflow/workflow-service.js";
 import { CreateApiDeploymentModal } from "../create-api-deployment-modal/CreateApiDeploymentModal";
 import { DeleteModal } from "../delete-modal/DeleteModal";
 import { DisplayCode } from "../display-code/DisplayCode";
 import { Layout } from "../layout/Layout";
 import { ManageKeys } from "../manage-keys/ManageKeys";
+import { PromptStudioModal } from "../../common/PromptStudioModal";
 import { apiDeploymentsService } from "./api-deployments-service";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { LogsModal } from "../../pipelines-or-deployments/log-modal/LogsModal.jsx";
@@ -29,6 +31,7 @@ import { fetchExecutionLogs } from "../../pipelines-or-deployments/log-modal/fet
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
 import { NotificationModal } from "../../pipelines-or-deployments/notification-modal/NotificationModal.jsx";
+import { useCallback } from "react";
 
 function ApiDeployment() {
   const { sessionDetails } = useSessionStore();
@@ -54,6 +57,17 @@ function ApiDeployment() {
   const { getApiKeys, downloadPostmanCollection, copyUrl } =
     usePipelineHelper();
   const [openNotificationModal, setOpenNotificationModal] = useState(false);
+  const { count, isLoading, fetchCount } = usePromptStudioStore();
+  const [showModal, setShowModal] = useState(false);
+  const [modalDismissed, setModalDismissed] = useState(false);
+
+  const fetchPromptCount = useCallback(() => {
+    fetchCount();
+  }, [fetchCount]);
+
+  useEffect(() => {
+    fetchPromptCount();
+  }, [fetchPromptCount]);
 
   const handleFetchLogs = (page, pageSize) => {
     fetchExecutionLogs(
@@ -375,8 +389,21 @@ function ApiDeployment() {
     },
   ];
 
+  useEffect(() => {
+    if (!isLoading && count === 0 && !modalDismissed) {
+      setShowModal(true);
+    }
+  }, [isLoading, count, modalDismissed]);
+
+  const handleModalClose = () => {
+    setShowModal(false);
+    setModalDismissed(true);
+    fetchPromptCount();
+  };
+
   return (
     <>
+      {showModal && <PromptStudioModal onClose={handleModalClose} />}
       <Layout
         type="api"
         columns={columns}

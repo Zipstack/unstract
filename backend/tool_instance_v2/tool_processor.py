@@ -127,3 +127,11 @@ class ToolProcessor:
         tool_list: list[dict[str, Any]] = tool_registry.fetch_tools_descriptions()
         tool_list = tool_list + prompt_studio_tools
         return tool_list
+
+    @staticmethod
+    def get_prompt_studio_tool_count(user: User) -> int:
+        """Get count of valid prompt studio tools."""
+        tool_count: int = (
+            PromptStudioRegistryHelper.fetch_prompt_studio_tool_count(user)
+        )
+        return tool_count

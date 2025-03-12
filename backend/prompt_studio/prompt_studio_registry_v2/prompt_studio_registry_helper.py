@@ -1,4 +1,5 @@
 import logging
+import uuid
 from typing import Any, Optional
 
 from account_v2.models import User
@@ -411,3 +412,26 @@ class PromptStudioRegistryHelper:
             tool_list.append(tool_metadata)
             tool_metadata = {}
         return tool_list
+
+    @staticmethod
+    def fetch_prompt_studio_tool_count(user: User) -> int:
+        """
+            Get count of valid prompt studio tools.
+            Only counts tools that have UUID as function names.
+        """
+        try:
+            # Filter the Prompt studio registry based on the users and org flag
+            prompt_studio_tools = PromptStudioRegistry.objects.list_tools(user)
+            valid_tools = 0
+
+            for tool in prompt_studio_tools:
+                try:
+                    uuid.UUID(str(tool.prompt_registry_id))
+                    valid_tools += 1
+                except ValueError:
+                    continue
+
+            return valid_tools
+        except Exception as error:
+            logger.error(f"Error while counting prompt studio tools: {error}")
+            raise InternalError()

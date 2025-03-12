@@ -1,0 +1,144 @@
+/* Modal styles */
+.prompt-studio-modal {
+  padding:10px;
+  top: 20px;
+}
+
+.prompt-studio-modal .ant-modal-content {
+  padding: 0;
+  border-radius: 8px;
+  box-shadow: 0 6px 16px 0 rgba(0, 0, 0, 0.08), 0 3px 6px -4px rgba(0, 0, 0, 0.12), 0 9px 28px 8px rgba(0, 0, 0, 0.05);
+}
+
+.prompt-studio-modal .ant-modal-header {
+  padding-top: 16px;
+  padding-bottom: 0;
+  margin-bottom: 0;
+  padding-right: 20px;
+  border-bottom: none;
+  padding-left: 20px;
+}
+
+.prompt-studio-modal .ant-modal-body {
+  padding: 16px 20px 20px;
+}
+
+.prompt-studio-modal .ant-modal-close {
+  top: 16px;
+  right: 16px;
+}
+
+.prompt-studio-modal .ant-modal-close-x {
+  font-size: 20px;
+  color: rgba(0, 0, 0, 0.45);
+  font-weight: 300;
+  width: 32px;
+  height: 32px;
+  line-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Title styles */
+.prompt-studio-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.88);
+  padding: 0;
+  margin-bottom: -4px;
+}
+
+/* Description styles */
+.prompt-studio-description {
+  margin-bottom: 24px;
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.65);
+  line-height: 22px;
+}
+
+/* Button container */
+.prompt-studio-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* Button styles */
+.prompt-studio-create-btn {
+  transition: all 0.2s ease-in-out !important;
+  background-color: #1677FF !important;
+  border-color: #1677FF !important;
+  height: 32px !important;
+  font-size: 14px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px !important;
+  box-shadow: none !important;
+  font-weight: normal !important;
+  border-radius: 6px !important;
+  margin: 0 !important;
+  padding: 4px 15px !important;
+}
+
+.prompt-studio-create-btn:hover {
+  background-color: #4096FF !important;
+  border-color: #4096FF !important;
+}
+
+.prompt-studio-create-btn .plus-icon {
+  font-size: 12px;
+  margin-right: 4px;
+  font-weight: normal;
+  line-height: 1;
+}
+
+.prompt-studio-guide-btn {
+  transition: all 0.2s ease-in-out !important;
+  margin-top: 8px !important;
+  height: 32px !important;
+  font-size: 14px !important;
+  padding: 4px 0 !important;
+  margin: 0 !important;
+  font-weight: normal !important;
+  color: #1677FF !important;
+  border-radius: 6px !important;
+}
+
+.prompt-studio-guide-btn:hover {
+  color: #4096FF !important;
+  background-color: transparent !important;
+}
+
+.prompt-studio-cancel-btn {
+  transition: all 0.2s ease-in-out !important;
+  margin-top: 8px !important;
+  height: 32px !important;
+  font-size: 14px !important;
+  padding: 4px 0 !important;
+  margin: 0 !important;
+  color: rgba(0, 0, 0, 0.45) !important;
+  font-weight: normal !important;
+  border-radius: 6px !important;
+}
+
+.prompt-studio-cancel-btn:hover {
+  color: rgba(0, 0, 0, 0.88) !important;
+  background-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+/* Close button hover state */
+.prompt-studio-modal .ant-modal-close:hover {
+  background-color: rgba(0, 0, 0, 0.06) !important;
+  border-radius: 4px !important;
+}
+
+.prompt-studio-modal .ant-modal-close:hover .ant-modal-close-x {
+  color: rgba(0, 0, 0, 0.88) !important;
+}
+
+/* Mask styles */
+.prompt-studio-modal .ant-modal-mask {
+  background-color: rgba(0, 0, 0, 0.45) !important;
+}
