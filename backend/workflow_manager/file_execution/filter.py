@@ -1,9 +1,7 @@
 import django_filters
 from django_filters import rest_framework as filters
-from workflow_manager.file_execution.models import (
-    ExecutionStatus,
-    WorkflowFileExecution,
-)
+from workflow_manager.file_execution.models import WorkflowFileExecution
+from workflow_manager.workflow_v2.enums import ExecutionStatus
 
 
 class FileExecutionFilter(filters.FilterSet):

@@ -1,10 +1,10 @@
-import django_filters
 from api_v2.models import APIDeployment
 from django.db.models import QuerySet
 from django_filters import rest_framework as filters
 from pipeline_v2.models import Pipeline
 from utils.date import DateRangePresets, DateTimeProcessor
 from workflow_manager.execution.enum import ExecutionEntity
+from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models import Workflow, WorkflowExecution
 
 
@@ -20,8 +20,10 @@ class ExecutionFilter(filters.FilterSet):
     )
     # Lookup with query params: created_at_after, created_at_before
     created_at = filters.DateTimeFromToRangeFilter()
-    status = django_filters.BaseInFilter(field_name="status", lookup_expr="in")
-    date_range = django_filters.ChoiceFilter(
+    status = filters.MultipleChoiceFilter(
+        field_name="status", choices=ExecutionStatus.choices
+    )
+    date_range = filters.ChoiceFilter(
         choices=DateRangePresets.choices(),
         method="filter_by_date_range",
     )
@@ -30,7 +32,9 @@ class ExecutionFilter(filters.FilterSet):
         model = WorkflowExecution
         fields = []
 
-    def filter_execution_entity(self, queryset: QuerySet, name: str, value: str):
+    def filter_execution_entity(
+        self, queryset: QuerySet, name: str, value: str
+    ) -> QuerySet:
         if value == ExecutionEntity.API.value:
             return queryset.filter(
                 pipeline_id__in=APIDeployment.objects.values_list("id", flat=True)
@@ -62,5 +66,8 @@ class ExecutionFilter(filters.FilterSet):
         """
         date_span = DateTimeProcessor.filter_date_range(value)
         if date_span:
-            queryset = queryset.filter(created_at__gte=date_span.start_date)
+            queryset = queryset.filter(
+                created_at__gte=date_span.start_date,
+                created_at__lte=date_span.end_date,
+            )
         return queryset
