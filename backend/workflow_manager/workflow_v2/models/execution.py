@@ -192,7 +192,7 @@ class WorkflowExecution(BaseModel):
             return None
         except Exception as e:
             logger.warning(
-                f"An unexpected error occurred for execution {self.id}: {str(e)}"
+                f"Unable to get aggregated cost for '{self.id}': {str(e)}"
             )
             return None
 
