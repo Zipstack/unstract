@@ -164,9 +164,6 @@ class WorkflowExecution(BaseModel):
     def get_aggregated_usage_cost(self) -> Optional[float]:
         """Retrieve aggregated cost for the given execution_id.
 
-        Args:
-            execution_id (str): The identifier for the
-            total cost of a particular execution.
 
         Returns:
         Optional[float]: The total cost in dollars if available, else None.
