@@ -1,13 +1,13 @@
 import logging
-from typing import Any, Optional
 import uuid
+from typing import Any, Optional
 
 from account_v2.models import User
 from adapter_processor_v2.adapter_processor import AdapterProcessor
+from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from prompt_studio.prompt_studio_registry_v2.prompt_studio_registry_helper import (
     PromptStudioRegistryHelper,
 )
-from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from tool_instance_v2.exceptions import ToolDoesNotExist
 from unstract.sdk.adapters.enums import AdapterTypes
 from unstract.tool_registry.dto import Spec, Tool
