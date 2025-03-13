@@ -1,7 +1,9 @@
 import axios from "axios";
 import { useSessionStore } from "../../store/session-store";
+import useRequestUrl from "../../hooks/useRequestUrl";
 
 export const promptStudioService = () => {
+  const { getUrl } = useRequestUrl();
   const getPromptStudioCount = async () => {
     const { sessionDetails } = useSessionStore.getState();
     if (!sessionDetails) {
@@ -10,7 +12,7 @@ export const promptStudioService = () => {
 
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails.orgId}/tool/prompt-studio/`,
+      url: getUrl("/tool/prompt-studio/"),
       headers: {
         "Content-Type": "application/json",
         "X-CSRFToken": sessionDetails.csrfToken,

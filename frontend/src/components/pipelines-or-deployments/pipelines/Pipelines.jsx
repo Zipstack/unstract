@@ -22,7 +22,7 @@ import {
   Typography,
 } from "antd";
 import PropTypes from "prop-types";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import cronstrue from "cronstrue";
 
 import {
@@ -44,6 +44,8 @@ import { pipelineService } from "../pipeline-service.js";
 import { ManageKeys } from "../../deployments/manage-keys/ManageKeys.jsx";
 import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
 import { NotificationModal } from "../notification-modal/NotificationModal.jsx";
+import { usePromptStudioStore } from "../../../store/prompt-studio-store";
+import { PromptStudioModal } from "../../common/PromptStudioModal";
 
 function Pipelines({ type }) {
   const [tableData, setTableData] = useState([]);
@@ -66,6 +68,13 @@ function Pipelines({ type }) {
   const { getApiKeys, downloadPostmanCollection, copyUrl } =
     usePipelineHelper();
   const [openNotificationModal, setOpenNotificationModal] = useState(false);
+  const { count, isLoading, fetchCount } = usePromptStudioStore();
+  const [showModal, setShowModal] = useState(false);
+  const [modalDismissed, setModalDismissed] = useState(false);
+
+  useEffect(() => {
+    fetchCount();
+  }, [fetchCount]);
 
   const handleFetchLogs = (page, pageSize) => {
     fetchExecutionLogs(
@@ -597,8 +606,20 @@ function Pipelines({ type }) {
     },
   ];
 
+  useEffect(() => {
+    if (!isLoading && count === 0 && !modalDismissed) {
+      setShowModal(true);
+    }
+  }, [isLoading, count, modalDismissed]);
+
+  const handleModalClose = useCallback(() => {
+    setShowModal(false);
+    setModalDismissed(true); // Prevent modal reopen.
+  }, []); // Prevents re-renders.
+
   return (
     <div className="p-or-d-layout">
+      {showModal && <PromptStudioModal onClose={handleModalClose} />}
       <Layout
         type={type}
         columns={columns}

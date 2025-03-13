@@ -70,7 +70,7 @@ def get_prompt_studio_tool_count(request: Request) -> Response:
     """
     if request.method == "GET":
         try:
-            logger.info("Fetching prompt studio tool count from the tool registry.")
+            logger.info("Fetching prompt studio tool count from the tool.")
             tool_count = ToolProcessor.get_prompt_studio_tool_count(
                 request.user
             )

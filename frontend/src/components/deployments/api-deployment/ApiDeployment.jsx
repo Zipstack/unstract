@@ -61,13 +61,9 @@ function ApiDeployment() {
   const [showModal, setShowModal] = useState(false);
   const [modalDismissed, setModalDismissed] = useState(false);
 
-  const fetchPromptCount = useCallback(() => {
+  useEffect(() => {
     fetchCount();
   }, [fetchCount]);
-
-  useEffect(() => {
-    fetchPromptCount();
-  }, [fetchPromptCount]);
 
   const handleFetchLogs = (page, pageSize) => {
     fetchExecutionLogs(
@@ -395,11 +391,10 @@ function ApiDeployment() {
     }
   }, [isLoading, count, modalDismissed]);
 
-  const handleModalClose = () => {
+  const handleModalClose = useCallback(() => {
     setShowModal(false);
-    setModalDismissed(true);
-    fetchPromptCount();
-  };
+    setModalDismissed(true); // Prevent modal reopen.
+  }, []); // Prevents re-renders.
 
   return (
     <>
