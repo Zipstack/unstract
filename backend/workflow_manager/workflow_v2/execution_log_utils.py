@@ -1,6 +1,7 @@
 import logging
 import sys
 from collections import defaultdict
+from typing import Optional
 
 from celery import shared_task
 from django.db import IntegrityError
@@ -10,44 +11,74 @@ from utils.cache_service import CacheService
 from utils.constants import ExecutionLogConstants
 from utils.dto import LogDataDTO
 from workflow_manager.file_execution.models import WorkflowFileExecution
-from workflow_manager.workflow_v2.models.execution_log import ExecutionLog
+from workflow_manager.workflow_v2.models import ExecutionLog, WorkflowExecution
 
 logger = logging.getLogger(__name__)
 
 
-@shared_task(bind=True, name=ExecutionLogConstants.TASK_V2)
-def consume_log_history(self):
+@shared_task(name=ExecutionLogConstants.TASK_V2)
+def consume_log_history() -> None:
     organization_logs = defaultdict(list)
     logs_count = 0
+    logs_to_process = []
 
+    # Collect logs from cache (batch retrieval)
     while logs_count < ExecutionLogConstants.LOGS_BATCH_LIMIT:
         log = CacheService.lpop(ExecutionLogConstants.LOG_QUEUE_NAME)
         if not log:
             break
 
-        log_data = LogDataDTO.from_json(log)
-        if not log_data:
-            continue
+        log_data: Optional[LogDataDTO] = LogDataDTO.from_json(log)
+        if log_data:
+            logs_to_process.append(log_data)
+            logs_count += 1
 
-        # Create ExecutionLog instance
+    if not logs_to_process:
+        return  # No logs to process
+
+    logger.info(f"Logs count: {logs_count}")
+
+    # Preload required WorkflowExecution and WorkflowFileExecution objects
+    execution_ids = {log.execution_id for log in logs_to_process}
+    file_execution_ids = {
+        log.file_execution_id for log in logs_to_process if log.file_execution_id
+    }
+
+    execution_map = {
+        obj.id: obj for obj in WorkflowExecution.objects.filter(id__in=execution_ids)
+    }
+    file_execution_map = {
+        obj.id: obj
+        for obj in WorkflowFileExecution.objects.filter(id__in=file_execution_ids)
+    }
+
+    # Process logs with preloaded data
+    for log_data in logs_to_process:
+        execution = execution_map.get(log_data.execution_id)
+        if not execution:
+            logger.warning(
+                f"Execution not found for execution_id: {log_data.execution_id}, "
+                "skipping log push"
+            )
+            continue  # Skip logs with missing execution reference
+
         execution_log = ExecutionLog(
-            execution_id=log_data.execution_id,
+            execution=execution,
             data=log_data.data,
             event_time=log_data.event_time,
         )
 
-        # Conditionally set file_execution if file_execution_id is present
         if log_data.file_execution_id:
-            execution_log.file_execution = WorkflowFileExecution(
-                id=log_data.file_execution_id
+            execution_log.file_execution = file_execution_map.get(
+                log_data.file_execution_id
             )
 
-        organization_id = log_data.organization_id
-        organization_logs[organization_id].append(execution_log)
-        logs_count += 1
-    logger.info(f"Logs count: {logs_count}")
+        organization_logs[log_data.organization_id].append(execution_log)
+
+    # Bulk insert logs for each organization
     for organization_id, logs in organization_logs.items():
-        store_to_db(organization_id, logs)
+        logger.debug(f"Storing '{len(logs)}' logs for org: {organization_id}")
+        ExecutionLog.objects.bulk_create(objs=logs, ignore_conflicts=True)
 
 
 def create_log_consumer_scheduler_if_not_exists() -> None:
@@ -92,24 +123,3 @@ def create_log_consumer_scheduler_if_not_exists() -> None:
             logger.info("Log consumer scheduler created successfully.")
     except IntegrityError as error:
         logger.error(f"Error occurred while creating log consumer scheduler: {error}")
-
-
-def store_to_db(organization_id: str, execution_logs: list[ExecutionLog]) -> None:
-
-    # Store the log data in the database within tenant context
-    ExecutionLog.objects.bulk_create(objs=execution_logs, ignore_conflicts=True)
-
-
-class ExecutionLogUtils:
-
-    @staticmethod
-    def get_execution_logs_by_execution_id(execution_id) -> list[ExecutionLog]:
-        """Get all execution logs for a given execution ID.
-
-        Args:
-            execution_id (int): The ID of the execution.
-
-        Returns:
-            list[ExecutionLog]: A list of ExecutionLog objects.
-        """
-        return ExecutionLog.objects.filter(execution_id=execution_id)

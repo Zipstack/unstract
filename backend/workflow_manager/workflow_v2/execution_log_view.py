@@ -22,7 +22,7 @@ class WorkflowExecutionLogViewSet(viewsets.ModelViewSet):
     def get_queryset(self) -> QuerySet:
         # Get the execution_id:pk from the URL path
         execution_id = self.kwargs.get("pk")
-        filter_param = {"execution_id": execution_id}
+        filter_param = {"wf_execution_id": execution_id}
 
         file_execution_id = self.request.query_params.get("file_execution_id")
         if file_execution_id and file_execution_id == "null":
