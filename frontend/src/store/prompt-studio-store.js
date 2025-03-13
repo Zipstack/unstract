@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import { promptStudioService } from "../components/api/prompt-studio-service";
 
 const STORE_VARIABLES = {
   count: 0,
@@ -8,17 +7,14 @@ const STORE_VARIABLES = {
 };
 
 const usePromptStudioStore = create((set, get) => {
-  const promptStudioApiService = promptStudioService();
-
   return {
     ...STORE_VARIABLES,
-    fetchCount: async () => {
-      // Don't fetch if already loading
+    fetchCount: async (getPromptStudioCount) => {
       if (get().isLoading) return;
 
       set({ isLoading: true });
       try {
-        const count = await promptStudioApiService.getPromptStudioCount();
+        const count = await getPromptStudioCount();
         set({ count, isLoading: false, error: null });
       } catch (error) {
         set({ error, isLoading: false });

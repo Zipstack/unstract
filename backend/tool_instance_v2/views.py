@@ -61,7 +61,7 @@ def get_tool_list(request: Request) -> Response:
             raise FetchToolListFailed
 
 
-@api_view(("GET",))
+@api_view(["GET"])
 def get_prompt_studio_tool_count(request: Request) -> Response:
     """Get count of prompt studio tools.
 
