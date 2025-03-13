@@ -8,11 +8,10 @@ import "./PromptStudioModal.css";
 export function PromptStudioModal({ onClose }) {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
-  const { count, fetchCount } = usePromptStudioStore();
+  const { count } = usePromptStudioStore();
 
   const handleClose = () => {
     if (onClose) onClose();
-    fetchCount();
   };
 
   const handleCreateClick = () => {
