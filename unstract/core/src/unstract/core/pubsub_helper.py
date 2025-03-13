@@ -149,7 +149,7 @@ class LogPublisher:
                 logging.debug(f"Published '{channel_id}' <= {payload}")
 
                 # Persisting messages for unified notification
-                if payload["type"] == "LOG":
+                if payload.get("type") == "LOG":
                     cls.store_for_unified_notification(event, payload)
         except Exception as e:
             logging.error(
