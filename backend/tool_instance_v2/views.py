@@ -62,8 +62,8 @@ def get_tool_list(request: Request) -> Response:
 
 
 # Only GET is allowed, and this is safe.
-@api_view(["GET"])  # NOSONAR
-def prompt_studio_tool_count(request: Request) -> Response:
+@api_view(["GET"])
+def prompt_studio_tool_count(request: Request) -> Response:  # NOSONAR
     """Get count of prompt studio tools.
 
     Returns count of valid prompt studio tools available in the Tool registry.
