@@ -61,8 +61,9 @@ def get_tool_list(request: Request) -> Response:
             raise FetchToolListFailed
 
 
-@api_view(["GET"])  # NOSONAR: Only GET is allowed, and this is safe.
-def prompt_studio_tool_count(request: Request) -> Response:
+# Only GET is allowed, and this is safe.
+@api_view(["GET"])
+def prompt_studio_tool_count(request: Request) -> Response:  # NOSONAR
     """Get count of prompt studio tools.
 
     Returns count of valid prompt studio tools available in the Tool registry.
@@ -71,9 +72,7 @@ def prompt_studio_tool_count(request: Request) -> Response:
     if request.method == "GET":
         try:
             logger.info("Fetching prompt studio tool count from the tool.")
-            tool_count = ToolProcessor.get_prompt_studio_tool_count(
-                request.user
-            )
+            tool_count = ToolProcessor.get_prompt_studio_tool_count(request.user)
             return Response(
                 data={"count": tool_count},
                 status=status.HTTP_200_OK,
