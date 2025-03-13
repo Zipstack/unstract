@@ -131,7 +131,7 @@ class ToolProcessor:
     @staticmethod
     def get_prompt_studio_tool_count(user: User) -> int:
         """Get count of valid prompt studio tools."""
-        tool_count: int = (
-            PromptStudioRegistryHelper.fetch_prompt_studio_tool_count(user)
+        tool_count: int = PromptStudioRegistryHelper.fetch_prompt_studio_tool_count(
+            user
         )
         return tool_count
