@@ -84,9 +84,7 @@ function PromptOutput({
   const { generatePromptOutputKey } = usePromptOutput();
   const isTableExtraction =
     enforceType === TABLE_ENFORCE_TYPE || enforceType === RECORD_ENFORCE_TYPE;
-  const noHighlightEnforceType = !["json", "table", "record"].includes(
-    enforceType
-  );
+  const noHighlightEnforceType = !["table", "record"].includes(enforceType);
   const tooltipContent = (adapterConf) => (
     <div>
       {Object.entries(adapterConf)?.map(([key, value]) => (
@@ -144,16 +142,54 @@ function PromptOutput({
 
     const promptOutput = promptOutputs[promptOutputKey]?.output;
 
+    let promptOutputData = {};
+    if (promptOutputs && Object.keys(promptOutputs)) {
+      const promptOutputKey = generatePromptOutputKey(
+        promptId,
+        docId,
+        defaultLlmProfile,
+        singlePassExtractMode,
+        true
+      );
+      if (promptOutputs[promptOutputKey] !== undefined) {
+        promptOutputData = promptOutputs[promptOutputKey];
+      }
+    }
+
     return (
       <>
         <Divider className="prompt-card-divider" />
-        <div className="prompt-card-result prompt-card-div">
-          <DisplayPromptResult output={promptOutput} />
+        <Space
+          wrap
+          className={`prompt-card-result prompt-card-div ${
+            details?.enable_highlight &&
+            noHighlightEnforceType &&
+            selectedHighlight?.highlightedPrompt === promptId &&
+            selectedHighlight?.highlightedProfile === defaultLlmProfile &&
+            "highlighted-prompt-cell"
+          }`}
+        >
+          <DisplayPromptResult
+            output={promptOutput}
+            highlightData={
+              promptOutputData?.highlightData?.[promptDetails.prompt_key]
+            }
+            handleSelectHighlight={handleSelectHighlight}
+            confidenceData={
+              promptOutputData?.confidenceData?.[promptDetails.prompt_key]
+            }
+          />
           <div className="prompt-profile-run">
             <CopyPromptOutputBtn
               isDisabled={isTableExtraction}
               copyToClipboard={() =>
-                copyOutputToClipboard(displayPromptResult(promptOutput, true))
+                copyOutputToClipboard(
+                  displayPromptResult(
+                    promptOutput,
+                    true,
+                    promptDetails?.enable_highlight
+                  )
+                )
               }
             />
             <PromptOutputExpandBtn
@@ -165,7 +201,7 @@ function PromptOutput({
               promptRunStatus={promptRunStatus}
             />
           </div>
-        </div>
+        </Space>
       </>
     );
   }
@@ -230,11 +266,13 @@ function PromptOutput({
                     direction="vertical"
                     className="prompt-card-llm-layout"
                     onClick={() => {
-                      handleSelectHighlight(
-                        promptOutputData?.highlightData,
-                        promptId,
-                        profileId
-                      );
+                      enforceType !== "json" &&
+                        handleSelectHighlight(
+                          promptOutputData?.highlightData,
+                          promptId,
+                          profileId,
+                          promptOutputData?.confidenceData
+                        );
                     }}
                   >
                     <div className="llm-info">
@@ -396,6 +434,10 @@ function PromptOutput({
                             profileId={profileId}
                             docId={selectedDoc?.document_id}
                             promptRunStatus={promptRunStatus}
+                            handleSelectHighlight={handleSelectHighlight}
+                            highlightData={promptOutputData?.highlightData}
+                            confidenceData={promptOutputData?.confidenceData}
+                            promptDetails={promptDetails}
                           />
                           <div className="prompt-profile-run">
                             <CopyPromptOutputBtn

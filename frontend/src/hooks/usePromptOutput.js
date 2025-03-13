@@ -120,6 +120,7 @@ const usePromptOutput = () => {
         timer,
         coverage: item?.coverage,
         highlightData: item?.highlight_data,
+        confidenceData: item?.confidence_data,
       };
 
       if (item?.is_single_pass_extract && isTokenUsageForSinglePassAdded)

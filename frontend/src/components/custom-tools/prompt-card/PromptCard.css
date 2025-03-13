@@ -312,3 +312,26 @@
   border-style: solid;
   border-color: #ffb400;
 }
+
+.json-value {
+  color: black;
+  cursor: default;
+  text-decoration: none;
+}
+
+.json-value.clickable {
+  color: #0097D8;
+  cursor: pointer;
+}
+
+.json-value.clickable:hover {
+  text-decoration: underline;
+}
+
+.json-value.selected {
+  color: #5A8300;
+}
+
+.prompt-output-result{
+  font-size: 12px;
+}
