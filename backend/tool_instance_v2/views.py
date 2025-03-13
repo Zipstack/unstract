@@ -61,7 +61,8 @@ def get_tool_list(request: Request) -> Response:
             raise FetchToolListFailed
 
 
-@api_view(["GET"])  # NOSONAR: Only GET is allowed, and this is safe.
+# Only GET is allowed, and this is safe.
+@api_view(["GET"])  # NOSONAR
 def prompt_studio_tool_count(request: Request) -> Response:
     """Get count of prompt studio tools.
 
