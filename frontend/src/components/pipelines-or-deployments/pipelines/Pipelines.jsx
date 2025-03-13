@@ -46,6 +46,7 @@ import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
 import { NotificationModal } from "../notification-modal/NotificationModal.jsx";
 import { usePromptStudioStore } from "../../../store/prompt-studio-store";
 import { PromptStudioModal } from "../../common/PromptStudioModal";
+import { usePromptStudioService } from "../../api/prompt-studio-service";
 
 function Pipelines({ type }) {
   const [tableData, setTableData] = useState([]);
@@ -71,9 +72,10 @@ function Pipelines({ type }) {
   const { count, isLoading, fetchCount } = usePromptStudioStore();
   const [showModal, setShowModal] = useState(false);
   const [modalDismissed, setModalDismissed] = useState(false);
+  const { getPromptStudioCount } = usePromptStudioService();
 
   useEffect(() => {
-    fetchCount();
+    fetchCount(getPromptStudioCount);
   }, [fetchCount]);
 
   const handleFetchLogs = (page, pageSize) => {

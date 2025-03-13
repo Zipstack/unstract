@@ -20,6 +20,7 @@ import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar.jsx";
 import { ViewTools } from "../../custom-tools/view-tools/ViewTools.jsx";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import { PromptStudioModal } from "../../common/PromptStudioModal";
+import { usePromptStudioService } from "../../api/prompt-studio-service";
 
 const PROJECT_FILTER_OPTIONS = [
   { label: "My Workflows", value: "mine" },
@@ -37,9 +38,10 @@ function Workflows() {
   const { count, isLoading, fetchCount } = usePromptStudioStore();
   const [showModal, setShowModal] = useState(false);
   const [modalDismissed, setModalDismissed] = useState(false);
+  const { getPromptStudioCount } = usePromptStudioService();
 
   useEffect(() => {
-    fetchCount();
+    fetchCount(getPromptStudioCount);
   }, [fetchCount]);
 
   const [projectList, setProjectList] = useState();

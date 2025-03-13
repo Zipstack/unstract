@@ -10,7 +10,7 @@ import {
   NotificationOutlined,
 } from "@ant-design/icons";
 import { Button, Dropdown, Space, Switch, Tooltip, Typography } from "antd";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { deploymentApiTypes, displayURL } from "../../../helpers/GetStaticData";
@@ -31,7 +31,7 @@ import { fetchExecutionLogs } from "../../pipelines-or-deployments/log-modal/fet
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
 import { NotificationModal } from "../../pipelines-or-deployments/notification-modal/NotificationModal.jsx";
-import { useCallback } from "react";
+import { usePromptStudioService } from "../../api/prompt-studio-service";
 
 function ApiDeployment() {
   const { sessionDetails } = useSessionStore();
@@ -60,9 +60,10 @@ function ApiDeployment() {
   const { count, isLoading, fetchCount } = usePromptStudioStore();
   const [showModal, setShowModal] = useState(false);
   const [modalDismissed, setModalDismissed] = useState(false);
+  const { getPromptStudioCount } = usePromptStudioService();
 
   useEffect(() => {
-    fetchCount();
+    fetchCount(getPromptStudioCount);
   }, [fetchCount]);
 
   const handleFetchLogs = (page, pageSize) => {
