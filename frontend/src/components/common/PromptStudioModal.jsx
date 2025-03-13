@@ -4,16 +4,11 @@ import { useNavigate } from "react-router-dom";
 import { useSessionStore } from "../../store/session-store";
 import { usePromptStudioStore } from "../../store/prompt-studio-store";
 import "./PromptStudioModal.css";
-import { useEffect } from "react";
 
 export function PromptStudioModal({ onClose }) {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
   const { count, fetchCount } = usePromptStudioStore();
-
-  useEffect(() => {
-    fetchCount();
-  }, [fetchCount]);
 
   const handleClose = () => {
     if (onClose) onClose();
