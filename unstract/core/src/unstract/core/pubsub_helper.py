@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import traceback
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -125,8 +126,8 @@ class LogPublisher:
 
     @classmethod
     def publish(cls, channel_id: str, payload: dict[str, Any]) -> bool:
-        channel = f"logs:{channel_id}"
         """Publish a message to the queue."""
+        channel = f"logs:{channel_id}"
         try:
 
             with cls.kombu_conn.Producer(serializer="json") as producer:
@@ -157,6 +158,9 @@ class LogPublisher:
                 redis_key = f"{channel}:{timestamp}"
                 cls.r.setex(redis_key, logs_expiration, log_data)
         except Exception as e:
-            logging.error(f"Failed to publish '{channel_id}' <= {payload}: {e}")
+            logging.error(
+                f"Failed to publish '{channel_id}' <= {payload}"
+                f": {e}\n{traceback.format_exc()}"
+            )
             return False
         return True
