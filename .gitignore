@@ -578,6 +578,9 @@ sketch
 .history
 .ionide
 
+## Windsurf ###
+.windsurfrules
+
 ### Windows ###
 # Windows thumbnail cache files
 Thumbs.db
