@@ -353,7 +353,6 @@ class AnswerPromptService:
                         env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
                     )
                 highlight_data = highlight_data_plugin["entrypoint_cls"](
-                    logger=app.logger,
                     file_path=file_path,
                     fs_instance=fs_instance,
                 ).run
