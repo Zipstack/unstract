@@ -24,7 +24,7 @@ def docker_client(mocker):
     mocker.patch(f"{DOCKER_MODULE}.DockerClient.from_env", return_value=mock_client)
     # Mock the private login method to avoid any actual login attempts
     mocker.patch(f"{DOCKER_MODULE}.Client._Client__private_login")
-    
+
     image_name = "test-image"
     image_tag = "latest"
     logger = logging.getLogger("test-logger")
@@ -97,7 +97,9 @@ def test_get_image(docker_client, mocker):
     mock_images.get.assert_called_with("test-image:latest")  # Ensure get is called
 
     # Case 2: Image does not exist
-    mock_images.get.side_effect = ImageNotFound("Image not found")  # Mock that image doesn't exist
+    mock_images.get.side_effect = ImageNotFound(
+        "Image not found"
+    )  # Mock that image doesn't exist
     mock_api.pull.return_value = iter([{"status": "pulling"}])  # Simulate pull process
     assert docker_client.get_image() == "test-image:latest"
     mock_api.pull.assert_called_with(
