@@ -102,6 +102,7 @@ def prompt_processor() -> Any:
         raise NoPayloadError
     tool_settings = payload.get(PSKeys.TOOL_SETTINGS, {})
     enable_challenge = tool_settings.get(PSKeys.ENABLE_CHALLENGE, False)
+    challenge_llm = None
     # TODO: Rename "outputs" to "prompts" in payload
     prompts = payload.get(PSKeys.OUTPUTS, [])
     tool_id: str = payload.get(PSKeys.TOOL_ID, "")
@@ -656,7 +657,7 @@ def prompt_processor() -> Any:
         finally:
             challenge_metrics = (
                 {f"{challenge_llm.get_usage_reason()}_llm": challenge_llm.get_metrics()}
-                if enable_challenge
+                if enable_challenge and challenge_llm
                 else {}
             )
             metrics.setdefault(prompt_name, {}).update(

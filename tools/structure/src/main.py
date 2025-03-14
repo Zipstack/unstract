@@ -3,7 +3,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 from constants import SettingsKeys  # type: ignore [attr-defined]
 from unstract.sdk.constants import LogLevel, LogState, MetadataKey, ToolEnv, UsageKwargs
@@ -125,14 +125,6 @@ class StructureTool(BaseTool):
         usage_kwargs[UsageKwargs.FILE_NAME] = self.source_file_name
         usage_kwargs[UsageKwargs.EXECUTION_ID] = self.execution_id
 
-        process_text: Optional[Callable[[str], str]] = None
-        try:
-            from helper import process_text  # type: ignore [attr-defined]
-        except ImportError:
-            self.stream_log(
-                f"Function to higlight context is not found. {PAID_FEATURE_MSG}",
-                level=LogLevel.WARN,
-            )
         if tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION]:
             index.index(
                 tool_id=tool_id,
@@ -146,7 +138,6 @@ class StructureTool(BaseTool):
                 output_file_path=tool_data_dir / SettingsKeys.EXTRACT,
                 reindex=True,
                 usage_kwargs=usage_kwargs,
-                process_text=process_text,
                 tags=self.tags,
                 enable_highlight=enable_highlight,
                 **({"fs": self.workflow_filestorage}),
@@ -186,7 +177,6 @@ class StructureTool(BaseTool):
                             output_file_path=tool_data_dir / SettingsKeys.EXTRACT,
                             reindex=reindex,
                             usage_kwargs=usage_kwargs,
-                            process_text=process_text,
                             tags=self.tags,
                             enable_highlight=enable_highlight,
                             **({"fs": self.workflow_filestorage}),
