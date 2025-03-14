@@ -1,6 +1,6 @@
 {
     "title": "Dropbox",
-    "description": "A connector that allows for fetching data from your Dropbox storage. Please note that this connector is in aplha and is limited by the access token's expiry.",
+    "description": "Helps connect to Dropbox. Please note that this connector is in `alpha` status and is limited by the access token's expiry (short-lived tokens of ~4 hour expiry). OAuth support is yet to be added to make this production-ready.",
     "type": "object",
     "required": [
       "connectorName",
