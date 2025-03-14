@@ -218,7 +218,6 @@ class WorkflowHelper:
             total_files=total_files,
             successful_files=successful_files,
             failed_files=failed_files,
-            execution_id=workflow_execution.id,
         )
 
         return workflow_execution

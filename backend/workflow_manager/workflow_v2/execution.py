@@ -294,7 +294,6 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         total_files: int,
         successful_files: int,
         failed_files: int,
-        execution_id: str,
     ) -> None:
         """Publishes the final logs for the workflow.
 
@@ -302,7 +301,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             None
         """
         self.publish_average_cost_log(
-            execution_id=execution_id, total_files=successful_files
+            total_files=successful_files
         )
 
         # To not associate final logs with a file execution
@@ -317,28 +316,25 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             f"{successful_files} successfully executed and {failed_files} error(s)"
         )
 
-    def publish_average_cost_log(self, execution_id, total_files):
+    def publish_average_cost_log(self, total_files: int):
 
-        try:
-            execution: WorkflowExecution = WorkflowExecution.objects.get(
-                pk=execution_id
-            )
-
-            total_cost = execution.get_aggregated_usage_cost
+        logger.info(
+            f"Found execution id {self.execution_id}"
+        )
+        execution = WorkflowExecution.objects.get(pk=self.execution_id)
+        total_cost = execution.get_aggregated_usage_cost
+        
+        if total_cost is not None:
+            total_cost = round(total_cost, 5)
             average_cost = round(total_cost / total_files, 5)
-
             self.publish_log(
                 message=(
-                    f"The average cost per file for execution '{execution_id}' "
-                    f"is '${average_cost:}'. Total cost: '${total_cost:}'"
+                    f"The average cost per file for execution '{self.execution_id}' "
+                    f"is '${average_cost}'"
                 )
             )
-        except TypeError as e:
-            logger.warning(
-                f"Error calculating cost for execution '{execution_id}' "
-                f"of '{total_files}' files : "
-                f"{str(e)}.\nContinuing execution"
-            )
+            
+        
 
     def log_total_cost_per_file(self, run_id, file_name):
         cost_dict = UsageHelper.get_aggregated_token_count(run_id=run_id)
