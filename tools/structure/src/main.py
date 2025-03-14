@@ -108,6 +108,7 @@ class StructureTool(BaseTool):
         # TODO : Resolve and pass log events ID
         payload = {
             SettingsKeys.RUN_ID: self.file_execution_id,
+            SettingsKeys.EXECUTION_ID: self.execution_id,
             SettingsKeys.TOOL_SETTINGS: tool_settings,
             SettingsKeys.OUTPUTS: outputs,
             SettingsKeys.TOOL_ID: tool_id,
@@ -122,6 +123,7 @@ class StructureTool(BaseTool):
         usage_kwargs: dict[Any, Any] = dict()
         usage_kwargs[UsageKwargs.RUN_ID] = self.file_execution_id
         usage_kwargs[UsageKwargs.FILE_NAME] = self.source_file_name
+        usage_kwargs[UsageKwargs.EXECUTION_ID] = self.execution_id
 
         if tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION]:
             index.index(
