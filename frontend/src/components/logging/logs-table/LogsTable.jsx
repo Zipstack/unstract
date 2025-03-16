@@ -8,6 +8,10 @@ import {
   InfoCircleFilled,
 } from "@ant-design/icons";
 
+import { EmptyState } from "../../widgets/empty-state/EmptyState";
+import { logsStaticContent } from "../../../helpers/GetStaticData";
+import { useSessionStore } from "../../../store/session-store";
+
 const LogsTable = ({
   tableData,
   loading,
@@ -17,6 +21,7 @@ const LogsTable = ({
   activeTab,
 }) => {
   const navigate = useNavigate();
+  const { sessionDetails } = useSessionStore();
   const columns = [
     {
       title: "Executed At",
@@ -80,12 +85,13 @@ const LogsTable = ({
               {record?.failedFiles}
             </span>
           </Tooltip>
-          <Tooltip title="Total files">
-            {record?.total - (record?.successfulFiles + record?.failedFiles) >
+          <Tooltip title="Queued files">
+            {record?.totalFiles -
+              (record?.successfulFiles + record?.failedFiles) >
               0 && (
               <span className="status-container">
                 <HourglassOutlined className="gen-index-progress" />{" "}
-                {record?.total -
+                {record?.totalFiles -
                   (record?.successfulFiles + record?.failedFiles)}
               </span>
             )}
@@ -97,7 +103,7 @@ const LogsTable = ({
       title: "Files Processed",
       dataIndex: "filesProcessed",
       key: "filesProcessed",
-      render: (text, record) => `${record?.processed}/${record?.total}`,
+      render: (text, record) => `${record?.processed}/${record?.totalFiles}`,
     },
   ];
 
@@ -127,8 +133,20 @@ const LogsTable = ({
       size="small"
       loading={loading}
       onChange={handleTableChange}
-      scroll={{
-        y: 55 * 10,
+      sortDirections={["ascend", "descend", "ascend"]}
+      scroll={{ y: 55 * 10 }}
+      locale={{
+        emptyText: (
+          <EmptyState
+            text={`Currently you have no ${logsStaticContent[activeTab].addBtn}`}
+            btnText={`Add ${logsStaticContent[activeTab].addBtn}`}
+            handleClick={() =>
+              navigate(
+                `/${sessionDetails?.orgName}/${logsStaticContent[activeTab].route}`
+              )
+            }
+          />
+        ),
       }}
     />
   );

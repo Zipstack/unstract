@@ -629,6 +629,25 @@ const convertTimestampToHHMMSS = (timestamp) => {
 
 const UNSTRACT_ADMIN = "unstract_admin";
 
+const logsStaticContent = {
+  ETL: {
+    addBtn: "ETL Pipeline",
+    route: "etl",
+  },
+  TASK: {
+    addBtn: "Task Pipeline",
+    route: "task",
+  },
+  API: {
+    addBtn: "API Deployment",
+    route: "api",
+  },
+  WF: {
+    addBtn: "Workflow",
+    route: "workflows",
+  },
+};
+
 export {
   CONNECTOR_TYPE_MAP,
   O_AUTH_PROVIDERS,
@@ -686,4 +705,5 @@ export {
   UNSTRACT_ADMIN,
   formatSecondsToHMS,
   formattedDateTimeWithSeconds,
+  logsStaticContent,
 };

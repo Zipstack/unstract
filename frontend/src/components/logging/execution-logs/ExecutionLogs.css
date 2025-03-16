@@ -24,4 +24,23 @@
 
 .logs-date-picker {
   width: 300px;
+  height: 30px;
+}
+
+.log-tab{
+  height: 30px;
+}
+
+.log-tab .ant-tabs-nav {
+  height: 50px;
+  margin: 0;
+}
+
+.log-tab .ant-tabs-nav-list {
+  height: 30px;
+  line-height: 50px;
+}
+
+.log-tab .ant-tabs-ink-bar {
+  top: 40px !important;
 }

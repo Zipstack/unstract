@@ -18,6 +18,7 @@ function LogModal({
   fileId,
   logDescModalOpen,
   setLogDescModalOpen,
+  filterParams,
 }) {
   const axiosPrivate = useAxiosPrivate();
   const { sessionDetails } = useSessionStore();
@@ -130,7 +131,11 @@ function LogModal({
 
     if (sorter.order) {
       // Determine ascending or descending order
-      const order = sorter.order === "ascend" ? "created_at" : "-created_at";
+      const executionTimeParam = filterParams.executionTime || "created_at";
+      const order =
+        sorter.order === "ascend"
+          ? executionTimeParam
+          : `-${executionTimeParam}`;
       setOrdering(order);
     } else {
       setOrdering(null);
@@ -164,6 +169,7 @@ function LogModal({
         }}
         loading={loading}
         onChange={handleTableChange}
+        sortDirections={["ascend", "descend", "ascend"]}
       />
     </Modal>
   );
@@ -173,6 +179,7 @@ LogModal.propTypes = {
   fileId: PropTypes.string,
   logDescModalOpen: PropTypes.array,
   setLogDescModalOpen: PropTypes.array,
+  filterParams: PropTypes.object,
 };
 
 export { LogModal };

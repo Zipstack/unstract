@@ -1,11 +1,16 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import {
+  ArrowLeftOutlined,
   CalendarOutlined,
   ClockCircleOutlined,
+  CloseCircleFilled,
   DownOutlined,
   EyeOutlined,
   FileTextOutlined,
+  HourglassOutlined,
+  InfoCircleFilled,
+  SearchOutlined,
 } from "@ant-design/icons";
 import {
   Button,
@@ -16,6 +21,7 @@ import {
   Table,
   Tooltip,
   Typography,
+  Input,
 } from "antd";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -36,6 +42,7 @@ const DetailedLogs = () => {
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
+  const navigate = useNavigate();
 
   const [executionDetails, setExecutionDetails] = useState();
   const [executionFiles, setExecutionFiles] = useState();
@@ -50,6 +57,10 @@ const DetailedLogs = () => {
   const [ordering, setOrdering] = useState(null);
   const [columnsVisibility, setColumnsVisibility] = useState({});
   const [statusFilter, setStatusFilter] = useState(null);
+  const [searchText, setSearchText] = useState("");
+  const [searchTimeout, setSearchTimeout] = useState(null);
+  const [pollingInterval, setPollingInterval] = useState(null);
+
   const filterOptions = ["COMPLETED", "PENDING", "ERROR", "EXECUTING"];
 
   const fetchExecutionDetails = async (id) => {
@@ -71,9 +82,28 @@ const DetailedLogs = () => {
         executionName: item?.workflow_name,
         ranFor: item?.execution_time,
         executedAtWithSeconds: formattedDateTimeWithSeconds(item?.created_at),
+        successfulFiles: item?.successful_files,
+        failedFiles: item?.failed_files,
+        totalFiles: item?.total_files,
       };
 
       setExecutionDetails(formattedData);
+
+      // Start or stop polling based on status
+      if (item?.status === "EXECUTING") {
+        if (!pollingInterval) {
+          const interval = setInterval(() => {
+            fetchExecutionDetails(id);
+            fetchExecutionFiles(id, pagination.current);
+          }, 5000); // Poll every 5 seconds
+          setPollingInterval(interval);
+        }
+      } else {
+        if (pollingInterval) {
+          clearInterval(pollingInterval);
+          setPollingInterval(null);
+        }
+      }
     } catch (err) {
       setAlertDetails(handleException(err));
     } finally {
@@ -81,22 +111,23 @@ const DetailedLogs = () => {
     }
   };
 
-  const fetchExecutionFiles = async (id, page) => {
+  const fetchExecutionFiles = async (id, page, customParams = null) => {
     try {
       const url = `/api/v1/unstract/${sessionDetails?.orgId}/execution/${id}/files/`;
-      const response = await axiosPrivate.get(url, {
-        params: {
-          page_size: pagination.pageSize,
-          page,
-          ordering,
-          status: statusFilter ? statusFilter.join(",") : null,
-        },
-      });
-      // Replace with your actual API URL
+      const defaultParams = {
+        page_size: pagination.pageSize,
+        page,
+        ordering,
+        status: statusFilter || null,
+        file_name: searchText.trim() || null,
+      };
+
+      const params = customParams || defaultParams;
+      const response = await axiosPrivate.get(url, { params });
       setPagination({
         current: page,
-        pageSize: pagination?.pageSize,
-        total: response?.data?.count, // Total number of records
+        pageSize: pagination.pageSize,
+        total: response?.data?.count,
       });
       const formattedData = response?.data?.results.map((item, index) => {
         return {
@@ -121,6 +152,35 @@ const DetailedLogs = () => {
     }
   };
 
+  const handleSearch = (value) => {
+    if (searchTimeout) {
+      clearTimeout(searchTimeout);
+    }
+
+    setSearchText(value);
+
+    const timeoutId = setTimeout(() => {
+      const params = {
+        page_size: pagination.pageSize,
+        page: pagination.current,
+        ordering,
+        status: statusFilter || null,
+        file_name: value.trim() || null,
+      };
+      fetchExecutionFiles(id, pagination.current, params);
+    }, 1000);
+
+    setSearchTimeout(timeoutId);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+    };
+  }, [searchTimeout]);
+
   const columnsDetailedTable = [
     {
       title: "Executed At",
@@ -137,6 +197,19 @@ const DetailedLogs = () => {
       title: "File Name",
       dataIndex: "fileName",
       key: "fileName",
+      filterDropdown: () => (
+        <div style={{ padding: 8 }}>
+          <Input
+            placeholder="Search files"
+            value={searchText}
+            onChange={(e) => handleSearch(e.target.value)}
+            style={{ width: 188, marginBottom: 8, display: "block" }}
+          />
+        </div>
+      ),
+      filterIcon: (filtered) => (
+        <SearchOutlined style={{ color: filtered ? "#1890ff" : undefined }} />
+      ),
     },
     {
       title: "Status Message",
@@ -193,11 +266,10 @@ const DetailedLogs = () => {
     });
 
     if (sorter.order) {
-      // Determine ascending or descending order
       const order = sorter.order === "ascend" ? "created_at" : "-created_at";
       setOrdering(order);
     } else {
-      setOrdering(null); // Default ordering if sorting is cleared
+      setOrdering(null);
     }
     if (filters?.status) {
       setStatusFilter(filters.status);
@@ -214,6 +286,15 @@ const DetailedLogs = () => {
   useEffect(() => {
     fetchExecutionDetails(id);
     fetchExecutionFiles(id, pagination.current);
+
+    return () => {
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+    };
   }, [pagination.current, ordering, statusFilter]);
 
   useEffect(() => {
@@ -250,6 +331,12 @@ const DetailedLogs = () => {
   return (
     <>
       <Typography.Title className="logs-title" level={4}>
+        <Button
+          type="text"
+          shape="circle"
+          icon={<ArrowLeftOutlined />}
+          onClick={() => navigate(`/${sessionDetails?.orgName}/logs`)}
+        />
         {type} Session ID - {id}{" "}
       </Typography.Title>
       <Flex align="center" justify="space-between">
@@ -285,12 +372,42 @@ const DetailedLogs = () => {
                 <Typography className="logging-card-title">
                   {executionDetails?.status.toLowerCase() === "executing"
                     ? "Processing files"
-                    : "Processed files"}
+                    : "Processed files"}{" "}
+                  -{" "}
+                  <Tooltip title="Total files">
+                    <span className="status-container">
+                      <FileTextOutlined className="gen-index-progress" />{" "}
+                      {executionDetails?.totalFiles}
+                    </span>
+                  </Tooltip>
                 </Typography>
-                <Typography>
-                  {executionDetails?.processed}/{executionDetails?.total}{" "}
-                  {executionDetails?.processed > 0 && "Successfully"}
-                </Typography>
+                <span>
+                  <Tooltip title="Successful files">
+                    <span className="status-container">
+                      <InfoCircleFilled className="gen-index-success" />{" "}
+                      {executionDetails?.successfulFiles}
+                    </span>
+                  </Tooltip>
+                  <Tooltip title="Failed files">
+                    <span className="status-container">
+                      <CloseCircleFilled className="gen-index-fail" />{" "}
+                      {executionDetails?.failedFiles}
+                    </span>
+                  </Tooltip>
+                  <Tooltip title="Queued files">
+                    {executionDetails?.totalFiles -
+                      (executionDetails?.successfulFiles +
+                        executionDetails?.failedFiles) >
+                      0 && (
+                      <span className="status-container">
+                        <HourglassOutlined className="gen-index-progress" />{" "}
+                        {executionDetails?.totalFiles -
+                          (executionDetails?.successfulFiles +
+                            executionDetails?.failedFiles)}
+                      </span>
+                    )}
+                  </Tooltip>
+                </span>
               </div>
             </Flex>
           </Card>
@@ -304,7 +421,11 @@ const DetailedLogs = () => {
         </Button>
       </Flex>
       <div className="settings-layout">
-        <Dropdown menu={menu} trigger={["click"]}>
+        <Dropdown
+          menu={menu}
+          trigger={["click"]}
+          className="column-filter-dropdown"
+        >
           <Button icon={<DownOutlined />}>Show/Hide Columns</Button>
         </Dropdown>
         <Table
@@ -313,9 +434,8 @@ const DetailedLogs = () => {
           pagination={{ ...pagination }}
           loading={loading}
           onChange={handleTableChange}
-          scroll={{
-            y: 55 * 10,
-          }}
+          sortDirections={["ascend", "descend", "ascend"]}
+          scroll={{ y: 55 * 10 }}
         />
       </div>
       <LogModal
@@ -323,6 +443,7 @@ const DetailedLogs = () => {
         fileId={selectedRecord?.executionId}
         logDescModalOpen={logDescModalOpen}
         setLogDescModalOpen={setLogDescModalOpen}
+        filterParams={{ executionTime: "event_time" }}
       />
     </>
   );

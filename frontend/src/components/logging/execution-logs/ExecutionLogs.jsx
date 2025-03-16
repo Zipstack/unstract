@@ -1,10 +1,9 @@
-import { DatePicker, Tabs, Typography } from "antd";
+import { DatePicker, Flex, Tabs, Typography } from "antd";
 import { useNavigate, useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
 import { LogsTable } from "../logs-table/LogsTable";
-import { TopBar } from "../../widgets/top-bar/TopBar";
 import { DetailedLogs } from "../detailed-logs/DetailedLogs";
 import { ApiDeployments, CustomToolIcon, ETLIcon } from "../../../assets/index";
 import "./ExecutionLogs.css";
@@ -16,6 +15,7 @@ import {
   formattedDateTime,
   formattedDateTimeWithSeconds,
 } from "../../../helpers/GetStaticData";
+import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
 
 function ExecutionLogs() {
   const { RangePicker } = DatePicker;
@@ -35,6 +35,7 @@ function ExecutionLogs() {
     total: 0,
   });
   const [selectedDateRange, setSelectedDateRange] = useState([]);
+  const [datePickerValue, setDatePickerValue] = useState(null);
   const [ordering, setOrdering] = useState(null);
   const [pollingIds, setPollingIds] = useState(new Set());
   const currentPath = location.pathname !== `/${sessionDetails?.orgName}/logs`;
@@ -83,6 +84,7 @@ function ExecutionLogs() {
   const onOk = (value) => {
     if (value && value.length === 2 && value[0] && value[1]) {
       setSelectedDateRange([value[0]?.toISOString(), value[1]?.toISOString()]);
+      setDatePickerValue(value);
     }
   };
 
@@ -184,13 +186,13 @@ function ExecutionLogs() {
           executionId: item?.id,
           progress,
           processed,
-          total,
           success: item?.status === "COMPLETED",
           isError: item?.status === "ERROR",
           workflowName: item?.workflow_name,
           pipelineName: item?.pipeline_name || "Pipeline name not found",
           successfulFiles: item?.successful_files,
           failedFiles: item?.failed_files,
+          totalFiles: item?.total_files,
           status: item?.status,
         };
       });
@@ -203,26 +205,47 @@ function ExecutionLogs() {
     }
   };
 
-  useEffect(() => {
-    fetchLogs(pagination.current);
-  }, [activeTab, pagination.current, selectedDateRange, ordering]);
-
-  return (
-    <div className="file-logs-container">
-      <TopBar enableSearch={false} title="Logs">
-        <Tabs activeKey={activeTab} items={items} onChange={onChange} />
+  const customButtons = () => {
+    return (
+      <Flex gap={10} className="log-controls">
+        <Tabs
+          activeKey={activeTab}
+          items={items}
+          onChange={onChange}
+          className="log-tab"
+        />
         <RangePicker
           showTime={{ format: "YYYY-MM-DDTHH:mm:ssZ[Z]" }}
-          onChange={(value) =>
+          value={datePickerValue}
+          onChange={(value) => {
+            setDatePickerValue(value);
             setSelectedDateRange(
               value ? [value[0].toISOString(), value[1].toISOString()] : []
-            )
-          }
+            );
+          }}
           onOk={onOk}
           className="logs-date-picker"
           disabled={currentPath}
+          format="YYYY-MM-DD HH:mm:ss"
         />
-      </TopBar>
+      </Flex>
+    );
+  };
+
+  useEffect(() => {
+    if (!currentPath) {
+      setDataList([]);
+      fetchLogs(pagination.current);
+    }
+  }, [activeTab, pagination.current, selectedDateRange, ordering, currentPath]);
+
+  return (
+    <div className="file-logs-container">
+      <ToolNavBar
+        title={"Logs"}
+        CustomButtons={customButtons}
+        enableSearch={false}
+      />
       <IslandLayout>
         {id ? (
           <DetailedLogs />
