@@ -87,10 +87,33 @@ const SideNavBar = ({ collapsed }) => {
   const unstractMenuItems = [
     {
       id: 1,
+      mainTitle: "BUILD",
+      subMenu: [
+        {
+          id: 1.1,
+          title: "Prompt Studio",
+          description: "Create structured data from unstructured documents",
+          image: CustomTools,
+          path: `/${orgName}/tools`,
+          active: window.location.pathname.startsWith(`/${orgName}/tools`),
+        },
+        {
+          id: 1.2,
+          title: "Workflows",
+          description: "Build no-code data workflows for unstructured data",
+          icon: BranchesOutlined,
+          image: Workflows,
+          path: `/${orgName}/workflows`,
+          active: window.location.pathname.startsWith(`/${orgName}/workflows`),
+        },
+      ],
+    },
+    {
+      id: 2,
       mainTitle: "MANAGE",
       subMenu: [
         {
-          id: 1.2,
+          id: 2.2,
           title: "API Deployments",
           description: "Unstructured to structured APIs",
           image: apiDeploy,
@@ -98,7 +121,7 @@ const SideNavBar = ({ collapsed }) => {
           active: window.location.pathname.startsWith(`/${orgName}/api`),
         },
         {
-          id: 1.3,
+          id: 2.3,
           title: "ETL Pipelines",
           description: "Unstructured to structured data pipelines",
           image: etl,
@@ -106,7 +129,7 @@ const SideNavBar = ({ collapsed }) => {
           active: window.location.pathname.startsWith(`/${orgName}/etl`),
         },
         {
-          id: 1.4,
+          id: 2.4,
           title: "Task Pipelines",
           description: "Ad-hoc unstructured data task pipelines",
           image: task,
@@ -120,29 +143,6 @@ const SideNavBar = ({ collapsed }) => {
           image: TerminalIcon,
           path: `/${orgName}/logs`,
           active: window.location.pathname.startsWith(`/${orgName}/logs`),
-        },
-      ],
-    },
-    {
-      id: 2,
-      mainTitle: "BUILD",
-      subMenu: [
-        {
-          id: 2.1,
-          title: "Workflows",
-          description: "Build no-code data workflows for unstructured data",
-          icon: BranchesOutlined,
-          image: Workflows,
-          path: `/${orgName}/workflows`,
-          active: window.location.pathname.startsWith(`/${orgName}/workflows`),
-        },
-        {
-          id: 2.2,
-          title: "Prompt Studio",
-          description: "Create structured data from unstructured documents",
-          image: CustomTools,
-          path: `/${orgName}/tools`,
-          active: window.location.pathname.startsWith(`/${orgName}/tools`),
         },
       ],
     },
@@ -208,13 +208,13 @@ const SideNavBar = ({ collapsed }) => {
   ];
 
   if (dashboardSideMenuItem) {
-    unstractMenuItems[0].subMenu.unshift(dashboardSideMenuItem(orgName));
+    unstractMenuItems[1].subMenu.unshift(dashboardSideMenuItem(orgName));
   }
 
   const data = menu || unstractMenuItems;
 
   if (getMenuItem && flags?.app_deployment) {
-    data[0]?.subMenu?.splice(1, 0, getMenuItem.default(orgName));
+    data[1]?.subMenu?.splice(1, 0, getMenuItem.default(orgName));
   }
 
   const shouldDisableAll = useMemo(() => {
