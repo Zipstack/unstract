@@ -2,12 +2,13 @@ import { PlusOutlined, UserOutlined } from "@ant-design/icons";
 import { Typography } from "antd";
 import isEmpty from "lodash/isEmpty";
 import PropTypes from "prop-types";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { useWorkflowStore } from "../../../store/workflow-store";
+import { usePromptStudioStore } from "../../../store/prompt-studio-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import { EmptyState } from "../../widgets/empty-state/EmptyState.jsx";
 import { LazyLoader } from "../../widgets/lazy-loader/LazyLoader.jsx";
@@ -18,6 +19,8 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar.jsx";
 import { ViewTools } from "../../custom-tools/view-tools/ViewTools.jsx";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
+import { PromptStudioModal } from "../../common/PromptStudioModal";
+import { usePromptStudioService } from "../../api/prompt-studio-service";
 
 const PROJECT_FILTER_OPTIONS = [
   { label: "My Workflows", value: "mine" },
@@ -32,6 +35,14 @@ function Workflows() {
   const projectApiService = workflowService();
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
+  const { count, isLoading, fetchCount } = usePromptStudioStore();
+  const [showModal, setShowModal] = useState(false);
+  const [modalDismissed, setModalDismissed] = useState(false);
+  const { getPromptStudioCount } = usePromptStudioService();
+
+  useEffect(() => {
+    fetchCount(getPromptStudioCount);
+  }, [fetchCount]);
 
   const [projectList, setProjectList] = useState();
   const [editingProject, setEditProject] = useState();
@@ -189,8 +200,20 @@ function Workflows() {
     );
   };
 
+  useEffect(() => {
+    if (!isLoading && count === 0 && !modalDismissed) {
+      setShowModal(true);
+    }
+  }, [isLoading, count, modalDismissed]);
+
+  const handleModalClose = useCallback(() => {
+    setShowModal(false);
+    setModalDismissed(true); // Prevent modal reopen.
+  }, []); // Prevents re-renders.
+
   return (
     <>
+      {showModal && <PromptStudioModal onClose={handleModalClose} />}
       <ToolNavBar
         enableSearch
         searchList={projectList}

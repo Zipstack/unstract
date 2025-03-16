@@ -14,7 +14,6 @@ import {
   Space,
   Tooltip,
   Typography,
-  Modal,
 } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
@@ -105,17 +104,6 @@ function DsSettingsCard({ type, endpointDetails, message }) {
   useEffect(() => {
     try {
       const inputOption =
-        require("../../../plugins/dscard-input-options/DsSettingsCardInputOptions").inputOption;
-      if (inputOption) {
-        setUpdatedInputoptions(inputOption);
-      }
-    } catch {
-      // The component will remain null of it is not available
-    }
-  }, []);
-  useEffect(() => {
-    try {
-      const inputOption =
         require("../../../plugins/dscard-input-options/AppDeploymentCardInputOptions").appDeploymentInputOption;
       if (flags.app_deployment && inputOption) {
         setUpdatedInputoptions(inputOption);
@@ -132,12 +120,10 @@ function DsSettingsCard({ type, endpointDetails, message }) {
         setOptions({});
       } else {
         // Filter options based on source connection type
-        const filteredOptions = ["API"].includes(source?.connection_type)
-          ? inputOptions.filter(
-              (option) =>
-                option.value === "API" || option.value === "MANUALREVIEW"
-            )
-          : inputOptions.filter((option) => option.value !== "API");
+        const isAPI = source?.connection_type === "API";
+        const filteredOptions = inputOptions.filter((option) =>
+          isAPI ? option.value === "API" : option.value !== "API"
+        );
 
         setOptions(filteredOptions);
       }
@@ -147,9 +133,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
       // Remove Database from Source Dropdown
       const filteredOptions = inputOptions.filter(
         (option) =>
-          option.value !== "DATABASE" &&
-          option.value !== "APPDEPLOYMENT" &&
-          option.value !== "MANUALREVIEW"
+          option.value !== "DATABASE" && option.value !== "APPDEPLOYMENT"
       );
       setOptions(filteredOptions);
     }
@@ -321,16 +305,6 @@ function DsSettingsCard({ type, endpointDetails, message }) {
         } else {
           updatedData["destination"] = data;
         }
-        if (
-          type === "output" &&
-          updatedData?.destination?.connection_type === "MANUALREVIEW"
-        ) {
-          Modal.warning({
-            title: "Warning",
-            content:
-              "Please ensure that the tool in use is has highlight enabled in the tool settings.",
-          });
-        }
         updateWorkflow(updatedData);
         if (showSuccess) {
           setAlertDetails({
@@ -409,7 +383,6 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                   disabled={
                     !endpointDetails?.connection_type ||
                     connType === "API" ||
-                    connType === "MANUALREVIEW" ||
                     connType === "APPDEPLOYMENT"
                   }
                 >
@@ -432,9 +405,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                 </Space>
               ) : (
                 <>
-                  {connType === "API" ||
-                  connType === "MANUALREVIEW" ||
-                  connType === "APPDEPLOYMENT" ? (
+                  {connType === "API" || connType === "APPDEPLOYMENT" ? (
                     <Typography.Text
                       className="font-size-12 display-flex-align-center"
                       ellipsis={{ rows: 1, expandable: false }}

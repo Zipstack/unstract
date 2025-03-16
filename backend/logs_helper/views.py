@@ -38,7 +38,7 @@ class LogsHelperViewSet(viewsets.ModelViewSet):
             logs.append(log_data)
 
         # Sort logs based on timestamp
-        sorted_logs = sorted(logs, key=lambda x: x["timestamp"])
+        sorted_logs = sorted(logs, key=lambda x: float(x["timestamp"]))
 
         return Response({"data": sorted_logs}, status=status.HTTP_200_OK)
 

@@ -30,23 +30,23 @@ class ExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         queryset = WorkflowExecution.objects.all()
 
         # Filter based on execution entity
-        if execution_entity == ExecutionEntity.API:
+        if execution_entity == ExecutionEntity.API.value:
             queryset = queryset.filter(
                 pipeline_id__in=APIDeployment.objects.values_list("id", flat=True)
             )
-        elif execution_entity == ExecutionEntity.ETL:
+        elif execution_entity == ExecutionEntity.ETL.value:
             queryset = queryset.filter(
                 pipeline_id__in=Pipeline.objects.filter(
                     pipeline_type=Pipeline.PipelineType.ETL
                 ).values_list("id", flat=True)
             )
-        elif execution_entity == ExecutionEntity.TASK:
+        elif execution_entity == ExecutionEntity.TASK.value:
             queryset = queryset.filter(
                 pipeline_id__in=Pipeline.objects.filter(
                     pipeline_type=Pipeline.PipelineType.TASK
                 ).values_list("id", flat=True)
             )
-        elif execution_entity == ExecutionEntity.WORKFLOW:
+        elif execution_entity == ExecutionEntity.WORKFLOW.value:
             queryset = queryset.filter(
                 pipeline_id=None,
                 workflow_id__in=Workflow.objects.values_list("id", flat=True),
