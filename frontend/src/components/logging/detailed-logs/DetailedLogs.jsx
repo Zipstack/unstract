@@ -98,11 +98,9 @@ const DetailedLogs = () => {
           }, 5000); // Poll every 5 seconds
           setPollingInterval(interval);
         }
-      } else {
-        if (pollingInterval) {
-          clearInterval(pollingInterval);
-          setPollingInterval(null);
-        }
+      } else if (pollingInterval) {
+        clearInterval(pollingInterval);
+        setPollingInterval(null);
       }
     } catch (err) {
       setAlertDetails(handleException(err));

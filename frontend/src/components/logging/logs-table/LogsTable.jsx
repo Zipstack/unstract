@@ -54,9 +54,7 @@ const LogsTable = ({
       key: "executionName",
       render: (_, record) =>
         activeTab === "WF" ? (
-          <>
-            <Typography.Text strong>{record?.workflowName}</Typography.Text>
-          </>
+          <Typography.Text strong>{record?.workflowName}</Typography.Text>
         ) : (
           <>
             <Typography.Text strong>{record?.pipelineName}</Typography.Text>
