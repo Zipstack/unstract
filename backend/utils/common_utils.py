@@ -1,5 +1,8 @@
 import json
+from datetime import datetime
 from enum import Enum
+
+from django.utils import timezone
 
 
 class CommonUtils:
@@ -30,6 +33,31 @@ class CommonUtils:
         except json.JSONDecodeError:
             return False
         return True
+
+    # TODO: Use from SDK
+    @staticmethod
+    def pretty_file_size(size_in_bytes: float):
+        """Convert bytes to human-readable format (KB, MB, GB, etc.)."""
+        units = ["B", "KB", "MB", "GB", "TB"]
+        size = float(size_in_bytes)
+        for unit in units:
+            if size < 1024:
+                return f"{size:.2f} {unit}"
+            size /= 1024
+        return f"{size:.2f} PB"
+
+    @staticmethod
+    def time_since(start_time: datetime, precision: int = 3) -> float:
+        """Compute the elapsed time given a starting time time in seconds
+
+        Args:
+            start_time (datetime): Time in seconds to compute from
+            precision (int, optional): Floating point precision. Defaults to 3.
+
+        Returns:
+            float: Time elapsed since start_time
+        """
+        return round((timezone.now() - start_time).total_seconds(), precision)
 
 
 class ModelEnum(Enum):

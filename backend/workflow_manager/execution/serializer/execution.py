@@ -11,6 +11,7 @@ class ExecutionSerializer(serializers.ModelSerializer):
     pipeline_name = serializers.SerializerMethodField()
     successful_files = serializers.SerializerMethodField()
     failed_files = serializers.SerializerMethodField()
+    execution_time = serializers.ReadOnlyField(source="pretty_execution_time")
 
     class Meta:
         model = WorkflowExecution
