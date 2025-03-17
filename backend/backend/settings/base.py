@@ -415,9 +415,6 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
     ],
-    "DEFAULT_PARSER_CLASSES": [
-        "rest_framework.parsers.JSONParser",
-    ],
     "DEFAULT_PERMISSION_CLASSES": [],  # TODO: Update once auth is figured
     "TEST_REQUEST_DEFAULT_FORMAT": "json",
     "EXCEPTION_HANDLER": "middleware.exception.drf_logging_exc_handler",
