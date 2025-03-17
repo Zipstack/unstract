@@ -31,7 +31,7 @@ class FileCentricExecutionSerializer(serializers.ModelSerializer):
         exclude = ["file_hash"]
 
     def get_status_msg(self, obj: FileExecution) -> Optional[dict[str, any]]:
-        if obj.status in [ExecutionStatus.PENDING, ExecutionStatus.QUEUED]:
+        if obj.status in [ExecutionStatus.PENDING]:
             return self.INIT_STATUS_MSG
         elif obj.status == ExecutionStatus.ERROR:
             return obj.execution_error
