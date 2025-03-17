@@ -1,6 +1,6 @@
 {
     "title": "Dropbox",
-    "description": "Connect to your Dropbox storage. Please note that this is currently in `alpha` and is limited by the access token's short expiry time (4 hours). Does not support OAuth  yet.",
+    "description": "Connect to your Dropbox storage. Please note that this is currently in `alpha` and is limited by the access token's short expiry time (4 hours). Does not support OAuth yet.",
     "type": "object",
     "required": [
       "connectorName",
