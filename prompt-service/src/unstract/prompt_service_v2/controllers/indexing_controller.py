@@ -82,7 +82,6 @@ def index() -> Any:
     processing_options = ProcessingOptions(
         reindex=reindex, enable_highlight=enable_highlight, usage_kwargs=usage_kwargs
     )
-    logger.info("Indexing document")
     doc_id = IndexingService.index(
         chuking_config=chunking_config,
         execution_source=execution_source,

@@ -32,11 +32,16 @@ class IndexingService:
         try:
             fs_instance = FileUtils.get_fs_instance(execution_source=execution_source)
             util = PromptServiceBaseTool(platform_key=platform_key)
-            index: Index = Index(tool=util, run_id=run_id, capture_metrics=True)
-            doc_id: str = index.generate_index_key(
-                chuking_config=chuking_config,
-                file_info=file_info,
+            index: Index = Index(
+                tool=util,
+                run_id=run_id,
+                capture_metrics=True,
                 instance_identifiers=instance_identifiers,
+                chuking_config=chuking_config,
+                processing_options=processing_options,
+            )
+            doc_id: str = index.generate_index_key(
+                file_info=file_info,
                 fs=fs_instance,
             )
             embedding = Embedding(
@@ -52,22 +57,18 @@ class IndexingService:
             )
 
             doc_id_found = index.is_document_indexed(
-                instance_identifiers=instance_identifiers,
                 doc_id=doc_id,
-                processing_options=processing_options,
                 embedding=embedding,
                 vector_db=vector_db,
             )
             if doc_id_found:
                 return doc_id
+
             # Index and return doc_id
             index.perform_indexing(
-                instance_identifiers=instance_identifiers,
-                chunking_config=chuking_config,
                 vector_db=vector_db,
                 doc_id=doc_id,
                 extracted_text=extracted_text,
-                doc_id_found=doc_id_found,
             )
             return doc_id
         except Exception as e:
