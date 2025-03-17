@@ -83,7 +83,7 @@ def index() -> Any:
         reindex=reindex, enable_highlight=enable_highlight, usage_kwargs=usage_kwargs
     )
     doc_id = IndexingService.index(
-        chuking_config=chunking_config,
+        chunking_config=chunking_config,
         execution_source=execution_source,
         run_id=run_id,
         file_info=file_info,

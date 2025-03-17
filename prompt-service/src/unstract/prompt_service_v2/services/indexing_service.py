@@ -21,7 +21,7 @@ class IndexingService:
     @staticmethod
     def index(
         execution_source: str,
-        chuking_config: ChunkingConfig,
+        chunking_config: ChunkingConfig,
         file_info: FileInfo,
         instance_identifiers: InstanceIdentifiers,
         processing_options: ProcessingOptions,
@@ -37,7 +37,7 @@ class IndexingService:
                 run_id=run_id,
                 capture_metrics=True,
                 instance_identifiers=instance_identifiers,
-                chuking_config=chuking_config,
+                chunking_config=chunking_config,
                 processing_options=processing_options,
             )
             doc_id: str = index.generate_index_key(
