@@ -4,15 +4,15 @@ from typing import Any, Optional
 from flask import Blueprint, request
 from unstract.prompt_service_v2.constants import IndexingConstants as IKeys
 from unstract.prompt_service_v2.constants import PromptServiceConstants as PSKeys
-from unstract.prompt_service_v2.helper.auth_helper import AuthHelper
-from unstract.prompt_service_v2.services.indexing_service import IndexingService
-from unstract.prompt_service_v2.utils.request import validate_request_payload
-from unstract.sdk.dto import (
+from unstract.prompt_service_v2.dto import (
     ChunkingConfig,
     FileInfo,
     InstanceIdentifiers,
     ProcessingOptions,
 )
+from unstract.prompt_service_v2.helper.auth_helper import AuthHelper
+from unstract.prompt_service_v2.services.indexing_service import IndexingService
+from unstract.prompt_service_v2.utils.request import validate_request_payload
 
 indexing_bp = Blueprint("index", __name__)
 logger = logging.getLogger(__name__)

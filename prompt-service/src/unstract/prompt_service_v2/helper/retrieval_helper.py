@@ -1,13 +1,13 @@
 from typing import Any, Optional
 
 from unstract.prompt_service_v2.constants import PromptServiceConstants as PSKeys
+from unstract.prompt_service_v2.core.retrievers.simple import SimpleRetriever
+from unstract.prompt_service_v2.core.retrievers.subquestion import SubquestionRetriever
 from unstract.prompt_service_v2.services.answer_prompt_service import (
     AnswerPromptService,
 )
 from unstract.prompt_service_v2.utils.file_utils import FileUtils
 from unstract.sdk.llm import LLM
-from unstract.sdk.retrieval.simple import SimpleRetrieval
-from unstract.sdk.retrieval.subquestion import SubquestionRetrieval
 from unstract.sdk.vector_db import VectorDB
 
 
@@ -27,11 +27,11 @@ class RetrievalHelper:
         prompt = output[PSKeys.PROMPTX]
         top_k = output[PSKeys.SIMILARITY_TOP_K]
         if retrieval_type == PSKeys.SUBQUESTION:
-            context = SubquestionRetrieval(
+            context = SubquestionRetriever(
                 vector_db=vector_db, doc_id=doc_id, prompt=prompt, top_k=top_k
             ).retrieve()
         if retrieval_type == PSKeys.SIMPLE:
-            context = SimpleRetrieval(
+            context = SimpleRetriever(
                 vector_db=vector_db, doc_id=doc_id, prompt=prompt, top_k=top_k
             ).retrieve()
 

@@ -2,13 +2,13 @@ import logging
 
 from llama_index.core.query_engine import SubQuestionQueryEngine
 from llama_index.core.tools import QueryEngineTool, ToolMetadata
-from unstract.sdk.exceptions import RetrievalError
-from unstract.sdk.retrieval.base_retriever import BaseRetriever
+from unstract.prompt_service_v2.core.retrievers.base_retriever import BaseRetriever
+from unstract.prompt_service_v2.exceptions import RetrievalError
 
 logger = logging.getLogger(__name__)
 
 
-class SubquestionRetrieval(BaseRetriever):
+class SubquestionRetriever(BaseRetriever):
     """SubquestionRetrieval class for querying VectorDB using LlamaIndex's
     SubQuestionQueryEngine."""
 

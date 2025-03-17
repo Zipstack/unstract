@@ -3,13 +3,12 @@ import time
 
 from llama_index.core import VectorStoreIndex
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
-from unstract.sdk.retrieval.base_retriever import BaseRetriever
+from unstract.prompt_service_v2.core.retrievers.base_retriever import BaseRetriever
 
 logger = logging.getLogger(__name__)
 
 
 class SimpleRetriever(BaseRetriever):
-
     def retrieve(self) -> set[str]:
         vector_query_engine: VectorStoreIndex = self.vector_db.get_vector_store_index()
         retriever = vector_query_engine.as_retriever(
