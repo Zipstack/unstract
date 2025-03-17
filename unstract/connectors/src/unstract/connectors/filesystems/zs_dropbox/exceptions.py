@@ -28,8 +28,7 @@ def handle_dropbox_exception(e: DropboxException) -> ConnectorError:
                 user_msg += e.error._tag
     elif isinstance(e, ApiError) and e.user_message_text is not None:
         user_msg += e.user_message_text
-
-    if not user_msg:
+    else:
         logger.warning(f"Unhandled dropbox exception: {e}")
         user_msg = str(e)
 
