@@ -11,6 +11,7 @@ from unstract.prompt_service_v2.exceptions import APIError
 from unstract.prompt_service_v2.helper.prompt_ide_base_tool import PromptServiceBaseTool
 from unstract.prompt_service_v2.utils.file_utils import FileUtils
 from unstract.sdk.embedding import Embedding
+from unstract.sdk.utils.indexing_utils import IndexingUtils
 from unstract.sdk.vector_db import VectorDB
 
 logger = logging.getLogger(__name__)
@@ -40,8 +41,15 @@ class IndexingService:
                 chunking_config=chunking_config,
                 processing_options=processing_options,
             )
-            doc_id: str = index.generate_index_key(
-                file_info=file_info,
+            doc_id: str = IndexingUtils.generate_index_key(
+                vector_db=instance_identifiers.vector_db_instance_id,
+                embedding=instance_identifiers.embedding_instance_id,
+                file_path=file_info.file_path,
+                file_hash=file_info.file_hash,
+                x2Text=instance_identifiers.x2text_instance_id,
+                chunk_size=str(chunking_config.chunk_size),
+                chunk_overlap=str(chunking_config.chunk_overlap),
+                tool=util,
                 fs=fs_instance,
             )
             embedding = Embedding(
