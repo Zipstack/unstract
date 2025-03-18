@@ -7,6 +7,7 @@ import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
 import { useAlertStore } from "../../../store/alert-store";
 import "./AddCustomToolFormModal.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+
 import { useNavigate } from "react-router-dom";
 const defaultFromDetails = {
   tool_name: "",
@@ -89,7 +90,11 @@ function AddCustomToolFormModal({
 
   return (
     <Modal
-      title={isEdit ? "Edit Tool Information " : "Add Tool Information"}
+      title={
+        isEdit
+          ? "Edit Prompt Studio project"
+          : "Create new Prompt Studio project"
+      }
       width={450}
       open={open}
       onCancel={() => {
@@ -113,9 +118,9 @@ function AddCustomToolFormModal({
         onValuesChange={handleInputChange}
       >
         <Form.Item
-          label="Tool Name"
+          label="Prompt Studio project name"
           name="tool_name"
-          rules={[{ required: true, message: "Please enter tool name" }]}
+          rules={[{ required: true, message: "Please enter project name" }]}
           validateStatus={
             getBackendErrorDetail("tool_name", backendErrors) ? "error" : ""
           }
