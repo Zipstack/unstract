@@ -41,5 +41,5 @@ class SimpleRetriever(BaseRetriever):
             # Note: This will not fix the issue. Since this issue is inconsistent
             # and not reproducible easily, this is just a safety net.
             time.sleep(2)
-            context = self.retrieve(self.prompt, self.doc_id, self.top_k)
+            context = self.retrieve()
         return context
