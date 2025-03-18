@@ -5,7 +5,7 @@
 groups = ["default", "hook-check-django-migrations", "lint"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:92d4567662fe678dfbf16a37afceb30f3749b4799dd37706e506dac7371ef169"
+content_hash = "sha256:3152b90b9f4db07e41799d13801d16469937cea57a4ebe513c0a9be450a4ef90"
 
 [[package]]
 name = "adlfs"
@@ -1694,7 +1694,7 @@ files = [
 
 [[package]]
 name = "googleapis-common-protos"
-version = "1.69.0"
+version = "1.69.1"
 requires_python = ">=3.7"
 summary = "Common protobufs used in Google APIs"
 groups = ["hook-check-django-migrations"]
@@ -1702,24 +1702,24 @@ dependencies = [
     "protobuf!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5,<6.0.0.dev0,>=3.20.2",
 ]
 files = [
-    {file = "googleapis_common_protos-1.69.0-py2.py3-none-any.whl", hash = "sha256:17835fdc4fa8da1d61cfe2d4d5d57becf7c61d4112f8d81c67eaa9d7ce43042d"},
-    {file = "googleapis_common_protos-1.69.0.tar.gz", hash = "sha256:5a46d58af72846f59009b9c4710425b9af2139555c71837081706b213b298187"},
+    {file = "googleapis_common_protos-1.69.1-py2.py3-none-any.whl", hash = "sha256:4077f27a6900d5946ee5a369fab9c8ded4c0ef1c6e880458ea2f70c14f7b70d5"},
+    {file = "googleapis_common_protos-1.69.1.tar.gz", hash = "sha256:e20d2d8dda87da6fe7340afbbdf4f0bcb4c8fae7e6cadf55926c31f946b0b9b1"},
 ]
 
 [[package]]
 name = "googleapis-common-protos"
-version = "1.69.0"
+version = "1.69.1"
 extras = ["grpc"]
 requires_python = ">=3.7"
 summary = "Common protobufs used in Google APIs"
 groups = ["hook-check-django-migrations"]
 dependencies = [
-    "googleapis-common-protos==1.69.0",
+    "googleapis-common-protos==1.69.1",
     "grpcio<2.0.0.dev0,>=1.44.0",
 ]
 files = [
-    {file = "googleapis_common_protos-1.69.0-py2.py3-none-any.whl", hash = "sha256:17835fdc4fa8da1d61cfe2d4d5d57becf7c61d4112f8d81c67eaa9d7ce43042d"},
-    {file = "googleapis_common_protos-1.69.0.tar.gz", hash = "sha256:5a46d58af72846f59009b9c4710425b9af2139555c71837081706b213b298187"},
+    {file = "googleapis_common_protos-1.69.1-py2.py3-none-any.whl", hash = "sha256:4077f27a6900d5946ee5a369fab9c8ded4c0ef1c6e880458ea2f70c14f7b70d5"},
+    {file = "googleapis_common_protos-1.69.1.tar.gz", hash = "sha256:e20d2d8dda87da6fe7340afbbdf4f0bcb4c8fae7e6cadf55926c31f946b0b9b1"},
 ]
 
 [[package]]
@@ -2200,7 +2200,7 @@ files = [
 
 [[package]]
 name = "llama-cloud"
-version = "0.1.13"
+version = "0.1.14"
 requires_python = "<4,>=3.8"
 summary = ""
 groups = ["hook-check-django-migrations"]
@@ -2210,8 +2210,8 @@ dependencies = [
     "pydantic>=1.10",
 ]
 files = [
-    {file = "llama_cloud-0.1.13-py3-none-any.whl", hash = "sha256:c36d9e9288cb7298faae68797f9789615b7c72409af8f3315e3098a479c09e17"},
-    {file = "llama_cloud-0.1.13.tar.gz", hash = "sha256:cb6522fbd0f5e4c1cd2825e70bb943d0d8916816e232a5ce3be3a7272f329a8c"},
+    {file = "llama_cloud-0.1.14-py3-none-any.whl", hash = "sha256:187672847dedc018b4d2620a8d26d6bf213e425e8b91569773de48e5c2f3ca5a"},
+    {file = "llama_cloud-0.1.14.tar.gz", hash = "sha256:90741a19ba96967fa2484084928e326ae957736780a15b67bc3ad5f52e94782d"},
 ]
 
 [[package]]
@@ -2446,7 +2446,7 @@ files = [
 
 [[package]]
 name = "llama-index-llms-azure-openai"
-version = "0.3.0"
+version = "0.3.1"
 requires_python = "<4.0,>=3.9"
 summary = "llama-index llms azure openai integration"
 groups = ["hook-check-django-migrations"]
@@ -2457,8 +2457,8 @@ dependencies = [
     "llama-index-llms-openai<0.4.0,>=0.3.0",
 ]
 files = [
-    {file = "llama_index_llms_azure_openai-0.3.0-py3-none-any.whl", hash = "sha256:24091aedf7ba24a7b217d17c4358e62b5d6b43a4d3ca44750d442b02a440d26e"},
-    {file = "llama_index_llms_azure_openai-0.3.0.tar.gz", hash = "sha256:0feea9319d832c8b5e8e0f397c905e45df54c529b6a778825adcd0d254bd7d63"},
+    {file = "llama_index_llms_azure_openai-0.3.1-py3-none-any.whl", hash = "sha256:f9cc1f275288b17f44ce81939d71481a1b26b39e525c7233515147452d596b9e"},
+    {file = "llama_index_llms_azure_openai-0.3.1.tar.gz", hash = "sha256:d846e72017480739d385a420b3432f5f2bdd0e4fe7ce1dc5f25deac7d0a81f70"},
 ]
 
 [[package]]
@@ -2509,17 +2509,17 @@ files = [
 
 [[package]]
 name = "llama-index-llms-openai"
-version = "0.3.17"
+version = "0.3.25"
 requires_python = "<4.0,>=3.9"
 summary = "llama-index llms openai integration"
 groups = ["hook-check-django-migrations"]
 dependencies = [
-    "llama-index-core<0.13.0,>=0.12.4",
+    "llama-index-core<0.13.0,>=0.12.17",
     "openai<2.0.0,>=1.58.1",
 ]
 files = [
-    {file = "llama_index_llms_openai-0.3.17-py3-none-any.whl", hash = "sha256:06ae687bfbe17f9eadc09c7167ac2a67d8ff5548164166746be251698f5e7b58"},
-    {file = "llama_index_llms_openai-0.3.17.tar.gz", hash = "sha256:19f478054a017e5e3c16f4335a7e149a1f28cc59871c9873adc49a46b594ac99"},
+    {file = "llama_index_llms_openai-0.3.25-py3-none-any.whl", hash = "sha256:b21ea58f20c82f442b910b8f878bbbfd4937f601aa436cbe55b26c1d490762a6"},
+    {file = "llama_index_llms_openai-0.3.25.tar.gz", hash = "sha256:1e4fd1d166bb635ca7c03f0486c04d80978948c5b8d89c8b469ae5d02852cf4b"},
 ]
 
 [[package]]
@@ -4870,16 +4870,16 @@ files = [
 
 [[package]]
 name = "types-cffi"
-version = "1.16.0.20241221"
-requires_python = ">=3.8"
+version = "1.16.0.20250307"
+requires_python = ">=3.9"
 summary = "Typing stubs for cffi"
 groups = ["lint"]
 dependencies = [
     "types-setuptools",
 ]
 files = [
-    {file = "types_cffi-1.16.0.20241221-py3-none-any.whl", hash = "sha256:e5b76b4211d7a9185f6ab8d06a106d56c7eb80af7cdb8bfcb4186ade10fb112f"},
-    {file = "types_cffi-1.16.0.20241221.tar.gz", hash = "sha256:1c96649618f4b6145f58231acb976e0b448be6b847f7ab733dabe62dfbff6591"},
+    {file = "types_cffi-1.16.0.20250307-py3-none-any.whl", hash = "sha256:9d20eef09ec09fb2622d3ebe527ea0d214af2687bd192cfbe6047a7418450f94"},
+    {file = "types_cffi-1.16.0.20250307.tar.gz", hash = "sha256:847fa420d654eb403b5eca7893e19857feac3ba95b3bcbecd6b291c008de1c75"},
 ]
 
 [[package]]
@@ -5131,7 +5131,7 @@ dependencies = [
     "boto3~=1.34.0",
     "botocore~=1.34.0",
     "kombu==5.3.7",
-    "llama-index-llms-azure-openai==0.3.0",
+    "llama-index-llms-azure-openai==0.3.1",
     "llama-index==0.12.8",
     "redis~=5.2.1",
     "requests==2.31.0",
@@ -5146,7 +5146,7 @@ path = "./unstract/filesystem"
 summary = "Unstract filesystem package"
 groups = ["hook-check-django-migrations"]
 dependencies = [
-    "unstract-sdk~=0.60.0",
+    "unstract-sdk~=0.60.1",
 ]
 
 [[package]]
@@ -5164,7 +5164,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.60.0"
+version = "0.60.1"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["hook-check-django-migrations"]
@@ -5180,11 +5180,11 @@ dependencies = [
     "llama-index-embeddings-vertex==0.3.1",
     "llama-index-llms-anthropic==0.6.3",
     "llama-index-llms-anyscale==0.3.0",
-    "llama-index-llms-azure-openai==0.3.0",
+    "llama-index-llms-azure-openai==0.3.1",
     "llama-index-llms-bedrock==0.3.3",
     "llama-index-llms-mistralai==0.3.1",
     "llama-index-llms-ollama==0.5.0",
-    "llama-index-llms-openai==0.3.17",
+    "llama-index-llms-openai==0.3.25",
     "llama-index-llms-palm==0.3.0",
     "llama-index-llms-replicate==0.4.0",
     "llama-index-llms-vertex==0.4.2",
@@ -5206,8 +5206,8 @@ dependencies = [
     "transformers==4.37.0",
 ]
 files = [
-    {file = "unstract_sdk-0.60.0-py3-none-any.whl", hash = "sha256:0d261b2250ae74142acd94d4298f95780567545a919e18584b505d9bd14cb873"},
-    {file = "unstract_sdk-0.60.0.tar.gz", hash = "sha256:767333e1847f43c7de99b0aa802f9358168eb742e43c35e744f12baab690a364"},
+    {file = "unstract_sdk-0.60.1-py3-none-any.whl", hash = "sha256:a77f484f2d2114ec710b1e8b413d8eee0e29ce280ef4be0c43c946e5abf56a2c"},
+    {file = "unstract_sdk-0.60.1.tar.gz", hash = "sha256:df86dc341eba18358e82ab961ea09fc095b1637ee83285262be10268b714125a"},
 ]
 
 [[package]]
@@ -5223,7 +5223,7 @@ dependencies = [
     "docker~=6.1.3",
     "jsonschema~=4.18.2",
     "unstract-flags",
-    "unstract-sdk~=0.60.0",
+    "unstract-sdk~=0.60.1",
     "unstract-tool-sandbox",
 ]
 
@@ -5302,7 +5302,7 @@ files = [
 
 [[package]]
 name = "virtualenv"
-version = "20.29.2"
+version = "20.29.3"
 requires_python = ">=3.8"
 summary = "Virtual Python Environment builder"
 groups = ["lint"]
@@ -5312,8 +5312,8 @@ dependencies = [
     "platformdirs<5,>=3.9.1",
 ]
 files = [
-    {file = "virtualenv-20.29.2-py3-none-any.whl", hash = "sha256:febddfc3d1ea571bdb1dc0f98d7b45d24def7428214d4fb73cc486c9568cce6a"},
-    {file = "virtualenv-20.29.2.tar.gz", hash = "sha256:fdaabebf6d03b5ba83ae0a02cfe96f48a716f4fae556461d180825866f75b728"},
+    {file = "virtualenv-20.29.3-py3-none-any.whl", hash = "sha256:3e3d00f5807e83b234dfb6122bf37cfadf4be216c53a49ac059d02414f819170"},
+    {file = "virtualenv-20.29.3.tar.gz", hash = "sha256:95e39403fcf3940ac45bc717597dba16110b74506131845d9b687d5e73d947ac"},
 ]
 
 [[package]]
