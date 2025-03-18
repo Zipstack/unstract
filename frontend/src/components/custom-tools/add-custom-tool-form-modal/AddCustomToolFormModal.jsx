@@ -7,6 +7,7 @@ import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
 import { useAlertStore } from "../../../store/alert-store";
 import "./AddCustomToolFormModal.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+
 import { useNavigate } from "react-router-dom";
 const defaultFromDetails = {
   tool_name: "",
@@ -89,7 +90,11 @@ function AddCustomToolFormModal({
 
   return (
     <Modal
-      title={isEdit ? "Edit Prompt Studio project" : "Create new Prompt Studio project"}
+      title={
+        isEdit
+          ? "Edit Prompt Studio project"
+          : "Create new Prompt Studio project"
+      }
       width={450}
       open={open}
       onCancel={() => {
