@@ -104,17 +104,6 @@ function DsSettingsCard({ type, endpointDetails, message }) {
   useEffect(() => {
     try {
       const inputOption =
-        require("../../../plugins/dscard-input-options/DsSettingsCardInputOptions").inputOption;
-      if (inputOption) {
-        setUpdatedInputoptions(inputOption);
-      }
-    } catch {
-      // The component will remain null of it is not available
-    }
-  }, []);
-  useEffect(() => {
-    try {
-      const inputOption =
         require("../../../plugins/dscard-input-options/AppDeploymentCardInputOptions").appDeploymentInputOption;
       if (flags.app_deployment && inputOption) {
         setUpdatedInputoptions(inputOption);
