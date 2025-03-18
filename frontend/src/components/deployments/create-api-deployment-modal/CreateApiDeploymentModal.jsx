@@ -183,7 +183,7 @@ const CreateApiDeploymentModal = ({
         onValuesChange={handleInputChange}
       >
         <Form.Item
-          label="Display Name"
+          label="Display Name(for humans)"
           name="display_name"
           rules={[{ required: true, message: "Please enter display name" }]}
           validateStatus={
@@ -206,7 +206,7 @@ const CreateApiDeploymentModal = ({
         </Form.Item>
 
         <Form.Item
-          label="API Name"
+          label="API Name(forms part of the API signature)"
           name="api_name"
           rules={[
             { required: true, message: "Please enter API Name" },
