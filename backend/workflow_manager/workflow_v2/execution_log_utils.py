@@ -45,10 +45,11 @@ def consume_log_history() -> None:
     }
 
     execution_map = {
-        obj.id: obj for obj in WorkflowExecution.objects.filter(id__in=execution_ids)
+        str(obj.id): obj
+        for obj in WorkflowExecution.objects.filter(id__in=execution_ids)
     }
     file_execution_map = {
-        obj.id: obj
+        str(obj.id): obj
         for obj in WorkflowFileExecution.objects.filter(id__in=file_execution_ids)
     }
 
@@ -63,7 +64,7 @@ def consume_log_history() -> None:
             continue  # Skip logs with missing execution reference
 
         execution_log = ExecutionLog(
-            execution=execution,
+            wf_execution=execution,
             data=log_data.data,
             event_time=log_data.event_time,
         )

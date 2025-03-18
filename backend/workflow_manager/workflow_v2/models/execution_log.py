@@ -8,6 +8,14 @@ from workflow_manager.workflow_v2.models import WorkflowExecution
 
 class ExecutionLog(BaseModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # TODO: Deprecated field, retained for backward compatibility
+    # Remove after old logs are rotated from the system
+    # Will be NULL for new records, use `wf_execution` instead
+    execution_id = models.UUIDField(
+        editable=False,
+        db_comment="Execution ID (deprecated, refer wf_execution instead)",
+        null=True,
+    )
     wf_execution = models.ForeignKey(
         WorkflowExecution,
         on_delete=models.CASCADE,
