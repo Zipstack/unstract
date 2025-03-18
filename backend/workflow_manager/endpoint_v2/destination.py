@@ -140,6 +140,7 @@ class DestinationConnector(BaseConnector):
         file_name: str,
         workflow: Workflow,
         input_file_path: str,
+        file_execution_id: str,
     ) -> None:
         result = self.get_result()
         meta_data = self.get_metadata()
@@ -149,6 +150,7 @@ class DestinationConnector(BaseConnector):
             result=result,
             input_file_path=input_file_path,
             meta_data=meta_data,
+            file_execution_id=file_execution_id,
         )
 
     def handle_output(
@@ -159,6 +161,7 @@ class DestinationConnector(BaseConnector):
         input_file_path: str,
         error: Optional[str] = None,
         use_file_history: bool = True,
+        file_execution_id: str = None,
     ) -> None:
         """Handle the output based on the connection type."""
         connection_type = self.endpoint.connection_type
@@ -181,7 +184,12 @@ class DestinationConnector(BaseConnector):
             if WorkflowUtil.validate_db_rule(
                 result, workflow, file_hash.file_destination
             ):
-                self._push_data_to_queue(file_name, workflow, input_file_path)
+                self._push_data_to_queue(
+                    file_name,
+                    workflow,
+                    input_file_path,
+                    file_execution_id,
+                )
             else:
                 self.insert_into_db(input_file_path=input_file_path)
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
@@ -191,7 +199,12 @@ class DestinationConnector(BaseConnector):
                 file_name=file_name, error=error, result=result, metadata=exec_metadata
             )
         elif connection_type == WorkflowEndpoint.ConnectionType.MANUALREVIEW:
-            self._push_data_to_queue(file_name, workflow, input_file_path)
+            self._push_data_to_queue(
+                file_name,
+                workflow,
+                input_file_path,
+                file_execution_id,
+            )
         if self.execution_service:
             self.execution_service.publish_log(
                 message=f"File '{file_name}' processed successfully"
@@ -551,6 +564,7 @@ class DestinationConnector(BaseConnector):
         result: Optional[str] = None,
         input_file_path: Optional[str] = None,
         meta_data: Optional[dict[str, Any]] = None,
+        file_execution_id: str = None,
     ) -> None:
         """Handle the Manual Review QUEUE result.
 
@@ -597,7 +611,7 @@ class DestinationConnector(BaseConnector):
                 workflow_id=str(self.workflow_id),
                 file_content=file_content_base64,
                 whisper_hash=whisper_hash,
-                execution_id=self.execution_id,
+                file_execution_id=file_execution_id,
             ).to_dict()
             # Convert the result dictionary to a JSON string
             queue_result_json = json.dumps(queue_result)

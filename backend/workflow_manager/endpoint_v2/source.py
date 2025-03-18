@@ -627,7 +627,7 @@ class SourceConnector(BaseConnector):
         self,
         input_file_path: str,
         workflow_file_execution: WorkflowFileExecution,
-        tags=list[str],
+        tags: list[str] = [],
     ) -> str:
         """Add input file to execution directory.
 

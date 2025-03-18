@@ -21,7 +21,7 @@ const CustomMarkdown = ({
     - New line: \n
   */
   const patterns = [
-    { type: "tripleCode", regex: /```([^`]{1,1000})```/g },
+    { type: "tripleCode", regex: /```\n([\s\S]*?)\n```/g },
     { type: "inlineCode", regex: /`([^`]{1,100})`/g },
     { type: "bold", regex: /\*\*([^*]{1,100})\*\*/g },
     { type: "link", regex: /\[([^\]]{1,100})\]\(([^)]{1,200})\)/g },
