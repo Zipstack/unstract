@@ -1,8 +1,10 @@
 import logging
+import uuid
 from typing import Any, Optional
 
 from account_v2.models import User
 from adapter_processor_v2.adapter_processor import AdapterProcessor
+from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from prompt_studio.prompt_studio_registry_v2.prompt_studio_registry_helper import (
     PromptStudioRegistryHelper,
 )
@@ -127,3 +129,19 @@ class ToolProcessor:
         tool_list: list[dict[str, Any]] = tool_registry.fetch_tools_descriptions()
         tool_list = tool_list + prompt_studio_tools
         return tool_list
+
+    @staticmethod
+    def get_prompt_studio_tool_count(user: User) -> int:
+        """Get count of valid prompt studio tools."""
+        # Filter the Prompt studio registry based on the users.
+        prompt_studio_tools = PromptStudioRegistry.objects.list_tools(user)
+        valid_tools = 0
+
+        for tool in prompt_studio_tools:
+            try:
+                uuid.UUID(str(tool.prompt_registry_id))
+                valid_tools += 1
+            except ValueError:
+                continue
+
+        return valid_tools
