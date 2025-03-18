@@ -340,12 +340,15 @@ const isJson = (text) => {
   }
 };
 
-const displayPromptResult = (output, isFormat = false) => {
+const displayPromptResult = (
+  output,
+  isFormat = false,
+  isHighlightEnabled = false
+) => {
   /*
     output: The data to be displayed or parsed
     isFormat: A flag indicating whether the output should be formatted
   */
-
   let i = 0;
   let parsedData = output;
 
@@ -367,9 +370,11 @@ const displayPromptResult = (output, isFormat = false) => {
   // Check if the parsed data is an array or object and formatting is requested
   if (Array.isArray(parsedData) || typeof parsedData === "object") {
     // If formatting is requested, return the JSON string with indentation
+    if (isHighlightEnabled) {
+      return parsedData;
+    }
     return JSON.stringify(parsedData, null, 4);
   }
-
   return String(parsedData);
 };
 
