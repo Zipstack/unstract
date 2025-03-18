@@ -46,7 +46,7 @@ class IndexingService:
                 embedding=instance_identifiers.embedding_instance_id,
                 file_path=file_info.file_path,
                 file_hash=file_info.file_hash,
-                x2Text=instance_identifiers.x2text_instance_id,
+                x2text=instance_identifiers.x2text_instance_id,
                 chunk_size=str(chunking_config.chunk_size),
                 chunk_overlap=str(chunking_config.chunk_overlap),
                 tool=util,
