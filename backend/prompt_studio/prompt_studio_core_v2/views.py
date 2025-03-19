@@ -9,7 +9,7 @@ from django.http import HttpRequest
 from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
 from permissions.permission import IsOwner, IsOwnerOrSharedUser
-from prompt_studio.processor_loader import get_plugin_class_by_name, load_plugins
+from prompt_studio.processor_loader import get_plugin_class_by_name
 from prompt_studio.prompt_profile_manager_v2.constants import (
     ProfileManagerErrors,
     ProfileManagerKeys,
@@ -74,8 +74,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
 
     serializer_class = CustomToolSerializer
-
-    processor_plugins = load_plugins()
 
     def get_permissions(self) -> list[Any]:
         if self.action == "destroy":
@@ -229,23 +227,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             document_id=document_id,
             run_id=run_id,
         )
-
-        usage_kwargs: dict[Any, Any] = dict()
-        usage_kwargs[ToolStudioPromptKeys.RUN_ID] = run_id
-        cls = get_plugin_class_by_name(
-            name="summarizer",
-            plugins=self.processor_plugins,
-        )
-        if cls:
-            cls.process(
-                tool_id=str(tool.tool_id),
-                file_name=file_name,
-                org_id=UserSessionUtils.get_organization_id(request),
-                user_id=tool.created_by.user_id,
-                document_id=document_id,
-                usage_kwargs=usage_kwargs.copy(),
-            )
-
         if unique_id:
             return Response(
                 {"message": "Document indexed successfully."},
