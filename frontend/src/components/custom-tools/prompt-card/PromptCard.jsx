@@ -167,32 +167,45 @@ const PromptCard = memo(
       );
     };
 
+    const addCoordsToFlattened = (coords, flattened) => {
+      if (Array.isArray(coords)) {
+        flattened.push(coords);
+      }
+    };
+
+    const processNestedArray = (nestedValue, flattened) => {
+      if (Array.isArray(nestedValue)) {
+        nestedValue.forEach((coords) =>
+          addCoordsToFlattened(coords, flattened)
+        );
+      }
+    };
+
+    const processObjectValues = (item, flattened) => {
+      if (typeof item === "object" && !Array.isArray(item)) {
+        Object.values(item).forEach((value) =>
+          processNestedArray(value, flattened)
+        );
+      }
+    };
+
+    const processArrayItem = (item, flattened) => {
+      if (Array.isArray(item)) {
+        addCoordsToFlattened(item, flattened);
+      } else {
+        processObjectValues(item, flattened);
+      }
+    };
+
     const flattenHighlightData = (data) => {
       if (!data || typeof data !== "object") return data;
 
       const flattened = [];
-
-      const processValue = (value) => {
+      Object.values(data).forEach((value) => {
         if (Array.isArray(value)) {
-          value.forEach((item) => {
-            if (Array.isArray(item)) {
-              flattened.push(item);
-            } else if (typeof item === "object") {
-              Object.values(item).forEach((nestedValue) => {
-                if (Array.isArray(nestedValue)) {
-                  nestedValue.forEach((coords) => {
-                    if (Array.isArray(coords)) {
-                      flattened.push(coords);
-                    }
-                  });
-                }
-              });
-            }
-          });
+          value.forEach((item) => processArrayItem(item, flattened));
         }
-      };
-
-      Object.values(data).forEach(processValue);
+      });
       return flattened;
     };
 
