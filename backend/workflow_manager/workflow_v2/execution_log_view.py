@@ -1,5 +1,6 @@
 import logging
 
+from django.db.models import Q
 from django.db.models.query import QuerySet
 from django_filters.rest_framework import DjangoFilterBackend
 from permissions.permission import IsOwner
@@ -27,7 +28,10 @@ class WorkflowExecutionLogViewSet(viewsets.ModelViewSet):
     def get_queryset(self) -> QuerySet:
         # Get the execution_id:pk from the URL path
         execution_id = self.kwargs.get("pk")
-        filter_param = {"execution_id": execution_id}
 
-        queryset = ExecutionLog.objects.filter(**filter_param)
+        # Query by execution_id for backward compatiblity
+        # Remove filter after execution_id is removed
+        queryset = ExecutionLog.objects.filter(
+            Q(wf_execution_id=execution_id) | Q(execution_id=execution_id)
+        )
         return queryset
