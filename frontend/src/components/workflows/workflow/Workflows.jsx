@@ -203,6 +203,8 @@ function Workflows() {
   useEffect(() => {
     if (!isLoading && count === 0 && !modalDismissed) {
       setShowModal(true);
+    } else if (!isLoading && count > 0) {
+      setShowModal(false);
     }
   }, [isLoading, count, modalDismissed]);
 
@@ -213,7 +215,9 @@ function Workflows() {
 
   return (
     <>
-      {showModal && <PromptStudioModal onClose={handleModalClose} />}
+      {showModal && (
+        <PromptStudioModal onClose={handleModalClose} showModal={showModal} />
+      )}
       <ToolNavBar
         enableSearch
         searchList={projectList}
