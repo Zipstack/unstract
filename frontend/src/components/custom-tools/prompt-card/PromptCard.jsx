@@ -49,6 +49,7 @@ const PromptCard = memo(
       details,
       summarizeIndexStatus,
       updateCustomTool,
+      singlePassExtractMode,
     } = useCustomToolStore();
     const { messages } = useSocketCustomToolStore();
     const { setAlertDetails } = useAlertStore();
@@ -166,6 +167,35 @@ const PromptCard = memo(
       );
     };
 
+    const flattenHighlightData = (data) => {
+      if (!data || typeof data !== "object") return data;
+
+      const flattened = [];
+
+      const processValue = (value) => {
+        if (Array.isArray(value)) {
+          value.forEach((item) => {
+            if (Array.isArray(item)) {
+              flattened.push(item);
+            } else if (typeof item === "object") {
+              Object.values(item).forEach((nestedValue) => {
+                if (Array.isArray(nestedValue)) {
+                  nestedValue.forEach((coords) => {
+                    if (Array.isArray(coords)) {
+                      flattened.push(coords);
+                    }
+                  });
+                }
+              });
+            }
+          });
+        }
+      };
+
+      Object.values(data).forEach(processValue);
+      return flattened;
+    };
+
     const handleSelectHighlight = (
       highlightData,
       highlightedPrompt,
@@ -173,9 +203,13 @@ const PromptCard = memo(
       confidenceData
     ) => {
       if (details?.enable_highlight) {
+        const processedHighlight =
+          singlePassExtractMode && typeof highlightData === "object"
+            ? flattenHighlightData(highlightData)
+            : highlightData;
         updateCustomTool({
           selectedHighlight: {
-            highlight: highlightData,
+            highlight: processedHighlight,
             highlightedPrompt: highlightedPrompt,
             highlightedProfile: highlightedProfile,
             confidence: confidenceData,
