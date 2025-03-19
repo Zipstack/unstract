@@ -30,6 +30,12 @@ class PromptStudioOutputManager(BaseModel):
     highlight_data = models.JSONField(
         db_comment="Field to store highlight data", editable=True, null=True, blank=True
     )
+    confidence_data = models.JSONField(
+        db_comment="Field to store confidence data",
+        editable=True,
+        null=True,
+        blank=True,
+    )
     eval_metrics = models.JSONField(
         db_column="eval_metrics",
         null=False,

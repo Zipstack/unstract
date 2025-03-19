@@ -169,17 +169,16 @@ const PromptCard = memo(
     const handleSelectHighlight = (
       highlightData,
       highlightedPrompt,
-      highlightedProfile
+      highlightedProfile,
+      confidenceData
     ) => {
-      if (
-        details?.enable_highlight &&
-        promptDetailsState?.enforce_type !== "json"
-      ) {
+      if (details?.enable_highlight) {
         updateCustomTool({
           selectedHighlight: {
             highlight: highlightData,
             highlightedPrompt: highlightedPrompt,
             highlightedProfile: highlightedProfile,
+            confidence: confidenceData,
           },
         });
       }
