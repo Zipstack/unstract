@@ -110,11 +110,11 @@ function DisplayPromptResult({
         <>
           {"["}
           <div style={{ paddingLeft: "20px" }}>
-            {data.map((item, index) => (
+            {data?.map((item, index) => (
               <div key={generateUUID()}>
                 {renderJson(
                   item,
-                  highlightData[index],
+                  highlightData?.[index],
                   confidenceData?.[index],
                   indent + 1,
                   `${path}[${index}]`
