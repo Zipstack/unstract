@@ -217,7 +217,9 @@ const PromptCard = memo(
     ) => {
       if (details?.enable_highlight) {
         const processedHighlight =
-          singlePassExtractMode && typeof highlightData === "object"
+          singlePassExtractMode &&
+          typeof highlightData === "object" &&
+          !Array.isArray(highlightData)
             ? flattenHighlightData(highlightData)
             : highlightData;
         updateCustomTool({
