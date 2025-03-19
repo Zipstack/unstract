@@ -389,6 +389,8 @@ function ApiDeployment() {
   useEffect(() => {
     if (!isLoading && count === 0 && !modalDismissed) {
       setShowModal(true);
+    } else if (!isLoading && count > 0) {
+      setShowModal(false);
     }
   }, [isLoading, count, modalDismissed]);
 
@@ -399,7 +401,9 @@ function ApiDeployment() {
 
   return (
     <>
-      {showModal && <PromptStudioModal onClose={handleModalClose} />}
+      {showModal && (
+        <PromptStudioModal onClose={handleModalClose} showModal={showModal} />
+      )}
       <Layout
         type="api"
         columns={columns}

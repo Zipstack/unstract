@@ -611,6 +611,8 @@ function Pipelines({ type }) {
   useEffect(() => {
     if (!isLoading && count === 0 && !modalDismissed) {
       setShowModal(true);
+    } else if (!isLoading && count > 0) {
+      setShowModal(false);
     }
   }, [isLoading, count, modalDismissed]);
 
@@ -621,7 +623,9 @@ function Pipelines({ type }) {
 
   return (
     <div className="p-or-d-layout">
-      {showModal && <PromptStudioModal onClose={handleModalClose} />}
+      {showModal && (
+        <PromptStudioModal onClose={handleModalClose} showModal={showModal} />
+      )}
       <Layout
         type={type}
         columns={columns}
