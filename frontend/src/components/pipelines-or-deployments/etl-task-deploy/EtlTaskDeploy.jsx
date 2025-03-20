@@ -7,6 +7,7 @@ import cronstrue from "cronstrue";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
+import { usePromptStudioStore } from "../../../store/prompt-studio-store";
 import CronGenerator from "../../cron-generator/CronGenerator.jsx";
 import { workflowService } from "../../workflows/workflow/workflow-service.js";
 import "./EtlTaskDeploy.css";
@@ -14,6 +15,8 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { useWorkflowStore } from "../../../store/workflow-store.js";
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData.js";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
+import { PromptStudioModal } from "../../common/PromptStudioModal";
+import { useCallback } from "react";
 
 const defaultFromDetails = {
   pipeline_name: "",
@@ -52,6 +55,18 @@ const EtlTaskDeploy = ({
   const [summary, setSummary] = useState(null);
   const { posthogDeploymentEventText, setPostHogCustomEvent } =
     usePostHogEvents();
+
+  const { count, isLoadingModal, fetchCount } = usePromptStudioStore();
+  const [showModal, setShowModal] = useState(false);
+  const [modalDismissed, setModalDismissed] = useState(false);
+
+  const fetchPromptCount = useCallback(() => {
+    fetchCount();
+  }, [fetchCount]);
+
+  useEffect(() => {
+    fetchPromptCount();
+  }, [fetchPromptCount]);
 
   useEffect(() => {
     if (workflowId) {
@@ -128,7 +143,8 @@ const EtlTaskDeploy = ({
     } else {
       getWorkflows();
     }
-  }, [type]);
+    fetchCount();
+  }, [type, fetchCount]);
 
   const clearFormDetails = () => {
     setFormDetails({ ...defaultFromDetails });
@@ -251,8 +267,21 @@ const EtlTaskDeploy = ({
       });
   };
 
+  useEffect(() => {
+    if (!isLoadingModal && count === 0 && !modalDismissed) {
+      setShowModal(true);
+    }
+  }, [isLoadingModal, count, modalDismissed]);
+
+  const handleModalClose = () => {
+    setShowModal(false);
+    setModalDismissed(true);
+    fetchPromptCount();
+  };
+
   return (
     <>
+      {showModal && <PromptStudioModal onClose={handleModalClose} />}
       <Modal
         title={isEdit ? `Update ${title}` : `Add ${title}`}
         centered

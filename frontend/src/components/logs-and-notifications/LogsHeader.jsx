@@ -1,21 +1,17 @@
 import { memo } from "react";
 import PropTypes from "prop-types";
-import {
-  CloseOutlined,
-  FullscreenOutlined,
-  ShrinkOutlined,
-} from "@ant-design/icons";
+import { CloseOutlined, DownOutlined, UpOutlined } from "@ant-design/icons";
 import { Button, Space, Tag, Typography } from "antd";
 
 export const LogsHeader = memo(function LogsHeader({
   isMinimized,
+  isFull,
   errorCount,
-  onSemiExpand,
-  onFullExpand,
+  onToggleExpand,
   onMinimize,
 }) {
-  const semiIcon = <ShrinkOutlined />;
-  const fullIcon = <FullscreenOutlined />;
+  const expandCollapseIcon = isFull ? <DownOutlined /> : <UpOutlined />;
+
   const minimizeIcon = <CloseOutlined />;
 
   return (
@@ -25,18 +21,10 @@ export const LogsHeader = memo(function LogsHeader({
         {isMinimized && errorCount > 0 && <Tag color="red">{errorCount}</Tag>}
       </Space>
       <Space>
-        <Button
-          type="text"
-          size="small"
-          icon={semiIcon}
-          onClick={onSemiExpand}
-        />
-        <Button
-          type="text"
-          size="small"
-          icon={fullIcon}
-          onClick={onFullExpand}
-        />
+        <Button type="text" size="small" onClick={onToggleExpand}>
+          {expandCollapseIcon}
+        </Button>
+
         <Button
           type="text"
           size="small"
@@ -50,8 +38,8 @@ export const LogsHeader = memo(function LogsHeader({
 
 LogsHeader.propTypes = {
   isMinimized: PropTypes.bool.isRequired,
+  isFull: PropTypes.bool.isRequired,
   errorCount: PropTypes.number.isRequired,
-  onSemiExpand: PropTypes.func.isRequired,
-  onFullExpand: PropTypes.func.isRequired,
+  onToggleExpand: PropTypes.func.isRequired,
   onMinimize: PropTypes.func.isRequired,
 };

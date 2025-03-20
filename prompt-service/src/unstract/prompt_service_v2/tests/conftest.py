@@ -13,7 +13,14 @@ def client():
     app = Flask(__name__)
     app.register_blueprint(indexing_bp)
     app.register_blueprint(extraction_bp)
-    app.config.update({"TESTING": True, "DEBUG": True, "PROPAGATE_EXCEPTIONS": True, "WTF_CSRF_ENABLED": True})
+    app.config.update(
+        {
+            "TESTING": True,
+            "DEBUG": True,
+            "PROPAGATE_EXCEPTIONS": True,
+            "WTF_CSRF_ENABLED": True,
+        }
+    )
     with app.test_client() as client:
         yield client
     # TODO Add teardown code here

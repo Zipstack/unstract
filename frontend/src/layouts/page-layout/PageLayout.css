@@ -21,4 +21,5 @@
   position: absolute;
   margin-left: -10px;
   margin-top: -10px;
+  z-index: 1000;
 }
