@@ -58,6 +58,7 @@ class StructureToolHelper:
         chunk_overlap: int,
         file_hash: Optional[str] = None,
         tool_id: str = None,
+        extracted_text: str = None,
     ) -> str:
 
         x2Text = tool_settings[SettingsKeys.X2TEXT_ADAPTER]
@@ -79,6 +80,7 @@ class StructureToolHelper:
             IKeys.TAGS: tool.tags,
             IKeys.TOOL_EXECUTION_METATADA: tool.get_exec_metadata(),
             IKeys.EXECUTION_DATA_DIR: execution_run_data_folder,
+            IKeys.EXTRACTED_TEXT: extracted_text,
         }
 
         responder = PromptTool(

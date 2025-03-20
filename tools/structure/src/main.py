@@ -117,7 +117,7 @@ class StructureTool(BaseTool):
         usage_kwargs: dict[Any, Any] = dict()
         usage_kwargs[UsageKwargs.RUN_ID] = self.file_execution_id
         usage_kwargs[UsageKwargs.FILE_NAME] = self.source_file_name
-        STHelper.dynamic_extraction(
+        extracted_text = STHelper.dynamic_extraction(
             file_path=input_file,
             enable_highlight=enable_highlight,
             usage_kwargs=usage_kwargs,
@@ -152,6 +152,9 @@ class StructureTool(BaseTool):
                     reIndex=True,
                     usage_kwargs=usage_kwargs,
                     enable_highlight=enable_highlight,
+                    extracted_text=extracted_text,
+                    tool_id=tool_metadata[SettingsKeys.TOOL_ID],
+                    file_hash=file_hash,
                 )
                 # TODO : Handle metrics for single pass extraction
                 # index_metrics = {SettingsKeys.INDEXING: index.get_metrics()}
@@ -195,6 +198,7 @@ class StructureTool(BaseTool):
                             chunk_overlap=output[SettingsKeys.CHUNK_OVERLAP],
                             tool_id=tool_metadata[SettingsKeys.TOOL_ID],
                             file_hash=file_hash,
+                            extracted_text=extracted_text,
                         )
                         # TODO : Handle metrics for single pass extraction
                         # index_metrics[output[SettingsKeys.NAME]] = {
@@ -368,6 +372,7 @@ class StructureTool(BaseTool):
             tool=self,
             chunk_overlap=0,
             chunk_size=0,
+            extracted_text=summarized_context,
         )
         return summarize_file_hash
 
