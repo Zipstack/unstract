@@ -1,26 +1,16 @@
 from typing import Any, Optional
 
-from flask import Blueprint, Flask, Response, abort, jsonify, request
-from unstract.runner import UnstractRunner
-from unstract.runner.utils import Utils
-
-app = Flask(__name__)
-
-log_level = Utils.get_log_level()
-app.logger.setLevel(log_level.value)
+from flask import Blueprint, abort
+from flask import current_app as app
+from flask import request
+from unstract.runner.runner import UnstractRunner
 
 # Define a Blueprint with a root URL path
-bp = Blueprint("v1", __name__, url_prefix="/v1/api")
-
-
-# Define a route to ping test
-@bp.route("/ping", methods=["GET"])
-def get_items() -> Response:
-    return jsonify({"message": "pong!!!"})
+run_bp = Blueprint("run", __name__)
 
 
 # Run container
-@bp.route("container/run", methods=["POST"])
+@run_bp.route("container/run", methods=["POST"])
 def run_container() -> Optional[Any]:
     data = request.get_json()
     image_name = data["image_name"]
@@ -48,7 +38,7 @@ def run_container() -> Optional[Any]:
     return result
 
 
-@bp.route("container/<command>", methods=["GET"])
+@run_bp.route("container/<command>", methods=["GET"])
 def run_command(command: str) -> Optional[Any]:
     """Endpoint which will can execute any of the below commands.
 
@@ -66,10 +56,3 @@ def run_command(command: str) -> Optional[Any]:
     runner = UnstractRunner(image_name, image_tag, app)
 
     return runner.run_command(command)
-
-
-# Register the Blueprint with the Flask app
-app.register_blueprint(bp)
-
-if __name__ == "__main__":
-    app.run(debug=True)

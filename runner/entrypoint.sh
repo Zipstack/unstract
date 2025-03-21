@@ -39,4 +39,4 @@ else
 fi
 
 # Start Gunicorn
-.venv/bin/gunicorn "${gunicorn_args[@]}" unstract.runner.main:app
+.venv/bin/gunicorn "${gunicorn_args[@]}" unstract.runner:app
