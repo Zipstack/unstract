@@ -7,7 +7,7 @@ X_FRAME_OPTIONS = "ALLOW-FROM http://localhost:3000"
 
 # Ensure it's defined before modifying
 try:
-    CORS_ALLOWED_ORIGINS  # Check if it exists
+    CORS_ALLOWED_ORIGINS  # noqa: F405
 except NameError:
     CORS_ALLOWED_ORIGINS = []  # Define it if not present
 # Add to the CORS_ALLOWED_ORIGINS from base
