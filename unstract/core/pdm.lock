@@ -5,7 +5,7 @@
 groups = ["default", "flask"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:d658c372f9057ef6ef0f011d86dd5229c44b138b8db1c06713f661af17ece855"
+content_hash = "sha256:e80a4c09d25b2b6e60298904c5d16ca6e2a210c96d2adb45ab7e70b8040df4d3"
 
 [[package]]
 name = "amqp"
