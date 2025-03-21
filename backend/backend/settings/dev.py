@@ -11,7 +11,7 @@ try:
 except NameError:
     CORS_ALLOWED_ORIGINS = []  # Define it if not present
 # Add to the CORS_ALLOWED_ORIGINS from base
-CORS_ALLOWED_ORIGINS = CORS_ALLOWED_ORIGINS + [
+CORS_ALLOWED_ORIGINS = CORS_ALLOWED_ORIGINS + [ # noqa: F405
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://frontend.unstract.localhost",
