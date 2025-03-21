@@ -1,10 +1,14 @@
 import logging
 
+from django.db.models import Q
 from django.db.models.query import QuerySet
+from django_filters.rest_framework import DjangoFilterBackend
 from permissions.permission import IsOwner
 from rest_framework import viewsets
+from rest_framework.filters import OrderingFilter
 from rest_framework.versioning import URLPathVersioning
 from utils.pagination import CustomPagination
+from workflow_manager.workflow_v2.filters import ExecutionLogFilter
 from workflow_manager.workflow_v2.models.execution_log import ExecutionLog
 from workflow_manager.workflow_v2.serializers import WorkflowExecutionLogSerializer
 
@@ -16,25 +20,18 @@ class WorkflowExecutionLogViewSet(viewsets.ModelViewSet):
     permission_classes = [IsOwner]
     serializer_class = WorkflowExecutionLogSerializer
     pagination_class = CustomPagination
-
-    EVENT_TIME_FIELD_ASC = "event_time"
+    filter_backends = [DjangoFilterBackend, OrderingFilter]
+    ordering_fields = ["event_time"]
+    ordering = ["event_time"]
+    filterset_class = ExecutionLogFilter
 
     def get_queryset(self) -> QuerySet:
         # Get the execution_id:pk from the URL path
         execution_id = self.kwargs.get("pk")
-        filter_param = {"execution_id": execution_id}
 
-        file_execution_id = self.request.query_params.get("file_execution_id")
-        if file_execution_id and file_execution_id == "null":
-            filter_param["file_execution_id"] = None
-        elif file_execution_id:
-            filter_param["file_execution_id"] = file_execution_id
-
-        log_level = self.request.query_params.get("log_level")
-        if log_level:
-            filter_param["data__level"] = log_level.upper()
-
-        queryset = ExecutionLog.objects.filter(**filter_param).order_by(
-            self.EVENT_TIME_FIELD_ASC
+        # Query by execution_id for backward compatiblity
+        # Remove filter after execution_id is removed
+        queryset = ExecutionLog.objects.filter(
+            Q(wf_execution_id=execution_id) | Q(execution_id=execution_id)
         )
         return queryset
