@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "dev", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:363e1d439e707e00e3098fdce8679a0a94f4bd73e43fb449ce5953eb0322c593"
+content_hash = "sha256:ee8fd8ae3a54863e4b497793c14e2118d2dcde95cb7acf820df719db35df552f"
 
 [[package]]
 name = "amqp"
@@ -1032,7 +1032,7 @@ summary = "Core library that helps with executing workflows."
 groups = ["default", "dev"]
 dependencies = [
     "-e file:///${PROJECT_ROOT}/../unstract/core#egg=unstract-core",
-    "flask>=3.1.0",
+    "flask~=3.1.0",
 ]
 
 [[package]]
