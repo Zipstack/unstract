@@ -23,7 +23,7 @@ const useSocketLogsStore = create((setState, getState) => ({
       state: msg?.state,
       prompt_key: msg?.component?.prompt_key,
       doc_name: msg?.component?.doc_name,
-      message: msg?.message,
+      message: msg?.message || msg?.log,
       cost_value: msg?.cost,
       iteration: msg?.iteration,
       iteration_total: msg?.iteration_total,
