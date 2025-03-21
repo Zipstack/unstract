@@ -1,10 +1,10 @@
+import { useMemo } from "react";
 import { BranchesOutlined } from "@ant-design/icons";
 import { Divider, Image, Layout, Space, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
-import "./SideNavBar.css";
-const { Sider } = Layout;
 
+import { useSessionStore } from "../../../store/session-store";
 import Workflows from "../../../assets/Workflows.svg";
 import apiDeploy from "../../../assets/api-deployments.svg";
 import CustomTools from "../../../assets/custom-tools-icon.svg";
@@ -15,8 +15,11 @@ import PlatformSettingsIcon from "../../../assets/platform-settings.svg";
 import task from "../../../assets/task.svg";
 import VectorDbIcon from "../../../assets/vector-db.svg";
 import TextExtractorIcon from "../../../assets/text-extractor.svg";
-import { useSessionStore } from "../../../store/session-store";
-import { useMemo } from "react";
+import TerminalIcon from "../../../assets/terminal.svg";
+
+import "./SideNavBar.css";
+
+const { Sider } = Layout;
 
 let getMenuItem;
 try {
@@ -132,6 +135,14 @@ const SideNavBar = ({ collapsed }) => {
           image: task,
           path: `/${orgName}/task`,
           active: window.location.pathname.startsWith(`/${orgName}/task`),
+        },
+        {
+          id: 1.5,
+          title: "Logs",
+          description: "Records system events for monitoring and debugging",
+          image: TerminalIcon,
+          path: `/${orgName}/logs`,
+          active: window.location.pathname.startsWith(`/${orgName}/logs`),
         },
       ],
     },
