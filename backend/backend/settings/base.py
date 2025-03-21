@@ -58,7 +58,7 @@ WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND = os.environ.get(
     "WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND", 10800
 )
 WEB_APP_ORIGIN_URL = os.environ.get("WEB_APP_ORIGIN_URL", "http://localhost:3000")
-CORS_ALLOWED_ORIGINS = [ WEB_APP_ORIGIN_URL ]
+CORS_ALLOWED_ORIGINS = [WEB_APP_ORIGIN_URL]
 
 LOGIN_NEXT_URL = os.environ.get("LOGIN_NEXT_URL", "http://localhost:3000/org")
 LANDING_URL = os.environ.get("LANDING_URL", "http://localhost:3000/landing")
