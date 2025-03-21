@@ -856,8 +856,10 @@ class PromptStudioHelper:
             prompt_port=settings.PROMPT_PORT,
         )
         include_metadata = {TSPKeys.INCLUDE_METADATA: True}
-
-        answer = responder.answer_prompt(payload, include_metadata)
+        headers = {Common.X_REQUEST_ID: StateStore.get(Common.REQUEST_ID)}
+        answer = responder.answer_prompt(
+            payload=payload, params=include_metadata, headers=headers
+        )
         # TODO: Make use of dataclasses
         if answer["status"] == "ERROR":
             # TODO: Publish to FE logs from here
@@ -1143,8 +1145,10 @@ class PromptStudioHelper:
             prompt_port=settings.PROMPT_PORT,
         )
         include_metadata = {TSPKeys.INCLUDE_METADATA: True}
-
-        answer = responder.single_pass_extraction(payload, include_metadata)
+        headers = {Common.X_REQUEST_ID: StateStore.get(Common.REQUEST_ID)}
+        answer = responder.single_pass_extraction(
+            payload=payload, params=include_metadata, headers=headers
+        )
         # TODO: Make use of dataclasses
         if answer["status"] == "ERROR":
             error_message = answer.get("error", None)
