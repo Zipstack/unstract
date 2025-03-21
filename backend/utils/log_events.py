@@ -21,7 +21,8 @@ sio = socketio.Server(
     async_mode="threading",
     # Make sure only the web app origin and other explicitly added CORS_ALLOWED_ORIGINS are allowed to create socket connection
     # TODO: this is a temporary fix we should refactor `CORS_ALLOWED_ORIGINS` in to base to include settings.WEB_APP_ORIGIN_URL alone.
-    cors_allowed_origins=(settings.CORS_ALLOWED_ORIGINS or []) + [settings.WEB_APP_ORIGIN_URL], 
+    cors_allowed_origins=(settings.CORS_ALLOWED_ORIGINS or [])
+    + [settings.WEB_APP_ORIGIN_URL],
     logger=False,
     engineio_logger=False,
     always_connect=True,
