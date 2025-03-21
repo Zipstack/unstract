@@ -82,8 +82,8 @@ class UnstractRunner:
         log_dict = self.get_valid_log_message(log_message)
         if not log_dict:
             return None
-        log_type = self.get_log_type(log_dict)
-        log_level = self.get_log_level(log_dict)
+        log_type = log_dict.get("type")
+        log_level = log_dict.get("level")
         if log_type == LogType.LOG and log_level == LogLevel.ERROR:
             raise ToolRunException(log_dict.get("log"))
         if not self.is_valid_log_type(log_type):
@@ -98,7 +98,7 @@ class UnstractRunner:
         if channel:
             log_dict[LogFieldName.EXECUTION_ID] = execution_id
             log_dict[LogFieldName.ORGANIZATION_ID] = organization_id
-            log_dict[LogFieldName.TIMESTAMP] = datetime.now(timezone.utc).timestamp()
+            log_dict[LogFieldName.TIMESTAMP] = self._get_log_timestamp(log_dict)
             log_dict[LogFieldName.FILE_EXECUTION_ID] = file_execution_id
 
             # Publish to channel of socket io
@@ -116,17 +116,30 @@ class UnstractRunner:
             return True
         return False
 
-    def get_log_type(self, log_dict: Any) -> Optional[str]:
-        if isinstance(log_dict, dict):
-            log_type: Optional[str] = log_dict.get("type")
-            return log_type
-        return None
+    def _get_log_timestamp(self, log_dict: dict[str, Any]) -> float:
+        """Obtains the timestamp from the log dictionary.
 
-    def get_log_level(self, log_dict: Any) -> Optional[str]:
-        if isinstance(log_dict, dict):
-            log_level: Optional[str] = log_dict.get("level")
-            return log_level
-        return None
+        Checks if the log dictionary has an `emitted_at` key and returns the
+        corresponding timestamp. If the key is not present, returns the current
+        timestamp.
+
+        Args:
+            log_dict (dict[str, Any]): Log message from tool
+
+        Returns:
+            float: Timestamp of the log message
+        """
+        # Use current timestamp if emitted_at is not present
+        if "emitted_at" not in log_dict:
+            return datetime.now(timezone.utc).timestamp()
+
+        emitted_at = log_dict["emitted_at"]
+        if isinstance(emitted_at, str):
+            # Convert ISO format string to UNIX timestamp
+            return datetime.fromisoformat(emitted_at).timestamp()
+        elif isinstance(emitted_at, (int, float)):
+            # Already a UNIX timestamp
+            return float(emitted_at)
 
     def run_command(self, command: str) -> Optional[Any]:
         """Runs any given command on the container.
@@ -231,6 +244,10 @@ class UnstractRunner:
                 execution_id=execution_id,
                 organization_id=organization_id,
                 file_execution_id=file_execution_id,
+            )
+            self.logger.info(
+                f"Execution ID: {execution_id}, docker "
+                f"container: {container_name} ran successfully"
             )
         except ToolRunException as te:
             self.logger.error(
