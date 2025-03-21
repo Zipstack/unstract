@@ -1,4 +1,4 @@
-from backend.settings.base import *  # noqa: F403
+from backend.settings.base import *  # noqa: F403, F405
 
 DEBUG = True
 
