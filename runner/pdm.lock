@@ -2,17 +2,17 @@
 # It is not intended for manual editing.
 
 [metadata]
-groups = ["default", "deploy", "dev"]
+groups = ["default", "deploy", "dev", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:a4b2472555d148a4c1c1c78b3adfba79babbd333b2c223dae5248224f2aec69d"
+content_hash = "sha256:363e1d439e707e00e3098fdce8679a0a94f4bd73e43fb449ce5953eb0322c593"
 
 [[package]]
 name = "amqp"
 version = "5.3.1"
 requires_python = ">=3.6"
 summary = "Low-level AMQP client for Python (fork of amqplib)."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "vine<6.0.0,>=5.0.0",
 ]
@@ -26,7 +26,7 @@ name = "async-timeout"
 version = "5.0.1"
 requires_python = ">=3.8"
 summary = "Timeout context manager for asyncio programs"
-groups = ["default"]
+groups = ["default", "dev"]
 marker = "python_full_version < \"3.11.3\""
 files = [
     {file = "async_timeout-5.0.1-py3-none-any.whl", hash = "sha256:39e3809566ff85354557ec2398b55e096c8364bacac9405a7a1fa429e77fe76c"},
@@ -38,7 +38,7 @@ name = "blinker"
 version = "1.9.0"
 requires_python = ">=3.9"
 summary = "Fast, simple object-to-object and broadcast signaling"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "blinker-1.9.0-py3-none-any.whl", hash = "sha256:ba0efaa9080b619ff2f3459d1d500c57bddea4a6b424b60a91141db6fd2f08bc"},
     {file = "blinker-1.9.0.tar.gz", hash = "sha256:b4ce2265a7abece45e7cc896e98dbebe6cead56bcf805a3d23136d145f5445bf"},
@@ -49,7 +49,7 @@ name = "certifi"
 version = "2025.1.31"
 requires_python = ">=3.6"
 summary = "Python package for providing Mozilla's CA Bundle."
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "certifi-2025.1.31-py3-none-any.whl", hash = "sha256:ca78db4565a652026a4db2bcdf68f2fb589ea80d0be70e03929ed730746b84fe"},
     {file = "certifi-2025.1.31.tar.gz", hash = "sha256:3d5da6925056f6f18f119200434a4780a94263f10d1c21d032a6f6b2baa20651"},
@@ -110,7 +110,7 @@ name = "chardet"
 version = "5.2.0"
 requires_python = ">=3.7"
 summary = "Universal encoding detector for Python 3"
-groups = ["dev"]
+groups = ["test"]
 files = [
     {file = "chardet-5.2.0-py3-none-any.whl", hash = "sha256:e1cf59446890a00105fe7b7912492ea04b6e6f06d4b742b2c788469e34c82970"},
     {file = "chardet-5.2.0.tar.gz", hash = "sha256:1b3b6ff479a8c414bc3fa2c0852995695c4a026dcd6d0633b2dd092ca39c1cf7"},
@@ -121,7 +121,7 @@ name = "charset-normalizer"
 version = "3.4.1"
 requires_python = ">=3.7"
 summary = "The Real First Universal Charset Detector. Open, modern and actively maintained alternative to Chardet."
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "charset_normalizer-3.4.1-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:91b36a978b5ae0ee86c394f5a54d6ef44db1de0815eb43de826d41d21e4af3de"},
     {file = "charset_normalizer-3.4.1-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:7461baadb4dc00fd9e0acbe254e3d7d2112e7f92ced2adc96e54ef6501c5f176"},
@@ -171,7 +171,7 @@ name = "click"
 version = "8.1.8"
 requires_python = ">=3.7"
 summary = "Composable command line interface toolkit"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "colorama; platform_system == \"Windows\"",
 ]
@@ -185,7 +185,7 @@ name = "colorama"
 version = "0.4.6"
 requires_python = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,!=3.5.*,!=3.6.*,>=2.7"
 summary = "Cross-platform colored terminal text."
-groups = ["default", "dev"]
+groups = ["default", "dev", "test"]
 marker = "sys_platform == \"win32\" or platform_system == \"Windows\""
 files = [
     {file = "colorama-0.4.6-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6"},
@@ -197,7 +197,7 @@ name = "coverage"
 version = "7.7.0"
 requires_python = ">=3.9"
 summary = "Code coverage measurement for Python"
-groups = ["dev"]
+groups = ["test"]
 files = [
     {file = "coverage-7.7.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:a538a23119d1e2e2ce077e902d02ea3d8e0641786ef6e0faf11ce82324743944"},
     {file = "coverage-7.7.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:1586ad158523f4133499a4f322b230e2cfef9cc724820dbd58595a5a236186f4"},
@@ -240,7 +240,7 @@ version = "7.7.0"
 extras = ["toml"]
 requires_python = ">=3.9"
 summary = "Code coverage measurement for Python"
-groups = ["dev"]
+groups = ["test"]
 dependencies = [
     "coverage==7.7.0",
     "tomli; python_full_version <= \"3.11.0a6\"",
@@ -286,7 +286,7 @@ name = "dataproperty"
 version = "1.1.0"
 requires_python = ">=3.9"
 summary = "Python library for extract property from data."
-groups = ["dev"]
+groups = ["test"]
 dependencies = [
     "mbstrdecoder<2,>=1.0.0",
     "typepy[datetime]<2,>=1.3.2",
@@ -319,7 +319,7 @@ name = "exceptiongroup"
 version = "1.2.2"
 requires_python = ">=3.7"
 summary = "Backport of PEP 654 (exception groups)"
-groups = ["dev"]
+groups = ["test"]
 marker = "python_version < \"3.11\""
 files = [
     {file = "exceptiongroup-1.2.2-py3-none-any.whl", hash = "sha256:3111b9d131c238bec2f8f516e123e14ba243563fb135d3fe885990585aa7795b"},
@@ -328,21 +328,21 @@ files = [
 
 [[package]]
 name = "flask"
-version = "3.0.3"
-requires_python = ">=3.8"
+version = "3.1.0"
+requires_python = ">=3.9"
 summary = "A simple framework for building complex web applications."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "Jinja2>=3.1.2",
-    "Werkzeug>=3.0.0",
-    "blinker>=1.6.2",
+    "Werkzeug>=3.1",
+    "blinker>=1.9",
     "click>=8.1.3",
-    "importlib-metadata>=3.6.0; python_version < \"3.10\"",
-    "itsdangerous>=2.1.2",
+    "importlib-metadata>=3.6; python_version < \"3.10\"",
+    "itsdangerous>=2.2",
 ]
 files = [
-    {file = "flask-3.0.3-py3-none-any.whl", hash = "sha256:34e815dfaa43340d1d15a5c3a02b8476004037eb4840b34910c6e21679d288f3"},
-    {file = "flask-3.0.3.tar.gz", hash = "sha256:ceb27b0af3823ea2737928a4d99d125a06175b8512c445cbd9a9ce200ef76842"},
+    {file = "flask-3.1.0-py3-none-any.whl", hash = "sha256:d667207822eb83f1c4b50949b1623c8fc8d51f2341d65f72e1a1815397551136"},
+    {file = "flask-3.1.0.tar.gz", hash = "sha256:5f873c5184c897c8d9d1b05df1e3d01b14910ce69607a117bd3277098a5836ac"},
 ]
 
 [[package]]
@@ -535,7 +535,7 @@ name = "idna"
 version = "3.10"
 requires_python = ">=3.6"
 summary = "Internationalized Domain Names in Applications (IDNA)"
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "idna-3.10-py3-none-any.whl", hash = "sha256:946d195a0d259cbba61165e88e65941f16e9b36ea6ddb97f00452bae8b1287d3"},
     {file = "idna-3.10.tar.gz", hash = "sha256:12f65c9b470abda6dc35cf8e63cc574b1c52b11df2c86030af0ac09b01b13ea9"},
@@ -546,7 +546,7 @@ name = "importlib-metadata"
 version = "8.6.1"
 requires_python = ">=3.9"
 summary = "Read metadata from Python packages"
-groups = ["default"]
+groups = ["default", "dev"]
 marker = "python_version < \"3.10\""
 dependencies = [
     "zipp>=3.20",
@@ -561,7 +561,7 @@ name = "iniconfig"
 version = "2.1.0"
 requires_python = ">=3.8"
 summary = "brain-dead simple config-ini parsing"
-groups = ["dev"]
+groups = ["test"]
 files = [
     {file = "iniconfig-2.1.0-py3-none-any.whl", hash = "sha256:9deba5723312380e77435581c6bf4935c94cbfab9b1ed33ef8d238ea168eb760"},
     {file = "iniconfig-2.1.0.tar.gz", hash = "sha256:3abbd2e30b36733fee78f9c7f7308f2d0050e88f0087fd25c2645f63c773e1c7"},
@@ -572,7 +572,7 @@ name = "itsdangerous"
 version = "2.2.0"
 requires_python = ">=3.8"
 summary = "Safely pass data to untrusted environments and back."
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "itsdangerous-2.2.0-py3-none-any.whl", hash = "sha256:c6242fc49e35958c8b15141343aa660db5fc54d4f13a1db01a3f5891b98700ef"},
     {file = "itsdangerous-2.2.0.tar.gz", hash = "sha256:e0050c0b7da1eea53ffaf149c0cfbb5c6e2e2b69c4bef22c81fa6eb73e5f6173"},
@@ -583,7 +583,7 @@ name = "jinja2"
 version = "3.1.6"
 requires_python = ">=3.7"
 summary = "A very fast and expressive template engine."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "MarkupSafe>=2.0",
 ]
@@ -597,7 +597,7 @@ name = "kombu"
 version = "5.3.7"
 requires_python = ">=3.8"
 summary = "Messaging library for Python."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "amqp<6.0.0,>=5.1.1",
     "typing-extensions; python_version < \"3.10\"",
@@ -613,7 +613,7 @@ name = "markupsafe"
 version = "3.0.2"
 requires_python = ">=3.9"
 summary = "Safely add untrusted strings to HTML/XML markup."
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "MarkupSafe-3.0.2-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:7e94c425039cde14257288fd61dcfb01963e658efbc0ff54f5306b06054700f8"},
     {file = "MarkupSafe-3.0.2-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:9e2d922824181480953426608b81967de705c3cef4d1af983af849d7bd619158"},
@@ -653,7 +653,7 @@ name = "mbstrdecoder"
 version = "1.1.4"
 requires_python = ">=3.9"
 summary = "mbstrdecoder is a Python library for multi-byte character string decoder"
-groups = ["dev"]
+groups = ["test"]
 dependencies = [
     "chardet<6,>=3.0.4",
 ]
@@ -667,7 +667,7 @@ name = "packaging"
 version = "24.2"
 requires_python = ">=3.8"
 summary = "Core utilities for Python packages"
-groups = ["default", "deploy", "dev"]
+groups = ["default", "deploy", "test"]
 files = [
     {file = "packaging-24.2-py3-none-any.whl", hash = "sha256:09abb1bccd265c01f4a3aa3f7a7db064b36514d2cba19a2f694fe6150451a759"},
     {file = "packaging-24.2.tar.gz", hash = "sha256:c228a6dc5e932d346bc5739379109d49e8853dd8223571c7c5b55260edc0b97f"},
@@ -678,7 +678,7 @@ name = "pathvalidate"
 version = "3.2.3"
 requires_python = ">=3.9"
 summary = "pathvalidate is a Python library to sanitize/validate a string such as filenames/file-paths/etc."
-groups = ["dev"]
+groups = ["test"]
 files = [
     {file = "pathvalidate-3.2.3-py3-none-any.whl", hash = "sha256:5eaf0562e345d4b6d0c0239d0f690c3bd84d2a9a3c4c73b99ea667401b27bee1"},
     {file = "pathvalidate-3.2.3.tar.gz", hash = "sha256:59b5b9278e30382d6d213497623043ebe63f10e29055be4419a9c04c721739cb"},
@@ -689,7 +689,7 @@ name = "pluggy"
 version = "1.5.0"
 requires_python = ">=3.8"
 summary = "plugin and hook calling mechanisms for python"
-groups = ["dev"]
+groups = ["test"]
 files = [
     {file = "pluggy-1.5.0-py3-none-any.whl", hash = "sha256:44e1ad92c8ca002de6377e165f3e0f1be63266ab4d554740532335b9d75ea669"},
     {file = "pluggy-1.5.0.tar.gz", hash = "sha256:2cffa88e94fdc978c4c574f15f9e59b7f4201d439195c3715ca9e2486f1d0cf1"},
@@ -730,7 +730,7 @@ name = "pytablewriter"
 version = "1.2.1"
 requires_python = ">=3.9"
 summary = "pytablewriter is a Python library to write a table in various formats: AsciiDoc / CSV / Elasticsearch / HTML / JavaScript / JSON / LaTeX / LDJSON / LTSV / Markdown / MediaWiki / NumPy / Excel / Pandas / Python / reStructuredText / SQLite / TOML / TSV / YAML."
-groups = ["dev"]
+groups = ["test"]
 dependencies = [
     "DataProperty<2,>=1.1.0",
     "mbstrdecoder<2,>=1.0.0",
@@ -750,7 +750,7 @@ name = "pytest"
 version = "8.3.5"
 requires_python = ">=3.8"
 summary = "pytest: simple powerful testing with Python"
-groups = ["dev"]
+groups = ["test"]
 dependencies = [
     "colorama; sys_platform == \"win32\"",
     "exceptiongroup>=1.0.0rc8; python_version < \"3.11\"",
@@ -769,7 +769,7 @@ name = "pytest-cov"
 version = "6.0.0"
 requires_python = ">=3.9"
 summary = "Pytest plugin for measuring coverage."
-groups = ["dev"]
+groups = ["test"]
 dependencies = [
     "coverage[toml]>=7.5",
     "pytest>=4.6",
@@ -784,7 +784,7 @@ name = "pytest-md-report"
 version = "0.6.3"
 requires_python = ">=3.9"
 summary = "A pytest plugin to generate test outcomes reports with markdown table format."
-groups = ["dev"]
+groups = ["test"]
 dependencies = [
     "pytablewriter<2,>=1.2.0",
     "pytest!=6.0.0,<9,>=3.3.2",
@@ -801,7 +801,7 @@ name = "pytest-mock"
 version = "3.14.0"
 requires_python = ">=3.8"
 summary = "Thin-wrapper around the mock package for easier use with pytest"
-groups = ["dev"]
+groups = ["test"]
 dependencies = [
     "pytest>=6.2.5",
 ]
@@ -815,7 +815,7 @@ name = "python-dateutil"
 version = "2.9.0.post0"
 requires_python = "!=3.0.*,!=3.1.*,!=3.2.*,>=2.7"
 summary = "Extensions to the standard Python datetime module"
-groups = ["dev"]
+groups = ["test"]
 dependencies = [
     "six>=1.5",
 ]
@@ -826,20 +826,20 @@ files = [
 
 [[package]]
 name = "python-dotenv"
-version = "1.0.0"
+version = "1.0.1"
 requires_python = ">=3.8"
 summary = "Read key-value pairs from a .env file and set them as environment variables"
 groups = ["default"]
 files = [
-    {file = "python-dotenv-1.0.0.tar.gz", hash = "sha256:a8df96034aae6d2d50a4ebe8216326c61c3eb64836776504fcca410e5937a3ba"},
-    {file = "python_dotenv-1.0.0-py3-none-any.whl", hash = "sha256:f5971a9226b701070a4bf2c38c89e5a3f0d64de8debda981d1db98583009122a"},
+    {file = "python-dotenv-1.0.1.tar.gz", hash = "sha256:e324ee90a023d808f1959c46bcbc04446a10ced277783dc6ee09987c37ec10ca"},
+    {file = "python_dotenv-1.0.1-py3-none-any.whl", hash = "sha256:f7b63ef50f1b690dddf550d03497b66d609393b40b564ed0d674909a68ebf16a"},
 ]
 
 [[package]]
 name = "pytz"
 version = "2025.1"
 summary = "World timezone definitions, modern and historical"
-groups = ["dev"]
+groups = ["test"]
 files = [
     {file = "pytz-2025.1-py2.py3-none-any.whl", hash = "sha256:89dd22dca55b46eac6eda23b2d72721bf1bdfef212645d81513ef5d03038de57"},
     {file = "pytz-2025.1.tar.gz", hash = "sha256:c2db42be2a2518b28e65f9207c4d05e6ff547d1efa4086469ef855e4ab70178e"},
@@ -867,7 +867,7 @@ name = "redis"
 version = "5.2.1"
 requires_python = ">=3.8"
 summary = "Python client for Redis database and key-value store"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "async-timeout>=4.0.3; python_full_version < \"3.11.3\"",
 ]
@@ -881,7 +881,7 @@ name = "requests"
 version = "2.31.0"
 requires_python = ">=3.7"
 summary = "Python HTTP for Humans."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "certifi>=2017.4.17",
     "charset-normalizer<4,>=2",
@@ -898,7 +898,7 @@ name = "setuptools"
 version = "77.0.3"
 requires_python = ">=3.9"
 summary = "Easily download, build, install, upgrade, and uninstall Python packages"
-groups = ["default", "deploy", "dev"]
+groups = ["default", "deploy", "test"]
 files = [
     {file = "setuptools-77.0.3-py3-none-any.whl", hash = "sha256:67122e78221da5cf550ddd04cf8742c8fe12094483749a792d56cd669d6cf58c"},
     {file = "setuptools-77.0.3.tar.gz", hash = "sha256:583b361c8da8de57403743e756609670de6fb2345920e36dc5c2d914c319c945"},
@@ -909,7 +909,7 @@ name = "six"
 version = "1.17.0"
 requires_python = "!=3.0.*,!=3.1.*,!=3.2.*,>=2.7"
 summary = "Python 2 and 3 compatibility utilities"
-groups = ["dev"]
+groups = ["test"]
 files = [
     {file = "six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274"},
     {file = "six-1.17.0.tar.gz", hash = "sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81"},
@@ -920,7 +920,7 @@ name = "tabledata"
 version = "1.3.4"
 requires_python = ">=3.9"
 summary = "tabledata is a Python library to represent tabular data. Used for pytablewriter/pytablereader/SimpleSQLite/etc."
-groups = ["dev"]
+groups = ["test"]
 dependencies = [
     "DataProperty<2,>=1.0.1",
     "typepy<2,>=1.2.0",
@@ -935,7 +935,7 @@ name = "tcolorpy"
 version = "0.1.7"
 requires_python = ">=3.9"
 summary = "tcolopy is a Python library to apply true color for terminal text."
-groups = ["dev"]
+groups = ["test"]
 files = [
     {file = "tcolorpy-0.1.7-py3-none-any.whl", hash = "sha256:26a59d52027e175a37e0aba72efc99dda43f074db71f55b316d3de37d3251378"},
     {file = "tcolorpy-0.1.7.tar.gz", hash = "sha256:0fbf6bf238890bbc2e32662aa25736769a29bf6d880328f310c910a327632614"},
@@ -946,7 +946,7 @@ name = "tomli"
 version = "2.2.1"
 requires_python = ">=3.8"
 summary = "A lil' TOML parser"
-groups = ["dev"]
+groups = ["test"]
 marker = "python_version < \"3.11\""
 files = [
     {file = "tomli-2.2.1-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:678e4fa69e4575eb77d103de3df8a895e1591b48e740211bd1067378c69e8249"},
@@ -968,7 +968,7 @@ name = "typepy"
 version = "1.3.4"
 requires_python = ">=3.9"
 summary = "typepy is a Python library for variable type checker/validator/converter at a run time."
-groups = ["dev"]
+groups = ["test"]
 dependencies = [
     "mbstrdecoder<2,>=1.0.0",
 ]
@@ -983,7 +983,7 @@ version = "1.3.4"
 extras = ["datetime"]
 requires_python = ">=3.9"
 summary = "typepy is a Python library for variable type checker/validator/converter at a run time."
-groups = ["dev"]
+groups = ["test"]
 dependencies = [
     "packaging",
     "python-dateutil<3.0.0,>=2.8.0",
@@ -1000,7 +1000,7 @@ name = "typing-extensions"
 version = "4.12.2"
 requires_python = ">=3.8"
 summary = "Backported and Experimental Type Hints for Python 3.8+"
-groups = ["default"]
+groups = ["default", "dev"]
 marker = "python_version < \"3.10\""
 files = [
     {file = "typing_extensions-4.12.2-py3-none-any.whl", hash = "sha256:04e5ca0351e0f3f85c6853954072df659d0d13fac324d0072316b67d7794700d"},
@@ -1011,13 +1011,28 @@ files = [
 name = "unstract-core"
 version = "0.0.1"
 requires_python = ">=3.9,<3.11.1"
+editable = true
 path = "../unstract/core"
 summary = "Core library that helps with executing workflows."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "kombu==5.3.7",
     "redis~=5.2.1",
     "requests==2.31.0",
+]
+
+[[package]]
+name = "unstract-core"
+version = "0.0.1"
+extras = ["flask"]
+requires_python = ">=3.9,<3.11.1"
+editable = true
+path = "../unstract/core"
+summary = "Core library that helps with executing workflows."
+groups = ["default", "dev"]
+dependencies = [
+    "-e file:///${PROJECT_ROOT}/../unstract/core#egg=unstract-core",
+    "flask>=3.1.0",
 ]
 
 [[package]]
@@ -1037,7 +1052,7 @@ name = "urllib3"
 version = "2.3.0"
 requires_python = ">=3.9"
 summary = "HTTP library with thread-safe connection pooling, file post, and more."
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "urllib3-2.3.0-py3-none-any.whl", hash = "sha256:1cee9ad369867bfdbbb48b7dd50374c0967a0bb7710050facf0dd6911440e3df"},
     {file = "urllib3-2.3.0.tar.gz", hash = "sha256:f8c5449b3cf0861679ce7e0503c7b44b5ec981bec0d1d3795a07f1ba96f0204d"},
@@ -1048,7 +1063,7 @@ name = "vine"
 version = "5.1.0"
 requires_python = ">=3.6"
 summary = "Python promises."
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "vine-5.1.0-py3-none-any.whl", hash = "sha256:40fdf3c48b2cfe1c38a49e9ae2da6fda88e4794c810050a728bd7413811fb1dc"},
     {file = "vine-5.1.0.tar.gz", hash = "sha256:8b62e981d35c41049211cf62a0a1242d8c1ee9bd15bb196ce38aefd6799e61e0"},
@@ -1070,7 +1085,7 @@ name = "werkzeug"
 version = "3.1.3"
 requires_python = ">=3.9"
 summary = "The comprehensive WSGI web application library."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "MarkupSafe>=2.1.1",
 ]
@@ -1084,7 +1099,7 @@ name = "zipp"
 version = "3.21.0"
 requires_python = ">=3.9"
 summary = "Backport of pathlib-compatible object wrapper for zip files"
-groups = ["default"]
+groups = ["default", "dev"]
 marker = "python_version < \"3.10\""
 files = [
     {file = "zipp-3.21.0-py3-none-any.whl", hash = "sha256:ac1bbe05fd2991f160ebce24ffbac5f6d11d83dc90891255885223d42b3cd931"},
