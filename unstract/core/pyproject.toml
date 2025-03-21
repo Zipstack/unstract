@@ -22,6 +22,10 @@ classifiers = [
 ]
 # license = {text = "MIT"}
 
+[project.optional-dependencies]
+flask = [
+    "flask~=3.1.0",
+]
 [tool.pdm.build]
 includes = ["src"]
 package-dir = "src"

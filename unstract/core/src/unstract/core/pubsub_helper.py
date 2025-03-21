@@ -16,7 +16,7 @@ class LogPublisher:
     kombu_conn = Connection(os.environ.get("CELERY_BROKER_URL"))
     r = redis.Redis(
         host=os.environ.get("REDIS_HOST"),
-        port=os.environ.get("REDIS_PORT"),
+        port=os.environ.get("REDIS_PORT", 6379),
         username=os.environ.get("REDIS_USER"),
         password=os.environ.get("REDIS_PASSWORD"),
     )
