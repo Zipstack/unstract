@@ -14,6 +14,8 @@ import { ReactComponent as UnstractLogo } from "./Unstract.svg";
 import { ReactComponent as ListOfWfStepsPlaceholder } from "./list-of-wf-steps-placeholder.svg";
 import { ReactComponent as ListOfToolsPlaceholder } from "./list-of-tools-placeholder.svg";
 import { ReactComponent as ApiDeployments } from "./api-deployments.svg";
+import { ReactComponent as Workflows } from "./Workflows.svg";
+import { ReactComponent as Task } from "./task.svg";
 import { ReactComponent as StepIcon } from "./steps.svg";
 import { ReactComponent as CombinedOutputIcon } from "./combined-output.svg";
 import { ReactComponent as EmptyPlaceholder } from "./empty.svg";
@@ -52,6 +54,7 @@ export {
   ListOfWfStepsPlaceholder,
   ListOfToolsPlaceholder,
   ApiDeployments,
+  Workflows,
   StepIcon,
   EmptyPlaceholder,
   CombinedOutputIcon,
@@ -72,4 +75,5 @@ export {
   PlaceholderImg,
   CustomToolIcon,
   ETLIcon,
+  Task,
 };
