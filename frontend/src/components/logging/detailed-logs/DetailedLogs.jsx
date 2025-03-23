@@ -59,13 +59,12 @@ const DetailedLogs = () => {
   const [statusFilter, setStatusFilter] = useState(null);
   const [searchText, setSearchText] = useState("");
   const [searchTimeout, setSearchTimeout] = useState(null);
-  const [pollingInterval, setPollingInterval] = useState(null);
 
   const filterOptions = ["COMPLETED", "PENDING", "ERROR", "EXECUTING"];
 
   const fetchExecutionDetails = async (id) => {
     try {
-      const url = `/api/v1/unstract/${sessionDetails?.orgId}/execution/${id}`;
+      const url = `/api/v1/unstract/${sessionDetails?.orgId}/execution/${id}/`;
       const response = await axiosPrivate.get(url);
       const item = response?.data;
       const total = item?.total_files || 0;
@@ -88,20 +87,6 @@ const DetailedLogs = () => {
       };
 
       setExecutionDetails(formattedData);
-
-      // Start or stop polling based on status
-      if (item?.status === "EXECUTING") {
-        if (!pollingInterval) {
-          const interval = setInterval(() => {
-            fetchExecutionDetails(id);
-            fetchExecutionFiles(id, pagination.current);
-          }, 5000); // Poll every 5 seconds
-          setPollingInterval(interval);
-        }
-      } else if (pollingInterval) {
-        clearInterval(pollingInterval);
-        setPollingInterval(null);
-      }
     } catch (err) {
       setAlertDetails(handleException(err));
     } finally {
@@ -284,16 +269,22 @@ const DetailedLogs = () => {
   useEffect(() => {
     fetchExecutionDetails(id);
     fetchExecutionFiles(id, pagination.current);
+  }, [pagination.current, ordering, statusFilter]);
 
+  useEffect(() => {
+    let interval = null;
+    if (executionDetails?.status === "EXECUTING") {
+      interval = setInterval(() => {
+        fetchExecutionDetails(id);
+        fetchExecutionFiles(id, pagination.current);
+      }, 5000);
+    }
     return () => {
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
-      }
-      if (searchTimeout) {
-        clearTimeout(searchTimeout);
+      if (interval) {
+        clearInterval(interval);
       }
     };
-  }, [pagination.current, ordering, statusFilter]);
+  }, [executionDetails?.status, id, pagination.current]);
 
   useEffect(() => {
     const initialColumns = columnsDetailedTable.reduce((acc, col) => {

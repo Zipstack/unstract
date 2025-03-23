@@ -5,7 +5,12 @@ import { useEffect, useState } from "react";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
 import { LogsTable } from "../logs-table/LogsTable";
 import { DetailedLogs } from "../detailed-logs/DetailedLogs";
-import { ApiDeployments, CustomToolIcon, ETLIcon } from "../../../assets/index";
+import {
+  ApiDeployments,
+  ETLIcon,
+  Workflows,
+  Task,
+} from "../../../assets/index";
 import "./ExecutionLogs.css";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useSessionStore } from "../../../store/session-store";
@@ -19,8 +24,8 @@ import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
 
 function ExecutionLogs() {
   const { RangePicker } = DatePicker;
-  const [activeTab, setActiveTab] = useState("ETL"); // State to track the active tab
-  const { id } = useParams(); // Get the ID from the URL
+  const [activeTab, setActiveTab] = useState("ETL");
+  const { id } = useParams();
   const axiosPrivate = useAxiosPrivate();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
@@ -62,7 +67,7 @@ function ExecutionLogs() {
       key: "WF",
       label: "Workflow Sessions",
       icon: (
-        <ApiDeployments
+        <Workflows
           className={`log-tab-icon ${activeTab === "WF" ? "active" : ""}`}
         />
       ),
@@ -71,7 +76,7 @@ function ExecutionLogs() {
       key: "TASK",
       label: "Task Sessions",
       icon: (
-        <CustomToolIcon
+        <Task
           className={`log-tab-icon ${activeTab === "TASK" ? "active" : ""}`}
         />
       ),
