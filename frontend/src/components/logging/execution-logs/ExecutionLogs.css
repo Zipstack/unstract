@@ -44,3 +44,13 @@
 .log-tab .ant-tabs-ink-bar {
   top: 40px !important;
 }
+
+.file-log-layout {
+  background-color: var(--white);
+  margin: 15px;
+  height: 93%;
+}
+
+.logs-title{
+  margin: 0;
+}

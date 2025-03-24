@@ -2,7 +2,6 @@ import { DatePicker, Flex, Tabs, Typography } from "antd";
 import { useNavigate, useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 
-import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
 import { LogsTable } from "../logs-table/LogsTable";
 import { DetailedLogs } from "../detailed-logs/DetailedLogs";
 import {
@@ -251,7 +250,7 @@ function ExecutionLogs() {
         CustomButtons={customButtons}
         enableSearch={false}
       />
-      <IslandLayout>
+      <div className="file-log-layout">
         {id ? (
           <DetailedLogs />
         ) : (
@@ -271,7 +270,7 @@ function ExecutionLogs() {
             </div>
           </>
         )}
-      </IslandLayout>
+      </div>
     </div>
   );
 }
