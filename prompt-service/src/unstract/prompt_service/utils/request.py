@@ -27,11 +27,11 @@ def make_http_request(
     """Generic helper function to help make a HTTP request."""
     try:
         if verb == HTTPMethod.GET:
-            response = pyrequests.get(url, params=params, headers=headers)
+            response = pyrequests.get(url, params=params, headers=headers, timeout=60)
         elif verb == HTTPMethod.POST:
-            response = pyrequests.post(url, json=data, params=params, headers=headers)
+            response = pyrequests.post(url, json=data, params=params, headers=headers, timeout=60)
         elif verb == HTTPMethod.DELETE:
-            response = pyrequests.delete(url, params=params, headers=headers)
+            response = pyrequests.delete(url, params=params, headers=headers, timeout=60)
         else:
             raise ValueError("Invalid HTTP verb. Supported verbs: GET, POST, DELETE")
 
