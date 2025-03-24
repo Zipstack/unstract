@@ -383,7 +383,7 @@ const DetailedLogs = () => {
                       {executionDetails?.failedFiles}
                     </span>
                   </Tooltip>
-                  <Tooltip title="Queued files">
+                  <Tooltip title="In Progress files">
                     {executionDetails?.totalFiles -
                       (executionDetails?.successfulFiles +
                         executionDetails?.failedFiles) >

@@ -244,7 +244,7 @@ function ExecutionLogs() {
   }, [activeTab, pagination.current, selectedDateRange, ordering, currentPath]);
 
   return (
-    <div className="file-logs-container">
+    <>
       <ToolNavBar
         title={"Logs"}
         CustomButtons={customButtons}
@@ -271,7 +271,7 @@ function ExecutionLogs() {
           </>
         )}
       </div>
-    </div>
+    </>
   );
 }
 

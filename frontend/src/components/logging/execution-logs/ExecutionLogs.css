@@ -1,6 +1,8 @@
-.file-logs-container {
+.file-log-layout {
   background-color: var(--page-bg-2);
   height: 100%;
+  margin: 12px;
+  overflow-y: auto;
 }
 
 .logs-title {
