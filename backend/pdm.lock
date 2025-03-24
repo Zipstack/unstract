@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "dev", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:9bb7b0739a1cdab472ad065b4ec178128d578cd5ab4e70eff99ea25b5bd47f7f"
+content_hash = "sha256:c797a54a7be2f9088708c26ab719a9724b2b4086d509f3a45528ffc18efcafac"
 
 [[package]]
 name = "adlfs"
@@ -2242,7 +2242,7 @@ files = [
 
 [[package]]
 name = "llama-cloud"
-version = "0.1.15"
+version = "0.1.16"
 requires_python = "<4,>=3.8"
 summary = ""
 groups = ["default", "dev"]
@@ -2252,8 +2252,8 @@ dependencies = [
     "pydantic>=1.10",
 ]
 files = [
-    {file = "llama_cloud-0.1.15-py3-none-any.whl", hash = "sha256:8e7376346d580b244a87d023eb7493506f06b53c898fb2a2e712b9fe7eb5b310"},
-    {file = "llama_cloud-0.1.15.tar.gz", hash = "sha256:3ec98422072ee4290c1e7597bc33889af3f03edb2a50ab09c15d5586d9f8635c"},
+    {file = "llama_cloud-0.1.16-py3-none-any.whl", hash = "sha256:a484cf762d2741282f96033c0c09f6c8ad1b93b4efb7520088647fd845d341d4"},
+    {file = "llama_cloud-0.1.16.tar.gz", hash = "sha256:fc68b24471907958d4862a3db1e973513de76d42f58c29d935b92c06cb1f4e3e"},
 ]
 
 [[package]]
@@ -2458,17 +2458,17 @@ files = [
 
 [[package]]
 name = "llama-index-llms-anthropic"
-version = "0.6.3"
+version = "0.6.10"
 requires_python = "<4.0,>=3.9"
 summary = "llama-index llms anthropic integration"
 groups = ["default", "dev"]
 dependencies = [
-    "anthropic[bedrock,vertex]>=0.41.0",
+    "anthropic[bedrock,vertex]>=0.49.0",
     "llama-index-core<0.13.0,>=0.12.5",
 ]
 files = [
-    {file = "llama_index_llms_anthropic-0.6.3-py3-none-any.whl", hash = "sha256:7eeee643e7d191d7f1b7cb86c4b86bba7dbf17899ef902010fa0618f8b7b41e0"},
-    {file = "llama_index_llms_anthropic-0.6.3.tar.gz", hash = "sha256:a02704b8f8028c7cbd6bee22f02cf75e1ff8d4d292361b2f1739cf2569fcd118"},
+    {file = "llama_index_llms_anthropic-0.6.10-py3-none-any.whl", hash = "sha256:cb1eb525816016a4d179c717d6a0569c8c8bb74e80f4da9ec1628ccd5e54d3ee"},
+    {file = "llama_index_llms_anthropic-0.6.10.tar.gz", hash = "sha256:2b1e88319825dc1a2c7f28a146b197726b7ecba39ff6bde1732368c834f0f16c"},
 ]
 
 [[package]]
@@ -3096,7 +3096,7 @@ files = [
 
 [[package]]
 name = "openai"
-version = "1.67.0"
+version = "1.68.2"
 requires_python = ">=3.8"
 summary = "The official Python library for the openai API"
 groups = ["default", "dev"]
@@ -3111,8 +3111,8 @@ dependencies = [
     "typing-extensions<5,>=4.11",
 ]
 files = [
-    {file = "openai-1.67.0-py3-none-any.whl", hash = "sha256:dbbb144f38739fc0e1d951bc67864647fca0b9ffa05aef6b70eeea9f71d79663"},
-    {file = "openai-1.67.0.tar.gz", hash = "sha256:3b386a866396daa4bf80e05a891c50a7746ecd7863b8a27423b62136e3b8f6bc"},
+    {file = "openai-1.68.2-py3-none-any.whl", hash = "sha256:24484cb5c9a33b58576fdc5acf0e5f92603024a4e39d0b99793dfa1eb14c2b36"},
+    {file = "openai-1.68.2.tar.gz", hash = "sha256:b720f0a95a1dbe1429c0d9bb62096a0d98057bcda82516f6e8af10284bdd5b19"},
 ]
 
 [[package]]
@@ -3862,14 +3862,14 @@ files = [
 
 [[package]]
 name = "pyparsing"
-version = "3.2.1"
+version = "3.2.2"
 requires_python = ">=3.9"
 summary = "pyparsing module - Classes and methods to define and execute parsing grammars"
 groups = ["default", "dev"]
 marker = "python_version > \"3.0\""
 files = [
-    {file = "pyparsing-3.2.1-py3-none-any.whl", hash = "sha256:506ff4f4386c4cec0590ec19e6302d3aedb992fdc02c761e90416f158dacf8e1"},
-    {file = "pyparsing-3.2.1.tar.gz", hash = "sha256:61980854fd66de3a90028d679a954d5f2623e83144b5afe5ee86f43d762e5f0a"},
+    {file = "pyparsing-3.2.2-py3-none-any.whl", hash = "sha256:6ab05e1cb111cc72acc8ed811a3ca4c2be2af8d7b6df324347f04fd057d8d793"},
+    {file = "pyparsing-3.2.2.tar.gz", hash = "sha256:2a857aee851f113c2de9d4bfd9061baea478cb0f1c7ca6cbf594942d6d111575"},
 ]
 
 [[package]]
@@ -4978,13 +4978,13 @@ files = [
 
 [[package]]
 name = "tzdata"
-version = "2025.1"
+version = "2025.2"
 requires_python = ">=2"
 summary = "Provider of IANA time zone data"
 groups = ["default", "dev"]
 files = [
-    {file = "tzdata-2025.1-py2.py3-none-any.whl", hash = "sha256:7e127113816800496f027041c570f50bcd464a020098a3b6b199517772303639"},
-    {file = "tzdata-2025.1.tar.gz", hash = "sha256:24894909e88cdb28bd1636c6887801df64cb485bd593f2fd83ef29075a81d694"},
+    {file = "tzdata-2025.2-py2.py3-none-any.whl", hash = "sha256:1a403fada01ff9221ca8044d701868fa132215d84beb92242d9acd2147f667a8"},
+    {file = "tzdata-2025.2.tar.gz", hash = "sha256:b60a638fcc0daffadf82fe0f57e53d06bdec2f36c4df66280ae79bce6bd6f2b9"},
 ]
 
 [[package]]
@@ -5096,7 +5096,7 @@ path = "../unstract/filesystem"
 summary = "Unstract filesystem package"
 groups = ["default", "dev"]
 dependencies = [
-    "unstract-sdk~=0.60.1",
+    "unstract-sdk~=0.62.0",
 ]
 
 [[package]]
@@ -5114,7 +5114,7 @@ dependencies = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.60.1"
+version = "0.62.0"
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default", "dev"]
@@ -5128,7 +5128,7 @@ dependencies = [
     "llama-index-embeddings-ollama==0.5.0",
     "llama-index-embeddings-openai==0.3.1",
     "llama-index-embeddings-vertex==0.3.1",
-    "llama-index-llms-anthropic==0.6.3",
+    "llama-index-llms-anthropic==0.6.10",
     "llama-index-llms-anyscale==0.3.0",
     "llama-index-llms-azure-openai==0.3.1",
     "llama-index-llms-bedrock==0.3.3",
@@ -5156,24 +5156,24 @@ dependencies = [
     "transformers==4.37.0",
 ]
 files = [
-    {file = "unstract_sdk-0.60.1-py3-none-any.whl", hash = "sha256:a77f484f2d2114ec710b1e8b413d8eee0e29ce280ef4be0c43c946e5abf56a2c"},
-    {file = "unstract_sdk-0.60.1.tar.gz", hash = "sha256:df86dc341eba18358e82ab961ea09fc095b1637ee83285262be10268b714125a"},
+    {file = "unstract_sdk-0.62.0-py3-none-any.whl", hash = "sha256:5121195698c4a57cd354a6988bc7cdc8f81d0f85291f842f7dcdf2d38ab95e8b"},
+    {file = "unstract_sdk-0.62.0.tar.gz", hash = "sha256:7c8b4c326eb3fa45f5d793747ee064c3d5583e7294a23896a956cbfecb1c54f4"},
 ]
 
 [[package]]
 name = "unstract-sdk"
-version = "0.60.1"
+version = "0.62.0"
 extras = ["azure"]
 requires_python = "<3.11.1,>=3.9"
 summary = "A framework for writing Unstract Tools/Apps"
 groups = ["default"]
 dependencies = [
     "adlfs~=2024.7.0",
-    "unstract-sdk==0.60.1",
+    "unstract-sdk==0.62.0",
 ]
 files = [
-    {file = "unstract_sdk-0.60.1-py3-none-any.whl", hash = "sha256:a77f484f2d2114ec710b1e8b413d8eee0e29ce280ef4be0c43c946e5abf56a2c"},
-    {file = "unstract_sdk-0.60.1.tar.gz", hash = "sha256:df86dc341eba18358e82ab961ea09fc095b1637ee83285262be10268b714125a"},
+    {file = "unstract_sdk-0.62.0-py3-none-any.whl", hash = "sha256:5121195698c4a57cd354a6988bc7cdc8f81d0f85291f842f7dcdf2d38ab95e8b"},
+    {file = "unstract_sdk-0.62.0.tar.gz", hash = "sha256:7c8b4c326eb3fa45f5d793747ee064c3d5583e7294a23896a956cbfecb1c54f4"},
 ]
 
 [[package]]
@@ -5189,7 +5189,7 @@ dependencies = [
     "docker~=6.1.3",
     "jsonschema~=4.18.2",
     "unstract-flags",
-    "unstract-sdk~=0.60.1",
+    "unstract-sdk~=0.62.0",
     "unstract-tool-sandbox",
 ]
 
