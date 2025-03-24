@@ -78,7 +78,7 @@ def consume_log_history() -> None:
 
     # Bulk insert logs for each organization
     for organization_id, logs in organization_logs.items():
-        logger.debug(f"Storing '{len(logs)}' logs for org: {organization_id}")
+        logger.info(f"Storing '{len(logs)}' logs for org: {organization_id}")
         ExecutionLog.objects.bulk_create(objs=logs, ignore_conflicts=True)
 
 

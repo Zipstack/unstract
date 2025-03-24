@@ -19,7 +19,7 @@ class FileCentricExecutionSerializer(serializers.ModelSerializer):
     INIT_STATUS_MSG = "Waiting for a worker to pick up file's execution..."
 
     DEFAULT_STATUS_MSG = (
-        "No status message available, please check again after a few minutes."
+        "No status message available yet, please check again after a few minutes."
     )
 
     status_msg = serializers.SerializerMethodField()
