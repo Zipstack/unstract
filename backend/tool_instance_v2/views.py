@@ -18,7 +18,9 @@ from tool_instance_v2.models import ToolInstance
 from tool_instance_v2.serializers import (
     ToolInstanceReorderSerializer as TIReorderSerializer,
 )
-from tool_instance_v2.serializers import ToolInstanceSerializer
+from tool_instance_v2.serializers import (
+    ToolInstanceSerializer,
+)
 from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
 from tool_instance_v2.tool_processor import ToolProcessor
 from utils.filtering import FilterHelper
