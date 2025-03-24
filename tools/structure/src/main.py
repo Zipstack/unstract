@@ -113,7 +113,7 @@ class StructureTool(BaseTool):
         }
         # TODO: Need to split extraction and indexing
         # to avoid unwanted indexing
-        self.stream_log(f"Indexing document '{self.source_file_name}'")
+        self.stream_log(f"Extracting document '{self.source_file_name}'")
         usage_kwargs: dict[Any, Any] = dict()
         usage_kwargs[UsageKwargs.RUN_ID] = self.file_execution_id
         usage_kwargs[UsageKwargs.FILE_NAME] = self.source_file_name
@@ -127,7 +127,7 @@ class StructureTool(BaseTool):
             tool=self,
             execution_run_data_folder=execution_run_data_folder,
         )
-
+        self.stream_log("Sucessfully extracted text, indexing..")
         if tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION]:
             if summarize_as_source:
                 summarize_file_hash = self._summarize_and_index(
@@ -141,10 +141,9 @@ class StructureTool(BaseTool):
                 payload[SettingsKeys.FILE_HASH] = summarize_file_hash
             else:
                 STHelper.dynamic_indexing(
-                    file_path=input_file,
                     tool_settings=tool_settings,
                     run_id=self.file_execution_id,
-                    extract_file_path=tool_data_dir / SettingsKeys.EXTRACT,
+                    file_path=tool_data_dir / SettingsKeys.EXTRACT,
                     tool=self,
                     execution_run_data_folder=execution_run_data_folder,
                     chunk_overlap=tool_settings[SettingsKeys.CHUNK_OVERLAP],
@@ -182,20 +181,18 @@ class StructureTool(BaseTool):
                         payload[SettingsKeys.FILE_HASH] = summarize_file_hash
                         break
                     if reindex or not summarize_as_source:
+                        self.stream_log("Indexing...")
                         STHelper.dynamic_indexing(
-                            file_path=input_file,
                             tool_settings=tool_settings,
                             run_id=self.file_execution_id,
-                            extract_file_path=tool_data_dir / SettingsKeys.EXTRACT,
+                            file_path=tool_data_dir / SettingsKeys.EXTRACT,
                             tool=self,
-                            execution_run_data_folder=execution_run_data_folder,
-                            chunk_overlap=tool_settings[SettingsKeys.CHUNK_OVERLAP],
-                            chunk_size=tool_settings[SettingsKeys.CHUNK_SIZE],
+                            execution_run_data_folder=str(execution_run_data_folder),
+                            chunk_overlap=output[SettingsKeys.CHUNK_OVERLAP],
                             reIndex=reindex,
                             usage_kwargs=usage_kwargs,
                             enable_highlight=enable_highlight,
                             chunk_size=output[SettingsKeys.CHUNK_SIZE],
-                            chunk_overlap=output[SettingsKeys.CHUNK_OVERLAP],
                             tool_id=tool_metadata[SettingsKeys.TOOL_ID],
                             file_hash=file_hash,
                             extracted_text=extracted_text,
@@ -362,7 +359,6 @@ class StructureTool(BaseTool):
             file_path=summarize_file_path,
             tool_settings=tool_settings,
             run_id=self.file_execution_id,
-            tool=self,
             execution_run_data_folder=execution_run_data_folder,
             reIndex=True,
             usage_kwargs=usage_kwargs,

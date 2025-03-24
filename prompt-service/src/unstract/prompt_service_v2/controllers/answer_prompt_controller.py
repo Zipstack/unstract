@@ -19,7 +19,7 @@ from unstract.prompt_service_v2.helper.usage_helper import UsageHelper
 from unstract.prompt_service_v2.services.answer_prompt_service import (
     AnswerPromptService,
 )
-from unstract.prompt_service_v2.services.retrieval_service import RetrievalService
+from unstract.prompt_service_v2.services.retrieval_service_v2 import RetrievalService
 from unstract.prompt_service_v2.services.variable_replacement_service import (
     VariableReplacementService,
 )
@@ -241,90 +241,55 @@ def prompt_processor() -> Any:
                 raise e
 
         try:
-            if chunk_size == 0:
-                # We can do this only for chunkless indexes
-                context: set[str] = RetrievalService.fetch_context_from_vector_db(
-                    index=index,
-                    output=output,
-                    doc_id=doc_id,
-                    tool_id=tool_id,
-                    doc_name=doc_name,
-                    prompt_name=prompt_name,
-                    log_events_id=log_events_id,
-                    usage_kwargs=usage_kwargs,
-                )
-                publish_log(
-                    log_events_id,
-                    {
-                        "tool_id": tool_id,
-                        "prompt_key": prompt_name,
-                        "doc_name": doc_name,
-                    },
-                    LogLevel.INFO,
-                    RunLevel.RUN,
-                    "Retrieving answer from LLM",
-                )
-                answer = AnswerPromptService.construct_and_run_prompt(
+
+            answer = "NA"
+            publish_log(
+                log_events_id,
+                {
+                    "tool_id": tool_id,
+                    "prompt_key": prompt_name,
+                    "doc_name": doc_name,
+                },
+                LogLevel.INFO,
+                RunLevel.RUN,
+                "Retrieving context from adapter",
+            )
+
+            retrieval_strategy = output.get(PSKeys.RETRIEVAL_STRATEGY)
+
+            if retrieval_strategy in {PSKeys.SIMPLE, PSKeys.SUBQUESTION}:
+                answer, context = RetrievalService.perform_retrieval(
                     tool_settings=tool_settings,
                     output=output,
+                    doc_id=doc_id,
                     llm=llm,
-                    context="\n".join(context),
-                    prompt="promptx",
-                    metadata=metadata,
+                    vector_db=vector_db,
                     file_path=file_path,
+                    chunk_size=chunk_size,
+                    retrieval_type=retrieval_strategy,
+                    metadata=metadata,
                     execution_source=execution_source,
                 )
                 metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = (
                     AnswerPromptService.get_cleaned_context(context)
                 )
             else:
-                answer = "NA"
-                publish_log(
-                    log_events_id,
-                    {
-                        "tool_id": tool_id,
-                        "prompt_key": prompt_name,
-                        "doc_name": doc_name,
-                    },
-                    LogLevel.INFO,
-                    RunLevel.RUN,
-                    "Retrieving context from adapter",
+                app.logger.info(
+                    "Invalid retrieval strategy passed: %s",
+                    retrieval_strategy,
                 )
 
-                retrieval_strategy = output.get(PSKeys.RETRIEVAL_STRATEGY)
-
-                if retrieval_strategy in {PSKeys.SIMPLE, PSKeys.SUBQUESTION}:
-                    vector_index = vector_db.get_vector_store_index()
-                    answer, context = RetrievalService.run_retrieval(
-                        tool_settings=tool_settings,
-                        output=output,
-                        doc_id=doc_id,
-                        llm=llm,
-                        vector_index=vector_index,
-                        retrieval_type=retrieval_strategy,
-                        metadata=metadata,
-                        execution_source=execution_source,
-                    )
-                    metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = (
-                        AnswerPromptService.get_cleaned_context(context)
-                    )
-                else:
-                    app.logger.info(
-                        "Invalid retrieval strategy passed: %s",
-                        retrieval_strategy,
-                    )
-
-                publish_log(
-                    log_events_id,
-                    {
-                        "tool_id": tool_id,
-                        "prompt_key": prompt_name,
-                        "doc_name": doc_name,
-                    },
-                    LogLevel.DEBUG,
-                    RunLevel.RUN,
-                    "Retrieved context from adapter",
-                )
+            publish_log(
+                log_events_id,
+                {
+                    "tool_id": tool_id,
+                    "prompt_key": prompt_name,
+                    "doc_name": doc_name,
+                },
+                LogLevel.DEBUG,
+                RunLevel.RUN,
+                "Retrieved context from adapter",
+            )
 
             publish_log(
                 log_events_id,

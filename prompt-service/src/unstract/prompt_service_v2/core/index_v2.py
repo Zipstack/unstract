@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from llama_index.core import Document
 from llama_index.core.vector_stores import (
@@ -111,7 +111,7 @@ class Index:
         full_text = [
             {
                 "section": "full",
-                "text_contents": extracted_text,
+                "text_contents": str(extracted_text),
             }
         ]
         # Convert raw text to llama index usage Document
@@ -149,7 +149,7 @@ class Index:
             )
             raise SdkError(f"Error deleting nodes for {doc_id}: {e}") from e
 
-    def _prepare_documents(self, doc_id: str, full_text: str) -> list:
+    def _prepare_documents(self, doc_id: str, full_text: Any) -> list:
         documents = []
         try:
             for item in full_text:

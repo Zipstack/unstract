@@ -9,7 +9,7 @@ from django.http import HttpRequest
 from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
 from permissions.permission import IsOwner, IsOwnerOrSharedUser
-from prompt_studio.processor_loader import get_plugin_class_by_name
+from prompt_studio.processor_loader import get_plugin_class_by_name, load_plugins
 from prompt_studio.prompt_profile_manager_v2.constants import (
     ProfileManagerErrors,
     ProfileManagerKeys,
@@ -74,6 +74,8 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
 
     serializer_class = CustomToolSerializer
+
+    processor_plugins = load_plugins()
 
     def get_permissions(self) -> list[Any]:
         if self.action == "destroy":

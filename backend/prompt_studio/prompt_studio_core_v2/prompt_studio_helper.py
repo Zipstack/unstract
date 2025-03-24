@@ -4,7 +4,7 @@ import os
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 from account_v2.constants import Common
 from account_v2.models import User
@@ -14,6 +14,8 @@ from django.conf import settings
 from django.db.models.manager import BaseManager
 from prompt_studio.modifier_loader import ModifierConfig
 from prompt_studio.modifier_loader import load_plugins as load_modifier_plugins
+from prompt_studio.processor_loader import get_plugin_class_by_name
+from prompt_studio.processor_loader import load_plugins as load_processor_plugins
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_profile_manager_v2.profile_manager_helper import (
     ProfileManagerHelper,
@@ -61,10 +63,6 @@ from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.local_context import StateStore
 
-from backend.prompt_studio.processor_loader import get_plugin_class_by_name
-from backend.prompt_studio.processor_loader import (
-    load_plugins as load_processor_plugins,
-)
 from unstract.core.pubsub_helper import LogPublisher
 
 CHOICES_JSON = "/static/select_choices.json"
@@ -372,19 +370,20 @@ class PromptStudioHelper:
             storage_type=StorageType.PERMANENT,
             env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
         )
+        util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
         doc_id = IndexingUtils.generate_index_key(
-            vector_db=str(profile_manager.vector_store.id),
-            embedding=str(profile_manager.embedding_model.id),
-            x2text=str(profile_manager.x2text.id),
-            chunk_size=str(profile_manager.chunk_size),
-            chunk_overlap=str(profile_manager.chunk_overlap),
+            vector_db=str(default_profile.vector_store.id),
+            embedding=str(default_profile.embedding_model.id),
+            x2text=str(default_profile.x2text.id),
+            chunk_size=str(default_profile.chunk_size),
+            chunk_overlap=str(default_profile.chunk_overlap),
             file_path=file_path,
             file_hash=None,
             fs=fs_instance,
+            tool=util,
         )
         extracted_text = PromptStudioHelper.dynamic_extractor(
             profile_manager=default_profile,
-            tool_id=tool_id,
             file_path=file_path,
             org_id=org_id,
             document_id=document_id,
@@ -421,7 +420,6 @@ class PromptStudioHelper:
                 reindex=True,
                 run_id=run_id,
                 user_id=user_id,
-                fs=fs_instance,
                 enable_highlight=tool.enable_highlight,
                 extracted_text=extracted_text,
             )
@@ -438,8 +436,8 @@ class PromptStudioHelper:
             LogLevels.RUN,
             f"Indexing successful, took {elapsed_time:.3f}s",
         )
-
-        return doc_id.get("output")
+        logger.info(f"Indexing successful : {doc_id}")
+        return doc_id
 
     @staticmethod
     def prompt_responder(
@@ -775,6 +773,7 @@ class PromptStudioHelper:
             storage_type=StorageType.PERMANENT,
             env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
         )
+        util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
         doc_id = IndexingUtils.generate_index_key(
             vector_db=str(profile_manager.vector_store.id),
             embedding=str(profile_manager.embedding_model.id),
@@ -784,10 +783,10 @@ class PromptStudioHelper:
             file_path=doc_path,
             file_hash=None,
             fs=fs_instance,
+            tool=util,
         )
         extracted_text = PromptStudioHelper.dynamic_extractor(
             profile_manager=default_profile,
-            tool_id=str(tool.tool_id),
             file_path=doc_path,
             org_id=org_id,
             document_id=document_id,
@@ -805,7 +804,6 @@ class PromptStudioHelper:
             is_summary=tool.summarize_as_source,
             run_id=run_id,
             user_id=user_id,
-            fs=fs_instance,
             enable_highlight=tool.enable_highlight,
             extracted_text=extracted_text,
         )
@@ -893,8 +891,6 @@ class PromptStudioHelper:
             TSPKeys.EXECUTION_SOURCE: ExecutionSource.IDE.value,
         }
 
-        util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
-
         responder = PromptTool(
             tool=util,
             prompt_host=settings.PROMPT_HOST,
@@ -959,7 +955,7 @@ class PromptStudioHelper:
         org_id: str,
         document_id: str,
         user_id: str,
-        extracted_text: dict[str, Any],
+        extracted_text: str,
         is_summary: bool = False,
         reindex: bool = False,
         run_id: str = None,
@@ -1045,7 +1041,14 @@ class PromptStudioHelper:
                 prompt_port=settings.PROMPT_PORT,
             )
             headers = {Common.X_REQUEST_ID: StateStore.get(Common.REQUEST_ID)}
-            doc_id = responder.index(payload=payload, headers=headers)
+            response = responder.index(payload=payload, headers=headers)
+            try:
+                response_text = PromptStudioHelper.handle_response(response)
+                doc_id = json.loads(response_text).get("doc_id")
+
+            except IndexingAPIError as e:
+                logger.error(f"Failed to index document: {str(e)}")
+                raise IndexingAPIError(f"Failed to index document: {str(e)}") from e
 
             PromptStudioIndexHelper.handle_index_manager(
                 document_id=document_id,
@@ -1080,7 +1083,6 @@ class PromptStudioHelper:
         user_id: str,
         document_id: str,
         run_id: str = None,
-        process_text: Optional[Callable[[str], str]] = None,
     ) -> Any:
         tool_id: str = str(tool.tool_id)
         outputs: list[dict[str, Any]] = []
@@ -1099,7 +1101,7 @@ class PromptStudioHelper:
         # has access to adapters configured in profile manager
         PromptStudioHelper.validate_profile_manager_owner_access(default_profile)
         default_profile.chunk_size = 0  # To retrive full context
-
+        util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
         if prompt_grammar:
             for word, synonyms in prompt_grammar.items():
                 grammar.append({TSPKeys.WORD: word, TSPKeys.SYNONYMS: synonyms})
@@ -1120,10 +1122,10 @@ class PromptStudioHelper:
             file_path=file_path,
             file_hash=None,
             fs=fs_instance,
+            tool=util,
         )
         extracted_text = PromptStudioHelper.dynamic_extractor(
             profile_manager=default_profile,
-            tool_id=tool_id,
             file_path=file_path,
             org_id=org_id,
             document_id=document_id,
@@ -1141,8 +1143,6 @@ class PromptStudioHelper:
             document_id=document_id,
             run_id=run_id,
             user_id=user_id,
-            process_text=process_text,
-            fs=fs_instance,
             enable_highlight=tool.enable_highlight,
             extracted_text=extracted_text,
         )
@@ -1200,8 +1200,6 @@ class PromptStudioHelper:
             TSPKeys.EXECUTION_SOURCE: ExecutionSource.IDE.value,
         }
 
-        util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
-
         responder = PromptTool(
             tool=util,
             prompt_host=settings.PROMPT_HOST,
@@ -1233,7 +1231,6 @@ class PromptStudioHelper:
     def dynamic_extractor(
         file_path: str,
         enable_highlight: bool,
-        usage_kwargs: dict[str, Any],
         run_id: str,
         org_id: str,
         profile_manager: ProfileManager,
@@ -1241,9 +1238,9 @@ class PromptStudioHelper:
         doc_id: str,
         is_summary: bool,
     ) -> str:
-
         x2Text = str(profile_manager.x2text.id)
         extract_file_path: Optional[str] = None
+        extracted_text = ""
         directory, filename = os.path.split(file_path)
         if not is_summary:
             extract_file_path = os.path.join(
@@ -1251,7 +1248,9 @@ class PromptStudioHelper:
             )
         else:
             profile_manager.chunk_size = 0
-
+        usage_kwargs = {"run_id": run_id}
+        # Orginal file name with which file got uploaded in prompt studio
+        usage_kwargs["file_name"] = filename
         is_extracted = PromptStudioIndexHelper.check_extraction_status(
             document_id=document_id,
             profile_manager=profile_manager,
@@ -1263,7 +1262,8 @@ class PromptStudioHelper:
                 env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
             )
             try:
-                extracted_text = fs_instance.read(file_path=extract_file_path, mode="r")
+                extracted_text = fs_instance.read(path=extract_file_path, mode="r")
+                logger.info("Extracted text found. Reading from file..")
                 return extracted_text
             except (FileNotFoundError, Exception) as e:
                 logger.warning(
@@ -1290,11 +1290,27 @@ class PromptStudioHelper:
             prompt_port=settings.PROMPT_PORT,
         )
         headers = {Common.X_REQUEST_ID: StateStore.get(Common.REQUEST_ID)}
-        extracted_text = responder.extract(payload=payload, headers=headers)
+        response = responder.extract(payload=payload, headers=headers)
+        try:
+            response_data = PromptStudioHelper.handle_response(response)
+            extracted_text = json.loads(response_data)
+            PromptStudioIndexHelper.mark_extraction_status(
+                document_id=document_id,
+                profile_manager=profile_manager,
+                doc_id=doc_id,
+            )
+        except IndexingAPIError as e:
+            logger.error(f"Failed to extract document: {str(e)}")
+            raise IndexingAPIError(f"Failed to extract document: {str(e)}") from e
 
-        PromptStudioIndexHelper.mark_extraction_status(
-            document_id=document_id,
-            profile_manager=profile_manager,
-            doc_id=doc_id,
-        )
         return extracted_text
+
+    @staticmethod
+    def handle_response(response: dict) -> dict:
+        """Handles API responses stored in dictionary format."""
+        status_code = response.get("status_code")
+        if status_code == 200:
+            return response.get("structure_output")
+        else:
+            error_message = response.get("error", "Unknown error")
+            raise IndexingAPIError(f"Error while fetching response. {error_message}")

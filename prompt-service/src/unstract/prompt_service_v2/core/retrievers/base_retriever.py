@@ -1,8 +1,18 @@
+from typing import Optional
+
+from unstract.sdk.llm import LLM
 from unstract.sdk.vector_db import VectorDB
 
 
 class BaseRetriever:
-    def __init__(self, vector_db: VectorDB, prompt: str, doc_id: str, top_k: int):
+    def __init__(
+        self,
+        vector_db: VectorDB,
+        prompt: str,
+        doc_id: str,
+        top_k: int,
+        llm: Optional[LLM] = None,
+    ):
         """Initialize the Retrieval class.
 
         Args:
@@ -15,6 +25,7 @@ class BaseRetriever:
         self.prompt = prompt
         self.doc_id = doc_id
         self.top_k = top_k
+        self.llm = llm._llm_instance
 
     @staticmethod
     def retrieve() -> set[str]:

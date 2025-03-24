@@ -21,7 +21,7 @@ class StructureToolHelper:
 
         x2Text = tool_settings[SettingsKeys.X2TEXT_ADAPTER]
         extract_file_path: Optional[str] = None
-
+        tool.stream_log(f"Extracting text from {file_path}")
         payload = {
             IKeys.X2TEXT_INSTANCE_ID: x2Text,
             IKeys.FILE_PATH: file_path,
@@ -31,15 +31,17 @@ class StructureToolHelper:
             IKeys.EXECUTION_SOURCE: SettingsKeys.TOOL,
             IKeys.OUTPUT_FILE_PATH: extract_file_path,
             IKeys.TAGS: tool.tags,
-            IKeys.TOOL_EXECUTION_METATADA: tool.get_exec_metadata(),
-            IKeys.EXECUTION_DATA_DIR: execution_run_data_folder,
+            IKeys.TOOL_EXECUTION_METATADA: tool.get_exec_metadata,
+            IKeys.EXECUTION_DATA_DIR: str(execution_run_data_folder),
         }
 
+        tool.stream_log(f"Payload constructed : {payload}")
         responder = PromptTool(
             tool=tool,
-            prompt_host=tool.get_env_or_die(SettingsKeys.PROMPT_PORT),
+            prompt_host=tool.get_env_or_die(SettingsKeys.PROMPT_HOST),
             prompt_port=tool.get_env_or_die(SettingsKeys.PROMPT_PORT),
         )
+        tool.stream_log(f"responder : {responder}")
         extracted_text = responder.extract(payload=payload)
 
         return extracted_text
@@ -72,20 +74,20 @@ class StructureToolHelper:
             IKeys.CHUNK_SIZE: chunk_size,
             IKeys.CHUNK_OVERLAP: chunk_overlap,
             IKeys.REINDEX: reIndex,
-            IKeys.FILE_PATH: file_path,
+            IKeys.FILE_PATH: str(file_path),
             IKeys.ENABLE_HIGHLIGHT: enable_highlight,
             IKeys.USAGE_KWARGS: usage_kwargs.copy(),
             IKeys.RUN_ID: run_id,
             IKeys.EXECUTION_SOURCE: SettingsKeys.TOOL,
             IKeys.TAGS: tool.tags,
-            IKeys.TOOL_EXECUTION_METATADA: tool.get_exec_metadata(),
-            IKeys.EXECUTION_DATA_DIR: execution_run_data_folder,
+            IKeys.TOOL_EXECUTION_METATADA: tool.get_exec_metadata,
+            IKeys.EXECUTION_DATA_DIR: str(execution_run_data_folder),
             IKeys.EXTRACTED_TEXT: extracted_text,
         }
 
         responder = PromptTool(
             tool=tool,
-            prompt_host=tool.get_env_or_die(SettingsKeys.PROMPT_PORT),
+            prompt_host=tool.get_env_or_die(SettingsKeys.PROMPT_HOST),
             prompt_port=tool.get_env_or_die(SettingsKeys.PROMPT_PORT),
         )
         doc_id = responder.index(payload=payload)
