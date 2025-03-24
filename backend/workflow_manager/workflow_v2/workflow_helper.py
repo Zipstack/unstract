@@ -14,6 +14,7 @@ from celery.result import AsyncResult
 from django.db import IntegrityError
 from pipeline_v2.models import Pipeline
 from pipeline_v2.pipeline_processor import PipelineProcessor
+from plugins.workflow_manager.workflow_v2.utils import WorkflowUtil
 from rest_framework import serializers
 from tool_instance_v2.constants import ToolInstanceKey
 from tool_instance_v2.models import ToolInstance
@@ -47,7 +48,6 @@ from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelpe
 from workflow_manager.workflow_v2.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.workflow import Workflow
-from workflow_manager.workflow_v2.utils import WorkflowUtil
 
 logger = logging.getLogger(__name__)
 
@@ -273,6 +273,7 @@ class WorkflowHelper:
             input_file_path=input_file,
             error=error,
             use_file_history=execution_service.use_file_history,
+            file_execution_id=file_execution_id,
         )
         execution_service.publish_update_log(
             LogState.SUCCESS,
@@ -575,9 +576,8 @@ class WorkflowHelper:
     @staticmethod
     @shared_task(
         name="async_execute_bin",
-        acks_late=True,
         autoretry_for=(Exception,),
-        max_retries=1,
+        max_retries=0,
         retry_backoff=True,
         retry_backoff_max=500,
         retry_jitter=True,

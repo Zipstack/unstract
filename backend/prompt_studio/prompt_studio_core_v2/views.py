@@ -219,10 +219,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         )
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
-        text_processor = get_plugin_class_by_name(
-            name="text_processor",
-            plugins=self.processor_plugins,
-        )
         # Generate a run_id
         run_id = CommonUtils.generate_uuid()
         unique_id = PromptStudioHelper.index_document(
@@ -232,7 +228,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             user_id=tool.created_by.user_id,
             document_id=document_id,
             run_id=run_id,
-            text_processor=text_processor,
         )
 
         usage_kwargs: dict[Any, Any] = dict()
@@ -282,10 +277,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         if not run_id:
             # Generate a run_id
             run_id = CommonUtils.generate_uuid()
-        text_processor = get_plugin_class_by_name(
-            name="text_processor",
-            plugins=self.processor_plugins,
-        )
         response: dict[str, Any] = PromptStudioHelper.prompt_responder(
             id=id,
             tool_id=tool_id,
@@ -294,7 +285,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             document_id=document_id,
             run_id=run_id,
             profile_manager_id=profile_manager,
-            text_processor=text_processor,
         )
         return Response(response, status=status.HTTP_200_OK)
 
@@ -318,17 +308,12 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         if not run_id:
             # Generate a run_id
             run_id = CommonUtils.generate_uuid()
-        text_processor = get_plugin_class_by_name(
-            name="text_processor",
-            plugins=self.processor_plugins,
-        )
         response: dict[str, Any] = PromptStudioHelper.prompt_responder(
             tool_id=tool_id,
             org_id=UserSessionUtils.get_organization_id(request),
             user_id=custom_tool.created_by.user_id,
             document_id=document_id,
             run_id=run_id,
-            text_processor=text_processor,
         )
         return Response(response, status=status.HTTP_200_OK)
 

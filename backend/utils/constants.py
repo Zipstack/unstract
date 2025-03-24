@@ -68,7 +68,5 @@ class ExecutionLogConstants:
     LOGS_BATCH_LIMIT: int = settings.LOGS_BATCH_LIMIT
     LOG_QUEUE_NAME: str = "log_history_queue"
     CELERY_QUEUE_NAME = "celery_periodic_logs"
-    PERIODIC_TASK_NAME = "workflow_log_history"
     PERIODIC_TASK_NAME_V2 = "workflow_log_history_v2"
-    TASK = "workflow_manager.workflow.execution_log_utils.consume_log_history"
     TASK_V2 = "consume_log_history"

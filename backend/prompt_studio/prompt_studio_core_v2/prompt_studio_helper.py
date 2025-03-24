@@ -385,6 +385,7 @@ class PromptStudioHelper:
             user_id=user_id,
             process_text=process_text,
             fs=fs_instance,
+            enable_highlight=tool.enable_highlight,
         )
 
         elapsed_time = time.time() - start_time
@@ -761,6 +762,7 @@ class PromptStudioHelper:
             user_id=user_id,
             process_text=process_text,
             fs=fs_instance,
+            enable_highlight=tool.enable_highlight,
         )
         if index_result.get("status") == IndexingStatus.PENDING_STATUS.value:
             return {
@@ -915,6 +917,7 @@ class PromptStudioHelper:
         run_id: str = None,
         process_text: Optional[Callable[[str], str]] = None,
         fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        enable_highlight: bool = False,
     ) -> Any:
         """Used to index a file based on the passed arguments.
 
@@ -998,6 +1001,7 @@ class PromptStudioHelper:
                 usage_kwargs=usage_kwargs.copy(),
                 process_text=process_text,
                 fs=fs,
+                enable_highlight=enable_highlight,
             )
 
             PromptStudioIndexHelper.handle_index_manager(
@@ -1075,6 +1079,7 @@ class PromptStudioHelper:
             user_id=user_id,
             process_text=process_text,
             fs=fs_instance,
+            enable_highlight=tool.enable_highlight,
         )
         if index_result.get("status") == IndexingStatus.PENDING_STATUS.value:
             return {

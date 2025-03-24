@@ -76,7 +76,7 @@ function Settings() {
               strong
               onClick={() => navigate("review")}
             >
-              Manual Review Settings
+              Human In The Loop Settings
             </Typography.Link>
           </div>
         </div>
