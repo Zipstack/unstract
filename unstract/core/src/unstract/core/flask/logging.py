@@ -1,4 +1,5 @@
 import logging
+from logging.config import dictConfig
 
 from flask import g
 
@@ -17,7 +18,7 @@ def setup_logging(log_level: str):
         log_level (str): Log level to use. Can be one of
         INFO, DEBUG, WARNING, ERROR
     """
-    logging.config.dictConfig(
+    dictConfig(
         {
             "version": 1,
             "disable_existing_loggers": False,
