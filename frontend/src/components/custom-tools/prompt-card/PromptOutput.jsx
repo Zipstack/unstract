@@ -84,9 +84,7 @@ function PromptOutput({
   const { generatePromptOutputKey } = usePromptOutput();
   const isTableExtraction =
     enforceType === TABLE_ENFORCE_TYPE || enforceType === RECORD_ENFORCE_TYPE;
-  const noHighlightEnforceType = !["json", "table", "record"].includes(
-    enforceType
-  );
+  const noHighlightEnforceType = !["table", "record"].includes(enforceType);
   const tooltipContent = (adapterConf) => (
     <div>
       {Object.entries(adapterConf)?.map(([key, value]) => (
@@ -144,16 +142,54 @@ function PromptOutput({
 
     const promptOutput = promptOutputs[promptOutputKey]?.output;
 
+    let promptOutputData = {};
+    if (promptOutputs && Object.keys(promptOutputs)) {
+      const promptOutputKey = generatePromptOutputKey(
+        promptId,
+        docId,
+        defaultLlmProfile,
+        singlePassExtractMode,
+        true
+      );
+      if (promptOutputs[promptOutputKey] !== undefined) {
+        promptOutputData = promptOutputs[promptOutputKey];
+      }
+    }
+
     return (
       <>
         <Divider className="prompt-card-divider" />
-        <div className="prompt-card-result prompt-card-div">
-          <DisplayPromptResult output={promptOutput} />
+        <Space
+          wrap
+          className={`prompt-card-result prompt-card-div ${
+            details?.enable_highlight &&
+            noHighlightEnforceType &&
+            selectedHighlight?.highlightedPrompt === promptId &&
+            selectedHighlight?.highlightedProfile === defaultLlmProfile &&
+            "highlighted-prompt-cell"
+          }`}
+        >
+          <DisplayPromptResult
+            output={promptOutput}
+            highlightData={
+              promptOutputData?.highlightData?.[promptDetails.prompt_key]
+            }
+            handleSelectHighlight={handleSelectHighlight}
+            confidenceData={
+              promptOutputData?.confidenceData?.[promptDetails.prompt_key]
+            }
+          />
           <div className="prompt-profile-run">
             <CopyPromptOutputBtn
               isDisabled={isTableExtraction}
               copyToClipboard={() =>
-                copyOutputToClipboard(displayPromptResult(promptOutput, true))
+                copyOutputToClipboard(
+                  displayPromptResult(
+                    promptOutput,
+                    true,
+                    promptDetails?.enable_highlight
+                  )
+                )
               }
             />
             <PromptOutputExpandBtn
@@ -165,7 +201,7 @@ function PromptOutput({
               promptRunStatus={promptRunStatus}
             />
           </div>
-        </div>
+        </Space>
       </>
     );
   }
@@ -213,209 +249,205 @@ function PromptOutput({
                 "highlighted-prompt-cell"
               }`}
             >
-              <Tooltip
-                title={
-                  details?.enable_highlight &&
-                  noHighlightEnforceType &&
-                  "Click to highlight"
-                }
+              <Col
+                key={profileId}
+                className="prompt-card-llm-container"
+                xs={{ span: getColSpan() }}
               >
-                <Col
-                  key={profileId}
-                  className="prompt-card-llm-container"
-                  xs={{ span: getColSpan() }}
-                >
-                  <Divider className="prompt-card-divider" />
-                  <Space
-                    direction="vertical"
-                    className="prompt-card-llm-layout"
-                    onClick={() => {
+                <Divider className="prompt-card-divider" />
+                <Space
+                  direction="vertical"
+                  className="prompt-card-llm-layout"
+                  onClick={() => {
+                    enforceType !== "json" &&
                       handleSelectHighlight(
                         promptOutputData?.highlightData,
                         promptId,
-                        profileId
+                        profileId,
+                        promptOutputData?.confidenceData
                       );
-                    }}
-                  >
-                    <div className="llm-info">
-                      <div className="llm-info-left">
-                        <Image
-                          src={profile?.icon}
-                          width={15}
-                          height={15}
-                          preview={false}
-                          className="prompt-card-llm-icon"
-                        />
-                        <Typography.Text
-                          className="prompt-card-llm-title"
-                          ellipsis={{ tooltip: profile?.conf?.LLM }}
-                        >
-                          {profile?.conf?.LLM}
-                        </Typography.Text>
-                      </div>
-                      <div className="llm-info-right">
-                        <Space>
-                          <Tooltip title={tooltipContent(profile?.conf)}>
-                            <InfoCircleOutlined className="prompt-card-actions-head" />
-                          </Tooltip>
-                          <Tooltip title="Chunk used">
-                            <DatabaseOutlined
-                              onClick={() => {
-                                setIsIndexOpen(true);
-                                setOpenIndexProfile(promptOutputData?.context);
-                              }}
-                              className="prompt-card-actions-head"
-                            />
-                          </Tooltip>
-                          {ChallengeModal && isChallenge && (
-                            <ChallengeModal
-                              challengeData={
-                                promptOutputData?.challengeData || {}
-                              }
-                              context={promptOutputData?.context || ""}
-                              tokenUsage={promptOutputData?.tokenUsage || {}}
-                            />
-                          )}
-                          {isNotSingleLlmProfile && (
-                            <Tooltip title="Select Default">
-                              <Radio
-                                checked={profileId === selectedLlmProfileId}
-                                onChange={() =>
-                                  handleSelectDefaultLLM(profileId)
-                                }
-                                disabled={isPublicSource}
-                              />
-                            </Tooltip>
-                          )}
-                        </Space>
-                      </div>
+                  }}
+                >
+                  <div className="llm-info">
+                    <div className="llm-info-left">
+                      <Image
+                        src={profile?.icon}
+                        width={15}
+                        height={15}
+                        preview={false}
+                        className="prompt-card-llm-icon"
+                      />
+                      <Typography.Text
+                        className="prompt-card-llm-title"
+                        ellipsis={{ tooltip: profile?.conf?.LLM }}
+                      >
+                        {profile?.conf?.LLM}
+                      </Typography.Text>
                     </div>
-                    <div className="prompt-cost">
-                      <Typography.Text className="prompt-cost-item">
-                        Tokens:{" "}
-                        {!singlePassExtractMode && (
-                          <TokenUsage
-                            tokenUsageId={tokenUsageId}
-                            isLoading={isPromptLoading}
+                    <div className="llm-info-right">
+                      <Space>
+                        <Tooltip title={tooltipContent(profile?.conf)}>
+                          <InfoCircleOutlined className="prompt-card-actions-head" />
+                        </Tooltip>
+                        <Tooltip title="Chunk used">
+                          <DatabaseOutlined
+                            onClick={() => {
+                              setIsIndexOpen(true);
+                              setOpenIndexProfile(promptOutputData?.context);
+                            }}
+                            className="prompt-card-actions-head"
+                          />
+                        </Tooltip>
+                        {ChallengeModal && isChallenge && (
+                          <ChallengeModal
+                            challengeData={
+                              promptOutputData?.challengeData || {}
+                            }
+                            context={promptOutputData?.context || ""}
+                            tokenUsage={promptOutputData?.tokenUsage || {}}
                           />
                         )}
-                      </Typography.Text>
-                      <Typography.Text className="prompt-cost-item">
-                        <PromptRunTimer
-                          timer={promptOutputData?.timer}
-                          isLoading={isPromptLoading}
-                        />
-                      </Typography.Text>
-                      <Typography.Text className="prompt-cost-item">
-                        <PromptRunCost
-                          tokenUsage={promptOutputData?.tokenUsage}
-                          isLoading={isPromptLoading}
-                        />
-                      </Typography.Text>
-                    </div>
-                    <div className="prompt-info">
-                      <div>
-                        <CheckableTag
-                          checked={isChecked}
-                          onChange={(checked) =>
-                            handleTagChange(checked, profileId)
-                          }
-                          disabled={isPublicSource}
-                          className={isChecked ? "checked" : "unchecked"}
-                        >
-                          {isChecked ? (
-                            <span>
-                              Enabled
-                              <CheckCircleOutlined className="prompt-output-icon-enabled" />
-                            </span>
-                          ) : (
-                            <span>
-                              Disabled
-                              <ExclamationCircleFilled className="prompt-output-icon-disabled" />
-                            </span>
-                          )}
-                        </CheckableTag>
-                      </div>
-                      <div>
-                        <Tooltip title="Run LLM for current document">
-                          <Button
-                            size="small"
-                            type="text"
-                            className="prompt-card-action-button"
-                            onClick={() =>
-                              handleRun(
-                                PROMPT_RUN_TYPES.RUN_ONE_PROMPT_ONE_LLM_ONE_DOC,
-                                promptDetails?.prompt_id,
-                                profileId,
-                                selectedDoc?.document_id
-                              )
-                            }
-                            disabled={isPromptLoading || isPublicSource}
-                          >
-                            <PlayCircleOutlined className="prompt-card-actions-head" />
-                          </Button>
-                        </Tooltip>
-                        <Tooltip title="Run LLM for all documents">
-                          <Button
-                            size="small"
-                            type="text"
-                            className="prompt-card-action-button"
-                            onClick={() =>
-                              handleRun(
-                                PROMPT_RUN_TYPES.RUN_ONE_PROMPT_ONE_LLM_ALL_DOCS,
-                                promptDetails?.prompt_id,
-                                profileId,
-                                null
-                              )
-                            }
-                            disabled={isPromptLoading || isPublicSource}
-                          >
-                            <PlayCircleFilled className="prompt-card-actions-head" />
-                          </Button>
-                        </Tooltip>
-                        <PromptOutputExpandBtn
-                          promptId={promptDetails?.prompt_id}
-                          llmProfiles={llmProfileDetails}
-                          enforceType={enforceType}
-                          displayLlmProfile={true}
-                          promptOutputs={promptOutputs}
-                          promptRunStatus={promptRunStatus}
-                        />
-                      </div>
-                    </div>
-                  </Space>
-                  <>
-                    <Divider className="prompt-card-divider" />
-                    <div className="prompt-card-result prompt-card-div">
-                      {isTableExtraction && TableOutput ? (
-                        <TableOutput output={promptOutputData?.output} />
-                      ) : (
-                        <>
-                          <DisplayPromptResult
-                            output={promptOutputData?.output}
-                            profileId={profileId}
-                            docId={selectedDoc?.document_id}
-                            promptRunStatus={promptRunStatus}
-                          />
-                          <div className="prompt-profile-run">
-                            <CopyPromptOutputBtn
-                              isDisabled={isTableExtraction}
-                              copyToClipboard={() =>
-                                copyOutputToClipboard(
-                                  displayPromptResult(
-                                    promptOutputData?.output,
-                                    true
-                                  )
-                                )
-                              }
+                        {isNotSingleLlmProfile && (
+                          <Tooltip title="Select Default">
+                            <Radio
+                              checked={profileId === selectedLlmProfileId}
+                              onChange={() => handleSelectDefaultLLM(profileId)}
+                              disabled={isPublicSource}
                             />
-                          </div>
-                        </>
-                      )}
+                          </Tooltip>
+                        )}
+                      </Space>
                     </div>
-                  </>
-                </Col>
-              </Tooltip>
+                  </div>
+                  <div className="prompt-cost">
+                    <Typography.Text className="prompt-cost-item">
+                      Tokens:{" "}
+                      {!singlePassExtractMode && (
+                        <TokenUsage
+                          tokenUsageId={tokenUsageId}
+                          isLoading={isPromptLoading}
+                        />
+                      )}
+                    </Typography.Text>
+                    <Typography.Text className="prompt-cost-item">
+                      <PromptRunTimer
+                        timer={promptOutputData?.timer}
+                        isLoading={isPromptLoading}
+                      />
+                    </Typography.Text>
+                    <Typography.Text className="prompt-cost-item">
+                      <PromptRunCost
+                        tokenUsage={promptOutputData?.tokenUsage}
+                        isLoading={isPromptLoading}
+                      />
+                    </Typography.Text>
+                  </div>
+                  <div className="prompt-info">
+                    <div>
+                      <CheckableTag
+                        checked={isChecked}
+                        onChange={(checked) =>
+                          handleTagChange(checked, profileId)
+                        }
+                        disabled={isPublicSource}
+                        className={isChecked ? "checked" : "unchecked"}
+                      >
+                        {isChecked ? (
+                          <span>
+                            Enabled
+                            <CheckCircleOutlined className="prompt-output-icon-enabled" />
+                          </span>
+                        ) : (
+                          <span>
+                            Disabled
+                            <ExclamationCircleFilled className="prompt-output-icon-disabled" />
+                          </span>
+                        )}
+                      </CheckableTag>
+                    </div>
+                    <div>
+                      <Tooltip title="Run LLM for current document">
+                        <Button
+                          size="small"
+                          type="text"
+                          className="prompt-card-action-button"
+                          onClick={() =>
+                            handleRun(
+                              PROMPT_RUN_TYPES.RUN_ONE_PROMPT_ONE_LLM_ONE_DOC,
+                              promptDetails?.prompt_id,
+                              profileId,
+                              selectedDoc?.document_id
+                            )
+                          }
+                          disabled={isPromptLoading || isPublicSource}
+                        >
+                          <PlayCircleOutlined className="prompt-card-actions-head" />
+                        </Button>
+                      </Tooltip>
+                      <Tooltip title="Run LLM for all documents">
+                        <Button
+                          size="small"
+                          type="text"
+                          className="prompt-card-action-button"
+                          onClick={() =>
+                            handleRun(
+                              PROMPT_RUN_TYPES.RUN_ONE_PROMPT_ONE_LLM_ALL_DOCS,
+                              promptDetails?.prompt_id,
+                              profileId,
+                              null
+                            )
+                          }
+                          disabled={isPromptLoading || isPublicSource}
+                        >
+                          <PlayCircleFilled className="prompt-card-actions-head" />
+                        </Button>
+                      </Tooltip>
+                      <PromptOutputExpandBtn
+                        promptId={promptDetails?.prompt_id}
+                        llmProfiles={llmProfileDetails}
+                        enforceType={enforceType}
+                        displayLlmProfile={true}
+                        promptOutputs={promptOutputs}
+                        promptRunStatus={promptRunStatus}
+                      />
+                    </div>
+                  </div>
+                </Space>
+                <>
+                  <Divider className="prompt-card-divider" />
+                  <div className="prompt-card-result prompt-card-div">
+                    {isTableExtraction && TableOutput ? (
+                      <TableOutput output={promptOutputData?.output} />
+                    ) : (
+                      <>
+                        <DisplayPromptResult
+                          output={promptOutputData?.output}
+                          profileId={profileId}
+                          docId={selectedDoc?.document_id}
+                          promptRunStatus={promptRunStatus}
+                          handleSelectHighlight={handleSelectHighlight}
+                          highlightData={promptOutputData?.highlightData}
+                          confidenceData={promptOutputData?.confidenceData}
+                          promptDetails={promptDetails}
+                        />
+                        <div className="prompt-profile-run">
+                          <CopyPromptOutputBtn
+                            isDisabled={isTableExtraction}
+                            copyToClipboard={() =>
+                              copyOutputToClipboard(
+                                displayPromptResult(
+                                  promptOutputData?.output,
+                                  true
+                                )
+                              )
+                            }
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </>
+              </Col>
             </motion.div>
           );
         })}

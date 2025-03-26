@@ -49,6 +49,7 @@ const PromptCard = memo(
       details,
       summarizeIndexStatus,
       updateCustomTool,
+      singlePassExtractMode,
     } = useCustomToolStore();
     const { messages } = useSocketCustomToolStore();
     const { setAlertDetails } = useAlertStore();
@@ -166,20 +167,67 @@ const PromptCard = memo(
       );
     };
 
+    const addCoordsToFlattened = (coords, flattened) => {
+      if (Array.isArray(coords)) {
+        flattened.push(coords);
+      }
+    };
+
+    const processNestedArray = (nestedValue, flattened) => {
+      if (Array.isArray(nestedValue)) {
+        nestedValue.forEach((coords) =>
+          addCoordsToFlattened(coords, flattened)
+        );
+      }
+    };
+
+    const processObjectValues = (item, flattened) => {
+      if (typeof item === "object" && !Array.isArray(item)) {
+        Object.values(item).forEach((value) =>
+          processNestedArray(value, flattened)
+        );
+      }
+    };
+
+    const processArrayItem = (item, flattened) => {
+      if (Array.isArray(item)) {
+        addCoordsToFlattened(item, flattened);
+      } else {
+        processObjectValues(item, flattened);
+      }
+    };
+
+    const flattenHighlightData = (data) => {
+      if (!data || typeof data !== "object") return data;
+
+      const flattened = [];
+      Object.values(data).forEach((value) => {
+        if (Array.isArray(value)) {
+          value.forEach((item) => processArrayItem(item, flattened));
+        }
+      });
+      return flattened;
+    };
+
     const handleSelectHighlight = (
       highlightData,
       highlightedPrompt,
-      highlightedProfile
+      highlightedProfile,
+      confidenceData
     ) => {
-      if (
-        details?.enable_highlight &&
-        promptDetailsState?.enforce_type !== "json"
-      ) {
+      if (details?.enable_highlight) {
+        const processedHighlight =
+          singlePassExtractMode &&
+          typeof highlightData === "object" &&
+          !Array.isArray(highlightData)
+            ? flattenHighlightData(highlightData)
+            : highlightData;
         updateCustomTool({
           selectedHighlight: {
-            highlight: highlightData,
+            highlight: processedHighlight,
             highlightedPrompt: highlightedPrompt,
             highlightedProfile: highlightedProfile,
+            confidence: confidenceData,
           },
         });
       }
