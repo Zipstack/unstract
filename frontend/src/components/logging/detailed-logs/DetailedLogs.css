@@ -22,3 +22,13 @@
 .column-filter-dropdown{
   margin-bottom: 20px;
 }
+
+.search-container {
+  padding: 8px;
+}
+
+.search-input {
+  width: 188px;
+  margin-bottom: 8px;
+  display: block;
+}

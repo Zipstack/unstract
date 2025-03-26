@@ -20,6 +20,7 @@ import {
   formattedDateTimeWithSeconds,
 } from "../../../helpers/GetStaticData";
 import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
+import useRequestUrl from "../../../hooks/useRequestUrl";
 
 function ExecutionLogs() {
   const { RangePicker } = DatePicker;
@@ -30,6 +31,7 @@ function ExecutionLogs() {
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const navigate = useNavigate();
+  const { getUrl } = useRequestUrl();
 
   const [dataList, setDataList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -94,7 +96,7 @@ function ExecutionLogs() {
 
   const pollExecutingRecord = async (id) => {
     try {
-      const url = `/api/v1/unstract/${sessionDetails?.orgId}/execution/${id}/`;
+      const url = getUrl(`/execution/${id}/`);
       const response = await axiosPrivate.get(url);
       const item = response?.data;
 
@@ -162,7 +164,7 @@ function ExecutionLogs() {
   const fetchLogs = async (page) => {
     try {
       setLoading(true);
-      const url = `/api/v1/unstract/${sessionDetails?.orgId}/execution/`;
+      const url = getUrl(`/execution/`);
       const response = await axiosPrivate.get(url, {
         params: {
           execution_entity: activeTab,

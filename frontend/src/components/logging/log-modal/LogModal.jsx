@@ -5,13 +5,13 @@ import PropTypes from "prop-types";
 import "./LogModal.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
-import { useSessionStore } from "../../../store/session-store";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import {
   formattedDateTime,
   formattedDateTimeWithSeconds,
 } from "../../../helpers/GetStaticData";
 import { FilterDropdown, FilterIcon } from "../filter-dropdown/FilterDropdown";
+import useRequestUrl from "../../../hooks/useRequestUrl";
 
 function LogModal({
   executionId,
@@ -21,9 +21,9 @@ function LogModal({
   filterParams,
 }) {
   const axiosPrivate = useAxiosPrivate();
-  const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
+  const { getUrl } = useRequestUrl();
 
   const [executionLogs, setExecutionLogs] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -38,7 +38,7 @@ function LogModal({
 
   const fetchExecutionFileLogs = async (executionId, fileId, page) => {
     try {
-      const url = `/api/v1/unstract/${sessionDetails?.orgId}/execution/${executionId}/logs/`;
+      const url = getUrl(`/execution/${executionId}/logs/`);
       const response = await axiosPrivate.get(url, {
         params: {
           page_size: pagination.pageSize,

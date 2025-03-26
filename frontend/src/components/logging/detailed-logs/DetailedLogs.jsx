@@ -35,6 +35,7 @@ import {
 } from "../../../helpers/GetStaticData";
 import { LogModal } from "../log-modal/LogModal";
 import { FilterIcon } from "../filter-dropdown/FilterDropdown";
+import useRequestUrl from "../../../hooks/useRequestUrl";
 
 const DetailedLogs = () => {
   const { id, type } = useParams(); // Get the ID from the URL
@@ -43,6 +44,7 @@ const DetailedLogs = () => {
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const navigate = useNavigate();
+  const { getUrl } = useRequestUrl();
 
   const [executionDetails, setExecutionDetails] = useState();
   const [executionFiles, setExecutionFiles] = useState();
@@ -64,7 +66,7 @@ const DetailedLogs = () => {
 
   const fetchExecutionDetails = async (id) => {
     try {
-      const url = `/api/v1/unstract/${sessionDetails?.orgId}/execution/${id}/`;
+      const url = getUrl(`/execution/${id}/`);
       const response = await axiosPrivate.get(url);
       const item = response?.data;
       const total = item?.total_files || 0;
@@ -96,7 +98,7 @@ const DetailedLogs = () => {
 
   const fetchExecutionFiles = async (id, page, customParams = null) => {
     try {
-      const url = `/api/v1/unstract/${sessionDetails?.orgId}/execution/${id}/files/`;
+      const url = getUrl(`/execution/${id}/files/`);
       const defaultParams = {
         page_size: pagination.pageSize,
         page,
@@ -181,12 +183,12 @@ const DetailedLogs = () => {
       dataIndex: "fileName",
       key: "fileName",
       filterDropdown: () => (
-        <div style={{ padding: 8 }}>
+        <div className="search-container">
           <Input
             placeholder="Search files"
             value={searchText}
             onChange={(e) => handleSearch(e.target.value)}
-            style={{ width: 188, marginBottom: 8, display: "block" }}
+            className="search-input"
           />
         </div>
       ),
