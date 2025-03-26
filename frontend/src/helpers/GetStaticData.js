@@ -1,7 +1,6 @@
 import moment from "moment";
 import momentTz from "moment-timezone";
 import { format, parseISO } from "date-fns";
-import { fromZonedTime } from "date-fns-tz";
 import { v4 as uuidv4 } from "uuid";
 
 let cloudHomePagePath;
@@ -607,7 +606,7 @@ const formattedDateTimeWithSeconds = (ISOdateTime) => {
   if (ISOdateTime) {
     // eslint-disable-next-line new-cap
     const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const zonedDate = fromZonedTime(parseISO(ISOdateTime), zone);
+    const zonedDate = parseISO(ISOdateTime);
     return format(zonedDate, "MMM d, yyyy h:mm:ss a zzz", { timeZone: zone });
   } else {
     return "";
