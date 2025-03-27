@@ -1,8 +1,9 @@
 import traceback
 
 from flask import Flask, jsonify, request
-from unstract.prompt_service_v2.exceptions import APIError, ErrorResponse
 from werkzeug.exceptions import HTTPException
+
+from unstract.core.flask.exceptions import APIError, ErrorResponse
 
 
 def register_error_handler(app: Flask):

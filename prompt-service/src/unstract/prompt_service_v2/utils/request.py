@@ -4,7 +4,8 @@ from typing import Any, Optional
 import requests as pyrequests
 from flask import current_app as app
 from requests.exceptions import RequestException
-from unstract.prompt_service_v2.exceptions import APIError
+
+from unstract.core.flask.exceptions import APIError
 
 
 class HTTPMethod(str, Enum):

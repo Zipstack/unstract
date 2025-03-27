@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 from flask import current_app as app
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
-from unstract.prompt_service.exceptions import APIError, RateLimitError
+from unstract.prompt_service.exceptions import RateLimitError
 from unstract.prompt_service_v2.constants import ExecutionSource, FileStorageKeys
 from unstract.prompt_service_v2.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service_v2.constants import RunLevel
@@ -19,6 +19,8 @@ from unstract.sdk.file_storage.constants import StorageType
 from unstract.sdk.file_storage.env_helper import EnvHelper
 from unstract.sdk.index import Index
 from unstract.sdk.llm import LLM
+
+from unstract.core.flask.exceptions import APIError
 
 
 class AnswerPromptService:
@@ -349,7 +351,7 @@ class AnswerPromptService:
                     )
                 if execution_source == ExecutionSource.TOOL.value:
                     fs_instance = EnvHelper.get_storage(
-                        storage_type=StorageType.TEMPORARY,
+                        storage_type=StorageType.SHARED_TEMPORARY,
                         env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
                     )
                 highlight_data = highlight_data_plugin["entrypoint_cls"](
@@ -408,7 +410,7 @@ class AnswerPromptService:
             )
         if execution_source == ExecutionSource.TOOL.value:
             fs_instance = EnvHelper.get_storage(
-                storage_type=StorageType.TEMPORARY,
+                storage_type=StorageType.SHARED_TEMPORARY,
                 env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
             )
         try:
@@ -459,7 +461,7 @@ class AnswerPromptService:
             )
         if execution_source == ExecutionSource.TOOL.value:
             fs_instance = EnvHelper.get_storage(
-                storage_type=StorageType.TEMPORARY,
+                storage_type=StorageType.SHARED_TEMPORARY,
                 env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
             )
 
