@@ -460,14 +460,14 @@ class SourceConnector(BaseConnector):
             raise ValueError(f"Unsupported hash_method: {hash_method}")
 
     def get_file_content(
-        self, input_file_path: str, chunk_size: int = 8192
+        self, input_file_path: str, chunk_size: int = 4194304
     ) -> tuple[bytes, Optional[int]]:
         """Read the content of a file from a remote filesystem in chunks.
 
         Args:
             input_file_path (str): The path of the input file.
             chunk_size (int): The size of the chunks to read at a time
-            (default is 8192 bytes).
+            (default is 4194304 bytes = 4 MB).
 
         Returns:
             tuple[bytes, int]:
