@@ -89,11 +89,14 @@ class ToolSandboxHelper:
             Optional[dict[str, Any]]: tool response
         """
         url = f"{self.base_url}{UnstractRunner.RUN_API_ENDPOINT}"
+        headers = {
+            "X-Request-ID": file_execution_id,
+        }
         data = self.create_tool_request_data(
             file_execution_id, image_name, image_tag, settings, retry_count
         )
 
-        response = requests.post(url, json=data)
+        response = requests.post(url, headers=headers, json=data)
         result: Optional[dict[str, Any]] = None
         if response.status_code == 200:
             result = response.json()
