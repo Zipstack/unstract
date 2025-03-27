@@ -1,5 +1,4 @@
 import logging
-from logging.config import dictConfig
 from os import environ as env
 
 from dotenv import load_dotenv
@@ -11,69 +10,19 @@ from unstract.prompt_service_v2.helpers.errorhandler import register_error_handl
 from unstract.prompt_service_v2.helpers.lifecycle import register_lifecycle_hooks
 from unstract.prompt_service_v2.helpers.plugin import plugin_loader
 from unstract.prompt_service_v2.utils.env_loader import get_env_or_die
-from unstract.prompt_service_v2.utils.request_id_filter import RequestIDFilter
 from unstract.sdk.constants import LogLevel
 
+from unstract.core.flask.logging import setup_logging
+
 load_dotenv()
-
-
-def setup_logging(log_level):
-    dictConfig(
-        {
-            "version": 1,
-            "formatters": {
-                "default": {
-                    "format": (
-                        "[%(asctime)s] %(levelname)s in %(name)s (%(module)s) "
-                        "[Request ID: %(request_id)s]: %(message)s"
-                    ),
-                    "datefmt": "%Y-%m-%d %H:%M:%S %z",
-                },
-            },
-            "filters": {
-                "request_id": {
-                    "()": RequestIDFilter,
-                }
-            },
-            "handlers": {
-                "wsgi": {
-                    "class": "logging.StreamHandler",
-                    "stream": "ext://flask.logging.wsgi_errors_stream",
-                    "formatter": "default",
-                    "filters": ["request_id"],
-                },
-            },
-            "loggers": {
-                "werkzeug": {
-                    "level": log_level,
-                    "handlers": ["wsgi"],
-                    "propagate": False,
-                },
-                "gunicorn.access": {
-                    "level": log_level,
-                    "handlers": ["wsgi"],
-                    "propagate": False,
-                },
-                "gunicorn.error": {
-                    "level": log_level,
-                    "handlers": ["wsgi"],
-                    "propagate": False,
-                },
-            },
-            "root": {
-                "level": log_level,
-                "handlers": ["wsgi"],
-            },
-        }
-    )
 
 
 def create_app() -> Flask:
     """Creates and configures the Flask application."""
 
     log_level = env.get("LOG_LEVEL", LogLevel.INFO.value).upper()
-    log_level = getattr(logging, log_level, logging.INFO)
     setup_logging(log_level)
+    log_level = getattr(logging, log_level, logging.INFO)
     app = Flask("prompt-service")
     app.logger.setLevel(log_level)
     app.logger.info("Initializing Flask application...")
