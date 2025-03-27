@@ -11,7 +11,7 @@ from flask import current_app as app
 from flask import request
 from unstract.prompt_service_v2.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service_v2.constants import RunLevel
-from unstract.prompt_service_v2.exceptions import BadRequest, NoPayloadError
+from unstract.prompt_service_v2.exceptions import BadRequest
 from unstract.prompt_service_v2.helpers.auth import AuthHelper
 from unstract.prompt_service_v2.helpers.plugin import PluginManager
 from unstract.prompt_service_v2.helpers.prompt_ide_base_tool import (
