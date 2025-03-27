@@ -10,8 +10,6 @@ from unstract.prompt_service_v2.exceptions import (
     MissingFieldError,
 )
 
-from unstract.core.flask.exceptions import APIError
-
 
 class HTTPMethod(str, Enum):
     GET = "GET"
