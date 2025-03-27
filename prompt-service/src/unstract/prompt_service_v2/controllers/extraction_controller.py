@@ -14,7 +14,6 @@ REQUIRED_FIELDS = [
     "file_path",
     "execution_source",
     "run_id",
-    "tags",
 ]
 
 

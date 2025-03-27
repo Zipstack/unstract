@@ -74,7 +74,7 @@ def index() -> Any:
         tags=tags,
         llm_instance_id=None,
     )
-
+    logger.info(f"Passing file_path {file_path}")
     file_info = FileInfo(file_path=file_path, file_hash=file_hash)
 
     chunking_config = ChunkingConfig(chunk_size=chunk_size, chunk_overlap=chunk_overlap)

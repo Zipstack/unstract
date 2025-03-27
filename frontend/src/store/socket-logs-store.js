@@ -1,7 +1,7 @@
 import { create } from "zustand";
+import axios from "axios";
 
 import { useSessionStore } from "./session-store";
-import axios from "axios";
 
 const STORE_VARIABLES = {
   logs: [],
@@ -50,10 +50,10 @@ const useSocketLogsStore = create((setState, getState) => ({
       }
     });
 
-    // Remove the previous logs if the length exceeds 1000
+    // Remove the previous logs if the length exceeds 200
     const logsDataLength = logsData?.length;
-    if (logsDataLength > 1000) {
-      const index = logsDataLength - 1000;
+    if (logsDataLength > 200) {
+      const index = logsDataLength - 200;
       logsData = logsData.slice(index);
     }
 

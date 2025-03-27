@@ -1,17 +1,20 @@
+import logging
 from typing import Any, Optional
 
 from unstract.prompt_service_v2.constants import ExecutionSource
 from unstract.prompt_service_v2.constants import IndexingConstants as IKeys
 from unstract.prompt_service_v2.helper.prompt_ide_base_tool import PromptServiceBaseTool
+from unstract.prompt_service_v2.utils.file_utils import FileUtils
 from unstract.sdk.adapters.exceptions import AdapterError
 from unstract.sdk.adapters.x2text.constants import X2TextConstants
 from unstract.sdk.adapters.x2text.llm_whisperer.src import LLMWhisperer
 from unstract.sdk.adapters.x2text.llm_whisperer_v2.src import LLMWhispererV2
 from unstract.sdk.exceptions import X2TextError
-from unstract.sdk.file_storage import FileStorage, FileStorageProvider
 from unstract.sdk.utils import ToolUtils
 from unstract.sdk.utils.common_utils import log_elapsed
 from unstract.sdk.x2txt import TextExtractionResult, X2Text
+
+logger = logging.getLogger(__name__)
 
 
 class ExtractionService:
@@ -26,7 +29,6 @@ class ExtractionService:
         output_file_path: Optional[str] = None,
         enable_highlight: bool = False,
         usage_kwargs: dict[Any, Any] = {},
-        fs: FileStorage = FileStorage(FileStorageProvider.LOCAL),
         tags: Optional[list[str]] = None,
         execution_source: Optional[str] = None,
         tool_exec_metadata: Optional[dict[str, Any]] = None,
@@ -38,6 +40,7 @@ class ExtractionService:
         x2text = X2Text(
             tool=util, adapter_instance_id=x2text_instance_id, usage_kwargs=usage_kwargs
         )
+        fs = FileUtils.get_fs_instance(execution_source=execution_source)
         try:
             if enable_highlight and (
                 isinstance(x2text.x2text_instance, LLMWhisperer)
@@ -65,11 +68,12 @@ class ExtractionService:
                     fs=fs,
                 )
             extracted_text = process_response.extracted_text
+            logger.info(f"Extracted text: {extracted_text}")
             return extracted_text
         except AdapterError as e:
             msg = f"Error from text extractor '{x2text.x2text_instance.get_name()}'. "
             msg += str(e)
-            raise X2TextError(msg) from e
+            raise X2TextError(msg, status_code=500) from e
 
     @staticmethod
     def update_exec_metadata(

@@ -9,7 +9,8 @@ from django.http import HttpRequest
 from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
 from permissions.permission import IsOwner, IsOwnerOrSharedUser
-from prompt_studio.processor_loader import get_plugin_class_by_name, load_plugins
+from prompt_studio.processor_loader import get_plugin_class_by_name
+from prompt_studio.processor_loader import load_plugins as load_processor_plugins
 from prompt_studio.prompt_profile_manager_v2.constants import (
     ProfileManagerErrors,
     ProfileManagerKeys,
@@ -66,6 +67,7 @@ from .serializers import (
 )
 
 logger = logging.getLogger(__name__)
+processor_plugins = load_processor_plugins()
 
 
 class PromptStudioCoreView(viewsets.ModelViewSet):
@@ -75,7 +77,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
     serializer_class = CustomToolSerializer
 
-    processor_plugins = load_plugins()
+    processor_plugins = load_processor_plugins()
 
     def get_permissions(self) -> list[Any]:
         if self.action == "destroy":
@@ -219,12 +221,10 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         )
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
-        text_processor = get_plugin_class_by_name(
-            name="text_processor",
-            plugins=self.processor_plugins,
-        )
         # Generate a run_id
         run_id = CommonUtils.generate_uuid()
+        is_summary = tool.summarize_context
+
         unique_id = PromptStudioHelper.index_document(
             tool_id=str(tool.tool_id),
             file_name=file_name,
@@ -232,25 +232,8 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             user_id=tool.created_by.user_id,
             document_id=document_id,
             run_id=run_id,
-            text_processor=text_processor,
+            is_summary=is_summary,
         )
-
-        usage_kwargs: dict[Any, Any] = dict()
-        usage_kwargs[ToolStudioPromptKeys.RUN_ID] = run_id
-        cls = get_plugin_class_by_name(
-            name="summarizer",
-            plugins=self.processor_plugins,
-        )
-        if cls:
-            cls.process(
-                tool_id=str(tool.tool_id),
-                file_name=file_name,
-                org_id=UserSessionUtils.get_organization_id(request),
-                user_id=tool.created_by.user_id,
-                document_id=document_id,
-                usage_kwargs=usage_kwargs.copy(),
-            )
-
         if unique_id:
             return Response(
                 {"message": "Document indexed successfully."},
@@ -282,10 +265,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         if not run_id:
             # Generate a run_id
             run_id = CommonUtils.generate_uuid()
-        text_processor = get_plugin_class_by_name(
-            name="text_processor",
-            plugins=self.processor_plugins,
-        )
         response: dict[str, Any] = PromptStudioHelper.prompt_responder(
             id=id,
             tool_id=tool_id,
@@ -294,7 +273,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             document_id=document_id,
             run_id=run_id,
             profile_manager_id=profile_manager,
-            text_processor=text_processor,
         )
         return Response(response, status=status.HTTP_200_OK)
 
@@ -318,17 +296,12 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         if not run_id:
             # Generate a run_id
             run_id = CommonUtils.generate_uuid()
-        text_processor = get_plugin_class_by_name(
-            name="text_processor",
-            plugins=self.processor_plugins,
-        )
         response: dict[str, Any] = PromptStudioHelper.prompt_responder(
             tool_id=tool_id,
             org_id=UserSessionUtils.get_organization_id(request),
             user_id=custom_tool.created_by.user_id,
             document_id=document_id,
             run_id=run_id,
-            text_processor=text_processor,
         )
         return Response(response, status=status.HTTP_200_OK)
 

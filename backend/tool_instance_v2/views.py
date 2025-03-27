@@ -61,6 +61,27 @@ def get_tool_list(request: Request) -> Response:
             raise FetchToolListFailed
 
 
+# Only GET is allowed, and this is safe.
+@api_view(["GET"])
+def prompt_studio_tool_count(request: Request) -> Response:  # NOSONAR
+    """Get count of prompt studio tools.
+
+    Returns count of valid prompt studio tools available in the Tool registry.
+    Only counts tools that have UUID as function names.
+    """
+    if request.method == "GET":
+        try:
+            logger.info("Fetching prompt studio tool count from the tool.")
+            tool_count = ToolProcessor.get_prompt_studio_tool_count(request.user)
+            return Response(
+                data={"count": tool_count},
+                status=status.HTTP_200_OK,
+            )
+        except Exception as exc:
+            logger.error(f"Failed to fetch prompt studio tools: {exc}")
+            raise FetchToolListFailed
+
+
 class ToolInstanceViewSet(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
     serializer_class = ToolInstanceSerializer

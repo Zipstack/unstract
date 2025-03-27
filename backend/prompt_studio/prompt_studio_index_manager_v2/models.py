@@ -62,6 +62,12 @@ class IndexManager(BaseModel):
         null=False,
         blank=False,
     )
+    extraction_status = models.JSONField(
+        db_comment="Extraction status for documents",
+        null=False,
+        blank=False,
+        default=dict,
+    )
 
     created_by = models.ForeignKey(
         User,
