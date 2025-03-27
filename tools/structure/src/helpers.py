@@ -20,8 +20,7 @@ class StructureToolHelper:
     ) -> str:
 
         x2Text = tool_settings[SettingsKeys.X2TEXT_ADAPTER]
-        extract_file_path: Optional[str] = None
-        tool.stream_log(f"Extracting text from {file_path}")
+        tool.stream_log(f"Extracting text from {file_path} into {extract_file_path}")
         payload = {
             IKeys.X2TEXT_INSTANCE_ID: x2Text,
             IKeys.FILE_PATH: file_path,
@@ -29,7 +28,7 @@ class StructureToolHelper:
             IKeys.USAGE_KWARGS: usage_kwargs.copy(),
             IKeys.RUN_ID: run_id,
             IKeys.EXECUTION_SOURCE: SettingsKeys.TOOL,
-            IKeys.OUTPUT_FILE_PATH: extract_file_path,
+            IKeys.OUTPUT_FILE_PATH: str(extract_file_path),
             IKeys.TAGS: tool.tags,
             IKeys.TOOL_EXECUTION_METATADA: tool.get_exec_metadata,
             IKeys.EXECUTION_DATA_DIR: str(execution_run_data_folder),

@@ -81,6 +81,7 @@ def prompt_processor() -> Any:
         prompt_name = output[PSKeys.NAME]
         prompt_text = output[PSKeys.PROMPT]
         chunk_size = output[PSKeys.CHUNK_SIZE]
+        app.logger.info(f"[{tool_id}] chunk size: {chunk_size}")
         util = PromptServiceBaseTool(platform_key=platform_key)
         index = Index(tool=util, run_id=run_id, capture_metrics=True)
         if VariableReplacementService.is_variables_present(prompt_text=prompt_text):
@@ -258,6 +259,7 @@ def prompt_processor() -> Any:
             retrieval_strategy = output.get(PSKeys.RETRIEVAL_STRATEGY)
 
             if retrieval_strategy in {PSKeys.SIMPLE, PSKeys.SUBQUESTION}:
+                app.logger.info(f"[{tool_id}] Performing retrieval for : {file_path}")
                 answer, context = RetrievalService.perform_retrieval(
                     tool_settings=tool_settings,
                     output=output,
@@ -464,7 +466,7 @@ def prompt_processor() -> Any:
                             llm=llm,
                             challenge_llm=challenge_llm,
                             run_id=run_id,
-                            context="\n".join(context),
+                            context="".join(context),
                             tool_settings=tool_settings,
                             output=output,
                             structured_output=structured_output,
@@ -519,7 +521,7 @@ def prompt_processor() -> Any:
                     try:
                         evaluator = eval_plugin["entrypoint_cls"](
                             "",
-                            "\n".join(context),
+                            "".join(context),
                             "",
                             "",
                             output,

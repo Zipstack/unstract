@@ -25,7 +25,7 @@ class BaseRetriever:
         self.prompt = prompt
         self.doc_id = doc_id
         self.top_k = top_k
-        self.llm = llm._llm_instance
+        self.llm = llm._llm_instance if llm else None
 
     @staticmethod
     def retrieve() -> set[str]:

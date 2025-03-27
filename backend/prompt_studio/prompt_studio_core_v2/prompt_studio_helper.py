@@ -65,17 +65,20 @@ from utils.local_context import StateStore
 
 from unstract.core.pubsub_helper import LogPublisher
 
+logger = logging.getLogger(__name__)
+
 CHOICES_JSON = "/static/select_choices.json"
 ERROR_MSG = "User %s doesn't have access to adapter %s"
 
 logger = logging.getLogger(__name__)
 
 modifier_plugins = load_modifier_plugins()
-processor_plugins = load_processor_plugins()
 
 
 class PromptStudioHelper:
     """Helper class for Custom tool operations."""
+
+    processor_plugins = load_processor_plugins()
 
     @staticmethod
     def create_default_profile_manager(user: User, tool_id: uuid) -> None:
@@ -331,34 +334,25 @@ class PromptStudioHelper:
             IndexingError
         """
         tool: CustomTool = CustomTool.objects.get(pk=tool_id)
+        file_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
+            org_id,
+            is_create=False,
+            user_id=user_id,
+            tool_id=tool_id,
+        )
+        file_path = str(Path(file_path) / file_name)
+
         if is_summary:
             profile_manager: ProfileManager = ProfileManager.objects.get(
                 prompt_studio_tool=tool, is_summarize_llm=True
             )
             default_profile = profile_manager
-            file_path = file_name
         else:
             default_profile = ProfileManager.get_default_llm_profile(tool)
-            file_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
-                org_id,
-                is_create=False,
-                user_id=user_id,
-                tool_id=tool_id,
-            )
-            file_path = str(Path(file_path) / file_name)
 
         if not tool:
             logger.error(f"No tool instance found for the ID {tool_id}")
             raise ToolNotValid()
-
-        start_time = time.time()
-        logger.info(f"[{tool_id}] Indexing started for doc: {file_name}")
-        PromptStudioHelper._publish_log(
-            {"tool_id": tool_id, "run_id": run_id, "doc_name": file_name},
-            LogLevels.INFO,
-            LogLevels.RUN,
-            "Indexing started",
-        )
 
         # Validate the status of adapter in profile manager
         PromptStudioHelper.validate_adapter_status(default_profile)
@@ -387,29 +381,24 @@ class PromptStudioHelper:
             file_path=file_path,
             org_id=org_id,
             document_id=document_id,
-            is_summary=is_summary,
             run_id=run_id,
             enable_highlight=tool.enable_highlight,
             doc_id=doc_id,
         )
-
         if is_summary:
-            usage_kwargs: dict[Any, Any] = dict()
-            usage_kwargs[ToolStudioPromptKeys.RUN_ID] = run_id
-            cls = get_plugin_class_by_name(
-                name="summarizer",
-                plugins=processor_plugins,
+            PromptStudioHelper.summarize(
+                file_name, org_id, document_id, is_summary, run_id, tool, doc_id
             )
-            if cls:
-                cls.process(
-                    tool_id=str(tool.tool_id),
-                    file_name=file_name,
-                    org_id=org_id,
-                    user_id=tool.created_by.user_id,
-                    document_id=document_id,
-                    usage_kwargs=usage_kwargs.copy(),
-                )
+
         else:
+            start_time = time.time()
+            logger.info(f"[{tool_id}] Indexing started for doc: {file_name}")
+            PromptStudioHelper._publish_log(
+                {"tool_id": tool_id, "run_id": run_id, "doc_name": file_name},
+                LogLevels.INFO,
+                LogLevels.RUN,
+                "Indexing started",
+            )
             PromptStudioHelper.dynamic_indexer(
                 profile_manager=default_profile,
                 tool_id=tool_id,
@@ -424,20 +413,52 @@ class PromptStudioHelper:
                 extracted_text=extracted_text,
             )
 
-        elapsed_time = time.time() - start_time
-        logger.info(
-            f"[{tool_id}] Indexing successful for doc: {file_name},"
-            f" took {elapsed_time:.3f}s"
-        )
-        logger.info(f"[{tool_id}] Indexing successful for doc: {file_name}")
-        PromptStudioHelper._publish_log(
-            {"tool_id": tool_id, "run_id": run_id, "doc_name": file_name},
-            LogLevels.INFO,
-            LogLevels.RUN,
-            f"Indexing successful, took {elapsed_time:.3f}s",
-        )
-        logger.info(f"Indexing successful : {doc_id}")
+            elapsed_time = time.time() - start_time
+            logger.info(
+                f"[{tool_id}] Indexing successful for doc: {file_name},"
+                f" took {elapsed_time:.3f}s"
+            )
+            logger.info(f"[{tool_id}] Indexing successful for doc: {file_name}")
+            PromptStudioHelper._publish_log(
+                {"tool_id": tool_id, "run_id": run_id, "doc_name": file_name},
+                LogLevels.INFO,
+                LogLevels.RUN,
+                f"Indexing successful, took {elapsed_time:.3f}s",
+            )
+            logger.info(f"Indexing successful : {doc_id}")
         return doc_id
+
+    @staticmethod
+    def summarize(file_name, org_id, document_id, is_summary, run_id, tool, doc_id):
+        cls = get_plugin_class_by_name(
+            name="summarizer",
+            plugins=PromptStudioHelper.processor_plugins,
+        )
+        usage_kwargs: dict[Any, Any] = dict()
+        usage_kwargs[ToolStudioPromptKeys.RUN_ID] = run_id
+        prompts: list[ToolStudioPrompt] = PromptStudioHelper.fetch_prompt_from_tool(
+            tool.tool_id
+        )
+        if cls:
+            cls.process(
+                tool_id=str(tool.tool_id),
+                file_name=file_name,
+                org_id=org_id,
+                user_id=tool.created_by.user_id,
+                usage_kwargs=usage_kwargs.copy(),
+                prompts=prompts,
+            )
+            profile_manager: ProfileManager = ProfileManager.objects.get(
+                prompt_studio_tool=tool, is_summarize_llm=True
+            )
+            default_profile = profile_manager
+            default_profile.chunk_size = 0
+            PromptStudioIndexHelper.handle_index_manager(
+                document_id=document_id,
+                is_summary=is_summary,
+                profile_manager=default_profile,
+                doc_id=doc_id,
+            )
 
     @staticmethod
     def prompt_responder(
@@ -490,7 +511,6 @@ class PromptStudioHelper:
                 doc_name=doc_name,
                 tool_id=tool_id,
                 org_id=org_id,
-                user_id=user_id,
                 document_id=document_id,
                 run_id=run_id,
             )
@@ -529,12 +549,6 @@ class PromptStudioHelper:
         )
         prompts = [prompt_instance]
         tool = prompt_instance.tool_id
-
-        if tool.summarize_as_source:
-            directory, filename = os.path.split(doc_path)
-            doc_path = os.path.join(
-                directory, TSPKeys.SUMMARIZE, os.path.splitext(filename)[0] + ".txt"
-            )
 
         PromptStudioHelper._publish_log(
             {
@@ -592,7 +606,6 @@ class PromptStudioHelper:
         doc_name,
         tool_id,
         org_id,
-        user_id,
         document_id,
         run_id,
     ):
@@ -618,14 +631,13 @@ class PromptStudioHelper:
         try:
             tool = prompts[0].tool_id
             response = PromptStudioHelper._fetch_single_pass_response(
-                file_path=doc_path,
+                input_file_path=doc_path,
                 doc_name=doc_name,
                 tool=tool,
                 prompts=prompts,
                 org_id=org_id,
                 document_id=document_id,
                 run_id=run_id,
-                user_id=user_id,
             )
             return PromptStudioHelper._handle_response(
                 response=response,
@@ -773,45 +785,65 @@ class PromptStudioHelper:
             storage_type=StorageType.PERMANENT,
             env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
         )
+        file_path = doc_path
+        directory, filename = os.path.split(doc_path)
+        doc_path = os.path.join(
+            directory, "extract", os.path.splitext(filename)[0] + ".txt"
+        )
+        is_summary = tool.summarize_as_source
+        logger.info(f"Summary status : {is_summary}")
         util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
+        logger.info(
+            f"Passing file_path for fetching answer {file_path} : extraction path {doc_path}"
+        )
         doc_id = IndexingUtils.generate_index_key(
             vector_db=str(profile_manager.vector_store.id),
             embedding=str(profile_manager.embedding_model.id),
             x2text=str(profile_manager.x2text.id),
             chunk_size=str(profile_manager.chunk_size),
             chunk_overlap=str(profile_manager.chunk_overlap),
-            file_path=doc_path,
+            file_path=file_path,
             file_hash=None,
             fs=fs_instance,
             tool=util,
         )
         extracted_text = PromptStudioHelper.dynamic_extractor(
-            profile_manager=default_profile,
-            file_path=doc_path,
+            profile_manager=profile_manager,
+            file_path=file_path,
             org_id=org_id,
             document_id=document_id,
-            is_summary=tool.summarize_as_source,
             run_id=run_id,
             enable_highlight=tool.enable_highlight,
             doc_id=doc_id,
         )
-        index_result = PromptStudioHelper.dynamic_indexer(
-            profile_manager=profile_manager,
-            file_path=doc_path,
-            tool_id=str(tool.tool_id),
-            org_id=org_id,
-            document_id=document_id,
-            is_summary=tool.summarize_as_source,
-            run_id=run_id,
-            user_id=user_id,
-            enable_highlight=tool.enable_highlight,
-            extracted_text=extracted_text,
-        )
-        if index_result.get("status") == IndexingStatus.PENDING_STATUS.value:
-            return {
-                "status": IndexingStatus.PENDING_STATUS.value,
-                "message": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
-            }
+        if is_summary:
+            profile_manager.chunk_size = 0
+            doc_path = Path(doc_path)  # Convert string to Path object
+            doc_path = str(
+                doc_path.parent.parent / "summarize" / (doc_path.stem + ".txt")
+            )
+            PromptStudioHelper.summarize(
+                filename, org_id, document_id, is_summary, run_id, tool, doc_id
+            )
+            logger.info(f"Summary enabled, set chunk to zero..")
+        else:
+            index_result = PromptStudioHelper.dynamic_indexer(
+                profile_manager=profile_manager,
+                file_path=doc_path,
+                tool_id=str(tool.tool_id),
+                org_id=org_id,
+                document_id=document_id,
+                is_summary=tool.summarize_as_source,
+                run_id=run_id,
+                user_id=user_id,
+                enable_highlight=tool.enable_highlight,
+                extracted_text=extracted_text,
+            )
+            if index_result.get("status") == IndexingStatus.PENDING_STATUS.value:
+                return {
+                    "status": IndexingStatus.PENDING_STATUS.value,
+                    "message": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
+                }
         tool_id = str(tool.tool_id)
         output: dict[str, Any] = {}
         outputs: list[dict[str, Any]] = []
@@ -830,6 +862,7 @@ class PromptStudioHelper:
         output[TSPKeys.PROMPT] = prompt.prompt
         output[TSPKeys.ACTIVE] = prompt.active
         output[TSPKeys.REQUIRED] = prompt.required
+        logger.info(f"Chunk size set to {profile_manager.chunk_size} ")
         output[TSPKeys.CHUNK_SIZE] = profile_manager.chunk_size
         output[TSPKeys.VECTOR_DB] = vector_db
         output[TSPKeys.EMBEDDING] = embedding_model
@@ -961,6 +994,7 @@ class PromptStudioHelper:
         run_id: str = None,
         enable_highlight: bool = False,
         doc_id_key: Optional[str] = None,
+        is_single_pass: bool = False,
     ) -> Any:
         """Used to index a file based on the passed arguments.
 
@@ -980,12 +1014,25 @@ class PromptStudioHelper:
         Returns:
             str: Index key for the combination of arguments
         """
+
+        if profile_manager.chunk_size == 0 and not is_summary and not is_single_pass:
+            logger.info("Skipping addition of nodes to VectoDB since chunk size is 0")
+            return {
+                "status": IndexingStatus.COMPLETED_STATUS.value,
+                "output": doc_id_key,
+            }
+
         embedding_model = str(profile_manager.embedding_model.id)
         vector_db = str(profile_manager.vector_store.id)
         x2text_adapter = str(profile_manager.x2text.id)
-        filename = os.path.split(file_path)
+        directory, filename = os.path.split(file_path)
+        file_path = os.path.join(
+            directory, "extract", os.path.splitext(filename)[0] + ".txt"
+        )
+        logger.info(f"Passing file_path {file_path}")
         if is_summary:
-            profile_manager.chunk_size = 0
+            profile_manager.chunk_size == 0
+
         try:
 
             usage_kwargs = {"run_id": run_id}
@@ -1076,11 +1123,10 @@ class PromptStudioHelper:
     @staticmethod
     def _fetch_single_pass_response(
         tool: CustomTool,
-        file_path: str,
+        input_file_path: str,
         doc_name: str,
         prompts: list[ToolStudioPrompt],
         org_id: str,
-        user_id: str,
         document_id: str,
         run_id: str = None,
     ) -> Any:
@@ -1113,45 +1159,31 @@ class PromptStudioHelper:
             storage_type=StorageType.PERMANENT,
             env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
         )
+        directory, filename = os.path.split(input_file_path)
+        file_path = os.path.join(
+            directory, "extract", os.path.splitext(filename)[0] + ".txt"
+        )
         doc_id = IndexingUtils.generate_index_key(
             vector_db=str(default_profile.vector_store.id),
             embedding=str(default_profile.embedding_model.id),
             x2text=str(default_profile.x2text.id),
             chunk_size=str(default_profile.chunk_size),
             chunk_overlap=str(default_profile.chunk_overlap),
-            file_path=file_path,
+            file_path=input_file_path,
             file_hash=None,
             fs=fs_instance,
             tool=util,
         )
-        extracted_text = PromptStudioHelper.dynamic_extractor(
+        PromptStudioHelper.dynamic_extractor(
             profile_manager=default_profile,
-            file_path=file_path,
+            file_path=input_file_path,
             org_id=org_id,
             document_id=document_id,
-            is_summary=tool.summarize_as_source,
             run_id=run_id,
             enable_highlight=tool.enable_highlight,
             doc_id=doc_id,
         )
-        index_result = PromptStudioHelper.dynamic_indexer(
-            profile_manager=default_profile,
-            file_path=file_path,
-            tool_id=tool_id,
-            org_id=org_id,
-            is_summary=tool.summarize_as_source,
-            document_id=document_id,
-            run_id=run_id,
-            user_id=user_id,
-            enable_highlight=tool.enable_highlight,
-            extracted_text=extracted_text,
-        )
-        if index_result.get("status") == IndexingStatus.PENDING_STATUS.value:
-            return {
-                "status": IndexingStatus.PENDING_STATUS.value,
-                "message": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
-            }
-
+        # Indexing is not needed as Single pass is always non chunked.
         vector_db = str(default_profile.vector_store.id)
         embedding_model = str(default_profile.embedding_model.id)
         llm = str(default_profile.llm.id)
@@ -1185,9 +1217,11 @@ class PromptStudioHelper:
 
         if tool.summarize_as_source:
             path = Path(file_path)
-            file_path = str(path.parent / TSPKeys.SUMMARIZE / (path.stem + ".txt"))
+            file_path = str(
+                path.parent.parent / TSPKeys.SUMMARIZE / (path.stem + ".txt")
+            )
         file_hash = fs_instance.get_hash_from_file(path=file_path)
-
+        logger.info("payload constructued, calling prompt service..")
         payload = {
             TSPKeys.TOOL_SETTINGS: tool_settings,
             TSPKeys.OUTPUTS: outputs,
@@ -1208,11 +1242,14 @@ class PromptStudioHelper:
         include_metadata = {TSPKeys.INCLUDE_METADATA: True}
         headers = {Common.X_REQUEST_ID: StateStore.get(Common.REQUEST_ID)}
         answer = responder.single_pass_extraction(
-            payload=payload, params=include_metadata, headers=headers
+            payload=payload,
+            params=include_metadata,
+            headers=headers,
         )
         # TODO: Make use of dataclasses
         if answer["status"] == "ERROR":
             error_message = answer.get("error", None)
+            logger.info(f"{str(answer)}")
             raise AnswerFetchError(
                 f"Error while fetching response for prompt(s). {error_message}"
             )
@@ -1236,18 +1273,14 @@ class PromptStudioHelper:
         profile_manager: ProfileManager,
         document_id: str,
         doc_id: str,
-        is_summary: bool,
     ) -> str:
         x2Text = str(profile_manager.x2text.id)
         extract_file_path: Optional[str] = None
         extracted_text = ""
         directory, filename = os.path.split(file_path)
-        if not is_summary:
-            extract_file_path = os.path.join(
-                directory, "extract", os.path.splitext(filename)[0] + ".txt"
-            )
-        else:
-            profile_manager.chunk_size = 0
+        extract_file_path = os.path.join(
+            directory, "extract", os.path.splitext(filename)[0] + ".txt"
+        )
         usage_kwargs = {"run_id": run_id}
         # Orginal file name with which file got uploaded in prompt studio
         usage_kwargs["file_name"] = filename
