@@ -11,36 +11,16 @@ from flask import current_app as app
 from flask import request
 from unstract.prompt_service_v2.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service_v2.constants import RunLevel
-
-<<<<<<< HEAD:prompt-service/src/unstract/prompt_service_v2/controllers/answer_prompt_controller.py
-from unstract.prompt_service_v2.exceptions import APIError, BadRequest
-from unstract.prompt_service_v2.helper.auth_helper import AuthHelper
-from unstract.prompt_service_v2.helper.plugin_helper import PluginManager
-from unstract.prompt_service_v2.helper.prompt_ide_base_tool import PromptServiceBaseTool
-from unstract.prompt_service_v2.helper.usage_helper import UsageHelper
+from unstract.prompt_service_v2.exceptions import BadRequest
+from unstract.prompt_service_v2.helpers.auth import AuthHelper
+from unstract.prompt_service_v2.helpers.plugin import PluginManager
+from unstract.prompt_service_v2.helpers.prompt_ide_base_tool import (
+    PromptServiceBaseTool,
+)
 from unstract.prompt_service_v2.helpers.usage import UsageHelper
 from unstract.prompt_service_v2.services.answer_prompt import AnswerPromptService
-from unstract.prompt_service_v2.services.answer_prompt_service import (
-    AnswerPromptService,
-)
-from unstract.prompt_service_v2.services.retrieval_service import RetrievalService
 from unstract.prompt_service_v2.services.variable_replacement import (
     VariableReplacementService,
-    >>>>>>>,
-    fix/prompt-service-refactor:prompt-service/src/unstract/prompt_service_v2/controllers/answer_prompt.py,
-)
-from unstract.prompt_service_v2.services.variable_replacement_service import (
-    AuthHelper,
-    NoPayloadError,
-    PluginManager,
-    PromptServiceBaseTool,
-    =======,
-    from,
-    import,
-    unstract.prompt_service_v2.exceptions,
-    unstract.prompt_service_v2.helpers.auth,
-    unstract.prompt_service_v2.helpers.plugin,
-    unstract.prompt_service_v2.helpers.prompt_ide_base_tool,
 )
 from unstract.prompt_service_v2.utils.log import publish_log
 from unstract.sdk.adapters.llm.no_op.src.no_op_custom_llm import NoOpCustomLLM
