@@ -3,7 +3,7 @@ import os
 
 from dotenv import load_dotenv
 from flask.testing import FlaskClient
-from unstract.prompt_service_v2.helper.auth_helper import AuthHelper
+from unstract.prompt_service_v2.helpers.auth import AuthHelper
 
 load_dotenv(".env.test")
 
