@@ -6,9 +6,7 @@ from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
 from unstract.prompt_service.exceptions import APIError
 from unstract.prompt_service_v2.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service_v2.constants import RunLevel
-from unstract.prompt_service_v2.services.answer_prompt_service import (
-    AnswerPromptService,
-)
+from unstract.prompt_service_v2.services.answer_prompt import AnswerPromptService
 from unstract.prompt_service_v2.utils.log import publish_log
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.exceptions import SdkError

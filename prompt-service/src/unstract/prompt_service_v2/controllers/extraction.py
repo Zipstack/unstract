@@ -3,8 +3,8 @@ from typing import Any, Optional
 from flask import Blueprint, request
 from unstract.prompt_service_v2.constants import IndexingConstants as IKeys
 from unstract.prompt_service_v2.constants import PromptServiceConstants as PSKeys
-from unstract.prompt_service_v2.helper.auth_helper import AuthHelper
-from unstract.prompt_service_v2.services.extraction_service import ExtractionService
+from unstract.prompt_service_v2.helpers.auth import AuthHelper
+from unstract.prompt_service_v2.services.extraction import ExtractionService
 from unstract.prompt_service_v2.utils.request import validate_request_payload
 
 extraction_bp = Blueprint("extract", __name__)

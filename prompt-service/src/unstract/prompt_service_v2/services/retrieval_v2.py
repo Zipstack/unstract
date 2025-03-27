@@ -3,15 +3,46 @@ from typing import Any, Optional
 from unstract.prompt_service_v2.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service_v2.core.retrievers.simple import SimpleRetriever
 from unstract.prompt_service_v2.core.retrievers.subquestion import SubquestionRetriever
-from unstract.prompt_service_v2.services.answer_prompt_service import (
-    AnswerPromptService,
-)
+from unstract.prompt_service_v2.services.answer_prompt import AnswerPromptService
 from unstract.prompt_service_v2.utils.file_utils import FileUtils
 from unstract.sdk.llm import LLM
 from unstract.sdk.vector_db import VectorDB
 
 
-class RetrievalHelper:
+class RetrievalService:
+    @staticmethod
+    def perform_retrieval(  # type:ignore
+        tool_settings: dict[str, Any],
+        output: dict[str, Any],
+        doc_id: str,
+        llm: LLM,
+        vector_db: VectorDB,
+        retrieval_type: str,
+        metadata: dict[str, Any],
+        chunk_size: int,
+        execution_source: str,
+        file_path: str,
+    ) -> set[str]:
+        context: set[str] = set()
+
+        if chunk_size == 0:
+            context = RetrievalService.retrieve_complete_context(
+                execution_source=execution_source, file_path=file_path
+            )
+        else:
+            context = RetrievalService.run_retrieval(
+                tool_settings=tool_settings,
+                output=output,
+                doc_id=doc_id,
+                llm=llm,
+                vector_db=vector_db,
+                retrieval_type=retrieval_type,
+                metadata=metadata,
+                execution_source=execution_source,
+            )
+
+        return context
+
     @staticmethod
     def run_retrieval(  # type:ignore
         tool_settings: dict[str, Any],
@@ -47,7 +78,8 @@ class RetrievalHelper:
 
         return (answer, context)
 
-    def retrieve_complete_context(self, execution_source: str, file_path: str) -> str:
+    @staticmethod
+    def retrieve_complete_context(execution_source: str, file_path: str) -> str:
         """
         Loads full context from raw file for zero chunk size retrieval
         Args:

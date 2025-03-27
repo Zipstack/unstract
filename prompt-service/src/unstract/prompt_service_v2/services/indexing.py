@@ -8,7 +8,9 @@ from unstract.prompt_service_v2.dto import (
     ProcessingOptions,
 )
 from unstract.prompt_service_v2.exceptions import APIError
-from unstract.prompt_service_v2.helper.prompt_ide_base_tool import PromptServiceBaseTool
+from unstract.prompt_service_v2.helpers.prompt_ide_base_tool import (
+    PromptServiceBaseTool,
+)
 from unstract.prompt_service_v2.utils.file_utils import FileUtils
 from unstract.sdk.embedding import Embedding
 from unstract.sdk.utils.indexing_utils import IndexingUtils

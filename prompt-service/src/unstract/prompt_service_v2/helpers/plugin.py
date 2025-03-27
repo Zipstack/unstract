@@ -1,7 +1,7 @@
 import importlib
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from flask import Flask
 from unstract.prompt_service_v2.constants import PromptServiceConstants as PSKeys
@@ -10,14 +10,12 @@ from unstract.prompt_service_v2.constants import PromptServiceConstants as PSKey
 class PluginManager:
     _instance = None
 
-    def __new__(cls, app: Flask = None) -> "PluginManager":
+    def __new__(cls, app: Optional[Flask] = None) -> "PluginManager":
         if cls._instance is None:
             # Only create the instance if it doesn't already exist
             cls._instance = super().__new__(cls)
             cls._instance.plugins = {}
-            cls._instance.plugins_dir = (
-                Path(os.path.dirname(__file__)).parent / "plugins"
-            )
+            cls._instance.plugins_dir = Path(__file__).parent.parent / "plugins"
             cls._instance.plugins_pkg = "unstract.prompt_service_v2.plugins"
         # Always update `app` if provided
         if app:
@@ -27,8 +25,8 @@ class PluginManager:
     def load_plugins(self) -> None:
         """Loads plugins found in the plugins root dir."""
         if not self.plugins_dir.exists():
-            self.app.logger.info(
-                f"Plugins dir not found: {self.plugins_dir}. Skipping."
+            self.app.logger.warning(
+                f"Plugins directory not found: {self.plugins_dir}. Skipping."
             )
             return
 
@@ -44,14 +42,15 @@ class PluginManager:
                 self.app.logger.error(f"Failed to load plugin ({pkg}): {str(e)}")
                 continue
 
-            if not hasattr(module, "metadata"):
-                self.app.logger.warning(f"Plugin metadata not found: {pkg}")
+            metadata = getattr(module, "metadata", None)
+            if not metadata:
+                self.app.logger.warning(f"Skipping plugin ({pkg}): No metadata found.")
                 continue
 
-            metadata: dict[str, Any] = module.metadata
             if metadata.get("disable", False):
                 self.app.logger.info(
-                    f"Ignore disabled plugin: {pkg} v{metadata['version']}"
+                    f"Skipping disabled plugin: {pkg}"
+                    f" v{metadata.get('version', 'unknown')}"
                 )
                 continue
 
@@ -61,15 +60,14 @@ class PluginManager:
                     "entrypoint_cls": metadata["entrypoint_cls"],
                     "exception_cls": metadata["exception_cls"],
                 }
-                blueprint = metadata.get("blueprint")
-                if blueprint:
+                if blueprint := metadata.get("blueprint"):
                     self.app.register_blueprint(blueprint)
-                self.app.logger.info(f"Loaded plugin: {pkg} v{metadata['version']}")
+                self.app.logger.info(f"✔ Loaded plugin: {pkg} v{metadata['version']}")
             except KeyError as e:
                 self.app.logger.error(f"Invalid metadata for plugin '{pkg}': {str(e)}")
 
         if not self.plugins:
-            self.app.logger.info("No plugins found.")
+            self.app.logger.warning("⚠ No plugins loaded.")
 
     def get_plugin(self, name: str) -> dict[str, Any]:
         """Get the plugin metadata by name."""

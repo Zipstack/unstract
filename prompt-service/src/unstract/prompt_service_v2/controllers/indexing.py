@@ -10,8 +10,8 @@ from unstract.prompt_service_v2.dto import (
     InstanceIdentifiers,
     ProcessingOptions,
 )
-from unstract.prompt_service_v2.helper.auth_helper import AuthHelper
-from unstract.prompt_service_v2.services.indexing_service import IndexingService
+from unstract.prompt_service_v2.helpers.auth import AuthHelper
+from unstract.prompt_service_v2.services.indexing import IndexingService
 from unstract.prompt_service_v2.utils.request import validate_request_payload
 
 indexing_bp = Blueprint("index", __name__)

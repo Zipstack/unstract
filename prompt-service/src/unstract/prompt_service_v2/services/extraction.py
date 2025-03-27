@@ -2,7 +2,9 @@ from typing import Any, Optional
 
 from unstract.prompt_service_v2.constants import ExecutionSource
 from unstract.prompt_service_v2.constants import IndexingConstants as IKeys
-from unstract.prompt_service_v2.helper.prompt_ide_base_tool import PromptServiceBaseTool
+from unstract.prompt_service_v2.helpers.prompt_ide_base_tool import (
+    PromptServiceBaseTool,
+)
 from unstract.sdk.adapters.exceptions import AdapterError
 from unstract.sdk.adapters.x2text.constants import X2TextConstants
 from unstract.sdk.adapters.x2text.llm_whisperer.src import LLMWhisperer
