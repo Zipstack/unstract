@@ -4,8 +4,11 @@ from typing import Any, Optional
 import requests as pyrequests
 from flask import current_app as app
 from requests.exceptions import RequestException
-
-from unstract.core.flask.exceptions import APIError
+from unstract.prompt_service_v2.exceptions import (
+    APIError,
+    BadRequest,
+    MissingFieldError,
+)
 
 
 class HTTPMethod(str, Enum):
@@ -47,3 +50,13 @@ def make_http_request(
     except Exception as e:
         app.logger.error(f"An unexpected error occurred: {e}")
         raise e
+
+
+def validate_request_payload(payload, REQUIRED_FIELDS):
+    if not payload:
+        raise BadRequest()
+
+    # Validate required fields
+    missing_fields = [field for field in REQUIRED_FIELDS if field not in payload]
+    if missing_fields:
+        raise MissingFieldError(missing_fields)
