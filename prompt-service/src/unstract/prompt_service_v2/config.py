@@ -6,12 +6,12 @@ from flask import Flask
 from flask.logging import default_handler
 from unstract.prompt_service_v2.controllers import api
 from unstract.prompt_service_v2.extensions import db
-from unstract.prompt_service_v2.helpers.errorhandler import register_error_handler
 from unstract.prompt_service_v2.helpers.lifecycle import register_lifecycle_hooks
 from unstract.prompt_service_v2.helpers.plugin import plugin_loader
 from unstract.prompt_service_v2.utils.env_loader import get_env_or_die
 from unstract.sdk.constants import LogLevel
 
+from unstract.core.flask import register_error_handlers, register_request_id_middleware
 from unstract.core.flask.logging import setup_logging
 
 load_dotenv()
@@ -48,7 +48,8 @@ def create_app() -> Flask:
     # Load plugins
     plugin_loader(app)
     register_lifecycle_hooks(app)
-    register_error_handler(app)
+    register_request_id_middleware(app)
+    register_error_handlers(app)
     app.register_blueprint(api)
 
     app.logger.info("Flask app created successfully.")
