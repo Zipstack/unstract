@@ -3,7 +3,7 @@ from typing import Any
 from django.db.models import Q, QuerySet
 from django_filters import rest_framework as filters
 from usage_v2.models import Usage, UsageType
-from usage_v2.utils import DateTimeProcessor
+from utils.date import DateTimeProcessor
 from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
