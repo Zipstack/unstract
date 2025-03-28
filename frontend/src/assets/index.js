@@ -14,6 +14,8 @@ import { ReactComponent as UnstractLogo } from "./Unstract.svg";
 import { ReactComponent as ListOfWfStepsPlaceholder } from "./list-of-wf-steps-placeholder.svg";
 import { ReactComponent as ListOfToolsPlaceholder } from "./list-of-tools-placeholder.svg";
 import { ReactComponent as ApiDeployments } from "./api-deployments.svg";
+import { ReactComponent as Workflows } from "./Workflows.svg";
+import { ReactComponent as Task } from "./task.svg";
 import { ReactComponent as StepIcon } from "./steps.svg";
 import { ReactComponent as CombinedOutputIcon } from "./combined-output.svg";
 import { ReactComponent as EmptyPlaceholder } from "./empty.svg";
@@ -32,6 +34,8 @@ import { ReactComponent as RedGradCircle } from "./red-grad-circle.svg";
 import { ReactComponent as YellowGradCircle } from "./yellow-grad-circle.svg";
 import { ReactComponent as ExportToolIcon } from "./export-tool.svg";
 import { ReactComponent as PlaceholderImg } from "./placeholder.svg";
+import { ReactComponent as CustomToolIcon } from "./custom-tools-icon.svg";
+import { ReactComponent as ETLIcon } from "./etl.svg";
 
 export {
   SunIcon,
@@ -50,6 +54,7 @@ export {
   ListOfWfStepsPlaceholder,
   ListOfToolsPlaceholder,
   ApiDeployments,
+  Workflows,
   StepIcon,
   EmptyPlaceholder,
   CombinedOutputIcon,
@@ -68,4 +73,7 @@ export {
   YellowGradCircle,
   ExportToolIcon,
   PlaceholderImg,
+  CustomToolIcon,
+  ETLIcon,
+  Task,
 };

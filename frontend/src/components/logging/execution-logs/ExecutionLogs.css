@@ -1,0 +1,49 @@
+.file-log-layout {
+  background-color: var(--white);
+  height: 100%;
+  margin: 12px;
+  overflow-y: auto;
+}
+
+.logs-title {
+  padding: 15px;
+  margin: 0;
+}
+
+.log-tab-icon {
+  width: 15px !important;
+  height: 15px !important;
+  vertical-align: middle;
+}
+
+.active.log-tab-icon > g > path,
+.active.log-tab-icon > path {
+  fill: #1677ff;
+}
+
+.invite-user-search .ant-tabs-nav {
+  margin: 0;
+}
+
+.logs-date-picker {
+  width: 300px;
+  height: 30px;
+}
+
+.log-tab{
+  height: 30px;
+}
+
+.log-tab .ant-tabs-nav {
+  height: 50px;
+  margin: 0;
+}
+
+.log-tab .ant-tabs-nav-list {
+  height: 30px;
+  line-height: 50px;
+}
+
+.log-tab .ant-tabs-ink-bar {
+  top: 40px !important;
+}
