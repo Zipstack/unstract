@@ -23,7 +23,7 @@ class WorkflowFileExecutionManager(models.Manager):
         file_hash: str,
         file_path: Optional[str] = None,
         mime_type: Optional[str] = None,
-    ):
+    ) -> "WorkflowFileExecution":
         """
         Retrieves or creates a new input file record for a workflow execution.
 

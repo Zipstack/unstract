@@ -14,9 +14,6 @@ class ExecutionStatus(TextChoices):
 
     Statuses:
         PENDING: The execution's entry has been created in the database.
-        QUEUED: The execution task is queued for asynchronous execution
-        INITIATED: The execution has been initiated.
-        READY: The execution is ready for the build phase.
         EXECUTING: The execution is currently in progress.
         COMPLETED: The execution has been successfully completed.
         STOPPED: The execution was stopped by the user
@@ -29,9 +26,6 @@ class ExecutionStatus(TextChoices):
     """
 
     PENDING = "PENDING"
-    INITIATED = "INITIATED"
-    QUEUED = "QUEUED"
-    READY = "READY"
     EXECUTING = "EXECUTING"
     COMPLETED = "COMPLETED"
     STOPPED = "STOPPED"

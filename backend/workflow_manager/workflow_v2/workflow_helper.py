@@ -247,7 +247,7 @@ class WorkflowHelper:
             execution_service.initiate_tool_execution(
                 current_file_idx, total_files, file_name, single_step
             )
-            workflow_file_execution.update_status(status=ExecutionStatus.INITIATED)
+            workflow_file_execution.update_status(status=ExecutionStatus.EXECUTING)
             if not file_hash.is_executed:
                 execution_service.execute_input_file(
                     file_execution_id=file_execution_id,
