@@ -29,6 +29,19 @@ dependencies = [
     "psycopg2-binary==2.9.9",
     "python-dotenv==1.0.0",
     "python-magic==0.4.27", # For file upload/download
+    # OpenTelemetry for tracing and profiling
+    "opentelemetry-api~=1.31.1",
+    "opentelemetry-sdk~=1.31.1",
+    "opentelemetry-exporter-otlp~=1.31.1",
+    "opentelemetry-instrumentation-celery~=0.52b1",
+    "opentelemetry-instrumentation-django~=0.52b1",
+    "opentelemetry-instrumentation-psycopg2~=0.52b1",
+    "opentelemetry-instrumentation-redis~=0.52b1",
+    "opentelemetry-instrumentation-requests~=0.52b1",
+    "opentelemetry-instrumentation-boto~=0.52b1",  # For AWS SDK (boto3)
+    "opentelemetry-instrumentation-asyncio~=0.52b1",  # For async code
+    "opentelemetry-instrumentation-httpx~=0.52b1",  # For httpx
+    "opentelemetry-distro~=0.52b1",
     "python-socketio==5.9.0", # For log_events
     "social-auth-app-django==5.3.0", # For OAuth
     "social-auth-core==4.4.2", # For OAuth

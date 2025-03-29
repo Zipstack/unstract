@@ -12,11 +12,20 @@ ENV \
     BUILD_PACKAGES_PATH=unstract \
     DJANGO_SETTINGS_MODULE="backend.settings.dev" \
     PDM_VERSION=2.16.1 \
-    # Disable all telemetry by default
+    # OpenTelemetry configuration (disabled by default, enable in docker-compose)
     OTEL_TRACES_EXPORTER=none \
-    OTEL_TRACES_EXPORTER=none \
+    OTEL_METRICS_EXPORTER=none \
     OTEL_LOGS_EXPORTER=none \
-    OTEL_SERVICE_NAME=unstract_backend
+    OTEL_SERVICE_NAME=unstract_backend \
+    # Enable specific instrumentations when tracing is enabled
+    OTEL_PYTHON_CELERY_ENABLED=true \
+    OTEL_PYTHON_DJANGO_ENABLED=true \
+    OTEL_PYTHON_PSYCOPG2_ENABLED=true \
+    OTEL_PYTHON_REDIS_ENABLED=true \
+    OTEL_PYTHON_REQUESTS_ENABLED=true \
+    OTEL_PYTHON_BOTO_ENABLED=true \
+    OTEL_PYTHON_ASYNCIO_ENABLED=true \
+    OTEL_PYTHON_HTTPX_ENABLED=true
 
 # Install system dependencies
 RUN apt-get update; \
@@ -35,11 +44,7 @@ WORKDIR /app
 RUN pdm venv create -w virtualenv --with-pip && \
     . .venv/bin/activate && \
     pip install --no-cache-dir \
-        gunicorn \
-        # Install opentelemetry for instrumentation
-        opentelemetry-distro \
-        opentelemetry-exporter-otlp && \
-    opentelemetry-bootstrap -a install
+        gunicorn
 
 COPY ${BUILD_CONTEXT_PATH}/ /app/
 # Copy local dependency packages
@@ -47,7 +52,8 @@ COPY ${BUILD_PACKAGES_PATH}/ /unstract
 
 # Install dependencies
 RUN . .venv/bin/activate && \
-    pdm sync --prod --no-editable
+    pdm sync --prod --no-editable && \
+    opentelemetry-bootstrap -a install
 
 EXPOSE 8000
 
