@@ -156,7 +156,11 @@ CSRF_TRUSTED_ORIGINS = [WEB_APP_ORIGIN_URL]
 CORS_ALLOW_ALL_ORIGINS = False
 
 # Determine if OpenTelemetry trace context should be included in logs
-OTEL_TRACE_CONTEXT = " trace_id:%(otelTraceID)s span_id:%(otelSpanID)s" if os.environ.get('OTEL_TRACES_EXPORTER', 'none').lower() != 'none' else ""
+OTEL_TRACE_CONTEXT = (
+    " trace_id:%(otelTraceID)s span_id:%(otelSpanID)s"
+    if os.environ.get("OTEL_TRACES_EXPORTER", "none").lower() != "none"
+    else ""
+)
 
 # Logging configuration
 LOGGING = {
@@ -170,7 +174,9 @@ LOGGING = {
             "format": (
                 "%(levelname)s : [%(asctime)s]"
                 "{module:%(module)s process:%(process)d "
-                "thread:%(thread)d request_id:%(request_id)s" + OTEL_TRACE_CONTEXT + "} :- %(message)s"
+                "thread:%(thread)d request_id:%(request_id)s"
+                + OTEL_TRACE_CONTEXT
+                + "} :- %(message)s"
             ),
         },
         "verbose": {
