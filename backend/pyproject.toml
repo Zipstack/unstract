@@ -85,7 +85,7 @@ dev = [
     "inotify>=0.2.10",
 ]
 
-[tool.pdm.optional-dependencies]
+[project.optional-dependencies]
 deploy = [
     # OpenTelemetry for tracing and profiling
     # Keep versions empty and let pdm decide version
