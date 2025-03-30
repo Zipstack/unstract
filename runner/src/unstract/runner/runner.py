@@ -226,7 +226,7 @@ class UnstractRunner:
         )
 
         # Get additional environment variables to pass to the container
-        additional_env = self._parse_additional_env()
+        additional_env = self._parse_additional_envs()
 
         container_config = self.client.get_container_run_config(
             command=[
