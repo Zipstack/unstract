@@ -153,7 +153,7 @@ class UnstractRunner:
             try:
                 additional_envs = json.loads(tool_additional_envs)
                 self.logger.info(
-                    f"Parsed additional environment variables: {additional_env}"
+                    f"Parsed additional environment variables: {additional_envs}"
                 )
             except json.JSONDecodeError as e:
                 self.logger.warning(f"Failed to parse TOOL_ADDITIONAL_ENVS: {e}")
