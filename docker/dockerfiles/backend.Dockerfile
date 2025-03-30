@@ -42,9 +42,7 @@ WORKDIR /app
 
 # Create venv and install gunicorn and other deps in it
 RUN pdm venv create -w virtualenv --with-pip && \
-    . .venv/bin/activate && \
-    pip install --no-cache-dir \
-        gunicorn
+    . .venv/bin/activate
 
 COPY ${BUILD_CONTEXT_PATH}/ /app/
 # Copy local dependency packages
@@ -52,7 +50,7 @@ COPY ${BUILD_PACKAGES_PATH}/ /unstract
 
 # Install dependencies
 RUN . .venv/bin/activate && \
-    pdm sync --prod --no-editable && \
+    pdm sync --prod --no-editable --group deploy && \
     opentelemetry-bootstrap -a install
 
 EXPOSE 8000

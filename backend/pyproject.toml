@@ -26,22 +26,10 @@ dependencies = [
     "django-tenants==3.5.0",
     "drf-standardized-errors>=0.12.6",
     "drf-yasg==1.21.7", # For API docs
+    "gunicorn~=23.0", # For serving the application
     "psycopg2-binary==2.9.9",
     "python-dotenv==1.0.0",
     "python-magic==0.4.27", # For file upload/download
-    # OpenTelemetry for tracing and profiling
-    "opentelemetry-api~=1.31.1",
-    "opentelemetry-sdk~=1.31.1",
-    "opentelemetry-exporter-otlp~=1.31.1",
-    "opentelemetry-instrumentation-celery~=0.52b1",
-    "opentelemetry-instrumentation-django~=0.52b1",
-    "opentelemetry-instrumentation-psycopg2~=0.52b1",
-    "opentelemetry-instrumentation-redis~=0.52b1",
-    "opentelemetry-instrumentation-requests~=0.52b1",
-    "opentelemetry-instrumentation-boto~=0.52b1",  # For AWS SDK (boto3)
-    "opentelemetry-instrumentation-asyncio~=0.52b1",  # For async code
-    "opentelemetry-instrumentation-httpx~=0.52b1",  # For httpx
-    "opentelemetry-distro~=0.52b1",
     "python-socketio==5.9.0", # For log_events
     "social-auth-app-django==5.3.0", # For OAuth
     "social-auth-core==4.4.2", # For OAuth
@@ -82,7 +70,21 @@ classifiers = [
 
 [tool.pdm.dev-dependencies]
 deploy = [
-    "gunicorn>=21.2.0",
+    # OpenTelemetry for tracing and profiling
+    # Keep versions empty and let pdm decide version
+    # since we use no code instrumentation and don't use in code
+    "opentelemetry-api",
+    "opentelemetry-sdk",
+    "opentelemetry-exporter-otlp",
+    "opentelemetry-instrumentation-celery",
+    "opentelemetry-instrumentation-django",
+    "opentelemetry-instrumentation-psycopg2",
+    "opentelemetry-instrumentation-redis",
+    "opentelemetry-instrumentation-requests",
+    "opentelemetry-instrumentation-boto",  # For AWS SDK (boto3)
+    "opentelemetry-instrumentation-asyncio",  # For async code
+    "opentelemetry-instrumentation-httpx",  # For httpx
+    "opentelemetry-distro",
 ]
 test = [
     "pytest>=8.0.1",
