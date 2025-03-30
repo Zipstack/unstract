@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "dev", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:1021547ca6862fd3eedf081c643475a7c46b4557283ce03bd251f4c9bd11ce1a"
+content_hash = "sha256:879666edadab21567aceac27f09a0aa9c8ef9b3fe75c798df6950453a9a059d5"
 
 [[package]]
 name = "adlfs"
@@ -1950,7 +1950,7 @@ name = "gunicorn"
 version = "23.0.0"
 requires_python = ">=3.7"
 summary = "WSGI HTTP Server for UNIX"
-groups = ["default"]
+groups = ["deploy"]
 dependencies = [
     "packaging",
 ]
@@ -3428,6 +3428,21 @@ dependencies = [
 files = [
     {file = "opentelemetry_instrumentation_httpx-0.52b1-py3-none-any.whl", hash = "sha256:8476c3133dc28c7192e17f0f7a28170d2410b125551b7c450dd76eb7192cb89f"},
     {file = "opentelemetry_instrumentation_httpx-0.52b1.tar.gz", hash = "sha256:b32252f21fff7f1bd88cc42716dcf948b3f9e8fc689d3d5d479222491f443c8d"},
+]
+
+[[package]]
+name = "opentelemetry-instrumentation-logging"
+version = "0.52b1"
+requires_python = ">=3.8"
+summary = "OpenTelemetry Logging instrumentation"
+groups = ["deploy"]
+dependencies = [
+    "opentelemetry-api~=1.12",
+    "opentelemetry-instrumentation==0.52b1",
+]
+files = [
+    {file = "opentelemetry_instrumentation_logging-0.52b1-py3-none-any.whl", hash = "sha256:4c8206c4f2ad78c44d9bb781ed5aeadf5ec687e95b29a69edfd9a2620f5fb01b"},
+    {file = "opentelemetry_instrumentation_logging-0.52b1.tar.gz", hash = "sha256:050f52ef3470abd3a093262e69f986d71a48f67c7e4194008b3e8247030e11d6"},
 ]
 
 [[package]]
