@@ -152,7 +152,9 @@ class UnstractRunner:
         if tool_additional_envs:
             try:
                 additional_envs = json.loads(tool_additional_envs)
-                self.logger.info(f"Parsed additional environment variables: {additional_env}")
+                self.logger.info(
+                    f"Parsed additional environment variables: {additional_env}"
+                )
             except json.JSONDecodeError as e:
                 self.logger.warning(f"Failed to parse TOOL_ADDITIONAL_ENVS: {e}")
         return additional_envs
@@ -172,7 +174,10 @@ class UnstractRunner:
         additional_env = self._parse_additional_envs()
 
         container_config = self.client.get_container_run_config(
-            command=["--command", command], file_execution_id="", auto_remove=True, envs=additional_env
+            command=["--command", command],
+            file_execution_id="",
+            auto_remove=True,
+            envs=additional_env,
         )
         container = None
 
