@@ -26,7 +26,6 @@ dependencies = [
     "django-tenants==3.5.0",
     "drf-standardized-errors>=0.12.6",
     "drf-yasg==1.21.7", # For API docs
-    "gunicorn~=23.0", # For serving the application
     "psycopg2-binary==2.9.9",
     "python-dotenv==1.0.0",
     "python-magic==0.4.27", # For file upload/download
@@ -87,6 +86,7 @@ dev = [
 
 [project.optional-dependencies]
 deploy = [
+    "gunicorn~=23.0", # For serving the application
     # OpenTelemetry for tracing and profiling
     # Keep versions empty and let pdm decide version
     # since we use no code instrumentation and don't use in code
@@ -98,9 +98,10 @@ deploy = [
     "opentelemetry-instrumentation-psycopg2",
     "opentelemetry-instrumentation-redis",
     "opentelemetry-instrumentation-requests",
-    "opentelemetry-instrumentation-boto",  # For AWS SDK (boto3)
-    "opentelemetry-instrumentation-asyncio",  # For async code
-    "opentelemetry-instrumentation-httpx",  # For httpx
+    "opentelemetry-instrumentation-boto",
+    "opentelemetry-instrumentation-asyncio",
+    "opentelemetry-instrumentation-httpx",
+    "opentelemetry-instrumentation-logging",
     "opentelemetry-distro",
 ]
 

@@ -16,16 +16,7 @@ ENV \
     OTEL_TRACES_EXPORTER=none \
     OTEL_METRICS_EXPORTER=none \
     OTEL_LOGS_EXPORTER=none \
-    OTEL_SERVICE_NAME=unstract_backend \
-    # Enable specific instrumentations when tracing is enabled
-    OTEL_PYTHON_CELERY_ENABLED=true \
-    OTEL_PYTHON_DJANGO_ENABLED=true \
-    OTEL_PYTHON_PSYCOPG2_ENABLED=true \
-    OTEL_PYTHON_REDIS_ENABLED=true \
-    OTEL_PYTHON_REQUESTS_ENABLED=true \
-    OTEL_PYTHON_BOTO_ENABLED=true \
-    OTEL_PYTHON_ASYNCIO_ENABLED=true \
-    OTEL_PYTHON_HTTPX_ENABLED=true
+    OTEL_SERVICE_NAME=unstract_backend
 
 # Install system dependencies
 RUN apt-get update; \

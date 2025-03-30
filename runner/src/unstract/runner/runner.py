@@ -141,6 +141,22 @@ class UnstractRunner:
             # Already a UNIX timestamp
             return float(emitted_at)
 
+    def _parse_additional_envs(self) -> dict:
+        """Parse TOOL_ADDITIONAL_ENVS environment variable to get additional environment variables.
+
+        Returns:
+            dict: Dictionary containing parsed environment variables or empty dict if none found.
+        """
+        additional_envs = {}
+        tool_additional_envs = os.getenv("TOOL_ADDITIONAL_ENVS")
+        if tool_additional_envs:
+            try:
+                additional_envs = json.loads(tool_additional_envs)
+                self.logger.info(f"Parsed additional environment variables: {additional_env}")
+            except json.JSONDecodeError as e:
+                self.logger.warning(f"Failed to parse TOOL_ADDITIONAL_ENVS: {e}")
+        return additional_envs
+
     def run_command(self, command: str) -> Optional[Any]:
         """Runs any given command on the container.
 
@@ -151,8 +167,12 @@ class UnstractRunner:
             Optional[Any]: Response from container or None if error occures.
         """
         command = command.upper()
+
+        # Get additional environment variables to pass to the container
+        additional_env = self._parse_additional_env()
+
         container_config = self.client.get_container_run_config(
-            command=["--command", command], file_execution_id="", auto_remove=True
+            command=["--command", command], file_execution_id="", auto_remove=True, envs=additional_env
         )
         container = None
 
@@ -205,6 +225,9 @@ class UnstractRunner:
             Env.WORKFLOW_EXECUTION_FILE_STORAGE_CREDENTIALS, "{}"
         )
 
+        # Get additional environment variables to pass to the container
+        additional_env = self._parse_additional_env()
+
         container_config = self.client.get_container_run_config(
             command=[
                 "--command",
@@ -216,7 +239,7 @@ class UnstractRunner:
             ],
             file_execution_id=file_execution_id,
             container_name=container_name,
-            envs=envs,
+            envs={**envs, **additional_env},
         )
         # Add labels to container for logging with Loki.
         # This only required for observability.
