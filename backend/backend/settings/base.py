@@ -166,8 +166,7 @@ LOGGING = {
             "format": (
                 "%(levelname)s : [%(asctime)s]"
                 "{module:%(module)s process:%(process)d "
-                "thread:%(thread)d request_id:%(request_id)s "
-                "trace_id:%(otelTraceID)s span_id:%(otelSpanID)s} :- %(message)s"
+                "thread:%(thread)d request_id:%(request_id)s} :- %(message)s"
             ),
         },
         "verbose": {
