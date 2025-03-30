@@ -50,7 +50,7 @@ COPY ${BUILD_PACKAGES_PATH}/ /unstract
 
 # Install dependencies
 RUN . .venv/bin/activate && \
-    pdm sync --prod --no-editable --group deploy && \
+    pdm sync --prod --no-editable --with deploy && \
     opentelemetry-bootstrap -a install
 
 EXPOSE 8000

@@ -69,6 +69,23 @@ classifiers = [
 ]
 
 [tool.pdm.dev-dependencies]
+test = [
+    "pytest>=8.0.1",
+    "pytest-dotenv==0.5.2",
+]
+dev = [
+    "-e unstract-connectors @ file:///${PROJECT_ROOT}/../unstract/connectors",
+    "-e unstract-core @ file:///${PROJECT_ROOT}/../unstract/core",
+    "-e unstract-flags @ file:///${PROJECT_ROOT}/../unstract/flags",
+    "-e unstract-tool-registry @ file:///${PROJECT_ROOT}/../unstract/tool-registry",
+    "-e unstract-tool-sandbox @ file:///${PROJECT_ROOT}/../unstract/tool-sandbox",
+    "-e unstract-workflow-execution @ file:///${PROJECT_ROOT}/../unstract/workflow-execution",
+    "-e unstract-filesystem @ file:///${PROJECT_ROOT}/../unstract/filesystem",
+    # For file watching
+    "inotify>=0.2.10",
+]
+
+[tool.pdm.optional-dependencies]
 deploy = [
     # OpenTelemetry for tracing and profiling
     # Keep versions empty and let pdm decide version
@@ -85,21 +102,6 @@ deploy = [
     "opentelemetry-instrumentation-asyncio",  # For async code
     "opentelemetry-instrumentation-httpx",  # For httpx
     "opentelemetry-distro",
-]
-test = [
-    "pytest>=8.0.1",
-    "pytest-dotenv==0.5.2",
-]
-dev = [
-    "-e unstract-connectors @ file:///${PROJECT_ROOT}/../unstract/connectors",
-    "-e unstract-core @ file:///${PROJECT_ROOT}/../unstract/core",
-    "-e unstract-flags @ file:///${PROJECT_ROOT}/../unstract/flags",
-    "-e unstract-tool-registry @ file:///${PROJECT_ROOT}/../unstract/tool-registry",
-    "-e unstract-tool-sandbox @ file:///${PROJECT_ROOT}/../unstract/tool-sandbox",
-    "-e unstract-workflow-execution @ file:///${PROJECT_ROOT}/../unstract/workflow-execution",
-    "-e unstract-filesystem @ file:///${PROJECT_ROOT}/../unstract/filesystem",
-    # For file watching
-    "inotify>=0.2.10",
 ]
 
 [tool.pytest.ini_options]
