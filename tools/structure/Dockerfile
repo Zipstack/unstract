@@ -11,7 +11,9 @@ ENV \
     OTEL_SERVICE_NAME="structure-tool" \
     OTEL_TRACES_EXPORTER=none \
     OTEL_METRICS_EXPORTER=none \
-    OTEL_LOGS_EXPORTER=none
+    OTEL_LOGS_EXPORTER=none \
+    # Enable context propagation
+    OTEL_PROPAGATORS="tracecontext"
 
 # Install dependencies for SDK and prompt service
 RUN apt-get update \
@@ -36,6 +38,5 @@ RUN pip install --no-cache-dir \
 # Copy the contents of your project directory into the container at /app
 COPY src /app/src/
 WORKDIR /app/src
-
 
 ENTRYPOINT ["opentelemetry-instrument", "python", "main.py"]
