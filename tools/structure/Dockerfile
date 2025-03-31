@@ -31,6 +31,7 @@ RUN pip install --no-cache-dir \
     opentelemetry-exporter-otlp \
     opentelemetry-instrumentation-requests \
     opentelemetry-instrumentation-logging \
+    platformdirs>=3.0.0 \
     && opentelemetry-bootstrap -a install
 # Copy the contents of your project directory into the container at /app
 COPY src /app/src/
