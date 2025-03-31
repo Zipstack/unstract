@@ -19,7 +19,7 @@ class FileCentricExecutionSerializer(serializers.ModelSerializer):
     INIT_STATUS_MSG = "Waiting for a worker to pick up file's execution..."
 
     DEFAULT_STATUS_MSG = (
-        "No status message available, please check again after a few minutes."
+        "No status message available yet, please check again after a few minutes."
     )
 
     status_msg = serializers.SerializerMethodField()
@@ -31,7 +31,7 @@ class FileCentricExecutionSerializer(serializers.ModelSerializer):
         exclude = ["file_hash"]
 
     def get_status_msg(self, obj: FileExecution) -> Optional[dict[str, any]]:
-        if obj.status in [ExecutionStatus.PENDING, ExecutionStatus.QUEUED]:
+        if obj.status in [ExecutionStatus.PENDING]:
             return self.INIT_STATUS_MSG
         elif obj.status == ExecutionStatus.ERROR:
             return obj.execution_error
