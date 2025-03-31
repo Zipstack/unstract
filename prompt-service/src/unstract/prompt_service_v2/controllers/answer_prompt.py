@@ -11,7 +11,7 @@ from flask import current_app as app
 from flask import request
 from unstract.prompt_service_v2.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service_v2.constants import RunLevel
-from unstract.prompt_service_v2.exceptions import NoPayloadError
+from unstract.prompt_service_v2.exceptions import BadRequest
 from unstract.prompt_service_v2.helpers.auth import AuthHelper
 from unstract.prompt_service_v2.helpers.plugin import PluginManager
 from unstract.prompt_service_v2.helpers.prompt_ide_base_tool import (
@@ -19,6 +19,7 @@ from unstract.prompt_service_v2.helpers.prompt_ide_base_tool import (
 )
 from unstract.prompt_service_v2.helpers.usage import UsageHelper
 from unstract.prompt_service_v2.services.answer_prompt import AnswerPromptService
+from unstract.prompt_service_v2.services.retrieval import RetrievalService
 from unstract.prompt_service_v2.services.variable_replacement import (
     VariableReplacementService,
 )
@@ -42,7 +43,7 @@ def prompt_processor() -> Any:
     platform_key = AuthHelper.get_token_from_auth_header(request)
     payload: dict[Any, Any] = request.json
     if not payload:
-        raise NoPayloadError
+        raise BadRequest
     tool_settings = payload.get(PSKeys.TOOL_SETTINGS, {})
     enable_challenge = tool_settings.get(PSKeys.ENABLE_CHALLENGE, False)
     challenge_llm = None
@@ -245,7 +246,7 @@ def prompt_processor() -> Any:
         try:
             if chunk_size == 0:
                 # We can do this only for chunkless indexes
-                context: set[str] = AnswerPromptService.fetch_context_from_vector_db(
+                context: set[str] = RetrievalService.fetch_context_from_vector_db(
                     index=index,
                     output=output,
                     doc_id=doc_id,
@@ -297,7 +298,7 @@ def prompt_processor() -> Any:
 
                 if retrieval_strategy in {PSKeys.SIMPLE, PSKeys.SUBQUESTION}:
                     vector_index = vector_db.get_vector_store_index()
-                    answer, context = AnswerPromptService.run_retrieval(
+                    answer, context = RetrievalService.run_retrieval(
                         tool_settings=tool_settings,
                         output=output,
                         doc_id=doc_id,

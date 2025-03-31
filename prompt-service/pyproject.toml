@@ -37,6 +37,14 @@ package-dir = "src"
 deploy = [
     "gunicorn>=21.2.0",
 ]
+test = [
+    "pytest>=8.0.1",
+    "pytest-dotenv==0.5.2",
+    "pytest-mock>=3.14.0",
+    "python-dotenv==1.0.0",
+    "flask-WTF~=1.1"
+
+]
 
 [tool.pdm.scripts]
 prompt_service.cmd = "flask --app src/unstract/prompt_service/main.py run --port 3003"
