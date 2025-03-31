@@ -1566,7 +1566,7 @@ files = [
 
 [[package]]
 name = "huggingface-hub"
-version = "0.29.3"
+version = "0.30.0"
 requires_python = ">=3.8.0"
 summary = "Client library to download and publish models, datasets and other repos on the huggingface.co hub"
 groups = ["default"]
@@ -1580,8 +1580,8 @@ dependencies = [
     "typing-extensions>=3.7.4.3",
 ]
 files = [
-    {file = "huggingface_hub-0.29.3-py3-none-any.whl", hash = "sha256:0b25710932ac649c08cdbefa6c6ccb8e88eef82927cacdb048efb726429453aa"},
-    {file = "huggingface_hub-0.29.3.tar.gz", hash = "sha256:64519a25716e0ba382ba2d3fb3ca082e7c7eb4a2fc634d200e8380006e0760e5"},
+    {file = "huggingface_hub-0.30.0-py3-none-any.whl", hash = "sha256:17470b2b0f902209beb0344d659a18c48b69bc202af27c1cfc814d637807322f"},
+    {file = "huggingface_hub-0.30.0.tar.gz", hash = "sha256:21ac16bc79c950dc058fad6f25e6e13444d878cc504e386d3a9b83096b3851cb"},
 ]
 
 [[package]]
