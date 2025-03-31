@@ -167,18 +167,23 @@ class UnstractRunner:
         # This is required only if additional envs are present
         try:
             from opentelemetry import trace
+
             current_span = trace.get_current_span()
             if current_span.is_recording():
                 span_context = current_span.get_span_context()
                 if span_context.is_valid:
                     # Add trace context to environment variables
-                    additional_envs.update({
-                        "OTEL_PROPAGATORS": "tracecontext",
-                        "OTEL_TRACE_ID": f"{span_context.trace_id:032x}",
-                        "OTEL_SPAN_ID": f"{span_context.span_id:016x}",
-                        "OTEL_TRACE_FLAGS": f"{span_context.trace_flags:02x}"
-                    })
-                    self.logger.debug(f"Propagating trace context: {span_context.trace_id:032x}")
+                    additional_envs.update(
+                        {
+                            "OTEL_PROPAGATORS": "tracecontext",
+                            "OTEL_TRACE_ID": f"{span_context.trace_id:032x}",
+                            "OTEL_SPAN_ID": f"{span_context.span_id:016x}",
+                            "OTEL_TRACE_FLAGS": f"{span_context.trace_flags:02x}",
+                        }
+                    )
+                    self.logger.debug(
+                        f"Propagating trace context: {span_context.trace_id:032x}"
+                    )
         except Exception as e:
             # OpenTelemetry not available or error occurred, skip trace propagation
             self.logger.debug(f"Skipping trace propagation: {e}")
