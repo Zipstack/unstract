@@ -141,15 +141,16 @@ class UnstractRunner:
             # Already a UNIX timestamp
             return float(emitted_at)
 
-    def _parse_additional_envs(self) -> dict:
+    def _parse_additional_envs(self) -> dict[str, Any]:
         """Parse TOOL_ADDITIONAL_ENVS environment variable to get additional
         environment variables.
         Also propagates OpenTelemetry trace context if available.
 
         Returns:
-            dict: Dictionary containing parsed environment variables or empty dict if none found.
+            dict: Dictionary containing parsed environment variables
+                  or empty dict if none found.
         """
-        additional_envs = {}
+        additional_envs: dict[str, Any] = {}
 
         # Get additional envs from environment variable
         tool_additional_envs = os.getenv("TOOL_ADDITIONAL_ENVS")
