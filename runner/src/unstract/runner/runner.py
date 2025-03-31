@@ -142,26 +142,29 @@ class UnstractRunner:
             return float(emitted_at)
 
     def _parse_additional_envs(self) -> dict:
-        """Parse TOOL_ADDITIONAL_ENVS environment variable to get additional environment variables.
+        """Parse TOOL_ADDITIONAL_ENVS environment variable to get additional
+        environment variables.
         Also propagates OpenTelemetry trace context if available.
 
         Returns:
             dict: Dictionary containing parsed environment variables or empty dict if none found.
         """
         additional_envs = {}
-        
+
         # Get additional envs from environment variable
         tool_additional_envs = os.getenv("TOOL_ADDITIONAL_ENVS")
-        if tool_additional_envs:
-            try:
-                additional_envs = json.loads(tool_additional_envs)
-                self.logger.info(
-                    f"Parsed additional environment variables: {additional_envs}"
-                )
-            except json.JSONDecodeError as e:
-                self.logger.warning(f"Failed to parse TOOL_ADDITIONAL_ENVS: {e}")
-        
+        if not tool_additional_envs:
+            return additional_envs
+        try:
+            additional_envs = json.loads(tool_additional_envs)
+            self.logger.info(
+                f"Parsed additional environment variables: {additional_envs}"
+            )
+        except json.JSONDecodeError as e:
+            self.logger.warning(f"Failed to parse TOOL_ADDITIONAL_ENVS: {e}")
+
         # Propagate OpenTelemetry trace context if available
+        # This is required only if additional envs are present
         try:
             from opentelemetry import trace
             current_span = trace.get_current_span()
@@ -179,7 +182,7 @@ class UnstractRunner:
         except Exception as e:
             # OpenTelemetry not available or error occurred, skip trace propagation
             self.logger.debug(f"Skipping trace propagation: {e}")
-            
+
         return additional_envs
 
     def run_command(self, command: str) -> Optional[Any]:
