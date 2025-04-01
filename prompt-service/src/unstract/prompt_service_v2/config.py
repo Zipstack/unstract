@@ -3,7 +3,6 @@ from os import environ as env
 
 from dotenv import load_dotenv
 from flask import Flask
-from flask.logging import default_handler
 from unstract.prompt_service_v2.controllers import api
 from unstract.prompt_service_v2.extensions import db
 from unstract.prompt_service_v2.helpers.lifecycle import register_lifecycle_hooks
@@ -26,7 +25,6 @@ def create_app() -> Flask:
     app = Flask("prompt-service")
     app.logger.setLevel(log_level)
     app.logger.info("Initializing Flask application...")
-    app.logger.removeHandler(default_handler)
     # Load required environment variables
     db_host = get_env_or_die("PG_BE_HOST")
     db_port = get_env_or_die("PG_BE_PORT")
