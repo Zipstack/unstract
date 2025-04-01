@@ -1,0 +1,34 @@
+.logging-card-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.logs-details-card {
+  width: 250px;
+  margin: 0;
+  padding: 0;
+  height: 60px;
+  margin-right: 20px;
+}
+
+.logging-card-icons {
+  margin: 0 12px;
+}
+
+.view-log-button {
+  margin-right: 20px;
+}
+
+.column-filter-dropdown{
+  margin-bottom: 20px;
+}
+
+.search-container {
+  padding: 8px;
+}
+
+.search-input {
+  width: 188px;
+  margin-bottom: 8px;
+  display: block;
+}
