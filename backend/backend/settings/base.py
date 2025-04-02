@@ -504,3 +504,7 @@ if missing_settings:
         missing_settings
     )
     raise ValueError(ERROR_MESSAGE)
+
+ENABLE_HIGHLIGHT_API_DEPLOYMENT = os.environ.get(
+    "ENABLE_HIGHLIGHT_API_DEPLOYMENT", False
+)
