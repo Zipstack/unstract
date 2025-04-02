@@ -72,7 +72,7 @@ try {
 let DynamicLogo;
 try {
   DynamicLogo =
-   require("../../../plugins/dynamic-logo/DynamicLogo.js")?.default;
+    require("../../../plugins/dynamic-logo/DynamicLogo.js")?.default;
 } catch {
   // Plugin not available
 }
