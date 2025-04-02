@@ -782,6 +782,7 @@ def fetch_context_from_vector_db(
                     msg,
                 )
                 raise APIError(message=msg)
+            context.add(retrieved_context)
     except SdkError as e:
         msg = f"Unable to fetch context from vector DB. {str(e)}"
         app.logger.error(
