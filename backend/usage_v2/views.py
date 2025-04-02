@@ -9,7 +9,7 @@ from rest_framework.filters import OrderingFilter
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from usage_v2.filter import UsageFilter
-from usage_v2.utils import DateTimeProcessor
+from utils.date import DateTimeProcessor
 from utils.pagination import CustomPagination
 from utils.user_context import UserContext
 

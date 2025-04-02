@@ -182,8 +182,6 @@ class WorkflowExecutionService:
         Args:
             step (int): workflow step
             sandbox (ToolSandbox): instance of tool sandbox
-            execution_type (ExecutionType): step or complete
-            last_step_output (list[Any]): output of previous step
 
         Raises:
             error: _description_

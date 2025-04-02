@@ -2,11 +2,11 @@ import json
 import logging
 from typing import Any, Optional
 
+from api_v2.api_deployment_dto_registry import ApiDeploymentDTORegistry
 from api_v2.constants import ApiExecution
 from api_v2.deployment_helper import DeploymentHelper
 from api_v2.exceptions import NoActiveAPIKeyError
 from api_v2.models import APIDeployment
-from api_v2.postman_collection.dto import PostmanCollection
 from api_v2.serializers import (
     APIDeploymentListSerializer,
     APIDeploymentSerializer,
@@ -87,11 +87,11 @@ class DeploymentExecution(views.APIView):
         response: ExecutionResponse = DeploymentHelper.get_execution_status(
             execution_id
         )
-
         # Determine response status
         response_status = status.HTTP_422_UNPROCESSABLE_ENTITY
         if response.execution_status == CeleryTaskState.COMPLETED.value:
             response_status = status.HTTP_200_OK
+            response.remove_result_metadata_keys(["highlight_data"])
             if not include_metadata:
                 response.remove_result_metadata_keys()
             if not include_metrics:
@@ -156,8 +156,8 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
         if not api_key_inst:
             logger.error(f"No active API key set for deployment {instance.pk}")
             raise NoActiveAPIKeyError(deployment_name=instance.display_name)
-
-        postman_collection = PostmanCollection.create(
+        dto_class = ApiDeploymentDTORegistry.get_dto()
+        postman_collection = dto_class.create(
             instance=instance, api_key=api_key_inst.api_key
         )
         response = HttpResponse(

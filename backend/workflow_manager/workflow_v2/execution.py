@@ -82,7 +82,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
                 execution_mode=mode,
                 execution_method=self.execution_method,
                 execution_type=self.execution_type,
-                status=ExecutionStatus.INITIATED,
+                status=ExecutionStatus.EXECUTING,
                 execution_log_id=self.execution_log_id,
             )
             workflow_execution.save()
@@ -219,7 +219,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
     def build(self) -> None:
         if self.compilation_result["success"] is True:
             self.build_workflow()
-            self.update_execution(status=ExecutionStatus.READY)
+            self.update_execution(status=ExecutionStatus.EXECUTING)
         else:
             logger.error(
                 "Errors while compiling workflow "
@@ -296,6 +296,8 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         Returns:
             None
         """
+        # To not associate final logs with a file execution
+        self.file_execution_id = None
         self.publish_update_log(LogState.END_WORKFLOW, "1", LogComponent.STATUS_BAR)
         self.publish_update_log(
             LogState.SUCCESS, "Executed successfully", LogComponent.WORKFLOW
@@ -318,12 +320,13 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         Returns:
             None
         """
+        msg = f"Processing file '{file_name}' ({current_file_idx}/{total_files})"
         self.publish_update_log(
             component=LogComponent.STATUS_BAR,
             state=LogState.MESSAGE,
-            message=f"Processing file {file_name} {current_file_idx}/{total_files}",
+            message=msg,
         )
-        self.publish_log(f"Processing file {file_name}")
+        self.publish_log(msg)
 
     def execute_input_file(
         self,

@@ -3,9 +3,7 @@
 
 # Unstract
 
-## Intelligent Document Processing 2.0 (IDP 2.0) Platform Powered by Large Language Models
-
-#### No-code LLM Platform to launch APIs and ETL Pipelines to structure unstructured documents
+## No-code LLM Platform to launch APIs and ETL Pipelines to structure unstructured documents
 
 ## 
 
@@ -83,7 +81,6 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 | <img src="docs/assets/3rd_party/palm.png" width="32"/>         | Google PaLM                 | ✅ Working |
 | <img src="docs/assets/3rd_party/anyscale.png" width="32"/>     | Anyscale                    | ✅ Working |
 | <img src="docs/assets/3rd_party/mistral_ai.png" width="32"/>   | Mistral AI                  | ✅ Working |
-| <img src="docs/assets/3rd_party/replicate.png" width="32"/>    | Replicate                   | 🗓️ Coming soon! |
 
 
 ### Vector Databases
@@ -106,15 +103,17 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 |<img src="docs/assets/3rd_party/azure_openai.png" width="32"/>| Azure OpenAI | ✅ Working  |
 |<img src="docs/assets/3rd_party/palm.png" width="32"/>| Google PaLM | ✅ Working  |
 |<img src="docs/assets/3rd_party/ollama.png" width="32"/>| Ollama | ✅ Working |
+|<img src="docs/assets/3rd_party/vertex_ai.png" width="32"/>    | VertexAI | ✅ Working |
+| <img src="docs/assets/3rd_party/bedrock.png" width="32"/>      | Bedrock                     | ✅ Working |
 
 ### Text Extractors
 
-|| Provider | Status |
-|---|---|---|
-|<img src="docs/assets/unstract_u_logo.png" width="32"/>| Unstract LLMWhisperer | ✅ Working |
-|<img src="docs/assets/3rd_party/unstructured_io.png" width="32"/>| Unstructured.io Community | ✅ Working |
+|| Provider                   | Status |
+|---|----------------------------|---|
+|<img src="docs/assets/unstract_u_logo.png" width="32"/>| Unstract LLMWhisperer V2   | ✅ Working |
+|<img src="docs/assets/3rd_party/unstructured_io.png" width="32"/>| Unstructured.io Community  | ✅ Working |
 |<img src="docs/assets/3rd_party/unstructured_io.png" width="32"/>| Unstructured.io Enterprise | ✅ Working |
-|<img src="docs/assets/3rd_party/llamaindex.png" width="32"/>| LlamaIndex Parse | ✅ Working |
+|<img src="docs/assets/3rd_party/llamaindex.png" width="32"/>| LlamaIndex Parse           | ✅ Working |
 
 ### ETL Sources
 
@@ -132,15 +131,16 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 
 ### ETL Destinations
 
-|| Provider | Status |
-|---|---|---|
-|<img src="docs/assets/3rd_party/snowflake.png" width="32"/>| Snowflake | ✅ Working |
-|<img src="docs/assets/3rd_party/amazon_redshift.png" width="32"/>| Amazon Redshift | ✅ Working |
-|<img src="docs/assets/3rd_party/google_bigquery.png" width="32"/>| Google BigQuery | ✅ Working |
-|<img src="docs/assets/3rd_party/postgres.png" width="32"/>| PostgreSQL | ✅ Working |
-|<img src="docs/assets/3rd_party/mysql.png" width="32"/>| MySQL | ✅ Working |
-|<img src="docs/assets/3rd_party/mariadb.png" width="32"/>| MariaDB | ✅ Working |
-|<img src="docs/assets/3rd_party/ms_sql.png" width="32"/>| Microsoft SQL Server | ✅ Working |
+|                                                                   | Provider             | Status |
+|-------------------------------------------------------------------|----------------------|---|
+| <img src="docs/assets/3rd_party/snowflake.png" width="32"/>       | Snowflake            | ✅ Working |
+| <img src="docs/assets/3rd_party/amazon_redshift.png" width="32"/> | Amazon Redshift      | ✅ Working |
+| <img src="docs/assets/3rd_party/google_bigquery.png" width="32"/> | Google BigQuery      | ✅ Working |
+| <img src="docs/assets/3rd_party/postgres.png" width="32"/>        | PostgreSQL           | ✅ Working |
+| <img src="docs/assets/3rd_party/mysql.png" width="32"/>           | MySQL                | ✅ Working |
+| <img src="docs/assets/3rd_party/mariadb.png" width="32"/>         | MariaDB              | ✅ Working |
+| <img src="docs/assets/3rd_party/ms_sql.png" width="32"/>          | Microsoft SQL Server | ✅ Working |
+| <img src="docs/assets/3rd_party/oracle.png" width="32"/>          | Oracle               | ✅ Working |
 
 ## 🙌 Contributing
 

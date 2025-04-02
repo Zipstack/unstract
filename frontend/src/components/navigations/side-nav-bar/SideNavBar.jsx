@@ -1,10 +1,10 @@
+import { useMemo } from "react";
 import { BranchesOutlined } from "@ant-design/icons";
 import { Divider, Image, Layout, Space, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
-import "./SideNavBar.css";
-const { Sider } = Layout;
 
+import { useSessionStore } from "../../../store/session-store";
 import Workflows from "../../../assets/Workflows.svg";
 import apiDeploy from "../../../assets/api-deployments.svg";
 import CustomTools from "../../../assets/custom-tools-icon.svg";
@@ -15,8 +15,11 @@ import PlatformSettingsIcon from "../../../assets/platform-settings.svg";
 import task from "../../../assets/task.svg";
 import VectorDbIcon from "../../../assets/vector-db.svg";
 import TextExtractorIcon from "../../../assets/text-extractor.svg";
-import { useSessionStore } from "../../../store/session-store";
-import { useMemo } from "react";
+import TerminalIcon from "../../../assets/terminal.svg";
+
+import "./SideNavBar.css";
+
+const { Sider } = Layout;
 
 let getMenuItem;
 try {
@@ -84,40 +87,18 @@ const SideNavBar = ({ collapsed }) => {
   const unstractMenuItems = [
     {
       id: 1,
-      mainTitle: "MANAGE",
-      subMenu: [
-        {
-          id: 1.2,
-          title: "API Deployments",
-          description: "Unstructured to structured APIs",
-          image: apiDeploy,
-          path: `/${orgName}/api`,
-          active: window.location.pathname.startsWith(`/${orgName}/api`),
-        },
-        {
-          id: 1.3,
-          title: "ETL Pipelines",
-          description: "Unstructured to structured data pipelines",
-          image: etl,
-          path: `/${orgName}/etl`,
-          active: window.location.pathname.startsWith(`/${orgName}/etl`),
-        },
-        {
-          id: 1.4,
-          title: "Task Pipelines",
-          description: "Ad-hoc unstructured data task pipelines",
-          image: task,
-          path: `/${orgName}/task`,
-          active: window.location.pathname.startsWith(`/${orgName}/task`),
-        },
-      ],
-    },
-    {
-      id: 2,
       mainTitle: "BUILD",
       subMenu: [
         {
-          id: 2.1,
+          id: 1.1,
+          title: "Prompt Studio",
+          description: "Create structured data from unstructured documents",
+          image: CustomTools,
+          path: `/${orgName}/tools`,
+          active: window.location.pathname.startsWith(`/${orgName}/tools`),
+        },
+        {
+          id: 1.2,
           title: "Workflows",
           description: "Build no-code data workflows for unstructured data",
           icon: BranchesOutlined,
@@ -125,13 +106,43 @@ const SideNavBar = ({ collapsed }) => {
           path: `/${orgName}/workflows`,
           active: window.location.pathname.startsWith(`/${orgName}/workflows`),
         },
+      ],
+    },
+    {
+      id: 2,
+      mainTitle: "MANAGE",
+      subMenu: [
         {
           id: 2.2,
-          title: "Prompt Studio",
-          description: "Create structured data from unstructured documents",
-          image: CustomTools,
-          path: `/${orgName}/tools`,
-          active: window.location.pathname.startsWith(`/${orgName}/tools`),
+          title: "API Deployments",
+          description: "Unstructured to structured APIs",
+          image: apiDeploy,
+          path: `/${orgName}/api`,
+          active: window.location.pathname.startsWith(`/${orgName}/api`),
+        },
+        {
+          id: 2.3,
+          title: "ETL Pipelines",
+          description: "Unstructured to structured data pipelines",
+          image: etl,
+          path: `/${orgName}/etl`,
+          active: window.location.pathname.startsWith(`/${orgName}/etl`),
+        },
+        {
+          id: 2.4,
+          title: "Task Pipelines",
+          description: "Ad-hoc unstructured data task pipelines",
+          image: task,
+          path: `/${orgName}/task`,
+          active: window.location.pathname.startsWith(`/${orgName}/task`),
+        },
+        {
+          id: 1.5,
+          title: "Logs",
+          description: "Records system events for monitoring and debugging",
+          image: TerminalIcon,
+          path: `/${orgName}/logs`,
+          active: window.location.pathname.startsWith(`/${orgName}/logs`),
         },
       ],
     },
@@ -197,13 +208,13 @@ const SideNavBar = ({ collapsed }) => {
   ];
 
   if (dashboardSideMenuItem) {
-    unstractMenuItems[0].subMenu.unshift(dashboardSideMenuItem(orgName));
+    unstractMenuItems[1].subMenu.unshift(dashboardSideMenuItem(orgName));
   }
 
   const data = menu || unstractMenuItems;
 
   if (getMenuItem && flags?.app_deployment) {
-    data[0]?.subMenu?.splice(1, 0, getMenuItem.default(orgName));
+    data[1]?.subMenu?.splice(1, 0, getMenuItem.default(orgName));
   }
 
   const shouldDisableAll = useMemo(() => {

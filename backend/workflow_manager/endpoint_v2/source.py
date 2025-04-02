@@ -327,10 +327,49 @@ class SourceConnector(BaseConnector):
         return matched_files, count
 
     def _should_process_file(self, file: str, patterns: list[str]) -> bool:
-        """Check if the file should be processed based on the patterns."""
-        return bool(file) and any(
-            fnmatch.fnmatchcase(file.lower(), pattern.lower()) for pattern in patterns
+        """
+        Check if the file should be processed based on the patterns.
+
+        Args:
+            file: The filename to check
+            patterns: List of patterns to match against
+
+        Returns:
+            bool: True if file should be processed, False otherwise
+        """
+        if not file:
+            return False
+
+        file_lower = file.lower()
+        matches_pattern = any(
+            fnmatch.fnmatchcase(file_lower, pattern.lower()) for pattern in patterns
         )
+
+        return matches_pattern and self._is_valid_pattern(file)
+
+    def _is_valid_pattern(self, file_name: str) -> bool:
+        """
+        Check if the file has a supported format.
+
+        Args:
+            file_name: The filename to check
+
+        Returns:
+            bool: True if file format is supported, False otherwise
+        """
+        file_lower = file_name.lower()
+        matches_blocked = any(
+            fnmatch.fnmatchcase(file_lower, ext.lower())
+            for ext in FilePattern.UNSUPPORTED_FILE_EXTENSIONS
+        )
+
+        if matches_blocked:
+            message = f"Skipping '{file_name}' as it has an unsupported file format"
+            logger.debug(message)
+            self.execution_service.publish_log(message)
+            return False
+
+        return True
 
     def _is_new_file(
         self, file_path: str, workflow: Workflow, source_fs: UnstractFileSystem
