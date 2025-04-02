@@ -69,6 +69,14 @@ try {
   // Ignore if hook not available
 }
 
+let DynamicLogo;
+try {
+  DynamicLogo =
+   require("../../../plugins/dynamic-logo/DynamicLogo.js")?.default;
+} catch {
+  // Plugin not available
+}
+
 let unstractSubscriptionPlan;
 let unstractSubscriptionPlanStore;
 let UNSTRACT_SUBSCRIPTION_PLANS;
@@ -338,12 +346,21 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
     <Row align="middle" className="topNav">
       <Col span={6} className="platform-switch-container">
         {isUnstract ? (
-          <UnstractLogo
-            className="topbar-logo cursor-pointer"
-            onClick={() =>
-              navigate(`/${sessionDetails?.orgName}/${homePagePath}`)
-            }
-          />
+          DynamicLogo ? (
+            <DynamicLogo
+              className="topbar-logo cursor-pointer"
+              onClick={() =>
+                navigate(`/${sessionDetails?.orgName}/${homePagePath}`)
+              }
+            />
+          ) : (
+            <UnstractLogo
+              className="topbar-logo cursor-pointer"
+              onClick={() =>
+                navigate(`/${sessionDetails?.orgName}/${homePagePath}`)
+              }
+            />
+          )
         ) : (
           WhispererLogo && <WhispererLogo className="topbar-logo" />
         )}
