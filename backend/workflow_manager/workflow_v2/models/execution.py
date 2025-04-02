@@ -110,6 +110,17 @@ class WorkflowExecution(BaseModel):
             return None
 
     @property
+    def workflow(self) -> Optional[Workflow]:
+        """Obtains the workflow associated to this execution."""
+        try:
+            return Workflow.objects.get(id=self.workflow_id)
+        except ObjectDoesNotExist:
+            logger.warning(
+                f"Expected workflow ID '{self.workflow_id}' to exist but missing"
+            )
+            return None
+
+    @property
     def pipeline_name(self) -> Optional[str]:
         """Obtains the pipeline's name associated to this execution.
         It could be ETL / TASK / API pipeline, None returned if there's no such pipeline

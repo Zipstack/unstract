@@ -135,6 +135,37 @@ class DestinationConnector(BaseConnector):
         ):
             raise DestinationConnectorNotConfigured()
 
+        # Validate database connection if it's a database destination
+        if connection_type == WorkflowEndpoint.ConnectionType.DATABASE and connector:
+            try:
+                # Get database class and test connection
+                db_class = DatabaseUtils.get_db_class(
+                    connector_id=connector.connector_id,
+                    connector_settings=connector.metadata,
+                )
+                engine = db_class.get_engine()
+                if hasattr(engine, "close"):
+                    engine.close()
+            except Exception as e:
+                logger.error(f"Database connection failed: {str(e)}")
+                raise
+
+    def _handle_hitl(
+        self,
+        file_name: str,
+        file_hash: FileHash,
+        workflow: Workflow,
+        input_file_path: str,
+    ) -> bool:
+        """Handles HITL processing, returning True if data was pushed to the queue."""
+        execution_result = self.get_result()
+        if WorkflowUtil.validate_db_rule(
+            execution_result, workflow, file_hash.file_destination
+        ):
+            self._push_data_to_queue(file_name, workflow, input_file_path)
+            return True
+        return False
+
     def _push_data_to_queue(
         self,
         file_name: str,
@@ -177,12 +208,12 @@ class DestinationConnector(BaseConnector):
         if connection_type == WorkflowEndpoint.ConnectionType.FILESYSTEM:
             self.copy_output_to_output_directory()
         elif connection_type == WorkflowEndpoint.ConnectionType.DATABASE:
-            result = self.get_result(file_history)
-            if WorkflowUtil.validate_db_rule(
-                result, workflow, file_hash.file_destination
+            if not self._handle_hitl(
+                file_name=file_name,
+                file_hash=file_hash,
+                workflow=workflow,
+                input_file_path=input_file_path,
             ):
-                self._push_data_to_queue(file_name, workflow, input_file_path)
-            else:
                 self.insert_into_db(input_file_path=input_file_path)
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
             result = self.get_result(file_history)
@@ -199,7 +230,7 @@ class DestinationConnector(BaseConnector):
 
         if use_file_history and not file_history:
             FileHistoryHelper.create_file_history(
-                cache_key=file_hash.file_hash,
+                file_hash=file_hash,
                 workflow=workflow,
                 status=ExecutionStatus.COMPLETED,
                 result=result,
@@ -303,29 +334,53 @@ class DestinationConnector(BaseConnector):
             file_path=input_file_path,
             execution_id=self.execution_id,
         )
-        db_class = DatabaseUtils.get_db_class(
-            connector_id=connector_instance.connector_id,
-            connector_settings=connector_settings,
-        )
-        engine = db_class.get_engine()
-        DatabaseUtils.create_table_if_not_exists(
-            db_class=db_class,
-            engine=engine,
-            table_name=table_name,
-            database_entry=values,
-        )
-        sql_columns_and_values = DatabaseUtils.get_sql_query_data(
-            conn_cls=db_class,
-            table_name=table_name,
-            values=values,
-        )
-        DatabaseUtils.execute_write_query(
-            db_class=db_class,
-            engine=engine,
-            table_name=table_name,
-            sql_keys=list(sql_columns_and_values.keys()),
-            sql_values=list(sql_columns_and_values.values()),
-        )
+        engine = None
+        try:
+            db_class = DatabaseUtils.get_db_class(
+                connector_id=connector_instance.connector_id,
+                connector_settings=connector_settings,
+            )
+            engine = db_class.get_engine()
+            DatabaseUtils.create_table_if_not_exists(
+                db_class=db_class,
+                engine=engine,
+                table_name=table_name,
+                database_entry=values,
+            )
+            sql_columns_and_values = DatabaseUtils.get_sql_query_data(
+                conn_cls=db_class,
+                table_name=table_name,
+                values=values,
+            )
+            DatabaseUtils.execute_write_query(
+                db_class=db_class,
+                engine=engine,
+                table_name=table_name,
+                sql_keys=list(sql_columns_and_values.keys()),
+                sql_values=list(sql_columns_and_values.values()),
+            )
+        except ConnectorError as e:
+            error_msg = f"Database connection failed for {input_file_path}: {str(e)}"
+            logger.error(error_msg)
+            raise
+        except Exception as e:
+            error_msg = (
+                f"Failed to insert data into database for {input_file_path}: {str(e)}"
+            )
+            logger.error(error_msg)
+            raise
+        finally:
+            self._close_engine(engine, input_file_path)
+
+    def _close_engine(self, engine: Any, input_file_path: str) -> None:
+        """Safely close database engine."""
+        if engine:
+            try:
+                engine.close()
+            except Exception as e:
+                logger.error(
+                    f"Failed to close database engine for {input_file_path}: {str(e)}"
+                )
 
     def _handle_api_result(
         self,
@@ -475,6 +530,14 @@ class DestinationConnector(BaseConnector):
         file_storage = file_system.get_file_storage()
         if file_storage.exists(self.execution_dir):
             file_storage.rm(self.execution_dir, recursive=True)
+
+    def delete_execution_and_api_storage_dir(self) -> None:
+        """Delete the execution and api storage directories.
+
+        Returns:
+            None
+        """
+        self.delete_execution_directory()
         self.delete_api_storage_dir(self.workflow_id, self.execution_id)
 
     @classmethod

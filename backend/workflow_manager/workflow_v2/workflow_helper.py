@@ -26,7 +26,6 @@ from utils.local_context import StateStore
 from utils.user_context import UserContext
 from workflow_manager.endpoint_v2.destination import DestinationConnector
 from workflow_manager.endpoint_v2.dto import FileHash
-from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.endpoint_v2.source import SourceConnector
 from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.constants import (
@@ -41,6 +40,7 @@ from workflow_manager.workflow_v2.exceptions import (
     InvalidRequest,
     TaskDoesNotExistError,
     WorkflowDoesNotExistError,
+    WorkflowExecutionError,
     WorkflowExecutionNotExist,
 )
 from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelper
@@ -109,25 +109,6 @@ class WorkflowHelper:
         workflow_execution_service.build()
         return workflow_execution_service
 
-    @staticmethod
-    def _get_or_create_workflow_execution_file(
-        execution_service: WorkflowExecutionServiceHelper,
-        file_hash: FileHash,
-        source: SourceConnector,
-    ) -> WorkflowFileExecution:
-        is_api = source.endpoint.connection_type == WorkflowEndpoint.ConnectionType.API
-        # Determine file path based on connection type
-        execution_file_path = file_hash.file_path if not is_api else None
-        # Create or retrieve the workflow execution file
-        return WorkflowFileExecution.objects.get_or_create_file_execution(
-            workflow_execution=execution_service.workflow_execution,
-            file_name=file_hash.file_name,
-            file_hash=file_hash.file_hash,
-            file_path=execution_file_path,
-            file_size=file_hash.file_size,
-            mime_type=file_hash.mime_type,
-        )
-
     @classmethod
     def process_input_files(
         cls,
@@ -146,16 +127,12 @@ class WorkflowHelper:
         execution_service.update_execution(
             ExecutionStatus.EXECUTING, increment_attempt=True
         )
-        if total_files > 0:
-            q_file_no_list = WorkflowUtil.get_q_no_list(workflow, total_files)
+        q_file_no_list = (
+            WorkflowUtil.get_q_no_list(workflow, total_files) if total_files > 0 else []
+        )
 
         for index, (file_name, file_hash) in enumerate(input_files.items()):
             # Get workflow execution file
-            workflow_execution_file = cls._get_or_create_workflow_execution_file(
-                execution_service=execution_service,
-                file_hash=file_hash,
-                source=source,
-            )
             file_number = index + 1
             file_hash = WorkflowUtil.add_file_destination_filehash(
                 file_number,
@@ -173,44 +150,31 @@ class WorkflowHelper:
                     execution_service=execution_service,
                     single_step=single_step,
                     file_hash=file_hash,
-                    workflow_file_execution=workflow_execution_file,
                 )
                 if error:
                     failed_files += 1
-                    workflow_execution_file.update_status(
-                        status=ExecutionStatus.ERROR,
-                        execution_error=error,
-                    )
                 else:
                     successful_files += 1
-                    workflow_execution_file.update_status(ExecutionStatus.COMPLETED)
             except StopExecution as e:
                 execution_service.update_execution(
                     ExecutionStatus.STOPPED, error=str(e)
-                )
-                workflow_execution_file.update_status(
-                    status=ExecutionStatus.STOPPED, execution_error=str(e)
                 )
                 break
             except Exception as e:
                 failed_files += 1
                 error_message = f"Error processing file '{file_name}'. {e}"
                 logger.error(error_message, stack_info=True, exc_info=True)
-                workflow_execution_file.update_status(
-                    status=ExecutionStatus.ERROR,
-                    execution_error=error_message,
-                )
                 execution_service.publish_log(
                     message=error_message, level=LogLevel.ERROR
                 )
         # TODO: Store only generic WF errors here (concerning all failed files)
         # TODO: Review if we need partial success
-        if failed_files and failed_files >= total_files:
-            execution_service.update_execution(
-                ExecutionStatus.ERROR, error=error_message
-            )
-        else:
-            execution_service.update_execution(ExecutionStatus.COMPLETED)
+        final_status = (
+            ExecutionStatus.ERROR
+            if total_files > 0 and failed_files >= total_files
+            else ExecutionStatus.COMPLETED
+        )
+        execution_service.update_execution(final_status, error=error_message)
 
         execution_service.publish_final_workflow_logs(
             total_files=total_files,
@@ -219,8 +183,9 @@ class WorkflowHelper:
         )
         return execution_service.get_execution_instance()
 
-    @staticmethod
+    @classmethod
     def _process_file(
+        cls,
         current_file_idx: int,
         total_files: int,
         input_file: str,
@@ -230,18 +195,46 @@ class WorkflowHelper:
         execution_service: WorkflowExecutionServiceHelper,
         single_step: bool,
         file_hash: FileHash,
-        workflow_file_execution: WorkflowFileExecution,
     ) -> Optional[str]:
-        error: Optional[str] = None
+
+        # Delete previous execution directory to avoid conflicts
+        destination.delete_execution_directory()
+
         # Multiple run_ids are linked to an execution_id
         # Each run_id corresponds to workflow runs for a single file
         # It should e uuid of workflow_file_execution
+        workflow_file_execution: WorkflowFileExecution = (
+            WorkflowFileExecution.objects.get_or_create_file_execution(
+                workflow_execution=execution_service.workflow_execution,
+                file_hash=file_hash,
+                connection_type=source.endpoint.connection_type,
+            )
+        )
+        workflow_file_execution.update_status(status=ExecutionStatus.INITIATED)
         file_execution_id = str(workflow_file_execution.id)
-        file_name = source.add_file_to_volume(
-            input_file_path=input_file,
+        file_name = file_hash.file_name
+
+        # This will add the file to the volume
+        file_content_hash = source.add_file_to_volume(
             workflow_file_execution=workflow_file_execution,
             tags=execution_service.tags,
+            file_hash=file_hash,
         )
+
+        # Update file_hash after adding to volume
+        file_hash.file_hash = file_content_hash
+        workflow_file_execution.update(file_hash=file_content_hash)
+
+        # Ensure no duplicate file processing
+        if FileHistoryHelper.get_file_history(
+            workflow=workflow, cache_key=file_content_hash
+        ):
+            logger.info(f"Skipping '{file_name}', already processed.")
+            execution_service.publish_log(
+                f"Skipping '{file_name}', already processed.", LogLevel.INFO
+            )
+            return None
+
         try:
             execution_service.file_execution_id = file_execution_id
             execution_service.initiate_tool_execution(
@@ -256,29 +249,51 @@ class WorkflowHelper:
                     workflow_file_execution=workflow_file_execution,
                 )
         except StopExecution:
+            workflow_file_execution.update_status(status=ExecutionStatus.STOPPED)
             raise
+        except WorkflowExecutionError as e:
+            error_message = f"Error processing file '{file_name}': {e}"
+            execution_service.publish_log(error_message, level=LogLevel.ERROR)
+            error = error_message
         except Exception as e:
-            error = f"Error processing file '{os.path.basename(input_file)}'. {str(e)}"
-            execution_service.publish_log(error, level=LogLevel.ERROR)
+            error_message = f"Unexpected error processing file '{file_name}': {str(e)}"
+            logger.error(error_message, stack_info=True, exc_info=True)
+            execution_service.publish_log(error_message, level=LogLevel.ERROR)
+            error = error_message
             # Handling error based on destination and continuing for other files
+        else:
+            error = None
         execution_service.publish_update_log(
             LogState.RUNNING,
             f"Processing output for {file_name}",
             LogComponent.DESTINATION,
         )
-        destination.handle_output(
-            file_name=file_name,
-            file_hash=file_hash,
-            workflow=workflow,
-            input_file_path=input_file,
-            error=error,
-            use_file_history=execution_service.use_file_history,
-        )
-        execution_service.publish_update_log(
-            LogState.SUCCESS,
-            f"{file_name}'s output is processed successfully",
-            LogComponent.DESTINATION,
-        )
+        try:
+            destination.handle_output(
+                file_name=file_name,
+                file_hash=file_hash,
+                workflow=workflow,
+                input_file_path=input_file,
+                error=error,
+                use_file_history=execution_service.use_file_history,
+            )
+        except Exception as e:
+            error_message = (
+                f"Error during output processing for '{file_name}': {str(e)}"
+            )
+            logger.error(error_message, stack_info=True, exc_info=True)
+            execution_service.publish_log(error_message, level=LogLevel.ERROR)
+            error = error_message
+        finally:
+            execution_service.publish_update_log(
+                LogState.SUCCESS,
+                f"{file_name}'s output is processed successfully",
+                LogComponent.DESTINATION,
+            )
+            workflow_file_execution.update_status(
+                status=ExecutionStatus.ERROR if error else ExecutionStatus.COMPLETED,
+                execution_error=error if error else None,
+            )
         return error
 
     @staticmethod
@@ -335,11 +350,11 @@ class WorkflowHelper:
             execution_id=execution_id,
             execution_service=execution_service,
         )
-        # Validating endpoints
-        source.validate()
-        destination.validate()
-        # Execution Process
         try:
+            # Validating endpoints
+            source.validate()
+            destination.validate()
+            # Execution Process
             input_files, total_files = source.list_files_from_source(
                 hash_values_of_files
             )
@@ -378,7 +393,8 @@ class WorkflowHelper:
         finally:
             # TODO: Handle error gracefully during delete
             # Mark status as an ERROR correctly
-            destination.delete_execution_directory()
+            logger.info("Deleting execution and api storage directory==============")
+            destination.delete_execution_and_api_storage_dir()
 
     @staticmethod
     def _update_pipeline_status(
