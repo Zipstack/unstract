@@ -173,7 +173,7 @@ class WorkflowExecution(BaseModel):
         """
         # Aggregate the cost for the given execution_id
         queryset = Usage.objects.filter(execution_id=self.id)
-        
+
         if queryset.exists():
             result = queryset.aggregate(cost_in_dollars=Sum(UsageKeys.COST_IN_DOLLARS))
             total_cost = result.get(UsageKeys.COST_IN_DOLLARS)
@@ -183,7 +183,7 @@ class WorkflowExecution(BaseModel):
                 f"Usage data not found for the specified execution_id: {self.id}"
             )
             return None
-        
+
         logger.debug(
             f"Cost aggregated successfully for execution_id: {self.id}"
             f", Total cost: {total_cost}"
