@@ -59,11 +59,19 @@ class RetrievalService:
         top_k = output[PSKeys.SIMILARITY_TOP_K]
         if retrieval_type == PSKeys.SUBQUESTION:
             context = SubquestionRetriever(
-                vector_db=vector_db, doc_id=doc_id, prompt=prompt, top_k=top_k
+                vector_db=vector_db,
+                doc_id=doc_id,
+                prompt=prompt,
+                top_k=top_k,
+                llm=llm,
             ).retrieve()
         if retrieval_type == PSKeys.SIMPLE:
             context = SimpleRetriever(
-                vector_db=vector_db, doc_id=doc_id, prompt=prompt, top_k=top_k
+                vector_db=vector_db,
+                doc_id=doc_id,
+                prompt=prompt,
+                top_k=top_k,
+                llm=llm,
             ).retrieve()
 
         answer = AnswerPromptService.construct_and_run_prompt(  # type:ignore

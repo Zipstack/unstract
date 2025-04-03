@@ -33,7 +33,6 @@ class SimpleRetriever(BaseRetriever):
             ),
         )
         nodes = retriever.retrieve(self.prompt)
-        app.logger.info(f"retrieved nodes {nodes}")
         context: set[str] = set()
         for node in nodes:
             # ToDo: May have to fine-tune this value for node score or keep it
@@ -45,5 +44,4 @@ class SimpleRetriever(BaseRetriever):
                     "Node score is less than 0. "
                     f"Ignored: {node.node_id} with score {node.score}"
                 )
-        app.logger.info(f"context before retuning{context}")
         return context

@@ -794,7 +794,8 @@ class PromptStudioHelper:
         logger.info(f"Summary status : {is_summary}")
         util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
         logger.info(
-            f"Passing file_path for fetching answer {file_path} : extraction path {doc_path}"
+            f"Passing file_path for fetching answer "
+            f"{file_path} : extraction path {doc_path}"
         )
         doc_id = IndexingUtils.generate_index_key(
             vector_db=str(profile_manager.vector_store.id),
@@ -807,6 +808,7 @@ class PromptStudioHelper:
             fs=fs_instance,
             tool=util,
         )
+        logger.info(f"Extracting text from {file_path} for {doc_id}")
         extracted_text = PromptStudioHelper.dynamic_extractor(
             profile_manager=profile_manager,
             file_path=file_path,
@@ -816,6 +818,7 @@ class PromptStudioHelper:
             enable_highlight=tool.enable_highlight,
             doc_id=doc_id,
         )
+        logger.info(f"Extracted text from {file_path} for {doc_id}")
         if is_summary:
             profile_manager.chunk_size = 0
             doc_path = Path(doc_path)  # Convert string to Path object
@@ -825,8 +828,9 @@ class PromptStudioHelper:
             PromptStudioHelper.summarize(
                 filename, org_id, document_id, is_summary, run_id, tool, doc_id
             )
-            logger.info(f"Summary enabled, set chunk to zero..")
+            logger.info("Summary enabled, set chunk to zero..")
         else:
+            logger.info(f"Indexing document {doc_path} for {doc_id}")
             index_result = PromptStudioHelper.dynamic_indexer(
                 profile_manager=profile_manager,
                 file_path=doc_path,
@@ -1043,6 +1047,7 @@ class PromptStudioHelper:
                 indexed_doc_id = DocumentIndexingService.get_indexed_document_id(
                     org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
                 )
+                logger.info(f"Document index status : {indexed_doc_id}")
                 if indexed_doc_id:
                     return {
                         "status": IndexingStatus.COMPLETED_STATUS.value,
@@ -1061,7 +1066,7 @@ class PromptStudioHelper:
             DocumentIndexingService.set_document_indexing(
                 org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
             )
-
+            logger.info(f"Invoking prompt service for indexing : {doc_id_key}")
             payload = {
                 IKeys.TOOL_ID: tool_id,
                 IKeys.EMBEDDING_INSTANCE_ID: embedding_model,
