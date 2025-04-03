@@ -83,7 +83,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
                 execution_mode=mode,
                 execution_method=self.execution_method,
                 execution_type=self.execution_type,
-                status=ExecutionStatus.INITIATED,
+                status=ExecutionStatus.EXECUTING,
                 execution_log_id=self.execution_log_id,
             )
             workflow_execution.save()
@@ -220,7 +220,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
     def build(self) -> None:
         if self.compilation_result["success"] is True:
             self.build_workflow()
-            self.update_execution(status=ExecutionStatus.READY)
+            self.update_execution(status=ExecutionStatus.EXECUTING)
         else:
             logger.error(
                 "Errors while compiling workflow "

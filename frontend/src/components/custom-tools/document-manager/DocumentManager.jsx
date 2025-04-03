@@ -7,7 +7,7 @@ import {
 import "@react-pdf-viewer/core/lib/styles/index.css";
 import "@react-pdf-viewer/default-layout/lib/styles/index.css";
 import "@react-pdf-viewer/page-navigation/lib/styles/index.css";
-import { Button, Space, Tabs, Tooltip, Typography } from "antd";
+import { Button, Space, Tabs, Tag, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -370,6 +370,18 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
         </div>
         {!isSimplePromptStudio && (
           <Space>
+            {details?.enable_highlight && (
+              <div>
+                <Tag color="rgb(45, 183, 245)">
+                  Confidence Score:{" "}
+                  {selectedHighlight?.confidence?.[0]?.[0]?.confidence ||
+                    (Array.isArray(selectedHighlight?.confidence?.[0]) &&
+                      selectedHighlight?.confidence?.[0]?.length === 0 &&
+                      "1") ||
+                    "NA"}
+                </Tag>
+              </div>
+            )}
             <div className="doc-main-title-div">
               {selectedDoc ? (
                 <Tooltip title={selectedDoc?.document_name}>
