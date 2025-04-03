@@ -40,11 +40,13 @@ class CustomAuthMiddleware:
         is_authenticated = auth_service.is_authenticated(request)
 
         if is_authenticated:
+            organization_id = UserSessionUtils.get_organization_id(request=request)
+            if request.organization_id and not organization_id:
+                return JsonResponse(
+                    {"message": "Organization access denied"}, status=403
+                )
             StateStore.set(Common.LOG_EVENTS_ID, request.session.session_key)
-            StateStore.set(
-                Account.ORGANIZATION_ID,
-                UserSessionUtils.get_organization_id(request=request),
-            )
+            StateStore.set(Account.ORGANIZATION_ID, organization_id)
             response = self.get_response(request)
             StateStore.clear(Account.ORGANIZATION_ID)
             StateStore.clear(Common.LOG_EVENTS_ID)

@@ -1,9 +1,9 @@
 from flask import Blueprint
 
-from .answer_prompt_controller import answer_prompt_bp
-from .extraction_controller import extraction_bp
-from .health_controller import health_bp
-from .indexing_controller import indexing_bp
+from .answer_prompt import answer_prompt_bp
+from .extraction import extraction_bp
+from .health import health_bp
+from .indexing import indexing_bp
 
 api = Blueprint("api", __name__)
 

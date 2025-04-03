@@ -58,6 +58,7 @@ WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND = os.environ.get(
     "WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND", 10800
 )
 WEB_APP_ORIGIN_URL = os.environ.get("WEB_APP_ORIGIN_URL", "http://localhost:3000")
+CORS_ALLOWED_ORIGINS = [WEB_APP_ORIGIN_URL]
 
 LOGIN_NEXT_URL = os.environ.get("LOGIN_NEXT_URL", "http://localhost:3000/org")
 LANDING_URL = os.environ.get("LANDING_URL", "http://localhost:3000/landing")
@@ -496,7 +497,7 @@ SOCIAL_AUTH_GOOGLE_OAUTH2_AUTH_EXTRA_ARGUMENTS = {
 }
 SOCIAL_AUTH_GOOGLE_OAUTH2_USE_UNIQUE_USER_ID = True
 
-# request_id settings
+# Request ID middleware settings
 LOG_REQUEST_ID_HEADER = "X-Request-ID"
 REQUEST_ID_RESPONSE_HEADER = "X-Request-ID"
 GENERATE_REQUEST_ID_IF_NOT_IN_HEADER = True
