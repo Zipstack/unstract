@@ -321,7 +321,6 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             total_cost = execution.get_aggregated_usage_cost
 
             if total_cost is not None:
-                total_cost = round(total_cost, 5)
                 average_cost = round(total_cost / total_files, 5)
                 self.publish_log(
                     message=(
