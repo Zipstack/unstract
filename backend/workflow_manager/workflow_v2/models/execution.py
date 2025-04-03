@@ -171,28 +171,25 @@ class WorkflowExecution(BaseModel):
         Raises:
             APIException: For unexpected errors during database operations.
         """
-        try:
-            # Aggregate the cost for the given execution_id
-            total_cost = Usage.objects.filter(execution_id=self.id).aggregate(
-                cost_in_dollars=Sum(UsageKeys.COST_IN_DOLLARS)
-            )[UsageKeys.COST_IN_DOLLARS]
-
-            logger.debug(
-                f"Cost aggregated successfully for execution_id: {self.id}"
-                f", Total cost: {total_cost}"
-            )
-
-            return total_cost
-
-        except Usage.DoesNotExist:
+        # Aggregate the cost for the given execution_id
+        queryset = Usage.objects.filter(execution_id=self.id)
+        
+        if queryset.exists():
+            result = queryset.aggregate(cost_in_dollars=Sum(UsageKeys.COST_IN_DOLLARS))
+            total_cost = result.get(UsageKeys.COST_IN_DOLLARS)
+        else:
             # Handle the case where no usage data is found for the given execution_id
             logger.warning(
                 f"Usage data not found for the specified execution_id: {self.id}"
             )
             return None
-        except Exception as e:
-            logger.warning(f"Unable to get aggregated cost for '{self.id}': {str(e)}")
-            return None
+        
+        logger.debug(
+            f"Cost aggregated successfully for execution_id: {self.id}"
+            f", Total cost: {total_cost}"
+        )
+
+        return total_cost
 
     def __str__(self) -> str:
         return (
