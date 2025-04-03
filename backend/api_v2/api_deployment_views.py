@@ -14,6 +14,7 @@ from api_v2.serializers import (
     ExecutionQuerySerializer,
     ExecutionRequestSerializer,
 )
+from django.conf import settings
 from django.db.models import QuerySet
 from django.http import HttpResponse
 from permissions.permission import IsOwner
@@ -91,7 +92,8 @@ class DeploymentExecution(views.APIView):
         response_status = status.HTTP_422_UNPROCESSABLE_ENTITY
         if response.execution_status == CeleryTaskState.COMPLETED.value:
             response_status = status.HTTP_200_OK
-            response.remove_result_metadata_keys(["highlight_data"])
+            if not settings.ENABLE_HIGHLIGHT_API_DEPLOYMENT:
+                response.remove_result_metadata_keys(["highlight_data"])
             if not include_metadata:
                 response.remove_result_metadata_keys()
             if not include_metrics:

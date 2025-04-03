@@ -13,6 +13,7 @@ from api_v2.key_helper import KeyHelper
 from api_v2.models import APIDeployment, APIKey
 from api_v2.serializers import APIExecutionResponseSerializer
 from api_v2.utils import APIDeploymentUtils
+from django.conf import settings
 from django.core.files.uploadedfile import UploadedFile
 from rest_framework.request import Request
 from rest_framework.serializers import Serializer
@@ -185,7 +186,8 @@ class DeploymentHelper(BaseAPIKeyValidator):
             result.status_api = DeploymentHelper.construct_status_endpoint(
                 api_endpoint=api.api_endpoint, execution_id=execution_id
             )
-            result.remove_result_metadata_keys(["highlight_data"])
+            if not settings.ENABLE_HIGHLIGHT_API_DEPLOYMENT:
+                result.remove_result_metadata_keys(["highlight_data"])
             if not include_metadata:
                 result.remove_result_metadata_keys()
             if not include_metrics:
