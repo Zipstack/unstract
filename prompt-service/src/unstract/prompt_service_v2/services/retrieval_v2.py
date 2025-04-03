@@ -22,7 +22,7 @@ class RetrievalService:
         chunk_size: int,
         execution_source: str,
         file_path: str,
-    ) -> set[str]:
+    ) -> tuple[str, set[str]]:
         context: set[str] = set()
 
         if chunk_size == 0:
@@ -70,7 +70,7 @@ class RetrievalService:
             tool_settings=tool_settings,
             output=output,
             llm=llm,
-            context="\n".join(context),
+            context="".join(context),
             prompt="promptx",
             metadata=metadata,
             execution_source=execution_source,
