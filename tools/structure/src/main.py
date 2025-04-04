@@ -22,18 +22,6 @@ PAID_FEATURE_MSG = (
 )
 
 
-# Set up consistent trace ID if OpenTelemetry is enabled and no trace ID is provided
-def setup_trace_context():
-    # Check if OpenTelemetry is enabled
-    if os.environ.get("OTEL_TRACES_EXPORTER", "none").lower() != "none":
-        # If trace ID is not already set, generate a consistent one for this run
-        if not os.environ.get("OTEL_TRACE_ID"):
-            # Generate a consistent trace ID for this run
-            trace_id = uuid.uuid4().hex.ljust(32, "0")
-            os.environ["OTEL_TRACE_ID"] = trace_id
-            logger.info(f"Generated consistent trace ID for this run: {trace_id}")
-
-
 class StructureTool(BaseTool):
     def validate(self, input_file: str, settings: dict[str, Any]) -> None:
         enable_challenge: bool = settings.get(SettingsKeys.ENABLE_CHALLENGE, False)
@@ -380,9 +368,6 @@ class StructureTool(BaseTool):
 
 
 if __name__ == "__main__":
-    # Setup trace context before anything else
-    setup_trace_context()
-
     args = sys.argv[1:]
     tool = StructureTool.from_tool_args(args=args)
     ToolEntrypoint.launch(tool=tool, args=args)
