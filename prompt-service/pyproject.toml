@@ -46,9 +46,6 @@ test = [
 ]
 
 [tool.pdm.scripts]
-prompt_service.cmd = "flask --app src/unstract/prompt_service/main.py run --port 3003"
+prompt_service.cmd = "flask --app src/unstract/prompt_service/run.py run --port 3003"
 prompt_service.env_file = ".env"
 prompt_service.help = "Runs the Unstract prompt service"
-prompt_service_v2.cmd = "flask --app src/unstract/prompt_service_v2/run.py run --port 3003"
-prompt_service_v2.env_file = ".env"
-prompt_service_v2.help = "Runs the Unstract prompt service v2"

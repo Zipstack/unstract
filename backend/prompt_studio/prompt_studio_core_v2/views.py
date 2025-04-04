@@ -9,7 +9,8 @@ from django.http import HttpRequest
 from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
 from permissions.permission import IsOwner, IsOwnerOrSharedUser
-from prompt_studio.processor_loader import get_plugin_class_by_name, load_plugins
+from prompt_studio.processor_loader import get_plugin_class_by_name
+from prompt_studio.processor_loader import load_plugins as load_processor_plugins
 from prompt_studio.prompt_profile_manager_v2.constants import (
     ProfileManagerErrors,
     ProfileManagerKeys,
@@ -75,7 +76,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
     serializer_class = CustomToolSerializer
 
-    processor_plugins = load_plugins()
+    processor_plugins = load_processor_plugins()
 
     def get_permissions(self) -> list[Any]:
         if self.action == "destroy":
@@ -221,6 +222,8 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         file_name: str = document.document_name
         # Generate a run_id
         run_id = CommonUtils.generate_uuid()
+        is_summary = tool.summarize_context
+
         unique_id = PromptStudioHelper.index_document(
             tool_id=str(tool.tool_id),
             file_name=file_name,
@@ -228,24 +231,8 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             user_id=tool.created_by.user_id,
             document_id=document_id,
             run_id=run_id,
+            is_summary=is_summary,
         )
-
-        usage_kwargs: dict[Any, Any] = dict()
-        usage_kwargs[ToolStudioPromptKeys.RUN_ID] = run_id
-        cls = get_plugin_class_by_name(
-            name="summarizer",
-            plugins=self.processor_plugins,
-        )
-        if cls:
-            cls.process(
-                tool_id=str(tool.tool_id),
-                file_name=file_name,
-                org_id=UserSessionUtils.get_organization_id(request),
-                user_id=tool.created_by.user_id,
-                document_id=document_id,
-                usage_kwargs=usage_kwargs.copy(),
-            )
-
         if unique_id:
             return Response(
                 {"message": "Document indexed successfully."},
