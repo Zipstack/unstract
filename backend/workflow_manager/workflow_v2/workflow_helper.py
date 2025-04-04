@@ -210,7 +210,7 @@ class WorkflowHelper:
                 connection_type=source.endpoint.connection_type,
             )
         )
-        workflow_file_execution.update_status(status=ExecutionStatus.INITIATED)
+        workflow_file_execution.update_status(status=ExecutionStatus.EXECUTING)
         file_execution_id = str(workflow_file_execution.id)
         file_name = file_hash.file_name
 
