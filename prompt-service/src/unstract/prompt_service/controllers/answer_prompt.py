@@ -267,11 +267,11 @@ def prompt_processor() -> Any:
                     doc_id=doc_id,
                     llm=llm,
                     vector_db=vector_db,
-                    file_path=file_path,
-                    chunk_size=chunk_size,
                     retrieval_type=retrieval_strategy,
                     metadata=metadata,
+                    chunk_size=chunk_size,
                     execution_source=execution_source,
+                    file_path=file_path,
                 )
                 metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = (
                     AnswerPromptService.get_cleaned_context(context)

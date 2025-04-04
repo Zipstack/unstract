@@ -6,7 +6,8 @@ from unstract.prompt_service.helpers.prompt_ide_base_tool import PromptServiceBa
 from unstract.prompt_service.utils.file_utils import FileUtils
 from unstract.sdk.adapters.exceptions import AdapterError
 from unstract.sdk.adapters.x2text.constants import X2TextConstants
-from unstract.sdk.adapters.x2text.llm_whisperer.src import LLMWhisperer, LLMWhispererV2
+from unstract.sdk.adapters.x2text.llm_whisperer.src import LLMWhisperer
+from unstract.sdk.adapters.x2text.llm_whisperer_v2.src import LLMWhispererV2
 from unstract.sdk.exceptions import X2TextError
 from unstract.sdk.utils import ToolUtils
 from unstract.sdk.utils.common_utils import log_elapsed

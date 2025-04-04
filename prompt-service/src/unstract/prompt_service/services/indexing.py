@@ -1,7 +1,7 @@
 import logging
 
 from flask import current_app as app
-from unstract.prompt_service.core.index import Index
+from unstract.prompt_service.core.index_v2 import Index
 from unstract.prompt_service.dto import (
     ChunkingConfig,
     FileInfo,

@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any
 
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.core.retrievers.simple import SimpleRetriever
@@ -23,37 +23,38 @@ class RetrievalService:
         execution_source: str,
         file_path: str,
     ) -> tuple[str, set[str]]:
-        context: set[str] = set()
-
+        context: set[str]
         if chunk_size == 0:
             context = RetrievalService.retrieve_complete_context(
                 execution_source=execution_source, file_path=file_path
             )
         else:
             context = RetrievalService.run_retrieval(
-                tool_settings=tool_settings,
                 output=output,
                 doc_id=doc_id,
                 llm=llm,
                 vector_db=vector_db,
                 retrieval_type=retrieval_type,
-                metadata=metadata,
-                execution_source=execution_source,
             )
-
-        return context
+        answer = AnswerPromptService.construct_and_run_prompt(  # type:ignore
+            tool_settings=tool_settings,
+            output=output,
+            llm=llm,
+            context="".join(context),
+            prompt="promptx",
+            metadata=metadata,
+            execution_source=execution_source,
+        )
+        return answer, context
 
     @staticmethod
     def run_retrieval(  # type:ignore
-        tool_settings: dict[str, Any],
         output: dict[str, Any],
         doc_id: str,
         llm: LLM,
         vector_db: VectorDB,
         retrieval_type: str,
-        metadata: dict[str, Any],
-        execution_source: Optional[str] = None,
-    ) -> tuple[str, set[str]]:
+    ) -> set[str]:
         context: set[str] = set()
         prompt = output[PSKeys.PROMPTX]
         top_k = output[PSKeys.SIMILARITY_TOP_K]
@@ -74,17 +75,7 @@ class RetrievalService:
                 llm=llm,
             ).retrieve()
 
-        answer = AnswerPromptService.construct_and_run_prompt(  # type:ignore
-            tool_settings=tool_settings,
-            output=output,
-            llm=llm,
-            context="".join(context),
-            prompt="promptx",
-            metadata=metadata,
-            execution_source=execution_source,
-        )
-
-        return (answer, context)
+        return context
 
     @staticmethod
     def retrieve_complete_context(execution_source: str, file_path: str) -> str:
