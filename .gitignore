@@ -620,11 +620,18 @@ backend/plugins/processor/*
 # Subscription Plugins
 backend/plugins/subscription/*
 
+# API Deployment Plugins
+backend/plugins/api/**
+
 # BE pluggable-apps
 backend/pluggable_apps/*
 
 # FE Plugins
 frontend/src/plugins/*
+
+# TODO: Ensure its made generic to abstract subfolder and file names
+# Static content
+backend/onboarding_static/*
 
 # Tool registry
 unstract/tool-registry/tool_registry_config/*.json
