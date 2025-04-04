@@ -21,9 +21,9 @@ license = {text = "MIT"}
 deploy = [
     "gunicorn[gevent]~=23.0",
     # OpenTelemetry for tracing and profiling
-    "opentelemetry-api",
-    "opentelemetry-sdk",
-    "opentelemetry-exporter-otlp",
+    "opentelemetry-api~=1.31",
+    "opentelemetry-sdk~=1.31",
+    "opentelemetry-exporter-otlp~=1.31",
     "opentelemetry-instrumentation-flask",
     "opentelemetry-instrumentation-psycopg2",
     "opentelemetry-instrumentation-requests",

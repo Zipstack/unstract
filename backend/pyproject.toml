@@ -87,12 +87,11 @@ dev = [
 [project.optional-dependencies]
 deploy = [
     "gunicorn~=23.0", # For serving the application
-    # OpenTelemetry for tracing and profiling
     # Keep versions empty and let pdm decide version
     # since we use no code instrumentation and don't use in code
-    "opentelemetry-api",
-    "opentelemetry-sdk",
-    "opentelemetry-exporter-otlp",
+    "opentelemetry-api~=1.31",
+    "opentelemetry-sdk~=1.31",
+    "opentelemetry-exporter-otlp~=1.31",
     "opentelemetry-instrumentation-celery",
     "opentelemetry-instrumentation-django",
     "opentelemetry-instrumentation-psycopg2",

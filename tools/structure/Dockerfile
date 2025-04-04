@@ -30,7 +30,9 @@ COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir \
     opentelemetry-distro \
-    opentelemetry-exporter-otlp \
+    opentelemetry-api~=1.31 \
+    opentelemetry-sdk~=1.31 \
+    opentelemetry-exporter-otlp~=1.31 \
     opentelemetry-instrumentation-requests \
     opentelemetry-instrumentation-logging \
     platformdirs>=3.0.0 \
