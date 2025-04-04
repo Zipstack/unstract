@@ -154,6 +154,7 @@ class Index:
         vector_db: VectorDB,
         doc_id: str,
         extracted_text: str,
+        doc_id_found: str,
     ):
         if isinstance(
             vector_db.get_vector_db(
@@ -173,7 +174,7 @@ class Index:
         ]
         # Convert raw text to llama index usage Document
         documents = self._prepare_documents(doc_id, full_text)
-        if self.processing_options.reindex:
+        if self.processing_options.reindex and doc_id_found:
             self.delete_nodes(vector_db, doc_id)
         self._trigger_indexing(vector_db, documents)
         return doc_id
