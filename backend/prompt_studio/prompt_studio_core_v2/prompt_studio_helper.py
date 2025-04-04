@@ -1047,7 +1047,6 @@ class PromptStudioHelper:
                 indexed_doc_id = DocumentIndexingService.get_indexed_document_id(
                     org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
                 )
-                logger.info(f"Document index status : {indexed_doc_id}")
                 if indexed_doc_id:
                     return {
                         "status": IndexingStatus.COMPLETED_STATUS.value,
