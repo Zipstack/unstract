@@ -79,4 +79,5 @@ class Usage(DefaultOrganizationMixin, BaseModel):
         db_table = "usage"
         indexes = [
             models.Index(fields=["run_id"]),
+            models.Index(fields=["execution_id"]),
         ]
