@@ -5,7 +5,7 @@
 groups = ["default", "deploy", "dev", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:944cfff8094a64114800075e6c0ad6ae9d83dfd493488ee45f0262d61b16dac7"
+content_hash = "sha256:9a0c3476ee5daeed86cff41812bad5afa3c819aed7d7f3310ff528b7085908b8"
 
 [[package]]
 name = "amqp"
@@ -803,91 +803,6 @@ files = [
 ]
 
 [[package]]
-name = "opentelemetry-instrumentation-flask"
-version = "0.52b1"
-requires_python = ">=3.8"
-summary = "Flask instrumentation for OpenTelemetry"
-groups = ["deploy"]
-dependencies = [
-    "opentelemetry-api~=1.12",
-    "opentelemetry-instrumentation-wsgi==0.52b1",
-    "opentelemetry-instrumentation==0.52b1",
-    "opentelemetry-semantic-conventions==0.52b1",
-    "opentelemetry-util-http==0.52b1",
-    "packaging>=21.0",
-]
-files = [
-    {file = "opentelemetry_instrumentation_flask-0.52b1-py3-none-any.whl", hash = "sha256:3c8b83147838bef24aac0182f0d49865321efba4cb1f96629f460330d21d0fa9"},
-    {file = "opentelemetry_instrumentation_flask-0.52b1.tar.gz", hash = "sha256:c8bc64da425ccbadb4a2ee5e8d99045e2282bfbf63bc9be07c386675839d00be"},
-]
-
-[[package]]
-name = "opentelemetry-instrumentation-logging"
-version = "0.52b1"
-requires_python = ">=3.8"
-summary = "OpenTelemetry Logging instrumentation"
-groups = ["deploy"]
-dependencies = [
-    "opentelemetry-api~=1.12",
-    "opentelemetry-instrumentation==0.52b1",
-]
-files = [
-    {file = "opentelemetry_instrumentation_logging-0.52b1-py3-none-any.whl", hash = "sha256:4c8206c4f2ad78c44d9bb781ed5aeadf5ec687e95b29a69edfd9a2620f5fb01b"},
-    {file = "opentelemetry_instrumentation_logging-0.52b1.tar.gz", hash = "sha256:050f52ef3470abd3a093262e69f986d71a48f67c7e4194008b3e8247030e11d6"},
-]
-
-[[package]]
-name = "opentelemetry-instrumentation-redis"
-version = "0.52b1"
-requires_python = ">=3.8"
-summary = "OpenTelemetry Redis instrumentation"
-groups = ["deploy"]
-dependencies = [
-    "opentelemetry-api~=1.12",
-    "opentelemetry-instrumentation==0.52b1",
-    "opentelemetry-semantic-conventions==0.52b1",
-    "wrapt>=1.12.1",
-]
-files = [
-    {file = "opentelemetry_instrumentation_redis-0.52b1-py3-none-any.whl", hash = "sha256:77293e2fd4cb36d28a68ec9e8b05fdc24859f016b25bc9f6efa06999901e93bf"},
-    {file = "opentelemetry_instrumentation_redis-0.52b1.tar.gz", hash = "sha256:68c700e066fb0aed402aad2645a5af8133bf6cbe4520ada4f626ecbf1ae49628"},
-]
-
-[[package]]
-name = "opentelemetry-instrumentation-requests"
-version = "0.52b1"
-requires_python = ">=3.8"
-summary = "OpenTelemetry requests instrumentation"
-groups = ["deploy"]
-dependencies = [
-    "opentelemetry-api~=1.12",
-    "opentelemetry-instrumentation==0.52b1",
-    "opentelemetry-semantic-conventions==0.52b1",
-    "opentelemetry-util-http==0.52b1",
-]
-files = [
-    {file = "opentelemetry_instrumentation_requests-0.52b1-py3-none-any.whl", hash = "sha256:58ae3c415543d8ba2b0091b81ac13b65f2993adef0a4b9a5d3d7ebbe0023986a"},
-    {file = "opentelemetry_instrumentation_requests-0.52b1.tar.gz", hash = "sha256:711a2ef90e32a0ffd4650b21376b8e102473845ba9121efca0d94314d529b501"},
-]
-
-[[package]]
-name = "opentelemetry-instrumentation-wsgi"
-version = "0.52b1"
-requires_python = ">=3.8"
-summary = "WSGI Middleware for OpenTelemetry"
-groups = ["deploy"]
-dependencies = [
-    "opentelemetry-api~=1.12",
-    "opentelemetry-instrumentation==0.52b1",
-    "opentelemetry-semantic-conventions==0.52b1",
-    "opentelemetry-util-http==0.52b1",
-]
-files = [
-    {file = "opentelemetry_instrumentation_wsgi-0.52b1-py3-none-any.whl", hash = "sha256:13d19958bb63df0dc32df23a047e94fe5db66151d29b17c01b1d751dd84029f8"},
-    {file = "opentelemetry_instrumentation_wsgi-0.52b1.tar.gz", hash = "sha256:2c0534cacae594ef8c749edf3d1a8bce78e959a1b40efbc36f1b59d1f7977089"},
-]
-
-[[package]]
 name = "opentelemetry-proto"
 version = "1.15.0"
 requires_python = ">=3.7"
@@ -930,17 +845,6 @@ dependencies = [
 files = [
     {file = "opentelemetry_semantic_conventions-0.52b1-py3-none-any.whl", hash = "sha256:72b42db327e29ca8bb1b91e8082514ddf3bbf33f32ec088feb09526ade4bc77e"},
     {file = "opentelemetry_semantic_conventions-0.52b1.tar.gz", hash = "sha256:7b3d226ecf7523c27499758a58b542b48a0ac8d12be03c0488ff8ec60c5bae5d"},
-]
-
-[[package]]
-name = "opentelemetry-util-http"
-version = "0.52b1"
-requires_python = ">=3.8"
-summary = "Web util for OpenTelemetry"
-groups = ["deploy"]
-files = [
-    {file = "opentelemetry_util_http-0.52b1-py3-none-any.whl", hash = "sha256:6a6ab6bfa23fef96f4995233e874f67602adf9d224895981b4ab9d4dde23de78"},
-    {file = "opentelemetry_util_http-0.52b1.tar.gz", hash = "sha256:c03c8c23f1b75fadf548faece7ead3aecd50761c5593a2b2831b48730eee5b31"},
 ]
 
 [[package]]
@@ -1047,7 +951,7 @@ files = [
 
 [[package]]
 name = "pytest-cov"
-version = "6.0.0"
+version = "6.1.0"
 requires_python = ">=3.9"
 summary = "Pytest plugin for measuring coverage."
 groups = ["test"]
@@ -1056,8 +960,8 @@ dependencies = [
     "pytest>=4.6",
 ]
 files = [
-    {file = "pytest-cov-6.0.0.tar.gz", hash = "sha256:fde0b595ca248bb8e2d76f020b465f3b107c9632e6a1d1705f17834c89dcadc0"},
-    {file = "pytest_cov-6.0.0-py3-none-any.whl", hash = "sha256:eee6f1b9e61008bd34975a4d5bab25801eb31898b032dd55addc93e96fcaaa35"},
+    {file = "pytest_cov-6.1.0-py3-none-any.whl", hash = "sha256:cd7e1d54981d5185ef2b8d64b50172ce97e6f357e6df5cb103e828c7f993e201"},
+    {file = "pytest_cov-6.1.0.tar.gz", hash = "sha256:ec55e828c66755e5b74a21bd7cc03c303a9f928389c0563e50ba454a6dbe71db"},
 ]
 
 [[package]]
@@ -1278,13 +1182,13 @@ files = [
 
 [[package]]
 name = "typing-extensions"
-version = "4.13.0"
+version = "4.13.1"
 requires_python = ">=3.8"
 summary = "Backported and Experimental Type Hints for Python 3.8+"
 groups = ["default", "deploy", "dev"]
 files = [
-    {file = "typing_extensions-4.13.0-py3-none-any.whl", hash = "sha256:c8dd92cc0d6425a97c18fbb9d1954e5ff92c1ca881a309c45f06ebc0b79058e5"},
-    {file = "typing_extensions-4.13.0.tar.gz", hash = "sha256:0a4ac55a5820789d87e297727d229866c9650f6521b64206413c4fbada24d95b"},
+    {file = "typing_extensions-4.13.1-py3-none-any.whl", hash = "sha256:4b6cf02909eb5495cfbc3f6e8fd49217e6cc7944e145cdda8caa3734777f9e69"},
+    {file = "typing_extensions-4.13.1.tar.gz", hash = "sha256:98795af00fb9640edec5b8e31fc647597b4691f099ad75f469a2616be1a76dff"},
 ]
 
 [[package]]

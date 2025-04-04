@@ -5,7 +5,7 @@
 groups = ["default", "deploy"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:46a4ad76cfe453f3c726de75ae47f8bcf7f3457efcd7c04e209110a94c02506d"
+content_hash = "sha256:1c83745817d05f254d2a6277fd8cd9193d714eb1fd9e843d537be6eed1ffe0ec"
 
 [[package]]
 name = "blinker"
@@ -572,107 +572,6 @@ files = [
 ]
 
 [[package]]
-name = "opentelemetry-instrumentation-dbapi"
-version = "0.52b1"
-requires_python = ">=3.8"
-summary = "OpenTelemetry Database API instrumentation"
-groups = ["deploy"]
-dependencies = [
-    "opentelemetry-api~=1.12",
-    "opentelemetry-instrumentation==0.52b1",
-    "opentelemetry-semantic-conventions==0.52b1",
-    "wrapt<2.0.0,>=1.0.0",
-]
-files = [
-    {file = "opentelemetry_instrumentation_dbapi-0.52b1-py3-none-any.whl", hash = "sha256:47e54d26ad39f3951c7f3b4d4fb685a3c75445cfd57fcff2e92c416575c568ab"},
-    {file = "opentelemetry_instrumentation_dbapi-0.52b1.tar.gz", hash = "sha256:62a6c37b659f6aa5476f12fb76c78f4ad27c49fb71a8a2c11609afcbb84f1e1c"},
-]
-
-[[package]]
-name = "opentelemetry-instrumentation-flask"
-version = "0.52b1"
-requires_python = ">=3.8"
-summary = "Flask instrumentation for OpenTelemetry"
-groups = ["deploy"]
-dependencies = [
-    "opentelemetry-api~=1.12",
-    "opentelemetry-instrumentation-wsgi==0.52b1",
-    "opentelemetry-instrumentation==0.52b1",
-    "opentelemetry-semantic-conventions==0.52b1",
-    "opentelemetry-util-http==0.52b1",
-    "packaging>=21.0",
-]
-files = [
-    {file = "opentelemetry_instrumentation_flask-0.52b1-py3-none-any.whl", hash = "sha256:3c8b83147838bef24aac0182f0d49865321efba4cb1f96629f460330d21d0fa9"},
-    {file = "opentelemetry_instrumentation_flask-0.52b1.tar.gz", hash = "sha256:c8bc64da425ccbadb4a2ee5e8d99045e2282bfbf63bc9be07c386675839d00be"},
-]
-
-[[package]]
-name = "opentelemetry-instrumentation-logging"
-version = "0.52b1"
-requires_python = ">=3.8"
-summary = "OpenTelemetry Logging instrumentation"
-groups = ["deploy"]
-dependencies = [
-    "opentelemetry-api~=1.12",
-    "opentelemetry-instrumentation==0.52b1",
-]
-files = [
-    {file = "opentelemetry_instrumentation_logging-0.52b1-py3-none-any.whl", hash = "sha256:4c8206c4f2ad78c44d9bb781ed5aeadf5ec687e95b29a69edfd9a2620f5fb01b"},
-    {file = "opentelemetry_instrumentation_logging-0.52b1.tar.gz", hash = "sha256:050f52ef3470abd3a093262e69f986d71a48f67c7e4194008b3e8247030e11d6"},
-]
-
-[[package]]
-name = "opentelemetry-instrumentation-psycopg2"
-version = "0.52b1"
-requires_python = ">=3.8"
-summary = "OpenTelemetry psycopg2 instrumentation"
-groups = ["deploy"]
-dependencies = [
-    "opentelemetry-api~=1.12",
-    "opentelemetry-instrumentation-dbapi==0.52b1",
-    "opentelemetry-instrumentation==0.52b1",
-]
-files = [
-    {file = "opentelemetry_instrumentation_psycopg2-0.52b1-py3-none-any.whl", hash = "sha256:51ac9f3d0b83889a1df2fc1342d86887142c2b70d8532043bc49b36fe95ea9d8"},
-    {file = "opentelemetry_instrumentation_psycopg2-0.52b1.tar.gz", hash = "sha256:5bbdb2a2973aae9402946c995e277b1f76e467faebc40ac0f8da51c701918bb4"},
-]
-
-[[package]]
-name = "opentelemetry-instrumentation-requests"
-version = "0.52b1"
-requires_python = ">=3.8"
-summary = "OpenTelemetry requests instrumentation"
-groups = ["deploy"]
-dependencies = [
-    "opentelemetry-api~=1.12",
-    "opentelemetry-instrumentation==0.52b1",
-    "opentelemetry-semantic-conventions==0.52b1",
-    "opentelemetry-util-http==0.52b1",
-]
-files = [
-    {file = "opentelemetry_instrumentation_requests-0.52b1-py3-none-any.whl", hash = "sha256:58ae3c415543d8ba2b0091b81ac13b65f2993adef0a4b9a5d3d7ebbe0023986a"},
-    {file = "opentelemetry_instrumentation_requests-0.52b1.tar.gz", hash = "sha256:711a2ef90e32a0ffd4650b21376b8e102473845ba9121efca0d94314d529b501"},
-]
-
-[[package]]
-name = "opentelemetry-instrumentation-wsgi"
-version = "0.52b1"
-requires_python = ">=3.8"
-summary = "WSGI Middleware for OpenTelemetry"
-groups = ["deploy"]
-dependencies = [
-    "opentelemetry-api~=1.12",
-    "opentelemetry-instrumentation==0.52b1",
-    "opentelemetry-semantic-conventions==0.52b1",
-    "opentelemetry-util-http==0.52b1",
-]
-files = [
-    {file = "opentelemetry_instrumentation_wsgi-0.52b1-py3-none-any.whl", hash = "sha256:13d19958bb63df0dc32df23a047e94fe5db66151d29b17c01b1d751dd84029f8"},
-    {file = "opentelemetry_instrumentation_wsgi-0.52b1.tar.gz", hash = "sha256:2c0534cacae594ef8c749edf3d1a8bce78e959a1b40efbc36f1b59d1f7977089"},
-]
-
-[[package]]
 name = "opentelemetry-proto"
 version = "1.31.1"
 requires_python = ">=3.8"
@@ -715,17 +614,6 @@ dependencies = [
 files = [
     {file = "opentelemetry_semantic_conventions-0.52b1-py3-none-any.whl", hash = "sha256:72b42db327e29ca8bb1b91e8082514ddf3bbf33f32ec088feb09526ade4bc77e"},
     {file = "opentelemetry_semantic_conventions-0.52b1.tar.gz", hash = "sha256:7b3d226ecf7523c27499758a58b542b48a0ac8d12be03c0488ff8ec60c5bae5d"},
-]
-
-[[package]]
-name = "opentelemetry-util-http"
-version = "0.52b1"
-requires_python = ">=3.8"
-summary = "Web util for OpenTelemetry"
-groups = ["deploy"]
-files = [
-    {file = "opentelemetry_util_http-0.52b1-py3-none-any.whl", hash = "sha256:6a6ab6bfa23fef96f4995233e874f67602adf9d224895981b4ab9d4dde23de78"},
-    {file = "opentelemetry_util_http-0.52b1.tar.gz", hash = "sha256:c03c8c23f1b75fadf548faece7ead3aecd50761c5593a2b2831b48730eee5b31"},
 ]
 
 [[package]]
@@ -903,13 +791,13 @@ files = [
 
 [[package]]
 name = "typing-extensions"
-version = "4.13.0"
+version = "4.13.1"
 requires_python = ">=3.8"
 summary = "Backported and Experimental Type Hints for Python 3.8+"
 groups = ["default", "deploy"]
 files = [
-    {file = "typing_extensions-4.13.0-py3-none-any.whl", hash = "sha256:c8dd92cc0d6425a97c18fbb9d1954e5ff92c1ca881a309c45f06ebc0b79058e5"},
-    {file = "typing_extensions-4.13.0.tar.gz", hash = "sha256:0a4ac55a5820789d87e297727d229866c9650f6521b64206413c4fbada24d95b"},
+    {file = "typing_extensions-4.13.1-py3-none-any.whl", hash = "sha256:4b6cf02909eb5495cfbc3f6e8fd49217e6cc7944e145cdda8caa3734777f9e69"},
+    {file = "typing_extensions-4.13.1.tar.gz", hash = "sha256:98795af00fb9640edec5b8e31fc647597b4691f099ad75f469a2616be1a76dff"},
 ]
 
 [[package]]
