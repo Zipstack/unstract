@@ -394,7 +394,6 @@ class WorkflowHelper:
         finally:
             # TODO: Handle error gracefully during delete
             # Mark status as an ERROR correctly
-            logger.info("Deleting execution and api storage directory==============")
             destination.delete_execution_and_api_storage_dir()
 
     @staticmethod
