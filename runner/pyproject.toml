@@ -29,14 +29,8 @@ package-dir = "src"
 deploy = [
     "gunicorn[gevent]~=23.0",
     # OpenTelemetry for tracing and profiling
-    "opentelemetry-api~=1.31",
-    "opentelemetry-sdk~=1.31",
-    "opentelemetry-exporter-otlp~=1.31",
-    "opentelemetry-instrumentation-flask",
-    "opentelemetry-instrumentation-redis",
-    "opentelemetry-instrumentation-requests",
-    "opentelemetry-instrumentation-logging",
     "opentelemetry-distro",
+    "opentelemetry-exporter-otlp",
 ]
 
 [tool.pdm.dev-dependencies]

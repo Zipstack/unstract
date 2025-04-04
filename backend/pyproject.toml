@@ -89,19 +89,8 @@ deploy = [
     "gunicorn~=23.0", # For serving the application
     # Keep versions empty and let pdm decide version
     # since we use no code instrumentation and don't use in code
-    "opentelemetry-api~=1.31",
-    "opentelemetry-sdk~=1.31",
-    "opentelemetry-exporter-otlp~=1.31",
-    "opentelemetry-instrumentation-celery",
-    "opentelemetry-instrumentation-django",
-    "opentelemetry-instrumentation-psycopg2",
-    "opentelemetry-instrumentation-redis",
-    "opentelemetry-instrumentation-requests",
-    "opentelemetry-instrumentation-boto",
-    "opentelemetry-instrumentation-asyncio",
-    "opentelemetry-instrumentation-httpx",
-    "opentelemetry-instrumentation-logging",
     "opentelemetry-distro",
+    "opentelemetry-exporter-otlp",
 ]
 
 [tool.pytest.ini_options]
