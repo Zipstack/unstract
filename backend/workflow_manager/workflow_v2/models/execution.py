@@ -47,9 +47,20 @@ class WorkflowExecution(BaseModel):
         null=True,
         db_comment="task id of asynchronous execution",
     )
-    # TODO: Make as foreign key to access the instance directly
+    related_workflow = models.ForeignKey(
+        Workflow,
+        on_delete=models.CASCADE,
+        editable=False,
+        db_comment="Workflow to be executed",
+        related_name="executions",
+        null=True,
+        db_column="related_wf_id",
+    )
+    # TODO: Deprecated, remove after migration / log rotation
     workflow_id = models.UUIDField(
-        editable=False, db_comment="Id of workflow to be executed"
+        editable=False,
+        db_comment="ID of workflow being executed (deprecated)",
+        null=True,
     )
     execution_mode = models.CharField(
         choices=Mode.choices, db_comment="Mode of execution"
@@ -104,26 +115,37 @@ class WorkflowExecution(BaseModel):
         return list(self.tags.values_list("name", flat=True))
 
     @property
-    def workflow(self) -> Optional[str]:
-        """Obtains the workflow associated to this execution."""
-        try:
-            return Workflow.objects.get(id=self.workflow_id)
-        except ObjectDoesNotExist:
-            logger.warning(
-                f"Expected workflow '{self.workflow_id}' to exist but missing"
-            )
-            return None
+    def workflow(self) -> Optional[Workflow]:
+        """Gets the associated workflow.
+
+        First tries the foreign key then falls back to workflow_id.
+        """
+        if self.related_workflow:
+            return self.related_workflow
+        elif self.workflow_id:
+            try:
+                return Workflow.objects.get(id=self.workflow_id)
+            except ObjectDoesNotExist:
+                logger.warning(
+                    f"Expected workflow '{self.workflow_id}' to exist but missing"
+                )
+                return None
+        return None
 
     @property
     def workflow_name(self) -> Optional[str]:
         """Obtains the workflow's name associated to this execution."""
-        try:
-            return Workflow.objects.get(id=self.workflow_id).workflow_name
-        except ObjectDoesNotExist:
-            logger.warning(
-                f"Expected workflow ID '{self.workflow_id}' to exist but missing"
-            )
-            return None
+        if self.workflow:
+            return self.workflow.workflow_name
+        elif self.workflow_id:
+            try:
+                return Workflow.objects.get(id=self.workflow_id).workflow_name
+            except ObjectDoesNotExist:
+                logger.warning(
+                    f"Expected workflow ID '{self.workflow_id}' to exist but missing"
+                )
+                return None
+        return None
 
     @property
     def pipeline_name(self) -> Optional[str]:
@@ -195,7 +217,7 @@ class WorkflowExecution(BaseModel):
         return (
             f"Workflow execution: {self.id} ("
             f"pipeline ID: {self.pipeline_id}, "
-            f"workflow iD: {self.workflow_id}, "
+            f"workflow: {self.workflow_id}, "
             f"status: {self.status}, "
             f"files: {self.total_files}, "
             f"error message: {self.error_message})"
