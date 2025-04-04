@@ -76,6 +76,7 @@ class IndexingService:
                 vector_db=vector_db,
                 doc_id=doc_id,
                 extracted_text=extracted_text,
+                doc_id_found=doc_id_found,
             )
             return doc_id
         except Exception as e:
