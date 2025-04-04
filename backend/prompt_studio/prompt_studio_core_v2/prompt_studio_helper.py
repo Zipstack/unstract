@@ -1021,6 +1021,12 @@ class PromptStudioHelper:
         """
 
         if profile_manager.chunk_size == 0 and not is_summary and not is_single_pass:
+            PromptStudioIndexHelper.handle_index_manager(
+                document_id=document_id,
+                is_summary=is_summary,
+                profile_manager=profile_manager,
+                doc_id=doc_id_key,
+            )
             logger.info("Skipping addition of nodes to VectoDB since chunk size is 0")
             return {
                 "status": IndexingStatus.COMPLETED_STATUS.value,
