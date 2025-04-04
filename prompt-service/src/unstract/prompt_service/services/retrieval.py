@@ -44,6 +44,7 @@ class RetrievalService:
             prompt="promptx",
             metadata=metadata,
             execution_source=execution_source,
+            file_path=file_path,
         )
         return answer, context
 
