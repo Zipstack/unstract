@@ -2,13 +2,12 @@
 Published API Controller
 """
 
-import json
-from json import JSONDecodeError
 from typing import Any
 
 from flask import Blueprint
 from flask import current_app as app
 from flask import request
+from json_repair import repair_json
 from unstract.prompt_service_v2.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service_v2.constants import RunLevel
 from unstract.prompt_service_v2.exceptions import BadRequest
@@ -422,46 +421,35 @@ def prompt_processor() -> Any:
                     else:
                         structured_output[output[PSKeys.NAME]] = False
             elif output[PSKeys.TYPE] == PSKeys.JSON:
-                if answer.lower() == "[]" or answer.lower() == "na":
+                if answer.lower() == "na":
                     structured_output[output[PSKeys.NAME]] = None
                 else:
-                    try:
-                        structured_output[output[PSKeys.NAME]] = json.loads(answer)
-                    except JSONDecodeError:
-                        prompt = f"Convert the following text into valid JSON string: \
-                            \n{answer}\n\n The JSON string should be able to be parsed \
-                            into a Python dictionary. \
-                            Output just the JSON string. No explanation is required. \
-                            If you cannot extract the JSON string, output {{}}"
-                        try:
-                            answer = AnswerPromptService.run_completion(
-                                llm=llm,
-                                prompt=prompt,
-                                prompt_type=PSKeys.JSON,
-                            )
-                            structured_output[output[PSKeys.NAME]] = json.loads(answer)
-                        except JSONDecodeError as e:
-                            err_msg = (
-                                f"Error parsing response (to json): {e}\n"
-                                f"Candidate JSON: {answer}"
-                            )
-                            app.logger.info(err_msg, LogLevel.ERROR)
-                            # TODO: Format log message after unifying these types
-                            publish_log(
-                                log_events_id,
-                                {
-                                    "tool_id": tool_id,
-                                    "prompt_key": prompt_name,
-                                    "doc_name": doc_name,
-                                },
-                                LogLevel.INFO,
-                                RunLevel.RUN,
-                                "Unable to parse JSON response from LLM, try using our"
-                                " cloud / enterprise feature of 'line-item', "
-                                "'record' or 'table' type",
-                            )
-                            structured_output[output[PSKeys.NAME]] = {}
-
+                    parsed_data = repair_json(
+                        json_str=answer,
+                        return_objects=True,
+                    )
+                    if type(parsed_data) is str:
+                        err_msg = (
+                            "Error parsing response (to json)\n"
+                            f"Candidate JSON: {answer}"
+                        )
+                        app.logger.info(err_msg, LogLevel.ERROR)
+                        # TODO: Format log message after unifying these types
+                        publish_log(
+                            log_events_id,
+                            {
+                                "tool_id": tool_id,
+                                "prompt_key": prompt_name,
+                                "doc_name": doc_name,
+                            },
+                            LogLevel.INFO,
+                            RunLevel.RUN,
+                            "Unable to parse JSON response from LLM, try using our"
+                            " cloud / enterprise feature of 'line-item', "
+                            "'record' or 'table' type",
+                        )
+                        structured_output[output[PSKeys.NAME]] = {}
+                    structured_output[output[PSKeys.NAME]] = parsed_data
             else:
                 structured_output[output[PSKeys.NAME]] = answer
 

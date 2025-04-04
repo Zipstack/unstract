@@ -149,11 +149,19 @@ class AnswerPromptService:
                 highlight_data = highlight_data_plugin["entrypoint_cls"](
                     file_path=file_path,
                     fs_instance=fs_instance,
+                    is_json=prompt_type.lower() == PSKeys.JSON,
                 ).run
+            # a = llm.stream_complete(prompt)
+            # text = ""
+            # value = ""
+            # for r in a:
+            #     text = r.delta
+            #     value += text or ""
+            # print(value)
             completion = llm.complete(
                 prompt=prompt,
                 process_text=highlight_data,
-                extract_json=prompt_type.lower() != PSKeys.TEXT,
+                extract_json=False,
             )
             answer: str = completion[PSKeys.RESPONSE].text
             highlight_data = completion.get(PSKeys.HIGHLIGHT_DATA, [])
