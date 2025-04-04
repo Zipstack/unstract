@@ -67,7 +67,6 @@ from .serializers import (
 )
 
 logger = logging.getLogger(__name__)
-processor_plugins = load_processor_plugins()
 
 
 class PromptStudioCoreView(viewsets.ModelViewSet):
