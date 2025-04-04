@@ -47,7 +47,19 @@ includes = ["src"]
 package-dir = "src"
 # source-includes = ["tests"]
 
+[tool.pdm.dev-dependencies]
+test = [
+    "pytest>=8.0.1",
+    "pytest-dotenv==0.5.2",
+    "pytest-mock>=3.14.0",
+    "python-dotenv==1.0.0",
+    "flask-WTF~=1.1"
+]
+
 [tool.pdm.scripts]
 prompt_service.cmd = "flask --app src/unstract/prompt_service/main.py run --port 3003"
 prompt_service.env_file = ".env"
 prompt_service.help = "Runs the Unstract prompt service"
+prompt_service_v2.cmd = "flask --app src/unstract/prompt_service_v2/run.py run --port 3003"
+prompt_service_v2.env_file = ".env"
+prompt_service_v2.help = "Runs the Unstract prompt service v2"
