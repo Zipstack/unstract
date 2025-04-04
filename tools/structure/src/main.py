@@ -111,8 +111,6 @@ class StructureTool(BaseTool):
             SettingsKeys.FILE_PATH: extracted_input_file,
             SettingsKeys.EXECUTION_SOURCE: SettingsKeys.TOOL,
         }
-        # TODO: Need to split extraction and indexing
-        # to avoid unwanted indexing
         self.stream_log(f"Extracting document '{self.source_file_name}'")
         usage_kwargs: dict[Any, Any] = dict()
         usage_kwargs[UsageKwargs.RUN_ID] = self.file_execution_id
