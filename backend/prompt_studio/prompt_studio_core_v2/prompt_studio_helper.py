@@ -384,6 +384,7 @@ class PromptStudioHelper:
             run_id=run_id,
             enable_highlight=tool.enable_highlight,
             doc_id=doc_id,
+            reindex=True,
         )
         if is_summary:
             PromptStudioHelper.summarize(
@@ -1277,8 +1278,10 @@ class PromptStudioHelper:
         profile_manager: ProfileManager,
         document_id: str,
         doc_id: str,
+        reindex: Optional[bool] = False,
     ) -> str:
         x2Text = str(profile_manager.x2text.id)
+        is_extracted: bool = False
         extract_file_path: Optional[str] = None
         extracted_text = ""
         directory, filename = os.path.split(file_path)
@@ -1288,12 +1291,12 @@ class PromptStudioHelper:
         usage_kwargs = {"run_id": run_id}
         # Orginal file name with which file got uploaded in prompt studio
         usage_kwargs["file_name"] = filename
-        is_extracted = PromptStudioIndexHelper.check_extraction_status(
-            document_id=document_id,
-            profile_manager=profile_manager,
-            doc_id=doc_id,
-        )
-        if is_extracted:
+        if is_extracted and not reindex:
+            is_extracted = PromptStudioIndexHelper.check_extraction_status(
+                document_id=document_id,
+                profile_manager=profile_manager,
+                doc_id=doc_id,
+            )
             fs_instance = EnvHelper.get_storage(
                 storage_type=StorageType.PERMANENT,
                 env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
