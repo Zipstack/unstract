@@ -176,12 +176,15 @@ class WorkflowHelper:
         )
         execution_service.update_execution(final_status, error=error_message)
 
+        workflow_execution = execution_service.get_execution_instance()
+
         execution_service.publish_final_workflow_logs(
             total_files=total_files,
             successful_files=successful_files,
             failed_files=failed_files,
         )
-        return execution_service.get_execution_instance()
+
+        return workflow_execution
 
     @classmethod
     def _process_file(
@@ -286,6 +289,9 @@ class WorkflowHelper:
             execution_service.publish_log(error_message, level=LogLevel.ERROR)
             error = error_message
         finally:
+            execution_service.log_total_cost_per_file(
+                run_id=file_execution_id, file_name=file_name
+            )
             execution_service.publish_update_log(
                 LogState.SUCCESS,
                 f"{file_name}'s output is processed successfully",
