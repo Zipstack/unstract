@@ -55,3 +55,11 @@ class PermissionDeniedError(ConnectorError):
     Args:
         ConnectorError (Class): Inherits class ConnectorError
     """
+
+
+class FileHashNotFound(ConnectorError):
+    """Handles file hash not found error from fs connector.
+
+    Args:
+        ConnectorError (Class): Inherits class ConnectorError
+    """
