@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any
+from typing import Any, Optional
 
 from dropbox.exceptions import ApiError as DropBoxApiError
 from dropbox.exceptions import DropboxException
@@ -62,6 +62,24 @@ class DropboxFS(UnstractFileSystem):
 
     def get_fsspec_fs(self) -> DropboxDriveFileSystem:
         return self.dropbox_fs
+
+    def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> Optional[str]:
+        """
+        Extracts a unique file hash from metadata.
+
+        Args:
+            metadata (dict): Metadata dictionary obtained from fsspec or cloud API.
+
+        Returns:
+            Optional[str]: The file hash in hexadecimal format or None if not found.
+        """
+        file_hash = metadata.get("content_hash")
+        if file_hash:
+            return file_hash
+        logger.error(
+            f"[Dropbox] File hash (content_hash) not found for the metadata: {metadata}"
+        )
+        return None
 
     def test_credentials(self) -> bool:
         """To test credentials for Dropbox."""
