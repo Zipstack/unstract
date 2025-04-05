@@ -121,6 +121,7 @@ function ExecutionLogs() {
             status: item?.status,
             successfulFiles: item?.successful_files,
             failedFiles: item?.failed_files,
+            execution_time: item?.execution_time,
           };
 
           // If status is no longer executing, remove from polling
@@ -200,6 +201,7 @@ function ExecutionLogs() {
           failedFiles: item?.failed_files,
           totalFiles: item?.total_files,
           status: item?.status,
+          execution_time: item?.execution_time,
         };
       });
       setDataList(formattedData);

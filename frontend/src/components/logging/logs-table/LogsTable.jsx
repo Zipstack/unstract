@@ -103,6 +103,12 @@ const LogsTable = ({
       key: "filesProcessed",
       render: (text, record) => `${record?.processed}/${record?.totalFiles}`,
     },
+    {
+      title: "Execution Time",
+      dataIndex: "executionTime",
+      key: "executionTime",
+      render: (_, record) => record?.execution_time || "-",
+    },
   ];
 
   const handleTableChange = (pagination, filters, sorter) => {
