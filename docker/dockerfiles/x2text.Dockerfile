@@ -8,7 +8,12 @@ ENV \
     # Set to immediately flush stdout and stderr streams without first buffering
     PYTHONUNBUFFERED=1 \
     BUILD_CONTEXT_PATH=x2text-service \
-    PDM_VERSION=2.16.1
+    PDM_VERSION=2.16.1 \
+    # OpenTelemetry configuration (disabled by default, enable in docker-compose)
+    OTEL_TRACES_EXPORTER=none \
+    OTEL_METRICS_EXPORTER=none \
+    OTEL_LOGS_EXPORTER=none \
+    OTEL_SERVICE_NAME=unstract_x2text
 
 RUN pip install --no-cache-dir -U pip pdm~=${PDM_VERSION}; \
     \
@@ -22,13 +27,7 @@ WORKDIR /app
 
 # Create venv and install gunicorn and other deps in it
 RUN pdm venv create -w virtualenv --with-pip && \
-    . .venv/bin/activate && \
-    pip install --no-cache-dir \
-        gunicorn \
-        # Install opentelemetry for instrumentation
-        opentelemetry-distro \
-        opentelemetry-exporter-otlp && \
-    opentelemetry-bootstrap -a install
+    . .venv/bin/activate
 
 # Read and execute access to non-root user to avoid security hotspot
 # Write access to specific sub-directory need to be explicitly provided if required
@@ -36,7 +35,8 @@ COPY --chmod=755 ${BUILD_CONTEXT_PATH} /app/
 
 # Install dependencies
 RUN . .venv/bin/activate && \
-    pdm sync --prod --no-editable
+    pdm sync --prod --no-editable --with deploy && \
+    opentelemetry-bootstrap -a install
 
 EXPOSE 3004
 

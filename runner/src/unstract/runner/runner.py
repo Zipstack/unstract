@@ -141,6 +141,56 @@ class UnstractRunner:
             # Already a UNIX timestamp
             return float(emitted_at)
 
+    def _parse_additional_envs(self) -> dict[str, Any]:
+        """Parse TOOL_ADDITIONAL_ENVS environment variable to get additional
+        environment variables.
+        Also propagates OpenTelemetry trace context if available.
+
+        Returns:
+            dict: Dictionary containing parsed environment variables
+                  or empty dict if none found.
+        """
+        additional_envs: dict[str, Any] = {}
+
+        # Get additional envs from environment variable
+        tool_additional_envs = os.getenv("TOOL_ADDITIONAL_ENVS")
+        if not tool_additional_envs:
+            return additional_envs
+        try:
+            additional_envs = json.loads(tool_additional_envs)
+            self.logger.info(
+                f"Parsed additional environment variables: {additional_envs}"
+            )
+        except json.JSONDecodeError as e:
+            self.logger.warning(f"Failed to parse TOOL_ADDITIONAL_ENVS: {e}")
+
+        # Propagate OpenTelemetry trace context if available
+        # This is required only if additional envs are present
+        try:
+            from opentelemetry import trace
+
+            current_span = trace.get_current_span()
+            if current_span.is_recording():
+                span_context = current_span.get_span_context()
+                if span_context.is_valid:
+                    # Add trace context to environment variables
+                    additional_envs.update(
+                        {
+                            "OTEL_PROPAGATORS": "tracecontext",
+                            "OTEL_TRACE_ID": f"{span_context.trace_id:032x}",
+                            "OTEL_SPAN_ID": f"{span_context.span_id:016x}",
+                            "OTEL_TRACE_FLAGS": f"{span_context.trace_flags:02x}",
+                        }
+                    )
+                    self.logger.debug(
+                        f"Propagating trace context: {span_context.trace_id:032x}"
+                    )
+        except Exception as e:
+            # OpenTelemetry not available or error occurred, skip trace propagation
+            self.logger.debug(f"Skipping trace propagation: {e}")
+
+        return additional_envs
+
     def run_command(self, command: str) -> Optional[Any]:
         """Runs any given command on the container.
 
@@ -151,8 +201,15 @@ class UnstractRunner:
             Optional[Any]: Response from container or None if error occures.
         """
         command = command.upper()
+
+        # Get additional environment variables to pass to the container
+        additional_env = self._parse_additional_envs()
+
         container_config = self.client.get_container_run_config(
-            command=["--command", command], file_execution_id="", auto_remove=True
+            command=["--command", command],
+            file_execution_id="",
+            auto_remove=True,
+            envs=additional_env,
         )
         container = None
 
@@ -205,6 +262,9 @@ class UnstractRunner:
             Env.WORKFLOW_EXECUTION_FILE_STORAGE_CREDENTIALS, "{}"
         )
 
+        # Get additional environment variables to pass to the container
+        additional_env = self._parse_additional_envs()
+
         container_config = self.client.get_container_run_config(
             command=[
                 "--command",
@@ -216,7 +276,7 @@ class UnstractRunner:
             ],
             file_execution_id=file_execution_id,
             container_name=container_name,
-            envs=envs,
+            envs={**envs, **additional_env},
         )
         # Add labels to container for logging with Loki.
         # This only required for observability.

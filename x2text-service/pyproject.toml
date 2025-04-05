@@ -17,7 +17,10 @@ requires-python = ">=3.9,<3.11.1"
 readme = "README.md"
 license = {text = "MIT"}
 
-[tool.pdm.dev-dependencies]
+[project.optional-dependencies]
 deploy = [
-    "gunicorn>=21.2.0",
+    "gunicorn[gevent]~=23.0",
+    # OpenTelemetry for tracing and profiling
+    "opentelemetry-distro",
+    "opentelemetry-exporter-otlp",
 ]

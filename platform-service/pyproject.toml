@@ -20,6 +20,13 @@ requires-python = ">=3.9,<3.11.1"
 readme = "README.md"
 license = {text = "MIT"}
 
+[project.optional-dependencies]
+deploy = [
+    "gunicorn[gevent]~=23.0",
+    # OpenTelemetry for tracing and profiling
+    "opentelemetry-distro",
+    "opentelemetry-exporter-otlp",
+]
 
 [build-system]
 requires = ["pdm-backend"]
@@ -32,9 +39,6 @@ package-dir = "src"
 [tool.pdm.dev-dependencies]
 test = [
     "pytest>=8.0.1",
-]
-deploy = [
-    "gunicorn>=21.2.0",
 ]
 
 [tool.pdm.resolution.overrides]

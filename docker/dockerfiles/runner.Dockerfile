@@ -10,7 +10,12 @@ ENV \
     PYTHONPATH=/unstract \
     BUILD_CONTEXT_PATH=runner \
     BUILD_PACKAGES_PATH=unstract \
-    PDM_VERSION=2.16.1
+    PDM_VERSION=2.16.1 \
+    # OpenTelemetry configuration (disabled by default, enable in docker-compose)
+    OTEL_TRACES_EXPORTER=none \
+    OTEL_METRICS_EXPORTER=none \
+    OTEL_LOGS_EXPORTER=none \
+    OTEL_SERVICE_NAME=unstract_runner
 
 RUN apt-get update \
     && apt-get --no-install-recommends install -y docker \
@@ -22,14 +27,7 @@ WORKDIR /app
 
 # Create venv and install gunicorn and other deps in it
 RUN pdm venv create -w virtualenv --with-pip && \
-    . .venv/bin/activate && \
-    pip install --no-cache-dir \
-        gunicorn \
-        gevent \
-        # Install opentelemetry for instrumentation
-        opentelemetry-distro \
-        opentelemetry-exporter-otlp && \
-    opentelemetry-bootstrap -a install
+    . .venv/bin/activate
 
 COPY ${BUILD_CONTEXT_PATH} /app/
 # Copy local dependency packages
@@ -40,13 +38,15 @@ RUN \
     # source command may not be availble in sh
     . .venv/bin/activate; \
     \
-    pdm sync --prod --no-editable; \
+    pdm sync --prod --no-editable --with deploy; \
     \
     if [ -f cloud_requirements.txt ]; then \
         pip install --no-cache-dir -r cloud_requirements.txt; \
     else \
         echo "cloud_requirements.txt does not exist"; \
-    fi
+    fi; \
+    \
+    opentelemetry-bootstrap -a install
 
 EXPOSE 5002
 

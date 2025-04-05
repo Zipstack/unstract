@@ -68,9 +68,6 @@ classifiers = [
 ]
 
 [tool.pdm.dev-dependencies]
-deploy = [
-    "gunicorn>=21.2.0",
-]
 test = [
     "pytest>=8.0.1",
     "pytest-dotenv==0.5.2",
@@ -85,6 +82,15 @@ dev = [
     "-e unstract-filesystem @ file:///${PROJECT_ROOT}/../unstract/filesystem",
     # For file watching
     "inotify>=0.2.10",
+]
+
+[project.optional-dependencies]
+deploy = [
+    "gunicorn~=23.0", # For serving the application
+    # Keep versions empty and let pdm decide version
+    # since we use no code instrumentation and don't use in code
+    "opentelemetry-distro",
+    "opentelemetry-exporter-otlp",
 ]
 
 [tool.pytest.ini_options]
