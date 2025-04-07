@@ -6,7 +6,7 @@ from typing import Optional
 from api_v2.models import APIDeployment
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
-from django.db.models import Sum
+from django.db.models import QuerySet, Sum
 from pipeline_v2.models import Pipeline
 from tags.models import Tag
 from usage_v2.constants import UsageKeys
@@ -22,7 +22,35 @@ logger = logging.getLogger(__name__)
 EXECUTION_ERROR_LENGTH = 256
 
 
+class WorkflowExecutionManager(models.Manager):
+    """Custom manager for WorkflowExecution model to handle user-specific filtering."""
+
+    def for_user(self, user) -> QuerySet:
+        """Filter user's  workflow executions.
+        Show those belonging to workflows created by the specified user.
+
+        Args:
+            user: The user to filter executions for
+
+        Returns:
+            QuerySet of executions that the user has permission to access
+        """
+        # Get workflows created by the user
+        user_workflows = Workflow.objects.filter(created_by=user).values("id")
+
+        # Return executions where either:
+        # 1. The related_workflow foreign key's created_by matches the user
+        # 2. The legacy workflow_id's workflow's created_by matches the user
+        return self.filter(
+            models.Q(related_workflow__created_by=user)
+            | models.Q(workflow_id__isnull=False, workflow_id__in=user_workflows)
+        )
+
+
 class WorkflowExecution(BaseModel):
+    # Use the custom manager
+    objects = WorkflowExecutionManager()
+
     class Mode(models.TextChoices):
         INSTANT = "INSTANT", "will be executed immediately"
         QUEUE = "QUEUE", "will be placed in a queue"
@@ -62,6 +90,7 @@ class WorkflowExecution(BaseModel):
         db_comment="ID of workflow being executed (deprecated)",
         null=True,
     )
+
     execution_mode = models.CharField(
         choices=Mode.choices, db_comment="Mode of execution"
     )
