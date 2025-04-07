@@ -392,20 +392,21 @@ class PromptStudioHelper:
                 file_name, org_id, document_id, is_summary, run_id, tool, doc_id
             )
             summarize_doc_id = IndexingUtils.generate_index_key(
-            vector_db=str(default_profile.vector_store.id),
-            embedding=str(default_profile.embedding_model.id),
-            x2text=str(default_profile.x2text.id),
-            chunk_size=str(default_profile.chunk_size),
-            chunk_overlap=str(default_profile.chunk_overlap),
-            file_path=summarize_file_path,
-            fs=fs_instance,
-            tool=util,)
+                vector_db=str(default_profile.vector_store.id),
+                embedding=str(default_profile.embedding_model.id),
+                x2text=str(default_profile.x2text.id),
+                chunk_size=str(default_profile.chunk_size),
+                chunk_overlap=str(default_profile.chunk_overlap),
+                file_path=summarize_file_path,
+                fs=fs_instance,
+                tool=util,
+            )
             PromptStudioIndexHelper.handle_index_manager(
-                    document_id=document_id,
-                    is_summary=is_summary,
-                    profile_manager=profile_manager,
-                    doc_id=summarize_doc_id,
-                )
+                document_id=document_id,
+                is_summary=is_summary,
+                profile_manager=profile_manager,
+                doc_id=summarize_doc_id,
+            )
         start_time = time.time()
         logger.info(f"[{tool_id}] Indexing started for doc: {file_name}")
         PromptStudioHelper._publish_log(
@@ -444,7 +445,9 @@ class PromptStudioHelper:
         return doc_id
 
     @staticmethod
-    def summarize(file_name, org_id, document_id, is_summary, run_id, tool, doc_id) -> str:
+    def summarize(
+        file_name, org_id, document_id, is_summary, run_id, tool, doc_id
+    ) -> str:
         cls = get_plugin_class_by_name(
             name="summarizer",
             plugins=PromptStudioHelper.processor_plugins,
@@ -845,20 +848,21 @@ class PromptStudioHelper:
                 filename, org_id, document_id, is_summary, run_id, tool, doc_id
             )
             summarize_doc_id = IndexingUtils.generate_index_key(
-            vector_db=str(default_profile.vector_store.id),
-            embedding=str(default_profile.embedding_model.id),
-            x2text=str(default_profile.x2text.id),
-            chunk_size=str(default_profile.chunk_size),
-            chunk_overlap=str(default_profile.chunk_overlap),
-            file_path=summarize_file_path,
-            fs=fs_instance,
-            tool=util,)
+                vector_db=str(default_profile.vector_store.id),
+                embedding=str(default_profile.embedding_model.id),
+                x2text=str(default_profile.x2text.id),
+                chunk_size=str(default_profile.chunk_size),
+                chunk_overlap=str(default_profile.chunk_overlap),
+                file_path=summarize_file_path,
+                fs=fs_instance,
+                tool=util,
+            )
             PromptStudioIndexHelper.handle_index_manager(
-                    document_id=document_id,
-                    is_summary=is_summary,
-                    profile_manager=profile_manager,
-                    doc_id=summarize_doc_id,
-                )
+                document_id=document_id,
+                is_summary=is_summary,
+                profile_manager=profile_manager,
+                doc_id=summarize_doc_id,
+            )
             logger.info("Summary enabled, set chunk to zero..")
         logger.info(f"Indexing document {doc_path} for {doc_id}")
         index_result = PromptStudioHelper.dynamic_indexer(
@@ -1047,7 +1051,7 @@ class PromptStudioHelper:
             str: Index key for the combination of arguments
         """
 
-        if profile_manager.chunk_size == 0 :
+        if profile_manager.chunk_size == 0:
             PromptStudioIndexHelper.handle_index_manager(
                 document_id=document_id,
                 profile_manager=profile_manager,
