@@ -59,6 +59,19 @@ class LocalStorageFS(UnstractFileSystem):
     def get_fsspec_fs(self) -> Any:
         return self.local
 
+    def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> Optional[str]:
+        """
+        Extracts a unique file hash from metadata.
+
+        Args:
+            metadata (dict): Metadata dictionary obtained from fsspec.
+
+        Returns:
+            Optional[str]: The file hash in hexadecimal format or None if not found.
+        """
+        logger.error(f"[LocalStorage] File hash not found for the metadata: {metadata}")
+        return None
+
     def test_credentials(self, *args, **kwargs) -> bool:  # type:ignore
         """To test credentials for LocalStorage."""
         is_dir = False

@@ -1,7 +1,8 @@
+import base64
 import json
 import logging
 import os
-from typing import Any
+from typing import Any, Optional
 
 from gcsfs import GCSFileSystem
 
@@ -60,6 +61,23 @@ class GoogleCloudStorageFS(UnstractFileSystem):
 
     def get_fsspec_fs(self) -> GCSFileSystem:
         return self.gcs_fs
+
+    def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> Optional[str]:
+        """
+        Extracts a unique file hash from metadata.
+
+        Args:
+            metadata (dict): Metadata dictionary obtained from fsspec or cloud API.
+
+        Returns:
+            Optional[str]: The file hash in hexadecimal format or None if not found.
+        """
+        # Extracts md5Hash (Base64) for GCS
+        file_hash = metadata.get("md5Hash")
+        if file_hash:
+            return base64.b64decode(file_hash).hex()
+        logger.error(f"[GCS] File hash not found for the metadata: {metadata}")
+        return None
 
     def test_credentials(self) -> bool:
         """To test credentials for Google Cloud Storage."""
