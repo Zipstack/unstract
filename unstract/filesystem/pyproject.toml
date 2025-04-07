@@ -1,25 +1,19 @@
-[build-system]
-requires = ["pdm-backend"]
-build-backend = "pdm.backend"
-
 [project]
 name = "unstract-filesystem"
 version = "0.0.1"
 description = "Unstract filesystem package"
-authors = [
-    {name = "Zipstack Inc.", email = "devsupport@zipstack.com"},
-]
-dependencies = [
-    "unstract-sdk~=0.62.1",
-]
-requires-python = ">=3.9,<3.11.1"
+authors = [{ name = "Zipstack Inc.", email = "devsupport@zipstack.com" }]
+requires-python = ">=3.9,<3.13"
 readme = "README.md"
 
-[tool.pdm.build]
-includes = ["src"]
-package-dir = "src"
+dependencies = ["unstract-sdk"]
 
-[tool.pdm.resolution.overrides]
-grpcio = "1.62.3"
-grpcio-tools = "1.62.3"
-grpcio-health-checking = "1.62.3"
+[tool.uv.sources]
+unstract-sdk = { git = "https://github.com/Zipstack/unstract-sdk", branch = "python-upgrade" }
+
+# [build-system]
+# requires = ["hatchling"]
+# build-backend = "hatchling.build"
+
+# [tool.hatch.build.targets.wheel]
+# packages = ["src"]
