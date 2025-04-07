@@ -22,8 +22,8 @@ class RetrievalService:
         chunk_size: int,
         execution_source: str,
         file_path: str,
-    ) -> tuple[str, set[str]]:
-        context: set[str]
+    ) -> tuple[str, list[str]]:
+        context: list[str]
         if chunk_size == 0:
             context = RetrievalService.retrieve_complete_context(
                 execution_source=execution_source, file_path=file_path
