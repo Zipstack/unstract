@@ -412,6 +412,7 @@ class PromptStudioHelper:
                 user_id=user_id,
                 enable_highlight=tool.enable_highlight,
                 extracted_text=extracted_text,
+                doc_id_key=doc_id,
             )
 
             elapsed_time = time.time() - start_time
@@ -843,6 +844,7 @@ class PromptStudioHelper:
                 user_id=user_id,
                 enable_highlight=tool.enable_highlight,
                 extracted_text=extracted_text,
+                doc_id_key=doc_id,
             )
             if index_result.get("status") == IndexingStatus.PENDING_STATUS.value:
                 return {
