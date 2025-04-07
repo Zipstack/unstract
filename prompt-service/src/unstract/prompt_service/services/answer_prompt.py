@@ -20,15 +20,6 @@ from unstract.core.flask.exceptions import APIError
 class AnswerPromptService:
 
     @staticmethod
-    def get_cleaned_context(context: set[str]) -> list[str]:
-        clean_context_plugin: dict[str, Any] = PluginManager().get_plugin(
-            PSKeys.CLEAN_CONTEXT
-        )
-        if clean_context_plugin:
-            return clean_context_plugin["entrypoint_cls"].run(context=context)
-        return list(context)
-
-    @staticmethod
     def extract_variable(
         structured_output: dict[str, Any],
         variable_names: list[Any],

@@ -77,6 +77,7 @@ class SettingsKeys:
     TOOL = "tool"
     METRICS = "metrics"
     INDEXING = "indexing"
+    EXECUTION_ID = "execution_id"
 
 
 class IndexingConstants:

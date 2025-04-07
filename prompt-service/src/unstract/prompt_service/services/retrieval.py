@@ -40,7 +40,7 @@ class RetrievalService:
             tool_settings=tool_settings,
             output=output,
             llm=llm,
-            context="".join(context),
+            context="\n".join(context),
             prompt="promptx",
             metadata=metadata,
             execution_source=execution_source,
@@ -55,8 +55,8 @@ class RetrievalService:
         llm: LLM,
         vector_db: VectorDB,
         retrieval_type: str,
-    ) -> set[str]:
-        context: set[str] = set()
+    ) -> list[str]:
+        context: set[str]
         prompt = output[PSKeys.PROMPTX]
         top_k = output[PSKeys.SIMILARITY_TOP_K]
         if retrieval_type == PSKeys.SUBQUESTION:
@@ -76,17 +76,19 @@ class RetrievalService:
                 llm=llm,
             ).retrieve()
 
-        return context
+        return list(context)
 
     @staticmethod
-    def retrieve_complete_context(execution_source: str, file_path: str) -> str:
+    def retrieve_complete_context(execution_source: str, file_path: str) -> list[str]:
         """
         Loads full context from raw file for zero chunk size retrieval
         Args:
-            path (str): Path to the directory containing text file.
+            execution_source (str): Source of execution.
+            file_path (str): Path to the directory containing text file.
 
         Returns:
-            str: context from extracted file.
+            list[str]: context from extracted file.
         """
         fs_instance = FileUtils.get_fs_instance(execution_source=execution_source)
-        return fs_instance.read(path=file_path, mode="r")
+        context = fs_instance.read(path=file_path, mode="r")
+        return [context]

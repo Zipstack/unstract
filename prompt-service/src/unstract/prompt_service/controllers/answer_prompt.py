@@ -273,9 +273,7 @@ def prompt_processor() -> Any:
                     execution_source=execution_source,
                     file_path=file_path,
                 )
-                metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = (
-                    AnswerPromptService.get_cleaned_context(context)
-                )
+                metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = context
             else:
                 app.logger.info(
                     "Invalid retrieval strategy passed: %s",
@@ -467,7 +465,7 @@ def prompt_processor() -> Any:
                             llm=llm,
                             challenge_llm=challenge_llm,
                             run_id=run_id,
-                            context="".join(context),
+                            context="\n".join(context),
                             tool_settings=tool_settings,
                             output=output,
                             structured_output=structured_output,
