@@ -26,7 +26,7 @@ class WorkflowExecutionManager(models.Manager):
     """Custom manager for WorkflowExecution model to handle user-specific filtering."""
 
     def for_user(self, user) -> QuerySet:
-        """Filter user's  workflow executions.
+        """Filter user's workflow executions.
         Show those belonging to workflows created by the specified user.
 
         Args:
@@ -35,16 +35,29 @@ class WorkflowExecutionManager(models.Manager):
         Returns:
             QuerySet of executions that the user has permission to access
         """
-        # Get workflows created by the user
-        user_workflows = Workflow.objects.filter(created_by=user).values("id")
+        # Return executions where the workflow's created_by matches the user
+        return self.filter(workflow__created_by=user)
 
-        # Return executions where either:
-        # 1. The related_workflow foreign key's created_by matches the user
-        # 2. The legacy workflow_id's workflow's created_by matches the user
-        return self.filter(
-            models.Q(related_workflow__created_by=user)
-            | models.Q(workflow_id__isnull=False, workflow_id__in=user_workflows)
-        )
+    def clean_invalid_workflows(self):
+        """Remove execution records with invalid workflow references.
+
+        This is a utility method to clean up data when converting from workflow_id to
+        a proper foreign key relationship. It deletes any execution records where the
+        workflow reference doesn't exist in the database.
+
+        Returns:
+            int: Number of deleted records
+        """
+        # Find executions with no valid workflow reference
+        invalid_executions = self.filter(workflow__isnull=True)
+
+        count = invalid_executions.count()
+        if count > 0:
+            logger.info(
+                f"Deleting {count} execution records with invalid workflow references"
+            )
+            invalid_executions.delete()
+        return count
 
 
 class WorkflowExecution(BaseModel):
@@ -75,20 +88,14 @@ class WorkflowExecution(BaseModel):
         null=True,
         db_comment="task id of asynchronous execution",
     )
-    related_workflow = models.ForeignKey(
+    workflow = models.ForeignKey(
         Workflow,
         on_delete=models.CASCADE,
         editable=False,
         db_comment="Workflow to be executed",
-        related_name="executions",
+        related_name="workflow_executions",
         null=True,
-        db_column="related_wf_id",
-    )
-    # TODO: Deprecated, remove after migration / log rotation
-    workflow_id = models.UUIDField(
-        editable=False,
-        db_comment="ID of workflow being executed (deprecated)",
-        null=True,
+        db_column="workflow_id",  # Reuse the existing column name
     )
 
     execution_mode = models.CharField(
@@ -144,36 +151,10 @@ class WorkflowExecution(BaseModel):
         return list(self.tags.values_list("name", flat=True))
 
     @property
-    def workflow(self) -> Optional[Workflow]:
-        """Gets the associated workflow.
-
-        First tries the foreign key then falls back to workflow_id.
-        """
-        if self.related_workflow:
-            return self.related_workflow
-        elif self.workflow_id:
-            try:
-                return Workflow.objects.get(id=self.workflow_id)
-            except ObjectDoesNotExist:
-                logger.warning(
-                    f"Expected workflow '{self.workflow_id}' to exist but missing"
-                )
-                return None
-        return None
-
-    @property
     def workflow_name(self) -> Optional[str]:
         """Obtains the workflow's name associated to this execution."""
         if self.workflow:
             return self.workflow.workflow_name
-        elif self.workflow_id:
-            try:
-                return Workflow.objects.get(id=self.workflow_id).workflow_name
-            except ObjectDoesNotExist:
-                logger.warning(
-                    f"Expected workflow ID '{self.workflow_id}' to exist but missing"
-                )
-                return None
         return None
 
     @property
@@ -246,7 +227,7 @@ class WorkflowExecution(BaseModel):
         return (
             f"Workflow execution: {self.id} ("
             f"pipeline ID: {self.pipeline_id}, "
-            f"workflow: {self.workflow_id}, "
+            f"workflow: {self.workflow}, "
             f"status: {self.status}, "
             f"files: {self.total_files}, "
             f"error message: {self.error_message})"
