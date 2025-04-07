@@ -8,7 +8,8 @@ import { LazyLoader } from "./components/widgets/lazy-loader/LazyLoader.jsx";
 import { SocketProvider } from "./helpers/SocketContext.js";
 import "./index.css";
 
-const enablePosthog = process.env.REACT_APP_ENABLE_POSTHOG;
+// const REACT_APP_ENABLE_POSTHOG = process.env.REACT_APP_ENABLE_POSTHOG;
+const enablePosthog = false;
 if (enablePosthog !== "false") {
   // Define the PostHog API key and host URL
   const API_KEY = "phc_PTafesyRuRB5hceRILaNPeyu2IDuzPshyjIPYGvgoBd"; // gitleaks:allow

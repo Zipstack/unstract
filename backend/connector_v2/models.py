@@ -15,7 +15,6 @@ from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
     DefaultOrganizationMixin,
 )
-from workflow_manager.workflow_v2.models import Workflow
 
 from backend.constants import FieldLengthConstants as FLC
 
@@ -43,7 +42,7 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
         max_length=CONNECTOR_NAME_SIZE, null=False, blank=False
     )
     workflow = models.ForeignKey(
-        Workflow,
+        "workflow_v2.Workflow",
         on_delete=models.CASCADE,
         related_name="connector_workflow",
         null=False,
