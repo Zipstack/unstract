@@ -11,7 +11,12 @@ ENV \
     BUILD_CONTEXT_PATH=prompt-service \
     BUILD_PACKAGES_PATH=unstract \
     TARGET_PLUGINS_PATH=src/unstract/prompt_service/plugins \
-    PDM_VERSION=2.16.1
+    PDM_VERSION=2.16.1 \
+    # OpenTelemetry configuration (disabled by default, enable in docker-compose)
+    OTEL_TRACES_EXPORTER=none \
+    OTEL_METRICS_EXPORTER=none \
+    OTEL_LOGS_EXPORTER=none \
+    OTEL_SERVICE_NAME=unstract_prompt
 
 # Install system dependencies
 RUN apt-get update; \
@@ -34,14 +39,7 @@ WORKDIR /app
 
 # Create venv and install gunicorn and other deps in it
 RUN pdm venv create -w virtualenv --with-pip && \
-    . .venv/bin/activate && \
-    pip install --no-cache-dir \
-        gunicorn \
-        gevent \
-        # Install opentelemetry for instrumentation
-        opentelemetry-distro \
-        opentelemetry-exporter-otlp && \
-    opentelemetry-bootstrap -a install
+    . .venv/bin/activate
 
 # TODO: Security issue but ignoring it for nuitka based builds
 COPY --chown=unstract ${BUILD_CONTEXT_PATH} /app/
@@ -51,7 +49,7 @@ COPY --chown=unstract ${BUILD_PACKAGES_PATH}/flags /unstract/flags
 
 # Install dependencies and plugins (if any)
 RUN . .venv/bin/activate && \
-    pdm sync --prod --no-editable && \
+    pdm sync --prod --no-editable --with deploy && \
     for dir in "${TARGET_PLUGINS_PATH}"/*/; do \
         dirpath=${dir%*/}; \
         if [ "${dirpath##*/}" != "*" ]; then \
@@ -61,7 +59,8 @@ RUN . .venv/bin/activate && \
             cd -; \
         fi; \
     done && \
-    mkdir prompt-studio-data
+    mkdir prompt-studio-data && \
+    opentelemetry-bootstrap -a install
 
 EXPOSE 3003
 
