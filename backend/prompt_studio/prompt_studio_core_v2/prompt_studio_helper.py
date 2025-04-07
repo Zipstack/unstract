@@ -346,6 +346,7 @@ class PromptStudioHelper:
             profile_manager: ProfileManager = ProfileManager.objects.get(
                 prompt_studio_tool=tool, is_summarize_llm=True
             )
+            profile_manager.chunk_size == 0
             default_profile = profile_manager
         else:
             default_profile = ProfileManager.get_default_llm_profile(tool)
@@ -387,51 +388,63 @@ class PromptStudioHelper:
             reindex=True,
         )
         if is_summary:
-            PromptStudioHelper.summarize(
+            summarize_file_path = PromptStudioHelper.summarize(
                 file_name, org_id, document_id, is_summary, run_id, tool, doc_id
             )
+            summarize_doc_id = IndexingUtils.generate_index_key(
+            vector_db=str(default_profile.vector_store.id),
+            embedding=str(default_profile.embedding_model.id),
+            x2text=str(default_profile.x2text.id),
+            chunk_size=str(default_profile.chunk_size),
+            chunk_overlap=str(default_profile.chunk_overlap),
+            file_path=summarize_file_path,
+            fs=fs_instance,
+            tool=util,)
+            PromptStudioIndexHelper.handle_index_manager(
+                    document_id=document_id,
+                    is_summary=is_summary,
+                    profile_manager=profile_manager,
+                    doc_id=summarize_doc_id,
+                )
+        start_time = time.time()
+        logger.info(f"[{tool_id}] Indexing started for doc: {file_name}")
+        PromptStudioHelper._publish_log(
+            {"tool_id": tool_id, "run_id": run_id, "doc_name": file_name},
+            LogLevels.INFO,
+            LogLevels.RUN,
+            "Indexing started",
+        )
+        PromptStudioHelper.dynamic_indexer(
+            profile_manager=default_profile,
+            tool_id=tool_id,
+            file_path=file_path,
+            org_id=org_id,
+            document_id=document_id,
+            reindex=True,
+            run_id=run_id,
+            user_id=user_id,
+            enable_highlight=tool.enable_highlight,
+            extracted_text=extracted_text,
+            doc_id_key=doc_id,
+        )
 
-        else:
-            start_time = time.time()
-            logger.info(f"[{tool_id}] Indexing started for doc: {file_name}")
-            PromptStudioHelper._publish_log(
-                {"tool_id": tool_id, "run_id": run_id, "doc_name": file_name},
-                LogLevels.INFO,
-                LogLevels.RUN,
-                "Indexing started",
-            )
-            PromptStudioHelper.dynamic_indexer(
-                profile_manager=default_profile,
-                tool_id=tool_id,
-                file_path=file_path,
-                org_id=org_id,
-                document_id=document_id,
-                is_summary=is_summary,
-                reindex=True,
-                run_id=run_id,
-                user_id=user_id,
-                enable_highlight=tool.enable_highlight,
-                extracted_text=extracted_text,
-                doc_id_key=doc_id,
-            )
-
-            elapsed_time = time.time() - start_time
-            logger.info(
-                f"[{tool_id}] Indexing successful for doc: {file_name},"
-                f" took {elapsed_time:.3f}s"
-            )
-            logger.info(f"[{tool_id}] Indexing successful for doc: {file_name}")
-            PromptStudioHelper._publish_log(
-                {"tool_id": tool_id, "run_id": run_id, "doc_name": file_name},
-                LogLevels.INFO,
-                LogLevels.RUN,
-                f"Indexing successful, took {elapsed_time:.3f}s",
-            )
-            logger.info(f"Indexing successful : {doc_id}")
+        elapsed_time = time.time() - start_time
+        logger.info(
+            f"[{tool_id}] Indexing successful for doc: {file_name},"
+            f" took {elapsed_time:.3f}s"
+        )
+        logger.info(f"[{tool_id}] Indexing successful for doc: {file_name}")
+        PromptStudioHelper._publish_log(
+            {"tool_id": tool_id, "run_id": run_id, "doc_name": file_name},
+            LogLevels.INFO,
+            LogLevels.RUN,
+            f"Indexing successful, took {elapsed_time:.3f}s",
+        )
+        logger.info(f"Indexing successful : {doc_id}")
         return doc_id
 
     @staticmethod
-    def summarize(file_name, org_id, document_id, is_summary, run_id, tool, doc_id):
+    def summarize(file_name, org_id, document_id, is_summary, run_id, tool, doc_id) -> str:
         cls = get_plugin_class_by_name(
             name="summarizer",
             plugins=PromptStudioHelper.processor_plugins,
@@ -442,7 +455,7 @@ class PromptStudioHelper:
             tool.tool_id
         )
         if cls:
-            cls.process(
+            summarize_file_path = cls.process(
                 tool_id=str(tool.tool_id),
                 file_name=file_name,
                 org_id=org_id,
@@ -461,6 +474,7 @@ class PromptStudioHelper:
                 profile_manager=default_profile,
                 doc_id=doc_id,
             )
+            return summarize_file_path
 
     @staticmethod
     def prompt_responder(
@@ -827,30 +841,43 @@ class PromptStudioHelper:
             doc_path = str(
                 doc_path.parent.parent / "summarize" / (doc_path.stem + ".txt")
             )
-            PromptStudioHelper.summarize(
+            summarize_file_path = PromptStudioHelper.summarize(
                 filename, org_id, document_id, is_summary, run_id, tool, doc_id
             )
+            summarize_doc_id = IndexingUtils.generate_index_key(
+            vector_db=str(default_profile.vector_store.id),
+            embedding=str(default_profile.embedding_model.id),
+            x2text=str(default_profile.x2text.id),
+            chunk_size=str(default_profile.chunk_size),
+            chunk_overlap=str(default_profile.chunk_overlap),
+            file_path=summarize_file_path,
+            fs=fs_instance,
+            tool=util,)
+            PromptStudioIndexHelper.handle_index_manager(
+                    document_id=document_id,
+                    is_summary=is_summary,
+                    profile_manager=profile_manager,
+                    doc_id=summarize_doc_id,
+                )
             logger.info("Summary enabled, set chunk to zero..")
-        else:
-            logger.info(f"Indexing document {doc_path} for {doc_id}")
-            index_result = PromptStudioHelper.dynamic_indexer(
-                profile_manager=profile_manager,
-                file_path=doc_path,
-                tool_id=str(tool.tool_id),
-                org_id=org_id,
-                document_id=document_id,
-                is_summary=tool.summarize_as_source,
-                run_id=run_id,
-                user_id=user_id,
-                enable_highlight=tool.enable_highlight,
-                extracted_text=extracted_text,
-                doc_id_key=doc_id,
-            )
-            if index_result.get("status") == IndexingStatus.PENDING_STATUS.value:
-                return {
-                    "status": IndexingStatus.PENDING_STATUS.value,
-                    "message": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
-                }
+        logger.info(f"Indexing document {doc_path} for {doc_id}")
+        index_result = PromptStudioHelper.dynamic_indexer(
+            profile_manager=profile_manager,
+            file_path=doc_path,
+            tool_id=str(tool.tool_id),
+            org_id=org_id,
+            document_id=document_id,
+            run_id=run_id,
+            user_id=user_id,
+            enable_highlight=tool.enable_highlight,
+            extracted_text=extracted_text,
+            doc_id_key=doc_id,
+        )
+        if index_result.get("status") == IndexingStatus.PENDING_STATUS.value:
+            return {
+                "status": IndexingStatus.PENDING_STATUS.value,
+                "message": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
+            }
         tool_id = str(tool.tool_id)
         output: dict[str, Any] = {}
         outputs: list[dict[str, Any]] = []
@@ -996,12 +1023,10 @@ class PromptStudioHelper:
         document_id: str,
         user_id: str,
         extracted_text: str,
-        is_summary: bool = False,
         reindex: bool = False,
         run_id: str = None,
         enable_highlight: bool = False,
         doc_id_key: Optional[str] = None,
-        is_single_pass: bool = False,
     ) -> Any:
         """Used to index a file based on the passed arguments.
 
@@ -1022,10 +1047,9 @@ class PromptStudioHelper:
             str: Index key for the combination of arguments
         """
 
-        if profile_manager.chunk_size == 0 and not is_summary and not is_single_pass:
+        if profile_manager.chunk_size == 0 :
             PromptStudioIndexHelper.handle_index_manager(
                 document_id=document_id,
-                is_summary=is_summary,
                 profile_manager=profile_manager,
                 doc_id=doc_id_key,
             )
@@ -1042,10 +1066,6 @@ class PromptStudioHelper:
         file_path = os.path.join(
             directory, "extract", os.path.splitext(filename)[0] + ".txt"
         )
-        logger.info(f"Passing file_path {file_path}")
-        if is_summary:
-            profile_manager.chunk_size == 0
-
         try:
 
             usage_kwargs = {"run_id": run_id}
@@ -1112,7 +1132,6 @@ class PromptStudioHelper:
 
             PromptStudioIndexHelper.handle_index_manager(
                 document_id=document_id,
-                is_summary=is_summary,
                 profile_manager=profile_manager,
                 doc_id=doc_id,
             )

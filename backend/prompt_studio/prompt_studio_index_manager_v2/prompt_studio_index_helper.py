@@ -15,9 +15,9 @@ class PromptStudioIndexHelper:
     @staticmethod
     def handle_index_manager(
         document_id: str,
-        is_summary: bool,
         profile_manager: ProfileManager,
         doc_id: str,
+        is_summary: bool = False,
     ) -> IndexManager:
         try:
 
@@ -96,8 +96,9 @@ class PromptStudioIndexHelper:
                 index_manager, created = IndexManager.objects.get_or_create(**args)
 
                 index_manager.extraction_status = index_manager.extraction_status or {}
-                index_manager.extraction_status[doc_id] = True
 
+                index_manager.extraction_status[doc_id] = True
+                logger.info(f"Index manager {index_manager} {index_manager.index_ids_history}")
                 index_manager.save(update_fields=["extraction_status"])
 
                 if created:
