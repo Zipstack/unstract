@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any
+from typing import Any, Optional
 
 import aiohttp
 from fsspec.implementations.http import HTTPFileSystem
@@ -68,6 +68,19 @@ class HttpFS(UnstractFileSystem):
 
     def get_fsspec_fs(self) -> HTTPFileSystem:
         return self.http_fs
+
+    def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> Optional[str]:
+        """
+        Extracts a unique file hash from metadata.
+
+        Args:
+            metadata (dict): Metadata dictionary obtained from fsspec.
+
+        Returns:
+            Optional[str]: The file hash in hexadecimal format or None if not found.
+        """
+        logger.error(f"[HTTP] File hash not found for the metadata: {metadata}")
+        return None
 
     def test_credentials(self) -> bool:
         """To test credentials for HTTP(S)."""
