@@ -25,11 +25,15 @@ build-backend = "pdm.backend"
 includes = ["src"]
 package-dir = "src"
 
-[tool.pdm.dev-dependencies]
+[project.optional-dependencies]
 deploy = [
-    "gunicorn[gevent]>=21.2.0",
+    "gunicorn[gevent]~=23.0",
+    # OpenTelemetry for tracing and profiling
+    "opentelemetry-distro",
+    "opentelemetry-exporter-otlp",
 ]
 
+[tool.pdm.dev-dependencies]
 test = [
     "pytest>=8.2.2",
     "pytest-mock>=3.14.0",
