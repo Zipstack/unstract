@@ -6,8 +6,11 @@ from typing import Optional
 from api_v2.models import APIDeployment
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
+from django.db.models import Sum
 from pipeline_v2.models import Pipeline
 from tags.models import Tag
+from usage_v2.constants import UsageKeys
+from usage_v2.models import Usage
 from utils.common_utils import CommonUtils
 from utils.models.base_model import BaseModel
 from workflow_manager.workflow_v2.enums import ExecutionStatus
@@ -101,21 +104,21 @@ class WorkflowExecution(BaseModel):
         return list(self.tags.values_list("name", flat=True))
 
     @property
-    def workflow(self) -> Optional[str]:
-        """Obtains the workflow associated to this execution."""
-        try:
-            return Workflow.objects.get(id=self.workflow_id)
-        except ObjectDoesNotExist:
-            logger.warning(
-                f"Expected workflow '{self.workflow_id}' to exist but missing"
-            )
-            return None
-
-    @property
     def workflow_name(self) -> Optional[str]:
         """Obtains the workflow's name associated to this execution."""
         try:
             return Workflow.objects.get(id=self.workflow_id).workflow_name
+        except ObjectDoesNotExist:
+            logger.warning(
+                f"Expected workflow ID '{self.workflow_id}' to exist but missing"
+            )
+            return None
+
+    @property
+    def workflow(self) -> Optional[Workflow]:
+        """Obtains the workflow associated to this execution."""
+        try:
+            return Workflow.objects.get(id=self.workflow_id)
         except ObjectDoesNotExist:
             logger.warning(
                 f"Expected workflow ID '{self.workflow_id}' to exist but missing"
@@ -156,6 +159,37 @@ class WorkflowExecution(BaseModel):
             else CommonUtils.time_since(self.created_at)
         )
         return str(timedelta(seconds=time_in_secs)).split(".")[0]
+
+    @property
+    def get_aggregated_usage_cost(self) -> Optional[float]:
+        """Retrieve aggregated cost for the given execution_id.
+
+
+        Returns:
+        Optional[float]: The total cost in dollars if available, else None.
+
+        Raises:
+            APIException: For unexpected errors during database operations.
+        """
+        # Aggregate the cost for the given execution_id
+        queryset = Usage.objects.filter(execution_id=self.id)
+
+        if queryset.exists():
+            result = queryset.aggregate(cost_in_dollars=Sum(UsageKeys.COST_IN_DOLLARS))
+            total_cost = result.get(UsageKeys.COST_IN_DOLLARS)
+        else:
+            # Handle the case where no usage data is found for the given execution_id
+            logger.warning(
+                f"Usage data not found for the specified execution_id: {self.id}"
+            )
+            return None
+
+        logger.debug(
+            f"Cost aggregated successfully for execution_id: {self.id}"
+            f", Total cost: {total_cost}"
+        )
+
+        return total_cost
 
     def __str__(self) -> str:
         return (

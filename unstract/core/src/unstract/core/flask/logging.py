@@ -1,4 +1,5 @@
 import logging
+import os
 from logging.config import dictConfig
 
 from flask import g
@@ -18,6 +19,13 @@ def setup_logging(log_level: str):
         log_level (str): Log level to use. Can be one of
         INFO, DEBUG, WARNING, ERROR
     """
+    # Determine if OpenTelemetry trace context should be included in logs
+    otel_trace_context = (
+        " trace_id:%(otelTraceID)s span_id:%(otelSpanID)s"
+        if os.environ.get("OTEL_TRACES_EXPORTER", "none").lower() != "none"
+        else ""
+    )
+
     dictConfig(
         {
             "version": 1,
@@ -26,7 +34,9 @@ def setup_logging(log_level: str):
                 "default": {
                     "format": (
                         "%(levelname)s : [%(asctime)s]"
-                        "{pid:%(process)d tid:%(thread)d request_id:%(request_id)s} "
+                        "{pid:%(process)d tid:%(thread)d request_id:%(request_id)s}"
+                        + otel_trace_context
+                        + " "
                         "%(name)s:- %(message)s"
                     ),
                 },
