@@ -98,7 +98,9 @@ class PromptStudioIndexHelper:
                 index_manager.extraction_status = index_manager.extraction_status or {}
 
                 index_manager.extraction_status[doc_id] = True
-                logger.info(f"Index manager {index_manager} {index_manager.index_ids_history}")
+                logger.info(
+                    f"Index manager {index_manager} {index_manager.index_ids_history}"
+                )
                 index_manager.save(update_fields=["extraction_status"])
 
                 if created:
