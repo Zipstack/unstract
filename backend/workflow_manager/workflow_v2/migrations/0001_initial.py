@@ -33,7 +33,7 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "execution_id",
-                    models.UUIDField(db_comment="Execution ID",editable=False),
+                    models.UUIDField(db_comment="Execution ID", editable=False),
                 ),
                 ("data", models.JSONField(db_comment="Execution log data")),
                 (
