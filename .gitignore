@@ -625,6 +625,7 @@ backend/pluggable_apps/*
 
 # FE Plugins
 frontend/src/plugins/*
+frontend/public/llm-whisperer/
 
 # Tool registry
 unstract/tool-registry/tool_registry_config/*.json

@@ -4992,7 +4992,7 @@ wheels = [
 [[package]]
 name = "unstract"
 version = "0.1.0"
-source = { editable = "." }
+source = { virtual = "." }
 
 [package.dev-dependencies]
 dev = [
@@ -5228,9 +5228,9 @@ requires-dist = [
     { name = "docker", specifier = "~=6.1.3" },
     { name = "jsonschema", specifier = "~=4.18.2" },
     { name = "pyyaml", specifier = "~=6.0.1" },
-    { name = "unstract-flags" },
-    { name = "unstract-sdk" },
-    { name = "unstract-tool-sandbox" },
+    { name = "unstract-flags", editable = "unstract/flags" },
+    { name = "unstract-sdk", git = "https://github.com/Zipstack/unstract-sdk?branch=python-upgrade" },
+    { name = "unstract-tool-sandbox", editable = "unstract/tool-sandbox" },
 ]
 
 [[package]]
@@ -5245,7 +5245,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "requests", specifier = "==2.31.0" },
-    { name = "unstract-core" },
+    { name = "unstract-core", editable = "unstract/core" },
 ]
 
 [[package]]
@@ -5262,11 +5262,11 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "unstract-core" },
+    { name = "unstract-core", editable = "unstract/core" },
     { name = "unstract-filesystem", editable = "unstract/filesystem" },
-    { name = "unstract-flags" },
-    { name = "unstract-tool-registry" },
-    { name = "unstract-tool-sandbox" },
+    { name = "unstract-flags", editable = "unstract/flags" },
+    { name = "unstract-tool-registry", editable = "unstract/tool-registry" },
+    { name = "unstract-tool-sandbox", editable = "unstract/tool-sandbox" },
 ]
 
 [[package]]
