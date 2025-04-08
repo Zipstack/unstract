@@ -1,14 +1,12 @@
-[build-system]
-requires = ["pdm-backend"]
-build-backend = "pdm.backend"
-
 [project]
 name = "unstract-prompt-service"
 version = "0.0.1"
 description = "Unstract's prompt studio helper"
-authors = [
-    {name = "Zipstack Inc.", email = "devsupport@zipstack.com"},
-]
+authors = [{ name = "Zipstack Inc.", email = "devsupport@zipstack.com" }]
+requires-python = ">=3.9,<3.13"
+readme = "README.md"
+# license = {text = "MIT"}
+
 dependencies = [
     "peewee~=3.16",
     "nltk~=3.8",
@@ -17,38 +15,33 @@ dependencies = [
     "python-dotenv==1.0.0",
     #ToDo: Temporarily removing the extra dependencies of aws and gcs from unstract-sdk
     #to resolve lock file. Will have to be re-looked into
-    "unstract-sdk[azure]~=0.62.1",
+    "unstract-sdk",
     "gcsfs==2024.10.0",
     "s3fs==2024.10.0",
-    "redis>=5.0.3",
-    "unstract-core @ file:///${PROJECT_ROOT}/../unstract/core",
-    "unstract-flags @ file:///${PROJECT_ROOT}/../unstract/flags",
+    "redis>=5.0.3,<5.3",
+    "unstract-core",
+    "unstract-flags",
 ]
-requires-python = ">=3.9,<3.11.1"
-readme = "README.md"
-# license = {text = "MIT"}
 
-[tool.pdm.build]
-includes = ["src"]
-package-dir = "src"
-# source-includes = ["tests"]
+[tool.uv.sources]
+unstract-sdk = { git = "https://github.com/Zipstack/unstract-sdk", branch = "python-upgrade" }
+unstract-flags = { path = "../unstract/flags", editable = true }
+unstract-core = { path = "../unstract/core", editable = true }
 
-[tool.pdm.dev-dependencies]
-deploy = [
-    "gunicorn>=21.2.0",
-]
+
+[dependency-groups]
+deploy = ["gunicorn[gevent]>=21.2.0"]
 test = [
-    "pytest>=8.0.1",
+    "pytest~=8.0.1",
     "pytest-dotenv==0.5.2",
-    "pytest-mock>=3.14.0",
+    "pytest-mock~=3.14.0",
     "python-dotenv==1.0.0",
-    "flask-WTF~=1.1"
+    "flask-WTF~=1.1",
 ]
 
-[tool.pdm.scripts]
-prompt_service.cmd = "flask --app src/unstract/prompt_service/main.py run --port 3003"
-prompt_service.env_file = ".env"
-prompt_service.help = "Runs the Unstract prompt service"
-prompt_service_v2.cmd = "flask --app src/unstract/prompt_service_v2/run.py run --port 3003"
-prompt_service_v2.env_file = ".env"
-prompt_service_v2.help = "Runs the Unstract prompt service v2"
+# [build-system]
+# requires = ["hatchling"]
+# build-backend = "hatchling.build"
+
+# [tool.hatch.build.targets.wheel]
+# packages = ["unstract"]
