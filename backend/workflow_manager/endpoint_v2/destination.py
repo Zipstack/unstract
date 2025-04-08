@@ -74,6 +74,9 @@ class DestinationConnector(BaseConnector):
         self.api_results: list[dict[str, Any]] = []
         self.queue_results: list[dict[str, Any]] = []
         self.execution_service = execution_service
+        self.is_api: bool = (
+            self.endpoint.connection_type == WorkflowEndpoint.ConnectionType.API
+        )
 
     def _get_endpoint_for_workflow(
         self,
