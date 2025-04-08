@@ -229,8 +229,11 @@ class WorkflowHelper:
         workflow_file_execution.update(file_hash=file_content_hash)
 
         # Ensure no duplicate file processing
-        if FileHistoryHelper.get_file_history(
-            workflow=workflow, cache_key=file_content_hash
+        if (
+            FileHistoryHelper.get_file_history(
+                workflow=workflow, cache_key=file_content_hash
+            )
+            and not destination.is_api
         ):
             logger.info(f"Skipping '{file_name}', already processed.")
             execution_service.publish_log(
