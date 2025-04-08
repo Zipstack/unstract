@@ -5070,7 +5070,7 @@ hook-check-django-migrations = [
     { name = "unstract-core", editable = "unstract/core" },
     { name = "unstract-filesystem", editable = "unstract/filesystem" },
     { name = "unstract-flags", editable = "unstract/flags" },
-    { name = "unstract-sdk", editable = "../unstract-sdk" },
+    { name = "unstract-sdk", git = "https://github.com/Zipstack/unstract-sdk?branch=python-upgrade" },
     { name = "unstract-tool-registry", editable = "unstract/tool-registry" },
     { name = "unstract-tool-sandbox", editable = "unstract/tool-sandbox" },
     { name = "unstract-workflow-execution", editable = "unstract/workflow-execution" },
@@ -5151,7 +5151,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "unstract-sdk", editable = "../unstract-sdk" }]
+requires-dist = [{ name = "unstract-sdk", git = "https://github.com/Zipstack/unstract-sdk?branch=python-upgrade" }]
 
 [[package]]
 name = "unstract-flags"
@@ -5170,7 +5170,8 @@ requires-dist = [
 
 [[package]]
 name = "unstract-sdk"
-source = { editable = "../unstract-sdk" }
+version = "0.70.0"
+source = { git = "https://github.com/Zipstack/unstract-sdk?branch=python-upgrade#b83ea0661474f09a7020883cda7b0d6de75c6dd8" }
 dependencies = [
     { name = "filetype" },
     { name = "httpx" },
@@ -5207,70 +5208,6 @@ dependencies = [
     { name = "singleton-decorator" },
     { name = "tiktoken" },
     { name = "transformers" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "adlfs", marker = "extra == 'azure'", specifier = "~=2024.7.0" },
-    { name = "boto3", marker = "extra == 'aws'", specifier = "~=1.34.131" },
-    { name = "filetype", specifier = "~=1.2.0" },
-    { name = "gcsfs", marker = "extra == 'gcs'", specifier = "~=2024.10.0" },
-    { name = "httpx", specifier = ">=0.25.2" },
-    { name = "jsonschema", specifier = "~=4.18.2" },
-    { name = "llama-index", specifier = "==0.12.8" },
-    { name = "llama-index-embeddings-azure-openai", specifier = "==0.3.0" },
-    { name = "llama-index-embeddings-bedrock", specifier = "==0.5.0" },
-    { name = "llama-index-embeddings-google", specifier = "==0.3.0" },
-    { name = "llama-index-embeddings-ollama", specifier = "==0.5.0" },
-    { name = "llama-index-embeddings-openai", specifier = "==0.3.1" },
-    { name = "llama-index-embeddings-vertex", specifier = "==0.3.1" },
-    { name = "llama-index-llms-anthropic", specifier = "==0.6.10" },
-    { name = "llama-index-llms-anyscale", specifier = "==0.3.0" },
-    { name = "llama-index-llms-azure-openai", specifier = "==0.3.1" },
-    { name = "llama-index-llms-bedrock", specifier = "==0.3.3" },
-    { name = "llama-index-llms-mistralai", specifier = "==0.3.1" },
-    { name = "llama-index-llms-ollama", specifier = "==0.5.0" },
-    { name = "llama-index-llms-openai", specifier = "==0.3.25" },
-    { name = "llama-index-llms-palm", specifier = "==0.3.0" },
-    { name = "llama-index-llms-replicate", specifier = "==0.4.0" },
-    { name = "llama-index-llms-vertex", specifier = "==0.4.2" },
-    { name = "llama-index-vector-stores-milvus", specifier = "==0.4.0" },
-    { name = "llama-index-vector-stores-pinecone", specifier = "==0.4.2" },
-    { name = "llama-index-vector-stores-postgres", specifier = "==0.4.1" },
-    { name = "llama-index-vector-stores-qdrant", specifier = "==0.4.2" },
-    { name = "llama-index-vector-stores-weaviate", specifier = "==1.3.1" },
-    { name = "llama-parse", specifier = "==0.5.19" },
-    { name = "llmwhisperer-client", specifier = ">=2.2.1" },
-    { name = "mistralai", specifier = "==1.2.5" },
-    { name = "pdfplumber", specifier = ">=0.11.2" },
-    { name = "python-dotenv", specifier = "==1.0.0" },
-    { name = "python-magic", specifier = "~=0.4.27" },
-    { name = "redis", specifier = ">=5.2.1" },
-    { name = "s3fs", extras = ["boto3"], marker = "extra == 'aws'", specifier = "~=2024.10.0" },
-    { name = "singleton-decorator", specifier = "~=1.0.0" },
-    { name = "tiktoken", specifier = "~=0.9.0" },
-    { name = "transformers", specifier = "==4.37.0" },
-]
-provides-extras = ["aws", "azure", "gcs"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "docutils", specifier = "~=0.20.1" },
-    { name = "mypy", specifier = "~=1.2.0" },
-    { name = "pre-commit", specifier = "~=3.3.1" },
-    { name = "pycln", specifier = ">=2.5.0" },
-    { name = "pytest", specifier = ">=8.0.1" },
-    { name = "ruff", specifier = ">=0.2.2,<1.0.0" },
-    { name = "yamllint", specifier = ">=1.35.1" },
-]
-docs = [{ name = "lazydocs", specifier = "~=0.4.8" }]
-test = [
-    { name = "adlfs", specifier = "~=2024.7.0" },
-    { name = "gcsfs", specifier = "==2024.10.0" },
-    { name = "parameterized", specifier = "==0.9.0" },
-    { name = "pytest", specifier = "==8.3.3" },
-    { name = "pytest-mock", specifier = "==3.14.0" },
-    { name = "s3fs", specifier = "==2024.10.0" },
 ]
 
 [[package]]
@@ -5326,7 +5263,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "unstract-core" },
-    { name = "unstract-filesystem" },
+    { name = "unstract-filesystem", editable = "unstract/filesystem" },
     { name = "unstract-flags" },
     { name = "unstract-tool-registry" },
     { name = "unstract-tool-sandbox" },
