@@ -44,7 +44,7 @@ def prompt_processor() -> Any:
         raise BadRequest
     tool_settings = payload.get(PSKeys.TOOL_SETTINGS, {})
     enable_challenge = tool_settings.get(PSKeys.ENABLE_CHALLENGE, False)
-    # TODO: Rename "outputs" to "prompts" in payload
+    # Rename "outputs" to "prompts" in payload
     prompts = payload.get(PSKeys.OUTPUTS, [])
     tool_id: str = payload.get(PSKeys.TOOL_ID, "")
     run_id: str = payload.get(PSKeys.RUN_ID, "")
@@ -71,7 +71,7 @@ def prompt_processor() -> Any:
         RunLevel.RUN,
         f"Preparing to execute {len(prompts)} prompt(s)",
     )
-    # TODO: Rename "output" to "prompt"
+    # Rename "output" to "prompt"
     for output in prompts:  # type:ignore
         variable_names.append(output[PSKeys.NAME])
         metadata[PSKeys.REQUIRED_FIELDS][output[PSKeys.NAME]] = output.get(
@@ -308,7 +308,7 @@ def prompt_processor() -> Any:
                 if answer.lower() == "na":
                     structured_output[output[PSKeys.NAME]] = None
                 else:
-                    # TODO: Extract these prompts as constants after pkging
+                    # Extract these prompts as constants after pkging
                     prompt = f"Extract the number from the following \
                         text:\n{answer}\n\nOutput just the number. \
                         If the number is expressed in millions \
@@ -409,7 +409,7 @@ def prompt_processor() -> Any:
                                 f"Candidate JSON: {answer}"
                             )
                             app.logger.info(err_msg, LogLevel.ERROR)
-                            # TODO: Format log message after unifying these types
+                            # Format log message after unifying these types
                             publish_log(
                                 log_events_id,
                                 {

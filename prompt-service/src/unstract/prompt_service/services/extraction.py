@@ -90,8 +90,3 @@ class ExtractionService:
                 json_to_dump=metadata,
                 fs=fs,
             )
-
-        # TODO : Handle runId
-        # TODO: Revisit passage of tool through SDK
-        # TODO : Revisit usgae of update_exec_metadata
-        # TODO : Process Text callable

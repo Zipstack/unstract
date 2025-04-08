@@ -35,7 +35,7 @@ class SimpleRetriever(BaseRetriever):
         nodes = retriever.retrieve(self.prompt)
         context: set[str] = set()
         for node in nodes:
-            # ToDo: May have to fine-tune this value for node score or keep it
+            # May have to fine-tune this value for node score or keep it
             # configurable at the adapter level
             if node.score > 0:
                 context.add(node.get_content())

@@ -19,10 +19,10 @@ class StructureToolHelper:
         execution_run_data_folder: str,
     ) -> str:
 
-        x2Text = tool_settings[SettingsKeys.X2TEXT_ADAPTER]
+        x2text = tool_settings[SettingsKeys.X2TEXT_ADAPTER]
         tool.stream_log(f"Extracting text from {file_path} into {extract_file_path}")
         payload = {
-            IKeys.X2TEXT_INSTANCE_ID: x2Text,
+            IKeys.X2TEXT_INSTANCE_ID: x2text,
             IKeys.FILE_PATH: file_path,
             IKeys.ENABLE_HIGHLIGHT: enable_highlight,
             IKeys.USAGE_KWARGS: usage_kwargs.copy(),
@@ -52,7 +52,7 @@ class StructureToolHelper:
         run_id: str,
         tool: BaseTool,
         execution_run_data_folder: str,
-        reIndex: bool,
+        reindex: bool,
         usage_kwargs: dict[str, Any],
         enable_highlight: bool,
         chunk_size: int,
@@ -62,17 +62,17 @@ class StructureToolHelper:
         extracted_text: str = None,
     ) -> str:
 
-        x2Text = tool_settings[SettingsKeys.X2TEXT_ADAPTER]
+        x2text = tool_settings[SettingsKeys.X2TEXT_ADAPTER]
 
         payload = {
             IKeys.TOOL_ID: tool_id,
             IKeys.EMBEDDING_INSTANCE_ID: tool_settings[SettingsKeys.EMBEDDING],
             IKeys.VECTOR_DB_INSTANCE_ID: tool_settings[SettingsKeys.VECTOR_DB],
-            IKeys.X2TEXT_INSTANCE_ID: x2Text,
+            IKeys.X2TEXT_INSTANCE_ID: x2text,
             IKeys.FILE_HASH: file_hash,
             IKeys.CHUNK_SIZE: chunk_size,
             IKeys.CHUNK_OVERLAP: chunk_overlap,
-            IKeys.REINDEX: reIndex,
+            IKeys.REINDEX: reindex,
             IKeys.FILE_PATH: str(file_path),
             IKeys.ENABLE_HIGHLIGHT: enable_highlight,
             IKeys.USAGE_KWARGS: usage_kwargs.copy(),

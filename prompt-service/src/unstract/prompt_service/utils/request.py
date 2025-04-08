@@ -48,11 +48,11 @@ def make_http_request(
         raise e
 
 
-def validate_request_payload(payload, REQUIRED_FIELDS):
+def validate_request_payload(payload, required_fields):
     if not payload:
         raise BadRequest()
 
     # Validate required fields
-    missing_fields = [field for field in REQUIRED_FIELDS if field not in payload]
+    missing_fields = [field for field in required_fields if field not in payload]
     if missing_fields:
         raise MissingFieldError(missing_fields)

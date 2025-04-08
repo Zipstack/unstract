@@ -100,7 +100,7 @@ class StructureTool(BaseTool):
 
         index_metrics = {}
         extracted_input_file = str(execution_run_data_folder / SettingsKeys.EXTRACT)
-        # TODO : Resolve and pass log events ID
+        # Resolve and pass log events ID
         payload = {
             SettingsKeys.RUN_ID: self.file_execution_id,
             SettingsKeys.EXECUTION_ID: self.execution_id,
@@ -125,7 +125,7 @@ class StructureTool(BaseTool):
             tool_settings=tool_settings,
             extract_file_path=tool_data_dir / SettingsKeys.EXTRACT,
             tool=self,
-            execution_run_data_folder=execution_run_data_folder,
+            execution_run_data_folder=str(execution_run_data_folder),
         )
 
         if tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION]:
@@ -154,7 +154,7 @@ class StructureTool(BaseTool):
                 #     tool_id=tool_metadata[SettingsKeys.TOOL_ID],
                 #     file_hash=file_hash,
                 # )
-                # TODO : Handle metrics for single pass extraction
+                #  Handle metrics for single pass extraction
                 # index_metrics = {SettingsKeys.INDEXING: index.get_metrics()}
 
             self.stream_log("Fetching response for single pass extraction")
@@ -188,7 +188,7 @@ class StructureTool(BaseTool):
                             tool=self,
                             execution_run_data_folder=str(execution_run_data_folder),
                             chunk_overlap=output[SettingsKeys.CHUNK_OVERLAP],
-                            reIndex=reindex,
+                            reindex=reindex,
                             usage_kwargs=usage_kwargs,
                             enable_highlight=enable_highlight,
                             chunk_size=output[SettingsKeys.CHUNK_SIZE],
@@ -196,7 +196,7 @@ class StructureTool(BaseTool):
                             file_hash=file_hash,
                             extracted_text=extracted_text,
                         )
-                        # TODO : Handle metrics for single pass extraction
+                        # Handle metrics for single pass extraction
                         # index_metrics[output[SettingsKeys.NAME]] = {
                         #     SettingsKeys.INDEXING: index.get_metrics()
                         # }
@@ -209,7 +209,6 @@ class StructureTool(BaseTool):
                 )
                 raise
 
-            # TODO : Make this snippet pluggable and introduce pluggablity for tools.
             for output in outputs:
                 if SettingsKeys.TABLE_SETTINGS in output:
                     table_settings = output[SettingsKeys.TABLE_SETTINGS]
@@ -221,7 +220,6 @@ class StructureTool(BaseTool):
                 payload=payload,
             )
 
-        # TODO: Make use of dataclasses
         if prompt_service_resp[SettingsKeys.STATUS] != SettingsKeys.OK:
             self.stream_error_and_exit(
                 f"Failed to fetch responses for "
@@ -362,7 +360,7 @@ class StructureTool(BaseTool):
             tool_settings=tool_settings,
             run_id=self.file_execution_id,
             execution_run_data_folder=execution_run_data_folder,
-            reIndex=True,
+            reindex=True,
             usage_kwargs=usage_kwargs,
             enable_highlight=enable_highlight,
             file_hash=summarize_file_hash,

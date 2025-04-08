@@ -43,7 +43,6 @@ class Index:
         run_id: Optional[str] = None,
         capture_metrics: bool = False,
     ):
-        # TODO: Inherit from StreamMixin and avoid using BaseTool
         self.tool = tool
         self._run_id = run_id
         self._capture_metrics = capture_metrics

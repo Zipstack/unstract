@@ -972,9 +972,7 @@ class PromptStudioHelper:
         answer = responder.answer_prompt(
             payload=payload, params=include_metadata, headers=headers
         )
-        # TODO: Make use of dataclasses
         if answer["status"] == "ERROR":
-            # TODO: Publish to FE logs from here
             error_message = answer.get("error", "")
             raise AnswerFetchError(
                 "Error while fetching response for "
@@ -1282,7 +1280,6 @@ class PromptStudioHelper:
             params=include_metadata,
             headers=headers,
         )
-        # TODO: Make use of dataclasses
         if answer["status"] == "ERROR":
             error_message = answer.get("error", None)
             logger.info(f"{str(answer)}")
@@ -1311,7 +1308,7 @@ class PromptStudioHelper:
         doc_id: str,
         reindex: Optional[bool] = False,
     ) -> str:
-        x2Text = str(profile_manager.x2text.id)
+        x2text = str(profile_manager.x2text.id)
         is_extracted: bool = False
         extract_file_path: Optional[str] = None
         extracted_text = ""
@@ -1336,14 +1333,14 @@ class PromptStudioHelper:
                 extracted_text = fs_instance.read(path=extract_file_path, mode="r")
                 logger.info("Extracted text found. Reading from file..")
                 return extracted_text
-            except (FileNotFoundError, Exception) as e:
+            except FileNotFoundError as e:
                 logger.warning(
                     f"File not found for extraction. {extract_file_path}. {e}"
                     "Continuing extraction.."
                 )
                 extracted_text = None
         payload = {
-            IKeys.X2TEXT_INSTANCE_ID: x2Text,
+            IKeys.X2TEXT_INSTANCE_ID: x2text,
             IKeys.FILE_PATH: file_path,
             IKeys.ENABLE_HIGHLIGHT: enable_highlight,
             IKeys.USAGE_KWARGS: usage_kwargs.copy(),

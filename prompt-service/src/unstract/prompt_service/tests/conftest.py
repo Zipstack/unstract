@@ -26,4 +26,3 @@ def client():
     csrf.init_app(app)  # Compliant
     with app.test_client() as client:
         yield client
-    # TODO Add teardown code here

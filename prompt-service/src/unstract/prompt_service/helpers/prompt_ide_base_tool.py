@@ -10,7 +10,7 @@ from unstract.sdk.utils.common_utils import PY_TO_UNSTRACT_LOG_LEVEL
 
 
 class PromptServiceBaseTool(StreamMixin):
-    # TODO: Remove unused log_level arg
+    # Remove unused log_level arg
     def __init__(
         self, log_level: Optional[LogLevel] = None, platform_key: str = ""
     ) -> None:
