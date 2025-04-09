@@ -110,6 +110,7 @@ class AuthenticationController:
         Returns:
             list[OrganizationData]: _description_
         """
+
         try:
             organizations = self.auth_service.user_organizations(request)
         except Exception as ex:
