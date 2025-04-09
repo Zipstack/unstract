@@ -39,16 +39,14 @@ class PipelineViewSet(viewsets.ModelViewSet):
     permission_classes = [IsOwner]
     serializer_class = PipelineSerializer
 
-    def get_queryset(self) -> Optional[QuerySet]:
-        type = self.request.query_params.get(PipelineConstants.TYPE)
-        if type is not None:
-            queryset = Pipeline.objects.filter(
-                created_by=self.request.user, pipeline_type=type
-            )
-            return queryset
-        elif type is None:
-            queryset = Pipeline.objects.filter(created_by=self.request.user)
-            return queryset
+    def get_queryset(self) -> QuerySet:
+        queryset = Pipeline.objects.filter(created_by=self.request.user)
+
+        # Apply type filter if specified
+        pipeline_type = self.request.query_params.get(PipelineConstants.TYPE)
+        if pipeline_type is not None:
+            queryset = queryset.filter(pipeline_type=pipeline_type)
+        return queryset
 
     def get_serializer_class(self) -> serializers.Serializer:
         if self.action == "execute":
