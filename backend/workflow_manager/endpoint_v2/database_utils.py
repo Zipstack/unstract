@@ -58,9 +58,12 @@ class DatabaseUtils:
                 else:
                     sql_values[column] = f"{values[column]}"
             else:
-                # Default to Other SQL DBs
-                # TODO: Handle numeric types with no quotes
-                sql_values[column] = f"{values[column]}"
+                # Handle JSON types for each database
+                value = values[column]
+                if isinstance(value, (dict, list)):
+                    sql_values[column] = json.dumps(value)
+                else:
+                    sql_values[column] = f"{value}"  # Non-JSON types handled as before
         # If table has a column 'id', unstract inserts a unique value to it
         # Oracle db has column 'ID' instead of 'id'
         if any(key in column_types for key in ["id", "ID"]):
@@ -109,6 +112,8 @@ class DatabaseUtils:
         include_agent: bool = False,
         agent_name: Optional[str] = AgentName.UNSTRACT_DBWRITER.value,
         single_column_name: str = "data",
+        table_info: Optional[dict[str, str]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         """Generate a dictionary of columns and values based on specified
         parameters.
@@ -145,18 +150,33 @@ class DatabaseUtils:
         if include_timestamp:
             values[TableColumns.CREATED_AT] = datetime.datetime.now()
 
+        if metadata:
+            values[TableColumns.METADATA] = json.dumps(metadata)
+
         if column_mode == ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN:
             if isinstance(data, str):
-                values[single_column_name] = data
+                wrapped_dict = {"result": data}
+                values[single_column_name] = wrapped_dict
+                if table_info and f"{single_column_name}_v2" in table_info:
+                    values[f"{single_column_name}_v2"] = wrapped_dict
             else:
-                values[single_column_name] = json.dumps(data)
+                values[single_column_name] = data
+                if table_info and f"{single_column_name}_v2" in table_info:
+                    values[f"{single_column_name}_v2"] = data
         if column_mode == ColumnModes.SPLIT_JSON_INTO_COLUMNS:
             if isinstance(data, dict):
-                values.update(data)
+                values[single_column_name] = data
             elif isinstance(data, str):
                 values[single_column_name] = data
+                # Only write to v2 if it exists
+                if table_info and f"{single_column_name}_v2" in table_info:
+                    values[f"{single_column_name}_v2"] = data
             else:
-                values[single_column_name] = json.dumps(data)
+                values[single_column_name] = json.dumps(data)  # Legacy column gets JSON string
+                # Only write to v2 if it exists
+                if table_info and f"{single_column_name}_v2" in table_info:
+                    values[f"{single_column_name}_v2"] = data
+
         values[file_path_name] = file_path
         values[execution_id_name] = execution_id
         return values
@@ -272,3 +292,20 @@ class DatabaseUtils:
         except UnstractDBConnectorException as e:
             raise UnstractDBException(detail=e.detail) from e
         logger.debug(f"successfully created table {table_name} with: {sql} query")
+
+    def migrate_table_to_v2(
+            db_class: UnstractDB,
+            table_name: str,
+            column_name: str,
+            engine: Any,
+    ) -> None:
+        
+        sql_query = db_class.migrate_table_to_v2_query(table_name=table_name, column_name=column_name)
+
+        try:
+            db_class.execute_query(
+                engine=engine, sql_query=sql_query, sql_values=None, table_name=table_name
+            )
+        except UnstractDBConnectorException as e:
+            raise UnstractDBException(detail=e.detail) from e
+        logger.debug(f"successfully migrated table {table_name} with: {sql_query} query")

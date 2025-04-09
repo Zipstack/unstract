@@ -58,6 +58,18 @@ class UnstractDB(UnstractConnector, ABC):
     @staticmethod
     def python_social_auth_backend() -> str:
         return ""
+    
+    @abstractmethod
+    def get_string_type(self) -> str:
+        """
+        Child classes implement this to return the string type name for their DB.
+        """
+        pass
+
+    @abstractmethod
+    def migrate_table_to_v2_query(self, table_name: str, column_name: str) -> str:
+        """Returns the ALTER TABLE query specific to the database."""
+        pass
 
     @abstractmethod
     def get_engine(self) -> Any:
@@ -111,6 +123,7 @@ class UnstractDB(UnstractConnector, ABC):
             f"CREATE TABLE IF NOT EXISTS {table} "
             f"(id TEXT , "
             f"created_by TEXT, created_at TIMESTAMP, "
+            f"metadata TEXT, "
         )
         return sql_query
 
@@ -124,7 +137,7 @@ class UnstractDB(UnstractConnector, ABC):
         Returns:
             Any: generates a create sql query for all the columns
         """
-        PERMANENT_COLUMNS = ["created_by", "created_at"]
+        PERMANENT_COLUMNS = ["created_by", "created_at", "metadata"]
 
         sql_query = ""
         create_table_query = self.get_create_table_base_query(table=table)
@@ -200,3 +213,24 @@ class UnstractDB(UnstractConnector, ABC):
         for column_name, data_type in columns_with_types:
             column_types[column_name] = data_type
         return column_types
+    
+    def is_string_column(self, table_info: dict[str, str], column_name: str) -> bool:
+        """
+        Check if the column is a string type specific to the DB connector.
+
+        Args:
+            table_info (dict): column_name -> column_type
+            column_name (str): name of column to check
+
+        Returns:
+            bool: True if column is a string type
+        """
+        column_type = table_info.get(column_name)
+        if column_type is None:
+            return False
+        
+        # Skip migration if *_v2 column already exists
+        if f"{column_name}_v2" in table_info:
+            return False
+
+        return column_type.lower() == self.get_string_type().lower()

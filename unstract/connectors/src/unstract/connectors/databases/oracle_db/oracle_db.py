@@ -58,6 +58,9 @@ class OracleDB(UnstractDB):
     @staticmethod
     def can_read() -> bool:
         return True
+    
+    def get_string_type(self) -> str:
+        return "clob"
 
     def get_engine(self) -> Connection:
         con = oracledb.connect(
@@ -86,6 +89,8 @@ class OracleDB(UnstractDB):
             int: "NUMBER",
             float: "LONG",
             datetime.datetime: "TIMESTAMP",
+            dict: "CLOB CHECK (data IS JSON)",
+            list: "CLOB CHECK (data IS JSON)",
         }
         return mapping.get(python_type, "CLOB")
 
@@ -102,6 +107,21 @@ class OracleDB(UnstractDB):
             f"CREATE TABLE IF NOT EXISTS {table} "
             f"(id VARCHAR2(32767) , "
             f"created_by VARCHAR2(32767), created_at TIMESTAMP, "
+            f"metadata CLOB CHECK (metadata IS JSON), "
+            f"user_field_1 NUMBER(1) DEFAULT 0, "
+            f"user_field_2 NUMBER DEFAULT 0, "
+            f"user_field_3 VARCHAR2(32767) DEFAULT NULL, "
+        )
+        return sql_query
+    
+    def migrate_table_to_v2_query(self, table_name: str, column_name: str) -> str:
+        sql_query = (
+            f"ALTER TABLE {table_name} "
+            f"ADD COLUMN {column_name}_v2 CLOB CHECK (data IS JSON), "
+            f"ADD COLUMN metadata CLOB CHECK (data IS JSON), "
+            f"ADD COLUMN user_field_1 NUMBER(1) DEFAULT 0, "
+            f"ADD COLUMN user_field_2 NUMBER DEFAULT 0, "
+            f"ADD COLUMN VARCHAR2(255) DEFAULT NULL"
         )
         return sql_query
 

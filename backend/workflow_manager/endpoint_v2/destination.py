@@ -38,7 +38,9 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from backend.exceptions import UnstractFSException
 from unstract.connectors.exceptions import ConnectorError
+from unstract.connectors.databases.unstract_db import UnstractDB
 from unstract.filesystem import FileStorageType, FileSystem
+from usage_v2.helper import UsageHelper
 
 logger = logging.getLogger(__name__)
 
@@ -331,6 +333,9 @@ class DestinationConnector(BaseConnector):
             destination_configurations.get(DestinationKey.EXECUTION_ID, "execution_id")
         )
         data = self.get_result()
+
+        metadata = self.get_combined_metadata()
+
         # If data is None, don't execute CREATE or INSERT query
         if not data:
             return
@@ -340,24 +345,52 @@ class DestinationConnector(BaseConnector):
         # Don't pop out metadata in this case.
         if isinstance(data, dict):
             data.pop("metadata", None)
+
+        db_class = DatabaseUtils.get_db_class(
+            connector_id=connector_instance.connector_id,
+            connector_settings=connector_settings,
+        )
+
+        engine = db_class.get_engine()
+
+        table_info = db_class.get_information_schema(table_name=table_name)
+
+        # Check whether to migrate table to include new columns
+        if table_info:
+            is_string = db_class.is_string_column(
+                table_info=table_info,
+                column_name=single_column_name
+            )
+            if is_string:
+                DatabaseUtils.migrate_table_to_v2(
+                    db_class=db_class,
+                    table_name=table_name,
+                    column_name=single_column_name,
+                    engine=engine
+                )
+
         values = DatabaseUtils.get_columns_and_values(
             column_mode_str=column_mode,
             data=data,
+            metadata=metadata,
             include_timestamp=include_timestamp,
             include_agent=include_agent,
             agent_name=agent_name,
             single_column_name=single_column_name,
             file_path_name=file_path_name,
             execution_id_name=execution_id_name,
+            table_info=table_info,
             file_path=input_file_path,
             execution_id=self.execution_id,
         )
         engine = None
         try:
+    
             db_class = DatabaseUtils.get_db_class(
-                connector_id=connector_instance.connector_id,
-                connector_settings=connector_settings,
-            )
+                    connector_id=connector_instance.connector_id,
+                    connector_settings=connector_settings,
+                )
+    
             engine = db_class.get_engine()
             DatabaseUtils.create_table_if_not_exists(
                 db_class=db_class,
@@ -365,18 +398,20 @@ class DestinationConnector(BaseConnector):
                 table_name=table_name,
                 database_entry=values,
             )
+    
             sql_columns_and_values = DatabaseUtils.get_sql_query_data(
-                conn_cls=db_class,
-                table_name=table_name,
-                values=values,
-            )
+                    conn_cls=db_class,
+                    table_name=table_name,
+                    values=values,
+                )
+    
             DatabaseUtils.execute_write_query(
-                db_class=db_class,
-                engine=engine,
-                table_name=table_name,
-                sql_keys=list(sql_columns_and_values.keys()),
-                sql_values=list(sql_columns_and_values.values()),
-            )
+                    db_class=db_class,
+                    engine=engine,
+                    table_name=table_name,
+                    sql_keys=list(sql_columns_and_values.keys()),
+                    sql_values=list(sql_columns_and_values.values()),
+                )
         except ConnectorError as e:
             error_msg = f"Database connection failed for {input_file_path}: {str(e)}"
             logger.error(error_msg)
@@ -537,6 +572,27 @@ class DestinationConnector(BaseConnector):
         metadata: dict[str, Any] = self.get_workflow_metadata()
 
         return metadata
+
+    def get_combined_metadata(self) -> dict[str, Any]:
+        """Get combined workflow and usage metadata.
+        
+        Returns:
+            dict[str, Any]: Combined metadata including workflow and usage data.
+        """
+        # Get workflow metadata
+        workflow_metadata = self.get_metadata()
+        
+        # Get file_execution_id from metadata
+        file_execution_id = workflow_metadata.get('file_execution_id')
+        if not file_execution_id:
+            return workflow_metadata
+            
+        usage_metadata = UsageHelper.get_aggregated_token_count(file_execution_id)
+        
+        # Combine both metadata
+        workflow_metadata['usage'] = usage_metadata
+        
+        return workflow_metadata
 
     def delete_execution_directory(self) -> None:
         """Delete the execution directory.
