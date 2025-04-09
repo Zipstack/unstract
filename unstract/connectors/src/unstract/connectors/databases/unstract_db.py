@@ -58,7 +58,7 @@ class UnstractDB(UnstractConnector, ABC):
     @staticmethod
     def python_social_auth_backend() -> str:
         return ""
-    
+
     @abstractmethod
     def get_string_type(self) -> str:
         """
@@ -213,7 +213,7 @@ class UnstractDB(UnstractConnector, ABC):
         for column_name, data_type in columns_with_types:
             column_types[column_name] = data_type
         return column_types
-    
+
     def is_string_column(self, table_info: dict[str, str], column_name: str) -> bool:
         """
         Check if the column is a string type specific to the DB connector.
@@ -228,7 +228,7 @@ class UnstractDB(UnstractConnector, ABC):
         column_type = table_info.get(column_name)
         if column_type is None:
             return False
-        
+
         # Skip migration if *_v2 column already exists
         if f"{column_name}_v2" in table_info:
             return False

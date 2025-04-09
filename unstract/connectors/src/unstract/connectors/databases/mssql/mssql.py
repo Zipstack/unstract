@@ -1,6 +1,6 @@
+import datetime
 import logging
 import os
-import datetime
 from typing import Any
 
 import pymssql
@@ -57,7 +57,7 @@ class MSSQL(UnstractDB):
     @staticmethod
     def can_read() -> bool:
         return True
-    
+
     def get_string_type(self) -> str:
         return "text"
 
@@ -113,7 +113,7 @@ class MSSQL(UnstractDB):
             f"user_field_3 TEXT DEFAULT NULL, "
         )
         return sql_query
-    
+
     def migrate_table_to_v2_query(self, table_name: str, column_name: str) -> str:
         sql_query = (
             f"ALTER TABLE {table_name} "

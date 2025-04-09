@@ -172,7 +172,9 @@ class DatabaseUtils:
                 if table_info and f"{single_column_name}_v2" in table_info:
                     values[f"{single_column_name}_v2"] = data
             else:
-                values[single_column_name] = json.dumps(data)  # Legacy column gets JSON string
+                values[single_column_name] = json.dumps(
+                    data
+                )  # Legacy column gets JSON string
                 # Only write to v2 if it exists
                 if table_info and f"{single_column_name}_v2" in table_info:
                     values[f"{single_column_name}_v2"] = data
@@ -294,18 +296,25 @@ class DatabaseUtils:
         logger.debug(f"successfully created table {table_name} with: {sql} query")
 
     def migrate_table_to_v2(
-            db_class: UnstractDB,
-            table_name: str,
-            column_name: str,
-            engine: Any,
+        db_class: UnstractDB,
+        table_name: str,
+        column_name: str,
+        engine: Any,
     ) -> None:
-        
-        sql_query = db_class.migrate_table_to_v2_query(table_name=table_name, column_name=column_name)
+
+        sql_query = db_class.migrate_table_to_v2_query(
+            table_name=table_name, column_name=column_name
+        )
 
         try:
             db_class.execute_query(
-                engine=engine, sql_query=sql_query, sql_values=None, table_name=table_name
+                engine=engine,
+                sql_query=sql_query,
+                sql_values=None,
+                table_name=table_name,
             )
         except UnstractDBConnectorException as e:
             raise UnstractDBException(detail=e.detail) from e
-        logger.debug(f"successfully migrated table {table_name} with: {sql_query} query")
+        logger.debug(
+            f"successfully migrated table {table_name} with: {sql_query} query"
+        )

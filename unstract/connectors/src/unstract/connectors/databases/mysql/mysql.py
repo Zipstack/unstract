@@ -48,7 +48,7 @@ class MySQL(UnstractDB, MysqlHandler):
     @staticmethod
     def can_read() -> bool:
         return True
-    
+
     def get_string_type(self) -> str:
         return "longtext"
 
@@ -84,7 +84,7 @@ class MySQL(UnstractDB, MysqlHandler):
             f"user_field_3 LONGTEXT DEFAULT NULL, "
         )
         return sql_query
-    
+
     def migrate_table_to_v2_query(self, table_name: str, column_name: str) -> str:
         sql_query = (
             f"ALTER TABLE {table_name} "
