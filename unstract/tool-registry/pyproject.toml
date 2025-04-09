@@ -11,7 +11,7 @@ dependencies = [
     "docker~=6.1.3",
     "jsonschema~=4.18.2",
     "PyYAML~=6.0.1",
-    "unstract-sdk",
+    "unstract-sdk~=0.70.0",
     # ! IMPORTANT!
     # Local dependencies usually need to be added as:
     # https://pdm-project.org/latest/usage/dependency/#local-dependencies
@@ -27,7 +27,6 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-unstract-sdk = { git = "https://github.com/Zipstack/unstract-sdk", branch = "python-upgrade" }
 unstract-tool-sandbox = { path = "../tool-sandbox", editable = true }
 unstract-flags = { path = "../flags", editable = true }
 

@@ -3770,7 +3770,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "unstract-sdk", git = "https://github.com/Zipstack/unstract-sdk?branch=python-upgrade" }]
+requires-dist = [{ name = "unstract-sdk", specifier = "~=0.70.0" }]
 
 [[package]]
 name = "unstract-flags"
@@ -3790,7 +3790,7 @@ requires-dist = [
 [[package]]
 name = "unstract-sdk"
 version = "0.70.0"
-source = { git = "https://github.com/Zipstack/unstract-sdk?branch=python-upgrade#3c6547470df16412f7397014d60efd26da54652b" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filetype" },
     { name = "httpx" },
@@ -3828,6 +3828,10 @@ dependencies = [
     { name = "tiktoken" },
     { name = "transformers" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/00/f7/e88481d199847003a173c8355b4664fa8b272cfe0b99ba425703e75c4a70/unstract_sdk-0.70.0.tar.gz", hash = "sha256:98ce28e8b1e88b4c43ebc1fbc947cafc9efae0b7914043fcd969061169947d1d", size = 2356341 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/21/a3/92240dd060544348d0d45b5560d064aa63e8c2daee25159dce533b1a137b/unstract_sdk-0.70.0-py3-none-any.whl", hash = "sha256:583f6ec793594d3113379f175883597a8af7d58e9faab5d4ff02f31bf8bf3510", size = 264025 },
+]
 
 [[package]]
 name = "unstract-tool-registry"
@@ -3848,7 +3852,7 @@ requires-dist = [
     { name = "jsonschema", specifier = "~=4.18.2" },
     { name = "pyyaml", specifier = "~=6.0.1" },
     { name = "unstract-flags", editable = "../flags" },
-    { name = "unstract-sdk", git = "https://github.com/Zipstack/unstract-sdk?branch=python-upgrade" },
+    { name = "unstract-sdk", specifier = "~=0.70.0" },
     { name = "unstract-tool-sandbox", editable = "../tool-sandbox" },
 ]
 
