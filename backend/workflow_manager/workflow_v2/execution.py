@@ -146,8 +146,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         workflow_execution = WorkflowExecution.objects.create(
             id=execution_id if execution_id else uuid.uuid4(),
             pipeline_id=pipeline_id,
-            workflow_id=workflow_id,
-            related_workflow=Workflow.objects.get(id=workflow_id),
+            workflow=Workflow.objects.get(id=workflow_id),
             execution_mode=mode,
             execution_method=execution_method,
             execution_type=execution_type,
