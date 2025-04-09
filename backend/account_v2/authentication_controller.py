@@ -39,7 +39,6 @@ from django.db.utils import IntegrityError
 from django.middleware import csrf
 from django.shortcuts import redirect
 from logs_helper.log_service import LogService
-from plugins.authentication.auth0.auth0_data_models import Auth0Organization
 from rest_framework import status
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -153,16 +152,14 @@ class AuthenticationController:
 
         return response
 
-    def get_organizations_with_paginazation(
-        self, request: Request
-    ) -> list[Auth0Organization]:
+    def get_organizations_with_paginazation(self, request: Request) -> Any:
         """Fetch all Auth0 organizations using pagination.
 
         This function wraps the call to `get_organizations_with_pagination`
         from the AuthHelper and returns the list of organizations.
 
         Returns:
-            list[Auth0Organization]: list of Auth0Organization
+            Any: list of Organizations
         """
         try:
             organizations = self.auth_service.get_organizations_with_pagination()
