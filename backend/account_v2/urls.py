@@ -1,8 +1,8 @@
 from account_v2.views import (
     callback,
     create_organization,
+    get_all_tenent_organizations,
     get_organizations,
-    get_organizations_with_pagination,
     get_session_data,
     login,
     logout,
@@ -19,9 +19,9 @@ urlpatterns = [
     path("session", get_session_data, name="session"),
     path("organization", get_organizations, name="get_organizations"),
     path(
-        "get_organizations_with_pagination",
-        get_organizations_with_pagination,
-        name="get_organizations_with_pagination",
+        "get_all_tenent_organizations",
+        get_all_tenent_organizations,
+        name="get_all_tenent_organizations",
     ),
     path("organization/<str:id>/set", set_organization, name="set_organization"),
     path("organization/create", create_organization, name="create_organization"),

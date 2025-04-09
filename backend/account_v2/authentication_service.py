@@ -218,7 +218,7 @@ class AuthenticationService:
         )
         return [organizationData]
 
-    def get_organizations_with_pagination(self) -> list[OrganizationData]:
+    def get_all_tenent_organizations(self) -> list[OrganizationData]:
         """Fetch all organizations with pagination.
 
         This method retrieves all organizations using pagination to handle

@@ -88,7 +88,7 @@ def get_organizations(request: Request) -> Response:
 
 
 @api_view(["GET"])
-def get_organizations_with_pagination(request: Request) -> Response:
+def get_all_tenent_organizations(request: Request) -> Response:
     """get_organizations.
 
     Retrieve the list of organizations to which the user belongs.
@@ -99,7 +99,7 @@ def get_organizations_with_pagination(request: Request) -> Response:
         Response: A list of organizations with associated information.
     """
     auth_controller = AuthenticationController()
-    organizations = auth_controller.get_organizations_with_paginazation(request)
+    organizations = auth_controller.get_all_tenent_organizations(request)
     serializer = Auth0OrganizationSerializer(organizations, many=True)
     return Response(serializer.data)
 
