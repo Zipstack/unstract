@@ -1,4 +1,3 @@
-import os
 from logging import Logger
 from typing import Any, Optional
 
@@ -171,18 +170,17 @@ class AnswerPromptService:
             raise APIError(str(e)) from e
 
     @staticmethod
-    def extract_table(
+    def extract_line_item(
         output: dict[str, Any],
         structured_output: dict[str, Any],
         llm: LLM,
-        enforce_type: str,
         execution_source: str,
     ) -> dict[str, Any]:
         table_settings = output[PSKeys.TABLE_SETTINGS]
         table_extractor: dict[str, Any] = PluginManager().get_plugin("table-extractor")
         if not table_extractor:
             raise APIError(
-                "Unable to extract table details. "
+                "Unable to extract line-item details. "
                 "Please contact admin to resolve this issue."
             )
         fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
@@ -200,7 +198,6 @@ class AnswerPromptService:
             answer = table_extractor["entrypoint_cls"].extract_large_table(
                 llm=llm,
                 table_settings=table_settings,
-                enforce_type=enforce_type,
                 fs_instance=fs_instance,
             )
             structured_output[output[PSKeys.NAME]] = answer
@@ -208,73 +205,5 @@ class AnswerPromptService:
             # Hence returning the result
             return structured_output
         except table_extractor["exception_cls"] as e:
-            msg = f"Couldn't extract table. {e}"
-            raise APIError(message=msg)
-
-    @staticmethod
-    def extract_line_item(
-        tool_settings: dict[str, Any],
-        output: dict[str, Any],
-        structured_output: dict[str, Any],
-        llm: LLM,
-        file_path: str,
-        metadata: Optional[dict[str, str]],
-        execution_source: str,
-    ) -> dict[str, Any]:
-        line_item_extraction_plugin: dict[str, Any] = PluginManager().get_plugin(
-            "line-item-extraction"
-        )
-        if not line_item_extraction_plugin:
-            raise APIError(PSKeys.PAID_FEATURE_MSG)
-
-        extract_file_path = file_path
-        if execution_source == ExecutionSource.IDE.value:
-            # Adjust file path to read from the extract folder
-            base_name = os.path.splitext(os.path.basename(file_path))[0]
-            extract_file_path = os.path.join(
-                os.path.dirname(file_path), "extract", f"{base_name}.txt"
-            )
-
-        # Read file content into context
-        fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
-        if execution_source == ExecutionSource.IDE.value:
-            fs_instance = EnvHelper.get_storage(
-                storage_type=StorageType.PERMANENT,
-                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
-            )
-        if execution_source == ExecutionSource.TOOL.value:
-            fs_instance = EnvHelper.get_storage(
-                storage_type=StorageType.SHARED_TEMPORARY,
-                env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
-            )
-
-        if not fs_instance.exists(extract_file_path):
-            raise FileNotFoundError(
-                f"The file at path '{extract_file_path}' does not exist."
-            )
-        context = fs_instance.read(path=extract_file_path, encoding="utf-8", mode="r")
-
-        prompt = AnswerPromptService.construct_prompt(
-            preamble=tool_settings.get(PSKeys.PREAMBLE, ""),
-            prompt=output["promptx"],
-            postamble=tool_settings.get(PSKeys.POSTAMBLE, ""),
-            grammar_list=tool_settings.get(PSKeys.GRAMMAR, []),
-            context=context,
-            platform_postamble="",
-        )
-
-        try:
-            line_item_extraction = line_item_extraction_plugin["entrypoint_cls"](
-                llm=llm,
-                tool_settings=tool_settings,
-                output=output,
-                prompt=prompt,
-                structured_output=structured_output,
-            )
-            answer = line_item_extraction.run()
-            structured_output[output[PSKeys.NAME]] = answer
-            metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = [context]
-            return structured_output
-        except line_item_extraction_plugin["exception_cls"] as e:
             msg = f"Couldn't extract table. {e}"
             raise APIError(message=msg)
