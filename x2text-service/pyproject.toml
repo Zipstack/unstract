@@ -1,7 +1,7 @@
 [project]
 name = "unstract-x2text-service"
 version = "0.1.0"
-description = "Default template for PDM package"
+description = "X2TEXT Service"
 authors = [{ name = "Zipstack inc", email = "devsupport@zipstack.com" }]
 requires-python = ">=3.9,<3.13"
 readme = "README.md"
