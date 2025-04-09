@@ -218,6 +218,25 @@ class AuthenticationService:
         )
         return [organizationData]
 
+    def get_organizations_with_pagination(self) -> list[OrganizationData]:
+        """Fetch all organizations with pagination.
+
+        This method retrieves all organizations using pagination to handle
+        potentially large result sets. In the base implementation, it returns
+        a default organization in a list format compatible with Auth0Organization.
+
+        Returns:
+            list: A list of Auth0Organization objects
+        """
+        organization_data = {
+            "id": self.default_organization.organization_id,
+            "display_name": self.default_organization.display_name,
+            "name": self.default_organization.name,
+            "metadata": {},
+        }
+
+        return [organization_data]
+
     def get_organizations_by_user_id(self, id: str) -> list[OrganizationData]:
         organizationData: OrganizationData = OrganizationData(
             id=self.default_organization.organization_id,
