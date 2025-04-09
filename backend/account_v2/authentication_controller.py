@@ -39,6 +39,8 @@ from django.db.utils import IntegrityError
 from django.middleware import csrf
 from django.shortcuts import redirect
 from logs_helper.log_service import LogService
+from plugins.authentication.auth0.auth0_data_models import Auth0Organization
+from plugins.authentication.auth0.auth0_helper import Auth0Helper
 from rest_framework import status
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -110,7 +112,6 @@ class AuthenticationController:
         Returns:
             list[OrganizationData]: _description_
         """
-
         try:
             organizations = self.auth_service.user_organizations(request)
         except Exception as ex:
@@ -152,6 +153,25 @@ class AuthenticationController:
             response.set_cookie(Cookie.CSRFTOKEN, csrf_token)
 
         return response
+
+    def get_organizations_with_paginazation(
+        self, request: Request
+    ) -> list[Auth0Organization]:
+        """Fetch all Auth0 organizations using pagination.
+
+        This function wraps the call to `get_all_organizations_with_pagination`
+        from the AuthHelper and returns the list of organizations.
+
+        Returns:
+            list[Auth0Organization]: list of Auth0Organization
+        """
+        auth0Helper: Auth0Helper = Auth0Helper()
+
+        try:
+            organizations = auth0Helper.get_all_organizations_with_pagination()
+            return organizations
+        except Exception as ex:
+            raise ex
 
     def set_user_organization(self, request: Request, organization_id: str) -> Response:
         user: User = request.user

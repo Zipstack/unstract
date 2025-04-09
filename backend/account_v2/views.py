@@ -14,6 +14,7 @@ from account_v2.serializer import (
     OrganizationSignupSerializer,
     UserSessionResponseSerializer,
 )
+from plugins.authentication.auth0.serializer import Auth0OrganizationSerializer
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
@@ -84,6 +85,23 @@ def get_organizations(request: Request) -> Response:
     """
     auth_controller = AuthenticationController()
     return auth_controller.user_organizations(request)
+
+
+@api_view(["GET"])
+def get_organizations_with_pagination(request: Request) -> Response:
+    """get_organizations.
+
+    Retrieve the list of organizations to which the user belongs.
+    Args:
+        request (HttpRequest): _description_
+
+    Returns:
+        Response: A list of organizations with associated information.
+    """
+    auth_controller = AuthenticationController()
+    organizations = auth_controller.get_organizations_with_paginazation(request)
+    serializer = Auth0OrganizationSerializer(organizations, many=True)
+    return Response(serializer.data)
 
 
 @api_view(["POST"])
