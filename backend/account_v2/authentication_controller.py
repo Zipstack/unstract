@@ -152,17 +152,6 @@ class AuthenticationController:
 
         return response
 
-    def get_all_tenent_organizations(self, request: Request) -> Any:
-        """Fetch all Auth0 organizations using pagination.
-
-        This function wraps the call to `get_all_tenent_organizations`
-        from the AuthHelper and returns the list of organizations.
-
-        Returns:
-            Any: list of Organizations
-        """
-        return self.auth_service.get_all_tenent_organizations()
-
     def set_user_organization(self, request: Request, organization_id: str) -> Response:
         user: User = request.user
         new_organization = False
