@@ -1,5 +1,6 @@
 import os
 from logging import Logger
+from pathlib import Path
 from typing import Any, Optional
 
 from flask import current_app as app
@@ -138,7 +139,7 @@ class AnswerPromptService:
                         env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
                     )
                 highlight_data = highlight_data_plugin["entrypoint_cls"](
-                    file_path=file_path,
+                    file_path=Path(file_path),
                     fs_instance=fs_instance,
                 ).run
             completion = llm.complete(
