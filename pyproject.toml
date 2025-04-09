@@ -37,7 +37,7 @@ hook-check-django-migrations = [
     "psycopg2-binary==2.9.9",
     "python-dotenv==1.0.0",
     "python-magic==0.4.27",
-    # "unstract-sdk~=0.62.1",
+    "unstract-sdk~=0.70.0",
     "unstract-connectors",
     "unstract-core",
     "unstract-flags",
@@ -45,11 +45,9 @@ hook-check-django-migrations = [
     "unstract-tool-sandbox",
     "unstract-workflow-execution",
     "unstract-filesystem",
-    "unstract-sdk",
 ]
 
 [tool.uv.sources]
-unstract-sdk = { git = "https://github.com/Zipstack/unstract-sdk", branch = "python-upgrade" }
 unstract-filesystem = { path = "./unstract/filesystem", editable = true }
 unstract-workflow-execution = { path = "./unstract/workflow-execution", editable = true }
 unstract-tool-sandbox = { path = "./unstract/tool-sandbox", editable = true }
