@@ -20,8 +20,17 @@ ENV \
 # Install system dependencies
 RUN apt-get update; \
     apt-get --no-install-recommends install -y \
+    autoconf \
+    automake \
+    libtool \
+    build-essential \
+    cmake \
+    ninja-build \
+    pkg-config \
+    python3-dev \
     # unstract sdk
-    build-essential libmagic-dev pkg-config \
+    libmagic-dev freetds-dev libssl-dev libkrb5-dev gcc \
+    g++ \
     # git url
     git; \
     apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*;
@@ -44,7 +53,14 @@ RUN uv sync --frozen \
     # Install opentelemetry for instrumentation
     && uv pip install --no-cache opentelemetry-distro \
     opentelemetry-exporter-otlp \
+    && uv pip install --pre --no-binary :all: pymssql --no-cache --force-reinstall \
     && uv run opentelemetry-bootstrap -a install
+
+# Install Python packages with specific flags
+RUN uv pip uninstall numpy \
+    && uv pip uninstall pandas scipy scikit-learn \
+    && uv pip install --no-cache-dir --no-binary :all: numpy \
+    && uv pip install --no-cache-dir pandas scipy scikit-learn
 
 EXPOSE 8000
 

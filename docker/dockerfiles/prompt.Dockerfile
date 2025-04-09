@@ -68,6 +68,9 @@ RUN . .venv/bin/activate && \
     done && \
     mkdir prompt-studio-data
 
+
+RUN uv sync --group deploy
+
 EXPOSE 3003
 
 # Default command

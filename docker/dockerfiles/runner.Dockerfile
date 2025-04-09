@@ -14,9 +14,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     BUILD_PACKAGES_PATH=unstract \
     APP_HOME=/app
 
-
 RUN apt-get update \
-    && apt-get --no-install-recommends install -y docker \
+    && apt-get --no-install-recommends install -y docker git\
     && apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
 
@@ -31,6 +30,7 @@ COPY ${BUILD_CONTEXT_PATH}/uv.lock .
 # Copy local dependency packages
 COPY ${BUILD_PACKAGES_PATH}/core /unstract/core
 COPY ${BUILD_PACKAGES_PATH}/flags /unstract/flags
+COPY ${BUILD_CONTEXT_PATH} /app/
 
 # Create virtual environment and install dependencies in one layer
 RUN uv sync --frozen \
@@ -39,7 +39,6 @@ RUN uv sync --frozen \
     opentelemetry-exporter-otlp \
     && uv run opentelemetry-bootstrap -a install
 
-COPY ${BUILD_CONTEXT_PATH} /app/
 
 RUN \
     uv pip install --system; \

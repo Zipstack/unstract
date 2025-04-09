@@ -20,5 +20,5 @@ dependencies = [
 deploy = [
     "gunicorn>=21.2.0",
     "opentelemetry-distro~=0.52b1",
-    "opentelemetry-exporter-otlp~=1.31.1"
+    "opentelemetry-exporter-otlp~=1.31.1",
 ]

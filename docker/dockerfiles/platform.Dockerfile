@@ -42,7 +42,9 @@ COPY --chmod=755 ${BUILD_CONTEXT_PATH}/uv.lock .
 # Copy local dependency packages
 # COPY --chown=unstract ${BUILD_PACKAGES_PATH} /unstract
 COPY --chown=unstract ${BUILD_PACKAGES_PATH}/flags /unstract/flags
-
+# Read and execute access to non-root user to avoid security hotspot
+# Write access to specific sub-directory need to be explicitly provided if required
+COPY --chmod=755 ${BUILD_CONTEXT_PATH} /app/
 
 # Switch to non-root user
 USER ${APP_USER}
@@ -54,9 +56,6 @@ RUN uv sync --frozen \
     opentelemetry-exporter-otlp \
     && uv run opentelemetry-bootstrap -a install
 
-# Read and execute access to non-root user to avoid security hotspot
-# Write access to specific sub-directory need to be explicitly provided if required
-COPY --chmod=755 ${BUILD_CONTEXT_PATH} /app/
 
 EXPOSE 3001
 
