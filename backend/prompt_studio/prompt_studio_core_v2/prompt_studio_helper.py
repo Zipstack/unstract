@@ -377,6 +377,13 @@ class PromptStudioHelper:
             fs=fs_instance,
             tool=util,
         )
+        if DocumentIndexingService.is_document_indexing(
+            org_id=org_id, user_id=user_id, doc_id_key=doc_id
+        ):
+            return {
+                "status": IndexingStatus.PENDING_STATUS.value,
+                "output": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
+            }
         extracted_text = PromptStudioHelper.dynamic_extractor(
             profile_manager=default_profile,
             file_path=file_path,
@@ -827,6 +834,13 @@ class PromptStudioHelper:
             fs=fs_instance,
             tool=util,
         )
+        if DocumentIndexingService.is_document_indexing(
+            org_id=org_id, user_id=user_id, doc_id_key=doc_id
+        ):
+            return {
+                "status": IndexingStatus.PENDING_STATUS.value,
+                "output": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
+            }
         logger.info(f"Extracting text from {file_path} for {doc_id}")
         extracted_text = PromptStudioHelper.dynamic_extractor(
             profile_manager=profile_manager,
