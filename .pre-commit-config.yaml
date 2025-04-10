@@ -49,11 +49,11 @@ repos:
         entry: uv run pycln
         args: [--config=pyproject.toml]
 
-  - repo: https://github.com/pycqa/docformatter
-    rev: v1.7.5
-    hooks:
-      - id: docformatter
-        language: python
+  # - repo: https://github.com/pycqa/docformatter
+  #   rev: v1.7.5
+  #   hooks:
+  #     - id: docformatter
+  #       language: python
 
   - repo: https://github.com/asottile/pyupgrade
     rev: v3.17.0
