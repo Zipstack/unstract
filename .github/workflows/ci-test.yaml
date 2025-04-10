@@ -33,7 +33,7 @@ jobs:
             ${{ runner.os }}-tox-uv-
 
       - name: Install tox with UV
-        run: uv pip install tox tox-uv pytest
+        run: uv pip install tox tox-uv pytest pytest-md-report
 
       - name: Run tox
         id: tox
