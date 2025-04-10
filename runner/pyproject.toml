@@ -55,9 +55,9 @@ cmd = "pytest -s -v"
 env_file = "tests/.env"
 help = "Runs pytests for the Unstract tool runner"
 
-# [build-system]
-# requires = ["hatchling"]
-# build-backend = "hatchling.build"
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-# [tool.hatch.build.targets.wheel]
-# packages = ["src/unstract"]
+[tool.hatch.build.targets.wheel]
+packages = ["src/unstract"]
