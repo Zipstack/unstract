@@ -1,6 +1,5 @@
 import json
 import traceback
-from typing import Union
 
 from flask import Blueprint, Response, jsonify, request
 from werkzeug.exceptions import HTTPException
