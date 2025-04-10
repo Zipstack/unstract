@@ -31,7 +31,7 @@ RUN apt-get update && \
     chown -R ${APP_USER}:${APP_USER} ${APP_HOME}
 
 # Install uv package manager
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /uvx /bin/
 
 WORKDIR ${APP_HOME}
 
