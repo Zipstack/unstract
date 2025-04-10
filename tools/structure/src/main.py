@@ -179,7 +179,11 @@ class StructureTool(BaseTool):
                         payload[SettingsKeys.OUTPUTS] = outputs
                         payload[SettingsKeys.FILE_HASH] = summarize_file_hash
                         break
-                    if reindex or not summarize_as_source:
+                    if (
+                        reindex
+                        or not summarize_as_source
+                        and not output[SettingsKeys.CHUNK_SIZE] == 0
+                    ):
                         self.stream_log("Sucessfully extracted text, indexing..")
                         STHelper.dynamic_indexing(
                             tool_settings=tool_settings,
