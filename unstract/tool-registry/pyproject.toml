@@ -3,7 +3,7 @@ name = "unstract-tool-registry"
 version = "0.0.1"
 description = "Unstract's registry of tools to be used in workflows."
 authors = [{ name = "Zipstack Inc.", email = "devsupport@zipstack.com" }]
-requires-python = ">=3.9,<3.13"
+requires-python = ">=3.12,<3.13"
 readme = "README.md"
 # license = {text = "MIT"}
 

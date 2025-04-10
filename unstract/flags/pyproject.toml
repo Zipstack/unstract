@@ -3,7 +3,7 @@ name = "unstract-flags"
 version = "0.0.1"
 description = "Unstract's feature flags package."
 authors = [{ name = "Zipstack Inc.", email = "devsupport@zipstack.com" }]
-requires-python = ">=3.9,<3.13"
+requires-python = ">=3.12,<3.13"
 readme = "README.md"
 #license = {text = "MIT"}
 dependencies = ["grpcio-tools<=1.60.0", "grpcio<=1.60.0"]

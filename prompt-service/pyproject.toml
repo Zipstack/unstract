@@ -3,7 +3,7 @@ name = "unstract-prompt-service"
 version = "0.0.1"
 description = "Unstract's prompt studio helper"
 authors = [{ name = "Zipstack Inc.", email = "devsupport@zipstack.com" }]
-requires-python = ">=3.9,<3.13"
+requires-python = ">=3.12,<3.13"
 readme = "README.md"
 # license = {text = "MIT"}
 

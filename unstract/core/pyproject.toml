@@ -5,7 +5,7 @@ description = "Core library that helps with executing workflows."
 authors = [
     {name = "Zipstack Inc.", email = "devsupport@zipstack.com"}
 ]
-requires-python = ">=3.9,<3.13"
+requires-python = ">=3.12,<3.13"
 readme = "README.md"
 classifiers = [
   "Programming Language :: Python"

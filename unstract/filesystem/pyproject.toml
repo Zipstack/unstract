@@ -3,7 +3,7 @@ name = "unstract-filesystem"
 version = "0.0.1"
 description = "Unstract filesystem package"
 authors = [{ name = "Zipstack Inc.", email = "devsupport@zipstack.com" }]
-requires-python = ">=3.9,<3.13"
+requires-python = ">=3.12,<3.13"
 readme = "README.md"
 
 dependencies = ["unstract-sdk~=0.70.0"]

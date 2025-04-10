@@ -6,7 +6,7 @@ readme = "README.md"
 urls = { Homepage = "https://unstract.com", Source = "https://github.com/Zipstack/unstract/tree/main/unstract/connectors" }
 license = { text = "AGPL v3" }
 authors = [{ name = "Zipstack Inc.", email = "devsupport@zipstack.com" }]
-requires-python = ">=3.9,<3.13"
+requires-python = ">=3.12,<3.13"
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",

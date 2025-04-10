@@ -3,7 +3,7 @@ name = "unstract-platform-service"
 version = "0.0.1"
 description = "Helps tools interact and retrieve details from the Unstract platform through the Unstract SDK"
 authors = [{ name = "Zipstack Inc.", email = "devsupport@zipstack.com" }]
-requires-python = ">=3.9,<3.13"
+requires-python = ">=3.12,<3.13"
 readme = "README.md"
 license = { text = "MIT" }
 
