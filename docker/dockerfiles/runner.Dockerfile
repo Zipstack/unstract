@@ -12,7 +12,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/unstract \
     BUILD_CONTEXT_PATH=runner \
     BUILD_PACKAGES_PATH=unstract \
-    APP_HOME=/app
+    APP_HOME=/app \
+    # OpenTelemetry configuration (disabled by default, enable in docker-compose)
+    OTEL_TRACES_EXPORTER=none \
+    OTEL_METRICS_EXPORTER=none \
+    OTEL_LOGS_EXPORTER=none \
+    OTEL_SERVICE_NAME=unstract_runner
 
 RUN apt-get update \
     && apt-get --no-install-recommends install -y docker git\

@@ -1,12 +1,10 @@
-import logging
 from enum import Enum
 from typing import Any, Optional
 
 import requests as pyrequests
+from flask import current_app as app
 from requests.exceptions import RequestException
-from unstract.prompt_service.exceptions import APIError
-
-logger = logging.getLogger(__name__)
+from unstract.prompt_service.exceptions import APIError, BadRequest, MissingFieldError
 
 
 class HTTPMethod(str, Enum):
@@ -43,8 +41,18 @@ def make_http_request(
         )
         return return_val
     except RequestException as e:
-        logger.error(f"HTTP request error: {e}")
+        app.logger.error(f"HTTP request error: {e}")
         raise APIError(f"Error occured while invoking POST API Variable : {str(e)}")
     except Exception as e:
-        logger.error(f"An unexpected error occurred: {e}")
+        app.logger.error(f"An unexpected error occurred: {e}")
         raise e
+
+
+def validate_request_payload(payload, required_fields):
+    if not payload:
+        raise BadRequest()
+
+    # Validate required fields
+    missing_fields = [field for field in required_fields if field not in payload]
+    if missing_fields:
+        raise MissingFieldError(missing_fields)

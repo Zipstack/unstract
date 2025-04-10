@@ -18,7 +18,8 @@ dependencies = [
 
 [dependency-groups]
 deploy = [
-    "gunicorn>=21.2.0",
+    "gunicorn[gevent]~=23.0",
+    # OpenTelemetry for tracing and profiling
     "opentelemetry-distro~=0.52b1",
     "opentelemetry-exporter-otlp~=1.31.1",
 ]

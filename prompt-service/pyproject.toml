@@ -24,20 +24,22 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-# unstract-sdk = { path = "/Users/jaseemjas/Projects/Unstract/unstract-sdk", editable = true }
-# unstract-sdk = { git = "https://github.com/Zipstack/unstract-sdk", branch = "python-upgrade" }
 unstract-flags = { path = "../unstract/flags", editable = true }
 unstract-core = { path = "../unstract/core", editable = true }
 
-
 [dependency-groups]
-deploy = ["gunicorn[gevent]>=21.2.0"]
 test = [
     "pytest~=8.0.1",
     "pytest-dotenv==0.5.2",
     "pytest-mock~=3.14.0",
     "python-dotenv==1.0.0",
     "flask-WTF~=1.1",
+]
+deploy = [
+    "gunicorn[gevent]~=23.0",
+    # OpenTelemetry for tracing and profiling
+    "opentelemetry-distro",
+    "opentelemetry-exporter-otlp",
 ]
 
 [build-system]
@@ -46,3 +48,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/unstract"]
+
+# [tool.pdm.scripts]
+# prompt_service.cmd = "flask --app src/unstract/prompt_service/run.py run --port 3003"
+# prompt_service.env_file = ".env"
+# prompt_service.help = "Runs the Unstract prompt service"

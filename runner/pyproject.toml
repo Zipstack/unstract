@@ -16,7 +16,6 @@ dependencies = [
     "unstract-flags",
 ]
 
-
 [dependency-groups]
 dev = [
     "unstract-core[flask]",
@@ -26,8 +25,12 @@ dev = [
     "pytest-md-report>=0.6.2",
     "poethepoet>=0.33.1",
 ]
-
-deploy = ["gunicorn[gevent]>=21.2.0"]
+deploy = [
+    "gunicorn[gevent]~=23.0",
+    # OpenTelemetry for tracing and profiling
+    "opentelemetry-distro",
+    "opentelemetry-exporter-otlp",
+]
 
 [tool.uv.sources]
 unstract-flags = { path = "../unstract/flags", editable = true }

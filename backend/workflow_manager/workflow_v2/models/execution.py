@@ -6,8 +6,11 @@ from typing import Optional
 from api_v2.models import APIDeployment
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
+from django.db.models import QuerySet, Sum
 from pipeline_v2.models import Pipeline
 from tags.models import Tag
+from usage_v2.constants import UsageKeys
+from usage_v2.models import Usage
 from utils.common_utils import CommonUtils
 from utils.models.base_model import BaseModel
 from workflow_manager.workflow_v2.enums import ExecutionStatus
@@ -19,7 +22,48 @@ logger = logging.getLogger(__name__)
 EXECUTION_ERROR_LENGTH = 256
 
 
+class WorkflowExecutionManager(models.Manager):
+    """Custom manager for WorkflowExecution model to handle user-specific filtering."""
+
+    def for_user(self, user) -> QuerySet:
+        """Filter user's workflow executions.
+        Show those belonging to workflows created by the specified user.
+
+        Args:
+            user: The user to filter executions for
+
+        Returns:
+            QuerySet of executions that the user has permission to access
+        """
+        # Return executions where the workflow's created_by matches the user
+        return self.filter(workflow__created_by=user)
+
+    def clean_invalid_workflows(self):
+        """Remove execution records with invalid workflow references.
+
+        This is a utility method to clean up data when converting from workflow_id to
+        a proper foreign key relationship. It deletes any execution records where the
+        workflow reference doesn't exist in the database.
+
+        Returns:
+            int: Number of deleted records
+        """
+        # Find executions with no valid workflow reference
+        invalid_executions = self.filter(workflow__isnull=True)
+
+        count = invalid_executions.count()
+        if count > 0:
+            logger.info(
+                f"Deleting {count} execution records with invalid workflow references"
+            )
+            invalid_executions.delete()
+        return count
+
+
 class WorkflowExecution(BaseModel):
+    # Use the custom manager
+    objects = WorkflowExecutionManager()
+
     class Mode(models.TextChoices):
         INSTANT = "INSTANT", "will be executed immediately"
         QUEUE = "QUEUE", "will be placed in a queue"
@@ -44,10 +88,16 @@ class WorkflowExecution(BaseModel):
         null=True,
         db_comment="task id of asynchronous execution",
     )
-    # TODO: Make as foreign key to access the instance directly
-    workflow_id = models.UUIDField(
-        editable=False, db_comment="Id of workflow to be executed"
+    workflow = models.ForeignKey(
+        Workflow,
+        on_delete=models.CASCADE,
+        editable=False,
+        db_comment="Workflow to be executed",
+        related_name="workflow_executions",
+        null=True,
+        db_column="workflow_id",  # Reuse the existing column name
     )
+
     execution_mode = models.CharField(
         choices=Mode.choices, db_comment="Mode of execution"
     )
@@ -101,26 +151,11 @@ class WorkflowExecution(BaseModel):
         return list(self.tags.values_list("name", flat=True))
 
     @property
-    def workflow(self) -> Optional[str]:
-        """Obtains the workflow associated to this execution."""
-        try:
-            return Workflow.objects.get(id=self.workflow_id)
-        except ObjectDoesNotExist:
-            logger.warning(
-                f"Expected workflow '{self.workflow_id}' to exist but missing"
-            )
-            return None
-
-    @property
     def workflow_name(self) -> Optional[str]:
         """Obtains the workflow's name associated to this execution."""
-        try:
-            return Workflow.objects.get(id=self.workflow_id).workflow_name
-        except ObjectDoesNotExist:
-            logger.warning(
-                f"Expected workflow ID '{self.workflow_id}' to exist but missing"
-            )
-            return None
+        if self.workflow:
+            return self.workflow.workflow_name
+        return None
 
     @property
     def pipeline_name(self) -> Optional[str]:
@@ -157,11 +192,42 @@ class WorkflowExecution(BaseModel):
         )
         return str(timedelta(seconds=time_in_secs)).split(".")[0]
 
+    @property
+    def get_aggregated_usage_cost(self) -> Optional[float]:
+        """Retrieve aggregated cost for the given execution_id.
+
+
+        Returns:
+        Optional[float]: The total cost in dollars if available, else None.
+
+        Raises:
+            APIException: For unexpected errors during database operations.
+        """
+        # Aggregate the cost for the given execution_id
+        queryset = Usage.objects.filter(execution_id=self.id)
+
+        if queryset.exists():
+            result = queryset.aggregate(cost_in_dollars=Sum(UsageKeys.COST_IN_DOLLARS))
+            total_cost = result.get(UsageKeys.COST_IN_DOLLARS)
+        else:
+            # Handle the case where no usage data is found for the given execution_id
+            logger.warning(
+                f"Usage data not found for the specified execution_id: {self.id}"
+            )
+            return None
+
+        logger.debug(
+            f"Cost aggregated successfully for execution_id: {self.id}"
+            f", Total cost: {total_cost}"
+        )
+
+        return total_cost
+
     def __str__(self) -> str:
         return (
             f"Workflow execution: {self.id} ("
             f"pipeline ID: {self.pipeline_id}, "
-            f"workflow iD: {self.workflow_id}, "
+            f"workflow: {self.workflow}, "
             f"status: {self.status}, "
             f"files: {self.total_files}, "
             f"error message: {self.error_message})"

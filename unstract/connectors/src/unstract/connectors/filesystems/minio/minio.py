@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any
+from typing import Any, Optional
 
 from s3fs.core import S3FileSystem
 
@@ -69,6 +69,30 @@ class MinioFS(UnstractFileSystem):
     @staticmethod
     def can_read() -> bool:
         return True
+
+    def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> Optional[str]:
+        """
+        Extracts a unique file hash from metadata.
+
+        Args:
+            metadata (dict): Metadata dictionary obtained from fsspec.
+
+        Returns:
+            Optional[str]: The file hash in hexadecimal format or None if not found.
+        """
+        # Extracts ETag for MinIO
+        file_hash = metadata.get("ETag")
+        if file_hash:
+            file_hash = file_hash.strip('"')
+            if "-" in file_hash:
+                logger.warning(
+                    f"[S3/MinIO] Multipart upload detected. ETag may not be an "
+                    f"MD5 hash. Full metadata: {metadata}"
+                )
+                return None
+            return file_hash
+        logger.error(f"[MinIO] File hash not found for the metadata: {metadata}")
+        return None
 
     def get_fsspec_fs(self) -> S3FileSystem:
         return self.s3

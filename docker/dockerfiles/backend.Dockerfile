@@ -11,7 +11,7 @@ ENV \
     BUILD_CONTEXT_PATH=backend \
     BUILD_PACKAGES_PATH=unstract \
     DJANGO_SETTINGS_MODULE="backend.settings.dev" \
-    # Disable all telemetry by default
+    # OpenTelemetry configuration (disabled by default, enable in docker-compose)
     OTEL_TRACES_EXPORTER=none \
     OTEL_TRACES_EXPORTER=none \
     OTEL_LOGS_EXPORTER=none \

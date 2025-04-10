@@ -13,7 +13,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     BUILD_PACKAGES_PATH=unstract \
     TARGET_PLUGINS_PATH=src/unstract/prompt_service/plugins \
     APP_USER=unstract \
-    APP_HOME=/app
+    APP_HOME=/app \
+    # OpenTelemetry configuration (disabled by default, enable in docker-compose)
+    OTEL_TRACES_EXPORTER=none \
+    OTEL_METRICS_EXPORTER=none \
+    OTEL_LOGS_EXPORTER=none \
+    OTEL_SERVICE_NAME=unstract_prompt
 
 # Install system dependencies
 RUN apt-get update; \
