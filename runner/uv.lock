@@ -1153,7 +1153,7 @@ requires-dist = [
 [[package]]
 name = "unstract-runner"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "docker" },
     { name = "flask" },
