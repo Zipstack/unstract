@@ -2,10 +2,10 @@
 # It is not intended for manual editing.
 
 [metadata]
-groups = ["default", "deploy", "test"]
+groups = ["default", "deploy", "dev", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:2aa513059e35c24dcbbf3592ac4b227fd2473cfb75a29843918a4fb0a5a171e4"
+content_hash = "sha256:b991b85f2d6b223a45507d4d2b48e95d6cf529f514e21cb7fc6a9b7641a7583b"
 
 [[package]]
 name = "adlfs"
@@ -202,7 +202,7 @@ name = "amqp"
 version = "5.3.1"
 requires_python = ">=3.6"
 summary = "Low-level AMQP client for Python (fork of amqplib)."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "vine<6.0.0,>=5.0.0",
 ]
@@ -282,7 +282,7 @@ name = "async-timeout"
 version = "5.0.1"
 requires_python = ">=3.8"
 summary = "Timeout context manager for asyncio programs"
-groups = ["default"]
+groups = ["default", "dev"]
 marker = "python_full_version < \"3.11.3\""
 files = [
     {file = "async_timeout-5.0.1-py3-none-any.whl", hash = "sha256:39e3809566ff85354557ec2398b55e096c8364bacac9405a7a1fa429e77fe76c"},
@@ -523,7 +523,7 @@ name = "certifi"
 version = "2025.1.31"
 requires_python = ">=3.6"
 summary = "Python package for providing Mozilla's CA Bundle."
-groups = ["default", "deploy"]
+groups = ["default", "deploy", "dev"]
 files = [
     {file = "certifi-2025.1.31-py3-none-any.whl", hash = "sha256:ca78db4565a652026a4db2bcdf68f2fb589ea80d0be70e03929ed730746b84fe"},
     {file = "certifi-2025.1.31.tar.gz", hash = "sha256:3d5da6925056f6f18f119200434a4780a94263f10d1c21d032a6f6b2baa20651"},
@@ -583,7 +583,7 @@ name = "charset-normalizer"
 version = "3.4.1"
 requires_python = ">=3.7"
 summary = "The Real First Universal Charset Detector. Open, modern and actively maintained alternative to Chardet."
-groups = ["default", "deploy"]
+groups = ["default", "deploy", "dev"]
 files = [
     {file = "charset_normalizer-3.4.1-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:91b36a978b5ae0ee86c394f5a54d6ef44db1de0815eb43de826d41d21e4af3de"},
     {file = "charset_normalizer-3.4.1-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:7461baadb4dc00fd9e0acbe254e3d7d2112e7f92ced2adc96e54ef6501c5f176"},
@@ -1101,7 +1101,7 @@ files = [
 
 [[package]]
 name = "google-cloud-aiplatform"
-version = "1.87.0"
+version = "1.88.0"
 requires_python = ">=3.8"
 summary = "Vertex AI API client library"
 groups = ["default"]
@@ -1120,8 +1120,8 @@ dependencies = [
     "typing-extensions",
 ]
 files = [
-    {file = "google_cloud_aiplatform-1.87.0-py2.py3-none-any.whl", hash = "sha256:23421cb288550e1b35c5a81f471618e0c34c32dfc73db895498ac01c9a5fa46c"},
-    {file = "google_cloud_aiplatform-1.87.0.tar.gz", hash = "sha256:3628c573d677d72c7ad62e9c898ff7073c915241e86fd563ff2ee581d281e494"},
+    {file = "google_cloud_aiplatform-1.88.0-py2.py3-none-any.whl", hash = "sha256:7d632577b758021a1306e2c6d3e837e41da635b651776041d4a54cdbbf63f6f1"},
+    {file = "google_cloud_aiplatform-1.88.0.tar.gz", hash = "sha256:07a06549f97a98e4d67d193ec225c581415f142b6a1d3aa4270187d429045d52"},
 ]
 
 [[package]]
@@ -1364,7 +1364,7 @@ name = "grpcio"
 version = "1.60.0"
 requires_python = ">=3.7"
 summary = "HTTP/2-based RPC framework"
-groups = ["default", "deploy"]
+groups = ["default", "deploy", "dev"]
 files = [
     {file = "grpcio-1.60.0-cp310-cp310-linux_armv7l.whl", hash = "sha256:d020cfa595d1f8f5c6b343530cd3ca16ae5aefdd1e832b777f9f0eb105f5b139"},
     {file = "grpcio-1.60.0-cp310-cp310-macosx_12_0_universal2.whl", hash = "sha256:b98f43fcdb16172dec5f4b49f2fece4b16a99fd284d81c6bbac1b3b69fcbe0ff"},
@@ -1432,7 +1432,7 @@ name = "grpcio-tools"
 version = "1.60.0"
 requires_python = ">=3.7"
 summary = "Protobuf code generator for gRPC"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "grpcio>=1.60.0",
     "protobuf<5.0dev,>=4.21.6",
@@ -1601,7 +1601,7 @@ files = [
 
 [[package]]
 name = "huggingface-hub"
-version = "0.30.1"
+version = "0.30.2"
 requires_python = ">=3.8.0"
 summary = "Client library to download and publish models, datasets and other repos on the huggingface.co hub"
 groups = ["default"]
@@ -1615,8 +1615,8 @@ dependencies = [
     "typing-extensions>=3.7.4.3",
 ]
 files = [
-    {file = "huggingface_hub-0.30.1-py3-none-any.whl", hash = "sha256:0f6aa5ec5a4e68e5b9e45d556b4e5ea180c58f5a5ffa734e7f38c9d573028959"},
-    {file = "huggingface_hub-0.30.1.tar.gz", hash = "sha256:f379e8b8d0791295602538856638460ae3cf679c7f304201eb80fb98c771950e"},
+    {file = "huggingface_hub-0.30.2-py3-none-any.whl", hash = "sha256:68ff05969927058cfa41df4f2155d4bb48f5f54f719dd0390103eefa9b191e28"},
+    {file = "huggingface_hub-0.30.2.tar.gz", hash = "sha256:9a7897c5b6fd9dad3168a794a8998d6378210f5b9688d0dfc180b1a228dc2466"},
 ]
 
 [[package]]
@@ -1635,7 +1635,7 @@ name = "idna"
 version = "3.10"
 requires_python = ">=3.6"
 summary = "Internationalized Domain Names in Applications (IDNA)"
-groups = ["default", "deploy"]
+groups = ["default", "deploy", "dev"]
 files = [
     {file = "idna-3.10-py3-none-any.whl", hash = "sha256:946d195a0d259cbba61165e88e65941f16e9b36ea6ddb97f00452bae8b1287d3"},
     {file = "idna-3.10.tar.gz", hash = "sha256:12f65c9b470abda6dc35cf8e63cc574b1c52b11df2c86030af0ac09b01b13ea9"},
@@ -1817,7 +1817,7 @@ name = "kombu"
 version = "5.3.7"
 requires_python = ">=3.8"
 summary = "Messaging library for Python."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "amqp<6.0.0,>=5.1.1",
     "typing-extensions; python_version < \"3.10\"",
@@ -1830,7 +1830,7 @@ files = [
 
 [[package]]
 name = "llama-cloud"
-version = "0.1.17"
+version = "0.1.18"
 requires_python = "<4,>=3.8"
 summary = ""
 groups = ["default"]
@@ -1840,8 +1840,8 @@ dependencies = [
     "pydantic>=1.10",
 ]
 files = [
-    {file = "llama_cloud-0.1.17-py3-none-any.whl", hash = "sha256:4c13267c23d336227176d33ef9cd091f77aded4e1c9c6e7031a3b0ecfe7d5c8d"},
-    {file = "llama_cloud-0.1.17.tar.gz", hash = "sha256:f351fa0f1f5b6b9bce650eda78fc84511ba72c09bdafd4525fde6b7a4aac20f3"},
+    {file = "llama_cloud-0.1.18-py3-none-any.whl", hash = "sha256:5842722a0c3033afa930b4a50d43e6f1e77ff1dab12383a769dc51a15fb87c9b"},
+    {file = "llama_cloud-0.1.18.tar.gz", hash = "sha256:65cb88b1cb1a3a0e63e4438e8c8a2e6013dfdafbb4201d274c0459e5d04fb328"},
 ]
 
 [[package]]
@@ -1903,7 +1903,7 @@ files = [
 
 [[package]]
 name = "llama-index-core"
-version = "0.12.28"
+version = "0.12.30"
 requires_python = "<4.0,>=3.9"
 summary = "Interface between LLMs and your data"
 groups = ["default"]
@@ -1934,8 +1934,8 @@ dependencies = [
     "wrapt",
 ]
 files = [
-    {file = "llama_index_core-0.12.28-py3-none-any.whl", hash = "sha256:9bd24224bd57dd5e97bb0a2550f31f6c08b7dc396305f35bbe9714d17b1409a6"},
-    {file = "llama_index_core-0.12.28.tar.gz", hash = "sha256:bf4a9697525e1294855d2df5c3a56b9720c185cde0eae2da713e7629c456c643"},
+    {file = "llama_index_core-0.12.30-py3-none-any.whl", hash = "sha256:6e0b33158de52108debe66528adb84adb626aed5c6c7762874fb7a799d8c48a9"},
+    {file = "llama_index_core-0.12.30.tar.gz", hash = "sha256:dfbed9cdba18358750ad3895cd97fa1ea0dd0b856bbd623a4904ac61641e2765"},
 ]
 
 [[package]]
@@ -2508,7 +2508,7 @@ files = [
 
 [[package]]
 name = "multidict"
-version = "6.3.2"
+version = "6.4.2"
 requires_python = ">=3.9"
 summary = "multidict implementation"
 groups = ["default"]
@@ -2516,53 +2516,59 @@ dependencies = [
     "typing-extensions>=4.1.0; python_version < \"3.11\"",
 ]
 files = [
-    {file = "multidict-6.3.2-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:8b3dc0eec9304fa04d84a51ea13b0ec170bace5b7ddeaac748149efd316f1504"},
-    {file = "multidict-6.3.2-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:9534f3d84addd3b6018fa83f97c9d4247aaa94ac917d1ed7b2523306f99f5c16"},
-    {file = "multidict-6.3.2-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:a003ce1413ae01f0b8789c1c987991346a94620a4d22210f7a8fe753646d3209"},
-    {file = "multidict-6.3.2-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:5b43f7384e68b1b982c99f489921a459467b5584bdb963b25e0df57c9039d0ad"},
-    {file = "multidict-6.3.2-cp310-cp310-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:d142ae84047262dc75c1f92eaf95b20680f85ce11d35571b4c97e267f96fadc4"},
-    {file = "multidict-6.3.2-cp310-cp310-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:ec7e86fbc48aa1d6d686501a8547818ba8d645e7e40eaa98232a5d43ee4380ad"},
-    {file = "multidict-6.3.2-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:fe019fb437632b016e6cac67a7e964f1ef827ef4023f1ca0227b54be354da97e"},
-    {file = "multidict-6.3.2-cp310-cp310-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:2b60cb81214a9da7cfd8ae2853d5e6e47225ece55fe5833142fe0af321c35299"},
-    {file = "multidict-6.3.2-cp310-cp310-musllinux_1_2_aarch64.whl", hash = "sha256:32d9e8ef2e0312d4e96ca9adc88e0675b6d8e144349efce4a7c95d5ccb6d88e0"},
-    {file = "multidict-6.3.2-cp310-cp310-musllinux_1_2_i686.whl", hash = "sha256:335d584312e3fa43633d63175dfc1a5f137dd7aa03d38d1310237d54c3032774"},
-    {file = "multidict-6.3.2-cp310-cp310-musllinux_1_2_ppc64le.whl", hash = "sha256:b8df917faa6b8cac3d6870fc21cb7e4d169faca68e43ffe568c156c9c6408a4d"},
-    {file = "multidict-6.3.2-cp310-cp310-musllinux_1_2_s390x.whl", hash = "sha256:cc060b9b89b701dd8fedef5b99e1f1002b8cb95072693233a63389d37e48212d"},
-    {file = "multidict-6.3.2-cp310-cp310-musllinux_1_2_x86_64.whl", hash = "sha256:f2ce3be2500658f3c644494b934628bb0c82e549dde250d2119689ce791cc8b8"},
-    {file = "multidict-6.3.2-cp310-cp310-win32.whl", hash = "sha256:dbcb4490d8e74b484449abd51751b8f560dd0a4812eb5dacc6a588498222a9ab"},
-    {file = "multidict-6.3.2-cp310-cp310-win_amd64.whl", hash = "sha256:06944f9ced30f8602be873563ed4df7e3f40958f60b2db39732c11d615a33687"},
-    {file = "multidict-6.3.2-cp311-cp311-macosx_10_9_universal2.whl", hash = "sha256:45a034f41fcd16968c0470d8912d293d7b0d0822fc25739c5c2ff7835b85bc56"},
-    {file = "multidict-6.3.2-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:352585cec45f5d83d886fc522955492bb436fca032b11d487b12d31c5a81b9e3"},
-    {file = "multidict-6.3.2-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:da9d89d293511fd0a83a90559dc131f8b3292b6975eb80feff19e5f4663647e2"},
-    {file = "multidict-6.3.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:79fa716592224aa652b9347a586cfe018635229074565663894eb4eb21f8307f"},
-    {file = "multidict-6.3.2-cp311-cp311-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:0326278a44c56e94792475268e5cd3d47fbc0bd41ee56928c3bbb103ba7f58fe"},
-    {file = "multidict-6.3.2-cp311-cp311-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:bb1ea87f7fe45e5079f6315e95d64d4ca8b43ef656d98bed63a02e3756853a22"},
-    {file = "multidict-6.3.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:7cff3c5a98d037024a9065aafc621a8599fad7b423393685dc83cf7a32f8b691"},
-    {file = "multidict-6.3.2-cp311-cp311-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:ed99834b053c655d980fb98029003cb24281e47a796052faad4543aa9e01b8e8"},
-    {file = "multidict-6.3.2-cp311-cp311-musllinux_1_2_aarch64.whl", hash = "sha256:7048440e505d2b4741e5d0b32bd2f427c901f38c7760fc245918be2cf69b3b85"},
-    {file = "multidict-6.3.2-cp311-cp311-musllinux_1_2_i686.whl", hash = "sha256:27248c27b563f5889556da8a96e18e98a56ff807ac1a7d56cf4453c2c9e4cd91"},
-    {file = "multidict-6.3.2-cp311-cp311-musllinux_1_2_ppc64le.whl", hash = "sha256:6323b4ba0e018bd266f776c35f3f0943fc4ee77e481593c9f93bd49888f24e94"},
-    {file = "multidict-6.3.2-cp311-cp311-musllinux_1_2_s390x.whl", hash = "sha256:81f7ce5ec7c27d0b45c10449c8f0fed192b93251e2e98cb0b21fec779ef1dc4d"},
-    {file = "multidict-6.3.2-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:03bfcf2825b3bed0ba08a9d854acd18b938cab0d2dba3372b51c78e496bac811"},
-    {file = "multidict-6.3.2-cp311-cp311-win32.whl", hash = "sha256:f32c2790512cae6ca886920e58cdc8c784bdc4bb2a5ec74127c71980369d18dc"},
-    {file = "multidict-6.3.2-cp311-cp311-win_amd64.whl", hash = "sha256:0b0c15e58e038a2cd75ef7cf7e072bc39b5e0488b165902efb27978984bbad70"},
-    {file = "multidict-6.3.2-cp39-cp39-macosx_10_9_universal2.whl", hash = "sha256:2516c5eb5732d6c4e29fa93323bfdc55186895124bc569e2404e3820934be378"},
-    {file = "multidict-6.3.2-cp39-cp39-macosx_10_9_x86_64.whl", hash = "sha256:be5c8622e665cc5491c13c0fcd52915cdbae991a3514251d71129691338cdfb2"},
-    {file = "multidict-6.3.2-cp39-cp39-macosx_11_0_arm64.whl", hash = "sha256:3ef33150eea7953cfdb571d862cff894e0ad97ab80d97731eb4b9328fc32d52b"},
-    {file = "multidict-6.3.2-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:40b357738ce46e998f1b1bad9c4b79b2a9755915f71b87a8c01ce123a22a4f99"},
-    {file = "multidict-6.3.2-cp39-cp39-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:27c60e059fcd3655a653ba99fec2556cd0260ec57f9cb138d3e6ffc413638a2e"},
-    {file = "multidict-6.3.2-cp39-cp39-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:629e7c5e75bde83e54a22c7043ce89d68691d1f103be6d09a1c82b870df3b4b8"},
-    {file = "multidict-6.3.2-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:ee6c8fc97d893fdf1fff15a619fee8de2f31c9b289ef7594730e35074fa0cefb"},
-    {file = "multidict-6.3.2-cp39-cp39-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:52081d2f27e0652265d4637b03f09b82f6da5ce5e1474f07dc64674ff8bfc04c"},
-    {file = "multidict-6.3.2-cp39-cp39-musllinux_1_2_aarch64.whl", hash = "sha256:64529dc395b5fd0a7826ffa70d2d9a7f4abd8f5333d6aaaba67fdf7bedde9f21"},
-    {file = "multidict-6.3.2-cp39-cp39-musllinux_1_2_i686.whl", hash = "sha256:2b7c3fad827770840f5399348c89635ed6d6e9bba363baad7d3c7f86a9cf1da3"},
-    {file = "multidict-6.3.2-cp39-cp39-musllinux_1_2_ppc64le.whl", hash = "sha256:24aa42b1651c654ae9e5273e06c3b7ccffe9f7cc76fbde40c37e9ae65f170818"},
-    {file = "multidict-6.3.2-cp39-cp39-musllinux_1_2_s390x.whl", hash = "sha256:04ceea01e9991357164b12882e120ce6b4d63a0424bb9f9cd37910aa56d30830"},
-    {file = "multidict-6.3.2-cp39-cp39-musllinux_1_2_x86_64.whl", hash = "sha256:943897a41160945416617db567d867ab34e9258adaffc56a25a4c3f99d919598"},
-    {file = "multidict-6.3.2-cp39-cp39-win32.whl", hash = "sha256:76157a9a0c5380aadd3b5ff7b8deee355ff5adecc66c837b444fa633b4d409a2"},
-    {file = "multidict-6.3.2-cp39-cp39-win_amd64.whl", hash = "sha256:d091d123e44035cd5664554308477aff0b58db37e701e7598a67e907b98d1925"},
-    {file = "multidict-6.3.2-py3-none-any.whl", hash = "sha256:71409d4579f716217f23be2f5e7afca5ca926aaeb398aa11b72d793bff637a1f"},
-    {file = "multidict-6.3.2.tar.gz", hash = "sha256:c1035eea471f759fa853dd6e76aaa1e389f93b3e1403093fa0fd3ab4db490678"},
+    {file = "multidict-6.4.2-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:48f775443154d99e1b1c727ea20137ddc1e4b29448a9b24875b2a348cc143b85"},
+    {file = "multidict-6.4.2-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:3d17d8b2d4643d4f59629758b0dd229cda61e2319f81b470aa4a99717081ba0c"},
+    {file = "multidict-6.4.2-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:cf95ac57b44b6fb46a0151641b9905bbad27783314abc4f4b0b0a82f26b06b07"},
+    {file = "multidict-6.4.2-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:5055e039ebfc6e4589115717c4a6d1dd2f195327b8d5a3e21a68f374d79dbed9"},
+    {file = "multidict-6.4.2-cp310-cp310-manylinux_2_17_armv7l.manylinux2014_armv7l.manylinux_2_31_armv7l.whl", hash = "sha256:f290e4eebf7764f8327a4bc6a459f09ca9a041cf7349bacfbb252da9feb0d37c"},
+    {file = "multidict-6.4.2-cp310-cp310-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:4660b75286c11b8f38c90b98ccf7541b7030dbec32b28f05031f8abebf7fc0e5"},
+    {file = "multidict-6.4.2-cp310-cp310-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:58f74a195b99189c9f7e2bc83cc95fcf169a43a63c5c8cad63c4027bf3233118"},
+    {file = "multidict-6.4.2-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:4a0ba21b315113d39f7aa3ca4eb804f7984dab33c42ea14d07d790a640f81e77"},
+    {file = "multidict-6.4.2-cp310-cp310-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:64fccd2fa3cfd49c442c4995d58189e578560705b9b632faad8ffd9aaa390007"},
+    {file = "multidict-6.4.2-cp310-cp310-musllinux_1_2_aarch64.whl", hash = "sha256:fb8b1cba597398698ec494794091dadd76eb8011bb95f43578930466e7beb20b"},
+    {file = "multidict-6.4.2-cp310-cp310-musllinux_1_2_armv7l.whl", hash = "sha256:159dae860e4d34bd4f48e72a0c033d78ae9215b43d423c19cbf47b7db5972599"},
+    {file = "multidict-6.4.2-cp310-cp310-musllinux_1_2_i686.whl", hash = "sha256:aa613b270de6215f9fc850f0fb18dbc20ba297013012793cf3d2f1295e271e91"},
+    {file = "multidict-6.4.2-cp310-cp310-musllinux_1_2_ppc64le.whl", hash = "sha256:15c14a01dd95e860703a4ce78d4b0d49f18c14389eb91b4aa12444e31dfc2841"},
+    {file = "multidict-6.4.2-cp310-cp310-musllinux_1_2_s390x.whl", hash = "sha256:93de2d3802a5ac7d5deadba1c956a93db29502f1b9f4e8d2e393747b9b28d881"},
+    {file = "multidict-6.4.2-cp310-cp310-musllinux_1_2_x86_64.whl", hash = "sha256:7a3165a5bae6577d10858c35f6add83333ead621e8286a5d15f7d567ef44be78"},
+    {file = "multidict-6.4.2-cp310-cp310-win32.whl", hash = "sha256:27d45a6a8495f2cfcf64d6cc4fbcc78a6e87ed840e54a261430d0d4331d9aae0"},
+    {file = "multidict-6.4.2-cp310-cp310-win_amd64.whl", hash = "sha256:dc86a31e3215ce037ae306a338ff2156d897aae627d5d4e3dfa0c9eded4249e8"},
+    {file = "multidict-6.4.2-cp311-cp311-macosx_10_9_universal2.whl", hash = "sha256:6da367181104a57e77140ebf736652ed9a97c7bcb77c7640cf8a168893561bd2"},
+    {file = "multidict-6.4.2-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:dfb3870c5d4f5413988caf64243830f7ca13dc58ae2cf3eb48fe321ca6f26648"},
+    {file = "multidict-6.4.2-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:1c11e8460ff0629871f9703c87208e553fbfa6c9d92f94c20d4f86e56f021029"},
+    {file = "multidict-6.4.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:ac87e173c5f3aeac06d01eeebfb35c2b1bc5f536b21210dd8b032f1dc0726fbc"},
+    {file = "multidict-6.4.2-cp311-cp311-manylinux_2_17_armv7l.manylinux2014_armv7l.manylinux_2_31_armv7l.whl", hash = "sha256:d9e984f9542fba175bc4d98e320e9e2bd6e7480682aa84b274e9aee7fb6575b9"},
+    {file = "multidict-6.4.2-cp311-cp311-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:75bb804375e0b6c5db4e474fa0b5052414b6cbc3e70394d11a7ce9a7f6a18a91"},
+    {file = "multidict-6.4.2-cp311-cp311-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:1a894aed57c6edc514c9222989cf09eebd9ea7acb6185a26cfeac2ece2ddf265"},
+    {file = "multidict-6.4.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:8ce52f84e793ee83082c4aa127605070a47c31597821ca84dec5c0ac809e8509"},
+    {file = "multidict-6.4.2-cp311-cp311-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:20050a17cc2f322598d181a5b2e2cf4787e4c2e3bf71aab5e96618b40665e8ae"},
+    {file = "multidict-6.4.2-cp311-cp311-musllinux_1_2_aarch64.whl", hash = "sha256:bbd3cc064d272618b95c2f85ec61fe9d07e2a1de18c153c10923d3c2cdebff4c"},
+    {file = "multidict-6.4.2-cp311-cp311-musllinux_1_2_armv7l.whl", hash = "sha256:b9c5dfa5c7cdc26f6b777ac6210d3621d556e2e244f0a7358afe8ec0135f8640"},
+    {file = "multidict-6.4.2-cp311-cp311-musllinux_1_2_i686.whl", hash = "sha256:693858c9584cedc1685e67e78fa9e50285504e8d4bbfde7290ca04dbbac939a8"},
+    {file = "multidict-6.4.2-cp311-cp311-musllinux_1_2_ppc64le.whl", hash = "sha256:6d168a6693c1b9b950d9584178d12095bfbaf290748eb6e2726c914bc1d0d4f1"},
+    {file = "multidict-6.4.2-cp311-cp311-musllinux_1_2_s390x.whl", hash = "sha256:f915fc3287ddc23a5da8f61f5c2c3aaca0b754ce526c0ff81f55c27b25038cd5"},
+    {file = "multidict-6.4.2-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:df46fd268c765d186df8c7899bc4e0a2ee0d12458d356438af0329a49e6b15ca"},
+    {file = "multidict-6.4.2-cp311-cp311-win32.whl", hash = "sha256:11d76b83dc93e98207514e1938b89854655087e3b27a09d89525fe17a0f1ce11"},
+    {file = "multidict-6.4.2-cp311-cp311-win_amd64.whl", hash = "sha256:8530ca574ba38478e97af20ff0f3fd04f59ffcad435b1548703424d71e2ed66a"},
+    {file = "multidict-6.4.2-cp39-cp39-macosx_10_9_universal2.whl", hash = "sha256:1f62882c6d06e5e75b82444ce14f59b830f5b017b31630cc13d8b0b01379385a"},
+    {file = "multidict-6.4.2-cp39-cp39-macosx_10_9_x86_64.whl", hash = "sha256:93f4545347f79121e9ba98a0c33a55f469ebc22fb45ae62692e01d367219796b"},
+    {file = "multidict-6.4.2-cp39-cp39-macosx_11_0_arm64.whl", hash = "sha256:05dcc73739ae8096f64f08282c8980dab2cf9acb02eb838aacd8ac56b795c405"},
+    {file = "multidict-6.4.2-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:af55e557e722c962f70cdc6a482d0df44b1f6622af49003e33dd114340724875"},
+    {file = "multidict-6.4.2-cp39-cp39-manylinux_2_17_armv7l.manylinux2014_armv7l.manylinux_2_31_armv7l.whl", hash = "sha256:9777e194be00313f5a86a0dd52d9987b72cf6c43c8a42d6bd838adc46c70e98b"},
+    {file = "multidict-6.4.2-cp39-cp39-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:7cbc2e5116cdca0594bb39c64a8bd5e7f44d392cf76d19913216924688d42954"},
+    {file = "multidict-6.4.2-cp39-cp39-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:bdb621264758b22ae3aaa9d60937751069d80d610d713887ff94cf7487fc3f5f"},
+    {file = "multidict-6.4.2-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:03cd2a3c446162678d0a6d14d69ad38204128414ba40722a5ff6f2107782b723"},
+    {file = "multidict-6.4.2-cp39-cp39-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:8257f26cc2cc5d0426da488162060c6cea57079172b9d3eedf016fcb0cfdb830"},
+    {file = "multidict-6.4.2-cp39-cp39-musllinux_1_2_aarch64.whl", hash = "sha256:d7bf1d52c69f3051a0ebae9cca1e5be06e2ad4677d670a920454ecf6d20e2c8e"},
+    {file = "multidict-6.4.2-cp39-cp39-musllinux_1_2_armv7l.whl", hash = "sha256:88ae724e79a524d1921b2799251f667e7fb0344a59637df3bec91dc303020467"},
+    {file = "multidict-6.4.2-cp39-cp39-musllinux_1_2_i686.whl", hash = "sha256:033edcc22211463be927ca407dc5c5f3aa84d3d093ed2d559a2e3c2d995d50e4"},
+    {file = "multidict-6.4.2-cp39-cp39-musllinux_1_2_ppc64le.whl", hash = "sha256:cbd06fb147030d7781f10bd7542f29bbf56cefb51a9f042713d5fc52e68b8afd"},
+    {file = "multidict-6.4.2-cp39-cp39-musllinux_1_2_s390x.whl", hash = "sha256:258414850b59fb820bd1e1e19a9b281409a6d0bd969d3fe7104cc87a7c08c191"},
+    {file = "multidict-6.4.2-cp39-cp39-musllinux_1_2_x86_64.whl", hash = "sha256:a3da262f5b9f0dd01277575de4967683123ab47699fd7db2ce38cb1bb8f5c76f"},
+    {file = "multidict-6.4.2-cp39-cp39-win32.whl", hash = "sha256:4aca2ab0969dc3781fefe523ce70c5d245b915ba0708ce2713e8ac561f9448e0"},
+    {file = "multidict-6.4.2-cp39-cp39-win_amd64.whl", hash = "sha256:79dc3f9893e32fcc564c60bb34c4e393daede2cdf0337a5b4627ed162a237fb3"},
+    {file = "multidict-6.4.2-py3-none-any.whl", hash = "sha256:824b60427c92c44098cfbd58d8adf8a8c5a60ade16742dcb54385b43e6337b4e"},
+    {file = "multidict-6.4.2.tar.gz", hash = "sha256:99f9b6596d2e126fa1777990868743fb4c1984ea5217606fabc153aff46160e6"},
 ]
 
 [[package]]
@@ -2687,7 +2693,7 @@ files = [
 
 [[package]]
 name = "openai"
-version = "1.71.0"
+version = "1.72.0"
 requires_python = ">=3.8"
 summary = "The official Python library for the openai API"
 groups = ["default"]
@@ -2702,13 +2708,13 @@ dependencies = [
     "typing-extensions<5,>=4.11",
 ]
 files = [
-    {file = "openai-1.71.0-py3-none-any.whl", hash = "sha256:e1c643738f1fff1af52bce6ef06a7716c95d089281e7011777179614f32937aa"},
-    {file = "openai-1.71.0.tar.gz", hash = "sha256:52b20bb990a1780f9b0b8ccebac93416343ebd3e4e714e3eff730336833ca207"},
+    {file = "openai-1.72.0-py3-none-any.whl", hash = "sha256:34f5496ba5c8cb06c592831d69e847e2d164526a2fb92afdc3b5cf2891c328c3"},
+    {file = "openai-1.72.0.tar.gz", hash = "sha256:f51de971448905cc90ed5175a5b19e92fd94e31f68cde4025762f9f5257150db"},
 ]
 
 [[package]]
 name = "opentelemetry-api"
-version = "1.31.1"
+version = "1.32.0"
 requires_python = ">=3.8"
 summary = "OpenTelemetry Python API"
 groups = ["deploy"]
@@ -2717,24 +2723,24 @@ dependencies = [
     "importlib-metadata<8.7.0,>=6.0",
 ]
 files = [
-    {file = "opentelemetry_api-1.31.1-py3-none-any.whl", hash = "sha256:1511a3f470c9c8a32eeea68d4ea37835880c0eed09dd1a0187acc8b1301da0a1"},
-    {file = "opentelemetry_api-1.31.1.tar.gz", hash = "sha256:137ad4b64215f02b3000a0292e077641c8611aab636414632a9b9068593b7e91"},
+    {file = "opentelemetry_api-1.32.0-py3-none-any.whl", hash = "sha256:15df743c765078611f376037b0d9111ec5c1febf2ec9440cdd919370faa1ce55"},
+    {file = "opentelemetry_api-1.32.0.tar.gz", hash = "sha256:2623280c916f9b19cad0aa4280cb171265f19fd2909b0d47e4f06f7c83b02cb5"},
 ]
 
 [[package]]
 name = "opentelemetry-distro"
-version = "0.52b1"
+version = "0.53b0"
 requires_python = ">=3.8"
 summary = "OpenTelemetry Python Distro"
 groups = ["deploy"]
 dependencies = [
     "opentelemetry-api~=1.12",
-    "opentelemetry-instrumentation==0.52b1",
+    "opentelemetry-instrumentation==0.53b0",
     "opentelemetry-sdk~=1.13",
 ]
 files = [
-    {file = "opentelemetry_distro-0.52b1-py3-none-any.whl", hash = "sha256:5562a039e4c36524d0dbb45a0857f8acfda3afbef7e8462513c7946309eb5c8c"},
-    {file = "opentelemetry_distro-0.52b1.tar.gz", hash = "sha256:cb8df34a95034c7d038fd245556fb732853dc66473746d652bee6c5c2fb7dfc6"},
+    {file = "opentelemetry_distro-0.53b0-py3-none-any.whl", hash = "sha256:4cf709f4e7472b5903fca8cc5641c908538775e40cdbcb6677aa39d951d6d7f0"},
+    {file = "opentelemetry_distro-0.53b0.tar.gz", hash = "sha256:2f1aa500a771509feaf3b5bc7601cf5b1d255a6d702d608536e7cd03dbf58bc9"},
 ]
 
 [[package]]
@@ -2792,19 +2798,19 @@ files = [
 
 [[package]]
 name = "opentelemetry-instrumentation"
-version = "0.52b1"
+version = "0.53b0"
 requires_python = ">=3.8"
 summary = "Instrumentation Tools & Auto Instrumentation for OpenTelemetry Python"
 groups = ["deploy"]
 dependencies = [
     "opentelemetry-api~=1.4",
-    "opentelemetry-semantic-conventions==0.52b1",
+    "opentelemetry-semantic-conventions==0.53b0",
     "packaging>=18.0",
     "wrapt<2.0.0,>=1.0.0",
 ]
 files = [
-    {file = "opentelemetry_instrumentation-0.52b1-py3-none-any.whl", hash = "sha256:8c0059c4379d77bbd8015c8d8476020efe873c123047ec069bb335e4b8717477"},
-    {file = "opentelemetry_instrumentation-0.52b1.tar.gz", hash = "sha256:739f3bfadbbeec04dd59297479e15660a53df93c131d907bb61052e3d3c1406f"},
+    {file = "opentelemetry_instrumentation-0.53b0-py3-none-any.whl", hash = "sha256:70600778fd567c9c5fbfca181378ae179c0dec3ff613171707d3d77c360ff105"},
+    {file = "opentelemetry_instrumentation-0.53b0.tar.gz", hash = "sha256:f2c21d71a3cdf28c656e3d90d247ee7558fb9b0239b3d9e9190266499dbed9d2"},
 ]
 
 [[package]]
@@ -2823,33 +2829,33 @@ files = [
 
 [[package]]
 name = "opentelemetry-sdk"
-version = "1.31.1"
+version = "1.32.0"
 requires_python = ">=3.8"
 summary = "OpenTelemetry Python SDK"
 groups = ["deploy"]
 dependencies = [
-    "opentelemetry-api==1.31.1",
-    "opentelemetry-semantic-conventions==0.52b1",
+    "opentelemetry-api==1.32.0",
+    "opentelemetry-semantic-conventions==0.53b0",
     "typing-extensions>=3.7.4",
 ]
 files = [
-    {file = "opentelemetry_sdk-1.31.1-py3-none-any.whl", hash = "sha256:882d021321f223e37afaca7b4e06c1d8bbc013f9e17ff48a7aa017460a8e7dae"},
-    {file = "opentelemetry_sdk-1.31.1.tar.gz", hash = "sha256:c95f61e74b60769f8ff01ec6ffd3d29684743404603df34b20aa16a49dc8d903"},
+    {file = "opentelemetry_sdk-1.32.0-py3-none-any.whl", hash = "sha256:ed252d035c22a15536c1f603ca089298daab60850fc2f5ddfa95d95cc1c043ea"},
+    {file = "opentelemetry_sdk-1.32.0.tar.gz", hash = "sha256:5ff07fb371d1ab1189fa7047702e2e888b5403c5efcbb18083cae0d5aa5f58d2"},
 ]
 
 [[package]]
 name = "opentelemetry-semantic-conventions"
-version = "0.52b1"
+version = "0.53b0"
 requires_python = ">=3.8"
 summary = "OpenTelemetry Semantic Conventions"
 groups = ["deploy"]
 dependencies = [
     "deprecated>=1.2.6",
-    "opentelemetry-api==1.31.1",
+    "opentelemetry-api==1.32.0",
 ]
 files = [
-    {file = "opentelemetry_semantic_conventions-0.52b1-py3-none-any.whl", hash = "sha256:72b42db327e29ca8bb1b91e8082514ddf3bbf33f32ec088feb09526ade4bc77e"},
-    {file = "opentelemetry_semantic_conventions-0.52b1.tar.gz", hash = "sha256:7b3d226ecf7523c27499758a58b542b48a0ac8d12be03c0488ff8ec60c5bae5d"},
+    {file = "opentelemetry_semantic_conventions-0.53b0-py3-none-any.whl", hash = "sha256:561da89f766ab51615c0e72b12329e0a1bc16945dbd62c8646ffc74e36a1edff"},
+    {file = "opentelemetry_semantic_conventions-0.53b0.tar.gz", hash = "sha256:05b7908e1da62d72f9bf717ed25c72f566fe005a2dd260c61b11e025f2552cf6"},
 ]
 
 [[package]]
@@ -3163,7 +3169,7 @@ name = "protobuf"
 version = "4.25.6"
 requires_python = ">=3.8"
 summary = ""
-groups = ["default", "deploy"]
+groups = ["default", "deploy", "dev"]
 files = [
     {file = "protobuf-4.25.6-cp310-abi3-win32.whl", hash = "sha256:61df6b5786e2b49fc0055f636c1e8f0aff263808bb724b95b164685ac1bcc13a"},
     {file = "protobuf-4.25.6-cp310-abi3-win_amd64.whl", hash = "sha256:b8f837bfb77513fe0e2f263250f423217a173b6d85135be4d81e96a4653bcd3c"},
@@ -3259,7 +3265,7 @@ files = [
 
 [[package]]
 name = "pydantic"
-version = "2.11.2"
+version = "2.11.3"
 requires_python = ">=3.9"
 summary = "Data validation using Python type hints"
 groups = ["default"]
@@ -3270,8 +3276,8 @@ dependencies = [
     "typing-inspection>=0.4.0",
 ]
 files = [
-    {file = "pydantic-2.11.2-py3-none-any.whl", hash = "sha256:7f17d25846bcdf89b670a86cdfe7b29a9f1c9ca23dee154221c9aa81845cfca7"},
-    {file = "pydantic-2.11.2.tar.gz", hash = "sha256:2138628e050bd7a1e70b91d4bf4a91167f4ad76fdb83209b107c8d84b854917e"},
+    {file = "pydantic-2.11.3-py3-none-any.whl", hash = "sha256:a082753436a07f9ba1289c6ffa01cd93db3548776088aa917cc43b63f68fa60f"},
+    {file = "pydantic-2.11.3.tar.gz", hash = "sha256:7471657138c16adad9322fe3070c0116dd6c3ad8d649300e3cbdfe91f4db4ec3"},
 ]
 
 [[package]]
@@ -3622,7 +3628,7 @@ name = "redis"
 version = "5.2.1"
 requires_python = ">=3.8"
 summary = "Python client for Redis database and key-value store"
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "async-timeout>=4.0.3; python_full_version < \"3.11.3\"",
 ]
@@ -3709,7 +3715,7 @@ name = "requests"
 version = "2.31.0"
 requires_python = ">=3.7"
 summary = "Python HTTP for Humans."
-groups = ["default", "deploy"]
+groups = ["default", "deploy", "dev"]
 dependencies = [
     "certifi>=2017.4.17",
     "charset-normalizer<4,>=2",
@@ -3893,7 +3899,7 @@ name = "setuptools"
 version = "78.1.0"
 requires_python = ">=3.9"
 summary = "Easily download, build, install, upgrade, and uninstall Python packages"
-groups = ["default", "deploy"]
+groups = ["default", "deploy", "dev"]
 files = [
     {file = "setuptools-78.1.0-py3-none-any.whl", hash = "sha256:3e386e96793c8702ae83d17b853fb93d3e09ef82ec62722e61da5cd22376dcd8"},
     {file = "setuptools-78.1.0.tar.gz", hash = "sha256:18fd474d4a82a5f83dac888df697af65afa82dec7323d09c3e37d1f14288da54"},
@@ -4244,13 +4250,13 @@ files = [
 
 [[package]]
 name = "typing-extensions"
-version = "4.13.1"
+version = "4.13.2"
 requires_python = ">=3.8"
 summary = "Backported and Experimental Type Hints for Python 3.8+"
-groups = ["default", "deploy"]
+groups = ["default", "deploy", "dev"]
 files = [
-    {file = "typing_extensions-4.13.1-py3-none-any.whl", hash = "sha256:4b6cf02909eb5495cfbc3f6e8fd49217e6cc7944e145cdda8caa3734777f9e69"},
-    {file = "typing_extensions-4.13.1.tar.gz", hash = "sha256:98795af00fb9640edec5b8e31fc647597b4691f099ad75f469a2616be1a76dff"},
+    {file = "typing_extensions-4.13.2-py3-none-any.whl", hash = "sha256:a439e7c04b49fec3e5d3e2beaa21755cadbbdc391694e28ccdd36ca4a1408f8c"},
+    {file = "typing_extensions-4.13.2.tar.gz", hash = "sha256:e6c81219bd689f51865d9e372991c540bda33a0379d5573cddb9a3a23f7caaef"},
 ]
 
 [[package]]
@@ -4353,9 +4359,10 @@ files = [
 name = "unstract-core"
 version = "0.0.1"
 requires_python = ">=3.9,<3.11.1"
+editable = true
 path = "../unstract/core"
 summary = "Core library that helps with executing workflows."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "kombu==5.3.7",
     "redis~=5.2.1",
@@ -4366,9 +4373,10 @@ dependencies = [
 name = "unstract-flags"
 version = "0.0.1"
 requires_python = ">=3.9"
+editable = true
 path = "../unstract/flags"
 summary = "Unstract's feature flags package."
-groups = ["default"]
+groups = ["default", "dev"]
 dependencies = [
     "grpcio-tools<=1.60.0",
     "grpcio<=1.60.0",
@@ -4454,7 +4462,7 @@ name = "urllib3"
 version = "1.26.20"
 requires_python = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,!=3.5.*,>=2.7"
 summary = "HTTP library with thread-safe connection pooling, file post, and more."
-groups = ["default", "deploy"]
+groups = ["default", "deploy", "dev"]
 files = [
     {file = "urllib3-1.26.20-py2.py3-none-any.whl", hash = "sha256:0ed14ccfbf1c30a9072c7ca157e4319b70d65f623e91e7b32fadb2853431016e"},
     {file = "urllib3-1.26.20.tar.gz", hash = "sha256:40c2dc0c681e47eb8f90e7e27bf6ff7df2e677421fd46756da1161c39ca70d32"},
@@ -4476,7 +4484,7 @@ name = "vine"
 version = "5.1.0"
 requires_python = ">=3.6"
 summary = "Python promises."
-groups = ["default"]
+groups = ["default", "dev"]
 files = [
     {file = "vine-5.1.0-py3-none-any.whl", hash = "sha256:40fdf3c48b2cfe1c38a49e9ae2da6fda88e4794c810050a728bd7413811fb1dc"},
     {file = "vine-5.1.0.tar.gz", hash = "sha256:8b62e981d35c41049211cf62a0a1242d8c1ee9bd15bb196ce38aefd6799e61e0"},
