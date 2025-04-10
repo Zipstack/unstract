@@ -140,7 +140,7 @@ ignore = [
     "N999",   # Invalid module name: 'FileValidator'"
     "TCH001", #Move application import xxx into a type-checking block
     "TCH002", # Move third-party import `rest_framework.serializers.Serializer` into a type-checking block
-    "TC003",  # Move standard library import `uuid` into a type-checking block"
+    # "TC003",  # Move standard library import `uuid` into a type-checking block"
     "TC006",  # [*] Add quotes to type expression in `typing.cast()"
     "ANN206", #Missing return type annotation
     "ANN202", # Missing return type annotation for private function"
