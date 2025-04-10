@@ -775,8 +775,8 @@ requires-dist = [
 [package.metadata.requires-dev]
 deploy = [
     { name = "gunicorn", extras = ["gevent"], specifier = "~=23.0" },
-    { name = "opentelemetry-distro", specifier = "~=0.52b1" },
-    { name = "opentelemetry-exporter-otlp", specifier = "~=1.31.1" },
+    { name = "opentelemetry-distro" },
+    { name = "opentelemetry-exporter-otlp" },
 ]
 
 [[package]]

@@ -1,9 +1,9 @@
 # Use a specific version of Python slim image
 FROM python:3.12.9-slim
 
-LABEL maintainer="Zipstack Inc."
-LABEL description="Prompt Service Container"
-LABEL version="1.0"
+LABEL maintainer="Zipstack Inc." \
+    description="Prompt Service Container" \
+    version="1.0"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     # Set to immediately flush stdout and stderr streams without first buffering
@@ -20,48 +20,41 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     OTEL_LOGS_EXPORTER=none \
     OTEL_SERVICE_NAME=unstract_prompt
 
-# Install system dependencies
-RUN apt-get update; \
+# Install system dependencies, create user, and setup directories in one layer
+RUN apt-get update && \
     apt-get --no-install-recommends install -y \
-    # unstract sdk
-    build-essential libmagic-dev pkg-config \
-    # git url
-    git; \
-    apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
-    # Creates a non-root user with an explicit UID and adds permission to access the /app folder
-    # For more info, please refer to https://aka.ms/vscode-docker-python-configure-containers
-    adduser -u 5678 --disabled-password --gecos "" ${APP_USER};
+    build-essential \
+    libmagic-dev \
+    pkg-config \
+    git && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* && \
+    adduser -u 5678 --disabled-password --gecos "" ${APP_USER} && \
+    mkdir -p ${APP_HOME} && \
+    chown -R ${APP_USER}:${APP_USER} ${APP_HOME}
 
 # Install uv package manager
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR ${APP_HOME}
 
-# Create app directory and set permissions
-RUN mkdir -p ${APP_HOME} \
-    && chown -R ${APP_USER}:${APP_USER} ${APP_HOME}
+# Copy dependency files first for better caching
+COPY --chown=${APP_USER} ${BUILD_CONTEXT_PATH}/pyproject.toml ${BUILD_CONTEXT_PATH}/uv.lock ./
 
-# Copy only requirements files first to leverage Docker cache
-COPY --chown=unstract ${BUILD_CONTEXT_PATH}/pyproject.toml .
-COPY --chown=unstract ${BUILD_CONTEXT_PATH}/uv.lock .
-# Copy local dependencies
-COPY --chown=unstract ${BUILD_PACKAGES_PATH}/core /unstract/core
-COPY --chown=unstract ${BUILD_PACKAGES_PATH}/flags /unstract/flags
-# TODO: Security issue but ignoring it for nuitka based builds
-COPY --chown=unstract ${BUILD_CONTEXT_PATH} /app/
+# Copy required packages
+COPY --chown=${APP_USER} ${BUILD_PACKAGES_PATH}/core /unstract/core
+COPY --chown=${APP_USER} ${BUILD_PACKAGES_PATH}/flags /unstract/flags
+
+# Copy application code
+COPY --chown=${APP_USER} ${BUILD_CONTEXT_PATH} /app/
+
 # Switch to non-root user
 USER ${APP_USER}
 
-# Create virtual environment and install dependencies in one layer
-RUN uv sync --frozen \
-    && uv sync --group deploy \
-    && uv pip install --no-cache opentelemetry-distro \
-    opentelemetry-exporter-otlp \
-    && uv run opentelemetry-bootstrap -a install
-
-# Install dependencies and plugins (if any)
-RUN . .venv/bin/activate && \
+# Install dependencies in a single layer
+RUN uv sync --frozen && \
     uv sync && \
+    . .venv/bin/activate && \
     for dir in "${TARGET_PLUGINS_PATH}"/*/; do \
     dirpath=${dir%*/}; \
     if [ "${dirpath##*/}" != "*" ]; then \
@@ -71,10 +64,9 @@ RUN . .venv/bin/activate && \
     cd -; \
     fi; \
     done && \
-    mkdir prompt-studio-data
-
-
-RUN uv sync --group deploy
+    uv sync --group deploy && \
+    uv run opentelemetry-bootstrap -a install && \
+    mkdir -p prompt-studio-data
 
 EXPOSE 3003
 

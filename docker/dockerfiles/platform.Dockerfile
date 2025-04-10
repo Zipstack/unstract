@@ -1,9 +1,9 @@
 # Use a specific version of Python slim image
 FROM python:3.12.9-slim
 
-LABEL maintainer="Zipstack Inc."
-LABEL description="Platform Service Container"
-LABEL version="1.0"
+LABEL maintainer="Zipstack Inc." \
+    description="Platform Service Container" \
+    version="1.0"
 
 ENV \
     # Keeps Python from generating .pyc files in the container
@@ -21,35 +21,28 @@ ENV \
     OTEL_LOGS_EXPORTER=none \
     OTEL_SERVICE_NAME=unstract_platform
 
-# Install system dependencies
-RUN apt-get update; \
-    apt-get --no-install-recommends install -y  \
-    # unstract sdk
-    build-essential libmagic-dev git; \
-    \
-    apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
-    # Creates a non-root user with an explicit UID and adds permission to access the /app folder
-    # For more info, please refer to https://aka.ms/vscode-docker-python-configure-containers
-    adduser -u 5678 --disabled-password --gecos "" ${APP_USER};
+# Install system dependencies and create user in one layer
+RUN apt-get update && \
+    apt-get --no-install-recommends install -y build-essential libmagic-dev git && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* && \
+    adduser -u 5678 --disabled-password --gecos "" ${APP_USER} && \
+    mkdir -p ${APP_HOME} && \
+    chown -R ${APP_USER}:${APP_USER} ${APP_HOME}
 
 # Install uv package manager
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR ${APP_HOME}
 
-# Create app directory and set permissions
-RUN mkdir -p ${APP_HOME} \
-    && chown -R ${APP_USER}:${APP_USER} ${APP_HOME}
+# Copy dependency files first to leverage Docker cache
+COPY --chmod=755 ${BUILD_CONTEXT_PATH}/pyproject.toml ${BUILD_CONTEXT_PATH}/uv.lock ./
 
-# Copy only requirements files first to leverage Docker cache
-COPY --chmod=755 ${BUILD_CONTEXT_PATH}/pyproject.toml .
-COPY --chmod=755 ${BUILD_CONTEXT_PATH}/uv.lock .
-# Copy local dependency packages
-# COPY --chown=unstract ${BUILD_PACKAGES_PATH} /unstract
-COPY --chown=unstract ${BUILD_PACKAGES_PATH}/flags /unstract/flags
-# Read and execute access to non-root user to avoid security hotspot
-# Write access to specific sub-directory need to be explicitly provided if required
-COPY --chmod=755 ${BUILD_CONTEXT_PATH} /app/
+# Copy only the needed parts of the unstract package
+COPY --chown=${APP_USER} ${BUILD_PACKAGES_PATH}/flags /unstract/flags
+
+# Copy application files
+COPY --chmod=755 ${BUILD_CONTEXT_PATH} ./
 
 # Switch to non-root user
 USER ${APP_USER}
@@ -57,10 +50,7 @@ USER ${APP_USER}
 # Create virtual environment and install dependencies in one layer
 RUN uv sync --frozen \
     && uv sync --group deploy \
-    && uv pip install --no-cache opentelemetry-distro \
-    opentelemetry-exporter-otlp \
     && uv run opentelemetry-bootstrap -a install
-
 
 EXPOSE 3001
 

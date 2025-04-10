@@ -1,9 +1,9 @@
 # Use a specific version of Python slim image
 FROM python:3.12.9-slim
 
-LABEL maintainer="Zipstack Inc."
-LABEL description="X2Text Service Container"
-LABEL version="1.0"
+LABEL maintainer="Zipstack Inc." \
+    description="X2Text Service Container" \
+    version="1.0"
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -16,36 +16,30 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     OTEL_METRICS_EXPORTER=none \
     OTEL_LOGS_EXPORTER=none \
     OTEL_SERVICE_NAME=unstract_x2text
-# Install system dependencies and cleanup in the same layer
-# Creates a non-root user with an explicit UID and adds permission to access the /app folder
-# For more info, please refer to https://aka.ms/vscode-docker-python-configure-containers
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-    curl \
-    && rm -rf /var/lib/apt/lists/* \
-    && adduser --uid 5678 --disabled-password --gecos "" ${APP_USER}
 
+# Install system dependencies and create user in a single layer
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && adduser --uid 5678 --disabled-password --gecos "" ${APP_USER} \
+    && mkdir -p ${APP_HOME} \
+    && chown -R ${APP_USER}:${APP_USER} ${APP_HOME}
 
 # Install uv package manager
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR ${APP_HOME}
 
-# Create app directory and set permissions
-RUN mkdir -p ${APP_HOME} \
-    && chown -R ${APP_USER}:${APP_USER} ${APP_HOME}
-
 # Copy only requirements files first to leverage Docker cache
-COPY --chmod=755 ${BUILD_CONTEXT_PATH}/pyproject.toml .
-COPY --chmod=755 ${BUILD_CONTEXT_PATH}/uv.lock .
+COPY --chmod=755 ${BUILD_CONTEXT_PATH}/pyproject.toml ${BUILD_CONTEXT_PATH}/uv.lock ./
 
 # Switch to non-root user
 USER ${APP_USER}
-# Create virtual environment and install dependencies in one layer
+
+# Install dependencies
 RUN uv sync --frozen \
     && uv sync --group deploy \
     && uv run opentelemetry-bootstrap -a install
-
 
 # Copy application code
 COPY --chmod=755 --chown=${APP_USER}:${APP_USER} ${BUILD_CONTEXT_PATH} .
