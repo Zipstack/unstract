@@ -69,13 +69,24 @@ try {
   // Ignore if hook not available
 }
 
-let DynamicLogo;
-try {
-  DynamicLogo =
-    require("../../../plugins/dynamic-logo/DynamicLogo.js")?.default;
-} catch {
-  // Plugin not available
-}
+const CustomLogo = ({ onClick }) => {
+  const [logoSrc, setLogoSrc] = useState(process.env.REACT_APP_CUSTOM_LOGO_URL);
+
+  return logoSrc ? (
+    <img
+      src={logoSrc}
+      onError={() => setLogoSrc(null)}
+      className="topbar-logo cursor-pointer"
+      onClick={onClick}
+      alt="logo"
+    />
+  ) : (
+    <UnstractLogo
+      className="topbar-logo cursor-pointer"
+      onClick={onClick}
+    />
+  );
+};
 
 let unstractSubscriptionPlan;
 let unstractSubscriptionPlanStore;
@@ -346,21 +357,10 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
     <Row align="middle" className="topNav">
       <Col span={6} className="platform-switch-container">
         {isUnstract ? (
-          DynamicLogo ? (
-            <DynamicLogo
-              className="topbar-logo cursor-pointer"
-              onClick={() =>
-                navigate(`/${sessionDetails?.orgName}/${homePagePath}`)
-              }
-            />
-          ) : (
-            <UnstractLogo
-              className="topbar-logo cursor-pointer"
-              onClick={() =>
-                navigate(`/${sessionDetails?.orgName}/${homePagePath}`)
-              }
-            />
-          )
+          <CustomLogo
+            className="topbar-logo cursor-pointer"
+            onClick={() => navigate(`/${sessionDetails?.orgName}/${homePagePath}`)}
+          />
         ) : (
           WhispererLogo && <WhispererLogo className="topbar-logo" />
         )}
