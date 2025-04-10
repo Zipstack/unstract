@@ -65,6 +65,7 @@ RUN uv sync --frozen && \
     fi; \
     done && \
     uv sync --group deploy && \
+    .venv/bin/python3 -m ensurepip --upgrade && \
     uv run opentelemetry-bootstrap -a install && \
     mkdir -p prompt-studio-data
 

@@ -39,6 +39,7 @@ USER ${APP_USER}
 # Install dependencies
 RUN uv sync --frozen \
     && uv sync --group deploy \
+    && .venv/bin/python3 -m ensurepip --upgrade \
     && uv run opentelemetry-bootstrap -a install
 
 # Copy application code

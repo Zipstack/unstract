@@ -50,6 +50,7 @@ USER ${APP_USER}
 # Create virtual environment and install dependencies in one layer
 RUN uv sync --frozen \
     && uv sync --group deploy \
+    && .venv/bin/python3 -m ensurepip --upgrade \
     && uv run opentelemetry-bootstrap -a install
 
 EXPOSE 3001

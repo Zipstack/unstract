@@ -51,6 +51,7 @@ COPY ${BUILD_PACKAGES_PATH}/ /unstract/
 # Install dependencies in one layer
 RUN uv sync --frozen && \
     uv sync --group deploy && \
+    .venv/bin/python3 -m ensurepip --upgrade && \
     uv run opentelemetry-bootstrap -a install && \
     # Scientific packages reinstallation
     # uv pip install --pre --no-binary :all: pymssql --no-cache --force-reinstall && \

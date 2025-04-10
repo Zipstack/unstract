@@ -40,10 +40,8 @@ COPY ${BUILD_CONTEXT_PATH} /app/
 # Create virtual environment and install dependencies in one layer
 RUN uv sync --frozen \
     && uv sync --group deploy \
-    && uv pip install --no-cache opentelemetry-distro \
-    opentelemetry-exporter-otlp \
+    && .venv/bin/python3 -m ensurepip --upgrade \
     && uv run opentelemetry-bootstrap -a install
-
 
 RUN \
     uv pip install --system; \
