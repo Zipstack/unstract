@@ -65,7 +65,7 @@ class ToolSandboxHelper:
             )
         else:
             logger.error(
-                f"Error while calling tool {image_name} " f" reason: {response.reason}"
+                f"Error while calling tool {image_name} reason: {response.reason}"
             )
         return result
 
@@ -107,7 +107,7 @@ class ToolSandboxHelper:
             )
         else:
             logger.error(
-                f"Error while calling tool {image_name} " f" reason: {response.reason}"
+                f"Error while calling tool {image_name} reason: {response.reason}"
             )
         return result
 

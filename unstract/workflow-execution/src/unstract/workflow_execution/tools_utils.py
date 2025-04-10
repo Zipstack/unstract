@@ -199,9 +199,7 @@ class ToolsUtils:
                     f"{str(e)}"
                 )
 
-        logger.warning(
-            f"Operation failed after {max_retries} " f"retries, error: {error}"
-        )
+        logger.warning(f"Operation failed after {max_retries} retries, error: {error}")
         return None
 
     def get_tool_environment_variables(self) -> dict[str, Any]:

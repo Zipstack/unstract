@@ -54,7 +54,7 @@ class ValueTooLongException(UnstractDBConnectorException):
 class FeatureNotSupportedException(UnstractDBConnectorException):
     def __init__(self, detail: Any, database: str) -> None:
         default_detail = (
-            f"Error creating/writing to {database}. " f"Feature not supported sql error. "
+            f"Error creating/writing to {database}. Feature not supported sql error. "
         )
         super().__init__(detail=default_detail)
 

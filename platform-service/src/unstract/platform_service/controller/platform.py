@@ -489,9 +489,7 @@ def adapter_instance() -> Any:
         )
         raise APIError(message=msg, code=403)
     except Exception as e:
-        msg = (
-            f"Error while getting db adapter settings for " f"{adapter_instance_id}: {e}"
-        )
+        msg = f"Error while getting db adapter settings for {adapter_instance_id}: {e}"
         raise APIError(message=msg)
 
 

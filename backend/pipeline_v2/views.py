@@ -86,7 +86,7 @@ class PipelineViewSet(viewsets.ModelViewSet):
             KeyHelper.create_api_key(pipeline_instance, request)
         except IntegrityError:
             raise DuplicateData(
-                f"{PipelineErrors.PIPELINE_EXISTS}, " f"{PipelineErrors.DUPLICATE_API}"
+                f"{PipelineErrors.PIPELINE_EXISTS}, {PipelineErrors.DUPLICATE_API}"
             )
         return Response(data=serializer.data, status=status.HTTP_201_CREATED)
 

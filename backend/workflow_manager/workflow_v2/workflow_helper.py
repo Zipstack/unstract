@@ -1035,7 +1035,7 @@ class WorkflowSchemaHelper:
             dict[str, Any]: JSON schema for the requested entity
         """
         schema_path = (
-            f"{os.path.dirname(__file__)}/static/" f"{schema_type}/{schema_entity}.json"
+            f"{os.path.dirname(__file__)}/static/{schema_type}/{schema_entity}.json"
         )
         with open(schema_path, encoding="utf-8") as file:
             schema = json.load(file)

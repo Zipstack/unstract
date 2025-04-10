@@ -250,9 +250,7 @@ class WorkflowExecutionService:
                 termination of execution.
         """
         with self.redis_con as red:
-            logger.info(
-                f"Setting single stepping flag to " f"{ExecutionAction.START.value}"
-            )
+            logger.info(f"Setting single stepping flag to {ExecutionAction.START.value}")
             red.setex(
                 self.execution_id,
                 StepExecution.CACHE_EXP_START_SEC,

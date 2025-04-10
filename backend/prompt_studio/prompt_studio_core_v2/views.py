@@ -381,11 +381,11 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         filename_without_extension = file_name.rsplit(".", 1)[0]
         if view_type == FileViewTypes.EXTRACT:
             file_name = (
-                f"{FileViewTypes.EXTRACT.lower()}/" f"{filename_without_extension}.txt"
+                f"{FileViewTypes.EXTRACT.lower()}/{filename_without_extension}.txt"
             )
         if view_type == FileViewTypes.SUMMARIZE:
             file_name = (
-                f"{FileViewTypes.SUMMARIZE.lower()}/" f"{filename_without_extension}.txt"
+                f"{FileViewTypes.SUMMARIZE.lower()}/{filename_without_extension}.txt"
             )
         try:
             contents = PromptStudioFileHelper.fetch_file_contents(

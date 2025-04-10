@@ -43,7 +43,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
             self.perform_create(serializer)
         except IntegrityError:
             raise DuplicateData(
-                f"{ProjectErrors.PROJECT_NAME_EXISTS}, " f"{ProjectErrors.DUPLICATE_API}"
+                f"{ProjectErrors.PROJECT_NAME_EXISTS}, {ProjectErrors.DUPLICATE_API}"
             )
         # Access the created instance
         created_instance: Project = serializer.instance

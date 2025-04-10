@@ -250,7 +250,7 @@ class SourceConnector(BaseConnector):
             return None
         output_log_message = f"## Input text:\n\n```text\n{input_text}\n```\n\n"
         input_log_message = (
-            "## Input file:\n\n```text\n" f"{os.path.basename(input_file_path)}\n```\n\n"
+            "## Input file:\n\n```text\n{os.path.basename(input_file_path)}\n```\n\n"
         )
         self.execution_service.publish_update_log(
             state=LogState.INPUT_UPDATE, message=input_log_message
