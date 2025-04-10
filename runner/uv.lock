@@ -1153,7 +1153,7 @@ requires-dist = [
 [[package]]
 name = "unstract-runner"
 version = "0.1.0"
-source = { editable = "." }
+source = { virtual = "." }
 dependencies = [
     { name = "docker" },
     { name = "flask" },
@@ -1171,11 +1171,13 @@ deploy = [
 ]
 dev = [
     { name = "poethepoet" },
+    { name = "unstract-core", extra = ["flask"] },
+]
+test = [
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "pytest-md-report" },
     { name = "pytest-mock" },
-    { name = "unstract-core", extra = ["flask"] },
 ]
 
 [package.metadata]
@@ -1196,11 +1198,13 @@ deploy = [
 ]
 dev = [
     { name = "poethepoet", specifier = ">=0.33.1" },
+    { name = "unstract-core", extras = ["flask"], editable = "../unstract/core" },
+]
+test = [
     { name = "pytest", specifier = ">=8.2.2" },
     { name = "pytest-cov", specifier = ">=5.0.0" },
     { name = "pytest-md-report", specifier = ">=0.6.2" },
     { name = "pytest-mock", specifier = ">=3.14.0" },
-    { name = "unstract-core", extras = ["flask"], editable = "../unstract/core" },
 ]
 
 [[package]]
