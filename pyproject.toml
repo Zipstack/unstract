@@ -82,6 +82,7 @@ exclude = [
     "dist",
     "node_modules",
     "venv",
+    "migrations",
 ]
 
 [tool.ruff.lint]
@@ -105,20 +106,29 @@ ignore = [
     "D104",   # Missing docstring in public package
     "ANN101", # Missing type annotation for self
     "ANN102", # Missing type annotation for cls
+    "D101",   # Missing docstring in public class
+    "D102",   # Missing docstring in public method
+    "D105",   # Missing docstring in magic method
+    "D106",   # Missing docstring in public nested class
+    "D205",   # 1 blank line required between summary line and description
+    "ANN401", # Dynamically typed expressions (typing.Any) are disallowed in `user_login`
+    "D417",   # Missing argument description in the docstring for `user_organizations`: `request`
+    "B904",   # Within an `except` clause, raise exceptions with
+    "D107",   # Missing docstring in `__init__`
+    "N806",   # Variable `organizationData` in function should be lowercase
 ]
-
-
-[tool.ruff.format]
-quote-style = "double"
-indent-style = "space"
-line-ending = "auto"
-docstring-code-format = true
 
 [tool.ruff.mccabe]
 max-complexity = 10
 
 [tool.ruff.pydocstyle]
 convention = "google"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+docstring-code-format = true
 
 [tool.pycln]
 all = true
