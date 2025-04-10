@@ -29,15 +29,18 @@ jobs:
         with:
           ref: ${{ github.head_ref }}
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12.9"
+      # - uses: actions/setup-python@v5
+      #   with:
+      #     python-version: "3.12"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
           # Install a specific version of uv.
           version: "0.6.11"
+          python-version: 3.12.9
+
+      - run: uv pip install --python=3.12.9 pip
 
       - name: Generate UV lockfiles
         env:
