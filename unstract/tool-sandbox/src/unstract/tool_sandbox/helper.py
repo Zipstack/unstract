@@ -1,12 +1,12 @@
 import json
 import logging
 import os
-from typing import Any, Optional, Union
+from typing import Any
 
 import requests
-from unstract.tool_sandbox.constants import UnstractRunner
 
 from unstract.core.utilities import UnstractUtils
+from unstract.tool_sandbox.constants import UnstractRunner
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ class ToolSandboxHelper:
         self.envs = environment_variables
         self.messaging_channel = str(messaging_channel)
 
-    def convert_str_to_dict(self, data: Union[str, dict[str, Any]]) -> dict[str, Any]:
+    def convert_str_to_dict(self, data: str | dict[str, Any]) -> dict[str, Any]:
         if isinstance(data, str):
             output: dict[str, Any] = {}
             try:
@@ -41,7 +41,7 @@ class ToolSandboxHelper:
 
     def make_get_request(
         self, image_name: str, image_tag: str, endpoint: str
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Make unstract runner Get request.
 
         Args:
@@ -55,7 +55,7 @@ class ToolSandboxHelper:
         url = f"{self.base_url}{endpoint}"
         params = {"image_name": image_name, "image_tag": image_tag}
         response = requests.get(url, params=params)
-        result: Optional[dict[str, Any]] = None
+        result: dict[str, Any] | None = None
         if response.status_code == 200:
             result = response.json()
         elif response.status_code == 404:
@@ -75,8 +75,8 @@ class ToolSandboxHelper:
         image_name: str,
         image_tag: str,
         settings: dict[str, Any],
-        retry_count: Optional[int] = None,
-    ) -> Optional[dict[str, Any]]:
+        retry_count: int | None = None,
+    ) -> dict[str, Any] | None:
         """Calling unstract runner to run the required tool.
 
         Args:
@@ -97,7 +97,7 @@ class ToolSandboxHelper:
         )
 
         response = requests.post(url, headers=headers, json=data)
-        result: Optional[dict[str, Any]] = None
+        result: dict[str, Any] | None = None
         if response.status_code == 200:
             result = response.json()
         elif response.status_code == 404:
@@ -117,7 +117,7 @@ class ToolSandboxHelper:
         image_name: str,
         image_tag: str,
         settings: dict[str, Any],
-        retry_count: Optional[int] = None,
+        retry_count: int | None = None,
     ) -> dict[str, Any]:
         container_name = UnstractUtils.build_tool_container_name(
             tool_image=image_name,

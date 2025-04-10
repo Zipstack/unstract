@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any
 
 from unstract.prompt_service.constants import ExecutionSource
 from unstract.prompt_service.constants import IndexingConstants as IKeys
@@ -15,7 +15,6 @@ from unstract.sdk.x2txt import TextExtractionResult, X2Text
 
 
 class ExtractionService:
-
     @staticmethod
     @log_elapsed(operation="EXTRACTION")
     def perform_extraction(
@@ -23,15 +22,14 @@ class ExtractionService:
         file_path: str,
         run_id: str,
         platform_key: str,
-        output_file_path: Optional[str] = None,
+        output_file_path: str | None = None,
         enable_highlight: bool = False,
         usage_kwargs: dict[Any, Any] = {},
-        tags: Optional[list[str]] = None,
-        execution_source: Optional[str] = None,
-        tool_exec_metadata: Optional[dict[str, Any]] = None,
-        execution_run_data_folder: Optional[str] = None,
+        tags: list[str] | None = None,
+        execution_source: str | None = None,
+        tool_exec_metadata: dict[str, Any] | None = None,
+        execution_run_data_folder: str | None = None,
     ) -> str:
-
         extracted_text = ""
         util = PromptServiceBaseTool(platform_key=platform_key)
         x2text = X2Text(

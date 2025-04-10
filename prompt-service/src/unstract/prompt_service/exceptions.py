@@ -1,5 +1,5 @@
 from dataclasses import asdict, dataclass
-from typing import Any, Optional
+from typing import Any
 
 from werkzeug.exceptions import HTTPException
 
@@ -13,7 +13,7 @@ class ErrorResponse:
     error: str = DEFAULT_ERR_MESSAGE
     name: str = "PromptServiceError"
     code: int = 500
-    payload: Optional[Any] = None
+    payload: Any | None = None
 
 
 class APIError(HTTPException):
@@ -22,8 +22,8 @@ class APIError(HTTPException):
 
     def __init__(
         self,
-        message: Optional[str] = None,
-        code: Optional[int] = None,
+        message: str | None = None,
+        code: int | None = None,
         payload: Any = None,
     ):
         if message:

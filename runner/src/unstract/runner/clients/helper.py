@@ -10,8 +10,6 @@ logger = logging.getLogger(__name__)
 class ContainerClientHelper:
     @staticmethod
     def get_container_client() -> ContainerClientInterface:
-        client_path = os.getenv(
-            "CONTAINER_CLIENT_PATH", "unstract.runner.clients.docker"
-        )
+        client_path = os.getenv("CONTAINER_CLIENT_PATH", "unstract.runner.clients.docker")
         logger.info("Loading the container client from path:", client_path)
         return import_module(client_path).Client

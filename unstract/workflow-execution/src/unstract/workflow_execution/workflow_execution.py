@@ -1,9 +1,11 @@
 import logging
 import os
 import time
-from typing import Any, Optional, Union
+from typing import Any
 
 import redis
+
+from unstract.core.pubsub_helper import LogPublisher
 from unstract.tool_sandbox import ToolSandbox
 from unstract.workflow_execution.constants import StepExecution, ToolExecution
 from unstract.workflow_execution.dto import ToolInstance, WorkflowDto
@@ -22,8 +24,6 @@ from unstract.workflow_execution.exceptions import (
 )
 from unstract.workflow_execution.execution_file_handler import ExecutionFileHandler
 from unstract.workflow_execution.tools_utils import ToolsUtils
-
-from unstract.core.pubsub_helper import LogPublisher
 
 logger = logging.getLogger(__name__)
 
@@ -60,8 +60,8 @@ class WorkflowExecutionService:
         self.ignore_processed_entities = ignore_processed_entities
         self.override_single_step = False
         self.execution_id: str = ""
-        self.file_execution_id: Optional[str] = None
-        self.messaging_channel: Optional[str] = None
+        self.file_execution_id: str | None = None
+        self.messaging_channel: str | None = None
         self.input_files: list[str] = []
         self.log_stage: LogStage = LogStage.COMPILE
 
@@ -94,8 +94,7 @@ class WorkflowExecutionService:
 
             logger.info(f"Execution {execution_id}: compilation completed")
             log_message = (
-                f"Workflow '{self.workflow_id}' is valid "
-                "and is compiled successfully"
+                f"Workflow '{self.workflow_id}' is valid " "and is compiled successfully"
             )
             self.publish_log(log_message)
 
@@ -113,7 +112,6 @@ class WorkflowExecutionService:
 
     def build_workflow(self) -> None:
         """Build Workflow by builtin tool sandboxes."""
-
         logger.info(f"Execution {self.execution_id}: Build started")
         self.log_stage = LogStage.BUILD
         log_message = (
@@ -266,9 +264,7 @@ class WorkflowExecutionService:
                 message="1",
                 component=LogComponent.NEXT_STEP,
             )
-            log_message = (
-                f"Execution '{self.execution_id}' " "is waiting for user input"
-            )
+            log_message = f"Execution '{self.execution_id}' " "is waiting for user input"
             self.publish_log(log_message)
 
             wait_for_user = 0
@@ -295,13 +291,9 @@ class WorkflowExecutionService:
                     self.override_single_step = True
                     break
                 if execution_action == ExecutionAction.STOP:
-                    log_message = (
-                        f"Execution '{self.execution_id}' " "STOPPING execution"
-                    )
+                    log_message = f"Execution '{self.execution_id}' " "STOPPING execution"
                     self.publish_log(log_message)
-                    raise StopExecution(
-                        "User clicked on stop button. Stopping execution"
-                    )
+                    raise StopExecution("User clicked on stop button. Stopping execution")
                 time.sleep(1)
                 wait_for_user += 1
             red.delete(self.execution_id)
@@ -359,9 +351,9 @@ class WorkflowExecutionService:
         self,
         message: str,
         level: LogLevel = LogLevel.INFO,
-        step: Optional[int] = None,
-        iteration: Optional[int] = None,
-        iteration_total: Optional[int] = None,
+        step: int | None = None,
+        iteration: int | None = None,
+        iteration_total: int | None = None,
     ) -> None:
         """Publishes regular logs for monitoring the execution of a workflow.
 
@@ -397,7 +389,7 @@ class WorkflowExecutionService:
         self,
         state: LogState,
         message: str,
-        component: Optional[Union[str, LogComponent]] = None,
+        component: str | LogComponent | None = None,
     ) -> None:
         """Publishes update logs for monitoring the execution of a workflow.
 

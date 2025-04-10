@@ -1,7 +1,6 @@
 import logging
 import uuid
 from datetime import timedelta
-from typing import Optional
 
 from api_v2.models import APIDeployment
 from django.core.exceptions import ObjectDoesNotExist
@@ -13,6 +12,7 @@ from usage_v2.constants import UsageKeys
 from usage_v2.models import Usage
 from utils.common_utils import CommonUtils
 from utils.models.base_model import BaseModel
+
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models import Workflow
 
@@ -131,9 +131,7 @@ class WorkflowExecution(BaseModel):
         db_comment="Details of encountered errors",
     )
     attempts = models.IntegerField(default=0, db_comment="number of attempts taken")
-    execution_time = models.FloatField(
-        default=0, db_comment="execution time in seconds"
-    )
+    execution_time = models.FloatField(default=0, db_comment="execution time in seconds")
     tags = models.ManyToManyField(Tag, related_name="workflow_executions", blank=True)
 
     class Meta:
@@ -151,14 +149,14 @@ class WorkflowExecution(BaseModel):
         return list(self.tags.values_list("name", flat=True))
 
     @property
-    def workflow_name(self) -> Optional[str]:
+    def workflow_name(self) -> str | None:
         """Obtains the workflow's name associated to this execution."""
         if self.workflow:
             return self.workflow.workflow_name
         return None
 
     @property
-    def pipeline_name(self) -> Optional[str]:
+    def pipeline_name(self) -> str | None:
         """Obtains the pipeline's name associated to this execution.
         It could be ETL / TASK / API pipeline, None returned if there's no such pipeline
         """
@@ -193,9 +191,8 @@ class WorkflowExecution(BaseModel):
         return str(timedelta(seconds=time_in_secs)).split(".")[0]
 
     @property
-    def get_aggregated_usage_cost(self) -> Optional[float]:
+    def get_aggregated_usage_cost(self) -> float | None:
         """Retrieve aggregated cost for the given execution_id.
-
 
         Returns:
         Optional[float]: The total cost in dollars if available, else None.

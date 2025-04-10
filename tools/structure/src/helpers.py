@@ -1,7 +1,8 @@
-from typing import Any, Optional
+from typing import Any
 
 from constants import IndexingConstants as IKeys
 from constants import SettingsKeys  # type: ignore [attr-defined]
+
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.tool.base import BaseTool
 
@@ -18,7 +19,6 @@ class StructureToolHelper:
         tool: BaseTool,
         execution_run_data_folder: str,
     ) -> str:
-
         x2text = tool_settings[SettingsKeys.X2TEXT_ADAPTER]
         tool.stream_log(f"Extracting text from {file_path} into {extract_file_path}")
         payload = {
@@ -57,11 +57,10 @@ class StructureToolHelper:
         enable_highlight: bool,
         chunk_size: int,
         chunk_overlap: int,
-        file_hash: Optional[str] = None,
+        file_hash: str | None = None,
         tool_id: str = None,
         extracted_text: str = None,
     ) -> str:
-
         x2text = tool_settings[SettingsKeys.X2TEXT_ADAPTER]
 
         payload = {
