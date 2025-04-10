@@ -36,7 +36,6 @@ def update_execution_time_backward(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         (
             "workflow_v2",

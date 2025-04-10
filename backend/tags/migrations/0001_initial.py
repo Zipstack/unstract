@@ -7,7 +7,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
     dependencies = [
@@ -31,9 +30,7 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "name",
-                    models.CharField(
-                        db_comment="Unique name of the tag", max_length=50
-                    ),
+                    models.CharField(db_comment="Unique name of the tag", max_length=50),
                 ),
                 (
                     "description",

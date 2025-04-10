@@ -1,7 +1,7 @@
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 from utils.constants import Common
 from workflow_manager.endpoint_v2.exceptions import UnstractQueueException
@@ -38,8 +38,8 @@ class QueueResult:
     result: Any
     workflow_id: str
     file_content: str
-    whisper_hash: Optional[str] = None
-    file_execution_id: Optional[str] = None
+    whisper_hash: str | None = None
+    file_execution_id: str | None = None
 
     def to_dict(self) -> Any:
         return {

@@ -5,14 +5,12 @@ import shutil
 from hashlib import sha256
 from io import BytesIO
 from itertools import islice
-from typing import Any, Optional
+from typing import Any
 
 import fsspec
 from connector_processor.constants import ConnectorKeys
 from connector_v2.models import ConnectorInstance
 from django.core.files.uploadedfile import UploadedFile
-from unstract.sdk.file_storage import FileStorage
-from unstract.workflow_execution.enums import LogState
 from utils.user_context import UserContext
 from workflow_manager.endpoint_v2.base_connector import BaseConnector
 from workflow_manager.endpoint_v2.constants import (
@@ -40,6 +38,8 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 from unstract.filesystem import FileStorageType, FileSystem
+from unstract.sdk.file_storage import FileStorage
+from unstract.workflow_execution.enums import LogState
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +65,8 @@ class SourceConnector(BaseConnector):
         self,
         workflow: Workflow,
         execution_id: str,
-        organization_id: Optional[str] = None,
-        execution_service: Optional[WorkflowExecutionServiceHelper] = None,
+        organization_id: str | None = None,
+        execution_service: WorkflowExecutionServiceHelper | None = None,
     ) -> None:
         """Create a SourceConnector.
 
@@ -89,7 +89,7 @@ class SourceConnector(BaseConnector):
         self.workflow = workflow
         self.execution_id = execution_id
         self.organization_id = organization_id
-        self.hash_value_of_file_content: Optional[str] = None
+        self.hash_value_of_file_content: str | None = None
         self.execution_service = execution_service
 
     def _get_endpoint_for_workflow(
@@ -158,16 +158,12 @@ class SourceConnector(BaseConnector):
         connector: ConnectorInstance = self.endpoint.connector_instance
         connector_settings: dict[str, Any] = connector.connector_metadata
         source_configurations: dict[str, Any] = self.endpoint.configuration
-        required_patterns = list(
-            source_configurations.get(SourceKey.FILE_EXTENSIONS, [])
-        )
+        required_patterns = list(source_configurations.get(SourceKey.FILE_EXTENSIONS, []))
         recursive = bool(
             source_configurations.get(SourceKey.PROCESS_SUB_DIRECTORIES, False)
         )
         limit = int(
-            source_configurations.get(
-                SourceKey.MAX_FILES, FileSystemConnector.MAX_FILES
-            )
+            source_configurations.get(SourceKey.MAX_FILES, FileSystemConnector.MAX_FILES)
         )
         root_dir_path = connector_settings.get(ConnectorKeys.PATH, "")
         folders_to_process = list(source_configurations.get(SourceKey.FOLDERS, ["/"]))
@@ -212,9 +208,7 @@ class SourceConnector(BaseConnector):
             matched_files, count = self._get_matched_files(
                 source_fs, input_directory, patterns, recursive, limit
             )
-            self.publish_user_sys_log(
-                f"Matched '{count}' files from '{input_directory}'"
-            )
+            self.publish_user_sys_log(f"Matched '{count}' files from '{input_directory}'")
             total_matched_files.update(matched_files)
             total_files_to_process += count
         self.publish_input_output_list_file_logs(
@@ -256,8 +250,7 @@ class SourceConnector(BaseConnector):
             return None
         output_log_message = f"## Input text:\n\n```text\n{input_text}\n```\n\n"
         input_log_message = (
-            "## Input file:\n\n```text\n"
-            f"{os.path.basename(input_file_path)}\n```\n\n"
+            "## Input file:\n\n```text\n" f"{os.path.basename(input_file_path)}\n```\n\n"
         )
         self.execution_service.publish_update_log(
             state=LogState.INPUT_UPDATE, message=input_log_message
@@ -327,8 +320,7 @@ class SourceConnector(BaseConnector):
         return matched_files, count
 
     def _should_process_file(self, file: str, patterns: list[str]) -> bool:
-        """
-        Check if the file should be processed based on the patterns.
+        """Check if the file should be processed based on the patterns.
 
         Args:
             file: The filename to check
@@ -348,8 +340,7 @@ class SourceConnector(BaseConnector):
         return matches_pattern and self._is_valid_pattern(file)
 
     def _is_valid_pattern(self, file_name: str) -> bool:
-        """
-        Check if the file has a supported format.
+        """Check if the file has a supported format.
 
         Args:
             file_name: The filename to check
@@ -393,15 +384,12 @@ class SourceConnector(BaseConnector):
 
     def _get_file_history(
         self, workflow: Workflow, source_fs: UnstractFileSystem, file_path: str
-    ) -> Optional[FileHistory]:
+    ) -> FileHistory | None:
         """Retrieve file history using provider UUID or legacy cache key."""
-
         provider_file_uuid = source_fs.get_file_system_uuid(file_path)
 
         if provider_file_uuid:
-            logger.info(
-                f"Checking file history for provider UUID: {provider_file_uuid}"
-            )
+            logger.info(f"Checking file history for provider UUID: {provider_file_uuid}")
             file_history = FileHistoryHelper.get_file_history(
                 workflow=workflow, provider_file_uuid=provider_file_uuid
             )
@@ -474,9 +462,7 @@ class SourceConnector(BaseConnector):
             return self.list_file_from_api_storage(file_hashes)
         raise InvalidSourceConnectionType()
 
-    def get_file_content_hash(
-        self, source_fs: UnstractFileSystem, file_path: str
-    ) -> str:
+    def get_file_content_hash(self, source_fs: UnstractFileSystem, file_path: str) -> str:
         """Generate a hash value from the file content.
 
         Args:
@@ -540,9 +526,7 @@ class SourceConnector(BaseConnector):
                     )
                     first_iteration = False
                 # write the chunk in to execution directory
-                workflow_file_storage.write(
-                    path=source_file_path, mode="ab", data=chunk
-                )
+                workflow_file_storage.write(path=source_file_path, mode="ab", data=chunk)
                 workflow_file_storage.write(path=infile_path, mode="ab", data=chunk)
 
         # publish input file content
@@ -584,8 +568,7 @@ class SourceConnector(BaseConnector):
         source_path: str,
         destination_paths: list[str],
     ) -> str:
-        """
-        Copy a file from a source storage to one or more paths in a
+        """Copy a file from a source storage to one or more paths in a
         destination storage.
 
         This function reads the source file in chunks and writes each chunk to
@@ -600,6 +583,7 @@ class SourceConnector(BaseConnector):
             source_path (str): The path of the file in the source storage.
             destination_paths (list[str]): A list of paths where the file will be
                 copied in the destination storage.
+
         Returns:
             str: The SHA-256 hash of the file content.
         """
@@ -669,7 +653,7 @@ class SourceConnector(BaseConnector):
         self,
         results: list[dict[str, Any]],
         file_name: str,
-        result: Optional[str],
+        result: str | None,
     ) -> None:
         connection_type = self.endpoint.connection_type
         if connection_type == WorkflowEndpoint.ConnectionType.API:
@@ -740,9 +724,7 @@ class SourceConnector(BaseConnector):
                 file_history = FileHistoryHelper.get_file_history(
                     workflow=workflow, cache_key=file_hash
                 )
-            is_executed = (
-                True if file_history and file_history.is_completed() else False
-            )
+            is_executed = True if file_history and file_history.is_completed() else False
             file_hash = FileHash(
                 file_path=destination_path,
                 source_connection_type=connection_type,
@@ -774,9 +756,7 @@ class SourceConnector(BaseConnector):
         Returns:
             dict[str, Any]: _description_
         """
-        schema_path = os.path.join(
-            os.path.dirname(__file__), "static", "src", "api.json"
-        )
+        schema_path = os.path.join(os.path.dirname(__file__), "static", "src", "api.json")
         return cls.get_json_schema(file_path=schema_path)
 
     @classmethod

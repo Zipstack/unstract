@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any, Optional
+from typing import Any
 
 from dropbox.exceptions import ApiError as DropBoxApiError
 from dropbox.exceptions import DropboxException
@@ -63,9 +63,8 @@ class DropboxFS(UnstractFileSystem):
     def get_fsspec_fs(self) -> DropboxDriveFileSystem:
         return self.dropbox_fs
 
-    def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> Optional[str]:
-        """
-        Extracts a unique file hash from metadata.
+    def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> str | None:
+        """Extracts a unique file hash from metadata.
 
         Args:
             metadata (dict): Metadata dictionary obtained from fsspec or cloud API.

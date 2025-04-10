@@ -1,5 +1,6 @@
-from connector_processor.views import ConnectorViewSet
 from django.urls import path
+
+from connector_processor.views import ConnectorViewSet
 
 from . import views
 

@@ -34,6 +34,6 @@ class PromptStudioRequestHelper:
         if not result_row:
             raise APIError(message="Custom Tool not found", code=404)
         columns = [desc[0] for desc in cursor.description]
-        data_dict: dict[str, Any] = dict(zip(columns, result_row))
+        data_dict: dict[str, Any] = dict(zip(columns, result_row, strict=False))
         cursor.close()
         return data_dict

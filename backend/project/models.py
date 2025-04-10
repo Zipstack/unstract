@@ -41,9 +41,7 @@ class Project(BaseModel):
     description = models.TextField(
         null=True, blank=True, max_length=DESCRIPTION_FIELD_LENGTH
     )
-    project_status = models.TextField(
-        null=True, blank=True, max_length=PROJECT_NAME_SIZE
-    )
+    project_status = models.TextField(null=True, blank=True, max_length=PROJECT_NAME_SIZE)
     project_identifier = models.CharField(
         choices=ProjectIdentifier.choices, default=ProjectIdentifier.DEFAULT
     )

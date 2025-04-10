@@ -11,7 +11,6 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 
 import os
 from pathlib import Path
-from typing import Optional
 
 from dotenv import find_dotenv, load_dotenv
 from utils.common_utils import CommonUtils
@@ -19,9 +18,7 @@ from utils.common_utils import CommonUtils
 missing_settings = []
 
 
-def get_required_setting(
-    setting_key: str, default: Optional[str] = None
-) -> Optional[str]:
+def get_required_setting(setting_key: str, default: str | None = None) -> str | None:
     """Get the value of an environment variable specified by the given key. Add
     missing keys to `missing_settings` so that exception can be raised at the
     end.
@@ -64,9 +61,7 @@ LOGIN_NEXT_URL = os.environ.get("LOGIN_NEXT_URL", "http://localhost:3000/org")
 LANDING_URL = os.environ.get("LANDING_URL", "http://localhost:3000/landing")
 ERROR_URL = os.environ.get("ERROR_URL", "http://localhost:3000/error")
 
-DJANGO_APP_BACKEND_URL = os.environ.get(
-    "DJANGO_APP_BACKEND_URL", "http://localhost:8000"
-)
+DJANGO_APP_BACKEND_URL = os.environ.get("DJANGO_APP_BACKEND_URL", "http://localhost:8000")
 INTERNAL_SERVICE_API_KEY = os.environ.get("INTERNAL_SERVICE_API_KEY")
 
 GOOGLE_STORAGE_ACCESS_KEY_ID = os.environ.get("GOOGLE_STORAGE_ACCESS_KEY_ID")
@@ -481,7 +476,7 @@ for key in [
     "GOOGLE_OAUTH2_KEY",
     "GOOGLE_OAUTH2_SECRET",
 ]:
-    exec("SOCIAL_AUTH_{key} = os.environ.get('{key}')".format(key=key))
+    exec(f"SOCIAL_AUTH_{key} = os.environ.get('{key}')")
 
 SOCIAL_AUTH_PIPELINE = (
     # Checks if user is authenticated
@@ -520,6 +515,4 @@ if missing_settings:
     )
     raise ValueError(ERROR_MESSAGE)
 
-ENABLE_HIGHLIGHT_API_DEPLOYMENT = os.environ.get(
-    "ENABLE_HIGHLIGHT_API_DEPLOYMENT", False
-)
+ENABLE_HIGHLIGHT_API_DEPLOYMENT = os.environ.get("ENABLE_HIGHLIGHT_API_DEPLOYMENT", False)

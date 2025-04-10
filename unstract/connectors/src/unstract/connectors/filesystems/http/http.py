@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any, Optional
+from typing import Any
 
 import aiohttp
 from fsspec.implementations.http import HTTPFileSystem
@@ -69,9 +69,8 @@ class HttpFS(UnstractFileSystem):
     def get_fsspec_fs(self) -> HTTPFileSystem:
         return self.http_fs
 
-    def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> Optional[str]:
-        """
-        Extracts a unique file hash from metadata.
+    def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> str | None:
+        """Extracts a unique file hash from metadata.
 
         Args:
             metadata (dict): Metadata dictionary obtained from fsspec.

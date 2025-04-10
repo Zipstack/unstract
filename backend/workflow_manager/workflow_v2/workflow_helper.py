@@ -2,14 +2,13 @@ import json
 import logging
 import os
 import traceback
-from typing import Any, Optional
+from typing import Any
 
 from account_v2.constants import Common
 from api_v2.models import APIDeployment
 from api_v2.utils import APIDeploymentUtils
-from celery import current_task
+from celery import current_task, shared_task
 from celery import exceptions as celery_exceptions
-from celery import shared_task
 from celery.result import AsyncResult
 from django.db import IntegrityError
 from pipeline_v2.models import Pipeline
@@ -19,12 +18,13 @@ from rest_framework import serializers
 from tool_instance_v2.constants import ToolInstanceKey
 from tool_instance_v2.models import ToolInstance
 from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
-from unstract.workflow_execution.enums import LogComponent, LogLevel, LogState
-from unstract.workflow_execution.exceptions import StopExecution
 from utils.cache_service import CacheService
 from utils.constants import Account
 from utils.local_context import StateStore
 from utils.user_context import UserContext
+
+from unstract.workflow_execution.enums import LogComponent, LogLevel, LogState
+from unstract.workflow_execution.exceptions import StopExecution
 from workflow_manager.endpoint_v2.destination import DestinationConnector
 from workflow_manager.endpoint_v2.dto import FileHash
 from workflow_manager.endpoint_v2.source import SourceConnector
@@ -85,10 +85,10 @@ class WorkflowHelper:
 
     @staticmethod
     def build_workflow_execution_service(
-        organization_id: Optional[str],
+        organization_id: str | None,
         workflow: Workflow,
         tool_instances: list[ToolInstance],
-        pipeline_id: Optional[str],
+        pipeline_id: str | None,
         single_step: bool,
         scheduled: bool,
         execution_mode: tuple[str, str],
@@ -156,17 +156,13 @@ class WorkflowHelper:
                 else:
                     successful_files += 1
             except StopExecution as e:
-                execution_service.update_execution(
-                    ExecutionStatus.STOPPED, error=str(e)
-                )
+                execution_service.update_execution(ExecutionStatus.STOPPED, error=str(e))
                 break
             except Exception as e:
                 failed_files += 1
                 error_message = f"Error processing file '{file_name}'. {e}"
                 logger.error(error_message, stack_info=True, exc_info=True)
-                execution_service.publish_log(
-                    message=error_message, level=LogLevel.ERROR
-                )
+                execution_service.publish_log(message=error_message, level=LogLevel.ERROR)
         # TODO: Store only generic WF errors here (concerning all failed files)
         # TODO: Review if we need partial success
         final_status = (
@@ -198,8 +194,7 @@ class WorkflowHelper:
         execution_service: WorkflowExecutionServiceHelper,
         single_step: bool,
         file_hash: FileHash,
-    ) -> Optional[str]:
-
+    ) -> str | None:
         # Delete previous execution directory to avoid conflicts
         destination.delete_execution_directory()
 
@@ -285,9 +280,7 @@ class WorkflowHelper:
                 file_execution_id=file_execution_id,
             )
         except Exception as e:
-            error_message = (
-                f"Error during output processing for '{file_name}': {str(e)}"
-            )
+            error_message = f"Error during output processing for '{file_name}': {str(e)}"
             logger.error(error_message, stack_info=True, exc_info=True)
             execution_service.publish_log(error_message, level=LogLevel.ERROR)
             error = error_message
@@ -322,11 +315,11 @@ class WorkflowHelper:
         workflow: Workflow,
         workflow_execution: WorkflowExecution,
         hash_values_of_files: dict[str, FileHash] = {},
-        organization_id: Optional[str] = None,
-        pipeline_id: Optional[str] = None,
+        organization_id: str | None = None,
+        pipeline_id: str | None = None,
         scheduled: bool = False,
         single_step: bool = False,
-        execution_mode: Optional[tuple[str, str]] = None,
+        execution_mode: tuple[str, str] | None = None,
         use_file_history: bool = True,
     ) -> ExecutionResponse:
         tool_instances: list[ToolInstance] = (
@@ -365,9 +358,7 @@ class WorkflowHelper:
             source.validate()
             destination.validate()
             # Execution Process
-            input_files, total_files = source.list_files_from_source(
-                hash_values_of_files
-            )
+            input_files, total_files = source.list_files_from_source(hash_values_of_files)
             workflow_execution.total_files = total_files
             workflow_execution.save()
             workflow_execution = WorkflowHelper.process_input_files(
@@ -407,7 +398,7 @@ class WorkflowHelper:
 
     @staticmethod
     def _update_pipeline_status(
-        pipeline_id: Optional[str], workflow_execution: WorkflowExecution
+        pipeline_id: str | None, workflow_execution: WorkflowExecution
     ) -> None:
         try:
             if pipeline_id:
@@ -459,9 +450,7 @@ class WorkflowHelper:
         """
         execution = WorkflowExecution.objects.get(id=execution_id)
         if not execution.task_id:
-            raise TaskDoesNotExistError(
-                f"No task ID found for execution: {execution_id}"
-            )
+            raise TaskDoesNotExistError(f"No task ID found for execution: {execution_id}")
 
         result = AsyncResult(str(execution.task_id))
         task = AsyncResultData(async_result=result)
@@ -505,8 +494,8 @@ class WorkflowHelper:
         execution_id: str,
         hash_values_of_files: dict[str, FileHash],
         timeout: int = -1,
-        pipeline_id: Optional[str] = None,
-        queue: Optional[str] = None,
+        pipeline_id: str | None = None,
+        queue: str | None = None,
         use_file_history: bool = True,
     ) -> ExecutionResponse:
         """Adding a workflow to the queue for execution.
@@ -581,9 +570,7 @@ class WorkflowHelper:
                 message=WorkflowMessages.CELERY_TIMEOUT_MESSAGE,
             )
         except Exception as error:
-            WorkflowExecutionServiceHelper.update_execution_err(
-                execution_id, str(error)
-            )
+            WorkflowExecutionServiceHelper.update_execution_err(execution_id, str(error))
             logger.error(
                 f"Error while enqueuing async job for WF '{workflow_id}', "
                 f"execution '{execution_id}': {str(error)}",
@@ -612,11 +599,11 @@ class WorkflowHelper:
         execution_id: str,
         hash_values_of_files: dict[str, dict[str, Any]],
         scheduled: bool = False,
-        execution_mode: Optional[tuple[str, str]] = None,
-        pipeline_id: Optional[str] = None,
+        execution_mode: tuple[str, str] | None = None,
+        pipeline_id: str | None = None,
         use_file_history: bool = True,
         **kwargs: dict[str, Any],
-    ) -> Optional[list[Any]]:
+    ) -> list[Any] | None:
         """Asynchronous Execution By celery.
 
         Args:
@@ -662,11 +649,11 @@ class WorkflowHelper:
         execution_id: str,
         hash_values_of_files: dict[str, str],
         scheduled: bool = False,
-        execution_mode: Optional[tuple[str, str]] = None,
-        pipeline_id: Optional[str] = None,
+        execution_mode: tuple[str, str] | None = None,
+        pipeline_id: str | None = None,
         use_file_history: bool = True,
         **kwargs: dict[str, Any],
-    ) -> Optional[list[Any]]:
+    ) -> list[Any] | None:
         """Asynchronous Execution By celery.
 
         Args:
@@ -697,22 +684,19 @@ class WorkflowHelper:
             f"files: {len(hash_values_of_files)}"
         )
         hash_values = {
-            key: FileHash.from_json(value)
-            for key, value in hash_values_of_files.items()
+            key: FileHash.from_json(value) for key, value in hash_values_of_files.items()
         }
         workflow = Workflow.objects.get(id=workflow_id)
         # TODO: Make use of WorkflowExecution.get_or_create()
         try:
-            workflow_execution = (
-                WorkflowExecutionServiceHelper.create_workflow_execution(
-                    workflow_id=workflow_id,
-                    single_step=False,
-                    pipeline_id=pipeline_id,
-                    mode=WorkflowExecution.Mode.QUEUE,
-                    execution_id=execution_id,
-                    total_files=len(hash_values),
-                    **kwargs,  # type: ignore
-                )
+            workflow_execution = WorkflowExecutionServiceHelper.create_workflow_execution(
+                workflow_id=workflow_id,
+                single_step=False,
+                pipeline_id=pipeline_id,
+                mode=WorkflowExecution.Mode.QUEUE,
+                execution_id=execution_id,
+                total_files=len(hash_values),
+                **kwargs,  # type: ignore
             )
         except IntegrityError:
             # Use existing instance on retry attempt
@@ -736,18 +720,16 @@ class WorkflowHelper:
             logger.error(
                 f"Error executing execution {workflow_execution}: {error_message}"
             )
-            WorkflowExecutionServiceHelper.update_execution_err(
-                execution_id, str(error)
-            )
+            WorkflowExecutionServiceHelper.update_execution_err(execution_id, str(error))
             raise
         return execution_response.result
 
     @staticmethod
     def complete_execution(
         workflow: Workflow,
-        execution_id: Optional[str] = None,
-        pipeline_id: Optional[str] = None,
-        execution_mode: Optional[WorkflowExecution] = WorkflowExecution.Mode.QUEUE,
+        execution_id: str | None = None,
+        pipeline_id: str | None = None,
+        execution_mode: WorkflowExecution | None = WorkflowExecution.Mode.QUEUE,
         hash_values_of_files: dict[str, FileHash] = {},
         use_file_history: bool = False,
     ) -> ExecutionResponse:
@@ -755,14 +737,12 @@ class WorkflowHelper:
             logger.info(f"Executing pipeline: {pipeline_id}")
             # Create a new WorkflowExecution entity for each pipeline execution.
             # This ensures every pipeline run is tracked as a distinct execution.
-            workflow_execution = (
-                WorkflowExecutionServiceHelper.create_workflow_execution(
-                    workflow_id=workflow.id,
-                    single_step=False,
-                    pipeline_id=pipeline_id,
-                    mode=execution_mode,
-                    total_files=len(hash_values_of_files),
-                )
+            workflow_execution = WorkflowExecutionServiceHelper.create_workflow_execution(
+                workflow_id=workflow.id,
+                single_step=False,
+                pipeline_id=pipeline_id,
+                mode=execution_mode,
+                total_files=len(hash_values_of_files),
             )
             execution_id = workflow_execution.id
             log_events_id = StateStore.get(Common.LOG_EVENTS_ID)
@@ -845,7 +825,7 @@ class WorkflowHelper:
     def step_execution(
         workflow: Workflow,
         execution_action: str,
-        execution_id: Optional[str] = None,
+        execution_id: str | None = None,
         hash_values_of_files: dict[str, FileHash] = {},
     ) -> ExecutionResponse:
         if execution_action is Workflow.ExecutionAction.START.value:  # type: ignore
@@ -878,7 +858,7 @@ class WorkflowHelper:
                 or workflow_execution.execution_type != WorkflowExecution.Type.STEP
             ):
                 raise InvalidRequest(WorkflowErrors.INVALID_EXECUTION_ID)
-            current_action: Optional[str] = CacheService.get_key(execution_id)
+            current_action: str | None = CacheService.get_key(execution_id)
             logger.info(f"workflow_execution.current_action {current_action}")
             if current_action is None:
                 raise InvalidRequest(WorkflowErrors.INVALID_EXECUTION_ID)
@@ -897,7 +877,7 @@ class WorkflowHelper:
     @staticmethod
     def create_and_make_execution_response(
         workflow_id: str,
-        pipeline_id: Optional[str] = None,
+        pipeline_id: str | None = None,
         single_step: bool = False,
         mode: tuple[str, str] = WorkflowExecution.Mode.INSTANT,
     ) -> ExecutionResponse:
@@ -961,9 +941,7 @@ class WorkflowHelper:
     @staticmethod
     def get_execution_by_id(execution_id: str) -> WorkflowExecution:
         try:
-            execution: WorkflowExecution = WorkflowExecution.objects.get(
-                id=execution_id
-            )
+            execution: WorkflowExecution = WorkflowExecution.objects.get(id=execution_id)
             return execution
         except WorkflowExecution.DoesNotExist:
             raise WorkflowDoesNotExistError()

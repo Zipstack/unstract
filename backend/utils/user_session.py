@@ -1,5 +1,3 @@
-from typing import Optional
-
 from django.conf import settings
 from django.db import connection
 from django.http import HttpRequest
@@ -8,7 +6,7 @@ from tenant_account_v2.models import OrganizationMember
 
 class UserSessionUtils:
     @staticmethod
-    def get_organization_id(request: HttpRequest) -> Optional[str]:
+    def get_organization_id(request: HttpRequest) -> str | None:
         session_org_id = request.session.get("organization")
         requested_org_id = request.organization_id
         if requested_org_id and (session_org_id != requested_org_id):
@@ -20,7 +18,7 @@ class UserSessionUtils:
         request.session["organization"] = organization_id
 
     @staticmethod
-    def get_user_id(request: HttpRequest) -> Optional[str]:
+    def get_user_id(request: HttpRequest) -> str | None:
         return request.session.get("user_id")
 
     @staticmethod
@@ -30,11 +28,11 @@ class UserSessionUtils:
         request.session["role"] = member.role
 
     @staticmethod
-    def get_session_id(request: HttpRequest) -> Optional[str]:
+    def get_session_id(request: HttpRequest) -> str | None:
         return request.session.session_key
 
     @staticmethod
-    def get_organization_member_role(request: HttpRequest) -> Optional[str]:
+    def get_organization_member_role(request: HttpRequest) -> str | None:
         return request.session.get("role")
 
     @classmethod
@@ -49,7 +47,6 @@ class UserSessionUtils:
         Returns:
             bool: `True` if the path is authorized; `False` otherwise.
         """
-
         requested_organization_uid = connection.tenant.organization_id
 
         # Always authorize if the organization is public

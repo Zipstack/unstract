@@ -4,6 +4,11 @@ import logging
 from typing import Any
 
 from account_v2.models import Organization, PlatformKey
+from rest_framework import status, viewsets
+from rest_framework.request import Request
+from rest_framework.response import Response
+from utils.user_context import UserContext
+
 from platform_settings_v2.constants import PlatformServiceConstants
 from platform_settings_v2.platform_auth_helper import PlatformAuthHelper
 from platform_settings_v2.platform_auth_service import PlatformAuthenticationService
@@ -12,10 +17,6 @@ from platform_settings_v2.serializers import (
     PlatformKeyIDSerializer,
     PlatformKeySerializer,
 )
-from rest_framework import status, viewsets
-from rest_framework.request import Request
-from rest_framework.response import Response
-from utils.user_context import UserContext
 
 logger = logging.getLogger(__name__)
 

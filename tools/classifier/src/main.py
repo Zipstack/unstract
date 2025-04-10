@@ -1,8 +1,11 @@
 import sys
-from typing import Any, Optional
+from typing import Any
 
-from helper import ClassifierHelper  # type: ignore
-from helper import ReservedBins
+from helper import (
+    ClassifierHelper,  # type: ignore
+    ReservedBins,
+)
+
 from unstract.sdk.constants import (
     LogLevel,
     LogState,
@@ -21,7 +24,7 @@ class UnstractClassifier(BaseTool):
         super().__init__(log_level)
 
     def validate(self, input_file: str, settings: dict[str, Any]) -> None:
-        bins: Optional[list[str]] = settings.get("classificationBins")
+        bins: list[str] | None = settings.get("classificationBins")
         llm_adapter_instance_id = settings.get(ToolSettingsKey.LLM_ADAPTER_ID)
         text_extraction_adapter_id = settings.get("textExtractorId")
         if not bins:
@@ -60,7 +63,7 @@ class UnstractClassifier(BaseTool):
         self.stream_update(output_log, state=LogState.OUTPUT_UPDATE)
 
         self.stream_log(f"Reading file... {input_file}")
-        text: Optional[str] = self.helper.extract_text(
+        text: str | None = self.helper.extract_text(
             file=input_file,
             text_extraction_adapter_id=text_extraction_adapter_id,
         )

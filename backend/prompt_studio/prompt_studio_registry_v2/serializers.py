@@ -28,7 +28,6 @@ class PromptStudioRegistryInfoSerializer(AuditSerializer):
         )
 
     def get_prompt_studio_users(self, obj: PromptStudioRegistry) -> Any:
-
         prompt_studio_users = obj.custom_tool.shared_users
         return UserSerializer(prompt_studio_users, many=True).data
 

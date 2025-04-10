@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from account.custom_exceptions import DuplicateData
 from connector.connector_instance_helper import ConnectorInstanceHelper
@@ -7,10 +7,11 @@ from django.conf import settings
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpRequest
-from project.constants import ProjectErrors
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
+
+from project.constants import ProjectErrors
 
 from .models import Project
 from .serializers import ProjectSerializer
@@ -23,7 +24,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
     queryset = Project.objects.all()
     serializer_class = ProjectSerializer
 
-    def get_queryset(self) -> Optional[QuerySet]:
+    def get_queryset(self) -> QuerySet | None:
         created_by = self.request.query_params.get("created_by")
         if created_by is not None:
             queryset = Project.objects.filter(created_by=created_by)
@@ -42,8 +43,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
             self.perform_create(serializer)
         except IntegrityError:
             raise DuplicateData(
-                f"{ProjectErrors.PROJECT_NAME_EXISTS}, "
-                f"{ProjectErrors.DUPLICATE_API}"
+                f"{ProjectErrors.PROJECT_NAME_EXISTS}, " f"{ProjectErrors.DUPLICATE_API}"
             )
         # Access the created instance
         created_instance: Project = serializer.instance
