@@ -34,13 +34,13 @@ dependencies = [
     "gcsfs==2024.10.0",         # For GoogleCloudStorage
     "adlfs~=2024.7.0",          # For AzureCloudStorage
     # Database connectors
-    "psycopg2-binary==2.9.9",                    # For Postgres, Redshift
-    "snowflake-connector-python[pandas]~=3.6.0", # For Snowflake
-    "google-cloud-bigquery==3.11.4",             # For Bigquery
-    "pymssql==2.3.4",                            # For MSSQL
-    "PyMySQL==1.1.0",                            # For MySQL
-    "oracledb==2.4.0",                           # For OracleDB
-    "fsspec[sftp]~=2024.10.0",                   # For SFTP
+    "psycopg2-binary==2.9.9",                     # For Postgres, Redshift
+    "snowflake-connector-python[pandas]~=3.14.0", # For Snowflake
+    "google-cloud-bigquery==3.11.4",              # For Bigquery
+    "pymssql==2.3.4",                             # For MSSQL
+    "PyMySQL==1.1.0",                             # For MySQL
+    "oracledb==2.4.0",                            # For OracleDB
+    "fsspec[sftp]~=2024.10.0",                    # For SFTP
 ]
 
 # [build-system]
