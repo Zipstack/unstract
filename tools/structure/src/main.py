@@ -180,8 +180,8 @@ class StructureTool(BaseTool):
                         payload[SettingsKeys.FILE_HASH] = summarize_file_hash
                         break
                     self.stream_log(
-                        f"Chunk size {output[SettingsKeys.CHUNK_SIZE]}, "
-                        f"indexing {tool_data_dir / SettingsKeys.EXTRACT}.."
+                        f"Chunk size '{output[SettingsKeys.CHUNK_SIZE]}', "
+                        f"indexing '{tool_data_dir / SettingsKeys.EXTRACT}'.."
                     )
                     if (reindex or not summarize_as_source) and output[
                         SettingsKeys.CHUNK_SIZE
