@@ -1,22 +1,14 @@
 name: Build and Push Tool Sidecar Image
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'tool-sidecar/**'
-      - '.github/workflows/docker-tool-sidecar-build-push.yaml'
-  pull_request:
-    paths:
-      - 'tool-sidecar/**'
-      - '.github/workflows/docker-tool-sidecar-build-push.yaml'
   workflow_dispatch:
     inputs:
-      custom_tag:
-        description: 'Custom tag for the image (e.g., dev, test-1)'
-        required: false
+      tag:
+        description: "Docker image tag"
+        required: true
         type: string
+
+run-name: "[${{ inputs.tag }}] Tool Sidecar Docker Build and Push"
 
 env:
   REGISTRY: docker.io
@@ -25,16 +17,16 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
     steps:
-      - name: Checkout code
+      - name: Checkout code for release
+        if: github.event_name == 'release'
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.event.inputs.tag }}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+      - name: Checkout code for branch
+        if: github.event_name != 'release'
+        uses: actions/checkout@v4
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -42,22 +34,13 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
-        uses: docker/metadata-action@v4
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=${{ inputs.custom_tag }},enable=${{ github.event_name == 'workflow_dispatch' && inputs.custom_tag != '' }}
-            type=semver,pattern={{version}},enable=${{ github.ref == 'refs/heads/main' }}
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v4
-        with:
-          context: ./tool-sidecar
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Build and push images
+        working-directory: ./docker
+        run: |
+          DOCKER_VERSION_TAG=${{ github.event.release.tag_name || github.event.inputs.tag}}
+          VERSION=$DOCKER_VERSION_TAG docker compose -f docker-compose.build.yaml build --no-cache tool-sidecar
+          docker push unstract/tool-sidecar:$DOCKER_VERSION_TAG
+          if [ "${{ github.event_name }}" = "release" ]; then
+            docker tag unstract/tool-sidecar:$DOCKER_VERSION_TAG unstract/tool-sidecar:latest
+            docker push unstract/tool-sidecar:latest
+          fi
