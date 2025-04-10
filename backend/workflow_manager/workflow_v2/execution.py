@@ -1,5 +1,6 @@
 import logging
 import time
+import uuid
 from typing import Optional
 
 from account_v2.constants import Common
@@ -140,10 +141,12 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             else WorkflowExecution.Type.COMPLETE
         )
         execution_log_id = log_events_id if log_events_id else pipeline_id
-        # TODO: Using objects.create() instead
-        workflow_execution = WorkflowExecution(
+
+        # Create the workflow execution
+        workflow_execution = WorkflowExecution.objects.create(
+            id=execution_id if execution_id else uuid.uuid4(),
             pipeline_id=pipeline_id,
-            workflow_id=workflow_id,
+            workflow=Workflow.objects.get(id=workflow_id),
             execution_mode=mode,
             execution_method=execution_method,
             execution_type=execution_type,
@@ -151,11 +154,9 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             execution_log_id=execution_log_id,
             total_files=total_files,
         )
-        if execution_id:
-            workflow_execution.id = execution_id
-        workflow_execution.save()
-        if tags:
-            workflow_execution.tags.set(tags)
+
+        # Set tags if provided (many-to-many relationships must be set after creation)
+        workflow_execution.tags.set(tags or [])
         return workflow_execution
 
     def update_execution(
