@@ -881,7 +881,7 @@ class PromptStudioHelper:
         logger.info(f"Indexing document {doc_path} for {doc_id}")
         index_result = PromptStudioHelper.dynamic_indexer(
             profile_manager=profile_manager,
-            file_path=doc_path,
+            file_path=file_path,
             tool_id=str(tool.tool_id),
             org_id=org_id,
             document_id=document_id,
@@ -1333,12 +1333,12 @@ class PromptStudioHelper:
         usage_kwargs = {"run_id": run_id}
         # Orginal file name with which file got uploaded in prompt studio
         usage_kwargs["file_name"] = filename
+        is_extracted = PromptStudioIndexHelper.check_extraction_status(
+            document_id=document_id,
+            profile_manager=profile_manager,
+            doc_id=doc_id,
+        )
         if is_extracted and not reindex:
-            is_extracted = PromptStudioIndexHelper.check_extraction_status(
-                document_id=document_id,
-                profile_manager=profile_manager,
-                doc_id=doc_id,
-            )
             fs_instance = EnvHelper.get_storage(
                 storage_type=StorageType.PERMANENT,
                 env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
