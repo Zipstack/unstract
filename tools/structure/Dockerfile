@@ -37,4 +37,4 @@ RUN pip install --no-cache-dir \
 COPY src /app/src/
 WORKDIR /app/src
 
-ENTRYPOINT ["opentelemetry-instrument", "python", "main.py"]
+CMD ["opentelemetry-instrument", "python", "main.py"]
