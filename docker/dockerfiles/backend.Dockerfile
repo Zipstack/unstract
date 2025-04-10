@@ -13,54 +13,50 @@ ENV \
     DJANGO_SETTINGS_MODULE="backend.settings.dev" \
     # OpenTelemetry configuration (disabled by default, enable in docker-compose)
     OTEL_TRACES_EXPORTER=none \
-    OTEL_TRACES_EXPORTER=none \
     OTEL_LOGS_EXPORTER=none \
     OTEL_SERVICE_NAME=unstract_backend
 
 # Install system dependencies
-RUN apt-get update; \
+RUN apt-get update && \
     apt-get --no-install-recommends install -y \
     autoconf \
     automake \
-    libtool \
     build-essential \
     cmake \
+    freetds-dev \
+    g++ \
+    gcc \
+    git \
+    libkrb5-dev \
+    libmagic-dev \
+    libssl-dev \
+    libtool \
     ninja-build \
     pkg-config \
-    python3-dev \
-    # unstract sdk
-    libmagic-dev freetds-dev libssl-dev libkrb5-dev gcc \
-    g++ \
-    # git url
-    git; \
-    apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*;
+    python3-dev && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /app
 
-# Copy pyproject.toml and uv.lock file
-COPY pyproject.toml /app
-COPY uv.lock /app
+# Copy only what's needed for dependency installation first
+COPY pyproject.toml uv.lock /app/
 
+# Copy source code and dependencies
 COPY ${BUILD_CONTEXT_PATH}/ /app/
-# Copy local dependency packages
-COPY ${BUILD_PACKAGES_PATH}/ /unstract
+COPY ${BUILD_PACKAGES_PATH}/ /unstract/
 
-# Create virtual environment and install dependencies in one layer
-RUN uv sync --frozen \
-    && uv sync --group deploy \
-    # Install opentelemetry for instrumentation
-    && uv pip install --no-cache opentelemetry-distro \
-    opentelemetry-exporter-otlp \
-    && uv pip install --pre --no-binary :all: pymssql --no-cache --force-reinstall \
-    && uv run opentelemetry-bootstrap -a install
-
-# Install Python packages with specific flags
-RUN uv pip uninstall numpy \
-    && uv pip uninstall pandas scipy scikit-learn \
-    && uv pip install --no-cache-dir --no-binary :all: numpy \
-    && uv pip install --no-cache-dir pandas scipy scikit-learn
+# Install dependencies in one layer
+RUN uv sync --frozen && \
+    uv sync --group deploy && \
+    uv run opentelemetry-bootstrap -a install && \
+    # Scientific packages reinstallation
+    # uv pip install --pre --no-binary :all: pymssql --no-cache --force-reinstall && \
+    uv pip uninstall numpy pandas scipy scikit-learn && \
+    uv pip install --no-cache-dir --no-binary :all: numpy && \
+    uv pip install --no-cache-dir pandas scipy scikit-learn
 
 EXPOSE 8000
 
