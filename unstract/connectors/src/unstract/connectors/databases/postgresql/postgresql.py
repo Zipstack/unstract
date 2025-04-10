@@ -69,7 +69,6 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
     def get_engine(self) -> connection:
         # Set timeouts via options
         timeout_options = (
-            f"-c connect_timeout={self.CONNECT_TIMEOUT} "
             f"-c statement_timeout={self.STATEMENT_TIMEOUT * 1000} "
             f"-c tcp_keepalives_idle={self.KEEPALIVE_IDLE} "
             f"-c tcp_keepalives_interval={self.KEEPALIVE_INTERVAL} "
