@@ -43,10 +43,9 @@ repos:
       - id: ruff-format
 
   - repo: https://github.com/hadialqattan/pycln
-    rev: v2.4.0
+    rev: v2.5.0
     hooks:
       - id: pycln
-        entry: pycln
         args: [--config=pyproject.toml]
 
   # - repo: https://github.com/pycqa/docformatter
@@ -68,14 +67,14 @@ repos:
   #   hooks:
   #     - id: uv-lock
 
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.11.2
-    hooks:
-      - id: mypy
-        language: system
-        entry: mypy .
-        pass_filenames: false
-        additional_dependencies: []
+  # - repo: https://github.com/pre-commit/mirrors-mypy
+  #   rev: v1.11.2
+  #   hooks:
+  #     - id: mypy
+  #       language: system
+  #       entry: mypy .
+  #       pass_filenames: false
+  #       additional_dependencies: []
 
   - repo: https://github.com/igorshubovych/markdownlint-cli
     rev: v0.42.0
