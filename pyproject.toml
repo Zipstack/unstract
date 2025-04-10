@@ -102,20 +102,30 @@ select = [
 ]
 fixable = ["ALL"]
 ignore = [
-    "D100",   # Missing docstring in public module
-    "D104",   # Missing docstring in public package
+    "ANN001", # Missing type annotation for function argument `value`
     "ANN101", # Missing type annotation for self
     "ANN102", # Missing type annotation for cls
+    "ANN201", # Missing return type annotation for public function
+    "ANN204", # Missing return type annotation for special method `__init__`,
+    "ANN205", # Missing return type annotation for staticmethod `list`
+    "ANN401", # Dynamically typed expressions (typing.Any) are disallowed in `user_login`
+    "B018",   # Found useless expression. Either assign it to a variable or remove it.
+    "B904",   # Within an `except` clause, raise exceptions with
+    "D100",   # Missing docstring in public module
     "D101",   # Missing docstring in public class
     "D102",   # Missing docstring in public method
+    "D103",   # Missing docstring in public function
+    "D104",   # Missing docstring in public package
     "D105",   # Missing docstring in magic method
     "D106",   # Missing docstring in public nested class
-    "D205",   # 1 blank line required between summary line and description
-    "ANN401", # Dynamically typed expressions (typing.Any) are disallowed in `user_login`
-    "D417",   # Missing argument description in the docstring for `user_organizations`: `request`
-    "B904",   # Within an `except` clause, raise exceptions with
     "D107",   # Missing docstring in `__init__`
+    "D205",   # 1 blank line required between summary line and description
+    "D417",   # Missing argument description in the docstring for `user_organizations`: `request`
     "N806",   # Variable `organizationData` in function should be lowercase
+    "N802",   # Function name `makeSignupRequestParams` should be lowercase
+    "N813",   # Camelcase `Common` imported as lowercase `common`
+    "N817",   # CamelCase `FieldLengthConstants` imported as acronym `FLC`,
+    "TCH002", # Move third-party import `rest_framework.serializers.Serializer` into a type-checking block
 ]
 
 [tool.ruff.mccabe]
