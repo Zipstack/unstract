@@ -2,6 +2,9 @@ name: Build and Push Tool Sidecar Image
 
 on:
   workflow_dispatch:
+    branches:
+      - main
+      - sidecar-implementation
     inputs:
       tag:
         description: "Docker image tag"
