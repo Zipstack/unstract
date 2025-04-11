@@ -86,7 +86,7 @@ class RetrievalService:
                 llm=llm,
             ).retrieve()
         context_retrieval_metrics[prompt_key] = {
-            "context_retrieval": Metrics.elapsed_time(start_time=retrieval_start_time)
+            "time_taken(s)": Metrics.elapsed_time(start_time=retrieval_start_time)
         }
         return list(context)
 
@@ -110,6 +110,6 @@ class RetrievalService:
         retrieval_start_time = datetime.datetime.now()
         context = fs_instance.read(path=file_path, mode="r")
         context_retrieval_metrics[prompt_key] = {
-            "context_retrieval": Metrics.elapsed_time(start_time=retrieval_start_time)
+            "time_taken(s)": Metrics.elapsed_time(start_time=retrieval_start_time)
         }
         return [context]
