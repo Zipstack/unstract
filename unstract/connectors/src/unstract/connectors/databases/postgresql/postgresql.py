@@ -86,15 +86,8 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
             "application_name": "unstract_connector",
         }
 
-        # Determine SSL mode based on connection URL
-        if self.connection_url and (
-            "neon.tech" in self.connection_url or "amazonaws.com" in self.connection_url
-        ):
-            # Cloud hosted PostgreSQL (Neon, AWS RDS etc)
-            conn_params.update({"sslmode": "verify-full", "sslrootcert": "system"})
-        else:
-            # Standard PostgreSQL - use basic SSL if available
-            conn_params["sslmode"] = "prefer"
+        # Standard PostgreSQL - use basic SSL if available
+        conn_params["sslmode"] = "prefer"
 
         if self.connection_url:
             conn_params.update({"dsn": self.connection_url, "options": timeout_options})
