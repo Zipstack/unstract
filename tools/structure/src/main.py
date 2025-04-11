@@ -175,8 +175,11 @@ class StructureTool(BaseTool):
                     if (reindex or not summarize_as_source) and output[
                         SettingsKeys.CHUNK_SIZE
                     ] != 0:
-                        self.stream_log("Sucessfully extracted text, indexing..")
                         indexing_start_time = datetime.datetime.now()
+                        self.stream_log(
+                            f"Sucessfully extracted text, "
+                            f"indexing {tool_data_dir / SettingsKeys.EXTRACT}.."
+                        )
                         STHelper.dynamic_indexing(
                             tool_settings=tool_settings,
                             run_id=self.file_execution_id,
