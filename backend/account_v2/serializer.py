@@ -27,6 +27,7 @@ class GetOrganizationsResponseSerializer(serializers.Serializer):
     id = serializers.CharField()
     display_name = serializers.CharField()
     name = serializers.CharField()
+    metadata = serializers.JSONField(required=False, allow_null=True)
     # Add more fields as needed
 
     def to_representation(self, instance):  # type: ignore

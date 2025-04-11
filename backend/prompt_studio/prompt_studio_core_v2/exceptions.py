@@ -23,6 +23,15 @@ class IndexingAPIError(APIException):
         self.status_code = status_code
 
 
+class ExtractionAPIError(APIException):
+    status_code = 500
+    default_detail = "Error while extracting file"
+
+    def __init__(self, detail: str | None = None, status_code: int = 500):
+        super().__init__(detail)
+        self.status_code = status_code
+
+
 class AnswerFetchError(APIException):
     status_code = 500
     default_detail = "Error occured while fetching response for the prompt"

@@ -41,6 +41,7 @@ from prompt_studio.prompt_studio_core_v2.exceptions import (
     AnswerFetchError,
     DefaultProfileError,
     EmptyPromptError,
+    ExtractionAPIError,
     IndexingAPIError,
     NoPromptsFound,
     OperationNotSupported,
@@ -1133,13 +1134,15 @@ class PromptStudioHelper:
             )
             headers = {Common.X_REQUEST_ID: StateStore.get(Common.REQUEST_ID)}
             response = responder.index(payload=payload, headers=headers)
-            try:
-                response_text = PromptStudioHelper.handle_response(response)
-                doc_id = json.loads(response_text).get("doc_id")
 
-            except IndexingAPIError as e:
-                logger.error(f"Failed to index document: {str(e)}")
-                raise IndexingAPIError(f"Failed to index document: {str(e)}") from e
+            status_code = response.get("status_code")
+            if status_code == 200:
+                doc_id = json.loads(response.get("structure_output")).get("doc_id")
+            else:
+                error_message = f"Failed to index '{filename}'. " + response.get(
+                    "error", ""
+                )
+                raise IndexingAPIError(error_message)
 
             PromptStudioIndexHelper.handle_index_manager(
                 document_id=document_id,
@@ -1364,26 +1367,19 @@ class PromptStudioHelper:
         )
         headers = {Common.X_REQUEST_ID: StateStore.get(Common.REQUEST_ID)}
         response = responder.extract(payload=payload, headers=headers)
-        try:
-            response_data = PromptStudioHelper.handle_response(response)
+        status_code = response.get("status_code")
+        if status_code == 200:
+            response_data = response.get("structure_output")
             extracted_text = json.loads(response_data)
             PromptStudioIndexHelper.mark_extraction_status(
                 document_id=document_id,
                 profile_manager=profile_manager,
                 doc_id=doc_id,
             )
-        except IndexingAPIError as e:
-            logger.error(f"Failed to extract document: {str(e)}")
-            raise IndexingAPIError(f"Failed to extract document: {str(e)}") from e
+        else:
+            error_message = f"Failed to extract '{filename}'. " + response.get(
+                "error", ""
+            )
+            raise ExtractionAPIError(error_message)
 
         return extracted_text
-
-    @staticmethod
-    def handle_response(response: dict) -> dict:
-        """Handles API responses stored in dictionary format."""
-        status_code = response.get("status_code")
-        if status_code == 200:
-            return response.get("structure_output")
-        else:
-            error_message = response.get("error", "Unknown error")
-            raise IndexingAPIError(f"Error while fetching response. {error_message}")
