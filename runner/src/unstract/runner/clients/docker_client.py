@@ -248,7 +248,7 @@ class Client(ContainerClientInterface):
         return {
             "name": container_name,
             "image": self.get_image(sidecar=sidecar),
-            "command": command,
+            "entrypoint": command,
             "detach": True,
             "stream": stream_logs,
             "auto_remove": auto_remove,
