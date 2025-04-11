@@ -101,7 +101,9 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
                 conn_params.update({"dsn": self.connection_url})
             else:
                 # For all other connections, include timeout options
-                conn_params.update({"dsn": self.connection_url, "options": timeout_options})
+                conn_params.update(
+                    {"dsn": self.connection_url, "options": timeout_options}
+                )
             con = psycopg2.connect(**conn_params)
         else:
             conn_params.update(
