@@ -1,3 +1,4 @@
+import datetime
 from typing import Any, Optional
 
 from constants import IndexingConstants as IKeys
@@ -91,3 +92,8 @@ class StructureToolHelper:
         )
         doc_id = responder.index(payload=payload)
         return doc_id
+
+    @staticmethod
+    def elapsed_time(start_time) -> float:
+        """Returns the elapsed time since the process was started."""
+        return (datetime.datetime.now() - start_time).total_seconds()
