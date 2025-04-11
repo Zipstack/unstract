@@ -607,6 +607,8 @@ $RECYCLE.BIN/
 # Windows shortcuts
 *.lnk
 
+# Windsurf
+.qodo
 
 ### Unstract ###
 
@@ -620,11 +622,21 @@ backend/plugins/processor/*
 # Subscription Plugins
 backend/plugins/subscription/*
 
+# API Deployment Plugins
+backend/plugins/api/**
+
 # BE pluggable-apps
 backend/pluggable_apps/*
 
 # FE Plugins
 frontend/src/plugins/*
+
+
+# TODO: Ensure its made generic to abstract subfolder and file names
+# Static content
+backend/onboarding_static/*
+# BE auth0 migration tenant scripot
+backend/scripts/*
 
 # Tool registry
 unstract/tool-registry/tool_registry_config/*.json
