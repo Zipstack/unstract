@@ -85,7 +85,7 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
             "connect_timeout": self.CONNECT_TIMEOUT,
             "application_name": "unstract_connector",
         }
-            
+
         # Standard PostgreSQL - use basic SSL if available
         conn_params["sslmode"] = "prefer"
 
