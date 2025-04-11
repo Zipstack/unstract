@@ -82,8 +82,8 @@ exclude = [
     "dist",
     "node_modules",
     "venv",
-    "migrations",
-    "tests"
+    ".*migrations/.*.py",
+    "tests",
 ]
 
 [tool.ruff.lint]
@@ -114,7 +114,7 @@ ignore = [
     "ANN401", # Dynamically typed expressions (typing.Any) are disallowed in `user_login`
     "B006",   # Do not use mutable data structures for argument defaults
     "B007",   # Loop control variable `dirs` not used within loop body
-    "B008", # Do not perform function call `FileStorage`"
+    "B008",   # Do not perform function call `FileStorage`"
     "B015",   # Pointless comparison. Did you mean to assign a value? Otherwise, prepend `assert` or remove it."
     "B018",   # Found useless expression. Either assign it to a variable or remove it.
     "B024",   # `AuthService` is an abstract base class, but it has no abstract methods or properties"
@@ -135,9 +135,9 @@ ignore = [
     "E501",   # Line too long (91 > 90)
     "N806",   # Variable `organizationData` in function should be lowercase
     "N802",   # Function name `makeSignupRequestParams` should be lowercase
-    "N804", # First argument of a class method should be named `cls`"
+    "N804",   # First argument of a class method should be named `cls`"
     "N805",   # First argument of a method should be named `self`"
-    "N812",# Lowercase `exceptions` imported as non-lowercase `GoogleApiException`"
+    "N812",   # Lowercase `exceptions` imported as non-lowercase `GoogleApiException`"
     "N813",   # Camelcase `Common` imported as lowercase `common`
     "N816",   # Variable `zipProject` in global scope should not be mixedCase"
     "N817",   # CamelCase `FieldLengthConstants` imported as acronym `FLC`,
@@ -145,13 +145,13 @@ ignore = [
     "N999",   # Invalid module name: 'FileValidator'"
     "TCH001", #Move application import xxx into a type-checking block
     "TCH002", # Move third-party import `rest_framework.serializers.Serializer` into a type-checking block
-    "TCH003",  # Move standard library import `uuid` into a type-checking block"
+    "TCH003", # Move standard library import `uuid` into a type-checking block"
     # "TC006",  # [*] Add quotes to type expression in `typing.cast()"
     "ANN206", #Missing return type annotation
     "ANN202", # Missing return type annotation for private function"
     "B027",   # `NotificationProvider.validate` is an empty method in an abstract base class, but has no abstract decorator"
     "F405",   # `os` may be undefined, or defined from star imports"
-    "UP038",# Use `X | Y` in `isinstance` call instead of `(X, Y)`"
+    "UP038",  # Use `X | Y` in `isinstance` call instead of `(X, Y)`"
 ]
 
 [tool.ruff.lint.mccabe]
