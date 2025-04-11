@@ -7,20 +7,7 @@ requires-python = ">=3.12,<3.13"
 readme = "README.md"
 # license = {text = "MIT"}
 
-dependencies = [
-    "requests==2.31.0",
-    # ! IMPORTANT!
-    # Local dependencies usually need to be added as:
-    # https://pdm-project.org/latest/usage/dependency/#local-dependencies
-    #
-    # However, local dependencies which are not direct depedency of main project
-    # appear as absolute paths in pdm.lock of main project, making it impossible
-    # to check in the lock file.
-    #
-    # Hence instead, add the dependencies without version constraints where the
-    # assumption is they are added as direct dependencies in main project itself.
-    "unstract-core",
-]
+dependencies = ["requests==2.31.0", "unstract-core"]
 
 [tool.uv.sources]
 unstract-core = { path = "../core", editable = true }

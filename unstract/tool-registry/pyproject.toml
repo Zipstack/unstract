@@ -12,16 +12,6 @@ dependencies = [
     "jsonschema~=4.18.2",
     "PyYAML~=6.0.1",
     "unstract-sdk~=0.70.0",
-    # ! IMPORTANT!
-    # Local dependencies usually need to be added as:
-    # https://pdm-project.org/latest/usage/dependency/#local-dependencies
-    #
-    # However, local dependencies which are not direct depedency of main project
-    # appear as absolute paths in pdm.lock of main project, making it impossible
-    # to check in the lock file.
-    #
-    # Hence instead, add the dependencies without version constraints where the
-    # assumption is they are added as direct dependencies in main project itself.
     "unstract-tool-sandbox",
     "unstract-flags",
 ]

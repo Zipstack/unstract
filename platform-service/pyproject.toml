@@ -30,6 +30,7 @@ deploy = [
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",
 ]
+dev = ["poethepoet>=0.33.1"]
 
 # [project.scripts]
 # platform_service = "./entrypoint.sh"
@@ -41,7 +42,7 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/unstract"]
 
-# [tool.pdm.scripts]
-# platform_service.cmd = "./entrypoint.sh"
-# platform_service.env_file = ".env"
-# platform_service.help = "Runs the Unstract platform service"
+[tool.poe.tasks.platform_service]
+cmd = "./entrypoint.sh"
+envfile = ".env"
+help = "Runs the Unstract platform service"

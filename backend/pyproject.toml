@@ -44,14 +44,6 @@ dependencies = [
     "azure-mgmt-apimanagement==3.0.0",
     "croniter>=3.0.3",
     "django-filter>=24.3",
-    # ! IMPORTANT!
-    # Indirect local dependencies usually need to be added in their own projects
-    # as: https://pdm-project.org/latest/usage/dependency/#local-dependencies.
-    #
-    # However, such indirect local dependencies which are not direct dependency of
-    # main project appear as absolute paths in pdm.lock of main project, making it
-    # impossible to check in the lock file.
-    #
     # Hence required to add all indirect local dependencies too here.
     "unstract-connectors",
     "unstract-core",
@@ -79,7 +71,7 @@ dev = [
 test = ["pytest>=8.0.1", "pytest-dotenv==0.5.2"]
 deploy = [
     "gunicorn~=23.0", # For serving the application
-    # Keep versions empty and let pdm decide version
+    # Keep versions empty and let uv decide version
     # since we use no code instrumentation and don't use in code
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",

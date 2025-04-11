@@ -41,6 +41,7 @@ deploy = [
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",
 ]
+dev = ["poethepoet>=0.33.1"]
 
 [build-system]
 requires = ["hatchling"]
@@ -49,7 +50,7 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/unstract"]
 
-# [tool.pdm.scripts]
-# prompt_service.cmd = "flask --app src/unstract/prompt_service/run.py run --port 3003"
-# prompt_service.env_file = ".env"
-# prompt_service.help = "Runs the Unstract prompt service"
+[tool.poe.tasks.prompt_service]
+cmd = "flask --app src/unstract/prompt_service/run.py run --port 3003"
+envfile = ".env"
+help = "Runs the Unstract prompt service"
