@@ -141,9 +141,7 @@ class StructureTool(BaseTool):
                 payload[SettingsKeys.FILE_HASH] = summarize_file_hash
             self.stream_log("Fetching response for single pass extraction")
             # Since indexing is not involved for single pass
-            index_metrics = {
-                "time_taken(s)": 0
-            }
+            index_metrics = {"time_taken(s)": 0}
             prompt_service_resp = responder.single_pass_extraction(
                 payload=payload,
             )
@@ -164,9 +162,7 @@ class StructureTool(BaseTool):
                         payload[SettingsKeys.OUTPUTS] = outputs
                         payload[SettingsKeys.FILE_HASH] = summarize_file_hash
                         # Since indexing is not involved for summary
-                        index_metrics[output[SettingsKeys.NAME]] = {
-                            "time_taken(s)": 0
-                        }
+                        index_metrics[output[SettingsKeys.NAME]] = {"time_taken(s)": 0}
                         break
                     self.stream_log(
                         f"Chunk size '{output[SettingsKeys.CHUNK_SIZE]}', "
