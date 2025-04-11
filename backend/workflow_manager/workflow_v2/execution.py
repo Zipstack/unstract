@@ -1,5 +1,6 @@
 import logging
 import time
+import uuid
 from typing import Optional
 
 from account_v2.constants import Common
@@ -14,6 +15,7 @@ from unstract.workflow_execution.dto import ToolInstance as ToolInstanceDataClas
 from unstract.workflow_execution.dto import WorkflowDto
 from unstract.workflow_execution.enums import ExecutionType, LogComponent, LogState
 from unstract.workflow_execution.exceptions import StopExecution
+from usage_v2.helper import UsageHelper
 from utils.local_context import StateStore
 from utils.user_context import UserContext
 from workflow_manager.file_execution.models import WorkflowFileExecution
@@ -139,10 +141,12 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             else WorkflowExecution.Type.COMPLETE
         )
         execution_log_id = log_events_id if log_events_id else pipeline_id
-        # TODO: Using objects.create() instead
-        workflow_execution = WorkflowExecution(
+
+        # Create the workflow execution
+        workflow_execution = WorkflowExecution.objects.create(
+            id=execution_id if execution_id else uuid.uuid4(),
             pipeline_id=pipeline_id,
-            workflow_id=workflow_id,
+            workflow=Workflow.objects.get(id=workflow_id),
             execution_mode=mode,
             execution_method=execution_method,
             execution_type=execution_type,
@@ -150,11 +154,9 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             execution_log_id=execution_log_id,
             total_files=total_files,
         )
-        if execution_id:
-            workflow_execution.id = execution_id
-        workflow_execution.save()
-        if tags:
-            workflow_execution.tags.set(tags)
+
+        # Set tags if provided (many-to-many relationships must be set after creation)
+        workflow_execution.tags.set(tags or [])
         return workflow_execution
 
     def update_execution(
@@ -289,15 +291,21 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         )
 
     def publish_final_workflow_logs(
-        self, total_files: int, successful_files: int, failed_files: int
+        self,
+        total_files: int,
+        successful_files: int,
+        failed_files: int,
     ) -> None:
         """Publishes the final logs for the workflow.
 
         Returns:
             None
         """
+        self.publish_average_cost_log(total_files=successful_files)
+
         # To not associate final logs with a file execution
         self.file_execution_id = None
+
         self.publish_update_log(LogState.END_WORKFLOW, "1", LogComponent.STATUS_BAR)
         self.publish_update_log(
             LogState.SUCCESS, "Executed successfully", LogComponent.WORKFLOW
@@ -306,6 +314,30 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             f"Total files: {total_files}, "
             f"{successful_files} successfully executed and {failed_files} error(s)"
         )
+
+    def publish_average_cost_log(self, total_files: int):
+
+        try:
+            execution = WorkflowExecution.objects.get(pk=self.execution_id)
+            total_cost = execution.get_aggregated_usage_cost
+
+            if total_cost is not None:
+                average_cost = round(total_cost / total_files, 5)
+                self.publish_log(
+                    message=(
+                        f"The average cost per file for execution "
+                        f"'{self.execution_id}' is '${average_cost}'"
+                    )
+                )
+        except Exception as e:
+            logger.warning(f"Unable to get aggregated cost for '{self.id}': {str(e)}")
+
+    def log_total_cost_per_file(self, run_id, file_name):
+        cost_dict = UsageHelper.get_aggregated_token_count(run_id=run_id)
+        cost = round(cost_dict.get("cost_in_dollars", 0), 5)
+
+        # Log the total cost for a particular file executed in the workflow
+        self.publish_log(message=f"Total cost for file '{file_name}' is '${cost}'")
 
     def publish_initial_tool_execution_logs(
         self, current_file_idx: int, total_files: int, file_name: str

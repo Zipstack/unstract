@@ -2,8 +2,6 @@ import uuid
 
 from django.db import models
 from utils.models.base_model import BaseModel
-from workflow_manager.file_execution.models import WorkflowFileExecution
-from workflow_manager.workflow_v2.models import WorkflowExecution
 
 
 class ExecutionLog(BaseModel):
@@ -17,7 +15,7 @@ class ExecutionLog(BaseModel):
         null=True,
     )
     wf_execution = models.ForeignKey(
-        WorkflowExecution,
+        "workflow_v2.WorkflowExecution",
         on_delete=models.CASCADE,
         editable=False,
         db_comment="Foreign key from WorkflowExecution model",
@@ -26,7 +24,7 @@ class ExecutionLog(BaseModel):
         blank=True,
     )
     file_execution = models.ForeignKey(
-        WorkflowFileExecution,
+        "file_execution.WorkflowFileExecution",
         on_delete=models.CASCADE,
         db_index=True,
         editable=False,
