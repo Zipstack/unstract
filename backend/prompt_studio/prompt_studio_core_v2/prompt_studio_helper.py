@@ -858,16 +858,13 @@ class PromptStudioHelper:
             doc_path = str(
                 doc_path.parent.parent / "summarize" / (doc_path.stem + ".txt")
             )
-            summarize_file_path = PromptStudioHelper.summarize(
-                filename, org_id, document_id, is_summary, run_id, tool, doc_id
-            )
             summarize_doc_id = IndexingUtils.generate_index_key(
                 vector_db=str(default_profile.vector_store.id),
                 embedding=str(default_profile.embedding_model.id),
                 x2text=str(default_profile.x2text.id),
                 chunk_size=str(default_profile.chunk_size),
                 chunk_overlap=str(default_profile.chunk_overlap),
-                file_path=summarize_file_path,
+                file_path=doc_path,
                 fs=fs_instance,
                 tool=util,
             )
