@@ -39,12 +39,8 @@ COPY ${BUILD_CONTEXT_PATH} /app/
 # Ensure correct package structure
 RUN touch /app/src/unstract/__init__.py && \
     cd /unstract/core && pip install --no-cache-dir -e . && cd /app && \
-    pip install --no-cache-dir -e .
-
-RUN \
-    # source command may not be availble in sh
-    . .venv/bin/activate; \
-    \
+    pip install --no-cache-dir -e . && \
+    . .venv/bin/activate && \
     pdm sync --prod --no-editable --with deploy && \
     opentelemetry-bootstrap -a install
 

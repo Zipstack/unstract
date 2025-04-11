@@ -141,7 +141,7 @@ def test_get_container_run_config(docker_client, mocker):
     )
     assert config["name"] == "test-image"
     assert config["image"] == "test-image:latest"
-    assert config["command"] == ["echo", "hello"]
+    assert config["entrypoint"] == ["echo", "hello"]
     assert config["environment"] == {"KEY": "VALUE"}
     assert config["mounts"] == []
 
@@ -169,7 +169,7 @@ def test_get_container_run_config_without_mount(docker_client, mocker):
     )
     assert config["name"] == "test-image"
     assert config["image"] == "test-image:latest"
-    assert config["command"] == ["echo", "hello"]
+    assert config["entrypoint"] == ["echo", "hello"]
     assert config["environment"] == {}
     assert config["mounts"] == []
 
@@ -182,7 +182,7 @@ def test_run_container(docker_client, mocker):
     config = {
         "name": "test-image",
         "image": "test-image:latest",
-        "command": ["echo", "hello"],
+        "entrypoint": ["echo", "hello"],
         "detach": True,
         "stream": True,
         "auto_remove": True,
@@ -252,7 +252,7 @@ def test_sidecar_container(docker_client_with_sidecar, mocker):
     config = {
         "name": "test-image",
         "image": "test-image:latest",
-        "command": ["echo", "hello"],
+        "entrypoint": ["echo", "hello"],
         "detach": True,
         "stream": False,
         "auto_remove": True,

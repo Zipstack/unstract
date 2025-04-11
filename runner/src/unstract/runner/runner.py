@@ -19,10 +19,8 @@ from unstract.core.constants import LogFieldName
 from unstract.core.pubsub_helper import LogPublisher
 
 load_dotenv()
-# Loads the container clinet class.
+# Loads the container client class.
 client_class = ContainerClientHelper.get_container_client()
-
-TOOL_TERMINATION_MARKER = "TOOL_EXECUTION_COMPLETE"
 
 
 class UnstractRunner:
@@ -282,6 +280,9 @@ class UnstractRunner:
             f"opentelemetry-instrument python main.py --command RUN "
             f"--settings '{settings_json}' --log-level DEBUG"
         )
+        
+        if not self.sidecar_enabled:
+            return tool_cmd
 
         # Shell script components
         mkdir_cmd = f"mkdir -p {shared_log_dir}"
@@ -289,7 +290,7 @@ class UnstractRunner:
             "run_tool() { "
             f"{tool_cmd}; "
             "exit_code=$?; "
-            f'echo "{TOOL_TERMINATION_MARKER} with exit code $exit_code" '
+            f'echo "{LogFieldName.TOOL_TERMINATION_MARKER} with exit code $exit_code" '
             f">> {shared_log_file}; "
             "return $exit_code; "
             "}"

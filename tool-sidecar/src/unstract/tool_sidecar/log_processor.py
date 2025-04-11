@@ -92,11 +92,12 @@ class LogProcessor:
             Optional[Dict]: Parsed JSON if line is a completion signal
         """
         # Stream log to Redis
-        if self.TERMINATION_MARKER in line:
+        if LogFieldName.TOOL_TERMINATION_MARKER in line:
             logger.info(
-                f"Tool container terminated with status {self.TERMINATION_MARKER}"
+                "Tool container terminated with status "
+                f"{LogFieldName.TOOL_TERMINATION_MARKER}"
             )
-            return LogLineDTO(is_completion=True)
+            return LogLineDTO(is_terminated=True)
         log_dict = self.get_valid_log_message(line)
         if not log_dict:
             return LogLineDTO()
@@ -209,7 +210,7 @@ class LogProcessor:
 
                 # Process the log line
                 log_line = self.process_log_line(line)
-                if log_line.is_completion:
+                if log_line.is_terminated:
                     logger.info("Completion signal received")
                     break
 

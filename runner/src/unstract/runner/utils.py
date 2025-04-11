@@ -80,7 +80,20 @@ class Utils:
         Returns:
             bool
         """
-        return Utils.str_to_bool(os.getenv(Env.TOOL_SIDECAR_ENABLED, "false"))
+        if not Utils.str_to_bool(os.getenv(Env.TOOL_SIDECAR_ENABLED, "false")):
+            return False
+
+        image_name = os.getenv(Env.TOOL_SIDECAR_IMAGE_NAME)
+        image_tag = os.getenv(Env.TOOL_SIDECAR_IMAGE_TAG)
+
+        if not image_name or not image_tag:
+            logger.warning(
+                "Sidecar is enabled but configuration is incomplete: "
+                f"image_name={'missing' if not image_name else 'set'}, "
+                f"image_tag={'missing' if not image_tag else 'set'}"
+            )
+            return False
+        return True
 
     @staticmethod
     def get_sidecar_wait_timeout() -> int:
