@@ -1,18 +1,17 @@
 import logging
 
-from api_v2.models import APIDeployment
 from notification_v2.helper import NotificationHelper
 from notification_v2.models import Notification
 from pipeline_v2.dto import PipelineStatusPayload
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
+from api_v2.models import APIDeployment
+
 logger = logging.getLogger(__name__)
 
 
 class APINotification:
-    def __init__(
-        self, api: APIDeployment, workflow_execution: WorkflowExecution
-    ) -> None:
+    def __init__(self, api: APIDeployment, workflow_execution: WorkflowExecution) -> None:
         self.notifications = Notification.objects.filter(api=api, is_active=True)
         self.api = api
         self.workflow_execution = workflow_execution

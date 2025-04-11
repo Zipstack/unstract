@@ -1,7 +1,6 @@
-from typing import Optional
-
 from account_v2.models import Organization
 from django.db.utils import ProgrammingError
+
 from utils.constants import Account
 from utils.local_context import StateStore
 
@@ -17,7 +16,7 @@ class UserContext:
         StateStore.set(Account.ORGANIZATION_ID, organization_identifier)
 
     @staticmethod
-    def get_organization() -> Optional[Organization]:
+    def get_organization() -> Organization | None:
         organization_id = StateStore.get(Account.ORGANIZATION_ID)
         try:
             organization: Organization = Organization.objects.get(

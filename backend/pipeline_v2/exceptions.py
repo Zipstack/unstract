@@ -1,5 +1,3 @@
-from typing import Optional
-
 from rest_framework.exceptions import APIException
 
 
@@ -24,14 +22,13 @@ class InactivePipelineError(APIException):
 
     def __init__(
         self,
-        pipeline_name: Optional[str] = None,
-        detail: Optional[str] = None,
-        code: Optional[str] = None,
+        pipeline_name: str | None = None,
+        detail: str | None = None,
+        code: str | None = None,
     ):
         if pipeline_name:
             self.default_detail = (
-                f"Pipeline '{pipeline_name}' is inactive, "
-                "please activate the pipeline"
+                f"Pipeline '{pipeline_name}' is inactive, " "please activate the pipeline"
             )
         super().__init__(detail, code)
 

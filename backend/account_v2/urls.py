@@ -1,3 +1,5 @@
+from django.urls import path
+
 from account_v2.views import (
     callback,
     create_organization,
@@ -8,7 +10,6 @@ from account_v2.views import (
     set_organization,
     signup,
 )
-from django.urls import path
 
 urlpatterns = [
     path("login", login, name="login"),

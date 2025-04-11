@@ -4,7 +4,8 @@ from utils.user_context import UserContext
 
 class IsOwnerOrOrganizationMember(IsOwner):
     """Permission that grants access if the user is the owner or belongs to the
-    same organization."""
+    same organization.
+    """
 
     def has_object_permission(self, request, view, obj):
         # Check if the user is the owner via base class logic

@@ -1,9 +1,16 @@
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import QuerySet
 from django.http import HttpRequest
+from rest_framework import status, viewsets
+from rest_framework.exceptions import APIException
+from rest_framework.response import Response
+from rest_framework.versioning import URLPathVersioning
+from utils.common_utils import CommonUtils
+from utils.filtering import FilterHelper
+
 from prompt_studio.prompt_studio_output_manager_v2.constants import (
     PromptOutputManagerErrorMessage,
     PromptStudioOutputManagerKeys,
@@ -15,12 +22,6 @@ from prompt_studio.prompt_studio_output_manager_v2.serializers import (
     PromptStudioOutputSerializer,
 )
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
-from rest_framework import status, viewsets
-from rest_framework.exceptions import APIException
-from rest_framework.response import Response
-from rest_framework.versioning import URLPathVersioning
-from utils.common_utils import CommonUtils
-from utils.filtering import FilterHelper
 
 from .models import PromptStudioOutputManager
 
@@ -31,7 +32,7 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
     serializer_class = PromptStudioOutputSerializer
 
-    def get_queryset(self) -> Optional[QuerySet]:
+    def get_queryset(self) -> QuerySet | None:
         filter_args = FilterHelper.build_filter_args(
             self.request,
             PromptStudioOutputManagerKeys.TOOL_ID,

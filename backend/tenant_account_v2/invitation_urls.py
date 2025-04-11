@@ -1,4 +1,5 @@
 from django.urls import path
+
 from tenant_account_v2.invitation_views import InvitationViewSet
 
 invitation_list = InvitationViewSet.as_view(

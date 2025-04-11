@@ -1,4 +1,9 @@
-from typing import Optional
+from pipeline_v2.exceptions import PipelineNotFound
+from pipeline_v2.pipeline_processor import PipelineProcessor
+from rest_framework import serializers, viewsets
+from rest_framework.decorators import action
+from rest_framework.request import Request
+from rest_framework.response import Response
 
 from api_v2.deployment_helper import DeploymentHelper
 from api_v2.exceptions import APINotFound, PathVariablesNotFound
@@ -6,12 +11,6 @@ from api_v2.key_helper import KeyHelper
 from api_v2.models import APIKey
 from api_v2.permission import IsOwnerOrOrganizationMember
 from api_v2.serializers import APIKeyListSerializer, APIKeySerializer
-from pipeline_v2.exceptions import PipelineNotFound
-from pipeline_v2.pipeline_processor import PipelineProcessor
-from rest_framework import serializers, viewsets
-from rest_framework.decorators import action
-from rest_framework.request import Request
-from rest_framework.response import Response
 
 
 class APIKeyViewSet(viewsets.ModelViewSet):
@@ -27,8 +26,8 @@ class APIKeyViewSet(viewsets.ModelViewSet):
     def api_keys(
         self,
         request: Request,
-        api_id: Optional[str] = None,
-        pipeline_id: Optional[str] = None,
+        api_id: str | None = None,
+        pipeline_id: str | None = None,
     ) -> Response:
         """Custom action to fetch api keys of an api deployment."""
         if api_id:

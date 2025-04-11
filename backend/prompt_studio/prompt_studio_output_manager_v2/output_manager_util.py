@@ -11,8 +11,7 @@ class OutputManagerUtils:
         prompt_id: str = None,
         is_single_pass: bool = False,
     ) -> list[str]:
-        """
-        Method to fetch coverage data for given tool and profile manager.
+        """Method to fetch coverage data for given tool and profile manager.
 
         Args:
             tool_id (str): The ID of the tool for which coverage is fetched.

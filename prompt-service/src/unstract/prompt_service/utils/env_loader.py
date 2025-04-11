@@ -1,10 +1,8 @@
 import os
-from typing import Optional
 
 
-def get_env_or_die(env_key: str, default: Optional[str] = None) -> str:
-    """
-    Get the value of an environment variable or raise an error if it is not set.
+def get_env_or_die(env_key: str, default: str | None = None) -> str:
+    """Get the value of an environment variable or raise an error if it is not set.
 
     Args:
         env_key (str): Name of the environment variable.

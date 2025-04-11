@@ -1,19 +1,18 @@
 import logging
 import os
 from collections.abc import Iterator
-from typing import Any, Optional
+from typing import Any
 
+from docker import DockerClient
 from docker.errors import APIError, ImageNotFound
 from docker.models.containers import Container
+from unstract.core.utilities import UnstractUtils
 from unstract.runner.clients.interface import (
     ContainerClientInterface,
     ContainerInterface,
 )
 from unstract.runner.constants import Env
 from unstract.runner.utils import Utils
-
-from docker import DockerClient
-from unstract.core.utilities import UnstractUtils
 
 
 class DockerContainer(ContainerInterface):
@@ -51,9 +50,7 @@ class Client(ContainerClientInterface):
 
     def __private_login(self):
         """Performs login for private registry if required."""
-        private_registry_credential_path = os.getenv(
-            Env.PRIVATE_REGISTRY_CREDENTIAL_PATH
-        )
+        private_registry_credential_path = os.getenv(Env.PRIVATE_REGISTRY_CREDENTIAL_PATH)
         private_registry_username = os.getenv(Env.PRIVATE_REGISTRY_USERNAME)
         private_registry_url = os.getenv(Env.PRIVATE_REGISTRY_URL)
         if not (
@@ -102,13 +99,10 @@ class Client(ContainerClientInterface):
         Returns:
             bool: True if the image exists, False otherwise.
         """
-
         try:
             # Attempt to get the image information
             self.client.images.get(image_name_with_tag)
-            self.logger.info(
-                f"Image '{image_name_with_tag}' found in the local system."
-            )
+            self.logger.info(f"Image '{image_name_with_tag}' found in the local system.")
             return True
         except ImageNotFound:  # type: ignore[attr-defined]
             self.logger.info(
@@ -159,8 +153,8 @@ class Client(ContainerClientInterface):
         self,
         command: list[str],
         file_execution_id: str,
-        container_name: Optional[str] = None,
-        envs: Optional[dict[str, Any]] = None,
+        container_name: str | None = None,
+        envs: dict[str, Any] | None = None,
         auto_remove: bool = False,
     ) -> dict[str, Any]:
         if envs is None:

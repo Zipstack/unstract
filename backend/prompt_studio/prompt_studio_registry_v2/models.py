@@ -5,17 +5,18 @@ from typing import Any
 from account_v2.models import User
 from django.db import models
 from django.db.models import QuerySet
+from utils.models.base_model import BaseModel
+from utils.models.organization_mixin import (
+    DefaultOrganizationManagerMixin,
+    DefaultOrganizationMixin,
+)
+
 from prompt_studio.prompt_studio_registry_v2.fields import (
     ToolMetadataJSONField,
     ToolPropertyJSONField,
     ToolSpecJSONField,
 )
 from prompt_studio.prompt_studio_v2.models import CustomTool
-from utils.models.base_model import BaseModel
-from utils.models.organization_mixin import (
-    DefaultOrganizationManagerMixin,
-    DefaultOrganizationMixin,
-)
 
 logger = logging.getLogger(__name__)
 

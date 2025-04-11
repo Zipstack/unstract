@@ -7,7 +7,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
     dependencies = [
@@ -90,15 +89,11 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "model_name",
-                    models.CharField(
-                        db_comment="Name of the model used", max_length=255
-                    ),
+                    models.CharField(db_comment="Name of the model used", max_length=255),
                 ),
                 (
                     "embedding_tokens",
-                    models.IntegerField(
-                        db_comment="Number of tokens used for embedding"
-                    ),
+                    models.IntegerField(db_comment="Number of tokens used for embedding"),
                 ),
                 (
                     "prompt_tokens",

@@ -1,4 +1,4 @@
-FROM python:3.9-slim
+FROM python:3.12.9-slim
 
 LABEL maintainer="Zipstack Inc."
 ENV UNSTRACT_ENTRYPOINT "python /app/src/main.py"

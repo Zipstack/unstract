@@ -1,8 +1,8 @@
 import logging
-from typing import Optional
 
 from notification_v2.helper import NotificationHelper
 from notification_v2.models import Notification
+
 from pipeline_v2.dto import PipelineStatusPayload
 from pipeline_v2.models import Pipeline
 
@@ -13,8 +13,8 @@ class PipelineNotification:
     def __init__(
         self,
         pipeline: Pipeline,
-        execution_id: Optional[str] = None,
-        error_message: Optional[str] = None,
+        execution_id: str | None = None,
+        error_message: str | None = None,
     ) -> None:
         self.notifications = Notification.objects.filter(
             pipeline=pipeline, is_active=True
@@ -27,9 +27,7 @@ class PipelineNotification:
         if not self.notifications.count():
             logger.info(f"No notifications found for pipeline {self.pipeline}")
             return
-        logger.info(
-            f"Sending pipeline status notification for pipeline {self.pipeline}"
-        )
+        logger.info(f"Sending pipeline status notification for pipeline {self.pipeline}")
         payload_dto = PipelineStatusPayload(
             type=self.pipeline.pipeline_type,
             pipeline_id=str(self.pipeline.id),

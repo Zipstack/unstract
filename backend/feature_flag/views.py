@@ -1,14 +1,14 @@
-"""
-    Feature Flag view file
+"""Feature Flag view file
 Returns:
     evaluate response
 """
 
 import logging
 
-from feature_flag.helper import FeatureFlagHelper
 from rest_framework import status, viewsets
 from rest_framework.response import Response
+
+from feature_flag.helper import FeatureFlagHelper
 
 logger = logging.getLogger(__name__)
 

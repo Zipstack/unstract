@@ -1,5 +1,4 @@
 import os
-from typing import Optional
 
 
 class EnvManager:
@@ -7,8 +6,8 @@ class EnvManager:
 
     @classmethod
     def get_required_setting(
-        cls, setting_key: str, default: Optional[str] = None
-    ) -> Optional[str]:
+        cls, setting_key: str, default: str | None = None
+    ) -> str | None:
         """Get the value of an environment variable specified by the given key.
         Add missing keys to `missing_settings` so that exception can be raised
         at the end.

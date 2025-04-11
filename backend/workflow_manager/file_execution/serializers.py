@@ -1,6 +1,5 @@
-from typing import Optional
-
 from rest_framework import serializers
+
 from workflow_manager.file_execution.models import (
     WorkflowFileExecution as FileExecution,
 )
@@ -30,7 +29,7 @@ class FileCentricExecutionSerializer(serializers.ModelSerializer):
         model = FileExecution
         exclude = ["file_hash"]
 
-    def get_status_msg(self, obj: FileExecution) -> Optional[dict[str, any]]:
+    def get_status_msg(self, obj: FileExecution) -> dict[str, any] | None:
         if obj.status in [ExecutionStatus.PENDING]:
             return self.INIT_STATUS_MSG
         elif obj.status == ExecutionStatus.ERROR:

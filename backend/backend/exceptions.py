@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any
 
 from rest_framework.exceptions import APIException
 from rest_framework.response import Response
@@ -12,8 +12,8 @@ class UnstractBaseException(APIException):
 
     def __init__(
         self,
-        detail: Optional[str] = None,
-        core_err: Optional[ConnectorBaseException] = None,
+        detail: str | None = None,
+        core_err: ConnectorBaseException | None = None,
         **kwargs: Any,
     ) -> None:
         if detail is None:
@@ -21,9 +21,7 @@ class UnstractBaseException(APIException):
         if core_err and core_err.user_message:
             detail = core_err.user_message
         if detail and "Name or service not known" in str(detail):
-            detail = (
-                "Failed to establish a new connection: " "Name or service not known"
-            )
+            detail = "Failed to establish a new connection: " "Name or service not known"
         super().__init__(detail=detail, **kwargs)
         self._core_err = core_err
 

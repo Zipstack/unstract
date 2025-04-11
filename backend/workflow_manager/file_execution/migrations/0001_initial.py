@@ -7,7 +7,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
     dependencies = [
@@ -78,9 +77,7 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "execution_time",
-                    models.FloatField(
-                        db_comment="Execution time in seconds", null=True
-                    ),
+                    models.FloatField(db_comment="Execution time in seconds", null=True),
                 ),
                 (
                     "execution_error",

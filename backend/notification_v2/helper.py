@@ -26,7 +26,7 @@ class NotificationHelper:
             payload (Any): The data to be sent with the notification. This can be any
                 format expected by the provider
 
-            Returns:
+        Returns:
                 None
         """
         for notification in notifications:

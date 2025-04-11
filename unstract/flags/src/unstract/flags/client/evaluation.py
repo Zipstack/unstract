@@ -7,7 +7,6 @@ input parameters.
 """
 
 import logging
-from typing import Optional
 
 import grpc
 
@@ -26,9 +25,10 @@ class EvaluationClient(BaseClient):
         namespace_key: str,
         flag_key: str,
         entity_id: str,
-        context: Optional[dict] = None,
+        context: dict | None = None,
     ) -> bool:
         """Evaluates the state of a feature flag for a given entity.
+
         Args:
             namespace_key (str): The namespace key of the feature flag.
             flag_key (str): The key of the feature flag.

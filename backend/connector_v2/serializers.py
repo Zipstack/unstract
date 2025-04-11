@@ -1,19 +1,19 @@
 import json
 import logging
 from collections import OrderedDict
-from typing import Any, Optional
+from typing import Any
 
 from connector_auth_v2.models import ConnectorAuth
 from connector_auth_v2.pipeline.common import ConnectorAuthHelper
 from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
 from connector_processor.exceptions import OAuthTimeOut
-from connector_v2.constants import ConnectorInstanceKey as CIKey
 from cryptography.fernet import Fernet
 from django.conf import settings
 from utils.serializer_utils import SerializerUtils
 
 from backend.serializers import AuditSerializer
+from connector_v2.constants import ConnectorInstanceKey as CIKey
 from unstract.connectors.filesystems.ucs import UnstractCloudStorage
 
 from .models import ConnectorInstance
@@ -41,7 +41,7 @@ class ConnectorInstanceSerializer(AuditSerializer):
     def save(self, **kwargs):  # type: ignore
         user = self.context.get("request").user or None
         connector_id: str = kwargs[CIKey.CONNECTOR_ID]
-        connector_oauth: Optional[ConnectorAuth] = None
+        connector_oauth: ConnectorAuth | None = None
         if (
             ConnectorInstance.supportsOAuth(connector_id=connector_id)
             and CIKey.CONNECTOR_METADATA in kwargs

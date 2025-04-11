@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("prompt_studio_v2", "0003_toolstudioprompt_required"),
     ]

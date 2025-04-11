@@ -1,13 +1,12 @@
-from typing import Optional
+from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from api_v2.models import APIDeployment
 from api_v2.notification import APINotification
-from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 
 class APIDeploymentUtils:
     @staticmethod
-    def get_api_by_id(api_id: str) -> Optional[APIDeployment]:
+    def get_api_by_id(api_id: str) -> APIDeployment | None:
         """Retrieves an APIDeployment instance by its unique ID.
 
         Args:
@@ -39,7 +38,5 @@ class APIDeploymentUtils:
         Returns:
             None
         """
-        api_notification = APINotification(
-            api=api, workflow_execution=workflow_execution
-        )
+        api_notification = APINotification(api=api, workflow_execution=workflow_execution)
         api_notification.send()

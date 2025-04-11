@@ -2,7 +2,7 @@
 
 import traceback
 from dataclasses import asdict, dataclass
-from typing import Any, Optional
+from typing import Any
 
 from flask import Flask, jsonify, request
 from werkzeug.exceptions import HTTPException
@@ -17,7 +17,7 @@ class ErrorResponse:
     error: str = DEFAULT_ERR_MESSAGE
     name: str = "ServiceError"
     code: int = 500
-    payload: Optional[Any] = None
+    payload: Any | None = None
 
 
 class APIError(HTTPException):
@@ -28,8 +28,8 @@ class APIError(HTTPException):
 
     def __init__(
         self,
-        message: Optional[str] = None,
-        code: Optional[int] = None,
+        message: str | None = None,
+        code: int | None = None,
         payload: Any = None,
     ):
         if message:
@@ -65,20 +65,9 @@ def log_exceptions(e: HTTPException, logger):
         code = e.code or code
 
     if code >= 500:
-        message = "{method} {url} {status}\n\n{error}\n\n````{tb}````".format(
-            method=request.method,
-            url=request.url,
-            status=code,
-            error=str(e),
-            tb=traceback.format_exc(),
-        )
+        message = f"{request.method} {request.url} {code}\n\n{str(e)}\n\n````{traceback.format_exc()}````"
     else:
-        message = "{method} {url} {status} {error}".format(
-            method=request.method,
-            url=request.url,
-            status=code,
-            error=str(e),
-        )
+        message = f"{request.method} {request.url} {code} {str(e)}"
     logger.error(message)
 
 

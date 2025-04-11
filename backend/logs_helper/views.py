@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from django.conf import settings
 from django.http import HttpRequest
@@ -57,11 +57,9 @@ class LogsHelperViewSet(viewsets.ModelViewSet):
         # Extract the log message from the validated data
         log: str = serializer.validated_data.get("log")
         log_data = json.loads(log)
-        timestamp = datetime.now(timezone.utc).timestamp()
+        timestamp = datetime.now(UTC).timestamp()
 
-        redis_key = (
-            f"{LogService.generate_redis_key(session_id=session_id)}:{timestamp}"
-        )
+        redis_key = f"{LogService.generate_redis_key(session_id=session_id)}:{timestamp}"
 
         CacheService.set_key(redis_key, log_data, logs_expiry)
 

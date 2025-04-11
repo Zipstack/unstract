@@ -1,19 +1,20 @@
 import json
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from account_v2.models import User
+from cryptography.fernet import Fernet
+from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
+from platform_settings_v2.platform_auth_service import PlatformAuthenticationService
+from tenant_account_v2.organization_member_service import OrganizationMemberService
+
 from adapter_processor_v2.constants import AdapterKeys, AllowedDomains
 from adapter_processor_v2.exceptions import (
     InternalServiceError,
     InValidAdapterId,
     TestAdapterError,
 )
-from cryptography.fernet import Fernet
-from django.conf import settings
-from django.core.exceptions import ObjectDoesNotExist
-from platform_settings_v2.platform_auth_service import PlatformAuthenticationService
-from tenant_account_v2.organization_member_service import OrganizationMemberService
 from unstract.sdk.adapters.adapterkit import Adapterkit
 from unstract.sdk.adapters.base import Adapter
 from unstract.sdk.adapters.enums import AdapterTypes
@@ -43,9 +44,7 @@ class AdapterProcessor:
                 updated_adapters[0].get(AdapterKeys.JSON_SCHEMA)
             )
         else:
-            logger.error(
-                f"Invalid adapter Id : {adapter_id} while fetching JSON Schema"
-            )
+            logger.error(f"Invalid adapter Id : {adapter_id} while fetching JSON Schema")
             raise InValidAdapterId()
         return schema_details
 
@@ -72,9 +71,7 @@ class AdapterProcessor:
                     AdapterKeys.NAME: each_adapter.get(AdapterKeys.NAME),
                     AdapterKeys.DESCRIPTION: each_adapter.get(AdapterKeys.DESCRIPTION),
                     AdapterKeys.ICON: each_adapter.get(AdapterKeys.ICON),
-                    AdapterKeys.ADAPTER_TYPE: each_adapter.get(
-                        AdapterKeys.ADAPTER_TYPE
-                    ),
+                    AdapterKeys.ADAPTER_TYPE: each_adapter.get(AdapterKeys.ADAPTER_TYPE),
                 }
             )
         return supported_adapters
@@ -97,7 +94,6 @@ class AdapterProcessor:
             adapter_class = Adapterkit().get_adapter_class_by_adapter_id(adapter_id)
 
             if adapter_metadata.pop(AdapterKeys.ADAPTER_TYPE) == AdapterKeys.X2TEXT:
-
                 if (
                     adapter_metadata.get(AdapterKeys.PLATFORM_PROVIDED_UNSTRACT_KEY)
                     and add_unstract_key
@@ -136,7 +132,8 @@ class AdapterProcessor:
     @staticmethod
     def __fetch_adapters_by_key_value(key: str, value: Any) -> Adapter:
         """Fetches a list of adapters that have an attribute matching key and
-        value."""
+        value.
+        """
         logger.info(f"Fetching adapter list for {key} with {value}")
         adapter_kit = Adapterkit()
         adapters = adapter_kit.get_adapters_list()
@@ -172,10 +169,8 @@ class AdapterProcessor:
                 )
 
             if default_triad.get(AdapterKeys.X2TEXT_DEFAULT, None):
-                user_default_adapter.default_x2text_adapter = (
-                    AdapterInstance.objects.get(
-                        pk=default_triad[AdapterKeys.X2TEXT_DEFAULT]
-                    )
+                user_default_adapter.default_x2text_adapter = AdapterInstance.objects.get(
+                    pk=default_triad[AdapterKeys.X2TEXT_DEFAULT]
                 )
 
             user_default_adapter.save()
@@ -223,7 +218,6 @@ class AdapterProcessor:
         - list[AdapterInstance]: A list of AdapterInstance objects that match
             the specified adapter type.
         """
-
         adapters: list[AdapterInstance] = AdapterInstance.objects.for_user(user).filter(
             adapter_type=adapter_type.value,
         )
@@ -232,8 +226,8 @@ class AdapterProcessor:
     @staticmethod
     def get_adapter_by_name_and_type(
         adapter_type: AdapterTypes,
-        adapter_name: Optional[str] = None,
-    ) -> Optional[AdapterInstance]:
+        adapter_name: str | None = None,
+    ) -> AdapterInstance | None:
         """Get the adapter instance by its name and type.
 
         Parameters:

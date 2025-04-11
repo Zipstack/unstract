@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
@@ -30,9 +30,9 @@ class ToolInstance:
     step: int
     workflow: str
     metadata: dict[str, Any]
-    properties: Optional[dict[str, Any]] = None
-    image_name: Optional[dict[str, Any]] = None
-    image_tag: Optional[dict[str, Any]] = None
+    properties: dict[str, Any] | None = None
+    image_name: dict[str, Any] | None = None
+    image_tag: dict[str, Any] | None = None
 
 
 @dataclass

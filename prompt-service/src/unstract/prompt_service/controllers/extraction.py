@@ -1,6 +1,7 @@
-from typing import Any, Optional
+from typing import Any
 
 from flask import Blueprint, request
+
 from unstract.prompt_service.constants import IndexingConstants as IKeys
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.helpers.auth import AuthHelper
@@ -26,7 +27,7 @@ def extract() -> Any:
 
     x2text_instance_id: str = payload.get(IKeys.X2TEXT_INSTANCE_ID, "")
     file_path: str = payload.get(IKeys.FILE_PATH, "")
-    output_file_path: Optional[str] = payload.get(IKeys.OUTPUT_FILE_PATH, "")
+    output_file_path: str | None = payload.get(IKeys.OUTPUT_FILE_PATH, "")
     enable_highlight: bool = payload.get(IKeys.ENABLE_HIGHLIGHT, False)
     usage_kwargs: dict[Any, Any] = payload.get(IKeys.USAGE_KWARGS, {})
     run_id: str = payload.get(PSKeys.RUN_ID, "")

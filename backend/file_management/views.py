@@ -3,6 +3,14 @@ from typing import Any
 
 from connector_v2.models import ConnectorInstance
 from django.http import HttpRequest
+from oauth2client.client import HttpAccessTokenRefreshError
+from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManager
+from rest_framework import serializers, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.versioning import URLPathVersioning
+from utils.user_session import UserSessionUtils
+
 from file_management.exceptions import (
     ConnectorInstanceNotFound,
     ConnectorOAuthError,
@@ -15,14 +23,6 @@ from file_management.serializer import (
     FileListRequestSerializer,
     FileUploadSerializer,
 )
-from oauth2client.client import HttpAccessTokenRefreshError
-from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManager
-from rest_framework import serializers, status, viewsets
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from rest_framework.versioning import URLPathVersioning
-from utils.user_session import UserSessionUtils
-
 from unstract.connectors.exceptions import ConnectorError
 from unstract.connectors.filesystems.local_storage.local_storage import LocalStorageFS
 
@@ -96,9 +96,7 @@ class FileManagementViewSet(viewsets.ModelViewSet):
 
         for uploaded_file in uploaded_files:
             file_name = uploaded_file.name
-            logger.info(
-                f"Uploading file: {file_name}" if file_name else "Uploading file"
-            )
+            logger.info(f"Uploading file: {file_name}" if file_name else "Uploading file")
             FileManagerHelper.upload_file(file_system, path, uploaded_file, file_name)
         return Response({"message": "Files are uploaded successfully!"})
 

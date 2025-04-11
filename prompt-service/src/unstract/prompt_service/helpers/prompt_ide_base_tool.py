@@ -1,8 +1,8 @@
 import os
 import warnings
-from typing import Optional
 
 from flask import current_app
+
 from unstract.prompt_service.constants import PromptServiceConstants
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.tool.stream import StreamMixin
@@ -11,11 +11,8 @@ from unstract.sdk.utils.common_utils import PY_TO_UNSTRACT_LOG_LEVEL
 
 class PromptServiceBaseTool(StreamMixin):
     # Remove unused log_level arg
-    def __init__(
-        self, log_level: Optional[LogLevel] = None, platform_key: str = ""
-    ) -> None:
-        """
-        Args:
+    def __init__(self, log_level: LogLevel | None = None, platform_key: str = "") -> None:
+        """Args:
             tool (UnstractAbstractTool): Instance of UnstractAbstractTool.
                  Deprecated, will be removed in future versions
         Notes:

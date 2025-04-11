@@ -1,7 +1,7 @@
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
-from typing import Any, Optional
+from typing import Any
 
 
 class ContainerInterface(ABC):
@@ -30,7 +30,6 @@ class ContainerInterface(ABC):
 
 
 class ContainerClientInterface(ABC):
-
     @abstractmethod
     def __init__(self, image_name: str, image_tag: str, logger: logging.Logger) -> None:
         pass
@@ -63,8 +62,8 @@ class ContainerClientInterface(ABC):
         self,
         command: list[str],
         file_execution_id: str,
-        container_name: Optional[str] = None,
-        envs: Optional[dict[str, Any]] = None,
+        container_name: str | None = None,
+        envs: dict[str, Any] | None = None,
         auto_remove: bool = False,
     ) -> dict[str, Any]:
         """Generate the configuration dictionary to run the container.

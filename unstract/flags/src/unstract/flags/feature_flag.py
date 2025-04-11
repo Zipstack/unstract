@@ -2,7 +2,6 @@
 
 import logging
 import os
-from typing import Optional
 
 from .client.evaluation import EvaluationClient
 
@@ -13,7 +12,7 @@ def check_feature_flag_status(
     flag_key: str,
     namespace_key: str = "default",
     entity_id: str = "unstract",
-    context: Optional[dict[str, str]] = None,
+    context: dict[str, str] | None = None,
 ) -> bool:
     """Check the status of a feature flag for a given entity.
 
@@ -29,7 +28,6 @@ def check_feature_flag_status(
         bool:
         True if the feature flag is enabled for the entity, False otherwise.
     """
-
     try:
         FLIPT_SERVICE_AVAILABLE = (
             os.environ.get("FLIPT_SERVICE_AVAILABLE", "false").lower() == "true"

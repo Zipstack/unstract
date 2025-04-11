@@ -3,6 +3,7 @@ import os
 from unittest.mock import MagicMock
 
 import pytest
+
 from docker.errors import ImageNotFound
 from unstract.runner.constants import Env
 
@@ -93,9 +94,7 @@ def test_get_image(docker_client, mocker):
     mock_images.get.side_effect = ImageNotFound(
         "Image not found"
     )  # Mock that image doesn't exist
-    mock_pull = mocker.patch.object(
-        docker_client.client.api, "pull"
-    )  # Patch pull method
+    mock_pull = mocker.patch.object(docker_client.client.api, "pull")  # Patch pull method
     mock_pull.return_value = iter([{"status": "pulling"}])  # Simulate pull process
     assert docker_client.get_image() == "test-image:latest"
     mock_pull.assert_called_once_with(

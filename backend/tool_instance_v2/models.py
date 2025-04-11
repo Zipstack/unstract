@@ -13,9 +13,7 @@ TOOL_STATUS_LENGTH = 32
 
 
 class ToolInstanceManager(models.Manager):
-    def get_instances_for_workflow(
-        self, workflow: uuid.UUID
-    ) -> QuerySet["ToolInstance"]:
+    def get_instances_for_workflow(self, workflow: uuid.UUID) -> QuerySet["ToolInstance"]:
         return self.filter(workflow=workflow)
 
 

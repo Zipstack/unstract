@@ -80,8 +80,7 @@ class RetrievalService:
 
     @staticmethod
     def retrieve_complete_context(execution_source: str, file_path: str) -> list[str]:
-        """
-        Loads full context from raw file for zero chunk size retrieval
+        """Loads full context from raw file for zero chunk size retrieval
         Args:
             execution_source (str): Source of execution.
             file_path (str): Path to the directory containing text file.

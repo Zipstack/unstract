@@ -6,8 +6,9 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
-from tenant_account_v2.serializer import ListInvitationsResponseSerializer
 from utils.user_session import UserSessionUtils
+
+from tenant_account_v2.serializer import ListInvitationsResponseSerializer
 
 Logger = logging.getLogger(__name__)
 

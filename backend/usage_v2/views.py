@@ -8,10 +8,11 @@ from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from usage_v2.filter import UsageFilter
 from utils.date import DateTimeProcessor
 from utils.pagination import CustomPagination
 from utils.user_context import UserContext
+
+from usage_v2.filter import UsageFilter
 
 from .constants import UsageKeys
 from .helper import UsageHelper
@@ -32,20 +33,16 @@ class UsageView(viewsets.ModelViewSet):
     ordering_fields = ["created_at"]
 
     def get_queryset(self):
-        """
-        Returns a queryset filtered by the current user's organization.
-        """
+        """Returns a queryset filtered by the current user's organization."""
         user_organization = UserContext.get_organization()
         queryset = Usage.objects.filter(organization=user_organization)
         return queryset
 
     @action(detail=True, methods=["get"], url_path="aggregate")
     def aggregate(self, request: HttpRequest) -> Response:
-        """
-        Custom action to list Usage data for a given Tag, grouped by
+        """Custom action to list Usage data for a given Tag, grouped by
         WorkflowFileExecution.
         """
-
         date_range = DateTimeProcessor.process_date_range(
             start_date_param=request.query_params.get("created_at_gte"),
             end_date_param=request.query_params.get("created_at_lte"),
@@ -82,7 +79,6 @@ class UsageView(viewsets.ModelViewSet):
                       with HTTP 200 OK status if successful, or an error message and
                       appropriate HTTP status if an error occurs.
         """
-
         # Validate the query parameters using the serializer
         # This ensures that 'run_id' is present and valid
         serializer = GetUsageSerializer(data=self.request.query_params)

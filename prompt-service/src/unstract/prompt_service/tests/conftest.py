@@ -2,6 +2,7 @@ import pytest
 from dotenv import load_dotenv
 from flask import Flask
 from flask_wtf.csrf import CSRFProtect
+
 from unstract.prompt_service.controllers.extraction import extraction_bp
 from unstract.prompt_service.controllers.indexing import indexing_bp
 

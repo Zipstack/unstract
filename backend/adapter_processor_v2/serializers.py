@@ -2,17 +2,17 @@ import json
 from typing import Any
 
 from account_v2.serializer import UserSerializer
-from adapter_processor_v2.adapter_processor import AdapterProcessor
-from adapter_processor_v2.constants import AdapterKeys
 from cryptography.fernet import Fernet
 from django.conf import settings
 from rest_framework import serializers
 from rest_framework.serializers import ModelSerializer
-from unstract.sdk.adapters.constants import Common as common
-from unstract.sdk.adapters.enums import AdapterTypes
 
+from adapter_processor_v2.adapter_processor import AdapterProcessor
+from adapter_processor_v2.constants import AdapterKeys
 from backend.constants import FieldLengthConstants as FLC
 from backend.serializers import AuditSerializer
+from unstract.sdk.adapters.constants import Common as common
+from unstract.sdk.adapters.enums import AdapterTypes
 
 from .models import AdapterInstance, UserDefaultAdapter
 
@@ -31,12 +31,8 @@ class BaseAdapterSerializer(AuditSerializer):
 
 class DefaultAdapterSerializer(serializers.Serializer):
     llm_default = serializers.CharField(max_length=FLC.UUID_LENGTH, required=False)
-    embedding_default = serializers.CharField(
-        max_length=FLC.UUID_LENGTH, required=False
-    )
-    vector_db_default = serializers.CharField(
-        max_length=FLC.UUID_LENGTH, required=False
-    )
+    embedding_default = serializers.CharField(max_length=FLC.UUID_LENGTH, required=False)
+    vector_db_default = serializers.CharField(max_length=FLC.UUID_LENGTH, required=False)
 
 
 class AdapterInstanceSerializer(BaseAdapterSerializer):
@@ -51,9 +47,7 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
             f: Fernet = Fernet(encryption_secret.encode("utf-8"))
             json_string: str = json.dumps(data.pop(AdapterKeys.ADAPTER_METADATA))
 
-            data[AdapterKeys.ADAPTER_METADATA_B] = f.encrypt(
-                json_string.encode("utf-8")
-            )
+            data[AdapterKeys.ADAPTER_METADATA_B] = f.encrypt(json_string.encode("utf-8"))
 
         return data
 
@@ -79,7 +73,6 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
 
 
 class AdapterInfoSerializer(BaseAdapterSerializer):
-
     context_window_size = serializers.SerializerMethodField()
 
     class Meta(BaseAdapterSerializer.Meta):

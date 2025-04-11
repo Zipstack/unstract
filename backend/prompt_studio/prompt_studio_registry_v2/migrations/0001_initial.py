@@ -3,13 +3,13 @@
 import uuid
 
 import django.db.models.deletion
-import prompt_studio.prompt_studio_registry_v2.fields
 from django.conf import settings
 from django.db import migrations, models
 
+import prompt_studio.prompt_studio_registry_v2.fields
+
 
 class Migration(migrations.Migration):
-
     initial = True
 
     dependencies = [

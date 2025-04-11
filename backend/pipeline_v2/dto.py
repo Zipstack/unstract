@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any
 
 
 class PipelineStatusPayload:
@@ -8,8 +8,8 @@ class PipelineStatusPayload:
         pipeline_id: str,
         pipeline_name: str,
         status: str,
-        execution_id: Optional[str] = None,
-        error_message: Optional[str] = None,
+        execution_id: str | None = None,
+        error_message: str | None = None,
     ):
         self.type = type
         self.pipeline_id = pipeline_id

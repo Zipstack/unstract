@@ -12,7 +12,8 @@ class X2TextUtil:
     @staticmethod
     def get_text_content(json_response: dict[str, Any]) -> str:
         combined_text: str = "\n".join(
-            item["text"] for item in json_response  # type:ignore
+            item["text"]
+            for item in json_response  # type:ignore
         )
         return combined_text
 

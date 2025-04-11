@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any, Optional
+from typing import Any
 
 from unstract.sdk.exceptions import FileStorageError
 from unstract.sdk.file_storage import EnvHelper, FileStorage, StorageType
@@ -139,7 +139,7 @@ class ToolRegistry:
             tools_list.append(tool_data)
         return tools_list
 
-    def get_tool_by_uid(self, uid: str) -> Optional[Tool]:
+    def get_tool_by_uid(self, uid: str) -> Tool | None:
         """Get tools from json.
 
         Args:
@@ -198,7 +198,7 @@ class ToolRegistry:
         else:
             tools = self.helper.get_all_tools_from_disk()
             for tool, configuration in tools.items():
-                data: Optional[dict[str, Any]] = configuration.get("properties")
+                data: dict[str, Any] | None = configuration.get("properties")
                 icon = configuration.get("icon", "")
                 if not data:
                     continue
@@ -230,10 +230,10 @@ class ToolRegistry:
                 tool_meta = ToolUtils.get_tool_meta_from_tool_url(registry_tool=tool)
                 if not tool_meta:
                     continue
-                properties: Optional[dict[str, Any]] = self.helper.get_tool_properties(
+                properties: dict[str, Any] | None = self.helper.get_tool_properties(
                     tool_meta=tool_meta
                 )
-                spec: Optional[dict[str, Any]] = self.helper.get_tool_spec(
+                spec: dict[str, Any] | None = self.helper.get_tool_spec(
                     tool_meta=tool_meta
                 )
                 icon = self.helper.get_tool_icon(tool_meta=tool_meta)

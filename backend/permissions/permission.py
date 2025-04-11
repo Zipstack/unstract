@@ -11,7 +11,6 @@ class IsOwner(permissions.BasePermission):
     """Custom permission to only allow owners of an object."""
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
-
         return True if obj.created_by == request.user else False
 
 
@@ -27,7 +26,6 @@ class IsOwnerOrSharedUser(permissions.BasePermission):
     """Custom permission to only allow owners and shared users of an object."""
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
-
         return (
             True
             if (
@@ -40,10 +38,10 @@ class IsOwnerOrSharedUser(permissions.BasePermission):
 
 class IsOwnerOrSharedUserOrSharedToOrg(permissions.BasePermission):
     """Custom permission to only allow owners and shared users of an object or
-    if it is shared to org."""
+    if it is shared to org.
+    """
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
-
         return (
             True
             if (
@@ -57,12 +55,12 @@ class IsOwnerOrSharedUserOrSharedToOrg(permissions.BasePermission):
 
 class IsFrictionLessAdapter(permissions.BasePermission):
     """Hack for friction-less onboarding not allowing user to view or updating
-    friction less adapter."""
+    friction less adapter.
+    """
 
     def has_object_permission(
         self, request: Request, view: APIView, obj: AdapterInstance
     ) -> bool:
-
         if obj.is_friction_less:
             return False
 
@@ -71,12 +69,12 @@ class IsFrictionLessAdapter(permissions.BasePermission):
 
 class IsFrictionLessAdapterDelete(permissions.BasePermission):
     """Hack for friction-less onboarding Allows frticon less adapter to rmoved
-    by an org member."""
+    by an org member.
+    """
 
     def has_object_permission(
         self, request: Request, view: APIView, obj: AdapterInstance
     ) -> bool:
-
         if obj.is_friction_less:
             return True
 

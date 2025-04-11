@@ -2,8 +2,9 @@ import logging
 
 from account_v2.authentication_controller import AuthenticationController
 from account_v2.models import Organization, PlatformKey, User
-from platform_settings_v2.exceptions import KeyCountExceeded, UserForbidden
 from tenant_account_v2.models import OrganizationMember
+
+from platform_settings_v2.exceptions import KeyCountExceeded, UserForbidden
 
 PLATFORM_KEY_COUNT = 2
 

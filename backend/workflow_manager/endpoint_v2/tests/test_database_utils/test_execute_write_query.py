@@ -33,9 +33,7 @@ class TestExecuteWriteQuery(BaseTestDB):
         )
         assert result is None
 
-    def test_execute_write_query_invalid_schema(
-        self, invalid_dbs_instance: Any
-    ) -> None:
+    def test_execute_write_query_invalid_schema(self, invalid_dbs_instance: Any) -> None:
         engine = invalid_dbs_instance.get_engine()
         with pytest.raises(UnstractDBException):
             DatabaseUtils.execute_write_query(

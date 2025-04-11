@@ -1,7 +1,8 @@
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from celery.result import AsyncResult
+
 from workflow_manager.workflow_v2.constants import WorkflowKey
 
 
@@ -26,12 +27,12 @@ class ExecutionResponse:
     workflow_id: str
     execution_id: str
     execution_status: str
-    log_id: Optional[str] = None
-    status_api: Optional[str] = None
-    error: Optional[str] = None
-    mode: Optional[str] = None
-    result: Optional[Any] = None
-    message: Optional[str] = None
+    log_id: str | None = None
+    status_api: str | None = None
+    error: str | None = None
+    mode: str | None = None
+    result: Any | None = None
+    message: str | None = None
     result_acknowledged: bool = False
 
     def __post_init__(self) -> None:

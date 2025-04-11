@@ -1,15 +1,15 @@
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
 class MemberData:
     user_id: str
-    email: Optional[str] = None
-    name: Optional[str] = None
-    picture: Optional[str] = None
-    role: Optional[list[str]] = None
-    organization_id: Optional[str] = None
+    email: str | None = None
+    name: str | None = None
+    picture: str | None = None
+    role: list[str] | None = None
+    organization_id: str | None = None
 
 
 @dataclass
@@ -45,11 +45,11 @@ class OrganizationSignupResponse:
 class UserInfo:
     email: str
     user_id: str
-    id: Optional[str] = None
-    name: Optional[str] = None
-    display_name: Optional[str] = None
-    family_name: Optional[str] = None
-    picture: Optional[str] = None
+    id: str | None = None
+    name: str | None = None
+    display_name: str | None = None
+    family_name: str | None = None
+    picture: str | None = None
 
 
 @dataclass
@@ -97,14 +97,14 @@ class ResetUserPasswordDto:
 class UserInviteResponse:
     email: str
     status: str
-    message: Optional[str] = None
+    message: str | None = None
 
 
 @dataclass
 class UserRoleData:
     name: str
-    id: Optional[str] = None
-    description: Optional[str] = None
+    id: str | None = None
+    description: str | None = None
 
 
 @dataclass
@@ -123,8 +123,8 @@ class MemberInvitation:
     id: str
     email: str
     roles: list[str]
-    created_at: Optional[str] = None
-    expires_at: Optional[str] = None
+    created_at: str | None = None
+    expires_at: str | None = None
 
 
 @dataclass

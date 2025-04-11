@@ -1,10 +1,11 @@
 from api_v2.deployment_helper import DeploymentHelper
 from api_v2.exceptions import APINotFound
-from notification_v2.constants import NotificationUrlConstant
 from pipeline_v2.exceptions import PipelineNotFound
 from pipeline_v2.models import Pipeline
 from pipeline_v2.pipeline_processor import PipelineProcessor
 from rest_framework import viewsets
+
+from notification_v2.constants import NotificationUrlConstant
 
 from .models import Notification
 from .serializers import NotificationSerializer

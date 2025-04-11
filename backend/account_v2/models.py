@@ -18,9 +18,7 @@ class Organization(models.Model):
 
     name = models.CharField(max_length=NAME_SIZE)
     display_name = models.CharField(max_length=NAME_SIZE)
-    organization_id = models.CharField(
-        max_length=FieldLength.ORG_NAME_SIZE, unique=True
-    )
+    organization_id = models.CharField(max_length=FieldLength.ORG_NAME_SIZE, unique=True)
     created_by = models.ForeignKey(
         "User",
         on_delete=models.SET_NULL,

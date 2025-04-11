@@ -1,14 +1,15 @@
 import logging
 import uuid
 
-from connector_auth_v2.constants import SocialAuthConstants
-from connector_auth_v2.exceptions import KeyNotConfigured
 from django.conf import settings
 from rest_framework import status, viewsets
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from utils.user_session import UserSessionUtils
+
+from connector_auth_v2.constants import SocialAuthConstants
+from connector_auth_v2.exceptions import KeyNotConfigured
 
 logger = logging.getLogger(__name__)
 

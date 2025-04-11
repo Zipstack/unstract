@@ -33,8 +33,7 @@ class RetrievalHelper:
 
     @staticmethod
     def retrieve_complete_context(execution_source: str, file_path: str) -> str:
-        """
-        Loads full context from raw file for zero chunk size retrieval
+        """Loads full context from raw file for zero chunk size retrieval
         Args:
             path (str): Path to the directory containing text file.
 

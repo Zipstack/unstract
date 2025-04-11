@@ -1,14 +1,13 @@
 import logging
 import os
 import uuid
-from typing import Optional
 
 logger = logging.getLogger()
 
 
 class UnstractUtils:
     @staticmethod
-    def get_env(env_key: str, default: Optional[str] = None, raise_err=False) -> str:
+    def get_env(env_key: str, default: str | None = None, raise_err=False) -> str:
         """Returns the value of an env variable.
 
         If its empty or None, raises an error
@@ -33,7 +32,7 @@ class UnstractUtils:
         tool_image: str,
         tool_version: str,
         file_execution_id: str,
-        retry_count: Optional[int] = None,
+        retry_count: int | None = None,
     ) -> str:
         tool_name = tool_image.split("/")[-1]
         # To avoid duplicate name collision
@@ -42,9 +41,7 @@ class UnstractUtils:
         else:
             unique_suffix = uuid.uuid4().hex[:6]
 
-        container_name = (
-            f"{tool_name}-{tool_version}-{unique_suffix}-{file_execution_id}"
-        )
+        container_name = f"{tool_name}-{tool_version}-{unique_suffix}-{file_execution_id}"
 
         # To support limits of container clients like K8s
         if len(container_name) > 63:

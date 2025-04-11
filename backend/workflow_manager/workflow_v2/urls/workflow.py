@@ -1,5 +1,6 @@
 from django.urls import path
 from rest_framework.urlpatterns import format_suffix_patterns
+
 from workflow_manager.workflow_v2.execution_log_view import WorkflowExecutionLogViewSet
 from workflow_manager.workflow_v2.execution_view import WorkflowExecutionViewSet
 from workflow_manager.workflow_v2.views import WorkflowViewSet
@@ -12,12 +13,7 @@ workflow_list = WorkflowViewSet.as_view(
 )
 workflow_detail = WorkflowViewSet.as_view(
     # fmt: off
-    {
-        'get': 'retrieve',
-        'put': 'update',
-        'patch': 'partial_update',
-        'delete': 'destroy'
-    }
+    {"get": "retrieve", "put": "update", "patch": "partial_update", "delete": "destroy"}
     # fmt: on
 )
 workflow_execute = WorkflowViewSet.as_view({"post": "execute", "put": "activate"})

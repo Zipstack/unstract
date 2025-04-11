@@ -1,6 +1,7 @@
 from typing import Any
 
 from flask import current_app as app
+
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.constants import RunLevel, VariableType
 from unstract.prompt_service.helpers.variable_replacement import (
@@ -11,7 +12,6 @@ from unstract.sdk.constants import LogLevel
 
 
 class VariableReplacementService:
-
     @staticmethod
     def is_variables_present(prompt_text: str) -> bool:
         """Determines if variables are present in the prompt.

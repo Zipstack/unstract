@@ -1,17 +1,16 @@
-from typing import Optional
-
 from django.db.models import QuerySet
-from prompt_studio.permission import PromptAcesssToUser
-from prompt_studio.prompt_studio_v2.constants import ToolStudioPromptKeys
-from prompt_studio.prompt_studio_v2.controller import PromptStudioController
-from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
-from prompt_studio.prompt_studio_v2.serializers import ToolStudioPromptSerializer
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from utils.filtering import FilterHelper
+
+from prompt_studio.permission import PromptAcesssToUser
+from prompt_studio.prompt_studio_v2.constants import ToolStudioPromptKeys
+from prompt_studio.prompt_studio_v2.controller import PromptStudioController
+from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
+from prompt_studio.prompt_studio_v2.serializers import ToolStudioPromptSerializer
 
 
 class ToolStudioPromptView(viewsets.ModelViewSet):
@@ -31,7 +30,7 @@ class ToolStudioPromptView(viewsets.ModelViewSet):
     serializer_class = ToolStudioPromptSerializer
     permission_classes: list[type[PromptAcesssToUser]] = [PromptAcesssToUser]
 
-    def get_queryset(self) -> Optional[QuerySet]:
+    def get_queryset(self) -> QuerySet | None:
         filter_args = FilterHelper.build_filter_args(
             self.request,
             ToolStudioPromptKeys.TOOL_ID,

@@ -138,7 +138,7 @@ class OracleDB(UnstractDB):
         sql_keys = list(kwargs.get("sql_keys", []))
         with engine.cursor() as cursor:
             if sql_values:
-                params = dict(zip(sql_keys, sql_values))
+                params = dict(zip(sql_keys, sql_values, strict=False))
                 cursor.execute(sql_query, params)
             else:
                 cursor.execute(sql_query)

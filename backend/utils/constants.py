@@ -1,6 +1,7 @@
 import os
 
 from django.conf import settings
+
 from utils.common_utils import CommonUtils
 
 os.environ.setdefault(

@@ -1,11 +1,14 @@
 import ast
 import json
 import os
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from dotenv import load_dotenv
 from flask import Flask
+
+from unstract.core.constants import LogFieldName
+from unstract.core.pubsub_helper import LogPublisher
 from unstract.runner.clients.helper import ContainerClientHelper
 from unstract.runner.clients.interface import (
     ContainerClientInterface,
@@ -13,9 +16,6 @@ from unstract.runner.clients.interface import (
 )
 from unstract.runner.constants import Env, LogLevel, LogType, ToolKey
 from unstract.runner.exception import ToolRunException
-
-from unstract.core.constants import LogFieldName
-from unstract.core.pubsub_helper import LogPublisher
 
 load_dotenv()
 # Loads the container clinet class.
@@ -40,7 +40,7 @@ class UnstractRunner:
         execution_id: str,
         organization_id: str,
         file_execution_id: str,
-        channel: Optional[str] = None,
+        channel: str | None = None,
     ) -> None:
         for line in container.logs(follow=True):
             log_message = line
@@ -54,7 +54,7 @@ class UnstractRunner:
                 file_execution_id=file_execution_id,
             )
 
-    def get_valid_log_message(self, log_message: str) -> Optional[dict[str, Any]]:
+    def get_valid_log_message(self, log_message: str) -> dict[str, Any] | None:
         """Get a valid log message from the log message.
 
         Args:
@@ -77,8 +77,8 @@ class UnstractRunner:
         execution_id: str,
         organization_id: str,
         file_execution_id: str,
-        channel: Optional[str] = None,
-    ) -> Optional[dict[str, Any]]:
+        channel: str | None = None,
+    ) -> dict[str, Any] | None:
         log_dict = self.get_valid_log_message(log_message)
         if not log_dict:
             return None
@@ -105,7 +105,7 @@ class UnstractRunner:
             LogPublisher.publish(channel, log_dict)
         return None
 
-    def is_valid_log_type(self, log_type: Optional[str]) -> bool:
+    def is_valid_log_type(self, log_type: str | None) -> bool:
         if log_type in {
             LogType.LOG,
             LogType.UPDATE,
@@ -131,7 +131,7 @@ class UnstractRunner:
         """
         # Use current timestamp if emitted_at is not present
         if "emitted_at" not in log_dict:
-            return datetime.now(timezone.utc).timestamp()
+            return datetime.now(UTC).timestamp()
 
         emitted_at = log_dict["emitted_at"]
         if isinstance(emitted_at, str):
@@ -191,7 +191,7 @@ class UnstractRunner:
 
         return additional_envs
 
-    def run_command(self, command: str) -> Optional[Any]:
+    def run_command(self, command: str) -> Any | None:
         """Runs any given command on the container.
 
         Args:
@@ -236,9 +236,9 @@ class UnstractRunner:
         file_execution_id: str,
         settings: dict[str, Any],
         envs: dict[str, Any],
-        messaging_channel: Optional[str] = None,
-        container_name: Optional[str] = None,
-    ) -> Optional[Any]:
+        messaging_channel: str | None = None,
+        container_name: str | None = None,
+    ) -> Any | None:
         """RUN container With RUN Command.
 
         Args:
@@ -251,7 +251,6 @@ class UnstractRunner:
         Returns:
             Optional[Any]: _description_
         """
-
         envs[Env.EXECUTION_DATA_DIR] = os.path.join(
             os.getenv(Env.WORKFLOW_EXECUTION_DIR_PREFIX, ""),
             organization_id,
