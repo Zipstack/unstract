@@ -1,3 +1,4 @@
+import datetime
 import json
 import logging
 import os
@@ -156,8 +157,9 @@ class StructureTool(BaseTool):
                 # )
                 #  Handle metrics for single pass extraction
                 # index_metrics = {SettingsKeys.INDEXING: index.get_metrics()}
-
             self.stream_log("Fetching response for single pass extraction")
+            # Since indexing is not involved for single pass
+            index_metrics = {SettingsKeys.INDEXING: 0}
             prompt_service_resp = responder.single_pass_extraction(
                 payload=payload,
             )
@@ -178,6 +180,10 @@ class StructureTool(BaseTool):
                         )
                         payload[SettingsKeys.OUTPUTS] = outputs
                         payload[SettingsKeys.FILE_HASH] = summarize_file_hash
+                        # Since indexing is not involved for summary
+                        index_metrics[output[SettingsKeys.NAME]] = {
+                            SettingsKeys.INDEXING: 0
+                        }
                         break
                     if (
                         reindex
@@ -185,6 +191,7 @@ class StructureTool(BaseTool):
                         and not output[SettingsKeys.CHUNK_SIZE] == 0
                     ):
                         self.stream_log("Sucessfully extracted text, indexing..")
+                        indexing_start_time = datetime.datetime.now()
                         STHelper.dynamic_indexing(
                             tool_settings=tool_settings,
                             run_id=self.file_execution_id,
@@ -200,11 +207,11 @@ class StructureTool(BaseTool):
                             file_hash=file_hash,
                             extracted_text=extracted_text,
                         )
-                        # Handle metrics for single pass extraction
-                        # index_metrics[output[SettingsKeys.NAME]] = {
-                        #     SettingsKeys.INDEXING: index.get_metrics()
-                        # }
-                        # index.clear_metrics()
+                        index_metrics[output[SettingsKeys.NAME]] = {
+                            SettingsKeys.INDEXING: STHelper.elapsed_time(
+                                start_time=indexing_start_time
+                            )
+                        }
 
                     reindex = False
             except Exception as e:
@@ -246,6 +253,7 @@ class StructureTool(BaseTool):
             structured_output = json.dumps(structured_output_dict)
 
         metrics = structured_output_dict.get(SettingsKeys.METRICS, {})
+        self.stream_log(f"metrics before : {metrics}")
         new_metrics = {}
         if tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION]:
             new_metrics = {
@@ -261,6 +269,7 @@ class StructureTool(BaseTool):
             }
         if new_metrics:
             structured_output_dict[SettingsKeys.METRICS] = new_metrics
+        self.stream_log(f"metrics after : {new_metrics}")
         # Update GUI
         output_log = (
             f"## Result\n**NOTE:** In case of a deployed pipeline, the result would "
@@ -358,21 +367,6 @@ class StructureTool(BaseTool):
         self.stream_log("Indexing summarized context")
         summarize_file_hash: str = self.workflow_filestorage.get_hash_from_file(
             path=summarize_file_path
-        )
-        STHelper.dynamic_indexing(
-            file_path=summarize_file_path,
-            tool_settings=tool_settings,
-            run_id=self.file_execution_id,
-            execution_run_data_folder=execution_run_data_folder,
-            reindex=True,
-            usage_kwargs=usage_kwargs,
-            enable_highlight=enable_highlight,
-            file_hash=summarize_file_hash,
-            tool_id=tool_id,
-            tool=self,
-            chunk_overlap=0,
-            chunk_size=0,
-            extracted_text=summarized_context,
         )
         return summarize_file_hash
 

@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Any, Optional
 
 from unstract.prompt_service.constants import ExecutionSource
@@ -84,7 +85,7 @@ class ExtractionService:
             metadata = {X2TextConstants.WHISPER_HASH: whisper_hash_value}
             for key, value in metadata.items():
                 tool_exec_metadata[key] = value
-            metadata_path = execution_run_data_folder / IKeys.METADATA_FILE
+            metadata_path = str(Path(execution_run_data_folder / IKeys.METADATA_FILE))
             ToolUtils.dump_json(
                 file_to_dump=metadata_path,
                 json_to_dump=metadata,
