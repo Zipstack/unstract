@@ -52,6 +52,9 @@ class ToolsUtils:
         self.llmw_max_polls = ToolsUtils.get_env(
             ToolRV.ADAPTER_LLMW_MAX_POLLS, raise_exception=False
         )
+        self.llmw_wait_timeout = ToolsUtils.get_env(
+            ToolRV.ADAPTER_LLMW_WAIT_TIMEOUT, raise_exception=False
+        )
         self.redis_host = ToolsUtils.get_env(ToolRV.REDIS_HOST, raise_exception=True)
         self.redis_port = ToolsUtils.get_env(ToolRV.REDIS_PORT, raise_exception=True)
         self.redis_user = ToolsUtils.get_env(ToolRV.REDIS_USER, raise_exception=True)
@@ -235,6 +238,8 @@ class ToolsUtils:
             platform_vars[ToolRV.ADAPTER_LLMW_POLL_INTERVAL] = self.llmw_poll_interval
         if self.llmw_max_polls:
             platform_vars[ToolRV.ADAPTER_LLMW_MAX_POLLS] = self.llmw_max_polls
+        if self.llmw_wait_timeout:
+            platform_vars[ToolRV.ADAPTER_LLMW_WAIT_TIMEOUT] = self.llmw_wait_timeout
         return platform_vars
 
     @staticmethod
