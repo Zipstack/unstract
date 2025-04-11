@@ -2,13 +2,11 @@ import { Button, Modal } from "antd";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
 import { useSessionStore } from "../../store/session-store";
-import { usePromptStudioStore } from "../../store/prompt-studio-store";
 import "./PromptStudioModal.css";
 
-export function PromptStudioModal({ onClose }) {
+export function PromptStudioModal({ onClose, showModal }) {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
-  const { count } = usePromptStudioStore();
 
   const handleClose = () => {
     if (onClose) onClose();
@@ -22,7 +20,7 @@ export function PromptStudioModal({ onClose }) {
   return (
     <Modal
       title="Create Prompt Studio"
-      open={count === 0}
+      open={showModal}
       onCancel={handleClose}
       footer={null}
       centered
@@ -65,6 +63,7 @@ export function PromptStudioModal({ onClose }) {
 
 PromptStudioModal.propTypes = {
   onClose: PropTypes.func,
+  showModal: PropTypes.bool.isRequired,
 };
 
 PromptStudioModal.defaultProps = {

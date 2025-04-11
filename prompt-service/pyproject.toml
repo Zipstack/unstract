@@ -17,7 +17,7 @@ dependencies = [
     "python-dotenv==1.0.0",
     #ToDo: Temporarily removing the extra dependencies of aws and gcs from unstract-sdk
     #to resolve lock file. Will have to be re-looked into
-    "unstract-sdk[azure]~=0.60.0",
+    "unstract-sdk[azure]~=0.62.1",
     "gcsfs==2024.10.0",
     "s3fs==2024.10.0",
     "redis>=5.0.3",
@@ -28,17 +28,29 @@ requires-python = ">=3.9,<3.11.1"
 readme = "README.md"
 # license = {text = "MIT"}
 
+[project.optional-dependencies]
+deploy = [
+    "gunicorn[gevent]~=23.0",
+    # OpenTelemetry for tracing and profiling
+    "opentelemetry-distro",
+    "opentelemetry-exporter-otlp",
+]
+
 [tool.pdm.build]
 includes = ["src"]
 package-dir = "src"
 # source-includes = ["tests"]
 
 [tool.pdm.dev-dependencies]
-deploy = [
-    "gunicorn>=21.2.0",
+test = [
+    "pytest>=8.0.1",
+    "pytest-dotenv==0.5.2",
+    "pytest-mock>=3.14.0",
+    "python-dotenv==1.0.0",
+    "flask-WTF~=1.1"
 ]
 
 [tool.pdm.scripts]
-prompt_service.cmd = "flask --app src/unstract/prompt_service/main.py run --port 3003"
+prompt_service.cmd = "flask --app src/unstract/prompt_service/run.py run --port 3003"
 prompt_service.env_file = ".env"
 prompt_service.help = "Runs the Unstract prompt service"

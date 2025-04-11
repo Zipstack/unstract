@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Any
 
 from constants import SettingsKeys  # type: ignore [attr-defined]
+from helpers import StructureToolHelper as STHelper
 from unstract.sdk.constants import LogLevel, LogState, MetadataKey, ToolEnv, UsageKwargs
-from unstract.sdk.index import Index
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.tool.base import BaseTool
 from unstract.sdk.tool.entrypoint import ToolEntrypoint
@@ -98,16 +98,12 @@ class StructureTool(BaseTool):
             self.get_env_or_die(ToolEnv.EXECUTION_DATA_DIR)
         )
 
-        index = Index(
-            tool=self,
-            run_id=self.file_execution_id,
-            capture_metrics=True,
-        )
         index_metrics = {}
         extracted_input_file = str(execution_run_data_folder / SettingsKeys.EXTRACT)
-        # TODO : Resolve and pass log events ID
+        # Resolve and pass log events ID
         payload = {
             SettingsKeys.RUN_ID: self.file_execution_id,
+            SettingsKeys.EXECUTION_ID: self.execution_id,
             SettingsKeys.TOOL_SETTINGS: tool_settings,
             SettingsKeys.OUTPUTS: outputs,
             SettingsKeys.TOOL_ID: tool_id,
@@ -116,31 +112,23 @@ class StructureTool(BaseTool):
             SettingsKeys.FILE_PATH: extracted_input_file,
             SettingsKeys.EXECUTION_SOURCE: SettingsKeys.TOOL,
         }
-        # TODO: Need to split extraction and indexing
-        # to avoid unwanted indexing
-        self.stream_log(f"Indexing document '{self.source_file_name}'")
+        self.stream_log(f"Extracting document '{self.source_file_name}'")
         usage_kwargs: dict[Any, Any] = dict()
         usage_kwargs[UsageKwargs.RUN_ID] = self.file_execution_id
         usage_kwargs[UsageKwargs.FILE_NAME] = self.source_file_name
+        usage_kwargs[UsageKwargs.EXECUTION_ID] = self.execution_id
+        extracted_text = STHelper.dynamic_extraction(
+            file_path=input_file,
+            enable_highlight=enable_highlight,
+            usage_kwargs=usage_kwargs,
+            run_id=self.file_execution_id,
+            tool_settings=tool_settings,
+            extract_file_path=tool_data_dir / SettingsKeys.EXTRACT,
+            tool=self,
+            execution_run_data_folder=str(execution_run_data_folder),
+        )
 
         if tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION]:
-            index.index(
-                tool_id=tool_id,
-                embedding_instance_id=tool_settings[SettingsKeys.EMBEDDING],
-                vector_db_instance_id=tool_settings[SettingsKeys.VECTOR_DB],
-                x2text_instance_id=tool_settings[SettingsKeys.X2TEXT_ADAPTER],
-                file_path=input_file,
-                file_hash=file_hash,
-                chunk_size=tool_settings[SettingsKeys.CHUNK_SIZE],
-                chunk_overlap=tool_settings[SettingsKeys.CHUNK_OVERLAP],
-                output_file_path=tool_data_dir / SettingsKeys.EXTRACT,
-                reindex=True,
-                usage_kwargs=usage_kwargs,
-                tags=self.tags,
-                enable_highlight=enable_highlight,
-                **({"fs": self.workflow_filestorage}),
-            )
-            index_metrics = {SettingsKeys.INDEXING: index.get_metrics()}
             if summarize_as_source:
                 summarize_file_hash = self._summarize_and_index(
                     tool_id=tool_id,
@@ -148,10 +136,27 @@ class StructureTool(BaseTool):
                     tool_data_dir=tool_data_dir,
                     responder=responder,
                     outputs=outputs,
-                    index=index,
                     usage_kwargs=usage_kwargs,
                 )
                 payload[SettingsKeys.FILE_HASH] = summarize_file_hash
+                # STHelper.dynamic_indexing(
+                #     tool_settings=tool_settings,
+                #     run_id=self.file_execution_id,
+                #     file_path=tool_data_dir / SettingsKeys.EXTRACT,
+                #     tool=self,
+                #     execution_run_data_folder=execution_run_data_folder,
+                #     chunk_overlap=tool_settings[SettingsKeys.CHUNK_OVERLAP],
+                #     chunk_size=tool_settings[SettingsKeys.CHUNK_SIZE],
+                #     reIndex=True,
+                #     usage_kwargs=usage_kwargs,
+                #     enable_highlight=enable_highlight,
+                #     extracted_text=extracted_text,
+                #     tool_id=tool_metadata[SettingsKeys.TOOL_ID],
+                #     file_hash=file_hash,
+                # )
+                #  Handle metrics for single pass extraction
+                # index_metrics = {SettingsKeys.INDEXING: index.get_metrics()}
+
             self.stream_log("Fetching response for single pass extraction")
             prompt_service_resp = responder.single_pass_extraction(
                 payload=payload,
@@ -162,28 +167,6 @@ class StructureTool(BaseTool):
                 # indexed to get the output in required path
                 reindex = True
                 for output in outputs:
-                    if reindex or not summarize_as_source:
-                        index.index(
-                            tool_id=tool_metadata[SettingsKeys.TOOL_ID],
-                            embedding_instance_id=output[SettingsKeys.EMBEDDING],
-                            vector_db_instance_id=output[SettingsKeys.VECTOR_DB],
-                            x2text_instance_id=output[SettingsKeys.X2TEXT_ADAPTER],
-                            file_path=input_file,
-                            file_hash=file_hash,
-                            chunk_size=output[SettingsKeys.CHUNK_SIZE],
-                            chunk_overlap=output[SettingsKeys.CHUNK_OVERLAP],
-                            output_file_path=tool_data_dir / SettingsKeys.EXTRACT,
-                            reindex=reindex,
-                            usage_kwargs=usage_kwargs,
-                            tags=self.tags,
-                            enable_highlight=enable_highlight,
-                            **({"fs": self.workflow_filestorage}),
-                        )
-                        index_metrics[output[SettingsKeys.NAME]] = {
-                            SettingsKeys.INDEXING: index.get_metrics()
-                        }
-                        index.clear_metrics()
-
                     if summarize_as_source:
                         summarize_file_hash = self._summarize_and_index(
                             tool_id=tool_id,
@@ -191,12 +174,43 @@ class StructureTool(BaseTool):
                             tool_data_dir=tool_data_dir,
                             responder=responder,
                             outputs=outputs,
-                            index=index,
                             usage_kwargs=usage_kwargs,
                         )
                         payload[SettingsKeys.OUTPUTS] = outputs
                         payload[SettingsKeys.FILE_HASH] = summarize_file_hash
                         break
+                    self.stream_log(
+                        f"Chunk size '{output[SettingsKeys.CHUNK_SIZE]}', "
+                        f"indexing '{tool_data_dir / SettingsKeys.EXTRACT}'.."
+                    )
+                    if (reindex or not summarize_as_source) and output[
+                        SettingsKeys.CHUNK_SIZE
+                    ] != 0:
+                        self.stream_log(
+                            f"Sucessfully extracted text, "
+                            f"indexing {tool_data_dir / SettingsKeys.EXTRACT}.."
+                        )
+                        STHelper.dynamic_indexing(
+                            tool_settings=tool_settings,
+                            run_id=self.file_execution_id,
+                            file_path=tool_data_dir / SettingsKeys.EXTRACT,
+                            tool=self,
+                            execution_run_data_folder=str(execution_run_data_folder),
+                            chunk_overlap=output[SettingsKeys.CHUNK_OVERLAP],
+                            reindex=reindex,
+                            usage_kwargs=usage_kwargs,
+                            enable_highlight=enable_highlight,
+                            chunk_size=output[SettingsKeys.CHUNK_SIZE],
+                            tool_id=tool_metadata[SettingsKeys.TOOL_ID],
+                            file_hash=file_hash,
+                            extracted_text=extracted_text,
+                        )
+                        # Handle metrics for single pass extraction
+                        # index_metrics[output[SettingsKeys.NAME]] = {
+                        #     SettingsKeys.INDEXING: index.get_metrics()
+                        # }
+                        # index.clear_metrics()
+
                     reindex = False
             except Exception as e:
                 self.stream_log(
@@ -204,7 +218,6 @@ class StructureTool(BaseTool):
                 )
                 raise
 
-            # TODO : Make this snippet pluggable and introduce pluggablity for tools.
             for output in outputs:
                 if SettingsKeys.TABLE_SETTINGS in output:
                     table_settings = output[SettingsKeys.TABLE_SETTINGS]
@@ -216,7 +229,6 @@ class StructureTool(BaseTool):
                 payload=payload,
             )
 
-        # TODO: Make use of dataclasses
         if prompt_service_resp[SettingsKeys.STATUS] != SettingsKeys.OK:
             self.stream_error_and_exit(
                 f"Failed to fetch responses for "
@@ -282,8 +294,9 @@ class StructureTool(BaseTool):
         tool_data_dir: Path,
         responder: PromptTool,
         outputs: dict[str, Any],
-        index: Index,
         usage_kwargs: dict[Any, Any] = {},
+        enable_highlight: bool = False,
+        execution_run_data_folder: str = None,
     ) -> str:
         """Summarizes the context of the file and indexes the summarized
         content.
@@ -309,6 +322,9 @@ class StructureTool(BaseTool):
         summarize_file_path = tool_data_dir / SettingsKeys.SUMMARIZE
 
         summarized_context = ""
+        self.stream_log(
+            f"Checking if summarized context exists at {summarize_file_path}"
+        )
         if self.workflow_filestorage.exists(summarize_file_path):
             summarized_context = self.workflow_filestorage.read(
                 path=summarize_file_path, mode="r"
@@ -348,18 +364,20 @@ class StructureTool(BaseTool):
         summarize_file_hash: str = self.workflow_filestorage.get_hash_from_file(
             path=summarize_file_path
         )
-        index.index(
-            tool_id=tool_id,
-            embedding_instance_id=embedding_instance_id,
-            vector_db_instance_id=vector_db_instance_id,
-            x2text_instance_id=x2text_instance_id,
+        STHelper.dynamic_indexing(
             file_path=summarize_file_path,
-            file_hash=summarize_file_hash,
-            chunk_size=0,
-            chunk_overlap=0,
+            tool_settings=tool_settings,
+            run_id=self.file_execution_id,
+            execution_run_data_folder=execution_run_data_folder,
+            reindex=True,
             usage_kwargs=usage_kwargs,
-            tags=self.tags,
-            **({"fs": self.workflow_filestorage}),
+            enable_highlight=enable_highlight,
+            file_hash=summarize_file_hash,
+            tool_id=tool_id,
+            tool=self,
+            chunk_overlap=0,
+            chunk_size=0,
+            extracted_text=summarized_context,
         )
         return summarize_file_hash
 

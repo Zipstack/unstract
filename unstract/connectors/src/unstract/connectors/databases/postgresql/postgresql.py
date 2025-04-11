@@ -9,6 +9,13 @@ from unstract.connectors.databases.unstract_db import UnstractDB
 
 
 class PostgreSQL(UnstractDB, PsycoPgHandler):
+    # Connection timeout settings (in seconds)
+    CONNECT_TIMEOUT = 30  # Time to establish connection
+    STATEMENT_TIMEOUT = 300  # Time for query execution (5 minutes)
+    KEEPALIVE_IDLE = 30  # Time before sending keepalive
+    KEEPALIVE_INTERVAL = 10  # Time between keepalive probes
+    KEEPALIVE_COUNT = 3  # Number of keepalive failures before dropping
+
     def __init__(self, settings: dict[str, Any]):
         super().__init__("PostgreSQL")
 
@@ -60,17 +67,51 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
         return True
 
     def get_engine(self) -> connection:
-        if self.connection_url:
-            con = psycopg2.connect(dsn=self.connection_url)
+        # Set timeouts via options
+        timeout_options = (
+            f"-c connect_timeout={self.CONNECT_TIMEOUT} "
+            f"-c statement_timeout={self.STATEMENT_TIMEOUT * 1000} "
+            f"-c tcp_keepalives_idle={self.KEEPALIVE_IDLE} "
+            f"-c tcp_keepalives_interval={self.KEEPALIVE_INTERVAL} "
+            f"-c tcp_keepalives_count={self.KEEPALIVE_COUNT}"
+        )
+
+        # Base connection parameters
+        conn_params = {
+            "keepalives": 1,
+            "keepalives_idle": self.KEEPALIVE_IDLE,
+            "keepalives_interval": self.KEEPALIVE_INTERVAL,
+            "keepalives_count": self.KEEPALIVE_COUNT,
+            "connect_timeout": self.CONNECT_TIMEOUT,
+            "application_name": "unstract_connector",
+        }
+
+        # Determine SSL mode based on connection URL
+        if self.connection_url and (
+            "neon.tech" in self.connection_url or "amazonaws.com" in self.connection_url
+        ):
+            # Cloud hosted PostgreSQL (Neon, AWS RDS etc)
+            conn_params.update({"sslmode": "verify-full", "sslrootcert": "system"})
         else:
-            con = psycopg2.connect(
-                host=self.host,
-                port=self.port,
-                database=self.database,
-                user=self.user,
-                password=self.password,
-                options=f"-c search_path={self.schema}",
+            # Standard PostgreSQL - use basic SSL if available
+            conn_params["sslmode"] = "prefer"
+
+        if self.connection_url:
+            conn_params.update({"dsn": self.connection_url, "options": timeout_options})
+            con = psycopg2.connect(**conn_params)
+        else:
+            conn_params.update(
+                {
+                    "host": self.host,
+                    "port": self.port,
+                    "database": self.database,
+                    "user": self.user,
+                    "password": self.password,
+                    "options": f"{timeout_options} -c search_path={self.schema}",
+                }
             )
+            con = psycopg2.connect(**conn_params)
+
         return con
 
     def execute_query(

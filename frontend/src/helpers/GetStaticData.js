@@ -1,5 +1,6 @@
 import moment from "moment";
 import momentTz from "moment-timezone";
+import { format, parseISO } from "date-fns";
 import { v4 as uuidv4 } from "uuid";
 
 let cloudHomePagePath;
@@ -338,12 +339,15 @@ const isJson = (text) => {
   }
 };
 
-const displayPromptResult = (output, isFormat = false) => {
+const displayPromptResult = (
+  output,
+  isFormat = false,
+  isHighlightEnabled = false
+) => {
   /*
     output: The data to be displayed or parsed
     isFormat: A flag indicating whether the output should be formatted
   */
-
   let i = 0;
   let parsedData = output;
 
@@ -365,9 +369,11 @@ const displayPromptResult = (output, isFormat = false) => {
   // Check if the parsed data is an array or object and formatting is requested
   if (Array.isArray(parsedData) || typeof parsedData === "object") {
     // If formatting is requested, return the JSON string with indentation
+    if (isHighlightEnabled) {
+      return parsedData;
+    }
     return JSON.stringify(parsedData, null, 4);
   }
-
   return String(parsedData);
 };
 
@@ -584,6 +590,29 @@ const generateCoverageKey = (promptId, profileId) => {
   return `coverage_${promptId}_${profileId}`;
 };
 
+function formatSecondsToHMS(seconds) {
+  if (isNaN(seconds) || seconds < 0) return "00:00:00";
+
+  const hrs = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+
+  return [hrs, mins, secs]
+    .map((unit) => String(unit).padStart(2, "0"))
+    .join(":");
+}
+
+const formattedDateTimeWithSeconds = (ISOdateTime) => {
+  if (ISOdateTime) {
+    // eslint-disable-next-line new-cap
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const zonedDate = parseISO(ISOdateTime);
+    return format(zonedDate, "MMM d, yyyy h:mm:ss a zzz", { timeZone: zone });
+  } else {
+    return "";
+  }
+};
+
 const TRIAL_PLAN = "TRIAL";
 
 const homePagePath = cloudHomePagePath || "tools";
@@ -603,6 +632,25 @@ const convertTimestampToHHMMSS = (timestamp) => {
 };
 
 const UNSTRACT_ADMIN = "unstract_admin";
+
+const logsStaticContent = {
+  ETL: {
+    addBtn: "ETL Pipeline",
+    route: "etl",
+  },
+  TASK: {
+    addBtn: "Task Pipeline",
+    route: "task",
+  },
+  API: {
+    addBtn: "API Deployment",
+    route: "api",
+  },
+  WF: {
+    addBtn: "Workflow",
+    route: "workflows",
+  },
+};
 
 export {
   CONNECTOR_TYPE_MAP,
@@ -659,4 +707,7 @@ export {
   homePagePath,
   convertTimestampToHHMMSS,
   UNSTRACT_ADMIN,
+  formatSecondsToHMS,
+  formattedDateTimeWithSeconds,
+  logsStaticContent,
 };
