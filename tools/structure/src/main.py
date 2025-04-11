@@ -132,7 +132,6 @@ class StructureTool(BaseTool):
         if tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION]:
             if summarize_as_source:
                 summarize_file_hash = self._summarize_and_index(
-                    tool_id=tool_id,
                     tool_settings=tool_settings,
                     tool_data_dir=tool_data_dir,
                     responder=responder,
@@ -140,23 +139,6 @@ class StructureTool(BaseTool):
                     usage_kwargs=usage_kwargs,
                 )
                 payload[SettingsKeys.FILE_HASH] = summarize_file_hash
-                # STHelper.dynamic_indexing(
-                #     tool_settings=tool_settings,
-                #     run_id=self.file_execution_id,
-                #     file_path=tool_data_dir / SettingsKeys.EXTRACT,
-                #     tool=self,
-                #     execution_run_data_folder=execution_run_data_folder,
-                #     chunk_overlap=tool_settings[SettingsKeys.CHUNK_OVERLAP],
-                #     chunk_size=tool_settings[SettingsKeys.CHUNK_SIZE],
-                #     reIndex=True,
-                #     usage_kwargs=usage_kwargs,
-                #     enable_highlight=enable_highlight,
-                #     extracted_text=extracted_text,
-                #     tool_id=tool_metadata[SettingsKeys.TOOL_ID],
-                #     file_hash=file_hash,
-                # )
-                #  Handle metrics for single pass extraction
-                # index_metrics = {SettingsKeys.INDEXING: index.get_metrics()}
             self.stream_log("Fetching response for single pass extraction")
             # Since indexing is not involved for single pass
             index_metrics = {SettingsKeys.INDEXING: 0}
@@ -171,7 +153,6 @@ class StructureTool(BaseTool):
                 for output in outputs:
                     if summarize_as_source:
                         summarize_file_hash = self._summarize_and_index(
-                            tool_id=tool_id,
                             tool_settings=tool_settings,
                             tool_data_dir=tool_data_dir,
                             responder=responder,
@@ -185,11 +166,13 @@ class StructureTool(BaseTool):
                             SettingsKeys.INDEXING: 0
                         }
                         break
-                    if (
-                        reindex
-                        or not summarize_as_source
-                        and not output[SettingsKeys.CHUNK_SIZE] == 0
-                    ):
+                    self.stream_log(
+                        f"Chunk size '{output[SettingsKeys.CHUNK_SIZE]}', "
+                        f"indexing '{tool_data_dir / SettingsKeys.EXTRACT}'.."
+                    )
+                    if (reindex or not summarize_as_source) and output[
+                        SettingsKeys.CHUNK_SIZE
+                    ] != 0:
                         self.stream_log("Sucessfully extracted text, indexing..")
                         indexing_start_time = datetime.datetime.now()
                         STHelper.dynamic_indexing(
@@ -293,14 +276,11 @@ class StructureTool(BaseTool):
 
     def _summarize_and_index(
         self,
-        tool_id: str,
         tool_settings: dict[str, Any],
         tool_data_dir: Path,
         responder: PromptTool,
         outputs: dict[str, Any],
         usage_kwargs: dict[Any, Any] = {},
-        enable_highlight: bool = False,
-        execution_run_data_folder: str = None,
     ) -> str:
         """Summarizes the context of the file and indexes the summarized
         content.

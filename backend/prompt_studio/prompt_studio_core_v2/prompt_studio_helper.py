@@ -862,7 +862,7 @@ class PromptStudioHelper:
         logger.info(f"Indexing document {doc_path} for {doc_id}")
         index_result = PromptStudioHelper.dynamic_indexer(
             profile_manager=profile_manager,
-            file_path=doc_path,
+            file_path=file_path,
             tool_id=str(tool.tool_id),
             org_id=org_id,
             document_id=document_id,
