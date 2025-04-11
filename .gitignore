@@ -607,6 +607,8 @@ $RECYCLE.BIN/
 # Windows shortcuts
 *.lnk
 
+# Windsurf
+.qodo
 
 ### Unstract ###
 
@@ -625,6 +627,9 @@ backend/pluggable_apps/*
 
 # FE Plugins
 frontend/src/plugins/*
+
+# BE auth0 migration tenant scripot
+backend/scripts/*
 
 # Tool registry
 unstract/tool-registry/tool_registry_config/*.json
