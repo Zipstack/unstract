@@ -4,8 +4,8 @@ from typing import Any, Optional
 
 @dataclass
 class LogLineDTO:
-    is_terminated: bool = False # True if the tool log has termination marker
-    with_result: bool = False # True if the tool log contains a result
+    is_terminated: bool = False  # True if the tool log has termination marker
+    with_result: bool = False  # True if the tool log contains a result
     error: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:

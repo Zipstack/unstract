@@ -280,7 +280,7 @@ class UnstractRunner:
             f"opentelemetry-instrument python main.py --command RUN "
             f"--settings '{settings_json}' --log-level DEBUG"
         )
-        
+
         if not self.sidecar_enabled:
             return tool_cmd
 
