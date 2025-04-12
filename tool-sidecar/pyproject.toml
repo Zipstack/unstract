@@ -1,7 +1,7 @@
 [project]
 name = "unstract-tool-sidecar"
 version = "0.0.2"
-description = "Container Side Car for Unstract"
+description = "Tool Container Side Car for Unstract"
 authors = [
     {name = "Zipstack Inc.", email = "devsupport@zipstack.com"},
 ]
