@@ -12,10 +12,15 @@ RUN pip install --no-cache-dir -U pip
 # Set the working directory in the container
 WORKDIR /app
 COPY requirements.txt /app/
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir \
+    opentelemetry-distro \
+    opentelemetry-exporter-otlp \
+    platformdirs>=3.0.0 \
+    && opentelemetry-bootstrap -a install
 # Copy the contents of your project directory into the container at /app
 COPY src /app/src/
 WORKDIR /app/src
 
 
-ENTRYPOINT ["python", "main.py"]
+ENTRYPOINT ["opentelemetry-instrument", "python", "main.py"]

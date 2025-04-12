@@ -1,4 +1,3 @@
-import os
 from logging import Logger
 from typing import Any
 
@@ -227,12 +226,6 @@ class AnswerPromptService:
             raise APIError(PSKeys.PAID_FEATURE_MSG)
 
         extract_file_path = file_path
-        if execution_source == ExecutionSource.IDE.value:
-            # Adjust file path to read from the extract folder
-            base_name = os.path.splitext(os.path.basename(file_path))[0]
-            extract_file_path = os.path.join(
-                os.path.dirname(file_path), "extract", f"{base_name}.txt"
-            )
 
         # Read file content into context
         fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)

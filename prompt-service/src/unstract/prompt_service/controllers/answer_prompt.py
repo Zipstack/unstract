@@ -61,6 +61,7 @@ def prompt_processor() -> Any:
     variable_names: list[str] = []
     # Identifier for source of invocation
     execution_source = payload.get(PSKeys.EXECUTION_SOURCE, "")
+    context_retrieval_metrics = {}
     publish_log(
         log_events_id,
         {"tool_id": tool_id, "run_id": run_id, "doc_name": doc_name},
@@ -268,6 +269,7 @@ def prompt_processor() -> Any:
                     chunk_size=chunk_size,
                     execution_source=execution_source,
                     file_path=file_path,
+                    context_retrieval_metrics=context_retrieval_metrics,
                 )
                 metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = context
             else:
@@ -564,7 +566,7 @@ def prompt_processor() -> Any:
             )
             metrics.setdefault(prompt_name, {}).update(
                 {
-                    "context_retrieval": index.get_metrics(),
+                    "context_retrieval": context_retrieval_metrics.get(prompt_name, {}),
                     f"{llm.get_usage_reason()}_llm": llm.get_metrics(),
                     **challenge_metrics,
                 }
