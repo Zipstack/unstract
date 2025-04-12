@@ -1,4 +1,4 @@
-import React from "react";
+// import React from "react";
 import ReactDOM from "react-dom/client";
 import posthog from "posthog-js";
 import { PostHogProvider } from "posthog-js/react";
@@ -8,7 +8,8 @@ import { LazyLoader } from "./components/widgets/lazy-loader/LazyLoader.jsx";
 import { SocketProvider } from "./helpers/SocketContext.js";
 import "./index.css";
 
-const enablePosthog = process.env.REACT_APP_ENABLE_POSTHOG;
+// const enablePosthog = process.env.REACT_APP_ENABLE_POSTHOG;
+const enablePosthog = false;
 if (enablePosthog !== "false") {
   // Define the PostHog API key and host URL
   const API_KEY = "phc_PTafesyRuRB5hceRILaNPeyu2IDuzPshyjIPYGvgoBd"; // gitleaks:allow
@@ -24,15 +25,15 @@ if (enablePosthog !== "false") {
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(
-  <React.StrictMode>
-    <PostHogProvider client={posthog}>
-      <SocketProvider>
-        <LazyLoader
-          loader={<GenericLoader />}
-          component={() => import("./App.jsx")}
-          componentName="App"
-        />
-      </SocketProvider>
-    </PostHogProvider>
-  </React.StrictMode>
+  // <React.StrictMode>
+  <PostHogProvider client={posthog}>
+    <SocketProvider>
+      <LazyLoader
+        loader={<GenericLoader />}
+        component={() => import("./App.jsx")}
+        componentName="App"
+      />
+    </SocketProvider>
+  </PostHogProvider>
+  // </React.StrictMode>
 );

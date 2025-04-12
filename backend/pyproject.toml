@@ -35,8 +35,8 @@ dependencies = [
     "python-socketio==5.9.0",          # For log_events
     "social-auth-app-django==5.3.0",   # For OAuth
     "social-auth-core==4.4.2",         # For OAuth
-    #ToDo: Temporarily removing the extra dependencies of aws and gcs from unstract-sdk
-    #to resolve lock file. Will have to be re-looked into
+    # TODO: Temporarily removing the extra dependencies of aws and gcs from unstract-sdk
+    # to resolve lock file. Will have to be re-looked into
     "unstract-sdk~=0.70.0",
     "gcsfs==2024.10.0",
     "s3fs==2024.10.0",
@@ -90,13 +90,36 @@ unstract-connectors = { path = "../unstract/connectors", editable = true }
 env_files = "test.env" # Load env from particular env file
 addopts = "-s"
 
-[tool.poe.tasks]
-migrate-db = "uv run manage.py migrate"
-worker = "celery -A backend worker --loglevel=info -Q celery --autoscale 4,1"
-worker-logging = "celery -A backend worker --loglevel=info -Q celery_periodic_logs,celery_log_task_queue --autoscale 4,1"
-worker-api-deployment = "celery -A backend worker --loglevel=info -Q celery_api_deployments --autoscale 4,1"
-flower = "celery -A backend flower --port=5555"
-beat = "celery -A backend beat --loglevel=info"
+[tool.poe]
+envfile = ".env"
+
+[tool.poe.tasks.backend]
+cmd = "./entrypoint.sh"
+help = "Runs the Unstract backend (Gunicorn)"
+
+[tool.poe.tasks.migrate-db]
+cmd = "uv run manage.py migrate"
+help = "Performs DB migrations for Unstract backend"
+
+[tool.poe.tasks.worker]
+cmd = "celery -A backend worker --loglevel=info -Q celery --autoscale 4,1"
+help = "Runs the Unstract default worker"
+
+[tool.poe.tasks.worker-logging]
+cmd = "celery -A backend worker --loglevel=info -Q celery_periodic_logs,celery_log_task_queue --autoscale 4,1"
+help = "Runs the Unstract log management worker"
+
+[tool.poe.tasks.worker-api-deployment]
+cmd = "celery -A backend worker --loglevel=info -Q celery_api_deployments --autoscale 4,1"
+help = "Runs the Unstract API deployment worker"
+
+[tool.poe.tasks.flower]
+cmd = "celery -A backend flower --port=5555"
+help = "Runs the Unstract Celery Monitoring Tool"
+
+[tool.poe.tasks.beat]
+cmd = "celery -A backend beat --loglevel=info"
+help = "Runs the Unstract Celery Beat service"
 
 # [build-system]
 # requires = ["hatchling"]
