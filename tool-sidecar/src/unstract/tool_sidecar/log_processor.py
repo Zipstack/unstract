@@ -1,5 +1,4 @@
-"""
-Sidecar container implementation for log processing and result handling.
+"""Sidecar container implementation for log processing and result handling.
 This sidecar runs alongside the tool container in the same pod, monitoring
 the tool's output log file and streaming logs to Redis while watching for
 completion signals.
@@ -9,8 +8,8 @@ import json
 import logging
 import os
 import time
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from unstract.core.constants import LogFieldName
 from unstract.core.pubsub_helper import LogPublisher
@@ -26,7 +25,6 @@ logger = logging.getLogger(__name__)
 
 
 class LogProcessor:
-
     TERMINATION_MARKER = "TOOL_EXECUTION_COMPLETE"
 
     def __init__(
@@ -42,8 +40,7 @@ class LogProcessor:
         file_execution_id: str,
         messaging_channel: str,
     ):
-        """
-        Initialize the log processor with necessary connections and paths.
+        """Initialize the log processor with necessary connections and paths.
 
         Args:
             log_path: Path to the log file to monitor
@@ -65,8 +62,7 @@ class LogProcessor:
         self.messaging_channel = messaging_channel
 
     def wait_for_log_file(self, timeout: int = 300) -> bool:
-        """
-        Wait for the log file to be created by the tool container.
+        """Wait for the log file to be created by the tool container.
 
         Args:
             timeout: Maximum time to wait in seconds
@@ -82,8 +78,7 @@ class LogProcessor:
         return True
 
     def process_log_line(self, line: str) -> LogLineDTO:
-        """
-        Process a single log line, checking for completion signal.
+        """Process a single log line, checking for completion signal.
 
         Args:
             line: Log line to process
@@ -142,7 +137,7 @@ class LogProcessor:
         """
         # Use current timestamp if emitted_at is not present
         if "emitted_at" not in log_dict:
-            return datetime.now(timezone.utc).timestamp()
+            return datetime.now(UTC).timestamp()
 
         emitted_at = log_dict["emitted_at"]
         if isinstance(emitted_at, str):
@@ -152,7 +147,7 @@ class LogProcessor:
             # Already a UNIX timestamp
             return float(emitted_at)
 
-    def get_valid_log_message(self, log_message: str) -> Optional[dict[str, Any]]:
+    def get_valid_log_message(self, log_message: str) -> dict[str, Any] | None:
         """Get a valid log message from the log message.
 
         Args:
@@ -168,7 +163,7 @@ class LogProcessor:
         except json.JSONDecodeError:
             return None
 
-    def is_valid_log_type(self, log_type: Optional[str]) -> bool:
+    def is_valid_log_type(self, log_type: str | None) -> bool:
         if log_type in {
             LogType.LOG,
             LogType.UPDATE,
@@ -180,8 +175,7 @@ class LogProcessor:
         return False
 
     def monitor_logs(self) -> None:
-        """
-        Main loop to monitor log file for new content and completion signals.
+        """Main loop to monitor log file for new content and completion signals.
         Uses file polling with position tracking to efficiently read new lines.
         """
         logger.info("Starting log monitoring...")
@@ -216,8 +210,7 @@ class LogProcessor:
 
 
 def main():
-    """
-    Main entry point for the sidecar container.
+    """Main entry point for the sidecar container.
     Sets up the log processor with environment variables and starts monitoring.
     """
     # Get configuration from environment
