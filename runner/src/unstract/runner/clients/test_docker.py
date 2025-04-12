@@ -6,15 +6,16 @@ import pytest
 from docker.errors import ImageNotFound
 from unstract.runner.constants import Env
 
-from .docker import Client, DockerContainer
+from .docker_client import Client, DockerContainer
 
-DOCKER_MODULE = "unstract.runner.clients.docker"
+DOCKER_MODULE = "unstract.runner.clients.docker_client"
 
 
 @pytest.fixture
 def docker_container():
     container = MagicMock()
-    return DockerContainer(container)
+    logger = logging.getLogger("test-logger")
+    return DockerContainer(container, logger)
 
 
 @pytest.fixture
@@ -22,7 +23,15 @@ def docker_client():
     image_name = "test-image"
     image_tag = "latest"
     logger = logging.getLogger("test-logger")
-    return Client(image_name, image_tag, logger)
+    return Client(image_name, image_tag, logger, sidecar_enabled=False)
+
+
+@pytest.fixture
+def docker_client_with_sidecar():
+    image_name = "test-image"
+    image_tag = "latest"
+    logger = logging.getLogger("test-logger")
+    return Client(image_name, image_tag, logger, sidecar_enabled=True)
 
 
 def test_logs(docker_container, mocker):
@@ -110,6 +119,7 @@ def test_get_container_run_config(docker_client, mocker):
     """Test the get_container_run_config method."""
     command = ["echo", "hello"]
     file_execution_id = "run123"
+    shared_log_dir = "/shared/logs"
 
     mocker.patch.object(docker_client, "_Client__image_exists", return_value=True)
     mocker_normalize = mocker.patch(
@@ -117,7 +127,11 @@ def test_get_container_run_config(docker_client, mocker):
         return_value="test-image",
     )
     config = docker_client.get_container_run_config(
-        command, file_execution_id, envs={"KEY": "VALUE"}, auto_remove=True
+        command,
+        file_execution_id,
+        shared_log_dir,
+        envs={"KEY": "VALUE"},
+        auto_remove=True,
     )
 
     mocker_normalize.assert_called_once_with(
@@ -127,7 +141,7 @@ def test_get_container_run_config(docker_client, mocker):
     )
     assert config["name"] == "test-image"
     assert config["image"] == "test-image:latest"
-    assert config["command"] == ["echo", "hello"]
+    assert config["entrypoint"] == ["echo", "hello"]
     assert config["environment"] == {"KEY": "VALUE"}
     assert config["mounts"] == []
 
@@ -137,6 +151,7 @@ def test_get_container_run_config_without_mount(docker_client, mocker):
     os.environ[Env.EXECUTION_DATA_DIR] = "/source"
     command = ["echo", "hello"]
     file_execution_id = "run123"
+    shared_log_dir = "/shared/logs"
 
     mocker.patch.object(docker_client, "_Client__image_exists", return_value=True)
     mocker_normalize = mocker.patch(
@@ -144,7 +159,7 @@ def test_get_container_run_config_without_mount(docker_client, mocker):
         return_value="test-image",
     )
     config = docker_client.get_container_run_config(
-        command, file_execution_id, auto_remove=True
+        command, file_execution_id, shared_log_dir, auto_remove=True
     )
 
     mocker_normalize.assert_called_once_with(
@@ -154,7 +169,7 @@ def test_get_container_run_config_without_mount(docker_client, mocker):
     )
     assert config["name"] == "test-image"
     assert config["image"] == "test-image:latest"
-    assert config["command"] == ["echo", "hello"]
+    assert config["entrypoint"] == ["echo", "hello"]
     assert config["environment"] == {}
     assert config["mounts"] == []
 
@@ -167,7 +182,7 @@ def test_run_container(docker_client, mocker):
     config = {
         "name": "test-image",
         "image": "test-image:latest",
-        "command": ["echo", "hello"],
+        "entrypoint": ["echo", "hello"],
         "detach": True,
         "stream": True,
         "auto_remove": True,
@@ -180,6 +195,97 @@ def test_run_container(docker_client, mocker):
 
     assert isinstance(docker_client.run_container(config), DockerContainer)
     mock_client.containers.run.assert_called_once_with(**config)
+
+
+def test_get_image_for_sidecar(docker_client_with_sidecar, mocker):
+    """Test the get_image method."""
+    # Mock environment variables
+    mocker.patch.dict(
+        os.environ,
+        {
+            Env.TOOL_SIDECAR_IMAGE_NAME: "test-sidecar-image",
+            Env.TOOL_SIDECAR_IMAGE_TAG: "latest",
+        },
+    )
+
+    # Re-initialize client to pick up mocked env vars
+    docker_client_with_sidecar.sidecar_image_name = os.getenv(
+        Env.TOOL_SIDECAR_IMAGE_NAME
+    )
+    docker_client_with_sidecar.sidecar_image_tag = os.getenv(Env.TOOL_SIDECAR_IMAGE_TAG)
+
+    # Patch the client object to control its behavior
+    mock_client = mocker.patch.object(docker_client_with_sidecar, "client")
+    # Patch the images attribute of the client to control its behavior
+    mock_images = mocker.MagicMock()
+    mock_client.images = mock_images
+
+    # Case 1: Image exists
+    mock_images.get.side_effect = MagicMock()
+    assert (
+        docker_client_with_sidecar.get_image(sidecar=True)
+        == "test-sidecar-image:latest"
+    )
+    mock_images.get.assert_called_once_with("test-sidecar-image:latest")
+
+    # Case 2: Image does not exist
+    mock_images.get.side_effect = ImageNotFound("Image not found")
+    mock_pull = mocker.patch.object(docker_client_with_sidecar.client.api, "pull")
+    mock_pull.return_value = iter([{"status": "pulling"}])
+    assert (
+        docker_client_with_sidecar.get_image(sidecar=True)
+        == "test-sidecar-image:latest"
+    )
+    mock_pull.assert_called_once_with(
+        repository="test-sidecar-image",
+        tag="latest",
+        stream=True,
+        decode=True,
+    )
+
+
+def test_sidecar_container(docker_client_with_sidecar, mocker):
+    """Test the sidecar_container method."""
+    # Patch the client object to control its behavior
+    mock_client = mocker.patch.object(docker_client_with_sidecar, "client")
+
+    config = {
+        "name": "test-image",
+        "image": "test-image:latest",
+        "entrypoint": ["echo", "hello"],
+        "detach": True,
+        "stream": False,
+        "auto_remove": True,
+        "environment": {"KEY": "VALUE"},
+        "stderr": True,
+        "stdout": True,
+        "network": "",
+        "mounts": [
+            {
+                "Type": "volume",
+                "Source": "logs-test-id",
+                "Target": "/shared",
+            }
+        ],
+    }
+
+    shared_log_dir = "/shared/logs"
+    test_config = docker_client_with_sidecar.get_container_run_config(
+        command=["echo", "hello"],
+        file_execution_id="test-id",
+        shared_log_dir=shared_log_dir,
+        envs={"KEY": "VALUE"},
+        auto_remove=True,
+        sidecar=True,
+    )
+
+    # Test the actual configuration generated
+    assert test_config["stream"] is False
+    assert test_config["mounts"] == config["mounts"]
+    assert isinstance(
+        docker_client_with_sidecar.run_container(test_config), DockerContainer
+    )
+    mock_client.containers.run.assert_called_once_with(**test_config)
 
 
 if __name__ == "__main__":
