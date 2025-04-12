@@ -42,7 +42,13 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/unstract"]
 
-[tool.poe.tasks.platform_service]
-cmd = "./entrypoint.sh"
+[tool.poe]
 envfile = ".env"
-help = "Runs the Unstract platform service"
+
+[tool.poe.tasks.platform-service]
+cmd = "./entrypoint.sh"
+help = "Runs the Unstract platform service (Gunicorn)"
+
+[tool.poe.tasks.platform-service-flask]
+cmd = "uv run flask --app unstract.platform_service.run:app run --port 3001"
+help = "Runs the Unstract platform service (Flask)"

@@ -50,7 +50,13 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/unstract"]
 
-[tool.poe.tasks.prompt_service]
-cmd = "flask --app src/unstract/prompt_service/run.py run --port 3003"
+[tool.poe]
 envfile = ".env"
-help = "Runs the Unstract prompt service"
+
+[tool.poe.tasks.prompt-service]
+cmd = "./entrypoint.sh"
+help = "Runs the Unstract prompt service (Gunicorn)"
+
+[tool.poe.tasks.prompt-service-flask]
+cmd = "uv run flask --app src/unstract/prompt_service/run.py run --port 3003"
+help = "Runs the Unstract prompt service (Flask)"

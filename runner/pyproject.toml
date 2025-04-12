@@ -39,7 +39,7 @@ unstract-core = { path = "../unstract/core", editable = true }
 [tool.poe]
 envfile = ".env"
 
-[tool.poe.tasks.serve]
+[tool.poe.tasks.runner]
 # Runs the service with gunicorn
 cmd = "./entrypoint.sh"
 help = "Runs the Unstract tool runner (Gunicorn)"
@@ -52,7 +52,7 @@ help = "Runs the Unstract tool runner (Flask)"
 [tool.poe.tasks.test]
 # Run tests for this service
 cmd = "pytest -s -v"
-env_file = "tests/.env"
+env = { "ENV_FILE" = "tests/.env" }
 help = "Runs pytests for the Unstract tool runner"
 
 [build-system]
