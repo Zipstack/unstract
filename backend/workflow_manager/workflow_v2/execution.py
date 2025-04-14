@@ -335,7 +335,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
     def log_total_cost_per_file(self, run_id, file_name):
         cost_dict = UsageHelper.get_aggregated_token_count(run_id=run_id)
         cost = round(cost_dict.get("cost_in_dollars") or 0, 5)
-        
+
         # Log the total cost for a particular file executed in the workflow
         self.publish_log(message=f"Total cost for file '{file_name}' is '${cost}'")
 
