@@ -1,6 +1,6 @@
 import re
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from unstract.sdk.cache import ToolCache
 from unstract.sdk.constants import LogLevel, MetadataKey, ToolEnv, UsageKwargs
@@ -34,6 +34,7 @@ class ClassifierHelper:
         """Streams error logs and performs required cleanup.
 
         Helper which copies files to a reserved bin in case of an error.
+
         Args:
             message (str): Error message to log
             bin_to_copy_to (str): The folder to copy the failed source file to.
@@ -104,8 +105,8 @@ class ClassifierHelper:
             self.stream_error_and_exit(f"Error copying file: {e}")
 
     def extract_text(
-        self, file: str, text_extraction_adapter_id: Optional[str]
-    ) -> Optional[str]:
+        self, file: str, text_extraction_adapter_id: str | None
+    ) -> str | None:
         """Extract text from file.
 
         Args:
@@ -119,7 +120,7 @@ class ClassifierHelper:
 
         return self._extract_from_adapter(file, text_extraction_adapter_id)
 
-    def _extract_from_adapter(self, file: str, adapter_id: str) -> Optional[str]:
+    def _extract_from_adapter(self, file: str, adapter_id: str) -> str | None:
         """Extract text from adapter.
 
         Args:
@@ -153,7 +154,7 @@ class ClassifierHelper:
             self.tool.stream_log(f"Adapter error: {e}")
             return None
 
-    def _extract_from_file(self, file: str) -> Optional[str]:
+    def _extract_from_file(self, file: str) -> str | None:
         """Extract text from file.
 
         Args:
@@ -180,8 +181,9 @@ class ClassifierHelper:
         bins: list[str],
         prompt: str,
         llm: LLM,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Find classification for text.
+
         Args:
             use_cache (bool): Whether to use cache
             settings_string (str): hash of settings
@@ -278,7 +280,7 @@ class ClassifierHelper:
             )
         return classification
 
-    def get_result_from_cache(self, cache_key: str) -> Optional[str]:
+    def get_result_from_cache(self, cache_key: str) -> str | None:
         """Get result from cache.
 
         Args:
@@ -292,7 +294,7 @@ class ClassifierHelper:
             platform_host=self.tool.get_env_or_die(ToolEnv.PLATFORM_HOST),
             platform_port=int(self.tool.get_env_or_die(ToolEnv.PLATFORM_PORT)),
         )
-        cached_response: Optional[str] = cache.get(cache_key)
+        cached_response: str | None = cache.get(cache_key)
         if cached_response is not None:
             classification = cached_response
             self.tool.stream_cost(cost=0.0, cost_units="cache")

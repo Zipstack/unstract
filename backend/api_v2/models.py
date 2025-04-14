@@ -2,7 +2,6 @@ import uuid
 from typing import Any
 
 from account_v2.models import User
-from api_v2.constants import ApiExecution
 from django.db import models
 from pipeline_v2.models import Pipeline
 from utils.models.base_model import BaseModel
@@ -12,6 +11,8 @@ from utils.models.organization_mixin import (
 )
 from utils.user_context import UserContext
 from workflow_manager.workflow_v2.models.workflow import Workflow
+
+from api_v2.constants import ApiExecution
 
 API_NAME_MAX_LENGTH = 30
 DESCRIPTION_MAX_LENGTH = 255

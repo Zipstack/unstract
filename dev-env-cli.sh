@@ -36,8 +36,8 @@ check_dependencies() {
     echo "$red_text""Both 'docker compose' and 'docker-compose' not found. Exiting.""$default_text"
     exit 1
   fi
-  if ! command -v pdm &> /dev/null; then
-    echo "$red_text""pdm not found. Exiting.""$default_text"
+  if ! command -v uv &> /dev/null; then
+    echo "$red_text""uv not found. Exiting.""$default_text"
     exit 1
   fi
 }
@@ -178,7 +178,12 @@ setup_venv() {
     echo -e "Nothing to do for ""$blue_text""$opt_service""$default_text"
   elif [ -e "pyproject.toml" ]; then
     echo -e "Setting up ""$blue_text""Python venv""$default_text"" for ""$blue_text""$opt_service""$default_text"
-    pdm venv create -w virtualenv --with-pip $opt_force
+    if [ -e ".venv" ] && [ "$opt_force" = "--force" ]; then
+      rm -rf .venv
+    fi
+    python3 -m venv .venv
+    source .venv/bin/activate
+    pip install --upgrade pip
   fi
 
   popd 1>/dev/null
@@ -201,7 +206,7 @@ activate_venv() {
     echo -e "Run the following in a ""$blue_text""new terminal""$default_text"" to activate venv for ""$blue_text""$opt_service""$default_text"":"
     echo ""
     echo "cd ${script_dir}/$opt_service"
-    echo "eval \"$(pdm venv activate in-project)\""
+    echo "source .venv/bin/activate"
   fi
 
   popd 1>/dev/null
@@ -223,8 +228,8 @@ install_deps() {
       return
     fi
     echo -e "Installing dependencies in venv for ""$blue_text""$opt_service""$default_text"
-    eval "$(pdm venv activate in-project)"
-    pdm sync
+    source .venv/bin/activate
+    uv pip install -e .
   fi
 
   popd 1>/dev/null
@@ -245,7 +250,7 @@ destroy_venv() {
       return
     fi
     echo -e "Destroying venv for ""$blue_text""$opt_service""$default_text"
-    pdm venv remove in-project
+    rm -rf .venv
   fi
 
   popd 1>/dev/null
@@ -259,9 +264,16 @@ install_pre_commit_hook() {
   pushd ${script_dir} 1>/dev/null
 
   echo -e "Installing ""$blue_text""Git pre-commit hook""$default_text"
-  pdm venv create -w virtualenv --with-pip $opt_force
-  eval $(pdm venv activate in-project)
-  pdm sync --dev -G lint -G hook-check-django-migrations
+  if [ -e ".venv" ] && [ "$opt_force" = "--force" ]; then
+    rm -rf .venv
+  fi
+  python3 -m venv .venv
+  source .venv/bin/activate
+  uv pip install pre-commit
+  # Install lint and hook-check-django-migrations dependencies
+  if [ -e "pyproject.toml" ]; then
+      uv sync --group dev --group hook-check-django-migrations
+  fi
   pre-commit install
 
   popd 1>/dev/null
@@ -278,7 +290,7 @@ run_pre_commit_hook() {
     echo -e "$blue_text""Git pre-commit hook""$default_text"" not found. Please run install first."
     return
   fi
-  eval "$(pdm venv activate in-project)"
+  source .venv/bin/activate
   pre-commit run
 
   popd 1>/dev/null

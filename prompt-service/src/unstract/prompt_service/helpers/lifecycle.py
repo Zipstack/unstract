@@ -1,6 +1,7 @@
 from typing import Any
 
 from flask import Flask, request
+
 from unstract.prompt_service.extensions import db
 
 

@@ -1,27 +1,27 @@
-from typing import Any, Optional
+from typing import Any
+
+from utils.cache_service import CacheService
 
 from tenant_account_v2.models import OrganizationMember
-from utils.cache_service import CacheService
 
 
 class OrganizationMemberService:
-
     @staticmethod
-    def get_user_by_email(email: str) -> Optional[OrganizationMember]:
+    def get_user_by_email(email: str) -> OrganizationMember | None:
         try:
             return OrganizationMember.objects.get(user__email=email)  # type: ignore
         except OrganizationMember.DoesNotExist:
             return None
 
     @staticmethod
-    def get_user_by_user_id(user_id: str) -> Optional[OrganizationMember]:
+    def get_user_by_user_id(user_id: str) -> OrganizationMember | None:
         try:
             return OrganizationMember.objects.get(user__user_id=user_id)  # type: ignore
         except OrganizationMember.DoesNotExist:
             return None
 
     @staticmethod
-    def get_user_by_id(id: str) -> Optional[OrganizationMember]:
+    def get_user_by_id(id: str) -> OrganizationMember | None:
         try:
             return OrganizationMember.objects.get(user=id)  # type: ignore
         except OrganizationMember.DoesNotExist:

@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("file_execution", "0004_alter_workflowfileexecution_status"),
     ]

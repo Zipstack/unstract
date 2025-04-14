@@ -4,7 +4,7 @@ import os
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any, Optional
+from typing import Any
 
 import psycopg2
 from django.conf import settings
@@ -111,9 +111,7 @@ class DataMigrator:
             )
             conn.commit()
 
-    def _fetch_schema_names(
-        self, schemas_to_migrate: list[str]
-    ) -> list[tuple[int, str]]:
+    def _fetch_schema_names(self, schemas_to_migrate: list[str]) -> list[tuple[int, str]]:
         """Fetches schema names and their IDs from the destination database
         based on the provided schema list. Supports fetching all schemas if
         '_ALL_' is specified.
@@ -126,7 +124,6 @@ class DataMigrator:
             list[tuple[int, str]]: A list of tuples containing the ID and schema name.
         """
         with self._db_connect_and_cursor(self.dest_db_config) as (conn, cur):
-
             # Process schemas_to_migrate: trim spaces and remove empty entries
             schemas_to_migrate = [
                 schema.strip() for schema in schemas_to_migrate if schema.strip()
@@ -153,7 +150,7 @@ class DataMigrator:
         dest_cursor: cursor,
         column_names: list[str],
         column_transformations: dict[str, dict[str, Any]],
-    ) -> Optional[tuple[Any, ...]]:
+    ) -> tuple[Any, ...] | None:
         """Prepares and migrates the relational keys of a single row from the
         source database to the destination database, updating specific column
         values based on provided transformations.
@@ -209,7 +206,8 @@ class DataMigrator:
         column_names: list[str],
     ) -> tuple[Any, ...]:
         """Convert specified field in the row to JSON format if it is a
-        list."""
+        list.
+        """
         if key not in column_names:
             return row
 
@@ -328,10 +326,12 @@ class DataMigrator:
 
         This method retrieves the maximum ID value from the specified table
         and sets the next auto-increment value for the table accordingly.
+
         Args:
             dest_cursor (cursor): The cursor for the destination database.
             dest_table (str): The name of the table to adjust.
             dest_conn (connection): The connection to the destination database.
+
         Returns:
             None
         """
@@ -367,8 +367,7 @@ class DataMigrator:
 
             if max_id is None:
                 logger.info(
-                    f"Table '{dest_table}' is empty. No need to adjust "
-                    "auto-increment."
+                    f"Table '{dest_table}' is empty. No need to adjust " "auto-increment."
                 )
                 return
 
@@ -386,7 +385,7 @@ class DataMigrator:
             raise
 
     def migrate(
-        self, migrations: list[dict[str, str]], organization_id: Optional[str] = None
+        self, migrations: list[dict[str, str]], organization_id: str | None = None
     ) -> None:
         self._create_tracking_table_if_not_exists()
 
@@ -397,7 +396,6 @@ class DataMigrator:
                 dest_cursor,
             ),
         ):
-
             for migration in migrations:
                 migration_name = migration["name"]
                 logger.info(f"Migration '{migration_name}' started")
@@ -504,9 +502,7 @@ class Command(BaseCommand):
             schemas_to_migrate = schemas_to_migrate.split(",")
 
         # Organization Data (Schema)
-        schema_names = migrator._fetch_schema_names(
-            schemas_to_migrate=schemas_to_migrate
-        )
+        schema_names = migrator._fetch_schema_names(schemas_to_migrate=schemas_to_migrate)
 
         for organization_id, schema_name in schema_names:
             if schema_name == "public":

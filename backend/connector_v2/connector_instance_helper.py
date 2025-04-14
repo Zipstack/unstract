@@ -1,14 +1,14 @@
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from account_v2.models import User
-from connector_v2.constants import ConnectorInstanceConstant
-from connector_v2.models import ConnectorInstance
-from connector_v2.unstract_account import UnstractAccount
 from django.conf import settings
 from utils.user_context import UserContext
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
+from connector_v2.constants import ConnectorInstanceConstant
+from connector_v2.models import ConnectorInstance
+from connector_v2.unstract_account import UnstractAccount
 from unstract.connectors.filesystems.ucs import UnstractCloudStorage
 from unstract.connectors.filesystems.ucs.constants import UCSKey
 
@@ -78,9 +78,9 @@ class ConnectorInstanceHelper:
     def get_connector_instances_by_workflow(
         workflow_id: str,
         connector_type: tuple[str, str],
-        connector_mode: Optional[tuple[int, str]] = None,
-        values: Optional[list[str]] = None,
-        connector_name: Optional[str] = None,
+        connector_mode: tuple[int, str] | None = None,
+        values: list[str] | None = None,
+        connector_name: str | None = None,
     ) -> list[ConnectorInstance]:
         """Method to get connector instances by workflow.
 
@@ -121,9 +121,9 @@ class ConnectorInstanceHelper:
     def get_connector_instance_by_workflow(
         workflow_id: str,
         connector_type: tuple[str, str],
-        connector_mode: Optional[tuple[int, str]] = None,
-        connector_name: Optional[str] = None,
-    ) -> Optional[ConnectorInstance]:
+        connector_mode: tuple[int, str] | None = None,
+        connector_name: str | None = None,
+    ) -> ConnectorInstance | None:
         """Get one connector instance.
 
             Use this method if the connector instance is unique for \
@@ -162,7 +162,7 @@ class ConnectorInstanceHelper:
     def get_input_connector_instance_by_name_for_workflow(
         workflow_id: str,
         connector_name: str,
-    ) -> Optional[ConnectorInstance]:
+    ) -> ConnectorInstance | None:
         """Method to get Input connector instance name from the workflow.
 
         Args:
@@ -182,7 +182,7 @@ class ConnectorInstanceHelper:
     def get_output_connector_instance_by_name_for_workflow(
         workflow_id: str,
         connector_name: str,
-    ) -> Optional[ConnectorInstance]:
+    ) -> ConnectorInstance | None:
         """Method to get output connector name by Workflow.
 
         Args:
@@ -232,7 +232,7 @@ class ConnectorInstanceHelper:
 
     @staticmethod
     def get_file_system_input_connector_instances_by_workflow(
-        workflow_id: str, values: Optional[list[str]] = None
+        workflow_id: str, values: list[str] | None = None
     ) -> list[ConnectorInstance]:
         """Method  to fetch file system connector by workflow.
 
@@ -252,7 +252,7 @@ class ConnectorInstanceHelper:
 
     @staticmethod
     def get_file_system_output_connector_instances_by_workflow(
-        workflow_id: str, values: Optional[list[str]] = None
+        workflow_id: str, values: list[str] | None = None
     ) -> list[ConnectorInstance]:
         """Method to get file system output connector by workflow.
 
@@ -272,7 +272,7 @@ class ConnectorInstanceHelper:
 
     @staticmethod
     def get_database_input_connector_instances_by_workflow(
-        workflow_id: str, values: Optional[list[str]] = None
+        workflow_id: str, values: list[str] | None = None
     ) -> list[ConnectorInstance]:
         """Method to fetch input database connectors by workflow.
 
@@ -292,7 +292,7 @@ class ConnectorInstanceHelper:
 
     @staticmethod
     def get_database_output_connector_instances_by_workflow(
-        workflow_id: str, values: Optional[list[str]] = None
+        workflow_id: str, values: list[str] | None = None
     ) -> list[ConnectorInstance]:
         """Method to fetch output database connectors by workflow.
 

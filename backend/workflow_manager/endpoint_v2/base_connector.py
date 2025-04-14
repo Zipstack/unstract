@@ -2,20 +2,18 @@ import json
 from typing import Any
 
 from fsspec import AbstractFileSystem
-from unstract.workflow_execution.execution_file_handler import ExecutionFileHandler
 from utils.constants import Common
 from utils.user_context import UserContext
 
 from unstract.connectors.filesystems import connectors
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
+from unstract.workflow_execution.execution_file_handler import ExecutionFileHandler
 
 
 class BaseConnector(ExecutionFileHandler):
     """Base class for connectors providing common methods and utilities."""
 
-    def __init__(
-        self, workflow_id: str, execution_id: str, organization_id: str
-    ) -> None:
+    def __init__(self, workflow_id: str, execution_id: str, organization_id: str) -> None:
         """Initialize the BaseConnector class.
 
         This class serves as a base for connectors and provides common

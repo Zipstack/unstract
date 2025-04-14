@@ -1,7 +1,6 @@
 import logging
 import time
 import uuid
-from typing import Optional
 
 from account_v2.constants import Common
 from django.utils import timezone
@@ -9,15 +8,16 @@ from platform_settings_v2.platform_auth_service import PlatformAuthenticationSer
 from tags.models import Tag
 from tool_instance_v2.models import ToolInstance
 from tool_instance_v2.tool_processor import ToolProcessor
+from usage_v2.helper import UsageHelper
+from utils.local_context import StateStore
+from utils.user_context import UserContext
+
 from unstract.tool_registry.dto import Tool
 from unstract.workflow_execution import WorkflowExecutionService
 from unstract.workflow_execution.dto import ToolInstance as ToolInstanceDataClass
 from unstract.workflow_execution.dto import WorkflowDto
 from unstract.workflow_execution.enums import ExecutionType, LogComponent, LogState
 from unstract.workflow_execution.exceptions import StopExecution
-from usage_v2.helper import UsageHelper
-from utils.local_context import StateStore
-from utils.user_context import UserContext
 from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.constants import WorkflowKey
 from workflow_manager.workflow_v2.enums import ExecutionStatus
@@ -33,12 +33,12 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         self,
         workflow: Workflow,
         tool_instances: list[ToolInstance],
-        organization_id: Optional[str] = None,
-        pipeline_id: Optional[str] = None,
+        organization_id: str | None = None,
+        pipeline_id: str | None = None,
         single_step: bool = False,
         scheduled: bool = False,
         mode: tuple[str, str] = WorkflowExecution.Mode.INSTANT,
-        workflow_execution: Optional[WorkflowExecution] = None,
+        workflow_execution: WorkflowExecution | None = None,
         use_file_history: bool = True,
     ) -> None:
         tool_instances_as_dto = []
@@ -116,13 +116,13 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
     def create_workflow_execution(
         cls,
         workflow_id: str,
-        pipeline_id: Optional[str] = None,
+        pipeline_id: str | None = None,
         single_step: bool = False,
         scheduled: bool = False,
-        log_events_id: Optional[str] = None,
-        execution_id: Optional[str] = None,
+        log_events_id: str | None = None,
+        execution_id: str | None = None,
         mode: tuple[str, str] = WorkflowExecution.Mode.INSTANT,
-        tags: Optional[list[Tag]] = None,
+        tags: list[Tag] | None = None,
         total_files: int = 0,
     ) -> WorkflowExecution:
         # Validating with existing execution
@@ -161,8 +161,8 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
 
     def update_execution(
         self,
-        status: Optional[ExecutionStatus] = None,
-        error: Optional[str] = None,
+        status: ExecutionStatus | None = None,
+        error: str | None = None,
         increment_attempt: bool = False,
     ) -> None:
         execution = WorkflowExecution.objects.get(pk=self.execution_id)
@@ -193,15 +193,11 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         return self.compilation_result["success"] is True
 
     def get_execution_instance(self) -> WorkflowExecution:
-        execution: WorkflowExecution = WorkflowExecution.objects.get(
-            pk=self.execution_id
-        )
+        execution: WorkflowExecution = WorkflowExecution.objects.get(pk=self.execution_id)
         return execution
 
     @classmethod
-    def get_execution_instance_by_id(
-        cls, execution_id: str
-    ) -> Optional[WorkflowExecution]:
+    def get_execution_instance_by_id(cls, execution_id: str) -> WorkflowExecution | None:
         """Get execution by execution ID.
 
         Args:
@@ -211,9 +207,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             Optional[WorkflowExecution]: WorkflowExecution Entity
         """
         try:
-            execution: WorkflowExecution = WorkflowExecution.objects.get(
-                pk=execution_id
-            )
+            execution: WorkflowExecution = WorkflowExecution.objects.get(pk=execution_id)
             return execution
         except WorkflowExecution.DoesNotExist:
             return None
@@ -316,7 +310,6 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         )
 
     def publish_average_cost_log(self, total_files: int):
-
         try:
             execution = WorkflowExecution.objects.get(pk=self.execution_id)
             total_cost = execution.get_aggregated_usage_cost
@@ -424,9 +417,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         execution_type = ExecutionType.COMPLETE
         if single_step:
             execution_type = ExecutionType.STEP
-        self.publish_initial_tool_execution_logs(
-            current_file_idx, total_files, file_name
-        )
+        self.publish_initial_tool_execution_logs(current_file_idx, total_files, file_name)
         self._handle_execution_type(execution_type)
 
         source_status_message = (

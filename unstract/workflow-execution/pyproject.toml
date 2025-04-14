@@ -1,36 +1,30 @@
-[build-system]
-requires = ["pdm-backend"]
-build-backend = "pdm.backend"
-
 [project]
 name = "unstract-workflow-execution"
 version = "0.0.1"
 description = "Unstract workflow execution package"
-authors = [
-    {name = "Zipstack Inc.", email = "devsupport@zipstack.com"},
-]
+authors = [{ name = "Zipstack Inc.", email = "devsupport@zipstack.com" }]
+requires-python = ">=3.12,<3.13"
+readme = "README.md"
+# license = {text = "MIT"}
+#
 dependencies = [
-    # ! IMPORTANT!
-    # Local dependencies usually need to be added as:
-    # https://pdm-project.org/latest/usage/dependency/#local-dependencies
-    #
-    # However, local dependencies which are not direct depedency of main project
-    # appear as absolute paths in pdm.lock of main project, making it impossible
-    # to check in the lock file.
-    #
-    # Hence instead, add the dependencies without version constraints where the
-    # assumption is they are added as direct dependencies in main project itself.
     "unstract-core",
     "unstract-tool-registry",
     "unstract-tool-sandbox",
     "unstract-flags",
-    "unstract-filesystem"
+    "unstract-filesystem",
 ]
-requires-python = ">=3.9"
-readme = "README.md"
-# license = {text = "MIT"}
 
+[tool.uv.sources]
+unstract-filesystem = { path = "../filesystem", editable = true }
+unstract-tool-sandbox = { path = "../tool-sandbox", editable = true }
+unstract-tool-registry = { path = "../tool-registry", editable = true }
+unstract-flags = { path = "../flags", editable = true }
+unstract-core = { path = "../core", editable = true }
 
-[tool.pdm.build]
-includes = ["src"]
-package-dir = "src"
+# [build-system]
+# requires = ["hatchling"]
+# build-backend = "hatchling.build"
+
+# [tool.hatch.build.targets.wheel]
+# packages = ["src"]

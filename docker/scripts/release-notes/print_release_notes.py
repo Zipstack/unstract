@@ -48,7 +48,8 @@ def is_valid_semver(ver):
 
 def print_release_notes(current_version, target_version, release_notes):
     """Print relevant warnings if current_version < warning_version <=
-    target_version."""
+    target_version.
+    """
     messages_to_print = []
     for note_version, release_note in release_notes.items():
         if (
@@ -58,9 +59,7 @@ def print_release_notes(current_version, target_version, release_notes):
         ):
             # Check release note and display warning in yellow release_note
             message = (
-                f"{colour('WARNING', Colour.YELLOW)}: "
-                if release_note["warning"]
-                else ""
+                f"{colour('WARNING', Colour.YELLOW)}: " if release_note["warning"] else ""
             )
             message += (
                 f"[from {colour(note_version, Colour.BLUE)}]\n"

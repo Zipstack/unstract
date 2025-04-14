@@ -1,6 +1,7 @@
 from django.urls import re_path
-from pipeline_v2.piepline_api_execution_views import PipelineApiExecution
 from rest_framework.urlpatterns import format_suffix_patterns
+
+from pipeline_v2.piepline_api_execution_views import PipelineApiExecution
 
 execute = PipelineApiExecution.as_view()
 

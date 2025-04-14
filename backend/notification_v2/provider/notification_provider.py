@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 
 from django.conf import settings
+
 from notification_v2.models import Notification
 
 
@@ -15,7 +16,8 @@ class NotificationProvider(ABC):
     @abstractmethod
     def send(self):
         """Method to be overridden in child classes for sending the
-        notification."""
+        notification.
+        """
         raise NotImplementedError("Subclasses should implement this method.")
 
     def validate(self):

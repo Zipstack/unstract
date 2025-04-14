@@ -8,7 +8,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
     dependencies = [
@@ -55,9 +54,7 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "prompt",
-                    models.TextField(
-                        blank=True, db_comment="Field to store the prompt"
-                    ),
+                    models.TextField(blank=True, db_comment="Field to store the prompt"),
                 ),
                 ("sequence_number", models.IntegerField(blank=True, null=True)),
                 (

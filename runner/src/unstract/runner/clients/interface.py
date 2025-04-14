@@ -30,7 +30,6 @@ class ContainerInterface(ABC):
 
 
 class ContainerClientInterface(ABC):
-
     @abstractmethod
     def __init__(
         self,
@@ -57,7 +56,7 @@ class ContainerClientInterface(ABC):
     @abstractmethod
     def run_container_with_sidecar(
         self, container_config: dict[Any, Any], sidecar_config: dict[Any, Any]
-    ) -> tuple[ContainerInterface, Optional[ContainerInterface]]:
+    ) -> tuple[ContainerInterface, ContainerInterface | None]:
         """Method to run a container with provided config. This method will run
         the container.
 
@@ -84,9 +83,9 @@ class ContainerClientInterface(ABC):
     @abstractmethod
     def wait_for_container_stop(
         self,
-        container: Optional[ContainerInterface],
-        main_container_status: Optional[dict] = None,
-    ) -> Optional[dict]:
+        container: ContainerInterface | None,
+        main_container_status: dict | None = None,
+    ) -> dict | None:
         """Wait for the container to stop and return the exit code.
 
         Args:
@@ -104,8 +103,8 @@ class ContainerClientInterface(ABC):
         command: list[str],
         file_execution_id: str,
         shared_log_dir: str,
-        container_name: Optional[str] = None,
-        envs: Optional[dict[str, Any]] = None,
+        container_name: str | None = None,
+        envs: dict[str, Any] | None = None,
         auto_remove: bool = False,
         sidecar: bool = False,
         **kwargs,

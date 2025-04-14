@@ -1,5 +1,4 @@
 from enum import Enum
-from typing import Optional
 
 from rest_framework.exceptions import APIException
 
@@ -18,9 +17,9 @@ class InvalidEncryptionKey(APIException):
 
     def __init__(
         self,
-        entity: Optional[Entity] = None,
-        detail: Optional[str] = None,
-        code: Optional[str] = None,
+        entity: Entity | None = None,
+        detail: str | None = None,
+        code: str | None = None,
     ) -> None:
         if entity == self.Entity.ADAPTER:
             detail = self.default_detail.replace("sensitive", "adapter").replace(

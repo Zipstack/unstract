@@ -1,6 +1,5 @@
 import json
 import logging
-from typing import Optional
 
 from account_v2.custom_exceptions import DuplicateData
 from api_v2.exceptions import NoActiveAPIKeyError
@@ -10,6 +9,13 @@ from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpResponse
 from permissions.permission import IsOwner
+from rest_framework import serializers, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.request import Request
+from rest_framework.response import Response
+from rest_framework.versioning import URLPathVersioning
+from scheduler.helper import SchedulerHelper
+
 from pipeline_v2.constants import (
     PipelineConstants,
     PipelineErrors,
@@ -23,12 +29,6 @@ from pipeline_v2.serializers.crud import PipelineSerializer
 from pipeline_v2.serializers.execute import (
     PipelineExecuteSerializer as ExecuteSerializer,
 )
-from rest_framework import serializers, status, viewsets
-from rest_framework.decorators import action
-from rest_framework.request import Request
-from rest_framework.response import Response
-from rest_framework.versioning import URLPathVersioning
-from scheduler.helper import SchedulerHelper
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +86,7 @@ class PipelineViewSet(viewsets.ModelViewSet):
             KeyHelper.create_api_key(pipeline_instance, request)
         except IntegrityError:
             raise DuplicateData(
-                f"{PipelineErrors.PIPELINE_EXISTS}, " f"{PipelineErrors.DUPLICATE_API}"
+                f"{PipelineErrors.PIPELINE_EXISTS}, {PipelineErrors.DUPLICATE_API}"
             )
         return Response(data=serializer.data, status=status.HTTP_201_CREATED)
 
@@ -97,7 +97,7 @@ class PipelineViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"])
     def download_postman_collection(
-        self, request: Request, pk: Optional[str] = None
+        self, request: Request, pk: str | None = None
     ) -> Response:
         """Downloads a Postman Collection of the API deployment instance."""
         instance: Pipeline = self.get_object()

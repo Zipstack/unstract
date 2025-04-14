@@ -1,6 +1,7 @@
-from file_management.constants import FileInformationKey
 from rest_framework import serializers
 from utils.FileValidator import FileValidator
+
+from file_management.constants import FileInformationKey
 
 
 class FileInfoSerializer(serializers.Serializer):

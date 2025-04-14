@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any
 
 from workflow_manager.endpoint_v2.dto import FileHash
 from workflow_manager.workflow_v2.models.workflow import Workflow
@@ -7,7 +7,8 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 class WorkflowUtil:
     """A utility class for managing workflow operations, particularly for
     selecting files for manual review and updating file destination based on
-    review criteria."""
+    review criteria.
+    """
 
     @staticmethod
     def _mrq_files(
@@ -62,9 +63,9 @@ class WorkflowUtil:
 
     @staticmethod
     def validate_db_rule(
-        result: Optional[Any],
+        result: Any | None,
         workflow_id: Workflow,
-        file_destination: Optional[tuple[str, str]],
+        file_destination: tuple[str, str] | None,
     ) -> bool:
         """Placeholder method to check the db rules - MRQ
 

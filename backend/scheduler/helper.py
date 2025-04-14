@@ -3,6 +3,10 @@ from typing import Any
 
 from pipeline_v2.models import Pipeline
 from rest_framework.serializers import ValidationError
+from utils.user_context import UserContext
+from workflow_manager.workflow_v2.constants import WorkflowKey
+from workflow_manager.workflow_v2.serializers import ExecuteWorkflowSerializer
+
 from scheduler.constants import SchedulerConstants as SC
 from scheduler.exceptions import JobDeletionError, JobSchedulingError
 from scheduler.serializer import AddJobSerializer
@@ -12,15 +16,11 @@ from scheduler.tasks import (
     disable_task,
     enable_task,
 )
-from utils.user_context import UserContext
-from workflow_manager.workflow_v2.constants import WorkflowKey
-from workflow_manager.workflow_v2.serializers import ExecuteWorkflowSerializer
 
 logger = logging.getLogger(__name__)
 
 
 class SchedulerHelper:
-
     @staticmethod
     def _schedule_task_job(pipeline: Pipeline, job_data: Any) -> None:
         if "cron_string" not in job_data:
@@ -56,7 +56,7 @@ class SchedulerHelper:
                 str(pipeline.pk),
                 # Added to remain backward compatible - remove after data migration
                 # which removes unused args in execute_pipeline_task
-                bool(False),
+                False,
                 str(name),
             ],
             enabled=pipeline.active,

@@ -25,7 +25,6 @@ class PromptStudioHelper:
             list[dict[str, int]]: A list of updated prompt data with their IDs
             and new sequence numbers.
         """
-
         prompt_instance = prompt_model.objects.get(pk=prompt_id)
         tool_id = prompt_instance.tool_id
 

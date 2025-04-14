@@ -2,6 +2,7 @@ import json
 import logging
 
 from django.db import transaction
+
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2.exceptions import IndexingAPIError
 from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManager
@@ -20,9 +21,7 @@ class PromptStudioIndexHelper:
         is_summary: bool = False,
     ) -> IndexManager:
         try:
-
             with transaction.atomic():
-
                 document: DocumentManager = DocumentManager.objects.get(pk=document_id)
 
                 index_id = "raw_index_id"
@@ -72,8 +71,7 @@ class PromptStudioIndexHelper:
     def mark_extraction_status(
         document_id: str, profile_manager: ProfileManager, doc_id: str
     ) -> bool:
-        """
-        Marks the extraction status for a given document.
+        """Marks the extraction status for a given document.
 
         Args:
             document_id (str): ID of the document in DocumentManager.
@@ -129,8 +127,7 @@ class PromptStudioIndexHelper:
     def check_extraction_status(
         document_id: str, profile_manager: ProfileManager, doc_id: str
     ) -> bool:
-        """
-        Checks if the extraction status is already marked as complete
+        """Checks if the extraction status is already marked as complete
         for the given document and doc_id.
 
         Args:

@@ -2,8 +2,9 @@ import logging
 from functools import wraps
 from typing import Any
 
-from api_v2.exceptions import Forbidden
 from rest_framework.request import Request
+
+from api_v2.exceptions import Forbidden
 
 logger = logging.getLogger(__name__)
 
@@ -56,5 +57,6 @@ class BaseAPIKeyValidator:
         self: Any, request: Request, func: Any, api_key: str, *args: Any, **kwargs: Any
     ) -> Any:
         """Process and validate API key with specific logic required by
-        subclasses."""
+        subclasses.
+        """
         pass

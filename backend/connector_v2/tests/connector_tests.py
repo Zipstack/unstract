@@ -12,7 +12,6 @@ pytestmark = pytest.mark.django_db
 class TestConnector(APITestCase):
     def test_connector_list(self) -> None:
         """Tests to List the connectors."""
-
         url = reverse("connectors_v1-list")
         response = self.client.get(url)
 
@@ -20,7 +19,6 @@ class TestConnector(APITestCase):
 
     def test_connectors_detail(self) -> None:
         """Tests to fetch a connector with given pk."""
-
         url = reverse("connectors_v1-detail", kwargs={"pk": 1})
         response = self.client.get(url)
 
@@ -28,7 +26,6 @@ class TestConnector(APITestCase):
 
     def test_connectors_detail_not_found(self) -> None:
         """Tests for negative case to fetch non exiting key."""
-
         url = reverse("connectors_v1-detail", kwargs={"pk": 768})
         response = self.client.get(url)
 
@@ -36,7 +33,6 @@ class TestConnector(APITestCase):
 
     def test_connectors_create(self) -> None:
         """Tests to create a new ConnectorInstance."""
-
         url = reverse("connectors_v1-list")
         data = {
             "org": 1,
@@ -57,8 +53,8 @@ class TestConnector(APITestCase):
 
     def test_connectors_create_with_json_list(self) -> None:
         """Tests to create a new connector with list included in the json
-        field."""
-
+        field.
+        """
         url = reverse("connectors_v1-list")
         data = {
             "org": 1,
@@ -80,7 +76,6 @@ class TestConnector(APITestCase):
 
     def test_connectors_create_with_nested_json(self) -> None:
         """Tests to create a new connector with json field as nested json."""
-
         url = reverse("connectors_v1-list")
         data = {
             "org": 1,
@@ -102,7 +97,6 @@ class TestConnector(APITestCase):
 
     def test_connectors_create_bad_request(self) -> None:
         """Tests for negative case to throw error on a wrong access."""
-
         url = reverse("connectors_v1-list")
         data = {
             "org": 5,
@@ -123,7 +117,6 @@ class TestConnector(APITestCase):
 
     def test_connectors_update_json_field(self) -> None:
         """Tests to update connector with json field update."""
-
         url = reverse("connectors_v1-detail", kwargs={"pk": 1})
         data = {
             "org": 1,
@@ -144,7 +137,6 @@ class TestConnector(APITestCase):
 
     def test_connectors_update(self) -> None:
         """Tests to update connector update single field."""
-
         url = reverse("connectors_v1-detail", kwargs={"pk": 1})
         data = {
             "org": 1,
@@ -166,7 +158,6 @@ class TestConnector(APITestCase):
 
     def test_connectors_update_pk(self) -> None:
         """Tests the PUT method for 400 error."""
-
         url = reverse("connectors_v1-detail", kwargs={"pk": 1})
         data = {
             "org": 2,
@@ -187,7 +178,6 @@ class TestConnector(APITestCase):
 
     def test_connectors_update_json_fields(self) -> None:
         """Tests to update ConnectorInstance."""
-
         url = reverse("connectors_v1-detail", kwargs={"pk": 1})
         data = {
             "org": 1,
@@ -203,16 +193,13 @@ class TestConnector(APITestCase):
             },
         }
         response = self.client.put(url, data, format="json")
-        nested_value = response.data["connector_metadata"]["sample_metadata_json"][
-            "key1"
-        ]
+        nested_value = response.data["connector_metadata"]["sample_metadata_json"]["key1"]
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(nested_value, "value1")
 
     def test_connectors_update_json_list_fields(self) -> None:
         """Tests to update connector to the third second level of json."""
-
         url = reverse("connectors_v1-detail", kwargs={"pk": 1})
         data = {
             "org": 1,
@@ -229,9 +216,7 @@ class TestConnector(APITestCase):
             },
         }
         response = self.client.put(url, data, format="json")
-        nested_value = response.data["connector_metadata"]["sample_metadata_json"][
-            "key1"
-        ]
+        nested_value = response.data["connector_metadata"]["sample_metadata_json"]["key1"]
         nested_list = response.data["connector_metadata"]["file_list"]
         last_val = nested_list.pop()
 
@@ -287,7 +272,6 @@ class TestConnector(APITestCase):
 
     def test_connectors_update_field(self) -> None:
         """Tests the PATCH method."""
-
         url = reverse("connectors_v1-detail", kwargs={"pk": 1})
         data = {"connector_id": "e3a4512m-efgb-48d5-98a9-3983ntest"}
         response = self.client.patch(url, data, format="json")
@@ -301,7 +285,6 @@ class TestConnector(APITestCase):
 
     def test_connectors_update_json_field_patch(self) -> None:
         """Tests the PATCH method."""
-
         url = reverse("connectors_v1-detail", kwargs={"pk": 1})
         data = {
             "connector_metadata": {
@@ -322,7 +305,6 @@ class TestConnector(APITestCase):
 
     def test_connectors_delete(self) -> None:
         """Tests the DELETE method."""
-
         url = reverse("connectors_v1-detail", kwargs={"pk": 1})
         response = self.client.delete(url, format="json")
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)

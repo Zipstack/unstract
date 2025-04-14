@@ -40,17 +40,13 @@ def remove_execution_of_deleted_wfs(apps: Any, schema_editor: Any):
 
         while True:
             # Get a batch of IDs to delete
-            batch_ids = list(
-                invalid_executions[:batch_size].values_list("id", flat=True)
-            )
+            batch_ids = list(invalid_executions[:batch_size].values_list("id", flat=True))
 
             if not batch_ids:
                 break
 
             # Delete this batch
-            deleted_count = WorkflowExecution.objects.filter(id__in=batch_ids).delete()[
-                0
-            ]
+            deleted_count = WorkflowExecution.objects.filter(id__in=batch_ids).delete()[0]
             deleted_total += deleted_count
 
             # Includes deletion of related models also
@@ -62,7 +58,6 @@ def remove_execution_of_deleted_wfs(apps: Any, schema_editor: Any):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("workflow_v2", "0011_remove_filehistory_unique_workflow_cachekey_and_more"),
     ]

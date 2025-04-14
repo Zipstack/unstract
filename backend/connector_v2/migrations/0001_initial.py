@@ -8,7 +8,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
     dependencies = [
@@ -39,9 +38,7 @@ class Migration(migrations.Migration):
                 ("connector_version", models.CharField(default="", max_length=64)),
                 (
                     "connector_type",
-                    models.CharField(
-                        choices=[("INPUT", "Input"), ("OUTPUT", "Output")]
-                    ),
+                    models.CharField(choices=[("INPUT", "Input"), ("OUTPUT", "Output")]),
                 ),
                 (
                     "connector_mode",

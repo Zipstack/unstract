@@ -97,6 +97,7 @@ class BigQuery(UnstractDB):
         Args:
             table (str): db-connector table name
             Format  {database}.{schema}.{table}
+
         Returns:
             str: generates a create sql base query with the constant columns
         """
@@ -146,19 +147,15 @@ class BigQuery(UnstractDB):
         """
         table_name = kwargs.get("table_name", None)
         if table_name is None:
-            raise ValueError(
-                "Please enter a valid table_name to to create/insert table"
-            )
+            raise ValueError("Please enter a valid table_name to to create/insert table")
         sql_keys = list(kwargs.get("sql_keys", []))
         try:
             if sql_values:
                 query_parameters = [
                     bigquery.ScalarQueryParameter(key, "STRING", value)
-                    for key, value in zip(sql_keys, sql_values)
+                    for key, value in zip(sql_keys, sql_values, strict=False)
                 ]
-                query_params = bigquery.QueryJobConfig(
-                    query_parameters=query_parameters
-                )
+                query_params = bigquery.QueryJobConfig(query_parameters=query_parameters)
                 query_job = engine.query(sql_query, job_config=query_params)
             else:
                 query_job = engine.query(sql_query)
@@ -190,6 +187,7 @@ class BigQuery(UnstractDB):
         Args:
             table_name (str): db-connector table name
                               Format  {database}.{schema}.{table}
+
         Returns:
             dict[str, str]: a dictionary contains db column name and
             db column types of corresponding table

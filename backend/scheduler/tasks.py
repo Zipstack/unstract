@@ -1,7 +1,7 @@
 import json
 import logging
 import traceback
-from typing import Any, Optional
+from typing import Any
 
 from account_v2.subscription_loader import load_plugins, validate_etl_run
 from celery import shared_task
@@ -109,9 +109,7 @@ def execute_pipeline_task_v2(
             except Exception as e:
                 logger.warning(f"Failed to disable task: {pipeline_id}. Error: {e}")
             return
-        PipelineProcessor.update_pipeline(
-            pipeline_id, Pipeline.PipelineStatus.INPROGRESS
-        )
+        PipelineProcessor.update_pipeline(pipeline_id, Pipeline.PipelineStatus.INPROGRESS)
         # Mark the File in file history to avoid duplicate execution
         # only for ETL and TASK execution
         use_file_history: bool = True
@@ -146,7 +144,7 @@ def delete_periodic_task(task_name: str) -> None:
         logger.error(f"Periodic task does not exist: {task_name}")
 
 
-def get_periodic_task(task_name: str) -> Optional[PeriodicTask]:
+def get_periodic_task(task_name: str) -> PeriodicTask | None:
     try:
         return PeriodicTask.objects.get(name=task_name)
     except PeriodicTask.DoesNotExist:
@@ -164,6 +162,4 @@ def enable_task(task_name: str) -> None:
     task = PeriodicTask.objects.get(name=task_name)
     task.enabled = True
     task.save()
-    PipelineProcessor.update_pipeline(
-        task_name, Pipeline.PipelineStatus.RESTARTING, True
-    )
+    PipelineProcessor.update_pipeline(task_name, Pipeline.PipelineStatus.RESTARTING, True)

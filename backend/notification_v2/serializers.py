@@ -107,7 +107,8 @@ class NotificationSerializer(serializers.ModelSerializer):
 
     def validate_name(self, value):
         """Check uniqueness of the name with respect to either 'api' or
-        'pipeline'."""
+        'pipeline'.
+        """
         api = self.initial_data.get("api", getattr(self.instance, "api", None))
         pipeline = self.initial_data.get(
             "pipeline", getattr(self.instance, "pipeline", None)

@@ -1,14 +1,13 @@
-from typing import Optional
-
 from django.db.models.query import QuerySet
 from django_filters import CharFilter, FilterSet, ModelChoiceFilter
 from rest_framework.request import Request
+
 from unstract.sdk.constants import LogLevel
 from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.models.execution_log import ExecutionLog
 
 
-def get_file_executions(request: Optional[Request]) -> QuerySet:
+def get_file_executions(request: Request | None) -> QuerySet:
     """Callable for ModelChoiceFilter to dynamically filter file_execution_id."""
     if request is None or not hasattr(request, "parser_context"):
         return WorkflowFileExecution.objects.none()

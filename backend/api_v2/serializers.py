@@ -1,9 +1,7 @@
 import uuid
 from collections import OrderedDict
-from typing import Any, Union
+from typing import Any
 
-from api_v2.constants import ApiExecution
-from api_v2.models import APIDeployment, APIKey
 from django.core.validators import RegexValidator
 from pipeline_v2.models import Pipeline
 from rest_framework.serializers import (
@@ -22,6 +20,8 @@ from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 from workflow_manager.workflow_v2.exceptions import ExecutionDoesNotExistError
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
+from api_v2.constants import ApiExecution
+from api_v2.models import APIDeployment, APIKey
 from backend.serializers import AuditSerializer
 
 
@@ -76,8 +76,9 @@ class APIKeySerializer(AuditSerializer):
 
     def to_representation(self, instance: APIKey) -> OrderedDict[str, Any]:
         """Override the to_representation method to include additional
-        context."""
-        deployment: Union[APIDeployment, Pipeline] = self.context.get("deployment")
+        context.
+        """
+        deployment: APIDeployment | Pipeline = self.context.get("deployment")
         representation: OrderedDict[str, Any] = super().to_representation(instance)
 
         if deployment:
@@ -89,9 +90,7 @@ class APIKeySerializer(AuditSerializer):
             elif isinstance(deployment, Pipeline):
                 representation["api"] = None
                 representation["pipeline"] = deployment.id
-                representation["description"] = (
-                    f"API Key for {deployment.pipeline_name}"
-                )
+                representation["description"] = f"API Key for {deployment.pipeline_name}"
             else:
                 raise ValueError(
                     "Context must be an instance of APIDeployment or Pipeline"

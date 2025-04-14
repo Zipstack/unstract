@@ -65,16 +65,8 @@ scheduler
   |   |- unstract
   |       |- scheduler
   |           |- main.py
-  |- pdm.lock
+  |- uv.lock
   |- pyproject.toml
-```
-
-Add the following in `pyproject.toml` to detect package in `src`:
-
-```pyproject.toml
-[tool.pdm.build]
-includes = ["src"]
-package-dir = "src"
 ```
 
 This will install the project to:

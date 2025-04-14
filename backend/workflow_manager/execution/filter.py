@@ -3,6 +3,7 @@ from django.db.models import QuerySet
 from django_filters import rest_framework as filters
 from pipeline_v2.models import Pipeline
 from utils.date import DateRangePresets, DateTimeProcessor
+
 from workflow_manager.execution.enum import ExecutionEntity
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models import Workflow, WorkflowExecution
@@ -58,12 +59,8 @@ class ExecutionFilter(filters.FilterSet):
             )
         return queryset
 
-    def filter_by_date_range(
-        self, queryset: QuerySet, name: str, value: str
-    ) -> QuerySet:
-        """
-        Filters Usages based on the provided date range.
-        """
+    def filter_by_date_range(self, queryset: QuerySet, name: str, value: str) -> QuerySet:
+        """Filters Usages based on the provided date range."""
         date_span = DateTimeProcessor.filter_date_range(value)
         if date_span:
             queryset = queryset.filter(

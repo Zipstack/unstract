@@ -1,6 +1,6 @@
 import json
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
@@ -8,12 +8,12 @@ class FileHash:
     file_path: str
     file_name: str
     source_connection_type: str
-    file_hash: Optional[str] = None
-    file_size: Optional[int] = None
-    provider_file_uuid: Optional[str] = None
-    mime_type: Optional[str] = None
-    fs_metadata: Optional[dict[str, Any]] = None
-    file_destination: Optional[tuple[str, str]] = (
+    file_hash: str | None = None
+    file_size: int | None = None
+    provider_file_uuid: str | None = None
+    mime_type: str | None = None
+    fs_metadata: dict[str, Any] | None = None
+    file_destination: tuple[str, str] | None = (
         None  # To which destination this file wants to go for MRQ percentage
     )
     is_executed: bool = False

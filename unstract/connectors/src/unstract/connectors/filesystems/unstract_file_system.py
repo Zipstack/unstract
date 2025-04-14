@@ -3,7 +3,7 @@ import logging
 import os
 from abc import ABC, abstractmethod
 from datetime import date, datetime
-from typing import Any, Optional
+from typing import Any
 
 from fsspec import AbstractFileSystem
 
@@ -78,9 +78,8 @@ class UnstractFileSystem(UnstractConnector, ABC):
         pass
 
     @abstractmethod
-    def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> Optional[str]:
-        """
-        Extracts a unique file hash from metadata.
+    def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> str | None:
+        """Extracts a unique file hash from metadata.
 
         This method must be implemented in subclasses.
 
@@ -97,7 +96,7 @@ class UnstractFileSystem(UnstractConnector, ABC):
         """Override to get root dir of a connector."""
         return f"{input_dir.strip('/')}/"
 
-    def get_file_size(self, file_path: str) -> Optional[int]:
+    def get_file_size(self, file_path: str) -> int | None:
         """Get the size of a file."""
         fs_fsspec = self.get_fsspec_fs()
         metadata = fs_fsspec.stat(file_path)
@@ -106,8 +105,7 @@ class UnstractFileSystem(UnstractConnector, ABC):
         return metadata.get("size")
 
     def _serialize_metadata_value(self, value: Any, depth: int = 0) -> Any:
-        """
-        Recursively serialize metadata values to ensure JSON compatibility.
+        """Recursively serialize metadata values to ensure JSON compatibility.
 
         Args:
             value: Any value that needs to be serialized
@@ -130,8 +128,7 @@ class UnstractFileSystem(UnstractConnector, ABC):
             return base64.b64encode(value).decode("utf-8")
         elif isinstance(value, dict):
             return {
-                k: self._serialize_metadata_value(v, depth + 1)
-                for k, v in value.items()
+                k: self._serialize_metadata_value(v, depth + 1) for k, v in value.items()
             }
         elif isinstance(value, (list, tuple)):
             return [self._serialize_metadata_value(v, depth + 1) for v in value]
@@ -146,8 +143,7 @@ class UnstractFileSystem(UnstractConnector, ABC):
             return str(value)
 
     def get_file_metadata(self, file_path: str) -> dict[str, Any]:
-        """
-        Get the metadata of a file.
+        """Get the metadata of a file.
 
         Args:
             file_path (str): Path of the file.
@@ -170,14 +166,11 @@ class UnstractFileSystem(UnstractConnector, ABC):
 
             return serialized_metadata
         except Exception as e:
-            logger.error(
-                f"Error getting file system metadata for {file_path}: {str(e)}"
-            )
+            logger.error(f"Error getting file system metadata for {file_path}: {str(e)}")
             return {}
 
-    def get_file_system_uuid(self, file_path: str) -> Optional[str]:
-        """
-        Get the UUID of a file.
+    def get_file_system_uuid(self, file_path: str) -> str | None:
+        """Get the UUID of a file.
 
         Args:
             file_path (str): Path of the file.

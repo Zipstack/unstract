@@ -1,16 +1,17 @@
 import importlib
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from flask import Flask
+
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 
 
 class PluginManager:
     _instance = None
 
-    def __new__(cls, app: Optional[Flask] = None) -> "PluginManager":
+    def __new__(cls, app: Flask | None = None) -> "PluginManager":
         if cls._instance is None:
             # Only create the instance if it doesn't already exist
             cls._instance = super().__new__(cls)

@@ -990,58 +990,54 @@ _ERROREVALUATIONRESPONSE = _descriptor.Descriptor(
 )
 
 _EVALUATIONREQUEST_CONTEXTENTRY.containing_type = _EVALUATIONREQUEST
-_EVALUATIONREQUEST.fields_by_name["context"].message_type = (
-    _EVALUATIONREQUEST_CONTEXTENTRY
-)
+_EVALUATIONREQUEST.fields_by_name[
+    "context"
+].message_type = _EVALUATIONREQUEST_CONTEXTENTRY
 _BATCHEVALUATIONREQUEST.fields_by_name["requests"].message_type = _EVALUATIONREQUEST
 _BATCHEVALUATIONRESPONSE.fields_by_name["responses"].message_type = _EVALUATIONRESPONSE
 _EVALUATIONRESPONSE.fields_by_name["type"].enum_type = _EVALUATIONRESPONSETYPE
-_EVALUATIONRESPONSE.fields_by_name["boolean_response"].message_type = (
-    _BOOLEANEVALUATIONRESPONSE
-)
-_EVALUATIONRESPONSE.fields_by_name["variant_response"].message_type = (
-    _VARIANTEVALUATIONRESPONSE
-)
-_EVALUATIONRESPONSE.fields_by_name["error_response"].message_type = (
-    _ERROREVALUATIONRESPONSE
-)
+_EVALUATIONRESPONSE.fields_by_name[
+    "boolean_response"
+].message_type = _BOOLEANEVALUATIONRESPONSE
+_EVALUATIONRESPONSE.fields_by_name[
+    "variant_response"
+].message_type = _VARIANTEVALUATIONRESPONSE
+_EVALUATIONRESPONSE.fields_by_name[
+    "error_response"
+].message_type = _ERROREVALUATIONRESPONSE
 _EVALUATIONRESPONSE.oneofs_by_name["response"].fields.append(
     _EVALUATIONRESPONSE.fields_by_name["boolean_response"]
 )
-_EVALUATIONRESPONSE.fields_by_name["boolean_response"].containing_oneof = (
-    _EVALUATIONRESPONSE.oneofs_by_name["response"]
-)
+_EVALUATIONRESPONSE.fields_by_name[
+    "boolean_response"
+].containing_oneof = _EVALUATIONRESPONSE.oneofs_by_name["response"]
 _EVALUATIONRESPONSE.oneofs_by_name["response"].fields.append(
     _EVALUATIONRESPONSE.fields_by_name["variant_response"]
 )
-_EVALUATIONRESPONSE.fields_by_name["variant_response"].containing_oneof = (
-    _EVALUATIONRESPONSE.oneofs_by_name["response"]
-)
+_EVALUATIONRESPONSE.fields_by_name[
+    "variant_response"
+].containing_oneof = _EVALUATIONRESPONSE.oneofs_by_name["response"]
 _EVALUATIONRESPONSE.oneofs_by_name["response"].fields.append(
     _EVALUATIONRESPONSE.fields_by_name["error_response"]
 )
-_EVALUATIONRESPONSE.fields_by_name["error_response"].containing_oneof = (
-    _EVALUATIONRESPONSE.oneofs_by_name["response"]
-)
+_EVALUATIONRESPONSE.fields_by_name[
+    "error_response"
+].containing_oneof = _EVALUATIONRESPONSE.oneofs_by_name["response"]
 _BOOLEANEVALUATIONRESPONSE.fields_by_name["reason"].enum_type = _EVALUATIONREASON
-_BOOLEANEVALUATIONRESPONSE.fields_by_name["timestamp"].message_type = (
-    google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
-)
+_BOOLEANEVALUATIONRESPONSE.fields_by_name[
+    "timestamp"
+].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
 _VARIANTEVALUATIONRESPONSE.fields_by_name["reason"].enum_type = _EVALUATIONREASON
-_VARIANTEVALUATIONRESPONSE.fields_by_name["timestamp"].message_type = (
-    google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
-)
+_VARIANTEVALUATIONRESPONSE.fields_by_name[
+    "timestamp"
+].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
 _ERROREVALUATIONRESPONSE.fields_by_name["reason"].enum_type = _ERROREVALUATIONREASON
 DESCRIPTOR.message_types_by_name["EvaluationRequest"] = _EVALUATIONREQUEST
 DESCRIPTOR.message_types_by_name["BatchEvaluationRequest"] = _BATCHEVALUATIONREQUEST
 DESCRIPTOR.message_types_by_name["BatchEvaluationResponse"] = _BATCHEVALUATIONRESPONSE
 DESCRIPTOR.message_types_by_name["EvaluationResponse"] = _EVALUATIONRESPONSE
-DESCRIPTOR.message_types_by_name["BooleanEvaluationResponse"] = (
-    _BOOLEANEVALUATIONRESPONSE
-)
-DESCRIPTOR.message_types_by_name["VariantEvaluationResponse"] = (
-    _VARIANTEVALUATIONRESPONSE
-)
+DESCRIPTOR.message_types_by_name["BooleanEvaluationResponse"] = _BOOLEANEVALUATIONRESPONSE
+DESCRIPTOR.message_types_by_name["VariantEvaluationResponse"] = _VARIANTEVALUATIONRESPONSE
 DESCRIPTOR.message_types_by_name["ErrorEvaluationResponse"] = _ERROREVALUATIONRESPONSE
 DESCRIPTOR.enum_types_by_name["EvaluationReason"] = _EVALUATIONREASON
 DESCRIPTOR.enum_types_by_name["ErrorEvaluationReason"] = _ERROREVALUATIONREASON

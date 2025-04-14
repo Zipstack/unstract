@@ -1,7 +1,7 @@
 import json
 import logging
 import re
-from typing import Any, Optional
+from typing import Any
 
 from unstract.sdk.adapters.enums import AdapterTypes
 from unstract.sdk.file_storage import FileStorage, FileStorageProvider
@@ -112,7 +112,7 @@ class ToolUtils:
         return yml_data
 
     @staticmethod
-    def create_image_name(image_name: str, tag: Optional[str]) -> str:
+    def create_image_name(image_name: str, tag: str | None) -> str:
         if tag is not None:
             image_name_with_tag = f"{image_name}:{tag}"
             return image_name_with_tag
@@ -193,7 +193,7 @@ class ToolUtils:
         models: list[AdapterProperties],
         adapter_type: AdapterTypes,
         schema: Spec,
-        default_adapter_id: Optional[str] = None,
+        default_adapter_id: str | None = None,
     ) -> None:
         """Process adapter models and update the schema.
 

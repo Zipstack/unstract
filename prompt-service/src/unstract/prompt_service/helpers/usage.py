@@ -2,6 +2,7 @@ from logging import Logger
 from typing import Any
 
 from flask import current_app as app
+
 from unstract.prompt_service.constants import DBTableV2
 from unstract.prompt_service.extensions import db
 from unstract.prompt_service.utils.db_utils import DBUtils
@@ -9,7 +10,6 @@ from unstract.prompt_service.utils.env_loader import get_env_or_die
 
 
 class UsageHelper:
-
     @staticmethod
     def query_usage_metadata(token: str, metadata: dict[str, Any]) -> dict[str, Any]:
         DB_SCHEMA = get_env_or_die("DB_SCHEMA", "unstract")

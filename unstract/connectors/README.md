@@ -36,7 +36,7 @@ The following databases are supported
 
 ### Local Development
 
-To get started with local development, 
+To get started with local development,
 - Create and source a virtual environment if you haven't already following [these steps](/README.md#create-your-virtual-env).
 - If you're using Mac, install the below library needed for PyMSSQL
 ```
@@ -44,7 +44,7 @@ brew install pkg-config freetds
 ```
 - Install the required dependencies with
 ```shell
-pdm install
+uv sync
 ```
 
 ### Environment variables

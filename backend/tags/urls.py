@@ -1,4 +1,5 @@
 from django.urls import path
+
 from tags.views import TagViewSet
 
 tag_list = TagViewSet.as_view(

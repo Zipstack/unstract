@@ -1,10 +1,11 @@
+from django.urls import path
+from rest_framework.urlpatterns import format_suffix_patterns
+
 from adapter_processor_v2.views import (
     AdapterInstanceViewSet,
     AdapterViewSet,
     DefaultAdapterViewSet,
 )
-from django.urls import path
-from rest_framework.urlpatterns import format_suffix_patterns
 
 default_triad = DefaultAdapterViewSet.as_view(
     {"post": "configure_default_triad", "get": "get_default_triad"}

@@ -1,5 +1,3 @@
-from typing import Optional
-
 from rest_framework.exceptions import APIException
 
 
@@ -24,9 +22,7 @@ class ApiKeyCreateException(APIException):
 
 class Forbidden(APIException):
     status_code = 403
-    default_detail = (
-        "User is forbidden from performing this action. Please contact admin"
-    )
+    default_detail = "User is forbidden from performing this action. Please contact admin"
 
 
 class APINotFound(NotFoundException):
@@ -53,8 +49,8 @@ class NoActiveAPIKeyError(APIException):
 
     def __init__(
         self,
-        detail: Optional[str] = None,
-        code: Optional[str] = None,
+        detail: str | None = None,
+        code: str | None = None,
         deployment_name: str = "this deployment",
     ):
         if detail is None:

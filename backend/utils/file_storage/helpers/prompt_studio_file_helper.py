@@ -6,12 +6,12 @@ from typing import Any
 
 from file_management.exceptions import InvalidFileType
 from file_management.file_management_helper import FileManagerHelper
-from unstract.sdk.file_storage import FileStorage
-from unstract.sdk.file_storage.constants import StorageType
-from unstract.sdk.file_storage.env_helper import EnvHelper
 from utils.file_storage.constants import FileStorageConstants, FileStorageKeys
 
 from unstract.core.utilities import UnstractUtils
+from unstract.sdk.file_storage import FileStorage
+from unstract.sdk.file_storage.constants import StorageType
+from unstract.sdk.file_storage.env_helper import EnvHelper
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +90,8 @@ class PromptStudioFileHelper:
         allowed_content_types: list[str],
     ) -> dict[str, Any]:
         """Method to fetch file contents from the remote location.
-        The path is constructed in runtime based on the args"""
+        The path is constructed in runtime based on the args
+        """
         fs_instance = EnvHelper.get_storage(
             storage_type=StorageType.PERMANENT,
             env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
@@ -160,7 +161,8 @@ class PromptStudioFileHelper:
     def delete_for_ide(org_id: str, user_id: str, tool_id: str, file_name: str) -> bool:
         """Method to delete file in remote while the corresponsing prompt
         studio project is deleted or the file is removed from the file manager.
-        This method handles deleted for related files as well."""
+        This method handles deleted for related files as well.
+        """
         fs_instance = EnvHelper.get_storage(
             storage_type=StorageType.PERMANENT,
             env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
@@ -196,7 +198,8 @@ class PromptStudioFileHelper:
         """This method is used to file files with the specific pattern
         determined using the list of directories passed and the base path.
         This is used to delete related(extract, metadata etc.) files generated
-        for a specific prompt studio project."""
+        for a specific prompt studio project.
+        """
         file_paths = []
         pattern = f"{base_file_name}.*"
         for directory in directories:

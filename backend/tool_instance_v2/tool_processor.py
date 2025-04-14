@@ -1,6 +1,6 @@
 import logging
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 from account_v2.models import User
 from adapter_processor_v2.adapter_processor import AdapterProcessor
@@ -8,6 +8,7 @@ from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from prompt_studio.prompt_studio_registry_v2.prompt_studio_registry_helper import (
     PromptStudioRegistryHelper,
 )
+
 from tool_instance_v2.exceptions import ToolDoesNotExist
 from unstract.sdk.adapters.enums import AdapterTypes
 from unstract.tool_registry.dto import Spec, Tool
@@ -23,9 +24,10 @@ class ToolProcessor:
     @staticmethod
     def get_tool_by_uid(tool_uid: str) -> Tool:
         """Function to get and instantiate a tool for a given tool
-        settingsId."""
+        settingsId.
+        """
         tool_registry = ToolRegistry()
-        tool: Optional[Tool] = tool_registry.get_tool_by_uid(tool_uid)
+        tool: Tool | None = tool_registry.get_tool_by_uid(tool_uid)
         # HACK: Assume tool_uid is prompt_registry_id for fetching a dynamic
         # tool made with Prompt Studio.
         if not tool:
@@ -56,9 +58,7 @@ class ToolProcessor:
         """Function to Get JSON Schema for Tools."""
         tool: Tool = ToolProcessor.get_tool_by_uid(tool_uid=tool_uid)
         schema: Spec = ToolUtils.get_json_schema_for_tool(tool)
-        ToolProcessor.update_schema_with_adapter_configurations(
-            schema=schema, user=user
-        )
+        ToolProcessor.update_schema_with_adapter_configurations(schema=schema, user=user)
         schema_json: dict[str, Any] = schema.to_dict()
         return schema_json
 
@@ -80,9 +80,7 @@ class ToolProcessor:
         ocr_keys = schema.get_ocr_adapter_properties_keys()
 
         if llm_keys:
-            adapters = AdapterProcessor.get_adapters_by_type(
-                AdapterTypes.LLM, user=user
-            )
+            adapters = AdapterProcessor.get_adapters_by_type(AdapterTypes.LLM, user=user)
             for key in llm_keys:
                 adapter_names = map(lambda adapter: str(adapter.adapter_name), adapters)
                 schema.properties[key]["enum"] = list(adapter_names)
@@ -112,9 +110,7 @@ class ToolProcessor:
                 schema.properties[key]["enum"] = list(adapter_names)
 
         if ocr_keys:
-            adapters = AdapterProcessor.get_adapters_by_type(
-                AdapterTypes.OCR, user=user
-            )
+            adapters = AdapterProcessor.get_adapters_by_type(AdapterTypes.OCR, user=user)
             for key in ocr_keys:
                 adapter_names = map(lambda adapter: str(adapter.adapter_name), adapters)
                 schema.properties[key]["enum"] = list(adapter_names)

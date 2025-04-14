@@ -17,7 +17,6 @@ class PromptStudioOutputSerializer(AuditSerializer):
         fields = "__all__"
 
     def to_representation(self, instance):
-
         data = super().to_representation(instance)
         try:
             token_usage = UsageHelper.get_aggregated_token_count(instance.run_id)

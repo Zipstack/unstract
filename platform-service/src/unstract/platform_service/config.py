@@ -3,6 +3,7 @@ from logging.config import dictConfig
 
 from dotenv import load_dotenv
 from flask import Flask
+
 from unstract.platform_service.constants import LogLevel
 from unstract.platform_service.controller import api
 from unstract.platform_service.env import Env
@@ -17,8 +18,7 @@ dictConfig(
         "formatters": {
             "default": {
                 "format": (
-                    "[%(asctime)s] %(levelname)s in"
-                    " %(name)s (%(module)s): %(message)s"
+                    "[%(asctime)s] %(levelname)s in" " %(name)s (%(module)s): %(message)s"
                 ),
                 "datefmt": "%Y-%m-%d %H:%M:%S %z",
             },

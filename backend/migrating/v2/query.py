@@ -1,6 +1,7 @@
 class MigrationQuery:
     """This class contains methods to generate SQL queries for various
-    migration operations."""
+    migration operations.
+    """
 
     def __init__(self, v2_schema) -> None:
         self.v2_schema = v2_schema
@@ -253,8 +254,8 @@ class MigrationQuery:
     def get_organization_migrations(
         self, schema: str, organization_id: str
     ) -> list[dict[str, str]]:
-        """
-        Returns a list of dictionaries containing the organization migration details.
+        """Returns a list of dictionaries containing the organization migration details.
+
         Args:
             schema (str): The name of the schema for the organization.
             organization_id (str): The ID of the organization.

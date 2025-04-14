@@ -3,6 +3,9 @@ from os import environ as env
 
 from dotenv import load_dotenv
 from flask import Flask
+
+from unstract.core.flask import register_error_handlers, register_request_id_middleware
+from unstract.core.flask.logging import setup_logging
 from unstract.prompt_service.controllers import api
 from unstract.prompt_service.extensions import db
 from unstract.prompt_service.helpers.lifecycle import register_lifecycle_hooks
@@ -10,15 +13,11 @@ from unstract.prompt_service.helpers.plugin import plugin_loader
 from unstract.prompt_service.utils.env_loader import get_env_or_die
 from unstract.sdk.constants import LogLevel
 
-from unstract.core.flask import register_error_handlers, register_request_id_middleware
-from unstract.core.flask.logging import setup_logging
-
 load_dotenv()
 
 
 def create_app() -> Flask:
     """Creates and configures the Flask application."""
-
     log_level = env.get("LOG_LEVEL", LogLevel.INFO.value).upper()
     setup_logging(log_level)
     log_level = getattr(logging, log_level, logging.INFO)

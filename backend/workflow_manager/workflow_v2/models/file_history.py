@@ -1,8 +1,8 @@
 import uuid
-from typing import Optional
 
 from django.db import models
 from utils.models.base_model import BaseModel
+
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
@@ -64,10 +64,9 @@ class FileHistory(BaseModel):
 
     def update(
         self,
-        provider_file_uuid: Optional[str] = None,
+        provider_file_uuid: str | None = None,
     ) -> None:
-        """
-        Updates the file execution details.
+        """Updates the file execution details.
 
         Args:
             provider_file_uuid: (Optional) UUID of the file in the storage provider

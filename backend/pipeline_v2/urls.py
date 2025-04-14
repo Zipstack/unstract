@@ -1,8 +1,9 @@
 from django.urls import path
+from rest_framework.urlpatterns import format_suffix_patterns
+
 from pipeline_v2.constants import PipelineURL
 from pipeline_v2.execution_view import PipelineExecutionViewSet
 from pipeline_v2.views import PipelineViewSet
-from rest_framework.urlpatterns import format_suffix_patterns
 
 pipeline_list = PipelineViewSet.as_view(
     {

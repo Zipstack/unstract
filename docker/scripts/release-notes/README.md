@@ -11,6 +11,6 @@ python print_release_notes.py -h
 Make sure to create / activate a virtual environment with the below commands
 
 ```shell
-pdm venv create -w virtualenv --with-pip
-eval $(pdm venv activate in-project)    
+uv venv
+source .venv/bin/activate
 ```

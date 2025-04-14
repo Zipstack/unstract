@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Optional, Union
+from typing import Any
 
 from project.constants import ProjectKey
 from rest_framework.serializers import (
@@ -14,14 +14,14 @@ from rest_framework.serializers import (
 from tool_instance_v2.serializers import ToolInstanceSerializer
 from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
+
+from backend.constants import RequestKey
+from backend.serializers import AuditSerializer
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.constants import WorkflowExecutionKey, WorkflowKey
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.execution_log import ExecutionLog
 from workflow_manager.workflow_v2.models.workflow import Workflow
-
-from backend.constants import RequestKey
-from backend.serializers import AuditSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -76,34 +76,22 @@ class ExecuteWorkflowSerializer(Serializer):
     log_guid = UUIDField(required=False)
     # TODO: Add other fields to handle WFExecution method, mode .etc.
 
-    def get_workflow_id(
-        self, validated_data: dict[str, Union[str, None]]
-    ) -> Optional[str]:
+    def get_workflow_id(self, validated_data: dict[str, str | None]) -> str | None:
         return validated_data.get(WorkflowKey.WF_ID)
 
-    def get_project_id(
-        self, validated_data: dict[str, Union[str, None]]
-    ) -> Optional[str]:
+    def get_project_id(self, validated_data: dict[str, str | None]) -> str | None:
         return validated_data.get(ProjectKey.PROJECT_ID)
 
-    def get_execution_id(
-        self, validated_data: dict[str, Union[str, None]]
-    ) -> Optional[str]:
+    def get_execution_id(self, validated_data: dict[str, str | None]) -> str | None:
         return validated_data.get(WorkflowExecutionKey.EXECUTION_ID)
 
-    def get_log_guid(
-        self, validated_data: dict[str, Union[str, None]]
-    ) -> Optional[str]:
+    def get_log_guid(self, validated_data: dict[str, str | None]) -> str | None:
         return validated_data.get(WorkflowExecutionKey.LOG_GUID)
 
-    def get_execution_action(
-        self, validated_data: dict[str, Union[str, None]]
-    ) -> Optional[str]:
+    def get_execution_action(self, validated_data: dict[str, str | None]) -> str | None:
         return validated_data.get(WorkflowKey.EXECUTION_ACTION)
 
-    def validate(
-        self, data: dict[str, Union[str, None]]
-    ) -> dict[str, Union[str, None]]:
+    def validate(self, data: dict[str, str | None]) -> dict[str, str | None]:
         workflow_id = data.get(WorkflowKey.WF_ID)
         project_id = data.get(ProjectKey.PROJECT_ID)
 

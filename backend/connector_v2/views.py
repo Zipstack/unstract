@@ -1,12 +1,11 @@
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from account_v2.custom_exceptions import DuplicateData
 from connector_auth_v2.constants import ConnectorAuthKey
 from connector_auth_v2.exceptions import CacheMissException, MissingParamException
 from connector_auth_v2.pipeline.common import ConnectorAuthHelper
 from connector_processor.exceptions import OAuthTimeOut
-from connector_v2.constants import ConnectorInstanceKey as CIKey
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from rest_framework import status, viewsets
@@ -15,6 +14,7 @@ from rest_framework.versioning import URLPathVersioning
 from utils.filtering import FilterHelper
 
 from backend.constants import RequestKey
+from connector_v2.constants import ConnectorInstanceKey as CIKey
 
 from .models import ConnectorInstance
 from .serializers import ConnectorInstanceSerializer
@@ -26,7 +26,7 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
     serializer_class = ConnectorInstanceSerializer
 
-    def get_queryset(self) -> Optional[QuerySet]:
+    def get_queryset(self) -> QuerySet | None:
         filter_args = FilterHelper.build_filter_args(
             self.request,
             RequestKey.WORKFLOW,
@@ -40,7 +40,7 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
             queryset = ConnectorInstance.objects.all()
         return queryset
 
-    def _get_connector_metadata(self, connector_id: str) -> Optional[dict[str, str]]:
+    def _get_connector_metadata(self, connector_id: str) -> dict[str, str] | None:
         """Gets connector metadata for the ConnectorInstance.
 
         For non oauth based - obtains from request
@@ -118,6 +118,4 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
                     {CIKey.DUPLICATE_API}"
             )
         headers = self.get_success_headers(serializer.data)
-        return Response(
-            serializer.data, status=status.HTTP_201_CREATED, headers=headers
-        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)

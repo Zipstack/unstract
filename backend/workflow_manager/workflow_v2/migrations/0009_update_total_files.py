@@ -31,7 +31,6 @@ def reverse_update_total_files(apps: Any, schema_editor: Any) -> None:
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("workflow_v2", "0008_workflowexecution_total_files_and_more"),
     ]

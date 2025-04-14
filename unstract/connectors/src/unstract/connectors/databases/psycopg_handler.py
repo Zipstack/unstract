@@ -43,12 +43,8 @@ class PsycoPgHandler:
             logger.error(f"Invalid syntax in creating/inserting data: {e.pgerror}")
             raise InvalidSyntaxException(detail=e.pgerror, database=database) from e
         except PsycopgError.FeatureNotSupported as e:
-            logger.error(
-                f"feature not supported in creating/inserting data: {e.pgerror}"
-            )
-            raise FeatureNotSupportedException(
-                detail=e.pgerror, database=database
-            ) from e
+            logger.error(f"feature not supported in creating/inserting data: {e.pgerror}")
+            raise FeatureNotSupportedException(detail=e.pgerror, database=database) from e
         except (
             PsycopgError.StringDataRightTruncation,
             PsycopgError.InternalError_,

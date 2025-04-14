@@ -1,7 +1,7 @@
 import os
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional, Union
+from typing import Any
 
 from file_management.constants import FileInformationKey
 
@@ -10,12 +10,12 @@ from file_management.constants import FileInformationKey
 class FileInformation:
     name: str
     type: str
-    modified_at: Optional[datetime]
-    content_type: Optional[str]
+    modified_at: datetime | None
+    content_type: str | None
     size: int
 
     def __init__(
-        self, file_info: dict[str, Any], file_content_type: Optional[str] = None
+        self, file_info: dict[str, Any], file_content_type: str | None = None
     ) -> None:
         self.name = os.path.normpath(file_info[FileInformationKey.FILE_NAME])
         self.type = file_info[FileInformationKey.FILE_TYPE]
@@ -27,7 +27,7 @@ class FileInformation:
         self.size = file_info[FileInformationKey.FILE_SIZE]
 
     @staticmethod
-    def parse_datetime(dt_string: Optional[Union[str, datetime]]) -> Optional[datetime]:
+    def parse_datetime(dt_string: str | datetime | None) -> datetime | None:
         if isinstance(dt_string, str):
             return datetime.strptime(dt_string, "%Y-%m-%dT%H:%M:%S.%f%z")
         return dt_string

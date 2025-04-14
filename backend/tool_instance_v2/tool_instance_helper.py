@@ -1,7 +1,7 @@
 import logging
 import os
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 from account_v2.models import User
 from adapter_processor_v2.adapter_processor import AdapterProcessor
@@ -11,6 +11,8 @@ from django.core.exceptions import PermissionDenied
 from django.core.exceptions import ValidationError as DjangoValidationError
 from jsonschema.exceptions import ValidationError as JSONValidationError
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
+from workflow_manager.workflow_v2.constants import WorkflowKey
+
 from tool_instance_v2.constants import JsonSchemaKey
 from tool_instance_v2.exceptions import ToolSettingValidationError
 from tool_instance_v2.models import ToolInstance
@@ -20,7 +22,6 @@ from unstract.sdk.tool.validator import DefaultsGeneratingValidator
 from unstract.tool_registry.constants import AdapterPropertyKey
 from unstract.tool_registry.dto import Spec, Tool
 from unstract.tool_registry.tool_utils import ToolUtils
-from workflow_manager.workflow_v2.constants import WorkflowKey
 
 logger = logging.getLogger(__name__)
 
@@ -30,9 +31,9 @@ class ToolInstanceHelper:
     def get_tool_instances_by_workflow(
         workflow_id: str,
         order_by: str,
-        lookup: Optional[dict[str, Any]] = None,
-        offset: Optional[int] = None,
-        limit: Optional[int] = None,
+        lookup: dict[str, Any] | None = None,
+        offset: int | None = None,
+        limit: int | None = None,
     ) -> list[ToolInstance]:
         wf_filter = {}
         if lookup:
@@ -71,8 +72,10 @@ class ToolInstanceHelper:
             and JsonSchemaKey.ROOT_FOLDER in metadata
         ):
             input_connector_name = metadata[JsonSchemaKey.INPUT_FILE_CONNECTOR]
-            input_connector = ConnectorInstanceHelper.get_input_connector_instance_by_name_for_workflow(  # noqa
-                tool_instance.workflow_id, input_connector_name
+            input_connector = (
+                ConnectorInstanceHelper.get_input_connector_instance_by_name_for_workflow(  # noqa
+                    tool_instance.workflow_id, input_connector_name
+                )
             )
 
             if input_connector and "path" in input_connector.metadata:
@@ -124,8 +127,7 @@ class ToolInstanceHelper:
     def update_metadata_with_adapter_instances(
         metadata: dict[str, Any], tool_uid: str
     ) -> None:
-        """
-        Update the metadata dictionary with adapter instances.
+        """Update the metadata dictionary with adapter instances.
         Parameters:
             metadata (dict[str, Any]):
                 The metadata dictionary to be updated with adapter instances.
@@ -185,7 +187,7 @@ class ToolInstanceHelper:
     @staticmethod
     def get_altered_metadata(
         tool_instance: ToolInstance,
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Get altered metadata by resolving relative paths.
 
         This method retrieves the metadata from the given tool instance
@@ -220,8 +222,10 @@ class ToolInstanceHelper:
             and JsonSchemaKey.ROOT_FOLDER in metadata
         ):
             input_connector_name = metadata[JsonSchemaKey.INPUT_FILE_CONNECTOR]
-            input_connector = ConnectorInstanceHelper.get_input_connector_instance_by_name_for_workflow(  # noqa
-                tool_instance.workflow_id, input_connector_name
+            input_connector = (
+                ConnectorInstanceHelper.get_input_connector_instance_by_name_for_workflow(  # noqa
+                    tool_instance.workflow_id, input_connector_name
+                )
             )
             if input_connector and "path" in input_connector.metadata:
                 relative_path = ToolInstanceHelper.get_relative_path(
@@ -334,7 +338,6 @@ class ToolInstanceHelper:
         user: User, tool_uid: str, tool_meta: dict[str, Any]
     ) -> bool:
         """Function to validate Tools settings."""
-
         # check if exported tool is valid for the user who created workflow
         ToolInstanceHelper.validate_tool_access(user=user, tool_uid=tool_uid)
         ToolInstanceHelper.validate_adapter_permissions(
