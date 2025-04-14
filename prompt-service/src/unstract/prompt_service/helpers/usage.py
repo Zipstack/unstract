@@ -31,11 +31,10 @@ class UsageHelper:
         """
         logger: Logger = app.logger
         try:
-            with db.atomic():
-                logger.info(
-                    "Querying usage metadata for org_id: %s, run_id: %s", org_id, run_id
-                )
-                cursor = db.execute_sql(query, (run_id, organization_uid))
+            logger.info(
+                "Querying usage metadata for org_id: %s, run_id: %s", org_id, run_id
+            )
+            with db.execute_sql(query, (run_id, organization_uid)) as cursor:
                 results: list[tuple] = cursor.fetchall()
                 # Process results as needed
                 for row in results:
