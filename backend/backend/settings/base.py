@@ -58,6 +58,7 @@ WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND = os.environ.get(
     "WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND", 10800
 )
 WEB_APP_ORIGIN_URL = os.environ.get("WEB_APP_ORIGIN_URL", "http://localhost:3000")
+CORS_ALLOWED_ORIGINS = [WEB_APP_ORIGIN_URL]
 
 LOGIN_NEXT_URL = os.environ.get("LOGIN_NEXT_URL", "http://localhost:3000/org")
 LANDING_URL = os.environ.get("LANDING_URL", "http://localhost:3000/landing")
@@ -155,6 +156,14 @@ ALLOWED_HOSTS = ["*"]
 CSRF_TRUSTED_ORIGINS = [WEB_APP_ORIGIN_URL]
 CORS_ALLOW_ALL_ORIGINS = False
 
+# Determine if OpenTelemetry trace context should be included in logs
+OTEL_TRACE_CONTEXT = (
+    " trace_id:%(otelTraceID)s span_id:%(otelSpanID)s"
+    if os.environ.get("OTEL_TRACES_EXPORTER", "none").lower() != "none"
+    else ""
+)
+
+# Logging configuration
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -166,7 +175,9 @@ LOGGING = {
             "format": (
                 "%(levelname)s : [%(asctime)s]"
                 "{module:%(module)s process:%(process)d "
-                "thread:%(thread)d request_id:%(request_id)s} :- %(message)s"
+                "thread:%(thread)d request_id:%(request_id)s"
+                + OTEL_TRACE_CONTEXT
+                + "} :- %(message)s"
             ),
         },
         "verbose": {
@@ -304,7 +315,7 @@ DATABASES = {
 }
 
 MIDDLEWARE = [
-    "log_request_id.middleware.RequestIDMiddleware",
+    "middleware.request_id.CustomRequestIDMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     TENANT_MIDDLEWARE,
     "django.middleware.security.SecurityMiddleware",
@@ -496,6 +507,11 @@ SOCIAL_AUTH_GOOGLE_OAUTH2_AUTH_EXTRA_ARGUMENTS = {
 }
 SOCIAL_AUTH_GOOGLE_OAUTH2_USE_UNIQUE_USER_ID = True
 
+# Request ID middleware settings
+LOG_REQUEST_ID_HEADER = "X-Request-ID"
+REQUEST_ID_RESPONSE_HEADER = "X-Request-ID"
+GENERATE_REQUEST_ID_IF_NOT_IN_HEADER = True
+NO_REQUEST_ID = "N/A"
 
 # Always keep this line at the bottom of the file.
 if missing_settings:
@@ -503,3 +519,7 @@ if missing_settings:
         missing_settings
     )
     raise ValueError(ERROR_MESSAGE)
+
+ENABLE_HIGHLIGHT_API_DEPLOYMENT = os.environ.get(
+    "ENABLE_HIGHLIGHT_API_DEPLOYMENT", False
+)

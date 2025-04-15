@@ -9,6 +9,13 @@ from unstract.connectors.databases.unstract_db import UnstractDB
 
 
 class PostgreSQL(UnstractDB, PsycoPgHandler):
+    # Connection timeout settings (in seconds)
+    CONNECT_TIMEOUT = 30  # Time to establish connection
+    STATEMENT_TIMEOUT = 300  # Time for query execution (5 minutes)
+    KEEPALIVE_IDLE = 30  # Time before sending keepalive
+    KEEPALIVE_INTERVAL = 10  # Time between keepalive probes
+    KEEPALIVE_COUNT = 3  # Number of keepalive failures before dropping
+
     def __init__(self, settings: dict[str, Any]):
         super().__init__("PostgreSQL")
 
@@ -60,17 +67,44 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
         return True
 
     def get_engine(self) -> connection:
+        """
+        Returns a connection to the PostgreSQL database.
+
+        Returns:
+            connection: A connection to the PostgreSQL database.
+        """
+        conn_params = {
+            "keepalives": 1,
+            "keepalives_idle": self.KEEPALIVE_IDLE,
+            "keepalives_interval": self.KEEPALIVE_INTERVAL,
+            "keepalives_count": self.KEEPALIVE_COUNT,
+            "connect_timeout": self.CONNECT_TIMEOUT,
+            "application_name": "unstract_connector",
+            "sslmode": "prefer",
+        }
+
         if self.connection_url:
-            con = psycopg2.connect(dsn=self.connection_url)
+            # Use the URL directly without adding extra options
+            conn_params["dsn"] = self.connection_url
         else:
-            con = psycopg2.connect(
-                host=self.host,
-                port=self.port,
-                database=self.database,
-                user=self.user,
-                password=self.password,
-                options=f"-c search_path={self.schema}",
+            # For non-URL connections
+            conn_params.update(
+                {
+                    "host": self.host,
+                    "port": self.port,
+                    "database": self.database,
+                    "user": self.user,
+                    "password": self.password,
+                }
             )
+
+        con = psycopg2.connect(**conn_params)
+
+        # Set schema explicitly only if schema is specified (avoids PgBouncer issues)
+        if self.schema:
+            with con.cursor() as cur:
+                cur.execute(f"SET search_path TO {self.schema};")
+
         return con
 
     def execute_query(

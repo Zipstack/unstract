@@ -1,0 +1,31 @@
+[project]
+name = "unstract-tool-sidecar"
+version = "0.0.1"
+description = "Container Side Car for Unstract"
+authors = [
+    {name = "Zipstack Inc.", email = "devsupport@zipstack.com"},
+]
+dependencies = [
+    "redis>=4.5.0",
+    "python-dotenv>=1.0.0",
+    "python-json-logger>=2.0.0",
+    "unstract-core @ file:///${PROJECT_ROOT}/../unstract/core"
+]
+requires-python = ">=3.9,<3.13"
+readme = "README.md"
+license = {text = "MIT"}
+
+[project.optional-dependencies]
+deploy = [
+    # OpenTelemetry for tracing and profiling
+    "opentelemetry-distro",
+    "opentelemetry-exporter-otlp",
+]
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[tool.pdm.build]
+includes = ["src"]
+package-dir = "src"

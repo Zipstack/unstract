@@ -1,12 +1,15 @@
 from enum import Enum
 
 
-class PromptServiceContants:
+class PromptServiceConstants:
+    """Constants used in the prompt service."""
+
     WORD = "word"
     SYNONYMS = "synonyms"
     OUTPUTS = "outputs"
     TOOL_ID = "tool_id"
     RUN_ID = "run_id"
+    EXECUTION_ID = "execution_id"
     FILE_NAME = "file_name"
     FILE_HASH = "file_hash"
     NAME = "name"
@@ -79,6 +82,16 @@ class PromptServiceContants:
     LINE_ITEM = "line-item"
     LINE_NUMBERS = "line_numbers"
     WHISPER_HASH = "whisper_hash"
+    PAID_FEATURE_MSG = (
+        "It is a cloud / enterprise feature. If you have purchased a plan and still "
+        "face this issue, please contact support"
+    )
+    NO_CONTEXT_ERROR = (
+        "Couldn't fetch context from vector DB. "
+        "This happens usually due to a delay by the Vector DB "
+        "provider to confirm writes to DB. "
+        "Please try again after some time"
+    )
 
 
 class RunLevel(Enum):
@@ -104,15 +117,59 @@ class DBTableV2:
 
 
 class FileStorageKeys:
+    """File storage keys."""
+
     PERMANENT_REMOTE_STORAGE = "PERMANENT_REMOTE_STORAGE"
     TEMPORARY_REMOTE_STORAGE = "TEMPORARY_REMOTE_STORAGE"
 
 
 class FileStorageType(Enum):
+    """File storage type."""
+
     PERMANENT = "permanent"
     TEMPORARY = "temporary"
 
 
 class ExecutionSource(Enum):
+    """Execution source."""
+
     IDE = "ide"
     TOOL = "tool"
+
+
+class VariableType(str, Enum):
+    """Type of variable."""
+
+    STATIC = "STATIC"
+    DYNAMIC = "DYNAMIC"
+
+
+class VariableConstants:
+    """Constants for variable extraction."""
+
+    VARIABLE_REGEX = "{{(.+?)}}"
+    DYNAMIC_VARIABLE_DATA_REGEX = r"\[(.*?)\]"
+    DYNAMIC_VARIABLE_URL_REGEX = r"(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'\".,<>?«»“”‘’]))"  # noqa: E501
+
+
+class IndexingConstants:
+    TOOL_ID = "tool_id"
+    EMBEDDING_INSTANCE_ID = "embedding_instance_id"
+    VECTOR_DB_INSTANCE_ID = "vector_db_instance_id"
+    X2TEXT_INSTANCE_ID = "x2text_instance_id"
+    FILE_PATH = "file_path"
+    CHUNK_SIZE = "chunk_size"
+    CHUNK_OVERLAP = "chunk_overlap"
+    REINDEX = "reindex"
+    FILE_HASH = "file_hash"
+    OUTPUT_FILE_PATH = "output_file_path"
+    ENABLE_HIGHLIGHT = "enable_highlight"
+    USAGE_KWARGS = "usage_kwargs"
+    PROCESS_TEXT = "process_text"
+    EXTRACTED_TEXT = "extracted_text"
+    TAGS = "tags"
+    EXECUTION_SOURCE = "execution_source"
+    DOC_ID = "doc_id"
+    TOOL_EXECUTION_METATADA = "tool_execution_metadata"
+    EXECUTION_DATA_DIR = "execution_data_dir"
+    METADATA_FILE = "METADATA.json"
