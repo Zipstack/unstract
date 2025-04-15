@@ -25,7 +25,6 @@ def create_app() -> Flask:
 
     # Load plugins
     plugin_loader(app)
-    # register_lifecycle_hooks(app)
     register_request_id_middleware(app)
     register_error_handlers(app)
     app.register_blueprint(api)
