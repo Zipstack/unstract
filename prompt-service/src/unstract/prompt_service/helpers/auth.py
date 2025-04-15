@@ -4,7 +4,7 @@ from flask import Request
 from flask import current_app as app
 from flask import request
 from unstract.prompt_service.constants import DBTableV2
-from unstract.prompt_service.extensions import db
+from unstract.prompt_service.extensions import db, db_context
 from unstract.prompt_service.utils.db_utils import DBUtils
 from unstract.prompt_service.utils.env_loader import get_env_or_die
 
@@ -21,11 +21,11 @@ class AuthHelper:
                 return False
 
             platform_key_table = f'"{DB_SCHEMA}".{DBTableV2.PLATFORM_KEY}'
-
-            query = f"SELECT * FROM {platform_key_table} WHERE key = '{token}'"
-            cursor = db.execute_sql(query)
-            result_row = cursor.fetchone()
-            cursor.close()
+            with db_context():
+                query = f"SELECT * FROM {platform_key_table} WHERE key = '{token}'"
+                cursor = db.execute_sql(query)
+                result_row = cursor.fetchone()
+                cursor.close()
             if not result_row or len(result_row) == 0:
                 app.logger.error(
                     f"Authentication failed. bearer token not found {token}"
