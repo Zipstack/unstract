@@ -31,6 +31,8 @@ class MysqlHandler:
             int: "BIGINT",
             float: "FLOAT",
             datetime.datetime: "TIMESTAMP",
+            dict: "JSON",
+            list: "JSON",
         }
         return mapping.get(python_type, "LONGTEXT")
 
