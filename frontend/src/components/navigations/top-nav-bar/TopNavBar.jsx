@@ -69,6 +69,22 @@ try {
   // Ignore if hook not available
 }
 
+const CustomLogo = ({ onClick, className }) => {
+  const [logoSrc, setLogoSrc] = useState(process.env.REACT_APP_CUSTOM_LOGO_URL);
+
+  return logoSrc ? (
+    <img
+      src={logoSrc}
+      onError={() => setLogoSrc(null)}
+      className={className}
+      onClick={onClick}
+      alt="logo"
+    />
+  ) : (
+    <UnstractLogo className={className} onClick={onClick} />
+  );
+};
+
 let unstractSubscriptionPlan;
 let unstractSubscriptionPlanStore;
 let UNSTRACT_SUBSCRIPTION_PLANS;
@@ -338,7 +354,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
     <Row align="middle" className="topNav">
       <Col span={6} className="platform-switch-container">
         {isUnstract ? (
-          <UnstractLogo
+          <CustomLogo
             className="topbar-logo cursor-pointer"
             onClick={() =>
               navigate(`/${sessionDetails?.orgName}/${homePagePath}`)
@@ -411,6 +427,11 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
 TopNavBar.propTypes = {
   isSimpleLayout: PropTypes.bool,
   topNavBarOptions: PropTypes.node,
+};
+
+CustomLogo.propTypes = {
+  onClick: PropTypes.func.isRequired,
+  className: PropTypes.string.isRequired,
 };
 
 export { TopNavBar };
