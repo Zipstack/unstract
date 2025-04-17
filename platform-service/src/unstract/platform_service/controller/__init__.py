@@ -4,9 +4,9 @@ import traceback
 from flask import Blueprint, Response, jsonify, request
 from werkzeug.exceptions import HTTPException
 
+from unstract.core.flask.exceptions import APIError, ErrorResponse
 from unstract.platform_service.controller.health import health_bp
 from unstract.platform_service.controller.platform import platform_bp
-from unstract.platform_service.exceptions import APIError, ErrorResponse
 
 api = Blueprint("api", __name__)
 api.register_blueprint(platform_bp)

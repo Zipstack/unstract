@@ -1,9 +1,11 @@
 import logging
-from logging.config import dictConfig
+import os
 
 from dotenv import load_dotenv
 from flask import Flask
 
+from unstract.core.flask import register_error_handlers, register_request_id_middleware
+from unstract.core.flask.logging import setup_logging
 from unstract.platform_service.constants import LogLevel
 from unstract.platform_service.controller import api
 from unstract.platform_service.env import Env
@@ -12,63 +14,21 @@ from unstract.platform_service.extensions import db
 load_dotenv()
 
 
-dictConfig(
-    {
-        "version": 1,
-        "formatters": {
-            "default": {
-                "format": (
-                    "[%(asctime)s] %(levelname)s in" " %(name)s (%(module)s): %(message)s"
-                ),
-                "datefmt": "%Y-%m-%d %H:%M:%S %z",
-            },
-        },
-        "handlers": {
-            "wsgi": {
-                "class": "logging.StreamHandler",
-                "stream": "ext://flask.logging.wsgi_errors_stream",
-                "formatter": "default",
-            },
-        },
-        "loggers": {
-            "werkzeug": {
-                "level": Env.LOG_LEVEL,
-                "handlers": ["wsgi"],
-                "propagate": False,
-            },
-            "gunicorn.access": {
-                "level": Env.LOG_LEVEL,
-                "handlers": ["wsgi"],
-                "propagate": False,
-            },
-            "gunicorn.error": {
-                "level": Env.LOG_LEVEL,
-                "handlers": ["wsgi"],
-                "propagate": False,
-            },
-        },
-        "root": {
-            "level": Env.LOG_LEVEL,
-            "handlers": ["wsgi"],
-        },
-    }
-)
-
-LOGGING_LEVELS = {
-    LogLevel.DEBUG: logging.DEBUG,
-    LogLevel.INFO: logging.INFO,
-    LogLevel.WARNING: logging.WARNING,
-    LogLevel.ERROR: logging.ERROR,
-    LogLevel.CRITICAL: logging.CRITICAL,
-}
-
-
 def create_app() -> Flask:
     app = Flask("platform-service")
 
-    # Set logging level
-    logging_level = LOGGING_LEVELS.get(Env.LOG_LEVEL, logging.INFO)
-    app.logger.setLevel(logging_level)
+    # Configure logging
+    log_level = os.getenv("LOG_LEVEL", LogLevel.INFO).upper()
+    log_level = getattr(logging, log_level, logging.INFO)
+    setup_logging(log_level)
+
+    # Register error handlers
+    register_error_handlers(app)
+
+    # Register middleware
+    register_request_id_middleware(app)
+
+    # Register URL routes
     app.register_blueprint(api)
 
     # Initialize and connect to the database

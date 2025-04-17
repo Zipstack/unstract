@@ -1,7 +1,7 @@
 from typing import Any
 
+from unstract.core.flask.exceptions import APIError
 from unstract.platform_service.constants import DBTable
-from unstract.platform_service.exceptions import APIError
 from unstract.platform_service.extensions import db
 from unstract.platform_service.utils import EnvManager
 
