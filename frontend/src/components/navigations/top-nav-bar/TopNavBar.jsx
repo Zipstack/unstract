@@ -69,22 +69,19 @@ try {
   // Ignore if hook not available
 }
 
-const CustomLogo = ({ onClick }) => {
+const CustomLogo = ({ onClick, className }) => {
   const [logoSrc, setLogoSrc] = useState(process.env.REACT_APP_CUSTOM_LOGO_URL);
 
   return logoSrc ? (
     <img
       src={logoSrc}
       onError={() => setLogoSrc(null)}
-      className="topbar-logo cursor-pointer"
+      className={className}
       onClick={onClick}
       alt="logo"
     />
   ) : (
-    <UnstractLogo
-      className="topbar-logo cursor-pointer"
-      onClick={onClick}
-    />
+    <UnstractLogo className={className} onClick={onClick} />
   );
 };
 
@@ -359,7 +356,9 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
         {isUnstract ? (
           <CustomLogo
             className="topbar-logo cursor-pointer"
-            onClick={() => navigate(`/${sessionDetails?.orgName}/${homePagePath}`)}
+            onClick={() =>
+              navigate(`/${sessionDetails?.orgName}/${homePagePath}`)
+            }
           />
         ) : (
           WhispererLogo && <WhispererLogo className="topbar-logo" />
@@ -428,6 +427,11 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
 TopNavBar.propTypes = {
   isSimpleLayout: PropTypes.bool,
   topNavBarOptions: PropTypes.node,
+};
+
+CustomLogo.propTypes = {
+  onClick: PropTypes.func.isRequired,
+  className: PropTypes.string.isRequired,
 };
 
 export { TopNavBar };
