@@ -1,7 +1,7 @@
 from typing import Any
 
+from unstract.core.flask.exceptions import APIError
 from unstract.platform_service.constants import DBTable
-from unstract.platform_service.exceptions import APIError
 from unstract.platform_service.extensions import db
 from unstract.platform_service.utils import EnvManager
 
@@ -32,7 +32,10 @@ class PromptStudioRequestHelper:
         cursor = db.execute_sql(query)
         result_row = cursor.fetchone()
         if not result_row:
-            raise APIError(message="Custom Tool not found", code=404)
+            raise APIError(
+                message=f"Prompt studio project with UUID '{prompt_registry_id}' is not found.",
+                code=404,
+            )
         columns = [desc[0] for desc in cursor.description]
         data_dict: dict[str, Any] = dict(zip(columns, result_row, strict=False))
         cursor.close()
