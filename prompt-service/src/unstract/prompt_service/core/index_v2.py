@@ -154,7 +154,7 @@ class Index:
         vector_db: VectorDB,
         doc_id: str,
         extracted_text: str,
-        doc_id_found: str,
+        doc_id_found: bool,
     ):
         if isinstance(
             vector_db.get_vector_db(
@@ -184,7 +184,7 @@ class Index:
         try:
             vector_db.index_document(
                 documents,
-                chunk_size=self.chunking_config.chunk_overlap,
+                chunk_size=self.chunking_config.chunk_size,
                 chunk_overlap=self.chunking_config.chunk_overlap,
                 show_progress=True,
             )

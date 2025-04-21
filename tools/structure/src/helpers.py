@@ -1,4 +1,5 @@
 import datetime
+import json
 from typing import Any
 
 from constants import IndexingConstants as IKeys
@@ -42,8 +43,10 @@ class StructureToolHelper:
             prompt_port=tool.get_env_or_die(SettingsKeys.PROMPT_PORT),
         )
         tool.stream_log(f"responder : {responder}")
-        extracted_text = responder.extract(payload=payload)
-
+        response = responder.extract(payload=payload)
+        response_data = response.get("structure_output")
+        structure_output = json.loads(response_data)
+        extracted_text = structure_output.get("extracted_text")
         return extracted_text
 
     @staticmethod

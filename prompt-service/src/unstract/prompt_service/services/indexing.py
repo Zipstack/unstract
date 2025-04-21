@@ -1,7 +1,5 @@
 import logging
 
-from flask import current_app as app
-
 from unstract.prompt_service.core.index_v2 import Index
 from unstract.prompt_service.dto import (
     ChunkingConfig,
@@ -70,9 +68,6 @@ class IndexingService:
                 embedding=embedding,
                 vector_db=vector_db,
             )
-            if doc_id_found:
-                app.logger.info("Doc ID found: %s", doc_id_found)
-                return doc_id
 
             # Index and return doc_id
             index.perform_indexing(
