@@ -17,8 +17,9 @@ from unstract.core.utilities import UnstractUtils
 
 
 class DockerContainer(ContainerInterface):
-    def __init__(self, container: Container) -> None:
+    def __init__(self, container: Container, logger: logging.Logger) -> None:
         self.container: Container = container
+        self.logger = logger
 
     @property
     def name(self):
@@ -28,21 +29,51 @@ class DockerContainer(ContainerInterface):
         for line in self.container.logs(stream=True, follow=follow):
             yield line.decode().strip()
 
-    def cleanup(self) -> None:
+    def wait_until_stop(
+        self, main_container_status: Optional[dict[str, Any]] = None
+    ) -> dict:
+        """Wait until the container stops and return the status.
+
+        Returns:
+            dict: Container exit status containing 'StatusCode' and 'Error' if any
+        """
+        if main_container_status and main_container_status.get("StatusCode", 0) != 0:
+            self.logger.info(
+                f"Main container exited with status {main_container_status}, "
+                "stopping sidecar"
+            )
+            timeout = Utils.get_sidecar_wait_timeout()
+            return self.container.wait(timeout=timeout)
+
+        return self.container.wait()
+
+    def cleanup(self, client: Optional[ContainerClientInterface] = None) -> None:
         if not self.container or not Utils.remove_container_on_exit():
             return
         try:
             self.container.remove(force=True)
+            if client:
+                client.cleanup_volume()
         except Exception as remove_error:
             self.logger.error(f"Failed to remove docker container: {remove_error}")
 
 
 class Client(ContainerClientInterface):
-    def __init__(self, image_name: str, image_tag: str, logger: logging.Logger) -> None:
+    def __init__(
+        self,
+        image_name: str,
+        image_tag: str,
+        logger: logging.Logger,
+        sidecar_enabled: bool = False,
+    ) -> None:
         self.image_name = image_name
+        self.sidecar_image_name = os.getenv(Env.TOOL_SIDECAR_IMAGE_NAME)
+        self.sidecar_image_tag = os.getenv(Env.TOOL_SIDECAR_IMAGE_TAG)
         # If no image_tag is provided will assume the `latest` tag
         self.image_tag = image_tag or "latest"
         self.logger = logger
+        self.sidecar_enabled = sidecar_enabled
+        self.volume_name: Optional[str] = None
 
         # Create a Docker client that communicates with
         #   the Docker daemon in the host environment
@@ -119,20 +150,34 @@ class Client(ContainerClientInterface):
             self.logger.error(f"An API error occurred: {e}")
             return False
 
-    def get_image(self) -> str:
+    def cleanup_volume(self) -> None:
+        """Cleans up the shared volume after both containers are stopped."""
+        try:
+            if self.volume_name:
+                self.client.volumes.get(self.volume_name).remove(force=True)
+                self.logger.info(f"Removed log volume: {self.volume_name}")
+        except Exception as e:
+            self.logger.warning(f"Failed to remove log volume: {e}")
+
+    def get_image(self, sidecar: bool = False) -> str:
         """Will check if image exists locally and pulls the image using
         `self.image_name` and `self.image_tag` if necessary.
 
         Returns:
             str: image string combining repo name and tag like `ubuntu:22.04`
         """
-        image_name_with_tag = f"{self.image_name}:{self.image_tag}"
+        if sidecar:
+            image_name_with_tag = f"{self.sidecar_image_name}:{self.sidecar_image_tag}"
+            repository = self.sidecar_image_name
+        else:
+            image_name_with_tag = f"{self.image_name}:{self.image_tag}"
+            repository = self.image_name
         if self.__image_exists(image_name_with_tag):
             return image_name_with_tag
 
         self.logger.info("Pulling the container: %s", image_name_with_tag)
         resp = self.client.api.pull(
-            repository=self.image_name,
+            repository=repository,
             tag=self.image_tag,
             stream=True,
             decode=True,
@@ -159,13 +204,36 @@ class Client(ContainerClientInterface):
         self,
         command: list[str],
         file_execution_id: str,
+        shared_log_dir: str,
         container_name: Optional[str] = None,
         envs: Optional[dict[str, Any]] = None,
         auto_remove: bool = False,
+        sidecar: bool = False,
+        **kwargs,
     ) -> dict[str, Any]:
         if envs is None:
             envs = {}
-        mounts = []
+
+        # Create shared volume for logs
+        volume_name = f"logs-{file_execution_id}"
+        self.volume_name = volume_name
+
+        # Ensure we're mounting to a directory
+        mount_target = shared_log_dir
+        if not mount_target.endswith("/"):
+            mount_target = os.path.dirname(mount_target)
+        if self.sidecar_enabled:
+            mounts = [
+                {
+                    "Type": "volume",
+                    "Source": volume_name,
+                    "Target": mount_target,
+                }
+            ]
+            stream_logs = False
+        else:
+            mounts = []
+            stream_logs = True
 
         if not container_name:
             container_name = UnstractUtils.build_tool_container_name(
@@ -174,12 +242,15 @@ class Client(ContainerClientInterface):
                 file_execution_id=file_execution_id,
             )
 
+        if sidecar:
+            container_name = f"{container_name}-sidecar"
+
         return {
             "name": container_name,
-            "image": self.get_image(),
-            "command": command,
+            "image": self.get_image(sidecar=sidecar),
+            "entrypoint": command,
             "detach": True,
-            "stream": True,
+            "stream": stream_logs,
             "auto_remove": auto_remove,
             "environment": envs,
             "stderr": True,
@@ -188,6 +259,69 @@ class Client(ContainerClientInterface):
             "mounts": mounts,
         }
 
-    def run_container(self, config: dict[Any, Any]) -> Any:
-        self.logger.info(f"Docker config: {config}")
-        return DockerContainer(self.client.containers.run(**config))
+    def run_container(self, container_config: dict[str, Any]) -> DockerContainer:
+        """Run a container with the given configuration.
+
+        Args:
+            container_config (dict[str, Any]): Container configuration
+
+        Returns:
+            DockerContainer: Running container instance
+        """
+        try:
+            self.logger.info("Running container with config: %s", container_config)
+            container = self.client.containers.run(**container_config)
+            return DockerContainer(
+                container=container,
+                logger=self.logger,
+            )
+        except ImageNotFound:
+            self.logger.error(f"Image {self.image_name}:{self.image_tag} not found")
+            raise
+
+    def run_container_with_sidecar(
+        self, container_config: dict[str, Any], sidecar_config: dict[str, Any]
+    ) -> tuple[DockerContainer, Optional[DockerContainer]]:
+        """Run a container with sidecar.
+
+        Args:
+            container_config (dict[str, Any]): Container configuration
+            sidecar_config (dict[str, Any]): Sidecar configuration
+
+        Returns:
+            tuple[DockerContainer, Optional[DockerContainer]]:
+                Running container and sidecar instance
+        """
+        try:
+            self.logger.info("Running container with config: %s", container_config)
+            container = self.client.containers.run(**container_config)
+            self.logger.info("Running sidecar with config: %s", sidecar_config)
+            sidecar = self.client.containers.run(**sidecar_config)
+            return DockerContainer(
+                container=container,
+                logger=self.logger,
+            ), DockerContainer(
+                container=sidecar,
+                logger=self.logger,
+            )
+        except ImageNotFound:
+            self.logger.error(f"Image {self.image_name}:{self.image_tag} not found")
+            raise
+
+    def wait_for_container_stop(
+        self,
+        container: Optional[DockerContainer],
+        main_container_status: Optional[dict[str, Any]] = None,
+    ) -> Optional[dict]:
+        """Wait for the container to stop and return its exit status.
+
+        Args:
+            container (DockerContainer): Container to wait for
+
+        Returns:
+            Optional[dict]:
+                Container exit status containing 'StatusCode' and 'Error' if any
+        """
+        if not container:
+            return None
+        return container.wait_until_stop(main_container_status)

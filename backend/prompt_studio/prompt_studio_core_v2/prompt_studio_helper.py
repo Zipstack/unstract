@@ -34,6 +34,7 @@ from prompt_studio.prompt_studio_core_v2.exceptions import (
     AnswerFetchError,
     DefaultProfileError,
     EmptyPromptError,
+    ExtractionAPIError,
     IndexingAPIError,
     NoPromptsFound,
     OperationNotSupported,
@@ -377,6 +378,13 @@ class PromptStudioHelper:
             fs=fs_instance,
             tool=util,
         )
+        if DocumentIndexingService.is_document_indexing(
+            org_id=org_id, user_id=user_id, doc_id_key=doc_id
+        ):
+            return {
+                "status": IndexingStatus.PENDING_STATUS.value,
+                "output": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
+            }
         extracted_text = PromptStudioHelper.dynamic_extractor(
             profile_manager=default_profile,
             file_path=file_path,
@@ -827,6 +835,13 @@ class PromptStudioHelper:
             fs=fs_instance,
             tool=util,
         )
+        if DocumentIndexingService.is_document_indexing(
+            org_id=org_id, user_id=user_id, doc_id_key=doc_id
+        ):
+            return {
+                "status": IndexingStatus.PENDING_STATUS.value,
+                "output": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
+            }
         logger.info(f"Extracting text from {file_path} for {doc_id}")
         extracted_text = PromptStudioHelper.dynamic_extractor(
             profile_manager=profile_manager,
@@ -844,30 +859,11 @@ class PromptStudioHelper:
             doc_path = str(
                 doc_path.parent.parent / "summarize" / (doc_path.stem + ".txt")
             )
-            summarize_file_path = PromptStudioHelper.summarize(
-                filename, org_id, document_id, is_summary, run_id, tool, doc_id
-            )
-            summarize_doc_id = IndexingUtils.generate_index_key(
-                vector_db=str(default_profile.vector_store.id),
-                embedding=str(default_profile.embedding_model.id),
-                x2text=str(default_profile.x2text.id),
-                chunk_size=str(default_profile.chunk_size),
-                chunk_overlap=str(default_profile.chunk_overlap),
-                file_path=summarize_file_path,
-                fs=fs_instance,
-                tool=util,
-            )
-            PromptStudioIndexHelper.handle_index_manager(
-                document_id=document_id,
-                is_summary=is_summary,
-                profile_manager=profile_manager,
-                doc_id=summarize_doc_id,
-            )
             logger.info("Summary enabled, set chunk to zero..")
         logger.info(f"Indexing document {doc_path} for {doc_id}")
         index_result = PromptStudioHelper.dynamic_indexer(
             profile_manager=profile_manager,
-            file_path=doc_path,
+            file_path=file_path,
             tool_id=str(tool.tool_id),
             org_id=org_id,
             document_id=document_id,
@@ -1124,13 +1120,15 @@ class PromptStudioHelper:
             )
             headers = {Common.X_REQUEST_ID: StateStore.get(Common.REQUEST_ID)}
             response = responder.index(payload=payload, headers=headers)
-            try:
-                response_text = PromptStudioHelper.handle_response(response)
-                doc_id = json.loads(response_text).get("doc_id")
 
-            except IndexingAPIError as e:
-                logger.error(f"Failed to index document: {str(e)}")
-                raise IndexingAPIError(f"Failed to index document: {str(e)}") from e
+            status_code = response.get("status_code")
+            if status_code == 200:
+                doc_id = json.loads(response.get("structure_output")).get("doc_id")
+            else:
+                error_message = f"Failed to index '{filename}'. " + response.get(
+                    "error", ""
+                )
+                raise IndexingAPIError(error_message)
 
             PromptStudioIndexHelper.handle_index_manager(
                 document_id=document_id,
@@ -1319,12 +1317,12 @@ class PromptStudioHelper:
         usage_kwargs = {"run_id": run_id}
         # Orginal file name with which file got uploaded in prompt studio
         usage_kwargs["file_name"] = filename
+        is_extracted = PromptStudioIndexHelper.check_extraction_status(
+            document_id=document_id,
+            profile_manager=profile_manager,
+            doc_id=doc_id,
+        )
         if is_extracted and not reindex:
-            is_extracted = PromptStudioIndexHelper.check_extraction_status(
-                document_id=document_id,
-                profile_manager=profile_manager,
-                doc_id=doc_id,
-            )
             fs_instance = EnvHelper.get_storage(
                 storage_type=StorageType.PERMANENT,
                 env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
@@ -1359,26 +1357,19 @@ class PromptStudioHelper:
         )
         headers = {Common.X_REQUEST_ID: StateStore.get(Common.REQUEST_ID)}
         response = responder.extract(payload=payload, headers=headers)
-        try:
-            response_data = PromptStudioHelper.handle_response(response)
+        status_code = response.get("status_code")
+        if status_code == 200:
+            response_data = response.get("structure_output")
             extracted_text = json.loads(response_data)
             PromptStudioIndexHelper.mark_extraction_status(
                 document_id=document_id,
                 profile_manager=profile_manager,
                 doc_id=doc_id,
             )
-        except IndexingAPIError as e:
-            logger.error(f"Failed to extract document: {str(e)}")
-            raise IndexingAPIError(f"Failed to extract document: {str(e)}") from e
+        else:
+            error_message = f"Failed to extract '{filename}'. " + response.get(
+                "error", ""
+            )
+            raise ExtractionAPIError(error_message)
 
         return extracted_text
-
-    @staticmethod
-    def handle_response(response: dict) -> dict:
-        """Handles API responses stored in dictionary format."""
-        status_code = response.get("status_code")
-        if status_code == 200:
-            return response.get("structure_output")
-        else:
-            error_message = response.get("error", "Unknown error")
-            raise IndexingAPIError(f"Error while fetching response. {error_message}")
