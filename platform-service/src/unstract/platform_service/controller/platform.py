@@ -8,9 +8,9 @@ from cryptography.fernet import Fernet, InvalidToken
 from flask import Blueprint, Request, jsonify, make_response, request
 from flask import current_app as app
 
+from unstract.core.flask.exceptions import APIError
 from unstract.platform_service.constants import DBTable
 from unstract.platform_service.env import Env
-from unstract.platform_service.exceptions import APIError
 from unstract.platform_service.extensions import db
 from unstract.platform_service.helper.adapter_instance import (
     AdapterInstanceRequestHelper,
@@ -521,6 +521,8 @@ def custom_tool_instance() -> Any:
         )
         return jsonify(data_dict)
     except Exception as e:
+        if isinstance(e, APIError):
+            raise e
         msg = (
             f"Error while getting data for Prompt Studio project "
             f"{prompt_registry_id}: {e}"

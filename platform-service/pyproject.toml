@@ -8,7 +8,7 @@ readme = "README.md"
 license = { text = "MIT" }
 
 dependencies = [
-    "flask~=3.0.0",
+    "flask~=3.1.0",
     "peewee~=3.16",
     "psycopg2-binary~=2.9",
     "python-dotenv~=1.0",
@@ -17,10 +17,12 @@ dependencies = [
     "requests>=2.31.0",
     "unstract-sdk[gcs, azure, aws]~=0.70.0", # Add version
     "unstract-flags",
+    "unstract-core[flask]",
 ]
 
 [tool.uv.sources]
 unstract-flags = { path = "../unstract/flags", editable = true }
+unstract-core = { path = "../unstract/core", editable = true }
 
 [dependency-groups]
 test = ["pytest>=8.0.1"]
