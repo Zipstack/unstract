@@ -40,11 +40,11 @@ class UsageHelper:
                     # Process results as needed
                     for row in results:
                         key, item = UsageHelper._get_key_and_item(row)
-                    # Initialize the key as an empty list if it doesn't exist
-                    if key not in metadata:
-                        metadata[key] = []
-                    # Append the item to the list associated with the key
-                    metadata[key].append(item)
+                        # Initialize the key as an empty list if it doesn't exist
+                        if key not in metadata:
+                            metadata[key] = []
+                        # Append the item to the list associated with the key
+                        metadata[key].append(item)
         except Exception as e:
             logger.error(f"Error while querying usage metadata: {e}")
         return metadata
