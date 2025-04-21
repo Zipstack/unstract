@@ -3,10 +3,10 @@ import {
   Button,
   Col,
   Dropdown,
-  Image,
   Row,
   Space,
   Typography,
+  Image,
 } from "antd";
 import {
   UserOutlined,
@@ -35,6 +35,7 @@ import "./TopNavBar.css";
 import { useAlertStore } from "../../../store/alert-store.js";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal.jsx";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import config from "../../../config";
 
 let TrialDaysInfo;
 try {
@@ -70,19 +71,31 @@ try {
 }
 
 const CustomLogo = ({ onClick, className }) => {
-  const [logoSrc, setLogoSrc] = useState(process.env.REACT_APP_CUSTOM_LOGO_URL);
-
-  return logoSrc ? (
-    <img
-      src={logoSrc}
-      onError={() => setLogoSrc(null)}
-      className={className}
-      onClick={onClick}
-      alt="logo"
-    />
-  ) : (
-    <UnstractLogo className={className} onClick={onClick} />
-  );
+  // Use Ant Design Image and config.logoUrl
+  if (config.logoUrl) {
+    return (
+      <Image
+        src={config.logoUrl}
+        preview={false}
+        className={className}
+        onClick={onClick}
+        alt="logo"
+        style={{
+          cursor: onClick ? "pointer" : undefined,
+          background: "transparent",
+        }}
+        onError={() => {
+          // If image fails to load, component will re-render and use UnstractLogo
+          // since we'll set config.logoUrl to null
+          if (config.logoUrl) {
+            // Only modify if it's not already null to avoid infinite re-renders
+            config.logoUrl = null;
+          }
+        }}
+      />
+    );
+  }
+  return <UnstractLogo className={className} onClick={onClick} />;
 };
 
 let unstractSubscriptionPlan;
