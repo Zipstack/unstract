@@ -52,12 +52,7 @@ COPY ${BUILD_PACKAGES_PATH}/ /unstract/
 RUN uv sync --frozen && \
     uv sync --group deploy && \
     .venv/bin/python3 -m ensurepip --upgrade && \
-    uv run opentelemetry-bootstrap -a install && \
-    # Scientific packages reinstallation
-    # uv pip install --pre --no-binary :all: pymssql --no-cache --force-reinstall && \
-    uv pip uninstall numpy pandas scipy scikit-learn && \
-    uv pip install --no-cache-dir --no-binary :all: numpy && \
-    uv pip install --no-cache-dir pandas scipy scikit-learn
+    uv run opentelemetry-bootstrap -a install
 
 EXPOSE 8000
 
