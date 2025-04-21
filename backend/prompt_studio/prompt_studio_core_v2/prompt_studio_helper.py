@@ -378,13 +378,6 @@ class PromptStudioHelper:
             fs=fs_instance,
             tool=util,
         )
-        if DocumentIndexingService.is_document_indexing(
-            org_id=org_id, user_id=user_id, doc_id_key=doc_id
-        ):
-            return {
-                "status": IndexingStatus.PENDING_STATUS.value,
-                "output": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
-            }
         extracted_text = PromptStudioHelper.dynamic_extractor(
             profile_manager=default_profile,
             file_path=file_path,
@@ -1360,7 +1353,8 @@ class PromptStudioHelper:
         status_code = response.get("status_code")
         if status_code == 200:
             response_data = response.get("structure_output")
-            extracted_text = json.loads(response_data)
+            structure_output = json.loads(response_data)
+            extracted_text = structure_output.get("extracted_text")
             PromptStudioIndexHelper.mark_extraction_status(
                 document_id=document_id,
                 profile_manager=profile_manager,
