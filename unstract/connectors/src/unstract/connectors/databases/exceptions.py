@@ -111,3 +111,9 @@ class ColumnMissingException(UnstractDBConnectorException):
             f"as per the destination DB configuration.\n"
         )
         super().__init__(detail=default_detail)
+
+
+class OperationalException(UnstractDBConnectorException):
+    def __init__(self, detail: Any, database: str) -> None:
+        default_detail = f"Error creating/writing to {database}. Operational error. "
+        super().__init__(detail=default_detail)

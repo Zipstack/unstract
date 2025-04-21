@@ -6,11 +6,13 @@ from typing import Any, Optional
 @dataclass
 class FileHash:
     file_path: str
-    file_hash: str
     file_name: str
     source_connection_type: str
+    file_hash: Optional[str] = None
     file_size: Optional[int] = None
+    provider_file_uuid: Optional[str] = None
     mime_type: Optional[str] = None
+    fs_metadata: Optional[dict[str, Any]] = None
     file_destination: Optional[tuple[str, str]] = (
         None  # To which destination this file wants to go for MRQ percentage
     )
@@ -26,6 +28,8 @@ class FileHash:
             "is_executed": self.is_executed,
             "file_size": self.file_size,
             "mime_type": self.mime_type,
+            "provider_file_uuid": self.provider_file_uuid,
+            "fs_metadata": self.fs_metadata,
         }
 
     @staticmethod
