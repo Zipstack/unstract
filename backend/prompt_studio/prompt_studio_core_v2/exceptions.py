@@ -19,6 +19,19 @@ class IndexingAPIError(APIException):
     status_code = 500
     default_detail = "Error while indexing file"
 
+    def __init__(self, detail: Optional[str] = None, status_code: int = 500):
+        super().__init__(detail)
+        self.status_code = status_code
+
+
+class ExtractionAPIError(APIException):
+    status_code = 500
+    default_detail = "Error while extracting file"
+
+    def __init__(self, detail: Optional[str] = None, status_code: int = 500):
+        super().__init__(detail)
+        self.status_code = status_code
+
 
 class AnswerFetchError(APIException):
     status_code = 500
