@@ -36,17 +36,17 @@ COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /uvx /bin/
 WORKDIR ${APP_HOME}
 
 # Copy dependency files first to leverage Docker cache
-COPY --chmod=755 ${BUILD_CONTEXT_PATH}/pyproject.toml ${BUILD_CONTEXT_PATH}/uv.lock ./
+COPY --chown=${APP_USER} ${BUILD_CONTEXT_PATH}/pyproject.toml ${BUILD_CONTEXT_PATH}/uv.lock ./
 
 # Read and execute access to non-root user to avoid security hotspot
 # Write access to specific sub-directory need to be explicitly provided if required
-COPY --chmod=755 ${BUILD_CONTEXT_PATH} /app/
+COPY --chown=${APP_USER} ${BUILD_CONTEXT_PATH} /app/
 # Copy local dependency packages
-COPY ${BUILD_PACKAGES_PATH}/core /unstract/core
-COPY ${BUILD_PACKAGES_PATH}/flags /unstract/flags
+COPY --chown=${APP_USER} ${BUILD_PACKAGES_PATH}/core /unstract/core
+COPY --chown=${APP_USER} ${BUILD_PACKAGES_PATH}/flags /unstract/flags
 
 # Copy application files
-COPY --chmod=755 ${BUILD_CONTEXT_PATH} ./
+COPY --chown=${APP_USER} ${BUILD_CONTEXT_PATH} ./
 
 # Switch to non-root user
 USER ${APP_USER}
