@@ -40,7 +40,5 @@ RUN chmod +x /docker-entrypoint.d/40-env.sh
 
 EXPOSE 80
 
-USER nginx
-
 # Start NGINX
 CMD ["nginx", "-g", "daemon off;"]
