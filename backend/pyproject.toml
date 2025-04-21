@@ -86,6 +86,13 @@ unstract-flags = { path = "../unstract/flags", editable = true }
 unstract-core = { path = "../unstract/core", editable = true }
 unstract-connectors = { path = "../unstract/connectors", editable = true }
 
+[tool.uv]
+constraint-dependencies = [
+    # (unstract-connectors) To address issue with Python 3.12 and Numpy 2.0
+    # https://github.com/numpy/numpy/issues/26710
+    "numpy<2.0.0", "pandas<2.2.0"
+]
+
 [tool.pytest.ini_options]
 env_files = "test.env" # Load env from particular env file
 addopts = "-s"
