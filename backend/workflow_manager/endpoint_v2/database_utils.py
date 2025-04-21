@@ -6,9 +6,9 @@ from typing import Any, Optional
 
 from utils.constants import Common
 from workflow_manager.endpoint_v2.constants import DBConnectionClass, TableColumns
+from workflow_manager.endpoint_v2.enums import FileStatus
 from workflow_manager.endpoint_v2.exceptions import UnstractDBException
 from workflow_manager.workflow_v2.enums import AgentName, ColumnModes
-from workflow_manager.endpoint_v2.enums import FileStatus
 
 from unstract.connectors.databases import connectors as db_connectors
 from unstract.connectors.databases.exceptions import UnstractDBConnectorException

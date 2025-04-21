@@ -4,7 +4,13 @@ class TableColumns:
     METADATA = "metadata"
     ERROR_MESSAGE = "error_message"
     STATUS = "status"
-    PERMANENT_COLUMNS = ["created_by", "created_at", "metadata", "error_message", "status"]
+    PERMANENT_COLUMNS = [
+        "created_by",
+        "created_at",
+        "metadata",
+        "error_message",
+        "status",
+    ]
 
 
 class DBConnectionClass:

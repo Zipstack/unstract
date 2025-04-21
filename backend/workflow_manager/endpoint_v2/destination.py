@@ -380,7 +380,7 @@ class DestinationConnector(BaseConnector):
             table_info=table_info,
             file_path=input_file_path,
             execution_id=self.execution_id,
-            error=error
+            error=error,
         )
         engine = None
         try:

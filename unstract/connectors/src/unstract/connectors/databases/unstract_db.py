@@ -137,7 +137,13 @@ class UnstractDB(UnstractConnector, ABC):
         Returns:
             Any: generates a create sql query for all the columns
         """
-        PERMANENT_COLUMNS = ["created_by", "created_at", "metadata", "error_message", "status"]
+        PERMANENT_COLUMNS = [
+            "created_by",
+            "created_at",
+            "metadata",
+            "error_message",
+            "status",
+        ]
 
         sql_query = ""
         create_table_query = self.get_create_table_base_query(table=table)
