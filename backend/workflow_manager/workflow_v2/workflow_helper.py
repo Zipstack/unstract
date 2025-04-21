@@ -457,7 +457,7 @@ class WorkflowHelper:
         Returns:
             ExecutionResponse: _description_
         """
-        execution = WorkflowExecution.objects.get(id=execution_id)
+        execution: WorkflowExecution = WorkflowExecution.objects.get(id=execution_id)
         if not execution.task_id:
             raise TaskDoesNotExistError(
                 f"No task ID found for execution: {execution_id}"
