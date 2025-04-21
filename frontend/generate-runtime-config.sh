@@ -10,6 +10,7 @@ mkdir -p /usr/share/nginx/html/config
 cat > /usr/share/nginx/html/config/runtime-config.js << EOF
 // This file is auto-generated at runtime. Do not modify manually.
 window.RUNTIME_CONFIG = {
+  faviconPath: "${REACT_APP_FAVICON_PATH}",
   logoUrl: "${REACT_APP_CUSTOM_LOGO_URL}"
 };
 EOF
