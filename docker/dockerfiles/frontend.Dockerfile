@@ -31,14 +31,12 @@ LABEL maintainer="Zipstack Inc."
 # Copy built assets from the builder stage
 COPY --from=builder /app/build /usr/share/nginx/html
 
-# Copy the server block configuration for nginx
-COPY frontend/default.conf /etc/nginx/conf.d/default.conf
-
-# Copy the environment script
-COPY frontend/generate-runtime-config.sh /docker-entrypoint.d/40-env.sh
-RUN chmod +x /docker-entrypoint.d/40-env.sh
+# Copy custom NGINX configuration
+COPY --from=builder /app/nginx.conf /etc/nginx/nginx.conf
 
 EXPOSE 80
+
+USER nginx
 
 # Start NGINX
 CMD ["nginx", "-g", "daemon off;"]
