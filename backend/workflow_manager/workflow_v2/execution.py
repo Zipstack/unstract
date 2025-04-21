@@ -16,7 +16,12 @@ from unstract.tool_registry.dto import Tool
 from unstract.workflow_execution import WorkflowExecutionService
 from unstract.workflow_execution.dto import ToolInstance as ToolInstanceDataClass
 from unstract.workflow_execution.dto import WorkflowDto
-from unstract.workflow_execution.enums import ExecutionType, LogComponent, LogState
+from unstract.workflow_execution.enums import (
+    ExecutionType,
+    LogComponent,
+    LogLevel,
+    LogState,
+)
 from unstract.workflow_execution.exceptions import StopExecution
 from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.constants import WorkflowKey
@@ -218,8 +223,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             self.update_execution(status=ExecutionStatus.EXECUTING)
         else:
             logger.error(
-                "Errors while compiling workflow "
-                f"{self.compilation_result['problems']}"
+                f"Errors while compiling workflow {self.compilation_result['problems']}"
             )
             self.update_execution(
                 status=ExecutionStatus.ERROR,
@@ -325,8 +329,19 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         except Exception as e:
             logger.warning(f"Unable to get aggregated cost for '{self.id}': {str(e)}")
 
-    def log_total_cost_per_file(self, run_id, file_name):
+    def log_total_cost_per_file(self, run_id: str, file_name: str):
+        """Log cost details to user
+
+        Args:
+            run_id (str): Run ID for the file being run (file execution ID)
+            file_name (str): Name of the file being executed
+        """
         cost_dict = UsageHelper.get_aggregated_token_count(run_id=run_id)
+        if not cost_dict:
+            self.publish_log(
+                f"No cost data available for file '{file_name}'", level=LogLevel.WARNING
+            )
+            return
         cost = round(cost_dict.get("cost_in_dollars") or 0, 5)
 
         # Log the total cost for a particular file executed in the workflow
