@@ -111,6 +111,8 @@ class OracleDB(UnstractDB):
             f"user_field_1 NUMBER(1) DEFAULT 0, "
             f"user_field_2 NUMBER DEFAULT 0, "
             f"user_field_3 VARCHAR2(32767) DEFAULT NULL, "
+            f"status VARCHAR2(10) CHECK (status IN ('ERROR', 'STATUS')), "
+            f"error_message VARCHAR2(32767), "
         )
         return sql_query
 
@@ -121,7 +123,9 @@ class OracleDB(UnstractDB):
             f"ADD COLUMN metadata CLOB CHECK (data IS JSON), "
             f"ADD COLUMN user_field_1 NUMBER(1) DEFAULT 0, "
             f"ADD COLUMN user_field_2 NUMBER DEFAULT 0, "
-            f"ADD COLUMN VARCHAR2(255) DEFAULT NULL"
+            f"ADD COLUMN VARCHAR2(255) DEFAULT NULL, "
+            f"ADD COLUMN status VARCHAR2(10) CHECK (status IN ('ERROR', 'STATUS')), "
+            f"ADD COLUMN error_message VARCHAR2(32767)"
         )
         return sql_query
 

@@ -82,6 +82,8 @@ class MySQL(UnstractDB, MysqlHandler):
             f"user_field_1 BOOLEAN DEFAULT FALSE, "
             f"user_field_2 BIGINT DEFAULT 0, "
             f"user_field_3 LONGTEXT DEFAULT NULL, "
+            f"status ENUM('ERROR', 'STATUS'), "
+            f"error_message LONGTEXT, "
         )
         return sql_query
 
@@ -92,7 +94,9 @@ class MySQL(UnstractDB, MysqlHandler):
             f"ADD COLUMN metadata JSON, "
             f"ADD COLUMN user_field_1 BOOLEAN DEFAULT FALSE, "
             f"ADD COLUMN user_field_2 BIGINT DEFAULT 0, "
-            f"ADD COLUMN user_field_3 LONGTEXT DEFAULT NULL"
+            f"ADD COLUMN user_field_3 LONGTEXT DEFAULT NULL, "
+            f"ADD COLUMN status ENUM('ERROR', 'STATUS'), "
+            f"ADD COLUMN error_message LONGTEXT"
         )
         return sql_query
 

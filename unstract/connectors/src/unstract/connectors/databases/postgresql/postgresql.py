@@ -150,6 +150,8 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
             f"user_field_1 BOOLEAN DEFAULT FALSE, "
             f"user_field_2 INTEGER DEFAULT 0, "
             f"user_field_3 TEXT DEFAULT NULL, "
+            f"status TEXT CHECK (status IN ('ERROR', 'SUCCESS')), "
+            f"error_messsage TEXT, "
         )
         return sql_query
 
@@ -160,7 +162,9 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
             f"ADD COLUMN metadata JSONB, "
             f"ADD COLUMN user_field_1 BOOLEAN DEFAULT FALSE, "
             f"ADD COLUMN user_field_2 INTEGER DEFAULT 0, "
-            f"ADD COLUMN user_field_3 TEXT DEFAULT NULL"
+            f"ADD COLUMN user_field_3 TEXT DEFAULT NULL, "
+            f"ADD COLUMN status TEXT CHECK (status IN ('ERROR', 'SUCCESS')), "
+            f"ADD COLUMN error_messsage TEXT"
         )
         return sql_query
 

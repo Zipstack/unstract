@@ -8,6 +8,7 @@ from utils.constants import Common
 from workflow_manager.endpoint_v2.constants import DBConnectionClass, TableColumns
 from workflow_manager.endpoint_v2.exceptions import UnstractDBException
 from workflow_manager.workflow_v2.enums import AgentName, ColumnModes
+from workflow_manager.endpoint_v2.enums import FileStatus
 
 from unstract.connectors.databases import connectors as db_connectors
 from unstract.connectors.databases.exceptions import UnstractDBConnectorException
@@ -114,6 +115,7 @@ class DatabaseUtils:
         single_column_name: str = "data",
         table_info: Optional[dict[str, str]] = None,
         metadata: Optional[dict[str, Any]] = None,
+        error: Optional[str] = None,
     ) -> dict[str, Any]:
         """Generate a dictionary of columns and values based on specified
         parameters.
@@ -152,6 +154,12 @@ class DatabaseUtils:
 
         if metadata:
             values[TableColumns.METADATA] = json.dumps(metadata)
+
+        if error:
+            values[TableColumns.ERROR_MESSAGE] = error
+            values[TableColumns.STATUS] = FileStatus.ERROR
+        else:
+            values[TableColumns.STATUS] = FileStatus.SUCCESS
 
         if column_mode == ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN:
             if isinstance(data, str):

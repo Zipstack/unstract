@@ -228,7 +228,7 @@ class DestinationConnector(BaseConnector):
                 input_file_path=input_file_path,
                 file_execution_id=file_execution_id,
             ):
-                self.insert_into_db(input_file_path=input_file_path)
+                self.insert_into_db(input_file_path=input_file_path, error=error)
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
             result = self.get_result(file_history)
             exec_metadata = self.get_metadata(file_history)
@@ -308,7 +308,7 @@ class DestinationConnector(BaseConnector):
         except ConnectorError as e:
             raise UnstractFSException(core_err=e) from e
 
-    def insert_into_db(self, input_file_path: str) -> None:
+    def insert_into_db(self, input_file_path: str, error: Optional[str]) -> None:
         """Insert data into the database."""
         connector_instance: ConnectorInstance = self.endpoint.connector_instance
         connector_settings: dict[str, Any] = connector_instance.metadata
@@ -380,6 +380,7 @@ class DestinationConnector(BaseConnector):
             table_info=table_info,
             file_path=input_file_path,
             execution_id=self.execution_id,
+            error=error
         )
         engine = None
         try:

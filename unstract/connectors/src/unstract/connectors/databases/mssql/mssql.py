@@ -111,6 +111,8 @@ class MSSQL(UnstractDB):
             f"user_field_1 BIT DEFAULT 0, "
             f"user_field_2 INT DEFAULT 0, "
             f"user_field_3 TEXT DEFAULT NULL, "
+            f"status NVARCHAR(10) CHECK (status IN ('ERROR', 'STATUS')), "
+            f"error_message TEXT, "
         )
         return sql_query
 
@@ -121,7 +123,9 @@ class MSSQL(UnstractDB):
             f"ADD COLUMN metadata NVARCHAR(MAX), "
             f"ADD COLUMN user_field_1 BIT DEFAULT 0, "
             f"ADD COLUMN user_field_2 INT DEFAULT 0, "
-            f"ADD COLUMN user_field_3 TEXT DEFAULT NULL"
+            f"ADD COLUMN user_field_3 TEXT DEFAULT NULL, "
+            f"ADD COLUMN status NVARCHAR(10) CHECK (status IN ('ERROR', 'STATUS')), "
+            f"ADD COLUMN error_message TEXT"
         )
         return sql_query
 
