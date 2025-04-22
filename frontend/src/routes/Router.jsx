@@ -11,6 +11,7 @@ import { useMainAppRoutes } from "./useMainAppRoutes.js";
 import { RequireAuth } from "../components/helpers/auth/RequireAuth.js";
 import { ToolIdePage } from "../pages/ToolIdePage.jsx";
 import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
+import { FullPageLayout } from "../layouts/fullpage-payout/FullPageLayout.jsx";
 
 let PublicPromptStudioHelper;
 
@@ -45,6 +46,14 @@ let llmWhispererRouter;
 try {
   llmWhispererRouter =
     require("../plugins/routes/useLlmWhispererRoutes.js").useLlmWhispererRoutes;
+} catch (err) {
+  // Do nothing, Not-found Page will be triggered.
+}
+
+let verticalsRouter;
+try {
+  verticalsRouter =
+    require("../plugins/routes/useVerticalsRoutes.js").useVerticalsRoutes;
 } catch (err) {
   // Do nothing, Not-found Page will be triggered.
 }
@@ -135,6 +144,11 @@ function Router() {
 
       <Route path="*" element={<NotFound />} />
       <Route path="oauth-status" element={<OAuthStatus />} />
+      {verticalsRouter && (
+        <Route path="verticals" element={<FullPageLayout />}>
+          {verticalsRouter()}
+        </Route>
+      )}
     </Routes>
   );
 }

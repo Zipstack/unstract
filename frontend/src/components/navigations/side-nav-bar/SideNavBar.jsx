@@ -52,7 +52,7 @@ try {
 let selectedProductStore;
 let selectedProduct;
 try {
-  selectedProductStore = require("../../../plugins/llm-whisperer/store/select-product-store.js");
+  selectedProductStore = require("../../../plugins/store/select-product-store.js");
 } catch {
   // Ignore if hook not available
 }

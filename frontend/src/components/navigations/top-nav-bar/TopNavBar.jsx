@@ -49,7 +49,7 @@ let selectedProductStore;
 let selectedProduct;
 
 try {
-  selectedProductStore = require("../../../plugins/llm-whisperer/store/select-product-store.js");
+  selectedProductStore = require("../../../plugins/store/select-product-store.js");
 } catch {
   // Ignore if hook not available
 }
@@ -97,6 +97,12 @@ const CustomLogo = ({ onClick, className }) => {
   }
   return <UnstractLogo className={className} onClick={onClick} />;
 };
+let APIHubLogo;
+try {
+  APIHubLogo = require("../../../plugins/assets/index.js").APIHubLogo;
+} catch {
+  // Ignore if hook not available
+}
 
 let unstractSubscriptionPlan;
 let unstractSubscriptionPlanStore;
@@ -153,6 +159,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   }, [unstractSubscriptionPlan]);
 
   const isUnstract = !(selectedProduct && selectedProduct !== "unstract");
+  const isAPIHub = selectedProduct && selectedProduct === "verticals";
 
   // Check user role and whether the onboarding is incomplete
   useEffect(() => {
@@ -373,6 +380,8 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
               navigate(`/${sessionDetails?.orgName}/${homePagePath}`)
             }
           />
+        ) : isAPIHub ? (
+          APIHubLogo && <APIHubLogo className="topbar-logo" />
         ) : (
           WhispererLogo && <WhispererLogo className="topbar-logo" />
         )}
