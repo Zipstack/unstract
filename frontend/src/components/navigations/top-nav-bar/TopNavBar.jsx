@@ -3,10 +3,10 @@ import {
   Button,
   Col,
   Dropdown,
-  Image,
   Row,
   Space,
   Typography,
+  Image,
 } from "antd";
 import {
   UserOutlined,
@@ -35,6 +35,7 @@ import "./TopNavBar.css";
 import { useAlertStore } from "../../../store/alert-store.js";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal.jsx";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import config from "../../../config";
 
 let TrialDaysInfo;
 try {
@@ -68,6 +69,34 @@ try {
 } catch {
   // Ignore if hook not available
 }
+
+const CustomLogo = ({ onClick, className }) => {
+  // Use Ant Design Image and config.logoUrl
+  if (config.logoUrl) {
+    return (
+      <Image
+        src={config.logoUrl}
+        preview={false}
+        className={className}
+        onClick={onClick}
+        alt="logo"
+        style={{
+          cursor: onClick ? "pointer" : undefined,
+          background: "transparent",
+        }}
+        onError={() => {
+          // If image fails to load, component will re-render and use UnstractLogo
+          // since we'll set config.logoUrl to null
+          if (config.logoUrl) {
+            // Only modify if it's not already null to avoid infinite re-renders
+            config.logoUrl = null;
+          }
+        }}
+      />
+    );
+  }
+  return <UnstractLogo className={className} onClick={onClick} />;
+};
 
 let unstractSubscriptionPlan;
 let unstractSubscriptionPlanStore;
@@ -338,7 +367,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
     <Row align="middle" className="topNav">
       <Col span={6} className="platform-switch-container">
         {isUnstract ? (
-          <UnstractLogo
+          <CustomLogo
             className="topbar-logo cursor-pointer"
             onClick={() =>
               navigate(`/${sessionDetails?.orgName}/${homePagePath}`)
@@ -411,6 +440,11 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
 TopNavBar.propTypes = {
   isSimpleLayout: PropTypes.bool,
   topNavBarOptions: PropTypes.node,
+};
+
+CustomLogo.propTypes = {
+  onClick: PropTypes.func.isRequired,
+  className: PropTypes.string.isRequired,
 };
 
 export { TopNavBar };
