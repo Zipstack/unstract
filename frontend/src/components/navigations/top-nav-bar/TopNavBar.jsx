@@ -15,6 +15,7 @@ import {
   DownloadOutlined,
   FileProtectOutlined,
   LikeOutlined,
+  LoginOutlined,
 } from "@ant-design/icons";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -121,7 +122,7 @@ try {
 function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
-  const { orgName, allOrganization, orgId } = sessionDetails;
+  const { orgName, allOrganization, orgId, isLoggedIn } = sessionDetails;
   const baseUrl = getBaseUrl();
   const onBoardUrl = `${baseUrl}/${orgName}/onboard`;
   const logout = useLogout();
@@ -338,12 +339,24 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
       });
     }
 
+    const handleLogin = () => {
+      const baseUrl = getBaseUrl();
+      const newURL = baseUrl + "/api/v1/login";
+      window.location.href = newURL;
+    };
+
     // Logout
     menuItems.push({
       key: "2",
       label: (
-        <Button onClick={logout} className="logout-button">
-          <LogoutOutlined /> Logout
+        <Button
+          onClick={isLoggedIn ? logout : handleLogin}
+          className="logout-button"
+        >
+          <>
+            {isLoggedIn ? <LogoutOutlined /> : <LoginOutlined />}{" "}
+            {isLoggedIn ? "Logout" : "Login"}
+          </>
         </Button>
       ),
     });
