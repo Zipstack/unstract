@@ -36,7 +36,7 @@ test = [
     "flask-WTF~=1.1",
 ]
 deploy = [
-    "gunicorn[gevent]~=23.0",
+    "gunicorn~=23.0",
     # OpenTelemetry for tracing and profiling
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",

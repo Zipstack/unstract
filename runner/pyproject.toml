@@ -25,7 +25,7 @@ test = [
     "pytest-md-report>=0.6.2",
 ]
 deploy = [
-    "gunicorn[gevent]~=23.0",
+    "gunicorn~=23.0",
     # OpenTelemetry for tracing and profiling
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",

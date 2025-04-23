@@ -1,5 +1,6 @@
 import logging
 import os
+import pprint
 from collections.abc import Iterator
 from typing import Any
 
@@ -163,16 +164,18 @@ class Client(ContainerClientInterface):
         if sidecar:
             image_name_with_tag = f"{self.sidecar_image_name}:{self.sidecar_image_tag}"
             repository = self.sidecar_image_name
+            image_tag = self.sidecar_image_tag
         else:
             image_name_with_tag = f"{self.image_name}:{self.image_tag}"
             repository = self.image_name
+            image_tag = self.image_tag
         if self.__image_exists(image_name_with_tag):
             return image_name_with_tag
 
         self.logger.info("Pulling the container: %s", image_name_with_tag)
         resp = self.client.api.pull(
             repository=repository,
-            tag=self.image_tag,
+            tag=image_tag,
             stream=True,
             decode=True,
         )
@@ -263,7 +266,9 @@ class Client(ContainerClientInterface):
             DockerContainer: Running container instance
         """
         try:
-            self.logger.info("Running container with config: %s", container_config)
+            self.logger.info(
+                "Running container with config: %s", pprint.pformat(container_config)
+            )
             container = self.client.containers.run(**container_config)
             return DockerContainer(
                 container=container,
@@ -287,9 +292,13 @@ class Client(ContainerClientInterface):
                 Running container and sidecar instance
         """
         try:
-            self.logger.info("Running container with config: %s", container_config)
+            self.logger.info(
+                "Running container with config: %s", pprint.pformat(container_config)
+            )
             container = self.client.containers.run(**container_config)
-            self.logger.info("Running sidecar with config: %s", sidecar_config)
+            self.logger.info(
+                "Running sidecar with config: %s", pprint.pformat(sidecar_config)
+            )
             sidecar = self.client.containers.run(**sidecar_config)
             return DockerContainer(
                 container=container,

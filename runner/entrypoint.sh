@@ -25,7 +25,7 @@ gunicorn_args=(
     --bind 0.0.0.0:5002
     --workers 2
     --threads 2
-    --worker-class gevent
+    --worker-class gthread
     --log-level debug
     --timeout 900
     --access-logfile -
