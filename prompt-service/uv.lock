@@ -616,28 +616,6 @@ wheels = [
 ]
 
 [[package]]
-name = "gevent"
-version = "24.11.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "cffi", marker = "platform_python_implementation == 'CPython' and sys_platform == 'win32'" },
-    { name = "greenlet", marker = "platform_python_implementation == 'CPython'" },
-    { name = "zope-event" },
-    { name = "zope-interface" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/ab/75/a53f1cb732420f5e5d79b2563fc3504d22115e7ecfe7966e5cf9b3582ae7/gevent-24.11.1.tar.gz", hash = "sha256:8bd1419114e9e4a3ed33a5bad766afff9a3cf765cb440a582a1b3a9bc80c1aca", size = 5976624 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/dd/32/301676f67ffa996ff1c4175092fb0c48c83271cc95e5c67650b87156b6cf/gevent-24.11.1-cp312-cp312-macosx_11_0_universal2.whl", hash = "sha256:a3d75fa387b69c751a3d7c5c3ce7092a171555126e136c1d21ecd8b50c7a6e46", size = 2956467 },
-    { url = "https://files.pythonhosted.org/packages/6b/84/aef1a598123cef2375b6e2bf9d17606b961040f8a10e3dcc3c3dd2a99f05/gevent-24.11.1-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:beede1d1cff0c6fafae3ab58a0c470d7526196ef4cd6cc18e7769f207f2ea4eb", size = 5136486 },
-    { url = "https://files.pythonhosted.org/packages/92/7b/04f61187ee1df7a913b3fca63b0a1206c29141ab4d2a57e7645237b6feb5/gevent-24.11.1-cp312-cp312-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:85329d556aaedced90a993226d7d1186a539c843100d393f2349b28c55131c85", size = 5299718 },
-    { url = "https://files.pythonhosted.org/packages/36/2a/ebd12183ac25eece91d084be2111e582b061f4d15ead32239b43ed47e9ba/gevent-24.11.1-cp312-cp312-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:816b3883fa6842c1cf9d2786722014a0fd31b6312cca1f749890b9803000bad6", size = 5400118 },
-    { url = "https://files.pythonhosted.org/packages/ec/c9/f006c0cd59f0720fbb62ee11da0ad4c4c0fd12799afd957dd491137e80d9/gevent-24.11.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b24d800328c39456534e3bc3e1684a28747729082684634789c2f5a8febe7671", size = 6775163 },
-    { url = "https://files.pythonhosted.org/packages/49/f1/5edf00b674b10d67e3b967c2d46b8a124c2bc8cfd59d4722704392206444/gevent-24.11.1-cp312-cp312-musllinux_1_1_aarch64.whl", hash = "sha256:a5f1701ce0f7832f333dd2faf624484cbac99e60656bfbb72504decd42970f0f", size = 5479886 },
-    { url = "https://files.pythonhosted.org/packages/22/11/c48e62744a32c0d48984268ae62b99edb81eaf0e03b42de52e2f09855509/gevent-24.11.1-cp312-cp312-musllinux_1_1_x86_64.whl", hash = "sha256:d740206e69dfdfdcd34510c20adcb9777ce2cc18973b3441ab9767cd8948ca8a", size = 6891452 },
-    { url = "https://files.pythonhosted.org/packages/11/b2/5d20664ef6a077bec9f27f7a7ee761edc64946d0b1e293726a3d074a9a18/gevent-24.11.1-cp312-cp312-win_amd64.whl", hash = "sha256:68bee86b6e1c041a187347ef84cf03a792f0b6c7238378bf6ba4118af11feaae", size = 1541631 },
-]
-
-[[package]]
 name = "google-ai-generativelanguage"
 version = "0.6.4"
 source = { registry = "https://pypi.org/simple" }
@@ -996,11 +974,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/34/72/9614c465dc206155d93eff0ca20d42e1e35afc533971379482de953521a4/gunicorn-23.0.0.tar.gz", hash = "sha256:f014447a0101dc57e294f6c18ca6b40227a4c90e9bdb586042628030cba004ec", size = 375031 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/cb/7d/6dac2a6e1eba33ee43f318edbed4ff29151a49b5d37f080aad1e6469bca4/gunicorn-23.0.0-py3-none-any.whl", hash = "sha256:ec400d38950de4dfd418cff8328b2c8faed0edb0d517d3394e457c317908ca4d", size = 85029 },
-]
-
-[package.optional-dependencies]
-gevent = [
-    { name = "gevent" },
 ]
 
 [[package]]
@@ -3042,7 +3015,7 @@ dependencies = [
 
 [package.dev-dependencies]
 deploy = [
-    { name = "gunicorn", extra = ["gevent"] },
+    { name = "gunicorn" },
     { name = "opentelemetry-distro" },
     { name = "opentelemetry-exporter-otlp" },
 ]
@@ -3074,7 +3047,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 deploy = [
-    { name = "gunicorn", extras = ["gevent"], specifier = "~=23.0" },
+    { name = "gunicorn", specifier = "~=23.0" },
     { name = "opentelemetry-distro" },
     { name = "opentelemetry-exporter-otlp" },
 ]
@@ -3269,33 +3242,4 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/3f/50/bad581df71744867e9468ebd0bcd6505de3b275e06f202c2cb016e3ff56f/zipp-3.21.0.tar.gz", hash = "sha256:2c9958f6430a2040341a52eb608ed6dd93ef4392e02ffe219417c1b28b5dd1f4", size = 24545 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/1a/7e4798e9339adc931158c9d69ecc34f5e6791489d469f5e50ec15e35f458/zipp-3.21.0-py3-none-any.whl", hash = "sha256:ac1bbe05fd2991f160ebce24ffbac5f6d11d83dc90891255885223d42b3cd931", size = 9630 },
-]
-
-[[package]]
-name = "zope-event"
-version = "5.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "setuptools" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/46/c2/427f1867bb96555d1d34342f1dd97f8c420966ab564d58d18469a1db8736/zope.event-5.0.tar.gz", hash = "sha256:bac440d8d9891b4068e2b5a2c5e2c9765a9df762944bda6955f96bb9b91e67cd", size = 17350 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/fe/42/f8dbc2b9ad59e927940325a22d6d3931d630c3644dae7e2369ef5d9ba230/zope.event-5.0-py3-none-any.whl", hash = "sha256:2832e95014f4db26c47a13fdaef84cef2f4df37e66b59d8f1f4a8f319a632c26", size = 6824 },
-]
-
-[[package]]
-name = "zope-interface"
-version = "7.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "setuptools" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/30/93/9210e7606be57a2dfc6277ac97dcc864fd8d39f142ca194fdc186d596fda/zope.interface-7.2.tar.gz", hash = "sha256:8b49f1a3d1ee4cdaf5b32d2e738362c7f5e40ac8b46dd7d1a65e82a4872728fe", size = 252960 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/68/0b/c7516bc3bad144c2496f355e35bd699443b82e9437aa02d9867653203b4a/zope.interface-7.2-cp312-cp312-macosx_10_9_x86_64.whl", hash = "sha256:086ee2f51eaef1e4a52bd7d3111a0404081dadae87f84c0ad4ce2649d4f708b7", size = 208959 },
-    { url = "https://files.pythonhosted.org/packages/a2/e9/1463036df1f78ff8c45a02642a7bf6931ae4a38a4acd6a8e07c128e387a7/zope.interface-7.2-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:21328fcc9d5b80768bf051faa35ab98fb979080c18e6f84ab3f27ce703bce465", size = 209357 },
-    { url = "https://files.pythonhosted.org/packages/07/a8/106ca4c2add440728e382f1b16c7d886563602487bdd90004788d45eb310/zope.interface-7.2-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:f6dd02ec01f4468da0f234da9d9c8545c5412fef80bc590cc51d8dd084138a89", size = 264235 },
-    { url = "https://files.pythonhosted.org/packages/fc/ca/57286866285f4b8a4634c12ca1957c24bdac06eae28fd4a3a578e30cf906/zope.interface-7.2-cp312-cp312-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:8e7da17f53e25d1a3bde5da4601e026adc9e8071f9f6f936d0fe3fe84ace6d54", size = 259253 },
-    { url = "https://files.pythonhosted.org/packages/96/08/2103587ebc989b455cf05e858e7fbdfeedfc3373358320e9c513428290b1/zope.interface-7.2-cp312-cp312-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:cab15ff4832580aa440dc9790b8a6128abd0b88b7ee4dd56abacbc52f212209d", size = 264702 },
-    { url = "https://files.pythonhosted.org/packages/5f/c7/3c67562e03b3752ba4ab6b23355f15a58ac2d023a6ef763caaca430f91f2/zope.interface-7.2-cp312-cp312-win_amd64.whl", hash = "sha256:29caad142a2355ce7cfea48725aa8bcf0067e2b5cc63fcf5cd9f97ad12d6afb5", size = 212466 },
 ]
