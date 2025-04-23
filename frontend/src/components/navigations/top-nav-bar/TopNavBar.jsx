@@ -80,6 +80,7 @@ const CustomLogo = ({ onClick, className }) => {
         className={className}
         onClick={onClick}
         alt="logo"
+        width={120}
         style={{
           cursor: onClick ? "pointer" : undefined,
           background: "transparent",
