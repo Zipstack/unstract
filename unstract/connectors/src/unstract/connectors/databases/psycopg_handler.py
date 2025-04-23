@@ -8,6 +8,7 @@ from unstract.connectors.databases.exceptions import (
     FeatureNotSupportedException,
     InvalidSchemaException,
     InvalidSyntaxException,
+    OperationalException,
     UnderfinedTableException,
     ValueTooLongException,
 )
@@ -62,3 +63,6 @@ class PsycoPgHandler:
                 schema=schema,
                 table_name=table_name,
             ) from e
+        except PsycopgError.OperationalError as e:
+            logger.error(f"Operational error in creating/inserting data: {e.pgerror}")
+            raise OperationalException(detail=e.pgerror, database=database) from e

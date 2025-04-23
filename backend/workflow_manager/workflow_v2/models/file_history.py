@@ -1,4 +1,5 @@
 import uuid
+from typing import Optional
 
 from django.db import models
 from utils.models.base_model import BaseModel
@@ -21,6 +22,11 @@ class FileHistory(BaseModel):
     cache_key = models.CharField(
         max_length=HASH_LENGTH,
         db_comment="Hash value of file contents, WF and tool modified times",
+    )
+    provider_file_uuid = models.CharField(
+        max_length=HASH_LENGTH,
+        null=True,
+        db_comment="Unique identifier assigned by the file storage provider",
     )
     workflow = models.ForeignKey(
         Workflow,
@@ -47,5 +53,32 @@ class FileHistory(BaseModel):
             models.UniqueConstraint(
                 fields=["workflow", "cache_key"],
                 name="unique_workflow_cacheKey",
+                condition=models.Q(cache_key__isnull=False),
+            ),
+            models.UniqueConstraint(
+                fields=["workflow", "provider_file_uuid"],
+                name="unique_workflow_providerFileUUID",
+                condition=models.Q(provider_file_uuid__isnull=False),
             ),
         ]
+
+    def update(
+        self,
+        provider_file_uuid: Optional[str] = None,
+    ) -> None:
+        """
+        Updates the file execution details.
+
+        Args:
+            provider_file_uuid: (Optional) UUID of the file in the storage provider
+
+        Returns:
+            None
+        """
+        update_fields = []
+
+        if provider_file_uuid is not None:
+            self.provider_file_uuid = provider_file_uuid
+            update_fields.append("provider_file_uuid")
+        if update_fields:  # Save only if there's an actual update
+            self.save(update_fields=update_fields)

@@ -1,12 +1,13 @@
 import uuid
 from datetime import timedelta
-from typing import Optional
+from typing import Any
 
 from django.db import models
 from utils.common_utils import CommonUtils
 from utils.models.base_model import BaseModel
+from workflow_manager.endpoint_v2.dto import FileHash
+from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.enums import ExecutionStatus
-from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 FILE_NAME_LENGTH = 255
 FILE_PATH_LENGTH = 255
@@ -17,46 +18,59 @@ MIME_TYPE_LENGTH = 128
 class WorkflowFileExecutionManager(models.Manager):
     def get_or_create_file_execution(
         self,
-        workflow_execution: WorkflowExecution,
-        file_name: str,
-        file_size: int,
-        file_hash: str,
-        file_path: Optional[str] = None,
-        mime_type: Optional[str] = None,
+        workflow_execution: Any,
+        file_hash: FileHash,
+        connection_type: WorkflowEndpoint.ConnectionType,
     ) -> "WorkflowFileExecution":
         """
         Retrieves or creates a new input file record for a workflow execution.
 
         Args:
-        workflow_execution: The `WorkflowExecution` object associated with this file
-        file_name: The name of the input file
-        file_size: The size of the file in bytes
-        file_hash: The hash of the file content
-        file_path: (Optional) The full path of the input file
-        mime_type: (Optional) MIME type of the file
+            workflow_execution: The `WorkflowExecution` object
+                associated with this file.
+            file_hash: The `FileHash` object containing file metadata.
+            file_path: (Optional) The full path of the input file.
 
-        return:
-            The `WorkflowFileExecution` object
+        Returns:
+            The `WorkflowFileExecution` object.
         """
-        execution_file: WorkflowFileExecution
-        execution_file, is_created = self.get_or_create(
-            workflow_execution=workflow_execution,
-            file_hash=file_hash,
-            file_path=file_path,
-        )
+        is_api = connection_type == WorkflowEndpoint.ConnectionType.API
+        # Determine file path based on connection type
+        execution_file_path = file_hash.file_path if not is_api else None
+
+        lookup_fields = {
+            "workflow_execution": workflow_execution,
+            "file_path": execution_file_path,
+        }
+
+        if file_hash.file_hash:
+            lookup_fields["file_hash"] = file_hash.file_hash
+        elif file_hash.provider_file_uuid:
+            lookup_fields["provider_file_uuid"] = file_hash.provider_file_uuid
+
+        execution_file, is_created = self.get_or_create(**lookup_fields)
 
         if is_created:
-            execution_file.file_name = file_name
-            execution_file.file_size = file_size
-            execution_file.mime_type = mime_type
-            execution_file.save()
+            self._update_execution_file(execution_file, file_hash)
+
         return execution_file
+
+    def _update_execution_file(
+        self, execution_file: "WorkflowFileExecution", file_hash: FileHash
+    ) -> None:
+        """Updates the attributes of a newly created WorkflowFileExecution object."""
+        execution_file.file_name = file_hash.file_name
+        execution_file.file_size = file_hash.file_size
+        execution_file.mime_type = file_hash.mime_type
+        execution_file.provider_file_uuid = file_hash.provider_file_uuid
+        execution_file.fs_metadata = file_hash.fs_metadata
+        execution_file.save()
 
 
 class WorkflowFileExecution(BaseModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     workflow_execution = models.ForeignKey(
-        WorkflowExecution,
+        "workflow_v2.WorkflowExecution",
         on_delete=models.CASCADE,
         db_index=True,
         editable=False,
@@ -73,7 +87,16 @@ class WorkflowFileExecution(BaseModel):
         null=True, db_comment="Size of the file in bytes"
     )
     file_hash = models.CharField(
-        max_length=HASH_LENGTH, db_comment="Hash of the file content"
+        max_length=HASH_LENGTH, null=True, db_comment="Hash of the file content"
+    )
+    provider_file_uuid = models.CharField(
+        max_length=HASH_LENGTH,
+        null=True,
+        db_comment="Unique identifier assigned by the file storage provider",
+    )
+    fs_metadata = models.JSONField(
+        null=True,
+        db_comment="Complete metadata of the file retrieved from the file system.",
     )
     mime_type = models.CharField(
         max_length=MIME_TYPE_LENGTH,
@@ -167,10 +190,52 @@ class WorkflowFileExecution(BaseModel):
                 fields=["workflow_execution", "file_hash"],
                 name="workflow_file_hash_idx",
             ),
+            models.Index(
+                fields=["workflow_execution", "provider_file_uuid"],
+                name="workflow_exec_p_uuid_idx",
+            ),
         ]
         constraints = [
             models.UniqueConstraint(
                 fields=["workflow_execution", "file_hash", "file_path"],
                 name="unique_workflow_file_hash_path",
             ),
+            models.UniqueConstraint(
+                fields=["workflow_execution", "provider_file_uuid", "file_path"],
+                name="unique_workflow_provider_uuid_path",
+            ),
         ]
+
+    @property
+    def is_completed(self) -> bool:
+        """Check if the execution status is completed.
+
+        Returns:
+            bool: True if the execution status is completed, False otherwise.
+        """
+        return self.status is not None and self.status == ExecutionStatus.COMPLETED
+
+    def update(
+        self,
+        file_hash: str = None,
+        fs_metadata: dict[str, Any] = None,
+    ) -> None:
+        """
+        Updates the file execution details.
+
+        Args:
+            file_hash: (Optional) Hash of the file content
+
+        Returns:
+            None
+        """
+        update_fields = []
+
+        if file_hash is not None:
+            self.file_hash = file_hash
+            update_fields.append("file_hash")
+        if fs_metadata is not None:
+            self.fs_metadata = fs_metadata
+            update_fields.append("fs_metadata")
+        if update_fields:  # Save only if there's an actual update
+            self.save(update_fields=update_fields)

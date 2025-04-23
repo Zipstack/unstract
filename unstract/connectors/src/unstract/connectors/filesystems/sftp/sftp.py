@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any
+from typing import Any, Optional
 
 from fsspec.implementations.sftp import SFTPFileSystem
 
@@ -64,6 +64,19 @@ class SftpFS(UnstractFileSystem):
 
     def get_fsspec_fs(self) -> SFTPFileSystem:
         return self.sftp_fs
+
+    def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> Optional[str]:
+        """
+        Extracts a unique file hash from metadata.
+
+        Args:
+            metadata (dict): Metadata dictionary obtained from fsspec.
+
+        Returns:
+            Optional[str]: The file hash in hexadecimal format or None if not found.
+        """
+        logger.error(f"[SFTP] File hash not found for the metadata: {metadata}")
+        return None
 
     # TODO: Check if this method can be removed, and use it from parent class
     # (class UnstractFileSystem)
