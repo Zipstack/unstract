@@ -126,7 +126,7 @@ class StructureTool(BaseTool):
 
         if tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION]:
             if summarize_as_source:
-                summarize_file_hash = self._summarize_and_index(
+                summarize_file_path, summarize_file_hash = self._summarize_and_index(
                     tool_settings=tool_settings,
                     tool_data_dir=tool_data_dir,
                     responder=responder,
@@ -134,6 +134,7 @@ class StructureTool(BaseTool):
                     usage_kwargs=usage_kwargs,
                 )
                 payload[SettingsKeys.FILE_HASH] = summarize_file_hash
+                payload[SettingsKeys.FILE_PATH] = summarize_file_path
             self.stream_log("Fetching response for single pass extraction")
             # Since indexing is not involved for single pass
             index_metrics = {"time_taken(s)": 0}
@@ -147,15 +148,18 @@ class StructureTool(BaseTool):
                 reindex = True
                 for output in outputs:
                     if summarize_as_source:
-                        summarize_file_hash = self._summarize_and_index(
-                            tool_settings=tool_settings,
-                            tool_data_dir=tool_data_dir,
-                            responder=responder,
-                            outputs=outputs,
-                            usage_kwargs=usage_kwargs,
+                        summarize_file_path, summarize_file_hash = (
+                            self._summarize_and_index(
+                                tool_settings=tool_settings,
+                                tool_data_dir=tool_data_dir,
+                                responder=responder,
+                                outputs=outputs,
+                                usage_kwargs=usage_kwargs,
+                            )
                         )
                         payload[SettingsKeys.OUTPUTS] = outputs
                         payload[SettingsKeys.FILE_HASH] = summarize_file_hash
+                        payload[SettingsKeys.FILE_PATH] = summarize_file_path
                         # Since indexing is not involved for summary
                         index_metrics[output[SettingsKeys.NAME]] = {"time_taken(s)": 0}
                         break
@@ -277,7 +281,7 @@ class StructureTool(BaseTool):
         responder: PromptTool,
         outputs: dict[str, Any],
         usage_kwargs: dict[Any, Any] = {},
-    ) -> str:
+    ) -> tuple[str, str]:
         """Summarizes the context of the file and indexes the summarized
         content.
 
@@ -338,11 +342,10 @@ class StructureTool(BaseTool):
                 path=summarize_file_path, mode="w", data=summarized_context
             )
 
-        self.stream_log("Indexing summarized context")
         summarize_file_hash: str = self.workflow_filestorage.get_hash_from_file(
             path=summarize_file_path
         )
-        return summarize_file_hash
+        return str(summarize_file_path), summarize_file_hash
 
 
 if __name__ == "__main__":
