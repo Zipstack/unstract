@@ -6,9 +6,7 @@ class ConnectorInstanceKey:
     CONNECTOR_VERSION = "connector_version"
     CONNECTOR_AUTH = "connector_auth"
     CONNECTOR_METADATA = "connector_metadata"
-    CONNECTOR_EXISTS = (
-        "Connector with this configuration already exists in this project."
-    )
+    CONNECTOR_EXISTS = "Connector with this configuration already exists in this project."
     DUPLICATE_API = "It appears that a duplicate call may have been made."
 
 

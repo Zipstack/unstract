@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any
 
 from django.conf import settings
 from django.core.cache import cache
@@ -9,7 +9,7 @@ redis_cache = get_redis_connection("default")
 
 class CacheService:
     @staticmethod
-    def get_key(key: str) -> Optional[Any]:
+    def get_key(key: str) -> Any | None:
         data = cache.get(str(key))
         if data is not None:
             if isinstance(data, bytes):
@@ -19,9 +19,7 @@ class CacheService:
         return data
 
     @staticmethod
-    def set_key(
-        key: str, value: Any, expire: int = int(settings.CACHE_TTL_SEC)
-    ) -> None:
+    def set_key(key: str, value: Any, expire: int = int(settings.CACHE_TTL_SEC)) -> None:
         cache.set(
             str(key),
             value,
@@ -81,9 +79,9 @@ class CacheService:
 
     @staticmethod
     def remove_all_session_keys(
-        user_id: Optional[str] = None,
-        cookie_id: Optional[str] = None,
-        key: Optional[str] = None,
+        user_id: str | None = None,
+        cookie_id: str | None = None,
+        key: str | None = None,
     ) -> None:
         if cookie_id is not None:
             cache.delete(cookie_id)

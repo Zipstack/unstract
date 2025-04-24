@@ -10,6 +10,9 @@ from connector_v2.models import ConnectorInstance
 from deprecated import deprecated
 from django.conf import settings
 from django.http import StreamingHttpResponse
+from fsspec import AbstractFileSystem
+from pydrive2.files import ApiRequestError
+
 from file_management.exceptions import (
     ConnectorApiRequestError,
     ConnectorClassNotFound,
@@ -22,9 +25,6 @@ from file_management.exceptions import (
     TenantDirCreationError,
 )
 from file_management.file_management_dto import FileInformation
-from fsspec import AbstractFileSystem
-from pydrive2.files import ApiRequestError
-
 from unstract.connectors.filesystems import connectors as fs_connectors
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
@@ -32,7 +32,6 @@ logger = logging.getLogger(__name__)
 
 
 class FileManagerHelper:
-
     @staticmethod
     def get_file_system(connector: ConnectorInstance) -> UnstractFileSystem:
         """Creates the `UnstractFileSystem` for the corresponding connector."""
@@ -70,7 +69,8 @@ class FileManagerHelper:
     @staticmethod
     def get_files(fs: AbstractFileSystem, file_path: str) -> list[FileInformation]:
         """Iterate through the directories and make a list of
-        FileInformation."""
+        FileInformation.
+        """
         if not file_path.endswith("/"):
             file_path += "/"
 

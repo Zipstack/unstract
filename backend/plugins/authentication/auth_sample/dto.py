@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
@@ -13,9 +13,9 @@ class UserInfo:
     id: str
     name: str
     email: str
-    display_name: Optional[str] = None
-    family_name: Optional[str] = None
-    picture: Optional[str] = None
+    display_name: str | None = None
+    family_name: str | None = None
+    picture: str | None = None
 
 
 @dataclass

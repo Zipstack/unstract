@@ -1,14 +1,12 @@
-from typing import Optional
-
 from rest_framework.exceptions import APIException
 
 
 class ToolInstanceBaseException(APIException):
     def __init__(
         self,
-        detail: Optional[str] = None,
-        code: Optional[int] = None,
-        tool_name: Optional[str] = None,
+        detail: str | None = None,
+        code: int | None = None,
+        tool_name: str | None = None,
     ) -> None:
         detail = detail or self.default_detail
         if tool_name is not None:

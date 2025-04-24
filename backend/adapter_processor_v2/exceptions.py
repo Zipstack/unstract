@@ -1,7 +1,6 @@
-from typing import Optional
+from rest_framework.exceptions import APIException
 
 from adapter_processor_v2.constants import AdapterKeys
-from rest_framework.exceptions import APIException
 from unstract.sdk.exceptions import SdkError
 
 
@@ -39,9 +38,9 @@ class DuplicateAdapterNameError(APIException):
 
     def __init__(
         self,
-        name: Optional[str] = None,
-        detail: Optional[str] = None,
-        code: Optional[str] = None,
+        name: str | None = None,
+        detail: str | None = None,
+        code: str | None = None,
     ) -> None:
         if name:
             detail = self.default_detail.replace("this name", f"name '{name}'")
@@ -55,9 +54,9 @@ class TestAdapterError(APIException):
     def __init__(
         self,
         sdk_err: SdkError,
-        detail: Optional[str] = None,
-        code: Optional[str] = None,
-        adapter_name: Optional[str] = None,
+        detail: str | None = None,
+        code: str | None = None,
+        adapter_name: str | None = None,
     ):
         if sdk_err.status_code:
             self.status_code = sdk_err.status_code
@@ -77,8 +76,8 @@ class DeleteAdapterInUseError(APIException):
 
     def __init__(
         self,
-        detail: Optional[str] = None,
-        code: Optional[str] = None,
+        detail: str | None = None,
+        code: str | None = None,
         adapter_name: str = "adapter",
     ):
         if detail is None:

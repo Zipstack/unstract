@@ -1,7 +1,7 @@
 import logging
 import uuid
 from abc import ABC
-from typing import Any, Optional
+from typing import Any
 
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -28,13 +28,13 @@ class AuthService(ABC):
         return self.authHelper.get_authorize_token(request)
 
     def user_organizations(
-        self, user: User, token: Optional[dict[str, Any]] = None
+        self, user: User, token: dict[str, Any] | None = None
     ) -> list[AuthOrganization]:
         raise MethodNotImplemented()
 
     def get_user_info(
-        self, user: User, token: Optional[dict[str, Any]] = None
-    ) -> Optional[UserInfo]:
+        self, user: User, token: dict[str, Any] | None = None
+    ) -> UserInfo | None:
         return UserInfo(
             id=user.id,
             name=user.username,
@@ -49,9 +49,9 @@ class AuthService(ABC):
         self,
         user_id: str,
         user_name: str,
-        organization_name: Optional[str] = None,
-        display_name: Optional[str] = None,
-    ) -> Optional[AuthOrganization]:
+        organization_name: str | None = None,
+        display_name: str | None = None,
+    ) -> AuthOrganization | None:
         raise MethodNotImplemented()
 
     def make_user_organization_name(self) -> str:

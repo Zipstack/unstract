@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("prompt_studio_output_manager_v2", "0001_initial"),
     ]

@@ -3,9 +3,10 @@ import uuid
 from account_v2.models import User
 from adapter_processor_v2.models import AdapterInstance
 from django.db import models
+from utils.models.base_model import BaseModel
+
 from prompt_studio.prompt_studio_core_v2.exceptions import DefaultProfileError
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
-from utils.models.base_model import BaseModel
 
 
 class ProfileManager(BaseModel):

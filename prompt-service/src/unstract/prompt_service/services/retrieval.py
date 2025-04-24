@@ -97,8 +97,7 @@ class RetrievalService:
         context_retrieval_metrics: dict[str, Any],
         prompt_key: str,
     ) -> list[str]:
-        """
-        Loads full context from raw file for zero chunk size retrieval
+        """Loads full context from raw file for zero chunk size retrieval
         Args:
             execution_source (str): Source of execution.
             file_path (str): Path to the directory containing text file.

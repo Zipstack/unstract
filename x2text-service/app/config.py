@@ -1,9 +1,10 @@
 from os import environ as env
 
-from app.controllers import api
-from app.models import X2TextAudit, be_db
 from dotenv import load_dotenv
 from flask import Flask
+
+from app.controllers import api
+from app.models import X2TextAudit, be_db
 
 load_dotenv()
 

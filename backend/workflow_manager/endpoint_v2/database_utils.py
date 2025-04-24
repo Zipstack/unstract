@@ -2,7 +2,7 @@ import datetime
 import json
 import logging
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 from utils.constants import Common
 from workflow_manager.endpoint_v2.constants import DBConnectionClass, TableColumns
@@ -107,7 +107,7 @@ class DatabaseUtils:
         execution_id_name: str = "execution_id",
         include_timestamp: bool = False,
         include_agent: bool = False,
-        agent_name: Optional[str] = AgentName.UNSTRACT_DBWRITER.value,
+        agent_name: str | None = AgentName.UNSTRACT_DBWRITER.value,
         single_column_name: str = "data",
     ) -> dict[str, Any]:
         """Generate a dictionary of columns and values based on specified
@@ -131,7 +131,6 @@ class DatabaseUtils:
             dict: A dictionary containing columns and values based on
                 the specified parameters.
         """
-
         values: dict[str, Any] = {}
         try:
             column_mode = ColumnModes(column_mode_str)
@@ -237,9 +236,7 @@ class DatabaseUtils:
         logger.debug(f"sucessfully inserted into table {table_name} with: {sql} query")
 
     @staticmethod
-    def get_db_class(
-        connector_id: str, connector_settings: dict[str, Any]
-    ) -> UnstractDB:
+    def get_db_class(connector_id: str, connector_settings: dict[str, Any]) -> UnstractDB:
         connector = db_connectors[connector_id][Common.METADATA][Common.CONNECTOR]
         connector_class: UnstractDB = connector(connector_settings)
         return connector_class
@@ -261,9 +258,7 @@ class DatabaseUtils:
         Raises:
             e: _description_
         """
-        sql = db_class.create_table_query(
-            table=table_name, database_entry=database_entry
-        )
+        sql = db_class.create_table_query(table=table_name, database_entry=database_entry)
         logger.debug(f"creating table {table_name} with: {sql} query")
         try:
             db_class.execute_query(

@@ -8,11 +8,12 @@ from typing import Any
 
 from constants import SettingsKeys  # type: ignore [attr-defined]
 from helpers import StructureToolHelper as STHelper
+from utils import json_to_markdown
+
 from unstract.sdk.constants import LogLevel, LogState, MetadataKey, ToolEnv, UsageKwargs
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.tool.base import BaseTool
 from unstract.sdk.tool.entrypoint import ToolEntrypoint
-from utils import json_to_markdown
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +38,7 @@ class StructureTool(BaseTool):
     ) -> None:
         prompt_registry_id: str = settings[SettingsKeys.PROMPT_REGISTRY_ID]
         enable_challenge: bool = settings.get(SettingsKeys.ENABLE_CHALLENGE, False)
-        summarize_as_source: bool = settings.get(
-            SettingsKeys.SUMMARIZE_AS_SOURCE, False
-        )
+        summarize_as_source: bool = settings.get(SettingsKeys.SUMMARIZE_AS_SOURCE, False)
         single_pass_extraction_mode: bool = settings.get(
             SettingsKeys.SINGLE_PASS_EXTRACTION_MODE, False
         )
@@ -68,9 +67,7 @@ class StructureTool(BaseTool):
             self.stream_error_and_exit(f"Error loading structure definition: {e}")
 
         # Update GUI
-        input_log = (
-            f"## Loaded '{ps_project_name}'\n{json_to_markdown(tool_metadata)}\n"
-        )
+        input_log = f"## Loaded '{ps_project_name}'\n{json_to_markdown(tool_metadata)}\n"
         output_log = (
             f"## Processing '{self.source_file_name}'\nThis might take a while and "
             "involve...\n- Extracting text\n- Indexing\n- Retrieving answers "
@@ -95,9 +92,7 @@ class StructureTool(BaseTool):
         if summarize_as_source:
             file_name = SettingsKeys.SUMMARIZE
         tool_data_dir = Path(self.get_env_or_die(ToolEnv.EXECUTION_DATA_DIR))
-        execution_run_data_folder = Path(
-            self.get_env_or_die(ToolEnv.EXECUTION_DATA_DIR)
-        )
+        execution_run_data_folder = Path(self.get_env_or_die(ToolEnv.EXECUTION_DATA_DIR))
 
         index_metrics = {}
         extracted_input_file = str(execution_run_data_folder / SettingsKeys.EXTRACT)
@@ -232,9 +227,9 @@ class StructureTool(BaseTool):
 
         # HACK: Replacing actual file's name instead of INFILE
         if SettingsKeys.METADATA in structured_output_dict:
-            structured_output_dict[SettingsKeys.METADATA][
-                SettingsKeys.FILE_NAME
-            ] = self.source_file_name
+            structured_output_dict[SettingsKeys.METADATA][SettingsKeys.FILE_NAME] = (
+                self.source_file_name
+            )
 
         if not summarize_as_source:
             metadata = structured_output_dict[SettingsKeys.METADATA]
@@ -311,9 +306,7 @@ class StructureTool(BaseTool):
         summarize_file_path = tool_data_dir / SettingsKeys.SUMMARIZE
 
         summarized_context = ""
-        self.stream_log(
-            f"Checking if summarized context exists at {summarize_file_path}"
-        )
+        self.stream_log(f"Checking if summarized context exists at {summarize_file_path}")
         if self.workflow_filestorage.exists(summarize_file_path):
             summarized_context = self.workflow_filestorage.read(
                 path=summarize_file_path, mode="r"
