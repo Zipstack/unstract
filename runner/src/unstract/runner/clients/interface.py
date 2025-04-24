@@ -24,15 +24,20 @@ class ContainerInterface(ABC):
         pass
 
     @abstractmethod
-    def cleanup(self) -> None:
+    def cleanup(self, client: Optional["ContainerClientInterface"] = None) -> None:
         """Stops and removes the running container."""
         pass
 
 
 class ContainerClientInterface(ABC):
-
     @abstractmethod
-    def __init__(self, image_name: str, image_tag: str, logger: logging.Logger) -> None:
+    def __init__(
+        self,
+        image_name: str,
+        image_tag: str,
+        logger: logging.Logger,
+        sidecar_enabled: bool = False,
+    ) -> None:
         pass
 
     @abstractmethod
@@ -49,8 +54,25 @@ class ContainerClientInterface(ABC):
         pass
 
     @abstractmethod
+    def run_container_with_sidecar(
+        self, container_config: dict[Any, Any], sidecar_config: dict[Any, Any]
+    ) -> tuple[ContainerInterface, ContainerInterface | None]:
+        """Method to run a container with provided config. This method will run
+        the container.
+
+        Args:
+            container_config (dict[Any, Any]): Configuration for container.
+            sidecar_config (dict[Any, Any]): Configuration for sidecar.
+
+        Returns:
+            tuple[ContainerInterface, Optional[ContainerInterface]]:
+                Returns a Container instance.
+        """
+        pass
+
+    @abstractmethod
     def get_image(self) -> str:
-        """Consturct image name with tag and repo name. Pulls the image if
+        """Construct image name with tag and repo name. Pulls the image if
         needed.
 
         Returns:
@@ -59,17 +81,42 @@ class ContainerClientInterface(ABC):
         pass
 
     @abstractmethod
+    def wait_for_container_stop(
+        self,
+        container: ContainerInterface | None,
+        main_container_status: dict | None = None,
+    ) -> dict | None:
+        """Wait for the container to stop and return the exit code.
+
+        Args:
+            container (Optional[ContainerInterface]): The container to wait for.
+            main_container_status (Optional[dict]): The status of the main container.
+
+        Returns:
+            str: The exit code of the container.
+        """
+        pass
+
+    @abstractmethod
     def get_container_run_config(
         self,
         command: list[str],
         file_execution_id: str,
-        container_name: Optional[str] = None,
-        envs: Optional[dict[str, Any]] = None,
+        shared_log_dir: str,
+        container_name: str | None = None,
+        envs: dict[str, Any] | None = None,
         auto_remove: bool = False,
+        sidecar: bool = False,
+        **kwargs,
     ) -> dict[str, Any]:
         """Generate the configuration dictionary to run the container.
 
         Returns:
             dict[str, Any]: Configuration for running the container.
         """
+        pass
+
+    @abstractmethod
+    def cleanup_volume(self) -> None:
+        """Cleans up the shared volume"""
         pass

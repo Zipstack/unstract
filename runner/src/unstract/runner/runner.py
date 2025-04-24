@@ -1,11 +1,14 @@
 import ast
 import json
 import os
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from dotenv import load_dotenv
 from flask import Flask
+
+from unstract.core.constants import LogFieldName
+from unstract.core.pubsub_helper import LogPublisher
 from unstract.runner.clients.helper import ContainerClientHelper
 from unstract.runner.clients.interface import (
     ContainerClientInterface,
@@ -13,12 +16,10 @@ from unstract.runner.clients.interface import (
 )
 from unstract.runner.constants import Env, LogLevel, LogType, ToolKey
 from unstract.runner.exception import ToolRunException
-
-from unstract.core.constants import LogFieldName
-from unstract.core.pubsub_helper import LogPublisher
+from unstract.runner.utils import Utils
 
 load_dotenv()
-# Loads the container clinet class.
+# Loads the container client class.
 client_class = ContainerClientHelper.get_container_client()
 
 
@@ -28,8 +29,9 @@ class UnstractRunner:
         # If no image_tag is provided will assume the `latest` tag
         self.image_tag = image_tag or "latest"
         self.logger = app.logger
+        self.sidecar_enabled = Utils.is_sidecar_enabled()
         self.client: ContainerClientInterface = client_class(
-            self.image_name, self.image_tag, self.logger
+            self.image_name, self.image_tag, self.logger, self.sidecar_enabled
         )
 
     # Function to stream logs
@@ -40,7 +42,7 @@ class UnstractRunner:
         execution_id: str,
         organization_id: str,
         file_execution_id: str,
-        channel: Optional[str] = None,
+        channel: str | None = None,
     ) -> None:
         for line in container.logs(follow=True):
             log_message = line
@@ -54,7 +56,7 @@ class UnstractRunner:
                 file_execution_id=file_execution_id,
             )
 
-    def get_valid_log_message(self, log_message: str) -> Optional[dict[str, Any]]:
+    def get_valid_log_message(self, log_message: str) -> dict[str, Any] | None:
         """Get a valid log message from the log message.
 
         Args:
@@ -77,8 +79,8 @@ class UnstractRunner:
         execution_id: str,
         organization_id: str,
         file_execution_id: str,
-        channel: Optional[str] = None,
-    ) -> Optional[dict[str, Any]]:
+        channel: str | None = None,
+    ) -> dict[str, Any] | None:
         log_dict = self.get_valid_log_message(log_message)
         if not log_dict:
             return None
@@ -105,7 +107,7 @@ class UnstractRunner:
             LogPublisher.publish(channel, log_dict)
         return None
 
-    def is_valid_log_type(self, log_type: Optional[str]) -> bool:
+    def is_valid_log_type(self, log_type: str | None) -> bool:
         if log_type in {
             LogType.LOG,
             LogType.UPDATE,
@@ -131,7 +133,7 @@ class UnstractRunner:
         """
         # Use current timestamp if emitted_at is not present
         if "emitted_at" not in log_dict:
-            return datetime.now(timezone.utc).timestamp()
+            return datetime.now(UTC).timestamp()
 
         emitted_at = log_dict["emitted_at"]
         if isinstance(emitted_at, str):
@@ -191,7 +193,43 @@ class UnstractRunner:
 
         return additional_envs
 
-    def run_command(self, command: str) -> Optional[Any]:
+    def _get_sidecar_container_config(
+        self,
+        container_name: str,
+        shared_log_dir: str,
+        shared_log_file: str,
+        file_execution_id: str,
+        execution_id: str,
+        organization_id: str,
+        messaging_channel: str,
+        tool_instance_id: str,
+    ) -> dict[str, Any]:
+        """Returns the container configuration for the sidecar container."""
+        sidecar_env = {
+            "LOG_PATH": shared_log_file,
+            "REDIS_HOST": os.getenv(Env.REDIS_HOST),
+            "REDIS_PORT": os.getenv(Env.REDIS_PORT),
+            "REDIS_USER": os.getenv(Env.REDIS_USER),
+            "REDIS_PASSWORD": os.getenv(Env.REDIS_PASSWORD),
+            "TOOL_INSTANCE_ID": tool_instance_id,
+            "EXECUTION_ID": execution_id,
+            "ORGANIZATION_ID": organization_id,
+            "FILE_EXECUTION_ID": file_execution_id,
+            "MESSAGING_CHANNEL": messaging_channel,
+            "LOG_LEVEL": os.getenv(Env.LOG_LEVEL, "INFO"),
+            "CELERY_BROKER_URL": os.getenv(Env.CELERY_BROKER_URL),
+        }
+        sidecar_config = self.client.get_container_run_config(
+            command=[],
+            file_execution_id=file_execution_id,
+            shared_log_dir=shared_log_dir,
+            container_name=container_name,
+            envs=sidecar_env,
+            sidecar=True,
+        )
+        return sidecar_config
+
+    def run_command(self, command: str) -> Any | None:
         """Runs any given command on the container.
 
         Args:
@@ -228,6 +266,37 @@ class UnstractRunner:
             container.cleanup()
         return None
 
+    def _get_container_command(
+        self, shared_log_dir: str, shared_log_file: str, settings: dict[str, Any]
+    ):
+        """Returns the container command to run the tool."""
+        settings_json = json.dumps(settings).replace("'", "\\'")
+        # Prepare the tool execution command
+        tool_cmd = (
+            f"opentelemetry-instrument python main.py --command RUN "
+            f"--settings '{settings_json}' --log-level DEBUG"
+        )
+
+        if not self.sidecar_enabled:
+            return tool_cmd
+
+        # Shell script components
+        mkdir_cmd = f"mkdir -p {shared_log_dir}"
+        run_tool_fn = (
+            "run_tool() { "
+            f"{tool_cmd}; "
+            "exit_code=$?; "
+            f'echo "{LogFieldName.TOOL_TERMINATION_MARKER} with exit code $exit_code" '
+            f">> {shared_log_file}; "
+            "return $exit_code; "
+            "}"
+        )
+        execute_cmd = f"run_tool 2>&1 | tee -a {shared_log_file}"
+
+        # Combine all commands
+        shell_script = f"{mkdir_cmd} && {run_tool_fn}; {execute_cmd}"
+        return shell_script
+
     def run_container(
         self,
         organization_id: str,
@@ -236,9 +305,9 @@ class UnstractRunner:
         file_execution_id: str,
         settings: dict[str, Any],
         envs: dict[str, Any],
-        messaging_channel: Optional[str] = None,
-        container_name: Optional[str] = None,
-    ) -> Optional[Any]:
+        messaging_channel: str | None = None,
+        container_name: str | None = None,
+    ) -> Any | None:
         """RUN container With RUN Command.
 
         Args:
@@ -251,7 +320,6 @@ class UnstractRunner:
         Returns:
             Optional[Any]: _description_
         """
-
         envs[Env.EXECUTION_DATA_DIR] = os.path.join(
             os.getenv(Env.WORKFLOW_EXECUTION_DIR_PREFIX, ""),
             organization_id,
@@ -264,20 +332,41 @@ class UnstractRunner:
 
         # Get additional environment variables to pass to the container
         additional_env = self._parse_additional_envs()
+        tool_instance_id = str(settings.get(ToolKey.TOOL_INSTANCE_ID))
+        shared_log_dir = "/shared/logs"  # Mount directory, not file
+        shared_log_file = os.path.join(shared_log_dir, "logs.txt")
+        container_command = self._get_container_command(
+            shared_log_dir=shared_log_dir,
+            shared_log_file=shared_log_file,
+            settings=settings,
+        )
 
         container_config = self.client.get_container_run_config(
-            command=[
-                "--command",
-                "RUN",
-                "--settings",
-                json.dumps(settings),
-                "--log-level",
-                "DEBUG",
-            ],
+            command=["/bin/sh", "-c", container_command],
             file_execution_id=file_execution_id,
+            shared_log_dir=shared_log_dir,  # Pass directory for mounting
             container_name=container_name,
             envs={**envs, **additional_env},
+            organization_id=organization_id,
+            workflow_id=workflow_id,
+            execution_id=execution_id,
+            messaging_channel=messaging_channel,
+            tool_instance_id=tool_instance_id,
         )
+
+        sidecar_config: dict[str, Any] | None = None
+        if self.sidecar_enabled:
+            sidecar_config = self._get_sidecar_container_config(
+                container_name=container_name,
+                shared_log_dir=shared_log_dir,
+                shared_log_file=shared_log_file,
+                file_execution_id=file_execution_id,
+                execution_id=execution_id,
+                organization_id=organization_id,
+                messaging_channel=messaging_channel,
+                tool_instance_id=tool_instance_id,
+            )
+
         # Add labels to container for logging with Loki.
         # This only required for observability.
         try:
@@ -288,27 +377,52 @@ class UnstractRunner:
 
         # Run the Docker container
         container = None
+        sidecar = None
         result = {"type": "RESULT", "result": None}
         try:
             self.logger.info(
                 f"Execution ID: {execution_id}, running docker "
                 f"container: {container_name}"
             )
-            container: ContainerInterface = self.client.run_container(container_config)
-            tool_instance_id = str(settings.get(ToolKey.TOOL_INSTANCE_ID))
-            # Stream logs
-            self.stream_logs(
-                container=container,
-                tool_instance_id=tool_instance_id,
-                channel=messaging_channel,
-                execution_id=execution_id,
-                organization_id=organization_id,
-                file_execution_id=file_execution_id,
-            )
-            self.logger.info(
-                f"Execution ID: {execution_id}, docker "
-                f"container: {container_name} ran successfully"
-            )
+            if sidecar_config:
+                containers: tuple[ContainerInterface, ContainerInterface | None] = (
+                    self.client.run_container_with_sidecar(
+                        container_config, sidecar_config
+                    )
+                )
+                container, sidecar = containers
+                status = self.client.wait_for_container_stop(container)
+                self.logger.info(
+                    f"Execution ID: {execution_id}, docker "
+                    f"container: {container_name} ran with status: {status}"
+                )
+                self.client.wait_for_container_stop(sidecar, main_container_status=status)
+                self.logger.info(
+                    f"Execution ID: {execution_id}, docker "
+                    f"container: {container_name} completed execution"
+                )
+            else:
+                container: ContainerInterface = self.client.run_container(
+                    container_config
+                )
+                self.logger.info(
+                    f"Execution ID: {execution_id}, docker "
+                    f"container: {container_name} streaming logs..."
+                )
+                # Stream logs
+                self.stream_logs(
+                    container=container,
+                    tool_instance_id=tool_instance_id,
+                    channel=messaging_channel,
+                    execution_id=execution_id,
+                    organization_id=organization_id,
+                    file_execution_id=file_execution_id,
+                )
+                self.logger.info(
+                    f"Execution ID: {execution_id}, docker "
+                    f"container: {container_name} ran successfully"
+                )
+
         except ToolRunException as te:
             self.logger.error(
                 "Error while running docker container"
@@ -323,5 +437,7 @@ class UnstractRunner:
             )
             result = {"type": "RESULT", "result": None, "error": str(e)}
         if container:
-            container.cleanup()
+            container.cleanup(client=self.client)
+        if sidecar:
+            sidecar.cleanup(client=self.client)
         return result

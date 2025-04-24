@@ -2,12 +2,13 @@ from typing import Any
 
 from account.custom_exceptions import DuplicateData
 from django.db import IntegrityError
-from prompt.constants import PromptErrors
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
+
+from prompt.constants import PromptErrors
 
 from .models import Prompt
 from .serializers import PromptSerializer
@@ -41,6 +42,4 @@ class PromptViewSet(viewsets.ModelViewSet):
             )
 
         headers = self.get_success_headers(serializer.data)
-        return Response(
-            serializer.data, status=status.HTTP_201_CREATED, headers=headers
-        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)

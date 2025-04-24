@@ -8,7 +8,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
     dependencies = [
@@ -136,15 +135,11 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "attempts",
-                    models.IntegerField(
-                        db_comment="number of attempts taken", default=0
-                    ),
+                    models.IntegerField(db_comment="number of attempts taken", default=0),
                 ),
                 (
                     "execution_time",
-                    models.FloatField(
-                        db_comment="execution time in seconds", default=0
-                    ),
+                    models.FloatField(db_comment="execution time in seconds", default=0),
                 ),
             ],
             options={
@@ -287,9 +282,7 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "error",
-                    models.TextField(
-                        blank=True, db_comment="Error message", default=""
-                    ),
+                    models.TextField(blank=True, db_comment="Error message", default=""),
                 ),
                 (
                     "result",

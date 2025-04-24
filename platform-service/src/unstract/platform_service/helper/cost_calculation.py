@@ -1,9 +1,10 @@
 import json
-from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import requests
 from flask import current_app as app
+
 from unstract.platform_service.env import Env
 from unstract.platform_service.utils import format_float_positional
 from unstract.sdk.exceptions import FileStorageError
@@ -63,7 +64,7 @@ class CostCalculationHelper:
             cost += output_cost_per_token * output_tokens
         return format_float_positional(cost)
 
-    def _get_model_token_data(self) -> Optional[dict[str, Any]]:
+    def _get_model_token_data(self) -> dict[str, Any] | None:
         try:
             # File does not exist, fetch JSON data from API
             if not self.file_storage.exists(self.file_path):
@@ -71,8 +72,8 @@ class CostCalculationHelper:
 
             file_mtime = self.file_storage.modification_time(self.file_path)
             file_expiry_date = file_mtime + timedelta(days=self.ttl_days)
-            file_expiry_date_utc = file_expiry_date.replace(tzinfo=timezone.utc)
-            now_utc = datetime.now().replace(tzinfo=timezone.utc)
+            file_expiry_date_utc = file_expiry_date.replace(tzinfo=UTC)
+            now_utc = datetime.now().replace(tzinfo=UTC)
 
             if now_utc < file_expiry_date_utc:
                 app.logger.info(f"Reading model token data from {self.file_path}")
@@ -90,7 +91,7 @@ class CostCalculationHelper:
             )
             return None
 
-    def _fetch_and_save_json(self) -> Optional[dict[str, Any]]:
+    def _fetch_and_save_json(self) -> dict[str, Any] | None:
         """Fetch model's price and token data from the URL.
 
         Caches it in a file with the mentioned TTL

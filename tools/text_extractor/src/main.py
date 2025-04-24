@@ -10,7 +10,6 @@ from unstract.sdk.x2txt import TextExtractionResult, X2Text
 
 
 class TextExtractor(BaseTool):
-
     def validate(self, input_file: str, settings: dict[str, Any]) -> None:
         """Validate the input file and settings.
 
@@ -77,9 +76,7 @@ class TextExtractor(BaseTool):
         try:
             self.stream_log("Preparing to write the extracted text.")
             if self.source_file_name:
-                output_path = (
-                    Path(output_dir) / f"{Path(self.source_file_name).stem}.txt"
-                )
+                output_path = Path(output_dir) / f"{Path(self.source_file_name).stem}.txt"
                 self.workflow_filestorage.write(
                     path=output_path, mode="w", data=extracted_text
                 )

@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("tags", "0001_initial"),
         ("workflow_v2", "0004_executionlog_file_execution"),

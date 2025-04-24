@@ -1,3 +1,4 @@
+import datetime
 import json
 import logging
 import os
@@ -7,11 +8,12 @@ from typing import Any
 
 from constants import SettingsKeys  # type: ignore [attr-defined]
 from helpers import StructureToolHelper as STHelper
+from utils import json_to_markdown
+
 from unstract.sdk.constants import LogLevel, LogState, MetadataKey, ToolEnv, UsageKwargs
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.tool.base import BaseTool
 from unstract.sdk.tool.entrypoint import ToolEntrypoint
-from utils import json_to_markdown
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +38,7 @@ class StructureTool(BaseTool):
     ) -> None:
         prompt_registry_id: str = settings[SettingsKeys.PROMPT_REGISTRY_ID]
         enable_challenge: bool = settings.get(SettingsKeys.ENABLE_CHALLENGE, False)
-        summarize_as_source: bool = settings.get(
-            SettingsKeys.SUMMARIZE_AS_SOURCE, False
-        )
+        summarize_as_source: bool = settings.get(SettingsKeys.SUMMARIZE_AS_SOURCE, False)
         single_pass_extraction_mode: bool = settings.get(
             SettingsKeys.SINGLE_PASS_EXTRACTION_MODE, False
         )
@@ -67,9 +67,7 @@ class StructureTool(BaseTool):
             self.stream_error_and_exit(f"Error loading structure definition: {e}")
 
         # Update GUI
-        input_log = (
-            f"## Loaded '{ps_project_name}'\n{json_to_markdown(tool_metadata)}\n"
-        )
+        input_log = f"## Loaded '{ps_project_name}'\n{json_to_markdown(tool_metadata)}\n"
         output_log = (
             f"## Processing '{self.source_file_name}'\nThis might take a while and "
             "involve...\n- Extracting text\n- Indexing\n- Retrieving answers "
@@ -94,9 +92,7 @@ class StructureTool(BaseTool):
         if summarize_as_source:
             file_name = SettingsKeys.SUMMARIZE
         tool_data_dir = Path(self.get_env_or_die(ToolEnv.EXECUTION_DATA_DIR))
-        execution_run_data_folder = Path(
-            self.get_env_or_die(ToolEnv.EXECUTION_DATA_DIR)
-        )
+        execution_run_data_folder = Path(self.get_env_or_die(ToolEnv.EXECUTION_DATA_DIR))
 
         index_metrics = {}
         extracted_input_file = str(execution_run_data_folder / SettingsKeys.EXTRACT)
@@ -130,8 +126,7 @@ class StructureTool(BaseTool):
 
         if tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION]:
             if summarize_as_source:
-                summarize_file_hash = self._summarize_and_index(
-                    tool_id=tool_id,
+                summarize_file_path, summarize_file_hash = self._summarize_and_index(
                     tool_settings=tool_settings,
                     tool_data_dir=tool_data_dir,
                     responder=responder,
@@ -139,25 +134,10 @@ class StructureTool(BaseTool):
                     usage_kwargs=usage_kwargs,
                 )
                 payload[SettingsKeys.FILE_HASH] = summarize_file_hash
-                # STHelper.dynamic_indexing(
-                #     tool_settings=tool_settings,
-                #     run_id=self.file_execution_id,
-                #     file_path=tool_data_dir / SettingsKeys.EXTRACT,
-                #     tool=self,
-                #     execution_run_data_folder=execution_run_data_folder,
-                #     chunk_overlap=tool_settings[SettingsKeys.CHUNK_OVERLAP],
-                #     chunk_size=tool_settings[SettingsKeys.CHUNK_SIZE],
-                #     reIndex=True,
-                #     usage_kwargs=usage_kwargs,
-                #     enable_highlight=enable_highlight,
-                #     extracted_text=extracted_text,
-                #     tool_id=tool_metadata[SettingsKeys.TOOL_ID],
-                #     file_hash=file_hash,
-                # )
-                #  Handle metrics for single pass extraction
-                # index_metrics = {SettingsKeys.INDEXING: index.get_metrics()}
-
+                payload[SettingsKeys.FILE_PATH] = summarize_file_path
             self.stream_log("Fetching response for single pass extraction")
+            # Since indexing is not involved for single pass
+            index_metrics = {"time_taken(s)": 0}
             prompt_service_resp = responder.single_pass_extraction(
                 payload=payload,
             )
@@ -168,19 +148,33 @@ class StructureTool(BaseTool):
                 reindex = True
                 for output in outputs:
                     if summarize_as_source:
-                        summarize_file_hash = self._summarize_and_index(
-                            tool_id=tool_id,
-                            tool_settings=tool_settings,
-                            tool_data_dir=tool_data_dir,
-                            responder=responder,
-                            outputs=outputs,
-                            usage_kwargs=usage_kwargs,
+                        summarize_file_path, summarize_file_hash = (
+                            self._summarize_and_index(
+                                tool_settings=tool_settings,
+                                tool_data_dir=tool_data_dir,
+                                responder=responder,
+                                outputs=outputs,
+                                usage_kwargs=usage_kwargs,
+                            )
                         )
                         payload[SettingsKeys.OUTPUTS] = outputs
                         payload[SettingsKeys.FILE_HASH] = summarize_file_hash
+                        payload[SettingsKeys.FILE_PATH] = summarize_file_path
+                        # Since indexing is not involved for summary
+                        index_metrics[output[SettingsKeys.NAME]] = {"time_taken(s)": 0}
                         break
-                    if reindex or not summarize_as_source:
-                        self.stream_log("Sucessfully extracted text, indexing..")
+                    self.stream_log(
+                        f"Chunk size '{output[SettingsKeys.CHUNK_SIZE]}', "
+                        f"indexing '{tool_data_dir / SettingsKeys.EXTRACT}'.."
+                    )
+                    if (reindex or not summarize_as_source) and output[
+                        SettingsKeys.CHUNK_SIZE
+                    ] != 0:
+                        indexing_start_time = datetime.datetime.now()
+                        self.stream_log(
+                            f"Sucessfully extracted text, "
+                            f"indexing {tool_data_dir / SettingsKeys.EXTRACT}.."
+                        )
                         STHelper.dynamic_indexing(
                             tool_settings=tool_settings,
                             run_id=self.file_execution_id,
@@ -196,11 +190,13 @@ class StructureTool(BaseTool):
                             file_hash=file_hash,
                             extracted_text=extracted_text,
                         )
-                        # Handle metrics for single pass extraction
-                        # index_metrics[output[SettingsKeys.NAME]] = {
-                        #     SettingsKeys.INDEXING: index.get_metrics()
-                        # }
-                        # index.clear_metrics()
+                        index_metrics[output[SettingsKeys.NAME]] = {
+                            SettingsKeys.INDEXING: {
+                                "time_taken(s)": STHelper.elapsed_time(
+                                    start_time=indexing_start_time
+                                )
+                            }
+                        }
 
                     reindex = False
             except Exception as e:
@@ -231,9 +227,9 @@ class StructureTool(BaseTool):
 
         # HACK: Replacing actual file's name instead of INFILE
         if SettingsKeys.METADATA in structured_output_dict:
-            structured_output_dict[SettingsKeys.METADATA][
-                SettingsKeys.FILE_NAME
-            ] = self.source_file_name
+            structured_output_dict[SettingsKeys.METADATA][SettingsKeys.FILE_NAME] = (
+                self.source_file_name
+            )
 
         if not summarize_as_source:
             metadata = structured_output_dict[SettingsKeys.METADATA]
@@ -280,15 +276,12 @@ class StructureTool(BaseTool):
 
     def _summarize_and_index(
         self,
-        tool_id: str,
         tool_settings: dict[str, Any],
         tool_data_dir: Path,
         responder: PromptTool,
         outputs: dict[str, Any],
         usage_kwargs: dict[Any, Any] = {},
-        enable_highlight: bool = False,
-        execution_run_data_folder: str = None,
-    ) -> str:
+    ) -> tuple[str, str]:
         """Summarizes the context of the file and indexes the summarized
         content.
 
@@ -313,9 +306,7 @@ class StructureTool(BaseTool):
         summarize_file_path = tool_data_dir / SettingsKeys.SUMMARIZE
 
         summarized_context = ""
-        self.stream_log(
-            f"Checking if summarized context exists at {summarize_file_path}"
-        )
+        self.stream_log(f"Checking if summarized context exists at {summarize_file_path}")
         if self.workflow_filestorage.exists(summarize_file_path):
             summarized_context = self.workflow_filestorage.read(
                 path=summarize_file_path, mode="r"
@@ -351,26 +342,10 @@ class StructureTool(BaseTool):
                 path=summarize_file_path, mode="w", data=summarized_context
             )
 
-        self.stream_log("Indexing summarized context")
         summarize_file_hash: str = self.workflow_filestorage.get_hash_from_file(
             path=summarize_file_path
         )
-        STHelper.dynamic_indexing(
-            file_path=summarize_file_path,
-            tool_settings=tool_settings,
-            run_id=self.file_execution_id,
-            execution_run_data_folder=execution_run_data_folder,
-            reindex=True,
-            usage_kwargs=usage_kwargs,
-            enable_highlight=enable_highlight,
-            file_hash=summarize_file_hash,
-            tool_id=tool_id,
-            tool=self,
-            chunk_overlap=0,
-            chunk_size=0,
-            extracted_text=summarized_context,
-        )
-        return summarize_file_hash
+        return str(summarize_file_path), summarize_file_hash
 
 
 if __name__ == "__main__":

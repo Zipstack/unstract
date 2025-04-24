@@ -1,8 +1,9 @@
 import json
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from django.core.exceptions import ObjectDoesNotExist
+
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2.exceptions import (
     AnswerFetchError,
@@ -33,7 +34,7 @@ class OutputManagerHelper:
         document_id: str,
         is_single_pass_extract: bool,
         metadata: dict[str, Any],
-        profile_manager_id: Optional[str] = None,
+        profile_manager_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Handles updating prompt outputs in the database and returns
         serialized data.
@@ -59,29 +60,28 @@ class OutputManagerHelper:
             eval_metrics: list[Any],
             tool: CustomTool,
             context: str,
-            challenge_data: Optional[dict[str, Any]],
-            highlight_data: Optional[dict[str, Any]],
-            confidence_data: Optional[dict[str, Any]],
+            challenge_data: dict[str, Any] | None,
+            highlight_data: dict[str, Any] | None,
+            confidence_data: dict[str, Any] | None,
         ) -> PromptStudioOutputManager:
             """Handles creating or updating a single prompt output and returns
-            the instance."""
+            the instance.
+            """
             try:
-                prompt_output, success = (
-                    PromptStudioOutputManager.objects.get_or_create(
-                        document_manager=document_manager,
-                        tool_id=tool,
-                        profile_manager=profile_manager,
-                        prompt_id=prompt,
-                        is_single_pass_extract=is_single_pass_extract,
-                        defaults={
-                            "output": output,
-                            "eval_metrics": eval_metrics,
-                            "context": context,
-                            "challenge_data": challenge_data,
-                            "highlight_data": highlight_data,
-                            "confidence_data": confidence_data,
-                        },
-                    )
+                prompt_output, success = PromptStudioOutputManager.objects.get_or_create(
+                    document_manager=document_manager,
+                    tool_id=tool,
+                    profile_manager=profile_manager,
+                    prompt_id=prompt,
+                    is_single_pass_extract=is_single_pass_extract,
+                    defaults={
+                        "output": output,
+                        "eval_metrics": eval_metrics,
+                        "context": context,
+                        "challenge_data": challenge_data,
+                        "highlight_data": highlight_data,
+                        "confidence_data": confidence_data,
+                    },
                 )
 
                 if success:
@@ -180,7 +180,7 @@ class OutputManagerHelper:
 
     @staticmethod
     def get_default_profile(
-        profile_manager_id: Optional[str], tool: CustomTool
+        profile_manager_id: str | None, tool: CustomTool
     ) -> ProfileManager:
         if profile_manager_id:
             return OutputManagerHelper.fetch_profile_manager(profile_manager_id)

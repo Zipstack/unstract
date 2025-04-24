@@ -1,16 +1,16 @@
 import json
 import uuid
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 import redis
 from cryptography.fernet import Fernet, InvalidToken
-from flask import Blueprint, Request
+from flask import Blueprint, Request, jsonify, make_response, request
 from flask import current_app as app
-from flask import jsonify, make_response, request
+
+from unstract.core.flask.exceptions import APIError
 from unstract.platform_service.constants import DBTable
 from unstract.platform_service.env import Env
-from unstract.platform_service.exceptions import APIError
 from unstract.platform_service.extensions import db
 from unstract.platform_service.helper.adapter_instance import (
     AdapterInstanceRequestHelper,
@@ -45,7 +45,7 @@ def authentication_middleware(func: Any) -> Any:
     return wrapper
 
 
-def get_organization_from_bearer_token(token: str) -> tuple[Optional[int], str]:
+def get_organization_from_bearer_token(token: str) -> tuple[int | None, str]:
     """Fetch organization by platform key.
 
     Args:
@@ -76,7 +76,7 @@ def execute_query(query: str, params: tuple = ()) -> Any:
     return result_row[0]
 
 
-def validate_bearer_token(token: Optional[str]) -> bool:
+def validate_bearer_token(token: str | None) -> bool:
     try:
         if token is None:
             app.logger.error("Authentication failed. Empty bearer token")
@@ -124,7 +124,7 @@ def page_usage() -> Any:
         "error": "",
         "unique_id": "",
     }
-    payload: Optional[dict[Any, Any]] = request.json
+    payload: dict[Any, Any] | None = request.json
     if not payload:
         result["error"] = Env.INVALID_PAYLOAD
         return make_response(result, 400)
@@ -263,7 +263,7 @@ def usage() -> Any:
         "error": "",
         "unique_id": "",
     }
-    payload: Optional[dict[Any, Any]] = request.json
+    payload: dict[Any, Any] | None = request.json
     if not payload:
         result["error"] = Env.INVALID_PAYLOAD
         return make_response(result, 400)
@@ -328,9 +328,7 @@ def usage() -> Any:
         with db.atomic() as transaction:
             db.execute_sql(query, params)
             transaction.commit()
-            app.logger.info(
-                "Adapter usage recorded with id %s for %s", usage_id, org_id
-            )
+            app.logger.info("Adapter usage recorded with id %s for %s", usage_id, org_id)
             result["status"] = "OK"
             result["unique_id"] = usage_id
             return make_response(result, 200)
@@ -384,7 +382,7 @@ def cache() -> Any:
     bearer_token = get_token_from_auth_header(request)
     _, account_id = get_organization_from_bearer_token(bearer_token)
     if request.method == "POST":
-        payload: Optional[dict[Any, Any]] = request.json
+        payload: dict[Any, Any] | None = request.json
         if not payload:
             return Env.BAD_REQUEST, 400
         key = payload.get("key")
@@ -491,10 +489,7 @@ def adapter_instance() -> Any:
         )
         raise APIError(message=msg, code=403)
     except Exception as e:
-        msg = (
-            f"Error while getting db adapter settings for "
-            f"{adapter_instance_id}: {e}"
-        )
+        msg = f"Error while getting db adapter settings for {adapter_instance_id}: {e}"
         raise APIError(message=msg)
 
 
@@ -526,6 +521,8 @@ def custom_tool_instance() -> Any:
         )
         return jsonify(data_dict)
     except Exception as e:
+        if isinstance(e, APIError):
+            raise e
         msg = (
             f"Error while getting data for Prompt Studio project "
             f"{prompt_registry_id}: {e}"

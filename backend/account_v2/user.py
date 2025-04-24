@@ -1,8 +1,9 @@
 import logging
-from typing import Any, Optional
+from typing import Any
+
+from django.db import IntegrityError
 
 from account_v2.models import User
-from django.db import IntegrityError
 
 Logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ class UserService:
         user.save()
         return user
 
-    def get_user_by_email(self, email: str) -> Optional[User]:
+    def get_user_by_email(self, email: str) -> User | None:
         try:
             user: User = User.objects.get(email=email)
             return user

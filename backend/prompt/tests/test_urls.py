@@ -9,7 +9,6 @@ pytestmark = pytest.mark.django_db
 
 @pytest.mark.prompt
 class TestPrompts(APITestCase):
-
     def test_prompts_list(self):
         """Ensure we can list all prompts."""
         url = reverse("prompts_v1-list")

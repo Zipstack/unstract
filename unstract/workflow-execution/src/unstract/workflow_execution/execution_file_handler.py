@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from unstract.filesystem import FileStorageType, FileSystem
 from unstract.workflow_execution.constants import (
     MetaDataKey,
     ToolMetadataKey,
@@ -14,15 +15,11 @@ from unstract.workflow_execution.constants import (
 from unstract.workflow_execution.exceptions import ToolMetadataNotFound
 from unstract.workflow_execution.tools_utils import ToolsUtils
 
-from unstract.filesystem import FileStorageType, FileSystem
-
 logger = logging.getLogger(__name__)
 
 
 class ExecutionFileHandler:
-    def __init__(
-        self, workflow_id: str, execution_id: str, organization_id: str
-    ) -> None:
+    def __init__(self, workflow_id: str, execution_id: str, organization_id: str) -> None:
         self.organization_id = organization_id
         self.workflow_id = workflow_id
         self.execution_id = execution_id
@@ -47,9 +44,7 @@ class ExecutionFileHandler:
         metadata = json.loads(metadata_content)
         return metadata
 
-    def get_list_of_tool_metadata(
-        self, metadata: dict[str, Any]
-    ) -> list[dict[str, Any]]:
+    def get_list_of_tool_metadata(self, metadata: dict[str, Any]) -> list[dict[str, Any]]:
         """Get the list of tool metadata from the workflow metadata.
 
         Args:
@@ -58,9 +53,7 @@ class ExecutionFileHandler:
         Returns:
             list[dict[str, Any]]: The list of tool metadata.
         """
-        tool_metadata: list[dict[str, Any]] = metadata.get(
-            MetaDataKey.TOOL_METADATA, []
-        )
+        tool_metadata: list[dict[str, Any]] = metadata.get(MetaDataKey.TOOL_METADATA, [])
         return tool_metadata
 
     def get_output_type(self, metadata: dict[str, Any]) -> str:

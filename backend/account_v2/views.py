@@ -1,6 +1,12 @@
 import logging
 from typing import Any
 
+from rest_framework import status
+from rest_framework.decorators import api_view
+from rest_framework.request import Request
+from rest_framework.response import Response
+from utils.user_session import UserSessionUtils
+
 from account_v2.authentication_controller import AuthenticationController
 from account_v2.dto import (
     OrganizationSignupRequestBody,
@@ -14,11 +20,6 @@ from account_v2.serializer import (
     OrganizationSignupSerializer,
     UserSessionResponseSerializer,
 )
-from rest_framework import status
-from rest_framework.decorators import api_view
-from rest_framework.request import Request
-from rest_framework.response import Response
-from utils.user_session import UserSessionUtils
 
 Logger = logging.getLogger(__name__)
 
@@ -76,6 +77,7 @@ def get_organizations(request: Request) -> Response:
     """get_organizations.
 
     Retrieve the list of organizations to which the user belongs.
+
     Args:
         request (HttpRequest): _description_
 
@@ -91,6 +93,7 @@ def set_organization(request: Request, id: str) -> Response:
     """set_organization.
 
     Set the current organization to use.
+
     Args:
         request (HttpRequest): _description_
         id (String): organization Id
@@ -98,7 +101,6 @@ def set_organization(request: Request, id: str) -> Response:
     Returns:
         Response: Contains the User and Current organization details.
     """
-
     auth_controller = AuthenticationController()
     return auth_controller.set_user_organization(request, id)
 
@@ -108,6 +110,7 @@ def get_session_data(request: Request) -> Response:
     """get_session_data.
 
     Retrieve the current session data.
+
     Args:
         request (HttpRequest): _description_
 
@@ -128,6 +131,7 @@ def make_session_response(
     """make_session_response.
 
     Make the current session data.
+
     Args:
         request (HttpRequest): _description_
 

@@ -1,10 +1,11 @@
 from collections import OrderedDict
-from typing import Any, Optional, Union, cast
+from typing import Any, cast
 
 from account_v2.constants import Common
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework.serializers import ModelSerializer
+
 from tenant_account_v2.models import OrganizationMember
 
 
@@ -52,9 +53,7 @@ class LimitedUserListSerializer(serializers.ListSerializer):
         self.max_elements: int = kwargs.pop("max_elements", Common.MAX_EMAIL_IN_REQUEST)
         super().__init__(*args, **kwargs)
 
-    def validate(
-        self, data: list[dict[str, Union[str, None]]]
-    ) -> list[dict[str, Union[str, None]]]:
+    def validate(self, data: list[dict[str, str | None]]) -> list[dict[str, str | None]]:
         if len(data) > self.max_elements:
             raise ValidationError(
                 f"Exceeded maximum number of elements ({self.max_elements})"
@@ -81,9 +80,7 @@ class InviteUserSerializer(serializers.Serializer):
         max_elements=Common.MAX_EMAIL_IN_REQUEST,
     )
 
-    def get_users(
-        self, validated_data: dict[str, Any]
-    ) -> list[dict[str, Union[str, None]]]:
+    def get_users(self, validated_data: dict[str, Any]) -> list[dict[str, str | None]]:
         return validated_data.get("users", [])
 
 
@@ -94,9 +91,7 @@ class RemoveUserFromOrganizationSerializer(serializers.Serializer):
         max_elements=Common.MAX_EMAIL_IN_REQUEST,
     )
 
-    def get_user_emails(
-        self, validated_data: dict[str, Union[list[str], None]]
-    ) -> list[str]:
+    def get_user_emails(self, validated_data: dict[str, list[str] | None]) -> list[str]:
         return cast(list[str], validated_data.get(Common.USER_EMAILS, []))
 
 
@@ -104,21 +99,17 @@ class ChangeUserRoleRequestSerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
     role = serializers.CharField(required=True)
 
-    def get_user_email(
-        self, validated_data: dict[str, Union[str, None]]
-    ) -> Optional[str]:
+    def get_user_email(self, validated_data: dict[str, str | None]) -> str | None:
         return validated_data.get(Common.USER_EMAIL)
 
-    def get_user_role(
-        self, validated_data: dict[str, Union[str, None]]
-    ) -> Optional[str]:
+    def get_user_role(self, validated_data: dict[str, str | None]) -> str | None:
         return validated_data.get(Common.USER_ROLE)
 
 
 class DeleteInvitationRequestSerializer(serializers.Serializer):
     id = serializers.EmailField(required=True)
 
-    def get_id(self, validated_data: dict[str, Union[str, None]]) -> Optional[str]:
+    def get_id(self, validated_data: dict[str, str | None]) -> str | None:
         return validated_data.get(Common.ID)
 
 
@@ -153,7 +144,6 @@ class ListInvitationsResponseSerializer(serializers.Serializer):
 
 
 class UpdateFlagSerializer(ModelSerializer):
-
     class Meta:
         model = OrganizationMember
         fields = ("is_login_onboarding_msg", "is_prompt_studio_onboarding_msg")

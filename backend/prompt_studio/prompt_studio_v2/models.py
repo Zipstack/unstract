@@ -2,9 +2,10 @@ import uuid
 
 from account_v2.models import User
 from django.db import models
+from utils.models.base_model import BaseModel
+
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
-from utils.models.base_model import BaseModel
 
 
 class ToolStudioPrompt(BaseModel):

@@ -1,7 +1,10 @@
-from typing import Any, Optional
+import datetime
+import json
+from typing import Any
 
 from constants import IndexingConstants as IKeys
 from constants import SettingsKeys  # type: ignore [attr-defined]
+
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.tool.base import BaseTool
 
@@ -18,7 +21,6 @@ class StructureToolHelper:
         tool: BaseTool,
         execution_run_data_folder: str,
     ) -> str:
-
         x2text = tool_settings[SettingsKeys.X2TEXT_ADAPTER]
         tool.stream_log(f"Extracting text from {file_path} into {extract_file_path}")
         payload = {
@@ -41,8 +43,10 @@ class StructureToolHelper:
             prompt_port=tool.get_env_or_die(SettingsKeys.PROMPT_PORT),
         )
         tool.stream_log(f"responder : {responder}")
-        extracted_text = responder.extract(payload=payload)
-
+        response = responder.extract(payload=payload)
+        response_data = response.get("structure_output")
+        structure_output = json.loads(response_data)
+        extracted_text = structure_output.get("extracted_text")
         return extracted_text
 
     @staticmethod
@@ -57,11 +61,10 @@ class StructureToolHelper:
         enable_highlight: bool,
         chunk_size: int,
         chunk_overlap: int,
-        file_hash: Optional[str] = None,
+        file_hash: str | None = None,
         tool_id: str = None,
         extracted_text: str = None,
     ) -> str:
-
         x2text = tool_settings[SettingsKeys.X2TEXT_ADAPTER]
 
         payload = {
@@ -91,3 +94,8 @@ class StructureToolHelper:
         )
         doc_id = responder.index(payload=payload)
         return doc_id
+
+    @staticmethod
+    def elapsed_time(start_time) -> float:
+        """Returns the elapsed time since the process was started."""
+        return (datetime.datetime.now() - start_time).total_seconds()

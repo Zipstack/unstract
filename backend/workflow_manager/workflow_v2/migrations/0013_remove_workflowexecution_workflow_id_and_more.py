@@ -5,7 +5,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("workflow_v2", "0012_remove_wf_exec_with_invalid_wf_references"),
     ]

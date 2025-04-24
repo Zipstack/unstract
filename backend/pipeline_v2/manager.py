@@ -1,11 +1,8 @@
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from django.conf import settings
 from django.urls import reverse
-from pipeline_v2.constants import PipelineKey, PipelineURL
-from pipeline_v2.models import Pipeline
-from pipeline_v2.pipeline_processor import PipelineProcessor
 from rest_framework.request import Request
 from rest_framework.response import Response
 from utils.request.constants import RequestConstants
@@ -13,6 +10,9 @@ from workflow_manager.workflow_v2.constants import WorkflowExecutionKey, Workflo
 from workflow_manager.workflow_v2.views import WorkflowViewSet
 
 from backend.constants import RequestHeader
+from pipeline_v2.constants import PipelineKey, PipelineURL
+from pipeline_v2.models import Pipeline
+from pipeline_v2.pipeline_processor import PipelineProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ class PipelineManager:
     def execute_pipeline(
         request: Request,
         pipeline_id: str,
-        execution_id: Optional[str] = None,
+        execution_id: str | None = None,
     ) -> Response:
         """Used to execute a pipeline.
 
@@ -45,9 +45,10 @@ class PipelineManager:
     @staticmethod
     def get_pipeline_execution_data_for_scheduled_run(
         pipeline_id: str,
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Gets the required data to be passed while executing a pipeline Any
-        changes to pipeline execution needs to be propagated here."""
+        changes to pipeline execution needs to be propagated here.
+        """
         callback_url = settings.DJANGO_APP_BACKEND_URL + reverse(
             PipelineURL.EXECUTE_NAMESPACE
         )

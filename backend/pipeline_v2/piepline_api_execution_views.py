@@ -1,20 +1,19 @@
 import logging
 from typing import Any
 
-from pipeline_v2.deployment_helper import DeploymentHelper
-from pipeline_v2.models import Pipeline
 from rest_framework import status, views
 from rest_framework.request import Request
 from rest_framework.response import Response
 from scheduler.tasks import execute_pipeline_task
 
+from pipeline_v2.deployment_helper import DeploymentHelper
+from pipeline_v2.models import Pipeline
+
 logger = logging.getLogger(__name__)
 
 
 class PipelineApiExecution(views.APIView):
-    def initialize_request(
-        self, request: Request, *args: Any, **kwargs: Any
-    ) -> Request:
+    def initialize_request(self, request: Request, *args: Any, **kwargs: Any) -> Request:
         """To remove csrf request for public API.
 
         Args:
@@ -23,7 +22,7 @@ class PipelineApiExecution(views.APIView):
         Returns:
             Request: _description_
         """
-        setattr(request, "csrf_processing_done", True)
+        request.csrf_processing_done = True
         return super().initialize_request(request, *args, **kwargs)
 
     @DeploymentHelper.validate_api_key
