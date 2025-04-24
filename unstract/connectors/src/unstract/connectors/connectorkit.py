@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from singleton_decorator import singleton
 
@@ -23,9 +23,7 @@ class Connectorkit:
     def connectors(self) -> ConnectorDict:
         return self._connectors
 
-    def get_connector_class_by_connector_id(
-        self, connector_id: str
-    ) -> UnstractConnector:
+    def get_connector_class_by_connector_id(self, connector_id: str) -> UnstractConnector:
         if connector_id in self._connectors:
             connector_class: UnstractConnector = self._connectors[connector_id][
                 Common.METADATA
@@ -38,7 +36,7 @@ class Connectorkit:
     # Once workflow code from core is removed
     def get_connector_class_by_name(
         self, connector_name: str
-    ) -> Optional[UnstractConnector]:
+    ) -> UnstractConnector | None:
         for (
             connector_id,
             connector_registry_metadata,
@@ -75,7 +73,7 @@ class Connectorkit:
         return connector_class(*args, **kwargs)
 
     def get_connectors_list(
-        self, mode: Optional[ConnectorMode] = None
+        self, mode: ConnectorMode | None = None
     ) -> list[dict[str, Any]]:
         connectors = []
         for (

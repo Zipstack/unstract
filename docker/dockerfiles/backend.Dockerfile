@@ -1,4 +1,4 @@
-FROM python:3.9-slim
+FROM python:3.12.9-slim
 
 LABEL maintainer="Zipstack Inc."
 
@@ -11,38 +11,48 @@ ENV \
     BUILD_CONTEXT_PATH=backend \
     BUILD_PACKAGES_PATH=unstract \
     DJANGO_SETTINGS_MODULE="backend.settings.dev" \
-    PDM_VERSION=2.16.1 \
     # OpenTelemetry configuration (disabled by default, enable in docker-compose)
     OTEL_TRACES_EXPORTER=none \
-    OTEL_METRICS_EXPORTER=none \
     OTEL_LOGS_EXPORTER=none \
     OTEL_SERVICE_NAME=unstract_backend
 
 # Install system dependencies
-RUN apt-get update; \
+RUN apt-get update && \
     apt-get --no-install-recommends install -y \
-        # unstract sdk
-        build-essential libmagic-dev pkg-config \
-        # git url
-        git; \
-    apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
-    \
-    pip install --no-cache-dir -U pip pdm~=${PDM_VERSION};
+    autoconf \
+    automake \
+    build-essential \
+    cmake \
+    freetds-dev \
+    g++ \
+    gcc \
+    git \
+    libkrb5-dev \
+    libmagic-dev \
+    libssl-dev \
+    libtool \
+    ninja-build \
+    pkg-config \
+    python3-dev && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+
+COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /uvx /bin/
 
 WORKDIR /app
 
-# Create venv and install gunicorn and other deps in it
-RUN pdm venv create -w virtualenv --with-pip && \
-    . .venv/bin/activate
+# Copy only what's needed for dependency installation first
+COPY pyproject.toml uv.lock /app/
 
+# Copy source code and dependencies
 COPY ${BUILD_CONTEXT_PATH}/ /app/
-# Copy local dependency packages
-COPY ${BUILD_PACKAGES_PATH}/ /unstract
+COPY ${BUILD_PACKAGES_PATH}/ /unstract/
 
-# Install dependencies
-RUN . .venv/bin/activate && \
-    pdm sync --prod --no-editable --with deploy && \
-    opentelemetry-bootstrap -a install
+# Install dependencies in one layer
+RUN uv sync --frozen && \
+    uv sync --group deploy && \
+    .venv/bin/python3 -m ensurepip --upgrade && \
+    uv run opentelemetry-bootstrap -a install
 
 EXPOSE 8000
 

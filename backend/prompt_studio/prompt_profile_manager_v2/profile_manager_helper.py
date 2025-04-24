@@ -2,7 +2,6 @@ from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 
 
 class ProfileManagerHelper:
-
     @classmethod
     def get_profile_manager(cls, profile_manager_id: str) -> ProfileManager:
         try:

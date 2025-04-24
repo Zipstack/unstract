@@ -1,8 +1,7 @@
-from typing import Optional
-
 from django.conf import settings
-from prompt_studio.prompt_studio_core_v2.constants import IndexingStatus
 from utils.cache_service import CacheService
+
+from prompt_studio.prompt_studio_core_v2.constants import IndexingStatus
 
 
 class DocumentIndexingService:
@@ -36,16 +35,14 @@ class DocumentIndexingService:
     @classmethod
     def get_indexed_document_id(
         cls, org_id: str, user_id: str, doc_id_key: str
-    ) -> Optional[str]:
+    ) -> str | None:
         result = CacheService.get_key(cls._cache_key(org_id, user_id, doc_id_key))
         if result and result != IndexingStatus.STARTED_STATUS.value:
             return result
         return None
 
     @classmethod
-    def remove_document_indexing(
-        cls, org_id: str, user_id: str, doc_id_key: str
-    ) -> None:
+    def remove_document_indexing(cls, org_id: str, user_id: str, doc_id_key: str) -> None:
         CacheService.delete_a_key(cls._cache_key(org_id, user_id, doc_id_key))
 
     @classmethod

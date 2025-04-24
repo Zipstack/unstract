@@ -1,8 +1,9 @@
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import requests
 from celery import shared_task
+
 from notification_v2.enums import AuthorizationType
 from notification_v2.provider.notification_provider import NotificationProvider
 
@@ -48,8 +49,8 @@ class Webhook(NotificationProvider):
         return super().validate()
 
     def get_headers(self):
-        """
-        Get the headers for the notification based on the authorization type and key.
+        """Get the headers for the notification based on the authorization type and key.
+
         Raises:
             ValueError: _description_
 
@@ -95,9 +96,7 @@ class Webhook(NotificationProvider):
         # Check if custom header type has required details
         if authorization_type == AuthorizationType.CUSTOM_HEADER:
             if not authorization_header or not authorization_key:
-                raise ValueError(
-                    "Custom header or key missing for custom authorization."
-                )
+                raise ValueError("Custom header or key missing for custom authorization.")
         return headers
 
 
@@ -108,7 +107,7 @@ def send_webhook_notification(
     payload: Any,
     headers: Any = None,
     timeout: int = 10,
-    max_retries: Optional[int] = None,
+    max_retries: int | None = None,
     retry_delay: int = 10,
 ):
     """Celery task to send a webhook with retries and error handling.

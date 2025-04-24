@@ -1,5 +1,21 @@
 import logging
-from typing import Any, Optional, Union
+from typing import Any
+
+from django.conf import settings
+from django.contrib.auth import logout as django_logout
+from django.db.utils import IntegrityError
+from django.middleware import csrf
+from django.shortcuts import redirect
+from logs_helper.log_service import LogService
+from rest_framework import status
+from rest_framework.request import Request
+from rest_framework.response import Response
+from tenant_account_v2.models import OrganizationMember as OrganizationMember
+from tenant_account_v2.organization_member_service import OrganizationMemberService
+from utils.cache_service import CacheService
+from utils.local_context import StateStore
+from utils.user_context import UserContext
+from utils.user_session import UserSessionUtils
 
 from account_v2.authentication_helper import AuthenticationHelper
 from account_v2.authentication_plugin_registry import AuthenticationPluginRegistry
@@ -33,32 +49,19 @@ from account_v2.serializer import (
     SetOrganizationsResponseSerializer,
 )
 from account_v2.user import UserService
-from django.conf import settings
-from django.contrib.auth import logout as django_logout
-from django.db.utils import IntegrityError
-from django.middleware import csrf
-from django.shortcuts import redirect
-from logs_helper.log_service import LogService
-from rest_framework import status
-from rest_framework.request import Request
-from rest_framework.response import Response
-from tenant_account_v2.models import OrganizationMember as OrganizationMember
-from tenant_account_v2.organization_member_service import OrganizationMemberService
-from utils.cache_service import CacheService
-from utils.local_context import StateStore
-from utils.user_context import UserContext
-from utils.user_session import UserSessionUtils
 
 logger = logging.getLogger(__name__)
 
 
 class AuthenticationController:
     """Authentication Controller This controller class manages user
-    authentication processes."""
+    authentication processes.
+    """
 
     def __init__(self) -> None:
         """This method initializes the controller by selecting the appropriate
-        authentication plugin based on availability."""
+        authentication plugin based on availability.
+        """
         self.authentication_helper = AuthenticationHelper()
         if AuthenticationPluginRegistry.is_plugin_available():
             self.auth_service: AuthenticationService = (
@@ -110,7 +113,6 @@ class AuthenticationController:
         Returns:
             list[OrganizationData]: _description_
         """
-
         try:
             organizations = self.auth_service.user_organizations(request)
         except Exception as ex:
@@ -165,9 +167,7 @@ class AuthenticationController:
         if organization_id and organization_id in organization_ids:
             # Set organization in user context
             UserContext.set_organization_identifier(organization_id)
-            organization = OrganizationService.get_organization_by_org_id(
-                organization_id
-            )
+            organization = OrganizationService.get_organization_by_org_id(organization_id)
             if not organization:
                 try:
                     organization_data: OrganizationData = (
@@ -206,7 +206,7 @@ class AuthenticationController:
                     f"New organization created with Id {organization_id}",
                 )
 
-            user_info: Optional[UserInfo] = self.get_user_info(request)
+            user_info: UserInfo | None = self.get_user_info(request)
             serialized_user_info = SetOrganizationsResponseSerializer(user_info).data
             organization_info = OrganizationSerializer(organization).data
             response: Response = Response(
@@ -232,7 +232,7 @@ class AuthenticationController:
             return response
         return Response(status=status.HTTP_403_FORBIDDEN)
 
-    def get_user_info(self, request: Request) -> Optional[UserInfo]:
+    def get_user_info(self, request: Request) -> UserInfo | None:
         return self.auth_service.get_user_info(request)
 
     def is_admin_by_role(self, role: str) -> bool:
@@ -247,7 +247,7 @@ class AuthenticationController:
         """
         return self.auth_service.is_admin_by_role(role=role)
 
-    def get_organization_info(self, org_id: str) -> Optional[Organization]:
+    def get_organization_info(self, org_id: str) -> Organization | None:
         organization = OrganizationService.get_organization_by_org_id(org_id=org_id)
         return organization
 
@@ -255,9 +255,9 @@ class AuthenticationController:
         self,
         user_id: str,
         user_name: str,
-        organization_name: Optional[str] = None,
-        display_name: Optional[str] = None,
-    ) -> Optional[OrganizationData]:
+        organization_name: str | None = None,
+        display_name: str | None = None,
+    ) -> OrganizationData | None:
         return self.auth_service.make_organization_and_add_member(
             user_id, user_name, organization_name, display_name
         )
@@ -282,7 +282,7 @@ class AuthenticationController:
         return response
 
     def get_organization_members_by_org_id(
-        self, organization_id: Optional[str] = None
+        self, organization_id: str | None = None
     ) -> list[OrganizationMember]:
         members: list[OrganizationMember] = OrganizationMemberService.get_members()
         return members
@@ -297,9 +297,7 @@ class AuthenticationController:
         Returns:
             OrganizationMember: OrganizationMemberEntity
         """
-        member: OrganizationMember = OrganizationMemberService.get_user_by_id(
-            id=user.id
-        )
+        member: OrganizationMember = OrganizationMemberService.get_user_by_id(id=user.id)
         return member
 
     def get_user_roles(self) -> list[UserRoleData]:
@@ -320,7 +318,7 @@ class AuthenticationController:
         self,
         admin: User,
         org_id: str,
-        user_list: list[dict[str, Union[str, None]]],
+        user_list: list[dict[str, str | None]],
     ) -> list[UserInviteResponse]:
         """Invites users to join an organization.
 
@@ -329,6 +327,7 @@ class AuthenticationController:
             org_id (str): ID of the organization to which users are invited.
             user_list (list[dict[str, Union[str, None]]]):
                 List of user details for invitation.
+
         Returns:
             list[UserInviteResponse]: List of responses for each
                 user invitation.
@@ -397,7 +396,7 @@ class AuthenticationController:
 
     def add_user_role(
         self, admin: User, org_id: str, email: str, role: str
-    ) -> Optional[str]:
+    ) -> str | None:
         admin_user = OrganizationMemberService.get_user_by_id(id=admin.id)
         user = OrganizationMemberService.get_user_by_email(email=email)
         if user:
@@ -414,7 +413,7 @@ class AuthenticationController:
 
     def remove_user_role(
         self, admin: User, org_id: str, email: str, role: str
-    ) -> Optional[str]:
+    ) -> str | None:
         admin_user = OrganizationMemberService.get_user_by_id(id=admin.id)
         organization_member = OrganizationMemberService.get_user_by_email(email=email)
         if organization_member:
@@ -471,12 +470,10 @@ class AuthenticationController:
         except IntegrityError:
             logger.warning(f"Account already exists for {user.email}")
 
-    def get_or_create_user(
-        self, user: User
-    ) -> Optional[Union[User, OrganizationMember]]:
+    def get_or_create_user(self, user: User) -> User | OrganizationMember | None:
         user_service = UserService()
         if user.id:
-            account_user: Optional[User] = user_service.get_user_by_id(user.id)
+            account_user: User | None = user_service.get_user_by_id(user.id)
             if account_user:
                 return account_user
             elif user.email:

@@ -45,9 +45,7 @@ class UsageHelper:
 
             # Prepare the result dictionary with None as the default value
             result = {
-                UsageKeys.EMBEDDING_TOKENS: usage_summary.get(
-                    UsageKeys.EMBEDDING_TOKENS
-                ),
+                UsageKeys.EMBEDDING_TOKENS: usage_summary.get(UsageKeys.EMBEDDING_TOKENS),
                 UsageKeys.PROMPT_TOKENS: usage_summary.get(UsageKeys.PROMPT_TOKENS),
                 UsageKeys.COMPLETION_TOKENS: usage_summary.get(
                     UsageKeys.COMPLETION_TOKENS
@@ -67,8 +65,7 @@ class UsageHelper:
 
     @staticmethod
     def aggregate_usage_metrics(queryset: QuerySet) -> dict[str, Any]:
-        """
-        Aggregate usage metrics from a queryset of Usage objects.
+        """Aggregate usage metrics from a queryset of Usage objects.
 
         Args:
             queryset (QuerySet): A queryset of Usage objects.
@@ -87,8 +84,7 @@ class UsageHelper:
     def format_usage_response(
         aggregated_data: dict[str, Any], start_date: datetime, end_date: datetime
     ) -> dict[str, Any]:
-        """
-        Format aggregated usage data into a structured response.
+        """Format aggregated usage data into a structured response.
 
         Args:
             aggregated_data (dict): Aggregated usage metrics.

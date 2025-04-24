@@ -1,42 +1,49 @@
-FROM python:3.9-slim
+# Use a specific version of Python slim image
+FROM python:3.12.9-slim
 
-LABEL maintainer="Zipstack Inc."
+LABEL maintainer="Zipstack Inc." \
+    description="X2Text Service Container" \
+    version="1.0"
 
-ENV \
-    # Keeps Python from generating .pyc files in the container
-    PYTHONDONTWRITEBYTECODE=1 \
-    # Set to immediately flush stdout and stderr streams without first buffering
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     BUILD_CONTEXT_PATH=x2text-service \
-    PDM_VERSION=2.16.1 \
+    APP_USER=unstract \
+    APP_HOME=/app \
     # OpenTelemetry configuration (disabled by default, enable in docker-compose)
     OTEL_TRACES_EXPORTER=none \
     OTEL_METRICS_EXPORTER=none \
     OTEL_LOGS_EXPORTER=none \
     OTEL_SERVICE_NAME=unstract_x2text
 
-RUN pip install --no-cache-dir -U pip pdm~=${PDM_VERSION}; \
-    \
-    # Creates a non-root user with an explicit UID and adds permission to access the /app folder
-    # For more info, please refer to https://aka.ms/vscode-docker-python-configure-containers
-    adduser -u 5678 --disabled-password --gecos "" unstract;
+# Install system dependencies and create user in a single layer
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && adduser --uid 5678 --disabled-password --gecos "" ${APP_USER} \
+    && mkdir -p ${APP_HOME} \
+    && chown -R ${APP_USER}:${APP_USER} ${APP_HOME}
 
-USER unstract
+# Install uv package manager
+COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /uvx /bin/
 
-WORKDIR /app
+WORKDIR ${APP_HOME}
 
-# Create venv and install gunicorn and other deps in it
-RUN pdm venv create -w virtualenv --with-pip && \
-    . .venv/bin/activate
+# Copy only requirements files first to leverage Docker cache
+COPY --chmod=755 ${BUILD_CONTEXT_PATH}/pyproject.toml ${BUILD_CONTEXT_PATH}/uv.lock ./
 
-# Read and execute access to non-root user to avoid security hotspot
-# Write access to specific sub-directory need to be explicitly provided if required
-COPY --chmod=755 ${BUILD_CONTEXT_PATH} /app/
+# Switch to non-root user
+USER ${APP_USER}
 
 # Install dependencies
-RUN . .venv/bin/activate && \
-    pdm sync --prod --no-editable --with deploy && \
-    opentelemetry-bootstrap -a install
+RUN uv sync --frozen \
+    && uv sync --group deploy \
+    && .venv/bin/python3 -m ensurepip --upgrade \
+    && uv run opentelemetry-bootstrap -a install
+
+# Copy application code
+COPY --chmod=755 --chown=${APP_USER}:${APP_USER} ${BUILD_CONTEXT_PATH} .
 
 EXPOSE 3004
 

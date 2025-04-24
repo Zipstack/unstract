@@ -1,8 +1,8 @@
 import logging
-from typing import Optional
+
+from django.db import IntegrityError
 
 from account_v2.models import Organization
-from django.db import IntegrityError
 
 Logger = logging.getLogger(__name__)
 
@@ -12,7 +12,7 @@ class OrganizationService:
         pass
 
     @staticmethod
-    def get_organization_by_org_id(org_id: str) -> Optional[Organization]:
+    def get_organization_by_org_id(org_id: str) -> Organization | None:
         try:
             return Organization.objects.get(organization_id=org_id)  # type: ignore
         except Organization.DoesNotExist:

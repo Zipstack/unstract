@@ -1,7 +1,6 @@
+from unstract.core.pubsub_helper import LogPublisher
 from unstract.prompt_service.constants import RunLevel
 from unstract.sdk.constants import LogLevel
-
-from unstract.core.pubsub_helper import LogPublisher
 
 
 def publish_log(

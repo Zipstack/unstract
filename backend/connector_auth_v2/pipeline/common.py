@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from account_v2.models import User
 from connector_auth_v2.constants import ConnectorAuthKey, SocialAuthConstants
@@ -68,7 +68,7 @@ class ConnectorAuthHelper:
     @staticmethod
     def get_oauth_creds_from_cache(
         cache_key: str, delete_key: bool = True
-    ) -> Optional[dict[str, str]]:
+    ) -> dict[str, str] | None:
         """Retrieves oauth credentials from the cache.
 
         Args:
@@ -84,7 +84,8 @@ class ConnectorAuthHelper:
 
     @staticmethod
     def get_or_create_connector_auth(
-        oauth_credentials: dict[str, str], user: User = None  # type: ignore
+        oauth_credentials: dict[str, str],
+        user: User = None,  # type: ignore
     ) -> ConnectorAuth:
         """Gets or creates a ConnectorAuth object.
 

@@ -1,25 +1,7 @@
 import logging
 import uuid
-from typing import Any, Optional
+from typing import Any
 
-from adapter_processor_v2.adapter_processor import AdapterProcessor
-from adapter_processor_v2.constants import AdapterKeys
-from adapter_processor_v2.exceptions import (
-    CannotDeleteDefaultAdapter,
-    DeleteAdapterInUseError,
-    DuplicateAdapterNameError,
-    IdIsMandatory,
-    InValidType,
-)
-from adapter_processor_v2.serializers import (
-    AdapterInfoSerializer,
-    AdapterInstanceSerializer,
-    AdapterListSerializer,
-    DefaultAdapterSerializer,
-    SharedUserListSerializer,
-    TestAdapterSerializer,
-    UserDefaultAdapterSerializer,
-)
 from django.db import IntegrityError
 from django.db.models import ProtectedError, QuerySet
 from django.http import HttpRequest
@@ -39,6 +21,25 @@ from rest_framework.versioning import URLPathVersioning
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.filtering import FilterHelper
+
+from adapter_processor_v2.adapter_processor import AdapterProcessor
+from adapter_processor_v2.constants import AdapterKeys
+from adapter_processor_v2.exceptions import (
+    CannotDeleteDefaultAdapter,
+    DeleteAdapterInUseError,
+    DuplicateAdapterNameError,
+    IdIsMandatory,
+    InValidType,
+)
+from adapter_processor_v2.serializers import (
+    AdapterInfoSerializer,
+    AdapterInstanceSerializer,
+    AdapterListSerializer,
+    DefaultAdapterSerializer,
+    SharedUserListSerializer,
+    TestAdapterSerializer,
+    UserDefaultAdapterSerializer,
+)
 
 from .constants import AdapterKeys as constant
 from .models import AdapterInstance, UserDefaultAdapter
@@ -130,11 +131,9 @@ class AdapterViewSet(GenericViewSet):
 
 
 class AdapterInstanceViewSet(ModelViewSet):
-
     serializer_class = AdapterInstanceSerializer
 
     def get_permissions(self) -> list[Any]:
-
         if self.action in ["update", "retrieve"]:
             return [IsFrictionLessAdapter()]
 
@@ -148,7 +147,7 @@ class AdapterInstanceViewSet(ModelViewSet):
         # User cant view/update metadata but can delete/share etc
         return [IsOwner()]
 
-    def get_queryset(self) -> Optional[QuerySet]:
+    def get_queryset(self) -> QuerySet | None:
         if filter_args := FilterHelper.build_filter_args(
             self.request,
             constant.ADAPTER_TYPE,
@@ -237,9 +236,7 @@ class AdapterInstanceViewSet(ModelViewSet):
                 name=serializer.validated_data.get(AdapterKeys.ADAPTER_NAME)
             )
         headers = self.get_success_headers(serializer.data)
-        return Response(
-            serializer.data, status=status.HTTP_201_CREATED, headers=headers
-        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def destroy(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
@@ -261,13 +258,11 @@ class AdapterInstanceViewSet(ModelViewSet):
                 )
                 or (
                     adapter_type == AdapterKeys.EMBEDDING
-                    and adapter_instance
-                    == user_default_adapter.default_embedding_adapter
+                    and adapter_instance == user_default_adapter.default_embedding_adapter
                 )
                 or (
                     adapter_type == AdapterKeys.VECTOR_DB
-                    and adapter_instance
-                    == user_default_adapter.default_vector_db_adapter
+                    and adapter_instance == user_default_adapter.default_vector_db_adapter
                 )
                 or (
                     adapter_type == AdapterKeys.X2TEXT
@@ -337,7 +332,6 @@ class AdapterInstanceViewSet(ModelViewSet):
 
     @action(detail=True, methods=["get"])
     def list_of_shared_users(self, request: HttpRequest, pk: Any = None) -> Response:
-
         adapter = self.get_object()
 
         serialized_instances = SharedUserListSerializer(adapter).data
@@ -346,7 +340,6 @@ class AdapterInstanceViewSet(ModelViewSet):
 
     @action(detail=True, methods=["get"])
     def adapter_info(self, request: HttpRequest, pk: uuid) -> Response:
-
         adapter = self.get_object()
 
         serialized_instances = AdapterInfoSerializer(adapter).data
