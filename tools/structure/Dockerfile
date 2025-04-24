@@ -1,7 +1,7 @@
 FROM python:3.12.9-slim
 
 LABEL maintainer="Zipstack Inc."
-ENV UNSTRACT_ENTRYPOINT "python /app/src/main.py"
+
 ENV \
     # Keeps Python from generating .pyc files in the container
     PYTHONDONTWRITEBYTECODE=1 \
