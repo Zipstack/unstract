@@ -21,11 +21,14 @@ class ToolStudioPrompt(BaseModel):
         DATE = "date", "Response sent as date"
         BOOLEAN = "boolean", "Response sent as boolean"
         JSON = "json", "Response sent as json"
-        LINE_ITEM = "line-item", (
-            "Response sent as line-item "
-            "which is large a JSON output. "
-            "If extraction stopped due to token limitation, "
-            "we try to continue extraction from where it stopped"
+        LINE_ITEM = (
+            "line-item",
+            (
+                "Response sent as line-item "
+                "which is large a JSON output. "
+                "If extraction stopped due to token limitation, "
+                "we try to continue extraction from where it stopped"
+            ),
         )
 
     class PromptType(models.TextChoices):
