@@ -346,17 +346,16 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
     };
 
     // Logout
+
+    const handleClick = isLoggedIn ? logout : handleLogin;
+    const icon = isLoggedIn ? <LogoutOutlined /> : <LoginOutlined />;
+    const label = isLoggedIn ? "Logout" : "Login";
+
     menuItems.push({
       key: "2",
       label: (
-        <Button
-          onClick={isLoggedIn ? logout : handleLogin}
-          className="logout-button"
-        >
-          <>
-            {isLoggedIn ? <LogoutOutlined /> : <LoginOutlined />}{" "}
-            {isLoggedIn ? "Logout" : "Login"}
-          </>
+        <Button onClick={handleClick} icon={icon} className="logout-button">
+          {label}
         </Button>
       ),
     });

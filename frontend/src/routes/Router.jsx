@@ -11,7 +11,6 @@ import { useMainAppRoutes } from "./useMainAppRoutes.js";
 import { RequireAuth } from "../components/helpers/auth/RequireAuth.js";
 import { ToolIdePage } from "../pages/ToolIdePage.jsx";
 import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
-import { FullPageLayout } from "../layouts/fullpage-payout/FullPageLayout.jsx";
 
 let PublicPromptStudioHelper;
 
@@ -141,14 +140,9 @@ function Router() {
           )}
         </Route>
       </Route>
-
       <Route path="*" element={<NotFound />} />
       <Route path="oauth-status" element={<OAuthStatus />} />
-      {verticalsRouter && (
-        <Route path="verticals" element={<FullPageLayout />}>
-          {verticalsRouter()}
-        </Route>
-      )}
+      {verticalsRouter && verticalsRouter()}
     </Routes>
   );
 }
