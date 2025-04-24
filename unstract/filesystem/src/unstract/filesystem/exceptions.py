@@ -1,7 +1,5 @@
 class FilesystemError(Exception):
-    """
-    Base exception class for filesystem-related errors.
-    """
+    """Base exception class for filesystem-related errors."""
 
     default_message = "An error occurred in the filesystem operation."
 

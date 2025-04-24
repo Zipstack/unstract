@@ -16,9 +16,7 @@ def get_provider(var_name: str, default: str = "minio") -> FileStorageProvider:
         # Attempt to map the provider name to an enum value, case-insensitively
         return FileStorageProvider[provider_name]
     except KeyError:
-        allowed_providers = ", ".join(
-            [provider.name for provider in FileStorageProvider]
-        )
+        allowed_providers = ", ".join([provider.name for provider in FileStorageProvider])
         logger.error(
             f"Invalid provider '{provider_name}'. Allowed providers: "
             f"{allowed_providers}"

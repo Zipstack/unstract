@@ -13,36 +13,16 @@ update_lockfile() {
 
     echo "[$dir] Checking '$file_path' for changes against origin/main..."
     if ! git diff --quiet origin/main -- "$file_path"; then
-        echo "[$dir] Changes detected in '$file_path', updating pdm.lock for '$dir' ..."
+        echo "[$dir] Changes detected in '$file_path', updating uv.lock for '$dir' ..."
 
         # Move to the directory if it's not root
         if [[ "$dir" != "." ]]; then
             cd "$dir" || return 1
         fi
 
-        # Set up virtual environment if not exists
-        if [[ ! -d ".venv" ]]; then
-            echo "[$dir] Creating virtual environment in directory: '$dir'"
-            pdm venv create -w virtualenv --with-pip 2>&1 | sed "s|^|[$dir] |" || return 1
-        else
-            echo "[$dir] Virtual environment already exists in $dir"
-        fi
-
-        # Activate virtual environment
-        source .venv/bin/activate 2>&1 | sed "s|^|[$dir] |" || return 1
-
-        # HACK: https://github.com/pdm-project/pdm/issues/3199
-        # Replace with checking the exit code directly once above issue is fixed
-        lock_output=$(pdm lock --check 2>&1)
-        if echo "$lock_output" | grep -q "WARNING: Lockfile is generated on an older version of PDM"; then
-            echo "[$dir] Updating pdm.lock in '$dir' due to outdated version..."
-            pdm lock -G :all -v 2>&1 | sed "s|^|[$dir] |" || return 1
-        elif [[ $? -ne 0 ]]; then
-            echo "[$dir] Updating pdm.lock in '$dir' due to detected changes..."
-            pdm lock -G :all -v 2>&1 | sed "s|^|[$dir] |" || return 1
-        else
-            echo "[$dir] No changes required for pdm.lock in '$dir'."
-        fi
+        # Use uv to generate lock file
+        echo "[$dir] Updating uv.lock..."
+        uv sync 2>&1 | sed "s|^|[$dir] |" || return 1
 
         # Go back to root if moved to a subdirectory
         if [[ "$dir" != "." ]]; then
@@ -72,12 +52,12 @@ directories=(
     "."
     "backend"
     "prompt-service"
+    "platform-service"
     "runner"
+    "x2text-service"
     "unstract/filesystem"
     "unstract/core"
     "unstract/flags"
-    "platform-service"
-    "x2text-service"
     "unstract/connectors"
 )
 
@@ -107,7 +87,7 @@ for i in "${!pids[@]}"; do
     dir=${dirs[$i]}
     echo "[$dir] Waiting for child process with PID: $pid..."
 
-    # # Wait for the specific process to finish
+    # Wait for the specific process to finish
     if ! wait "$pid"; then
         echo "[$dir] Lock file generation failed. Killing other sub-processes..."
         kill $(list_descendants $$) 2>/dev/null || true

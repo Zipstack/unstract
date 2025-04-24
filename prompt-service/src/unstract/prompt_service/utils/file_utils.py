@@ -7,8 +7,7 @@ from unstract.sdk.file_storage.env_helper import EnvHelper
 class FileUtils:
     @staticmethod
     def get_fs_instance(execution_source: str) -> FileStorage:
-        """
-        Returns a FileStorage instance based on the execution source.
+        """Returns a FileStorage instance based on the execution source.
 
         Args:
             execution_source (str): The source from which the execution is triggered.

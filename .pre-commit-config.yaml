@@ -1,16 +1,11 @@
----
-# See https://pre-commit.com for more information
-# See https://pre-commit.com/hooks.html for more hooks
-
 default_language_version:
-  python: python3.9
+  python: python3.12
 default_stages:
   - pre-commit
 
 ci:
   skip:
-    - hadolint-docker  # Fails in pre-commit CI
-
+    - hadolint-docker # Fails in pre-commit CI
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
@@ -39,70 +34,66 @@ repos:
       - id: forbid-new-submodules
       - id: mixed-line-ending
       - id: no-commit-to-branch
-  - repo: https://github.com/adrienverge/yamllint
-    rev: v1.35.1
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.3.4
     hooks:
-      - id: yamllint
-        args: ["-d", "relaxed"]
-        # language: system
-  # - repo: https://github.com/rhysd/actionlint
-  #   rev: v1.6.27
-  #   hooks:
-  #     - id: actionlint-docker
-  #       args: [-ignore, 'label ".+" is unknown']
-  - repo: https://github.com/psf/black
-    rev: 24.4.2
-    hooks:
-      - id: black
-        args: [--config=pyproject.toml, -l 88]
-        # language: system
-        exclude: |
-          (?x)^(
-              unstract/flags/src/unstract/flags/evaluation_.*\.py|
-          )$
-  - repo: https://github.com/pycqa/flake8
-    rev: 7.1.0
-    hooks:
-      - id: flake8
-        args: [--max-line-length=88]
-        exclude: |
-          (?x)^(
-              .*migrations/.*\.py|
-              core/tests/.*|
-              unstract/flags/src/unstract/flags/evaluation_.*\.py|
-          )$
-  - repo: https://github.com/pycqa/isort
-    rev: 5.13.2
-    hooks:
-      - id: isort
-        files: "\\.(py)$"
-        args:
-          [
-            "--profile",
-            "black",
-            "--filter-files",
-            --settings-path=pyproject.toml,
-          ]
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
   - repo: https://github.com/hadialqattan/pycln
     rev: v2.5.0
     hooks:
       - id: pycln
         args: [--config=pyproject.toml]
+
   # - repo: https://github.com/pycqa/docformatter
   #   rev: v1.7.5
   #   hooks:
   #     - id: docformatter
+  #       language: python
+
   - repo: https://github.com/asottile/pyupgrade
-    rev: v3.16.0
+    rev: v3.17.0
     hooks:
       - id: pyupgrade
         entry: pyupgrade --py39-plus --keep-runtime-typing
         types:
           - python
+
+  # - repo: https://github.com/astral-sh/uv-pre-commit
+  #   rev: 0.6.11
+  #   hooks:
+  #     - id: uv-lock
+
+  # - repo: https://github.com/pre-commit/mirrors-mypy
+  #   rev: v1.11.2
+  #   hooks:
+  #     - id: mypy
+  #       language: system
+  #       entry: mypy .
+  #       pass_filenames: false
+  #       additional_dependencies: []
+
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.42.0
+    hooks:
+      - id: markdownlint
+        args: [--disable, MD013]
+      - id: markdownlint-fix
+        args: [--disable, MD013]
+
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.18.4
+    rev: v8.18.2
     hooks:
       - id: gitleaks
+
+  - repo: https://github.com/Lucas-C/pre-commit-hooks-nodejs
+    rev: v1.1.2
+    hooks:
+      - id: htmlhint
+
   - repo: https://github.com/hadolint/hadolint
     rev: v2.12.1-beta
     hooks:
@@ -114,49 +105,3 @@ repos:
           - --ignore=DL3018
           - --ignore=SC1091
         files: Dockerfile$
-  - repo: https://github.com/asottile/yesqa
-    rev: v1.5.0
-    hooks:
-      - id: yesqa
-  # - repo: https://github.com/pre-commit/mirrors-eslint
-  #   rev: "v9.0.0-beta.2" # Use the sha / tag you want to point at
-  #   hooks:
-  #     - id: eslint
-  #       args: [--config=frontend/.eslintrc.json]
-  #       files: \.[jt]sx?$ # *.js, *.jsx, *.ts and *.tsx
-  #       types: [file]
-  #       additional_dependencies:
-  #         - eslint@8.41.0
-  #         - eslint-config-google@0.14.0
-  #         - eslint-config-prettier@8.8.0
-  #         - eslint-plugin-prettier@4.2.1
-  #         - eslint-plugin-react@7.32.2
-  #         - eslint-plugin-import@2.25.2
-  - repo: https://github.com/Lucas-C/pre-commit-hooks-nodejs
-    rev: v1.1.2
-    hooks:
-      - id: htmlhint
-  - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.41.0
-    hooks:
-      - id: markdownlint
-        args: [--disable, MD013]
-      - id: markdownlint-fix
-        args: [--disable, MD013]
-  - repo: https://github.com/pdm-project/pdm
-    rev: 2.16.1
-    hooks:
-      - id: pdm-lock-check
-  # - repo: local
-  #   hooks:
-  #     - id: run-mypy
-  #       name: Run mypy
-  #       entry: sh -c 'pdm run mypy .'
-  #       language: system
-  #       pass_filenames: false
-  #     - id: check-django-migrations
-  #       name: Check django migrations
-  #       entry: sh -c 'pdm run docker/scripts/check_django_migrations.sh'
-  #       language: system
-  #       types: [python] # hook only runs if a python file is staged
-  #       pass_filenames: false

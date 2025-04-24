@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("usage_v2", "0002_alter_usage_run_id"),
     ]
@@ -12,8 +11,6 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AddIndex(
             model_name="usage",
-            index=models.Index(
-                fields=["execution_id"], name="usage_executi_4deb35_idx"
-            ),
+            index=models.Index(fields=["execution_id"], name="usage_executi_4deb35_idx"),
         ),
     ]

@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from llama_index.core import Document
 from llama_index.core.vector_stores import (
@@ -10,6 +10,7 @@ from llama_index.core.vector_stores import (
     VectorStoreQuery,
     VectorStoreQueryResult,
 )
+
 from unstract.prompt_service.dto import (
     ChunkingConfig,
     FileInfo,
@@ -40,7 +41,7 @@ class Index:
         instance_identifiers: InstanceIdentifiers,
         chunking_config: ChunkingConfig,
         processing_options: ProcessingOptions,
-        run_id: Optional[str] = None,
+        run_id: str | None = None,
         capture_metrics: bool = False,
     ):
         self.tool = tool
@@ -153,7 +154,7 @@ class Index:
         vector_db: VectorDB,
         doc_id: str,
         extracted_text: str,
-        doc_id_found: str,
+        doc_id_found: bool,
     ):
         if isinstance(
             vector_db.get_vector_db(
@@ -183,7 +184,7 @@ class Index:
         try:
             vector_db.index_document(
                 documents,
-                chunk_size=self.chunking_config.chunk_overlap,
+                chunk_size=self.chunking_config.chunk_size,
                 chunk_overlap=self.chunking_config.chunk_overlap,
                 show_progress=True,
             )

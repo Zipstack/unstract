@@ -79,9 +79,7 @@ urlpatterns = format_suffix_patterns(
         ),
         path(
             "prompt-studio/index-document/<uuid:pk>",
-            method_decorator(transaction.non_atomic_requests)(
-                prompt_studio_prompt_index
-            ),
+            method_decorator(transaction.non_atomic_requests)(prompt_studio_prompt_index),
             name="prompt-studio-prompt-index",
         ),
         path(

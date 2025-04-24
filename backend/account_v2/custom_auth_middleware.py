@@ -1,12 +1,12 @@
-from account_v2.authentication_plugin_registry import AuthenticationPluginRegistry
-from account_v2.authentication_service import AuthenticationService
-from account_v2.constants import Common
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from utils.constants import Account
 from utils.local_context import StateStore
 from utils.user_session import UserSessionUtils
 
+from account_v2.authentication_plugin_registry import AuthenticationPluginRegistry
+from account_v2.authentication_service import AuthenticationService
+from account_v2.constants import Common
 from backend.constants import RequestHeader
 
 
@@ -42,9 +42,7 @@ class CustomAuthMiddleware:
         if is_authenticated:
             organization_id = UserSessionUtils.get_organization_id(request=request)
             if request.organization_id and not organization_id:
-                return JsonResponse(
-                    {"message": "Organization access denied"}, status=403
-                )
+                return JsonResponse({"message": "Organization access denied"}, status=403)
             StateStore.set(Common.LOG_EVENTS_ID, request.session.session_key)
             StateStore.set(Account.ORGANIZATION_ID, organization_id)
             response = self.get_response(request)

@@ -2,6 +2,8 @@ from logging import Logger
 from typing import Any, Optional
 
 from flask import current_app as app
+
+from unstract.core.flask.exceptions import APIError
 from unstract.prompt_service.constants import ExecutionSource, FileStorageKeys
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.exceptions import RateLimitError
@@ -13,11 +15,8 @@ from unstract.sdk.file_storage.constants import StorageType
 from unstract.sdk.file_storage.env_helper import EnvHelper
 from unstract.sdk.llm import LLM
 
-from unstract.core.flask.exceptions import APIError
-
 
 class AnswerPromptService:
-
     @staticmethod
     def extract_variable(
         structured_output: dict[str, Any],
@@ -51,7 +50,7 @@ class AnswerPromptService:
         prompt: str,
         metadata: dict[str, Any],
         file_path: str = "",
-        execution_source: Optional[str] = ExecutionSource.IDE.value,
+        execution_source: str | None = ExecutionSource.IDE.value,
     ) -> str:
         platform_postamble = tool_settings.get(PSKeys.PLATFORM_POSTAMBLE, "")
         summarize_as_source = tool_settings.get(PSKeys.SUMMARIZE_AS_SOURCE)
@@ -111,12 +110,12 @@ class AnswerPromptService:
     def run_completion(
         llm: LLM,
         prompt: str,
-        metadata: Optional[dict[str, str]] = None,
-        prompt_key: Optional[str] = None,
-        prompt_type: Optional[str] = PSKeys.TEXT,
+        metadata: dict[str, str] | None = None,
+        prompt_key: str | None = None,
+        prompt_type: str | None = PSKeys.TEXT,
         enable_highlight: bool = False,
         file_path: str = "",
-        execution_source: Optional[str] = None,
+        execution_source: str | None = None,
     ) -> str:
         logger: Logger = app.logger
         try:
@@ -151,15 +150,15 @@ class AnswerPromptService:
             line_numbers = completion.get(PSKeys.LINE_NUMBERS, [])
             whisper_hash = completion.get(PSKeys.WHISPER_HASH, "")
             if metadata is not None and prompt_key:
-                metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})[
-                    prompt_key
-                ] = highlight_data
+                metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})[prompt_key] = (
+                    highlight_data
+                )
                 metadata.setdefault(PSKeys.LINE_NUMBERS, {})[prompt_key] = line_numbers
                 metadata[PSKeys.WHISPER_HASH] = whisper_hash
                 if confidence_data:
-                    metadata.setdefault(PSKeys.CONFIDENCE_DATA, {})[
-                        prompt_key
-                    ] = confidence_data
+                    metadata.setdefault(PSKeys.CONFIDENCE_DATA, {})[prompt_key] = (
+                        confidence_data
+                    )
             return answer
         # TODO: Catch and handle specific exception here
         except SdkRateLimitError as e:

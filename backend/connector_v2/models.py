@@ -87,7 +87,8 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
     # TODO: Remove if unused
     def get_connector_metadata(self) -> dict[str, str]:
         """Gets connector metadata and refreshes the tokens if needed in case
-        of OAuth."""
+        of OAuth.
+        """
         tokens_refreshed = False
         if self.connector_auth:
             (

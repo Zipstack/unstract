@@ -1,16 +1,18 @@
-FROM python:3.9-slim
+# Use a specific version of Python slim image
+FROM python:3.12.9-slim
 
 LABEL maintainer="Zipstack Inc."
+LABEL description="Runner Service Container"
+LABEL version="1.0"
 
-ENV \
-    # Keeps Python from generating .pyc files in the container
-    PYTHONDONTWRITEBYTECODE=1 \
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
     # Set to immediately flush stdout and stderr streams without first buffering
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/unstract \
     BUILD_CONTEXT_PATH=runner \
     BUILD_PACKAGES_PATH=unstract \
-    PDM_VERSION=2.16.1 \
+    APP_HOME=/app \
     # OpenTelemetry configuration (disabled by default, enable in docker-compose)
     OTEL_TRACES_EXPORTER=none \
     OTEL_METRICS_EXPORTER=none \
@@ -18,35 +20,37 @@ ENV \
     OTEL_SERVICE_NAME=unstract_runner
 
 RUN apt-get update \
-    && apt-get --no-install-recommends install -y docker \
-    && apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* \
-    \
-    && pip install --no-cache-dir -U pip pdm~=${PDM_VERSION}
+    && apt-get --no-install-recommends install -y docker git\
+    && apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
-WORKDIR /app
 
-# Create venv and install gunicorn and other deps in it
-RUN pdm venv create -w virtualenv --with-pip && \
-    . .venv/bin/activate
+# Install uv package manager
+COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /uvx /bin/
 
-COPY ${BUILD_CONTEXT_PATH} /app/
+WORKDIR ${APP_HOME}
+
+# Copy only requirements files first to leverage Docker cache
+COPY ${BUILD_CONTEXT_PATH}/pyproject.toml .
+COPY ${BUILD_CONTEXT_PATH}/uv.lock .
 # Copy local dependency packages
 COPY ${BUILD_PACKAGES_PATH}/core /unstract/core
 COPY ${BUILD_PACKAGES_PATH}/flags /unstract/flags
+COPY ${BUILD_CONTEXT_PATH} /app/
+
+# Create virtual environment and install dependencies in one layer
+RUN uv sync --frozen \
+    && uv sync --group deploy \
+    && .venv/bin/python3 -m ensurepip --upgrade \
+    && uv run opentelemetry-bootstrap -a install
 
 RUN \
-    # source command may not be availble in sh
-    . .venv/bin/activate; \
-    \
-    pdm sync --prod --no-editable --with deploy; \
+    uv pip install --system; \
     \
     if [ -f cloud_requirements.txt ]; then \
-        pip install --no-cache-dir -r cloud_requirements.txt; \
+    uv pip install --no-cache-dir -r cloud_requirements.txt; \
     else \
-        echo "cloud_requirements.txt does not exist"; \
-    fi; \
-    \
-    opentelemetry-bootstrap -a install
+    echo "cloud_requirements.txt does not exist"; \
+    fi
 
 EXPOSE 5002
 
