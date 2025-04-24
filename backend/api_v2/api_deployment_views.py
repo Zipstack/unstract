@@ -23,8 +23,8 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import Serializer
-from utils.enums import CeleryTaskState
 from workflow_manager.workflow_v2.dto import ExecutionResponse
+from workflow_manager.workflow_v2.enums import ExecutionStatus
 
 logger = logging.getLogger(__name__)
 
@@ -89,8 +89,18 @@ class DeploymentExecution(views.APIView):
             execution_id
         )
         # Determine response status
-        response_status = status.HTTP_422_UNPROCESSABLE_ENTITY
-        if response.execution_status == CeleryTaskState.COMPLETED.value:
+
+        # Handle result already acknowledged
+        if response.result_acknowledged:
+            return Response(
+                data={
+                    "status": response.execution_status,
+                    "message": "Result already acknowledged",
+                },
+                status=status.HTTP_406_NOT_ACCEPTABLE,
+            )
+
+        if response.execution_status == ExecutionStatus.COMPLETED:
             response_status = status.HTTP_200_OK
             if not settings.ENABLE_HIGHLIGHT_API_DEPLOYMENT:
                 response.remove_result_metadata_keys(["highlight_data"])
@@ -98,9 +108,13 @@ class DeploymentExecution(views.APIView):
                 response.remove_result_metadata_keys()
             if not include_metrics:
                 response.remove_result_metrics()
-        if response.result_acknowledged:
-            response_status = status.HTTP_406_NOT_ACCEPTABLE
-            response.result = "Result already acknowledged"
+        elif response.execution_status in (
+            ExecutionStatus.EXECUTING,
+            ExecutionStatus.PENDING,
+        ):
+            response_status = status.HTTP_202_ACCEPTED
+        else:  # STOPPED, ERROR etc..
+            response_status = status.HTTP_422_UNPROCESSABLE_ENTITY
         return Response(
             data={
                 "status": response.execution_status,
