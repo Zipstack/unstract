@@ -28,7 +28,8 @@ class ToolStudioPrompt(BaseModel):
                 "which is large a JSON output. "
                 "If extraction stopped due to token limitation, "
                 "we try to continue extraction from where it stopped"
-            ),)
+            ),
+        )
 
     class PromptType(models.TextChoices):
         PROMPT = "PROMPT", "Response sent as Text"

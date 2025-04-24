@@ -1,5 +1,5 @@
 from logging import Logger
-from typing import Any, Optional
+from typing import Any
 
 from flask import current_app as app
 
