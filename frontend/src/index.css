@@ -203,3 +203,35 @@ body {
 .text-align-center {
   text-align: center;
 }
+
+.mar-24 {
+  margin: 24px;
+}
+
+.mar-16 {
+  margin: 16px;
+}
+
+.pad-24 {
+  padding: 24px;
+}
+
+.mar-bottom-16 {
+  margin-bottom: 16px;
+}
+
+.mar-top-24 {
+  margin-top: 24px;
+}
+
+.height-100vh {
+  height: 100vh;
+}
+
+.mar-bottom-12{
+  margin-bottom: 12px;
+}
+
+.mar-0{
+  margin: 0;
+}
