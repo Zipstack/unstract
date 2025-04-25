@@ -13,11 +13,9 @@ let setSelectedProduct;
 let SELECTED_PRODUCT;
 let PRODUCT_NAMES = {};
 try {
-  selectedProductStore = require("../../../plugins/llm-whisperer/store/select-product-store.js");
-  SELECTED_PRODUCT =
-    require("../../../plugins/llm-whisperer/helper").SELECTED_PRODUCT;
-  PRODUCT_NAMES =
-    require("../../../plugins/llm-whisperer/helper").PRODUCT_NAMES;
+  selectedProductStore = require("../../../plugins/store/select-product-store.js");
+  SELECTED_PRODUCT = require("../../../plugins/helper/common").SELECTED_PRODUCT;
+  PRODUCT_NAMES = require("../../../plugins/helper/common").PRODUCT_NAMES;
 } catch {
   // Ignore if hook not available
 }
