@@ -1,6 +1,4 @@
-"""
-This module exposes the main classes for file storage handling.
-"""
+"""This module exposes the main classes for file storage handling."""
 
 from unstract.sdk.file_storage import SharedTemporaryFileStorage
 

@@ -1,13 +1,13 @@
 from collections.abc import Iterable
 from os.path import splitext
-from typing import Optional, TypedDict
+from typing import NotRequired, TypedDict, Unpack
 
 import magic
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import InMemoryUploadedFile
 from django.template.defaultfilters import filesizeformat
 from django.utils.translation import gettext_lazy as _
-from typing_extensions import NotRequired, Unpack
+
 from unstract.sdk.file_storage.constants import FileOperationParams
 
 
@@ -50,14 +50,14 @@ class FileValidator:
     )
 
     def __init__(self, **kwargs: Unpack[FileValidationParam]) -> None:
-        self.allowed_extensions: Optional[Iterable[str]] = kwargs.pop(
+        self.allowed_extensions: Iterable[str] | None = kwargs.pop(
             "allowed_extensions", None
         )
-        self.allowed_mimetypes: Optional[Iterable[str]] = kwargs.pop(
+        self.allowed_mimetypes: Iterable[str] | None = kwargs.pop(
             "allowed_mimetypes", None
         )
-        self.min_size: Optional[int] = kwargs.pop("min_size", 0)
-        self.max_size: Optional[int] = kwargs.pop("max_size", None)
+        self.min_size: int | None = kwargs.pop("min_size", 0)
+        self.max_size: int | None = kwargs.pop("max_size", None)
 
     def _check_file_extension(self, file: InMemoryUploadedFile) -> None:
         ext = splitext(file.name)[1][1:].lower()

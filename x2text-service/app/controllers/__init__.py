@@ -1,5 +1,6 @@
-from app.controllers.controller import basic
 from flask import Blueprint
+
+from app.controllers.controller import basic
 
 api = Blueprint("api", __name__)
 

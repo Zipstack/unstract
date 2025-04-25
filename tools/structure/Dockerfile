@@ -1,7 +1,7 @@
-FROM python:3.9-slim
+FROM python:3.12.9-slim
 
 LABEL maintainer="Zipstack Inc."
-ENV UNSTRACT_ENTRYPOINT "python /app/src/main.py"
+
 ENV \
     # Keeps Python from generating .pyc files in the container
     PYTHONDONTWRITEBYTECODE=1 \
@@ -18,8 +18,8 @@ ENV \
 # Install dependencies for SDK and prompt service
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        ffmpeg libsm6 libxext6 libmagic-dev poppler-utils \
-        libreoffice freetds-dev freetds-bin \
+    ffmpeg libsm6 libxext6 libmagic-dev poppler-utils \
+    libreoffice freetds-dev freetds-bin \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

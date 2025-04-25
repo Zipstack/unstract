@@ -20,19 +20,19 @@ is started.
 Setup a virtual environment and install the requirements:
 
 ```commandline
-python -m venv .venv
+uv venv
 ```
 
 Once a virtual environment is created or if you already have created one, activate it:
 
-```commandline 
+```commandline
 source .venv/bin/activate
 ```
 
 Install the dependencies needed to run the service
 ```commandline
-pdm install
-``` 
+uv sync
+```
 
 To run the service locally (make sure the `.env` file is present):
 

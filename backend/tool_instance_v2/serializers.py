@@ -4,6 +4,11 @@ from typing import Any
 
 from prompt_studio.prompt_studio_registry_v2.constants import PromptStudioRegistryKeys
 from rest_framework.serializers import ListField, Serializer, UUIDField, ValidationError
+from workflow_manager.workflow_v2.constants import WorkflowKey
+from workflow_manager.workflow_v2.models.workflow import Workflow
+
+from backend.constants import RequestKey
+from backend.serializers import AuditSerializer
 from tool_instance_v2.constants import ToolInstanceKey as TIKey
 from tool_instance_v2.constants import ToolKey
 from tool_instance_v2.exceptions import ToolDoesNotExist
@@ -11,11 +16,6 @@ from tool_instance_v2.models import ToolInstance
 from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
 from tool_instance_v2.tool_processor import ToolProcessor
 from unstract.tool_registry.dto import Tool
-from workflow_manager.workflow_v2.constants import WorkflowKey
-from workflow_manager.workflow_v2.models.workflow import Workflow
-
-from backend.constants import RequestKey
-from backend.serializers import AuditSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -122,9 +122,7 @@ class ToolInstanceReorderSerializer(Serializer):
             raise ValidationError(detail=msg)
 
         # Check if each tool instance exists in the workflow
-        existing_tool_instance_ids = workflow.tool_instances.values_list(
-            "id", flat=True
-        )
+        existing_tool_instance_ids = workflow.tool_instances.values_list("id", flat=True)
         for tool_instance_id in tool_instances:
             if tool_instance_id not in existing_tool_instance_ids:
                 raise ValidationError(

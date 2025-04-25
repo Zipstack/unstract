@@ -1,11 +1,12 @@
 import logging
 from typing import Any
 
+from platform_settings_v2.platform_auth_service import PlatformAuthenticationService
+from tenant_account_v2.organization_member_service import OrganizationMemberService
+
 from account_v2.dto import MemberData
 from account_v2.models import Organization, User
 from account_v2.user import UserService
-from platform_settings_v2.platform_auth_service import PlatformAuthenticationService
-from tenant_account_v2.organization_member_service import OrganizationMemberService
 
 logger = logging.getLogger(__name__)
 
@@ -14,9 +15,7 @@ class AuthenticationHelper:
     def __init__(self) -> None:
         pass
 
-    def list_of_members_from_user_model(
-        self, model_data: list[Any]
-    ) -> list[MemberData]:
+    def list_of_members_from_user_model(self, model_data: list[Any]) -> list[MemberData]:
         members: list[MemberData] = []
         for data in model_data:
             user_id = data.user_id
@@ -49,9 +48,7 @@ class AuthenticationHelper:
             user = user_service.create_user(email, user_id)
         return user
 
-    def create_initial_platform_key(
-        self, user: User, organization: Organization
-    ) -> None:
+    def create_initial_platform_key(self, user: User, organization: Organization) -> None:
         """Create an initial platform key for the given user and organization.
 
         This method generates a new platform key with the specified parameters
@@ -109,7 +106,6 @@ class AuthenticationHelper:
         Parameters:
             user_id (str): The user_id of the users to remove.
         """
-
         organization_user = OrganizationMemberService.get_user_by_user_id(user_id)
         if not organization_user:
             logger.warning(

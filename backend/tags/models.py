@@ -11,8 +11,7 @@ from utils.user_context import UserContext
 
 class TagModelManager(DefaultOrganizationManagerMixin, models.Manager):
     def get_or_create_tags(self, tag_names: list[str]) -> list["Tag"]:
-        """
-        Retrieves or creates tags based on a list of tag names.
+        """Retrieves or creates tags based on a list of tag names.
 
         Args:
             tag_names (list): A list of tag names to retrieve or create.
@@ -53,8 +52,7 @@ class Tag(DefaultOrganizationMixin, BaseModel):
 
     @classmethod
     def bulk_get_or_create(cls, tag_names: list[str]) -> list["Tag"]:
-        """
-        Class method to retrieve or create multiple tags for the current organization.
+        """Class method to retrieve or create multiple tags for the current organization.
 
         Args:
             tag_names (list): A list of tag names to retrieve or create.

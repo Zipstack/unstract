@@ -1,9 +1,10 @@
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 import requests as pyrequests
 from flask import current_app as app
 from requests.exceptions import RequestException
+
 from unstract.prompt_service.exceptions import APIError, BadRequest, MissingFieldError
 
 
@@ -18,9 +19,9 @@ class HTTPMethod(str, Enum):
 def make_http_request(
     verb: HTTPMethod,
     url: str,
-    data: Optional[dict[str, Any]] = None,
-    headers: Optional[dict[str, Any]] = None,
-    params: Optional[dict[str, Any]] = None,
+    data: dict[str, Any] | None = None,
+    headers: dict[str, Any] | None = None,
+    params: dict[str, Any] | None = None,
 ) -> str:
     """Generic helper function to help make a HTTP request."""
     try:
