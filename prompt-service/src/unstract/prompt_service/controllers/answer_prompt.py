@@ -177,7 +177,6 @@ def prompt_processor() -> Any:
                     output=output,
                     structured_output=structured_output,
                     llm=llm,
-                    enforce_type=output[PSKeys.TYPE],
                     execution_source=execution_source,
                 )
                 metadata = UsageHelper.query_usage_metadata(

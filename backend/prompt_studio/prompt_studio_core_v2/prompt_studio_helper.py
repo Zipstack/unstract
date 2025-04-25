@@ -981,7 +981,7 @@ class PromptStudioHelper:
         tool_id: str,
         output: dict[str, Any],
     ) -> dict[str, Any]:
-        if prompt.enforce_type == TSPKeys.TABLE or prompt.enforce_type == TSPKeys.RECORD:
+        if prompt.enforce_type == TSPKeys.LINE_ITEM:
             extract_doc_path: str = (
                 PromptStudioHelper._get_extract_or_summary_document_path(
                     org_id, user_id, tool_id, doc_name, TSPKeys.EXTRACT
