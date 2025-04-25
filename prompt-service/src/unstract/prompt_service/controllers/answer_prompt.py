@@ -1,7 +1,5 @@
 """Published API Controller"""
 
-import json
-from json import JSONDecodeError
 from typing import Any
 
 from flask import Blueprint, request
@@ -353,46 +351,14 @@ def prompt_processor() -> Any:
                     else:
                         structured_output[output[PSKeys.NAME]] = False
             elif output[PSKeys.TYPE] == PSKeys.JSON:
-                if answer.lower() == "[]" or answer.lower() == "na":
-                    structured_output[output[PSKeys.NAME]] = None
-                else:
-                    try:
-                        structured_output[output[PSKeys.NAME]] = json.loads(answer)
-                    except JSONDecodeError:
-                        prompt = f"Convert the following text into valid JSON string: \
-                            \n{answer}\n\n The JSON string should be able to be parsed \
-                            into a Python dictionary. \
-                            Output just the JSON string. No explanation is required. \
-                            If you cannot extract the JSON string, output {{}}"
-                        try:
-                            answer = AnswerPromptService.run_completion(
-                                llm=llm,
-                                prompt=prompt,
-                                prompt_type=PSKeys.JSON,
-                            )
-                            structured_output[output[PSKeys.NAME]] = json.loads(answer)
-                        except JSONDecodeError as e:
-                            err_msg = (
-                                f"Error parsing response (to json): {e}\n"
-                                f"Candidate JSON: {answer}"
-                            )
-                            app.logger.info(err_msg, LogLevel.ERROR)
-                            # Format log message after unifying these types
-                            publish_log(
-                                log_events_id,
-                                {
-                                    "tool_id": tool_id,
-                                    "prompt_key": prompt_name,
-                                    "doc_name": doc_name,
-                                },
-                                LogLevel.INFO,
-                                RunLevel.RUN,
-                                "Unable to parse JSON response from LLM, try using our"
-                                " cloud / enterprise feature of 'line-item', "
-                                "'record' or 'table' type",
-                            )
-                            structured_output[output[PSKeys.NAME]] = {}
-
+                AnswerPromptService.handle_json(
+                    answer=answer,
+                    structured_output=structured_output,
+                    output=output,
+                    log_events_id=log_events_id,
+                    tool_id=tool_id,
+                    doc_name=doc_name,
+                )
             else:
                 structured_output[output[PSKeys.NAME]] = answer
 

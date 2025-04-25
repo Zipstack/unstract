@@ -2,12 +2,15 @@ from logging import Logger
 from typing import Any
 
 from flask import current_app as app
+from json_repair import repair_json
 
 from unstract.core.flask.exceptions import APIError
-from unstract.prompt_service.constants import ExecutionSource, FileStorageKeys
+from unstract.prompt_service.constants import ExecutionSource, FileStorageKeys, RunLevel
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.exceptions import RateLimitError
 from unstract.prompt_service.helpers.plugin import PluginManager
+from unstract.prompt_service.utils.log import publish_log
+from unstract.sdk.constants import LogLevel
 from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError
 from unstract.sdk.exceptions import SdkError
 from unstract.sdk.file_storage import FileStorage, FileStorageProvider
@@ -57,6 +60,9 @@ class AnswerPromptService:
         enable_highlight = tool_settings.get(PSKeys.ENABLE_HIGHLIGHT, False)
         if not enable_highlight or summarize_as_source:
             platform_postamble = ""
+        plugin = PluginManager().get_plugin("json-extraction")
+        if plugin and hasattr(plugin["entrypoint_cls"], "update_settings"):
+            plugin["entrypoint_cls"].update_settings(tool_settings, output)
         prompt = AnswerPromptService.construct_prompt(
             preamble=tool_settings.get(PSKeys.PREAMBLE, ""),
             prompt=output[prompt],
@@ -206,3 +212,42 @@ class AnswerPromptService:
         except table_extractor["exception_cls"] as e:
             msg = f"Couldn't extract table. {e}"
             raise APIError(message=msg)
+
+    @staticmethod
+    def handle_json(
+        answer: str,
+        structured_output: dict[str, Any],
+        output: dict[str, Any],
+        log_events_id: str,
+        tool_id: str,
+        doc_name: str,
+    ) -> None:
+        """Handle JSON responses from the LLM."""
+        prompt_key = output[PSKeys.NAME]
+        if answer.lower() == "na":
+            structured_output[prompt_key] = None
+        else:
+            parsed_data = repair_json(
+                json_str=answer,
+                return_objects=True,
+            )
+            if isinstance(parsed_data, str):
+                err_msg = "Error parsing response (to json)\n" f"Candidate JSON: {answer}"
+                app.logger.info(err_msg, LogLevel.ERROR)
+                # TODO: Format log message after unifying these types
+                publish_log(
+                    log_events_id,
+                    {
+                        "tool_id": tool_id,
+                        "prompt_key": prompt_key,
+                        "doc_name": doc_name,
+                    },
+                    LogLevel.INFO,
+                    RunLevel.RUN,
+                    "Unable to parse JSON response from LLM, try using our"
+                    " cloud / enterprise feature of 'line-item', "
+                    "'record' or 'table' type",
+                )
+                structured_output[prompt_key] = {}
+            else:
+                structured_output[prompt_key] = parsed_data
