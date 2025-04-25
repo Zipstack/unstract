@@ -54,6 +54,7 @@ class AnswerPromptService:
         metadata: dict[str, Any],
         file_path: str = "",
         execution_source: str | None = ExecutionSource.IDE.value,
+        completion: dict[str, Any] | None = None,
     ) -> str:
         platform_postamble = tool_settings.get(PSKeys.PLATFORM_POSTAMBLE, "")
         summarize_as_source = tool_settings.get(PSKeys.SUMMARIZE_AS_SOURCE)
@@ -71,6 +72,7 @@ class AnswerPromptService:
             context=context,
             platform_postamble=platform_postamble,
         )
+        output[PSKeys.COMBINED_PROMPT] = prompt
         return AnswerPromptService.run_completion(
             llm=llm,
             prompt=prompt,
@@ -80,6 +82,7 @@ class AnswerPromptService:
             enable_highlight=enable_highlight,
             file_path=file_path,
             execution_source=execution_source,
+            completion=completion,
         )
 
     @staticmethod
@@ -122,6 +125,7 @@ class AnswerPromptService:
         enable_highlight: bool = False,
         file_path: str = "",
         execution_source: str | None = None,
+        completion: dict[str, Any] | None = None,
     ) -> str:
         logger: Logger = app.logger
         try:
@@ -221,12 +225,24 @@ class AnswerPromptService:
         log_events_id: str,
         tool_id: str,
         doc_name: str,
+        llm: LLM,
+        completion: dict[str, Any] | None = None,
     ) -> None:
         """Handle JSON responses from the LLM."""
         prompt_key = output[PSKeys.NAME]
         if answer.lower() == "na":
             structured_output[prompt_key] = None
         else:
+            json_extraction_plugin = PluginManager().get_plugin("json-extraction")
+            if json_extraction_plugin:
+                json_extraction_plugin["entrypoint_cls"](
+                    llm=llm,
+                    output=output,
+                    prompt=output[PSKeys.COMBINED_PROMPT],
+                    structured_output=structured_output,
+                    answer=answer,
+                    completion=completion,
+                ).run()
             parsed_data = repair_json(
                 json_str=answer,
                 return_objects=True,

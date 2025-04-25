@@ -48,6 +48,7 @@ def prompt_processor() -> Any:
     file_path = payload.get(PSKeys.FILE_PATH)
     doc_name = str(payload.get(PSKeys.FILE_NAME, ""))
     log_events_id: str = payload.get(PSKeys.LOG_EVENTS_ID, "")
+    completion = {}
     structured_output: dict[str, Any] = {}
     metadata: dict[str, Any] = {
         PSKeys.RUN_ID: run_id,
@@ -237,6 +238,7 @@ def prompt_processor() -> Any:
                     execution_source=execution_source,
                     file_path=file_path,
                     context_retrieval_metrics=context_retrieval_metrics,
+                    completion=completion,
                 )
                 metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = context
             else:
@@ -357,6 +359,8 @@ def prompt_processor() -> Any:
                     log_events_id=log_events_id,
                     tool_id=tool_id,
                     doc_name=doc_name,
+                    llm=llm,
+                    completion=completion,
                 )
             else:
                 structured_output[output[PSKeys.NAME]] = answer

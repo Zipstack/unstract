@@ -25,6 +25,7 @@ class RetrievalService:
         execution_source: str,
         file_path: str,
         context_retrieval_metrics: dict[str, Any],
+        completion: dict[str, Any] | None = None,
     ) -> tuple[str, list[str]]:
         context: list[str]
         if chunk_size == 0:
@@ -52,6 +53,7 @@ class RetrievalService:
             metadata=metadata,
             execution_source=execution_source,
             file_path=file_path,
+            completion=completion,
         )
         return answer, context
 
