@@ -360,8 +360,7 @@ class DestinationConnector(BaseConnector):
                 table_info=table_info, column_name=single_column_name
             )
             if is_string:
-                DatabaseUtils.migrate_table_to_v2(
-                    db_class=db_class,
+                db_class.migrate_table_to_v2(
                     table_name=table_name,
                     column_name=single_column_name,
                     engine=engine,

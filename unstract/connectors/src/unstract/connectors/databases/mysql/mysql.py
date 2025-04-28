@@ -112,3 +112,8 @@ class MySQL(UnstractDB, MysqlHandler):
             host=self.host,
             table_name=table_name,
         )
+
+    def migrate_table_to_v2(self, table_name: str, column_name: str, engine: Any) -> None:
+        
+        sql_query = self.special_migration_query(table_name, column_name)
+        super().migrate_table_to_v2(table_name, column_name, engine)

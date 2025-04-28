@@ -6,7 +6,10 @@ from typing import Any
 from unstract.connectors.base import UnstractConnector
 from unstract.connectors.enums import ConnectorMode
 from unstract.connectors.exceptions import ConnectorError
+from unstract.connectors.databases.exceptions import UnstractDBConnectorException
+from workflow_manager.endpoint_v2.exceptions import UnstractDBException
 
+logger = logging.getLogger(__name__)
 
 class UnstractDB(UnstractConnector, ABC):
     logging.basicConfig(
@@ -240,3 +243,21 @@ class UnstractDB(UnstractConnector, ABC):
             return False
 
         return column_type.lower() == self.get_string_type().lower()
+    
+    def migrate_table_to_v2(self, table_name: str, column_name: str, engine: Any) -> None:
+        sql_query = self.migrate_table_to_v2_query(
+            table_name=table_name,
+            column_name=column_name
+        )
+
+        try:
+            self.execute_query(
+                engine=engine,
+                sql_query=sql_query,
+                sql_values=None,
+                table_name=table_name,
+            )
+        except UnstractDBConnectorException as e:
+            raise UnstractDBException(detail=e.detail) from e
+
+        logger.debug(f"successfully migrated table {table_name} with: {sql_query} query")
