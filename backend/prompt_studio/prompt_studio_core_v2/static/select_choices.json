@@ -8,7 +8,7 @@
         "AZURE":"Azure OpenAI"
     },
     "output_type":{
-        "string":"Text",
+        "string":"text",
         "number":"number",
         "email":"email",
         "date":"date",
