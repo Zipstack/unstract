@@ -236,4 +236,3 @@ class BigQuery(UnstractDB):
             columns_with_types=results
         )
         return column_types
-

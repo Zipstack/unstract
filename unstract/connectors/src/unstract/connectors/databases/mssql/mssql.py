@@ -168,4 +168,3 @@ class MSSQL(UnstractDB):
                 database=self.database,
                 table_name=table_name,
             ) from e
-        

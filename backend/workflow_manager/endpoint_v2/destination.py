@@ -381,7 +381,6 @@ class DestinationConnector(BaseConnector):
         )
         engine = None
         try:
-
             db_class = DatabaseUtils.get_db_class(
                 connector_id=connector_instance.connector_id,
                 connector_settings=connector_settings,

@@ -3,13 +3,15 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
-from unstract.connectors.base import UnstractConnector
-from unstract.connectors.enums import ConnectorMode
-from unstract.connectors.exceptions import ConnectorError
-from unstract.connectors.databases.exceptions import UnstractDBConnectorException
 from workflow_manager.endpoint_v2.exceptions import UnstractDBException
 
+from unstract.connectors.base import UnstractConnector
+from unstract.connectors.databases.exceptions import UnstractDBConnectorException
+from unstract.connectors.enums import ConnectorMode
+from unstract.connectors.exceptions import ConnectorError
+
 logger = logging.getLogger(__name__)
+
 
 class UnstractDB(UnstractConnector, ABC):
     logging.basicConfig(
@@ -64,9 +66,7 @@ class UnstractDB(UnstractConnector, ABC):
 
     @abstractmethod
     def get_string_type(self) -> str:
-        """
-        Child classes implement this to return the string type name for their DB.
-        """
+        """Child classes implement this to return the string type name for their DB."""
         pass
 
     @abstractmethod
@@ -223,8 +223,7 @@ class UnstractDB(UnstractConnector, ABC):
         return column_types
 
     def is_string_column(self, table_info: dict[str, str], column_name: str) -> bool:
-        """
-        Check if the column is a string type specific to the DB connector.
+        """Check if the column is a string type specific to the DB connector.
 
         Args:
             table_info (dict): column_name -> column_type
@@ -242,11 +241,10 @@ class UnstractDB(UnstractConnector, ABC):
             return False
 
         return column_type.lower() == self.get_string_type().lower()
-    
+
     def migrate_table_to_v2(self, table_name: str, column_name: str, engine: Any) -> None:
         sql_query = self.prepare_multi_column_migration(
-            table_name=table_name,
-            column_name=column_name
+            table_name=table_name, column_name=column_name
         )
 
         try:
