@@ -19,21 +19,13 @@ ENV \
 # Install system dependencies
 RUN apt-get update && \
     apt-get --no-install-recommends install -y \
-    autoconf \
-    automake \
     build-essential \
-    cmake \
     freetds-dev \
-    g++ \
-    gcc \
     git \
     libkrb5-dev \
     libmagic-dev \
     libssl-dev \
-    libtool \
-    ninja-build \
-    pkg-config \
-    python3-dev && \
+    pkg-config && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
