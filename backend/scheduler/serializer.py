@@ -3,9 +3,9 @@ from typing import Any
 
 from pipeline_v2.manager import PipelineManager
 from rest_framework import serializers
-from scheduler.constants import SchedulerConstants as SC
 
 from backend.constants import FieldLengthConstants as FieldLength
+from scheduler.constants import SchedulerConstants as SC
 
 logger = logging.getLogger(__name__)
 

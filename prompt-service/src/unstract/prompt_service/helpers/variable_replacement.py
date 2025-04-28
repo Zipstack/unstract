@@ -4,12 +4,12 @@ from functools import lru_cache
 from typing import Any
 
 from flask import current_app as app
+
 from unstract.prompt_service.constants import VariableConstants, VariableType
 from unstract.prompt_service.utils.request import HTTPMethod, make_http_request
 
 
 class VariableReplacementHelper:
-
     @staticmethod
     def replace_static_variable(
         prompt: str, structured_output: dict[str, Any], variable: str
@@ -81,8 +81,8 @@ class VariableReplacementHelper:
         api_response: Any = VariableReplacementHelper.fetch_dynamic_variable_value(
             url=url, data=output_value
         )
-        formatted_api_response: str = (
-            VariableReplacementHelper.handle_json_and_str_types(api_response)
+        formatted_api_response: str = VariableReplacementHelper.handle_json_and_str_types(
+            api_response
         )
         static_variable_marker_string = "".join(["{{", variable, "}}"])
         replaced_prompt: str = VariableReplacementHelper.replace_generic_string_value(
@@ -101,7 +101,6 @@ class VariableReplacementHelper:
 
     @staticmethod
     def fetch_dynamic_variable_value(url: str, data: str) -> Any:
-
         # This prototype method currently supports
         # only endpoints that do not require authentication.
         # Additionally, it only accepts plain text
@@ -111,7 +110,5 @@ class VariableReplacementHelper:
 
         verb: HTTPMethod = HTTPMethod.POST
         headers = {"Content-Type": "text/plain"}
-        response: Any = make_http_request(
-            verb=verb, url=url, data=data, headers=headers
-        )
+        response: Any = make_http_request(verb=verb, url=url, data=data, headers=headers)
         return response

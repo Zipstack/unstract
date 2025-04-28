@@ -15,13 +15,13 @@ Contains the backend services for Unstract written with Django and DRF.
 
 All commands assumes that you have activated your `venv`.
 
-```bash
-# Create venv
-pdm venv create -w virtualenv --with-pip
-eval "$(pdm venv activate in-project)"
+Install UV: https://docs.astral.sh/uv/getting-started/installation/
 
-# Remove venv
-pdm venv remove in-project
+```bash
+# Create venv and install dependencies
+uv venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+uv sync
 ```
 
 #### Installing dependencies
@@ -30,28 +30,20 @@ Go to service dir and install dependencies listed in corresponding `pyproject.to
 
 ```bash
 # Install dependencies
-pdm install
+uv sync
 
 # Install specific dev dependency group
-pdm install --dev -G lint
-
+uv sync --group dev
 # Install production dependencies only
-pdm install --prod --no-editable
+uv sync --group deploy
 ```
 
 #### Running scripts
 
-PDM allows you to run scripts applicable within the service dir.
+UV allows you to run python scripts applicable within the service dir.
 
 ```bash
-# List the possible scripts that can be executed
-pdm run -l
-```
-
-For example to run the backend (dev mode is recommended to take advantage of gunicorn's `reload` feature)
-
-```bash
-pdm run backend --dev
+uv run sample_script.py
 ```
 
 #### Running commands
@@ -68,16 +60,16 @@ DB_NAME='unstract_db'
 DB_PORT=5432
 ```
 
-- If you've made changes to the model, run `python manage.py makemigrations`, else ignore this step
+- If you've made changes to the model, run `uv run manage.py makemigrations`, else ignore this step
 - Run the following to apply any migrations to the DB and start the server
 
 ```bash
-python manage.py migrate
-python manage.py runserver localhost:8000
+uv run manage.py migrate
+uv run manage.py runserver localhost:8000
 ```
 
 - Server will start and run at port 8000. (<http://localhost:8000>)
-  
+
 ## Authentication
 
 The default username is `unstract` and the default password is `unstract`.

@@ -2,17 +2,17 @@ import http
 import json
 import logging
 import os
-from typing import Any, Optional
+from typing import Any
 
 import redis
 import socketio
 from django.conf import settings
 from django.core.wsgi import WSGIHandler
+
+from unstract.core.constants import LogFieldName
 from unstract.workflow_execution.enums import LogType
 from utils.constants import ExecutionLogConstants
 from utils.dto import LogDataDTO
-
-from unstract.core.constants import LogFieldName
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ def disconnect(sid: str) -> None:
     logger.info(f"[{os.getpid()}] Client with SID:{sid} disconnected")
 
 
-def _get_user_session_id_from_cookies(sid: str, environ: Any) -> Optional[str]:
+def _get_user_session_id_from_cookies(sid: str, environ: Any) -> str | None:
     """Get the user session ID from cookies.
 
     Args:
@@ -79,7 +79,7 @@ def _get_user_session_id_from_cookies(sid: str, environ: Any) -> Optional[str]:
     return session_id.value
 
 
-def _get_validated_log_data(json_data: Any) -> Optional[LogDataDTO]:
+def _get_validated_log_data(json_data: Any) -> LogDataDTO | None:
     """Validate log data to persist history. This function takes log data in
     JSON format, validates it, and returns a `LogDataDTO` object if the data is
     valid. The validation process includes decoding bytes to string, parsing
@@ -167,7 +167,6 @@ def handle_user_logs(room: str, event: str, message: dict[str, Any]) -> None:
     Args:
         message (dict[str, Any]): log message
     """
-
     if not room or not event:
         logger.warning(f"Message received without room and event: {message}")
         return

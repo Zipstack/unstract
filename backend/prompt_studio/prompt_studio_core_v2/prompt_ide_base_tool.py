@@ -1,18 +1,18 @@
 import os
 
 from platform_settings_v2.platform_auth_service import PlatformAuthenticationService
+from utils.file_storage.constants import FileStorageKeys
+
 from prompt_studio.prompt_studio_core_v2.constants import ToolStudioKeys
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.file_storage.constants import StorageType
 from unstract.sdk.file_storage.env_helper import EnvHelper
 from unstract.sdk.tool.stream import StreamMixin
-from utils.file_storage.constants import FileStorageKeys
 
 
 class PromptIdeBaseTool(StreamMixin):
     def __init__(self, log_level: LogLevel = LogLevel.INFO, org_id: str = "") -> None:
-        """
-        Args:
+        """Args:
             tool (UnstractAbstractTool): Instance of UnstractAbstractTool
         Notes:
             - PLATFORM_SERVICE_API_KEY environment variable is required.

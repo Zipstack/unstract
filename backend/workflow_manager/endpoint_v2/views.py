@@ -14,7 +14,6 @@ class WorkflowEndpointViewSet(viewsets.ModelViewSet):
     serializer_class = WorkflowEndpointSerializer
 
     def get_queryset(self) -> QuerySet:
-
         queryset = (
             WorkflowEndpoint.objects.all()
             .select_related("workflow")

@@ -5,7 +5,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("file_execution", "0001_initial"),
         ("workflow_v2", "0003_workflowexecution_result_acknowledged"),

@@ -16,9 +16,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--schema",
             type=str,
-            help=(
-                "Optional schema name to drop. Overrides env 'DB_SCHEMA' if specified"
-            ),
+            help=("Optional schema name to drop. Overrides env 'DB_SCHEMA' if specified"),
         )
 
     def handle(self, *args, **kwargs):

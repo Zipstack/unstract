@@ -22,7 +22,7 @@ let selectedProductStore;
 let PRODUCT_NAMES = {};
 
 try {
-  selectedProductStore = require("../plugins/llm-whisperer/store/select-product-store.js");
+  selectedProductStore = require("../plugins/store/select-product-store.js");
   PRODUCT_NAMES = require("../plugins/llm-whisperer/helper").PRODUCT_NAMES;
 } catch {
   // Ignore if hook not available

@@ -3,14 +3,11 @@ import base64
 import json
 import logging
 import os
-from typing import Any, Optional, Union
+from typing import Any
 
 from connector_v2.models import ConnectorInstance
 from plugins.workflow_manager.workflow_v2.utils import WorkflowUtil
 from rest_framework.exceptions import APIException
-from unstract.sdk.constants import ToolExecKey
-from unstract.sdk.tool.mime_types import EXT_MIME_MAP
-from unstract.workflow_execution.constants import ToolOutputType
 from usage_v2.helper import UsageHelper
 from utils.user_context import UserContext
 from workflow_manager.endpoint_v2.base_connector import BaseConnector
@@ -40,6 +37,9 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 from backend.exceptions import UnstractFSException
 from unstract.connectors.exceptions import ConnectorError
 from unstract.filesystem import FileStorageType, FileSystem
+from unstract.sdk.constants import ToolExecKey
+from unstract.sdk.tool.mime_types import EXT_MIME_MAP
+from unstract.workflow_execution.constants import ToolOutputType
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ class DestinationConnector(BaseConnector):
         self,
         workflow: Workflow,
         execution_id: str,
-        execution_service: Optional[WorkflowExecutionServiceHelper] = None,
+        execution_service: WorkflowExecutionServiceHelper | None = None,
     ) -> None:
         """Initialize a DestinationConnector object.
 
@@ -200,14 +200,14 @@ class DestinationConnector(BaseConnector):
         file_hash: FileHash,
         workflow: Workflow,
         input_file_path: str,
-        error: Optional[str] = None,
+        error: str | None = None,
         use_file_history: bool = True,
         file_execution_id: str = None,
     ) -> None:
         """Handle the output based on the connection type."""
         connection_type = self.endpoint.connection_type
-        result: Optional[str] = None
-        metadata: Optional[str] = None
+        result: str | None = None
+        metadata: str | None = None
         if error:
             if connection_type == WorkflowEndpoint.ConnectionType.API:
                 self._handle_api_result(file_name=file_name, error=error, result=result)
@@ -274,9 +274,7 @@ class DestinationConnector(BaseConnector):
             input_dir=output_directory, root_path=root_path
         )
         logger.debug(f"destination output directory {output_directory}")
-        destination_volume_path = os.path.join(
-            self.execution_dir, ToolExecKey.OUTPUT_DIR
-        )
+        destination_volume_path = os.path.join(self.execution_dir, ToolExecKey.OUTPUT_DIR)
 
         try:
             destination_fs.create_dir_if_not_exists(input_dir=output_directory)
@@ -436,9 +434,9 @@ class DestinationConnector(BaseConnector):
     def _handle_api_result(
         self,
         file_name: str,
-        error: Optional[str] = None,
-        result: Optional[str] = None,
-        metadata: Optional[dict[str, Any]] = None,
+        error: str | None = None,
+        result: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         """Handle the API result.
 
@@ -507,7 +505,7 @@ class DestinationConnector(BaseConnector):
             # assume it's a plain string
             return original_string
 
-    def get_result(self, file_history: Optional[FileHistory] = None) -> Optional[Any]:
+    def get_result(self, file_history: FileHistory | None = None) -> Any | None:
         """Get result data from the output file.
 
         Returns:
@@ -516,8 +514,8 @@ class DestinationConnector(BaseConnector):
         return self.get_result_with_file_storage(file_history=file_history)
 
     def get_result_with_file_storage(
-        self, file_history: Optional[FileHistory] = None
-    ) -> Optional[Any]:
+        self, file_history: FileHistory | None = None
+    ) -> Any | None:
         """Get result data from the output file.
 
         Returns:
@@ -528,7 +526,7 @@ class DestinationConnector(BaseConnector):
         output_file = os.path.join(self.execution_dir, WorkflowFileType.INFILE)
         metadata: dict[str, Any] = self.get_workflow_metadata()
         output_type = self.get_output_type(metadata)
-        result: Union[dict[str, Any], str] = ""
+        result: dict[str, Any] | str = ""
         file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
         file_storage = file_system.get_file_storage()
         try:
@@ -558,8 +556,8 @@ class DestinationConnector(BaseConnector):
         return result
 
     def get_metadata(
-        self, file_history: Optional[FileHistory] = None
-    ) -> Optional[dict[str, Any]]:
+        self, file_history: FileHistory | None = None
+    ) -> dict[str, Any] | None:
         """Get metadata from the output file.
 
         Returns:
@@ -650,9 +648,7 @@ class DestinationConnector(BaseConnector):
         Returns:
             dict[str, Any]: JSON schema for the database.
         """
-        schema_path = os.path.join(
-            os.path.dirname(__file__), "static", "dest", "db.json"
-        )
+        schema_path = os.path.join(os.path.dirname(__file__), "static", "dest", "db.json")
         return cls.get_json_schema(file_path=schema_path)
 
     @classmethod
@@ -683,15 +679,16 @@ class DestinationConnector(BaseConnector):
         self,
         file_name: str,
         workflow: Workflow,
-        result: Optional[str] = None,
-        input_file_path: Optional[str] = None,
-        meta_data: Optional[dict[str, Any]] = None,
+        result: str | None = None,
+        input_file_path: str | None = None,
+        meta_data: dict[str, Any] | None = None,
         file_execution_id: str = None,
     ) -> None:
         """Handle the Manual Review QUEUE result.
 
         This method is responsible for pushing the input file and result to
         review queue.
+
         Args:
             file_name (str): The name of the file.
             workflow (Workflow): The workflow object containing

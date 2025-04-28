@@ -93,8 +93,7 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
         return mapping.get(python_type, "TEXT")
 
     def get_engine(self) -> connection:
-        """
-        Returns a connection to the PostgreSQL database.
+        """Returns a connection to the PostgreSQL database.
 
         Returns:
             connection: A connection to the PostgreSQL database.
