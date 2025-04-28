@@ -70,7 +70,7 @@ class UnstractDB(UnstractConnector, ABC):
         pass
 
     @abstractmethod
-    def migrate_table_to_v2_query(self, table_name: str, column_name: str) -> str:
+    def prepare_multi_column_migration(self, table_name: str, column_name: str) -> str:
         """Returns the ALTER TABLE query specific to the database."""
         pass
 
@@ -245,7 +245,7 @@ class UnstractDB(UnstractConnector, ABC):
         return column_type.lower() == self.get_string_type().lower()
     
     def migrate_table_to_v2(self, table_name: str, column_name: str, engine: Any) -> None:
-        sql_query = self.migrate_table_to_v2_query(
+        sql_query = self.prepare_multi_column_migration(
             table_name=table_name,
             column_name=column_name
         )
