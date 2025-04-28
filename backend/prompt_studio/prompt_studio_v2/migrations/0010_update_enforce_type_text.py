@@ -2,13 +2,16 @@
 
 from django.db import migrations
 
+
 def update_text_enforce_type(apps, schema_editor: Any) -> None:
-    prompt = apps.get_model('prompt_studio_v2', 'ToolStudioPrompt')
+    prompt = apps.get_model("prompt_studio_v2", "ToolStudioPrompt")
     prompt.objects.filter(enforce_type="Text").update(enforce_type="text")
 
-def revert_update_text_enforce_type(apps, schema_editor:Any) -> None:
-    prompt = apps.get_model('prompt_studio_v2', 'ToolStudioPrompt')
+
+def revert_update_text_enforce_type(apps, schema_editor: Any) -> None:
+    prompt = apps.get_model("prompt_studio_v2", "ToolStudioPrompt")
     prompt.objects.filter(enforce_type="text").update(enforce_type="Text")
+
 
 class Migration(migrations.Migration):
     dependencies = [
@@ -16,6 +19,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(update_text_enforce_type, reverse_code=revert_update_text_enforce_type),
+        migrations.RunPython(
+            update_text_enforce_type, reverse_code=revert_update_text_enforce_type
+        ),
     ]
-
