@@ -53,18 +53,17 @@ USER ${APP_USER}
 
 # Install dependencies in a single layer
 RUN uv sync --frozen && \
-    uv sync && \
     . .venv/bin/activate && \
+    uv sync --group deploy && \
+    # Install plugins in development mode from root directory
     for dir in "${TARGET_PLUGINS_PATH}"/*/; do \
     dirpath=${dir%*/}; \
-    if [ "${dirpath##*/}" != "*" ]; then \
-    cd "$dirpath" && \
-    echo "Installing plugin: ${dirpath##*/}..." && \
-    uv sync && \
-    cd -; \
+    dirname=${dirpath##*/}; \
+    if [ "${dirname}" != "*" ]; then \
+    echo "Installing plugin: ${dirname}..." && \
+    uv pip install -e "${TARGET_PLUGINS_PATH}/${dirname}"; \
     fi; \
     done && \
-    uv sync --group deploy && \
     .venv/bin/python3 -m ensurepip --upgrade && \
     uv run opentelemetry-bootstrap -a install && \
     mkdir -p prompt-studio-data
