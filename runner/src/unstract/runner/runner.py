@@ -43,10 +43,10 @@ class UnstractRunner:
         organization_id: str,
         file_execution_id: str,
         channel: str | None = None,
+        container_name: str | None = None,
     ) -> None:
         for line in container.logs(follow=True):
             log_message = line
-            self.logger.debug(f"[{container.name}] - {log_message}")
             self.process_log_message(
                 log_message=log_message,
                 tool_instance_id=tool_instance_id,
@@ -54,6 +54,7 @@ class UnstractRunner:
                 execution_id=execution_id,
                 organization_id=organization_id,
                 file_execution_id=file_execution_id,
+                container_name=container_name,
             )
 
     def get_valid_log_message(self, log_message: str) -> dict[str, Any] | None:
@@ -80,22 +81,30 @@ class UnstractRunner:
         organization_id: str,
         file_execution_id: str,
         channel: str | None = None,
+        container_name: str | None = None,
     ) -> dict[str, Any] | None:
         log_dict = self.get_valid_log_message(log_message)
         if not log_dict:
+            self.logger.debug(f"[{container_name}] {log_message}")
             return None
         log_type = log_dict.get("type")
         log_level = log_dict.get("level")
-        if log_type == LogType.LOG and log_level == LogLevel.ERROR:
-            raise ToolRunException(log_dict.get("log"))
+
         if not self.is_valid_log_type(log_type):
             self.logger.warning(
                 f"Received invalid logType: {log_type} with log message: {log_dict}"
             )
             return None
-        if log_type == LogType.RESULT:
+
+        if log_type == LogType.LOG:
+            if log_level == LogLevel.ERROR:
+                raise ToolRunException(log_dict.get("log"))
+            self.logger.debug(f"[{container_name}] {log_message}")
+        elif log_type == LogType.RESULT:
+            self.logger.debug(f"[{container_name}] Completed running")
             return log_dict
-        if log_type == LogType.UPDATE:
+        elif log_type == LogType.UPDATE:
+            self.logger.debug(f"[{container_name}] Pushing UI updates")
             log_dict["component"] = tool_instance_id
         if channel:
             log_dict[LogFieldName.EXECUTION_ID] = execution_id
@@ -218,6 +227,7 @@ class UnstractRunner:
             "MESSAGING_CHANNEL": messaging_channel,
             "LOG_LEVEL": os.getenv(Env.LOG_LEVEL, "INFO"),
             "CELERY_BROKER_URL": os.getenv(Env.CELERY_BROKER_URL),
+            "CONTAINER_NAME": container_name,
         }
         sidecar_config = self.client.get_container_run_config(
             command=[],
@@ -291,7 +301,7 @@ class UnstractRunner:
             "return $exit_code; "
             "}"
         )
-        execute_cmd = f"run_tool 2>&1 | tee -a {shared_log_file}"
+        execute_cmd = f"run_tool > {shared_log_file} 2>&1"
 
         # Combine all commands
         shell_script = f"{mkdir_cmd} && {run_tool_fn}; {execute_cmd}"
@@ -417,6 +427,7 @@ class UnstractRunner:
                     execution_id=execution_id,
                     organization_id=organization_id,
                     file_execution_id=file_execution_id,
+                    container_name=container_name,
                 )
                 self.logger.info(
                     f"Execution ID: {execution_id}, docker "
@@ -425,10 +436,7 @@ class UnstractRunner:
 
         except ToolRunException as te:
             self.logger.error(
-                "Error while running docker container"
-                f" {container_config.get('name')}: {te}",
-                stack_info=True,
-                exc_info=True,
+                f"Error while running docker container {container_config.get('name')}: {te}"
             )
             result = {"type": "RESULT", "result": None, "error": str(te.message)}
         except Exception as e:
