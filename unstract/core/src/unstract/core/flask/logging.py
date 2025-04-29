@@ -13,10 +13,10 @@ class RequestIDFilter(logging.Filter):
         return True
 
 
-def setup_logging(log_level: str):
+def setup_logging(log_level: int):
     """Sets up logger for Flask based services
     Args:
-        log_level (str): Log level to use. Can be one of
+        log_level (int): Log level to use. Can be one of
         INFO, DEBUG, WARNING, ERROR
     """
     # Determine if OpenTelemetry trace context should be included in logs

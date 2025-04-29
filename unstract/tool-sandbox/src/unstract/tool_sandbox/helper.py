@@ -4,11 +4,17 @@ import os
 from typing import Any
 
 import requests
+from requests import Response
+from requests.exceptions import ConnectionError, RequestException
 
 from unstract.core.utilities import UnstractUtils
 from unstract.tool_sandbox.constants import UnstractRunner
 
 logger = logging.getLogger(__name__)
+
+
+class ToolSanboxError(Exception):
+    pass
 
 
 class ToolSandboxHelper:
@@ -96,20 +102,27 @@ class ToolSandboxHelper:
             file_execution_id, image_name, image_tag, settings, retry_count
         )
 
-        response = requests.post(url, headers=headers, json=data)
-        result: dict[str, Any] | None = None
-        if response.status_code == 200:
-            result = response.json()
-        elif response.status_code == 404:
-            logger.error(
-                f"Error while calling tool {image_name}: "
-                f"for tool instance status code {response.status_code}"
-            )
-        else:
-            logger.error(
-                f"Error while calling tool {image_name} reason: {response.reason}"
-            )
-        return result
+        response: Response = Response()
+        try:
+            response = requests.post(url, headers=headers, json=data)
+            response.raise_for_status()
+        except ConnectionError as connect_err:
+            msg = "Unable to connect to unstract-runner."
+            msg += " \n" + str(connect_err)
+            logger.error(msg)
+            raise ToolSanboxError(msg)
+        except RequestException as e:
+            error_message = str(e)
+            content_type = response.headers.get("Content-Type", "").lower()
+            if "application/json" in content_type:
+                response_json = response.json()
+                if "error" in response_json:
+                    error_message = response_json["error"]
+            elif response.text:
+                error_message = response.text
+            logger.error(f"Error from runner: {error_message}")
+            raise ToolSanboxError(error_message)
+        return response.json()
 
     def create_tool_request_data(
         self,
