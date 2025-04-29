@@ -61,7 +61,7 @@ RUN uv sync --frozen && \
     dirname=${dirpath##*/}; \
     if [ "${dirname}" != "*" ]; then \
     echo "Installing plugin: ${dirname}..." && \
-    uv pip install -e "${TARGET_PLUGINS_PATH}/${dirname}"; \
+    uv pip install "${TARGET_PLUGINS_PATH}/${dirname}"; \
     fi; \
     done && \
     .venv/bin/python3 -m ensurepip --upgrade && \
