@@ -2,7 +2,7 @@ import datetime
 import json
 import logging
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 from utils.constants import Common
 from workflow_manager.endpoint_v2.constants import DBConnectionClass, TableColumns
@@ -113,9 +113,9 @@ class DatabaseUtils:
         include_agent: bool = False,
         agent_name: str | None = AgentName.UNSTRACT_DBWRITER.value,
         single_column_name: str = "data",
-        table_info: Optional[dict[str, str]] = None,
-        metadata: Optional[dict[str, Any]] = None,
-        error: Optional[str] = None,
+        table_info: dict[str, str] | None = None,
+        metadata: dict[str, Any] | None = None,
+        error: str | None = None,
     ) -> dict[str, Any]:
         """Generate a dictionary of columns and values based on specified
         parameters.

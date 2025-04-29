@@ -3,7 +3,7 @@ import base64
 import json
 import logging
 import os
-from typing import Any, Optional
+from typing import Any
 
 from connector_v2.models import ConnectorInstance
 from plugins.workflow_manager.workflow_v2.utils import WorkflowUtil
@@ -306,7 +306,7 @@ class DestinationConnector(BaseConnector):
         except ConnectorError as e:
             raise UnstractFSException(core_err=e) from e
 
-    def insert_into_db(self, input_file_path: str, error: Optional[str]) -> None:
+    def insert_into_db(self, input_file_path: str, error: str | None) -> None:
         """Insert data into the database."""
         connector_instance: ConnectorInstance = self.endpoint.connector_instance
         connector_settings: dict[str, Any] = connector_instance.metadata
