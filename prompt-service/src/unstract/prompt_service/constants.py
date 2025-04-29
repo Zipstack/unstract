@@ -66,7 +66,6 @@ class PromptServiceConstants:
     EPILOGUE = "epilogue"
     PLATFORM_POSTAMBLE = "platform_postamble"
     HIGHLIGHT_DATA_PLUGIN = "highlight-data"
-    CLEAN_CONTEXT = "clean-context"
     SUMMARIZE_AS_SOURCE = "summarize_as_source"
     VARIABLE_MAP = "variable_map"
     RECORD = "record"
