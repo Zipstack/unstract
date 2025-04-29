@@ -14,11 +14,30 @@ logger = logging.getLogger(__name__)
 
 class GoogleCloudStorageFS(UnstractFileSystem):
     def __init__(self, settings: dict[str, Any]):
+        """Initializing gcs
+
+        Args:
+            settings (dict[str, Any]): A json dict containing json connection string
+            and bucket-name
+
+        Raises:
+            ConnectorError: Error raised when connection initialization fails
+        """
         super().__init__("GoogleCloudStorage")
         self.bucket = settings.get("bucket", "")
-        project_id = settings.get("project_id", "")
-        json_credentials = json.loads(settings.get("json_credentials", "{}"))
-        self.gcs_fs = GCSFileSystem(token=json_credentials, project=project_id)
+        json_credentials_str = settings.get("json_credentials", "{}")
+        # project-id is not mandatory, since we already initilizing with json-creds
+        try:
+            json_credentials = json.loads(json_credentials_str)
+            self.gcs_fs = GCSFileSystem(token=json_credentials, timeout=10)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse JSON credentials: {str(e)}", exc_info=True)
+            error_msg = f"GCS credentials are not in proper JSON format: {str(e)}"
+            raise ConnectorError(error_msg) from e
+        except Exception as e:
+            logger.error(f"Failed to initialize GCSFileSystem: {str(e)}")
+            error_msg = f"Failed to connect to Google Cloud Storage: {str(e)}"
+            raise ConnectorError(error_msg) from e
 
     @staticmethod
     def get_id() -> str:
@@ -83,7 +102,7 @@ class GoogleCloudStorageFS(UnstractFileSystem):
         try:
             is_dir = bool(self.get_fsspec_fs().isdir(self.bucket))
             if not is_dir:
-                raise RuntimeError("Could not access root directory.")
+                raise RuntimeError("Could not access bucket.")
         except Exception as e:
             raise ConnectorError(
                 f"Error from Google Cloud Storage while testing connection: {str(e)}"

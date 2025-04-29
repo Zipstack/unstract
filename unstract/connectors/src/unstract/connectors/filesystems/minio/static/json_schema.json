@@ -6,7 +6,8 @@
     "connectorName",
     "key",
     "secret",
-    "endpoint_url"
+    "endpoint_url",
+    "region_name"
   ],
   "properties": {
     "connectorName": {
@@ -35,7 +36,8 @@
     "region_name": {
       "type": "string",
       "title": "Region Name",
-      "description": "Region name of AWS S3 account."
+      "default": "default-region",
+      "description": "Mandatory region name of AWS-S3 account. For minio, leave it blank"
     }
   }
 }

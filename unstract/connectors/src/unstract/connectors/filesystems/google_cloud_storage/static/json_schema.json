@@ -3,8 +3,7 @@
   "type": "object",
   "required": [
     "connectorName",
-    "json_credentials",
-    "project_id"
+    "json_credentials"
   ],
   "properties": {
     "connectorName": {
@@ -18,11 +17,6 @@
       "format": "password",
       "default": "",
       "description": "Refer [GCloud docs](https://developers.google.com/workspace/guides/create-credentials#create_credentials_for_a_service_account) on adding keys for service account"
-    },
-    "project_id": {
-      "type": "string",
-      "title": "Project ID",
-      "description": "Name of the project ID."
     },
     "bucket": {
       "type": "string",
