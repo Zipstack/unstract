@@ -18,8 +18,9 @@ try {
 }
 let selectedProductStore;
 let isLlmWhisperer;
+let isVerticals;
 try {
-  selectedProductStore = require("../../../plugins/llm-whisperer/store/select-product-store.js");
+  selectedProductStore = require("../../../plugins/store/select-product-store.js");
 } catch {
   // do nothing
 }
@@ -40,8 +41,19 @@ const RequireAuth = () => {
   } catch (error) {
     // Do nothing
   }
+  try {
+    isVerticals =
+      selectedProductStore.useSelectedProductStore(
+        (state) => state?.selectedProduct
+      ) === "verticals";
+  } catch (error) {
+    // Do nothing
+  }
 
-  const currOrgName = getOrgNameFromPathname(pathname, isLlmWhisperer);
+  const currOrgName = getOrgNameFromPathname(
+    pathname,
+    isLlmWhisperer || isVerticals
+  );
   useEffect(() => {
     if (!sessionDetails?.isLoggedIn) {
       return;
@@ -53,6 +65,8 @@ const RequireAuth = () => {
   let navigateTo = `/${orgName}/onboard`;
   if (isLlmWhisperer) {
     navigateTo = `/llm-whisperer/${orgName}/playground`;
+  } else if (isVerticals) {
+    navigateTo = `/verticals/`;
   } else if (onboardCompleted(adapters)) {
     navigateTo = `/${orgName}/${homePagePath}`;
   }
