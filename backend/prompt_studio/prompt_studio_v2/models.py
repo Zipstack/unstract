@@ -15,7 +15,7 @@ class ToolStudioPrompt(BaseModel):
     """
 
     class EnforceType(models.TextChoices):
-        TEXT = "Text", "Response sent as Text"
+        TEXT = "text", "Response sent as Text"
         NUMBER = "number", "Response sent as number"
         EMAIL = "email", "Response sent as email"
         DATE = "date", "Response sent as date"
@@ -58,6 +58,8 @@ class ToolStudioPrompt(BaseModel):
         choices=EnforceType.choices,
         default=EnforceType.TEXT,
     )
+    # New field to track if it was line-item
+    has_line_item_history = models.BooleanField(default=False)
     prompt = models.TextField(
         blank=True, db_comment="Field to store the prompt", unique=False
     )

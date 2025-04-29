@@ -2,19 +2,33 @@
 
 from typing import Any
 
-from django.db import migrations
+from django.db import migrations, models
 
 
 def forward_enforce_type_updates(apps: Any, schema_editor: Any) -> None:
     prompt = apps.get_model("prompt_studio_v2", "ToolStudioPrompt")
 
     # line-item -> json
-    prompt.objects.filter(enforce_type="line-item").update(enforce_type="json")
+    prompt.objects.filter(enforce_type="line-item").update(
+        enforce_type="json", is_line_item=True
+    )
 
     # table or record -> line-item
     prompt.objects.filter(enforce_type__in=["table", "record"]).update(
         enforce_type="line-item"
     )
+
+
+def revert_enforce_type_updates(apps, schema_editor: Any) -> None:
+    prompt = apps.get_model("prompt_studio_v2", "ToolStudioPrompt")
+
+    # Revert json -> line-item for records where is_line_item is True
+    prompt.objects.filter(enforce_type="json", is_line_item=True).update(
+        enforce_type="line-item"
+    )
+
+    # Revert line-item -> table or record for records
+    prompt.objects.filter(enforce_type="line-item").update(enforce_type="table")
 
 
 class Migration(migrations.Migration):
@@ -23,5 +37,10 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(forward_enforce_type_updates, migrations.RunPython.noop),
+        migrations.AddField(
+            model_name="toolstudioprompt",
+            name="has_line_item_history",
+            field=models.BooleanField(default=False),
+        ),
+        migrations.RunPython(forward_enforce_type_updates, revert_enforce_type_updates),
     ]
