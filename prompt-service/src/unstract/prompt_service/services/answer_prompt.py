@@ -9,6 +9,7 @@ from unstract.prompt_service.constants import ExecutionSource, FileStorageKeys, 
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.exceptions import RateLimitError
 from unstract.prompt_service.helpers.plugin import PluginManager
+from unstract.prompt_service.utils.file_utils import FileUtils
 from unstract.prompt_service.utils.log import publish_log
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError
@@ -54,7 +55,6 @@ class AnswerPromptService:
         metadata: dict[str, Any],
         file_path: str = "",
         execution_source: str | None = ExecutionSource.IDE.value,
-        completion: dict[str, Any] | None = None,
     ) -> str:
         platform_postamble = tool_settings.get(PSKeys.PLATFORM_POSTAMBLE, "")
         summarize_as_source = tool_settings.get(PSKeys.SUMMARIZE_AS_SOURCE)
@@ -82,7 +82,6 @@ class AnswerPromptService:
             enable_highlight=enable_highlight,
             file_path=file_path,
             execution_source=execution_source,
-            completion=completion,
         )
 
     @staticmethod
@@ -125,7 +124,6 @@ class AnswerPromptService:
         enable_highlight: bool = False,
         file_path: str = "",
         execution_source: str | None = None,
-        completion: dict[str, Any] | None = None,
     ) -> str:
         logger: Logger = app.logger
         try:
@@ -133,7 +131,11 @@ class AnswerPromptService:
                 PSKeys.HIGHLIGHT_DATA_PLUGIN
             )
             highlight_data = None
-            if highlight_data_plugin and enable_highlight:
+            if (
+                highlight_data_plugin
+                and enable_highlight
+                and prompt_type.lower() != PSKeys.JSON
+            ):
                 fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
                 if execution_source == ExecutionSource.IDE.value:
                     fs_instance = EnvHelper.get_storage(
@@ -152,7 +154,7 @@ class AnswerPromptService:
             completion = llm.complete(
                 prompt=prompt,
                 process_text=highlight_data,
-                extract_json=prompt_type.lower() != PSKeys.TEXT,
+                extract_json=prompt_type.lower() != PSKeys.JSON,
             )
             answer: str = completion[PSKeys.RESPONSE].text
             highlight_data = completion.get(PSKeys.HIGHLIGHT_DATA, [])
@@ -226,7 +228,10 @@ class AnswerPromptService:
         tool_id: str,
         doc_name: str,
         llm: LLM,
-        completion: dict[str, Any] | None = None,
+        enable_highlight: bool = False,
+        execution_source: str = ExecutionSource.IDE.value,
+        metadata: dict[str, Any] | None = None,
+        file_path: str = "",
     ) -> None:
         """Handle JSON responses from the LLM."""
         prompt_key = output[PSKeys.NAME]
@@ -235,14 +240,21 @@ class AnswerPromptService:
         else:
             json_extraction_plugin = PluginManager().get_plugin("json-extraction")
             if json_extraction_plugin:
-                json_extraction_plugin["entrypoint_cls"](
+                answer = json_extraction_plugin["entrypoint_cls"](
                     llm=llm,
                     output=output,
                     prompt=output[PSKeys.COMBINED_PROMPT],
                     structured_output=structured_output,
                     answer=answer,
-                    completion=completion,
                 ).run()
+            if enable_highlight:
+                AnswerPromptService.handle_highlight(
+                    execution_source=execution_source,
+                    output=output,
+                    answer=answer,
+                    metadata=metadata,
+                    file_path=file_path,
+                )
             parsed_data = repair_json(
                 json_str=answer,
                 return_objects=True,
@@ -267,3 +279,34 @@ class AnswerPromptService:
                 structured_output[prompt_key] = {}
             else:
                 structured_output[prompt_key] = parsed_data
+
+    @staticmethod
+    def handle_highlight(
+        execution_source: str,
+        output: dict[str, Any],
+        answer: str,
+        metadata: dict[str, Any] | None = None,
+        file_path: str = "",
+    ) -> None:
+        """Handle highlight data from the LLM."""
+        highlight_data_plugin = PluginManager().get_plugin("highlight-data")
+        if highlight_data_plugin:
+            highlight_response = highlight_data_plugin["entrypoint_cls"](
+                file_path=file_path,
+                fs_instance=FileUtils.get_fs_instance(execution_source=execution_source),
+            ).run(None, True, answer)
+            highlight_data = highlight_response.get(PSKeys.HIGHLIGHT_DATA, [])
+            confidence_data = highlight_response.get(PSKeys.CONFIDENCE_DATA)
+            line_numbers = highlight_response.get(PSKeys.LINE_NUMBERS, [])
+            whisper_hash = highlight_response.get(PSKeys.WHISPER_HASH, "")
+            prompt_key = output[PSKeys.NAME]
+            if metadata is not None and prompt_key:
+                metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})[prompt_key] = (
+                    highlight_data
+                )
+                metadata.setdefault(PSKeys.LINE_NUMBERS, {})[prompt_key] = line_numbers
+                metadata[PSKeys.WHISPER_HASH] = whisper_hash
+                if confidence_data:
+                    metadata.setdefault(PSKeys.CONFIDENCE_DATA, {})[prompt_key] = (
+                        confidence_data
+                    )
