@@ -262,7 +262,6 @@ class AnswerPromptService:
             if isinstance(parsed_data, str):
                 err_msg = "Error parsing response (to json)\n" f"Candidate JSON: {answer}"
                 app.logger.info(err_msg, LogLevel.ERROR)
-                # TODO: Format log message after unifying these types
                 publish_log(
                     log_events_id,
                     {
@@ -273,8 +272,7 @@ class AnswerPromptService:
                     LogLevel.INFO,
                     RunLevel.RUN,
                     "Unable to parse JSON response from LLM, try using our"
-                    " cloud / enterprise feature of 'line-item', "
-                    "'record' or 'table' type",
+                    " cloud / enterprise feature 'record' or 'table' type",
                 )
                 structured_output[prompt_key] = {}
             else:
