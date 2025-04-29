@@ -13,7 +13,7 @@ dependencies = [
     "flask~=3.0",
     "llama-index==0.12.8",
     "python-dotenv==1.0.0",
-    "json-repair==0.42.0",
+    "json-repair~=0.42.0",
     # TODO: Temporarily removing the extra dependencies of aws and gcs from unstract-sdk
     # to resolve lock file. Will have to be re-looked into
     "unstract-sdk~=0.70.0",
