@@ -49,6 +49,14 @@ try {
   // Do nothing, Not-found Page will be triggered.
 }
 
+let verticalsRouter;
+try {
+  verticalsRouter =
+    require("../plugins/routes/useVerticalsRoutes.js").useVerticalsRoutes;
+} catch (err) {
+  // Do nothing, Not-found Page will be triggered.
+}
+
 try {
   SelectProduct =
     require("../plugins/select-product/SelectProduct.jsx").SelectProduct;
@@ -132,9 +140,9 @@ function Router() {
           )}
         </Route>
       </Route>
-
       <Route path="*" element={<NotFound />} />
       <Route path="oauth-status" element={<OAuthStatus />} />
+      {verticalsRouter && verticalsRouter()}
     </Routes>
   );
 }

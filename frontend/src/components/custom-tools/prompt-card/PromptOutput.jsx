@@ -29,7 +29,7 @@ import {
 import { TokenUsage } from "../token-usage/TokenUsage";
 import { useWindowDimensions } from "../../../hooks/useWindowDimensions";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
-import { TABLE_ENFORCE_TYPE, RECORD_ENFORCE_TYPE } from "./constants";
+import { LINE_ITEM_ENFORCE_TYPE } from "./constants";
 import { CopyPromptOutputBtn } from "./CopyPromptOutputBtn";
 import { useAlertStore } from "../../../store/alert-store";
 import { PromptOutputExpandBtn } from "./PromptOutputExpandBtn";
@@ -82,8 +82,7 @@ function PromptOutput({
   } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const { generatePromptOutputKey } = usePromptOutput();
-  const isTableExtraction =
-    enforceType === TABLE_ENFORCE_TYPE || enforceType === RECORD_ENFORCE_TYPE;
+  const isTableExtraction = enforceType === LINE_ITEM_ENFORCE_TYPE;
   const noHighlightEnforceType = !["table", "record"].includes(enforceType);
   const tooltipContent = (adapterConf) => (
     <div>

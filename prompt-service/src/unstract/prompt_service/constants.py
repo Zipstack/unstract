@@ -92,6 +92,7 @@ class PromptServiceConstants:
         "provider to confirm writes to DB. "
         "Please try again after some time"
     )
+    COMBINED_PROMPT = "combined_prompt"
 
 
 class RunLevel(Enum):

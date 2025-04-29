@@ -1170,6 +1170,15 @@ wheels = [
 ]
 
 [[package]]
+name = "json-repair"
+version = "0.42.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f4/1e/aea70e484e271e3d841773d5d185bedf488cf8f881088d47faae31f19116/json_repair-0.42.0.tar.gz", hash = "sha256:1a901f706c5b6b4325f0f79b53b0d998c5b327070e98b530da71cc5a3eda8616", size = 31349 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6a/c7/dd23f764de95771300a8a7ae17293c47ba0e48f826154229d18ecfe147cd/json_repair-0.42.0-py3-none-any.whl", hash = "sha256:7b6805162053dfe65722e961bc51b5eecec0582ec8a8e0fd218d33e8de757daf", size = 21612 },
+]
+
+[[package]]
 name = "jsonpath-python"
 version = "1.0.6"
 source = { registry = "https://pypi.org/simple" }
@@ -3002,6 +3011,7 @@ source = { editable = "." }
 dependencies = [
     { name = "flask" },
     { name = "gcsfs" },
+    { name = "json-repair" },
     { name = "llama-index" },
     { name = "nltk" },
     { name = "peewee" },
@@ -3034,6 +3044,7 @@ test = [
 requires-dist = [
     { name = "flask", specifier = "~=3.0" },
     { name = "gcsfs", specifier = "==2024.10.0" },
+    { name = "json-repair", specifier = "~=0.42.0" },
     { name = "llama-index", specifier = "==0.12.8" },
     { name = "nltk", specifier = "~=3.8" },
     { name = "peewee", specifier = "~=3.16" },
