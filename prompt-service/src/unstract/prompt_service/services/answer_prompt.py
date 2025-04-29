@@ -2,12 +2,16 @@ from logging import Logger
 from typing import Any
 
 from flask import current_app as app
+from json_repair import repair_json
 
 from unstract.core.flask.exceptions import APIError
-from unstract.prompt_service.constants import ExecutionSource, FileStorageKeys
+from unstract.prompt_service.constants import ExecutionSource, FileStorageKeys, RunLevel
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.exceptions import RateLimitError
 from unstract.prompt_service.helpers.plugin import PluginManager
+from unstract.prompt_service.utils.file_utils import FileUtils
+from unstract.prompt_service.utils.log import publish_log
+from unstract.sdk.constants import LogLevel
 from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError
 from unstract.sdk.exceptions import SdkError
 from unstract.sdk.file_storage import FileStorage, FileStorageProvider
@@ -57,6 +61,9 @@ class AnswerPromptService:
         enable_highlight = tool_settings.get(PSKeys.ENABLE_HIGHLIGHT, False)
         if not enable_highlight or summarize_as_source:
             platform_postamble = ""
+        plugin = PluginManager().get_plugin("json-extraction")
+        if plugin and hasattr(plugin["entrypoint_cls"], "update_settings"):
+            plugin["entrypoint_cls"].update_settings(tool_settings, output)
         prompt = AnswerPromptService.construct_prompt(
             preamble=tool_settings.get(PSKeys.PREAMBLE, ""),
             prompt=output[prompt],
@@ -65,6 +72,7 @@ class AnswerPromptService:
             context=context,
             platform_postamble=platform_postamble,
         )
+        output[PSKeys.COMBINED_PROMPT] = prompt
         return AnswerPromptService.run_completion(
             llm=llm,
             prompt=prompt,
@@ -123,7 +131,11 @@ class AnswerPromptService:
                 PSKeys.HIGHLIGHT_DATA_PLUGIN
             )
             highlight_data = None
-            if highlight_data_plugin and enable_highlight:
+            if (
+                highlight_data_plugin
+                and enable_highlight
+                and prompt_type.lower() != PSKeys.JSON
+            ):
                 fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
                 if execution_source == ExecutionSource.IDE.value:
                     fs_instance = EnvHelper.get_storage(
@@ -142,7 +154,7 @@ class AnswerPromptService:
             completion = llm.complete(
                 prompt=prompt,
                 process_text=highlight_data,
-                extract_json=prompt_type.lower() != PSKeys.TEXT,
+                extract_json=prompt_type.lower() != PSKeys.JSON,
             )
             answer: str = completion[PSKeys.RESPONSE].text
             highlight_data = completion.get(PSKeys.HIGHLIGHT_DATA, [])
@@ -206,3 +218,93 @@ class AnswerPromptService:
         except table_extractor["exception_cls"] as e:
             msg = f"Couldn't extract table. {e}"
             raise APIError(message=msg)
+
+    @staticmethod
+    def handle_json(
+        answer: str,
+        structured_output: dict[str, Any],
+        output: dict[str, Any],
+        log_events_id: str,
+        tool_id: str,
+        doc_name: str,
+        llm: LLM,
+        enable_highlight: bool = False,
+        execution_source: str = ExecutionSource.IDE.value,
+        metadata: dict[str, Any] | None = None,
+        file_path: str = "",
+    ) -> None:
+        """Handle JSON responses from the LLM."""
+        prompt_key = output[PSKeys.NAME]
+        if answer.lower() == "na":
+            structured_output[prompt_key] = None
+        else:
+            json_extraction_plugin = PluginManager().get_plugin("json-extraction")
+            if json_extraction_plugin:
+                answer = json_extraction_plugin["entrypoint_cls"](
+                    llm=llm,
+                    output=output,
+                    prompt=output[PSKeys.COMBINED_PROMPT],
+                    structured_output=structured_output,
+                    answer=answer,
+                ).run()
+            if enable_highlight:
+                AnswerPromptService.handle_highlight(
+                    execution_source=execution_source,
+                    output=output,
+                    answer=answer,
+                    metadata=metadata,
+                    file_path=file_path,
+                )
+            parsed_data = repair_json(
+                json_str=answer,
+                return_objects=True,
+            )
+            if isinstance(parsed_data, str):
+                err_msg = "Error parsing response (to json)\n" f"Candidate JSON: {answer}"
+                app.logger.info(err_msg, LogLevel.ERROR)
+                publish_log(
+                    log_events_id,
+                    {
+                        "tool_id": tool_id,
+                        "prompt_key": prompt_key,
+                        "doc_name": doc_name,
+                    },
+                    LogLevel.INFO,
+                    RunLevel.RUN,
+                    "Unable to parse JSON response from LLM, try using our"
+                    " cloud / enterprise feature 'record' or 'table' type",
+                )
+                structured_output[prompt_key] = {}
+            else:
+                structured_output[prompt_key] = parsed_data
+
+    @staticmethod
+    def handle_highlight(
+        execution_source: str,
+        output: dict[str, Any],
+        answer: str,
+        metadata: dict[str, Any] | None = None,
+        file_path: str = "",
+    ) -> None:
+        """Handle highlight data from the LLM."""
+        highlight_data_plugin = PluginManager().get_plugin("highlight-data")
+        if highlight_data_plugin:
+            highlight_response = highlight_data_plugin["entrypoint_cls"](
+                file_path=file_path,
+                fs_instance=FileUtils.get_fs_instance(execution_source=execution_source),
+            ).run(None, True, answer)
+            highlight_data = highlight_response.get(PSKeys.HIGHLIGHT_DATA, [])
+            confidence_data = highlight_response.get(PSKeys.CONFIDENCE_DATA)
+            line_numbers = highlight_response.get(PSKeys.LINE_NUMBERS, [])
+            whisper_hash = highlight_response.get(PSKeys.WHISPER_HASH, "")
+            prompt_key = output[PSKeys.NAME]
+            if metadata is not None and prompt_key:
+                metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})[prompt_key] = (
+                    highlight_data
+                )
+                metadata.setdefault(PSKeys.LINE_NUMBERS, {})[prompt_key] = line_numbers
+                metadata[PSKeys.WHISPER_HASH] = whisper_hash
+                if confidence_data:
+                    metadata.setdefault(PSKeys.CONFIDENCE_DATA, {})[prompt_key] = (
+                        confidence_data
+                    )
