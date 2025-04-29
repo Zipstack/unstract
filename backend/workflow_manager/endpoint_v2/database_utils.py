@@ -2,7 +2,7 @@ import datetime
 import json
 import logging
 import uuid
-from typing import Any
+from typing import Any, Optional
 
 from utils.constants import Common
 from workflow_manager.endpoint_v2.constants import DBConnectionClass, TableColumns
