@@ -36,7 +36,7 @@
     "region_name": {
       "type": "string",
       "title": "Region Name",
-      "default": "default-region",
+      "default": "ap-south",
       "description": "Mandatory region name of AWS-S3 account. For minio, leave it blank"
     }
   }
