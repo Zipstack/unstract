@@ -208,7 +208,11 @@ class StructureTool(BaseTool):
             for output in outputs:
                 if SettingsKeys.TABLE_SETTINGS in output:
                     table_settings = output[SettingsKeys.TABLE_SETTINGS]
+                    is_directory_mode: bool = table_settings.get(
+                        SettingsKeys.IS_DIRECTORY_MODE, False
+                    )
                     table_settings[SettingsKeys.INPUT_FILE] = extracted_input_file
+                    table_settings[SettingsKeys.IS_DIRECTORY_MODE] = is_directory_mode
                     output.update({SettingsKeys.TABLE_SETTINGS: table_settings})
 
             self.stream_log(f"Fetching responses for {len(outputs)} prompt(s)...")
