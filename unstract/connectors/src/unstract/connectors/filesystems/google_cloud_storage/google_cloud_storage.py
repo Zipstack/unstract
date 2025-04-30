@@ -18,25 +18,29 @@ class GoogleCloudStorageFS(UnstractFileSystem):
 
         Args:
             settings (dict[str, Any]): A json dict containing json connection string
-            and bucket-name
-
         Raises:
             ConnectorError: Error raised when connection initialization fails
         """
         super().__init__("GoogleCloudStorage")
-        self.bucket = settings.get("bucket", "")
+        project_id = settings.get("project_id", "")
         json_credentials_str = settings.get("json_credentials", "{}")
-        # project-id is not mandatory, since we already initilizing with json-creds
         try:
             json_credentials = json.loads(json_credentials_str)
-            self.gcs_fs = GCSFileSystem(token=json_credentials, timeout=10)
+            self.gcs_fs = GCSFileSystem(token=json_credentials, project=project_id)
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON credentials: {str(e)}", exc_info=True)
-            error_msg = f"GCS credentials are not in proper JSON format: {str(e)}"
+            error_msg = (
+                "Failed to connect to Google Cloud Storage. \n"
+                "GCS credentials are not in proper JSON format. \n"
+                f"Error: \n```\n{str(e)}\n```"
+            )
             raise ConnectorError(error_msg) from e
         except Exception as e:
             logger.error(f"Failed to initialize GCSFileSystem: {str(e)}")
-            error_msg = f"Failed to connect to Google Cloud Storage: {str(e)}"
+            error_msg = (
+                "Failed to connect to Google Cloud Storage. \n"
+                f"Error: \n```\n{str(e)}\n```"
+            )
             raise ConnectorError(error_msg) from e
 
     @staticmethod
@@ -98,13 +102,20 @@ class GoogleCloudStorageFS(UnstractFileSystem):
         return None
 
     def test_credentials(self) -> bool:
-        """To test credentials for Google Cloud Storage."""
+        """Test Google Cloud Storage credentials by accessing the root path info.
+
+        Raises:
+            ConnectorError: connector-error
+
+        Returns:
+            boolean: true if test-connection is successful
+        """
         try:
-            is_dir = bool(self.get_fsspec_fs().isdir(self.bucket))
-            if not is_dir:
-                raise RuntimeError("Could not access bucket.")
+            self.get_fsspec_fs().info("/")
         except Exception as e:
-            raise ConnectorError(
-                f"Error from Google Cloud Storage while testing connection: {str(e)}"
-            ) from e
+            error_msg = (
+                "Error from Google Cloud Storage while testing connection. \n"
+                f"Error: \n```\n{str(e)}\n```"
+            )
+            raise ConnectorError(error_msg) from e
         return True

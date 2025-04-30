@@ -16,15 +16,13 @@
     "account_name": {
       "type": "string",
       "title": "Account Name",
-      "description": "Account name of azure cloud storage",
-      "default":""
+      "description": "Account name of azure cloud storage"
     },
     "access_key": {
       "type": "string",
       "title": "Access Key",
       "format": "password",
-      "description": "Access key of the corresponding account",
-      "default":""
+      "description": "Access key of the corresponding account"
     },
     "bucket": {
       "type": "string",

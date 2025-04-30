@@ -3,7 +3,8 @@
   "type": "object",
   "required": [
     "connectorName",
-    "json_credentials"
+    "json_credentials",
+    "project_id"
   ],
   "properties": {
     "connectorName": {
@@ -18,10 +19,10 @@
       "default": "",
       "description": "Refer [GCloud docs](https://developers.google.com/workspace/guides/create-credentials#create_credentials_for_a_service_account) on adding keys for service account"
     },
-    "bucket": {
+    "project_id": {
       "type": "string",
-      "title": "Bucket Name",
-      "description": "Name of the bucket to be restricted to."
+      "title": "Project ID",
+      "description": "Name of the project ID."
     }
   }
 }
