@@ -78,6 +78,7 @@ class SettingsKeys:
     METRICS = "metrics"
     INDEXING = "indexing"
     EXECUTION_ID = "execution_id"
+    IS_DIRECTORY_MODE = "is_directory_mode"
 
 
 class IndexingConstants:
