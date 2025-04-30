@@ -5,7 +5,10 @@ from typing import Any
 import azure.core.exceptions as AzureException
 from adlfs import AzureBlobFileSystem
 
-from unstract.connectors.exceptions import AzureHttpError, ConnectorError
+from unstract.connectors.exceptions import AzureHttpError
+from unstract.connectors.filesystems.azure_cloud_storage.exceptions import (
+    parse_azure_error,
+)
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 from unstract.filesystem import FileStorageType, FileSystem
 
@@ -90,20 +93,12 @@ class AzureCloudStorageFS(UnstractFileSystem):
         """To test credentials for Azure Cloud Storage."""
         try:
             self.get_fsspec_fs().info(self.bucket)
-        except (
-            AzureException.ClientAuthenticationError,
-            AzureException.ServiceRequestError,
-            AzureException.HttpResponseError,
-        ) as e:
-            error_message = (
-                "Error from Azure Cloud Storage while testing connection. "
-                "Please provide valid creds. "
-            )
-            raise ConnectorError(error_message) from e
         except Exception as e:
-            raise ConnectorError(
+            logger.error(
                 f"Error from Azure Cloud Storage while testing connection: {str(e)}"
-            ) from e
+            )
+            err = parse_azure_error(e)
+            raise err from e
         return True
 
     def upload_file_to_storage(self, source_path: str, destination_path: str) -> None:
