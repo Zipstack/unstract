@@ -92,6 +92,7 @@ class PromptServiceConstants:
         "Please try again after some time"
     )
     COMBINED_PROMPT = "combined_prompt"
+    TOOL = "tool"
 
 
 class RunLevel(Enum):
