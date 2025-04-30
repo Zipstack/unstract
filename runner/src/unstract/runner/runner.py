@@ -436,7 +436,9 @@ class UnstractRunner:
 
         except ToolRunException as te:
             self.logger.error(
-                f"Error while running docker container {container_config.get('name')}: {te}"
+                f"Error while running docker container {container_config.get('name')}: {te}",
+                stack_info=True,
+                exc_info=True,
             )
             result = {"type": "RESULT", "result": None, "error": str(te.message)}
         except Exception as e:
