@@ -1,3 +1,4 @@
+from sqlalchemy import text
 import json
 import logging
 import os
