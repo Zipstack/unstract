@@ -12,7 +12,11 @@ services:
       - .env
 
   mysql:
+    security_opt:
+      - no-new-privileges:true
     image: 'mysql:9.0.1'
+    security_opt:
+      - no-new-privileges:true
     container_name: unstract-mysql
     env_file:
       - .env
