@@ -2,6 +2,8 @@ version: '3.7'
 
 services:
   mariadb:
+    security_opt:
+      - no-new-privileges:true
     image: 'mariadb:11.2.4'
     container_name: unstract-mariadb
     ports:
