@@ -335,7 +335,7 @@ def usage() -> Any:
     except Exception as e:
         app.logger.error(f"Error while creating usage entry: {e}")
         result["error"] = "Internal Server Error"
-        return make_response(result, 500)
+        return jsonify({"message": "Deleted successfully"})
 
 
 @platform_bp.route(
