@@ -1,86 +1,204 @@
-import React, { useState, useEffect } from "react";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { CopyToClipboard } from "react-copy-to-clipboard";
-import { FiCopy, FiCheck } from "react-icons/fi";
-import { Tooltip } from "react-tooltip";
-import { useSelector } from "react-redux";
-import { selectCurrentUser } from "../../../redux/auth/authSlice";
-import { useNavigate } from "react-router-dom";
-import { useDispatch } from "react-redux";
-import { setCurrentPrompt } from "../../../redux/prompt/promptSlice";
-import { useGetPromptByIdQuery } from "../../../redux/prompt/promptApiSlice";
-import { useGetPromptsByUserIdQuery } from "../../../redux/prompt/promptApiSlice";
-import { useGetPromptsByUserIdAndTagQuery } from "../../../redux/prompt/promptApiSlice";
-import { useGetPromptsByTagQuery } from "../../../redux/prompt/promptApiSlice";
-import { useGetPromptsBySearchQuery } from "../../../redux/prompt/promptApiSlice";
-import { useGetPromptsByUserIdAndSearchQuery } from "../../../redux/prompt/promptApiSlice";
+import PropTypes from "prop-types";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Modal, Input, Button, Typography } from "antd";
+import "./PromptCard.css";
+import { uniqueId } from "lodash";
+import debounce from "lodash/debounce";
+import { ArrowDownOutlined, ArrowUpOutlined } from "@ant-design/icons";
 
-const OutputForIndex = ({ output, term, tag, userId }) => {
-  const [copied, setCopied] = useState(false);
-  const [highlightedOutput, setHighlightedOutput] = useState(output);
-  const user = useSelector(selectCurrentUser);
-  const navigate = useNavigate();
-  const dispatch = useDispatch();
+import { TextViewerPre } from "../text-viewer-pre/TextViewerPre";
+
+function OutputForIndex({ chunkData, setIsIndexOpen, isIndexOpen }) {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [highlightedChunks, setHighlightedChunks] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [chunks, setChunks] = useState([]);
+  const activeRef = useRef(null);
 
   useEffect(() => {
-    if (term && output) {
-      // Use a hardcoded regex pattern or validate the term before using it
-      // This prevents potential ReDoS attacks
-      const safeTermPattern = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // Escape special characters
-      const regex = new RegExp(`(${safeTermPattern})`, "gi");
-      
-      // Apply highlighting only if the term is not potentially dangerous
-      if (safeTermPattern.length > 0 && safeTermPattern.length < 100) { // Add reasonable length limit
-        const parts = output.split(regex);
-        const highlighted = parts.map((part, i) => {
-          if (part.toLowerCase() === term.toLowerCase()) {
-            return `<mark>${part}</mark>`;
-          }
-          return part;
-        });
-        setHighlightedOutput(highlighted.join(""));
-      } else {
-        setHighlightedOutput(output);
-      }
-    } else {
-      setHighlightedOutput(output);
-    }
-  }, [output, term]);
+    setChunks(chunkData || []);
+  }, [chunkData]);
 
-  const handleCopy = () => {
-    setCopied(true);
-    setTimeout(() => {
-      setCopied(false);
-    }, 2000);
+  // Debounced search handler
+  const handleSearch = useCallback(
+    debounce((term) => {
+      if (!term) {
+        setHighlightedChunks([]);
+        return;
+      }
+      const allResults = [];
+      chunks?.forEach((chunk, chunkIndex) => {
+        const lines = chunk?.split("\\n");
+        lines.forEach((line, lineIndex) => {
+          const regex = new RegExp(`(${term})`, "gi");
+          let match;
+          while ((match = regex.exec(line)) !== null) {
+            allResults.push({
+              chunkIndex,
+              lineIndex,
+              startIndex: match?.index,
+              matchLength: match[0]?.length,
+            });
+          }
+        });
+      });
+      setHighlightedChunks(allResults);
+      setCurrentIndex(0);
+    }, 300), // Debounce delay in milliseconds
+    [chunks]
+  );
+
+  useEffect(() => {
+    handleSearch(searchTerm);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    if (activeRef.current) {
+      activeRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }
+  }, [currentIndex]);
+
+  const handleClose = () => {
+    setIsIndexOpen(false);
+    setSearchTerm("");
+    setHighlightedChunks([]);
+    setCurrentIndex(0);
   };
 
-  const handleClick = (promptId) => {
-    navigate(`/prompt/${promptId}`);
+  const handleSearchChange = (e) => {
+    setSearchTerm(e.target.value);
+  };
+
+  const handleNext = () => {
+    setCurrentIndex((prev) => (prev + 1) % highlightedChunks?.length);
+  };
+
+  const handlePrev = () => {
+    setCurrentIndex((prev) =>
+      prev === 0 ? highlightedChunks?.length - 1 : prev - 1
+    );
+  };
+
+  const renderHighlightedLine = (line, lineIndex, chunkIndex) => {
+    if (!searchTerm) return line;
+
+    const matchesInLine = highlightedChunks.filter(
+      (chunk) =>
+        chunk.lineIndex === lineIndex && chunk.chunkIndex === chunkIndex
+    );
+
+    if (!matchesInLine?.length) return line;
+
+    const parts = [];
+    let lastIndex = 0;
+
+    matchesInLine.forEach((match, idx) => {
+      if (lastIndex < match.startIndex) {
+        parts.push(line.substring(lastIndex, match.startIndex));
+      }
+
+      const isActive =
+        currentIndex ===
+        highlightedChunks.findIndex(
+          (h) =>
+            h.chunkIndex === chunkIndex &&
+            h.lineIndex === lineIndex &&
+            h.startIndex === match.startIndex
+        );
+
+      parts.push(
+        <span
+          key={uniqueId()}
+          className={`chunk-highlight ${
+            isActive ? "active-chunk-highlight" : ""
+          }`}
+          ref={isActive ? activeRef : null}
+        >
+          {line.substring(
+            match.startIndex,
+            match.startIndex + match.matchLength
+          )}
+        </span>
+      );
+
+      lastIndex = match.startIndex + match.matchLength;
+    });
+
+    if (lastIndex < line.length) {
+      parts.push(line.substring(lastIndex));
+    }
+
+    return parts;
   };
 
   return (
-    <div className="relative">
-      <div className="bg-gray-800 rounded-lg p-4 text-white relative">
-        <div className="absolute top-2 right-2">
-          <CopyToClipboard text={output} onCopy={handleCopy}>
-            <button
-              className="text-gray-400 hover:text-white p-1"
-              data-tooltip-id="copy-tooltip"
-              data-tooltip-content={copied ? "Copied!" : "Copy to clipboard"}
-            >
-              {copied ? <FiCheck /> : <FiCopy />}
-            </button>
-          </CopyToClipboard>
-          <Tooltip id="copy-tooltip" />
-        </div>
-        <div
-          className="prose prose-invert max-w-none"
-          dangerouslySetInnerHTML={{ __html: highlightedOutput }}
+    <Modal
+      title="Index Data"
+      open={isIndexOpen}
+      onCancel={handleClose}
+      className="index-output-modal"
+      centered
+      footer={null}
+      width={1000}
+    >
+      <div className="chunk-search-container">
+        <Input
+          placeholder="Search..."
+          value={searchTerm}
+          onChange={handleSearchChange}
+          className="chunk-search-input"
         />
+        <div className="search-control-container">
+          <Button
+            size="small"
+            onClick={handlePrev}
+            disabled={highlightedChunks.length === 0}
+          >
+            <ArrowUpOutlined />
+          </Button>
+          <span className="page-count-container">
+            {highlightedChunks.length > 0 ? currentIndex + 1 : 0}/{" "}
+            {highlightedChunks.length}
+          </span>
+          <Button
+            size="small"
+            onClick={handleNext}
+            disabled={highlightedChunks.length === 0}
+          >
+            <ArrowDownOutlined />
+          </Button>
+        </div>
       </div>
-    </div>
+      <div className="index-output-tab">
+        {chunks?.map((chunk, chunkIndex) => (
+          <div key={uniqueId()} className="chunk-container">
+            <Typography.Text strong>Chunk {chunkIndex + 1}</Typography.Text>
+            <TextViewerPre
+              text={
+                <>
+                  {chunk?.split("\\n")?.map((line, lineIndex) => (
+                    <div key={uniqueId()}>
+                      {renderHighlightedLine(line, lineIndex, chunkIndex)}
+                      <br />
+                    </div>
+                  ))}
+                </>
+              }
+            />
+          </div>
+        ))}
+      </div>
+    </Modal>
   );
+}
+
+OutputForIndex.propTypes = {
+  chunkData: PropTypes.string,
+  isIndexOpen: PropTypes.bool.isRequired,
+  setIsIndexOpen: PropTypes.func.isRequired,
 };
 
-export default OutputForIndex;
+export { OutputForIndex };
