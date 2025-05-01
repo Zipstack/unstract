@@ -22,12 +22,22 @@ services:
       - mysql_data:/var/lib/mysql
 
   mssql:
+    security_opt:
+      - no-new-privileges:true
     image: mcr.microsoft.com/mssql/server:2022-preview-ubuntu-22.04
+    security_opt:
+      - no-new-privileges:true
     container_name: unstract-mssql
+    security_opt:
+      - no-new-privileges:true
     env_file:
       - .env
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "1433:1433"
+    security_opt:
+      - no-new-privileges:true
     volumes:
       - mssql_data:/var/opt/mssql
 
