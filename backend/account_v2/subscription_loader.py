@@ -1,109 +1,108 @@
+import importlib
 import logging
 import os
-from importlib import import_module
-from typing import Any
+from typing import Dict, List, Optional, Type
 
-from django.apps import apps
-from django.utils import timezone
+from django.conf import settings
+
+from account_v2.models import Subscription
+from account_v2.subscription_base import SubscriptionBase
 
 logger = logging.getLogger(__name__)
 
 
-class SubscriptionConfig:
-    """Loader config for subscription plugins."""
-
-    PLUGINS_APP = "plugins"
-    PLUGIN_DIR = "subscription"
-    MODULE = "module"
-    METADATA = "metadata"
-    METADATA_NAME = "name"
-    METADATA_SERVICE_CLASS = "service_class"
-    METADATA_IS_ACTIVE = "is_active"
-
-
-def load_plugins() -> list[Any]:
-    """Iterate through the subscription plugins and register them."""
-    plugins_app = apps.get_app_config(SubscriptionConfig.PLUGINS_APP)
-    package_path = plugins_app.module.__package__
-    subscription_dir = os.path.join(plugins_app.path, SubscriptionConfig.PLUGIN_DIR)
-    subscription_package_path = f"{package_path}.{SubscriptionConfig.PLUGIN_DIR}"
-    subscription_plugins: list[Any] = []
-
-    if not os.path.exists(subscription_dir):
-        return subscription_plugins
-
-    for item in os.listdir(subscription_dir):
-        # Loads a plugin if it is in a directory.
-        if os.path.isdir(os.path.join(subscription_dir, item)):
-            subscription_module_name = item
-        # Loads a plugin if it is a shared library.
-        # Module name is extracted from shared library name.
-        # `subscription.platform_architecture.so` will be file name and
-        # `subscription` will be the module name.
-        elif item.endswith(".so"):
-            subscription_module_name = item.split(".")[0]
-        else:
-            continue
-        try:
-            full_module_path = f"{subscription_package_path}.{subscription_module_name}"
-            module = import_module(full_module_path)
-            metadata = getattr(module, SubscriptionConfig.METADATA, {})
-
-            if metadata.get(SubscriptionConfig.METADATA_IS_ACTIVE, False):
-                subscription_plugins.append(
-                    {
-                        SubscriptionConfig.MODULE: module,
-                        SubscriptionConfig.METADATA: module.metadata,
-                    }
-                )
-                logger.info(
-                    "Loaded subscription plugin: %s, is_active: %s",
-                    module.metadata[SubscriptionConfig.METADATA_NAME],
-                    module.metadata[SubscriptionConfig.METADATA_IS_ACTIVE],
-                )
-            else:
-                logger.info(
-                    "subscription plugin %s is not active.",
-                    subscription_module_name,
-                )
-        except ModuleNotFoundError as exception:
-            logger.error(
-                "Error while importing subscription plugin: %s",
-                exception,
-            )
-
-    if len(subscription_plugins) == 0:
-        logger.info("No subscription plugins found.")
-
-    return subscription_plugins
-
-
-def validate_etl_run(org_id: str) -> bool:
-    """Method to check subscription status before ETL runs.
-
-    Args:
-        org_id: The ID of the organization.
-
-    Returns:
-        A boolean indicating whether the pre-run check passed or not.
+class SubscriptionLoader:
     """
-    try:
-        from pluggable_apps.subscription_v2.subscription_helper import (
-            SubscriptionHelper,
+    Loads subscription modules dynamically.
+    """
+
+    def __init__(self):
+        self.subscriptions: Dict[str, Type[SubscriptionBase]] = {}
+        self.load_subscriptions()
+
+    def load_subscriptions(self) -> None:
+        """
+        Load all subscription modules from the subscriptions directory.
+        """
+        subscription_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "subscriptions"
         )
-    except ModuleNotFoundError:
-        logger.error("Subscription plugin not found.")
-        return False
+        subscription_files = [
+            f[:-3]
+            for f in os.listdir(subscription_dir)
+            if f.endswith(".py") and f != "__init__.py"
+        ]
 
-    org_plans = SubscriptionHelper.get_subscription(org_id)
-    if not org_plans or not org_plans.is_active:
-        return False
+        # Define a whitelist of allowed subscription modules
+        allowed_modules = set(subscription_files)
 
-    if org_plans.is_paid:
-        return True
+        for subscription_file in subscription_files:
+            try:
+                module_path = f"account_v2.subscriptions.{subscription_file}"
+                
+                # Check if the module is in the whitelist
+                if subscription_file not in allowed_modules:
+                    logger.error(f"Attempted to load unauthorized module: {module_path}")
+                    continue
+                
+                module = importlib.import_module(module_path)
+                for attr_name in dir(module):
+                    attr = getattr(module, attr_name)
+                    if (
+                        isinstance(attr, type)
+                        and issubclass(attr, SubscriptionBase)
+                        and attr != SubscriptionBase
+                    ):
+                        self.subscriptions[attr.subscription_type] = attr
+                        logger.info(f"Loaded subscription: {attr.subscription_type}")
+            except (ImportError, AttributeError) as e:
+                logger.error(f"Error loading subscription {subscription_file}: {e}")
 
-    if timezone.now() >= org_plans.end_date:
-        logger.debug(f"Trial expired for org {org_id}")
-        return False
+    def get_subscription_class(
+        self, subscription_type: str
+    ) -> Optional[Type[SubscriptionBase]]:
+        """
+        Get the subscription class for the given subscription type.
 
-    return True
+        Args:
+            subscription_type: The type of subscription to get.
+
+        Returns:
+            The subscription class or None if not found.
+        """
+        return self.subscriptions.get(subscription_type)
+
+    def get_subscription_classes(
+        self, subscription_types: List[str]
+    ) -> List[Type[SubscriptionBase]]:
+        """
+        Get the subscription classes for the given subscription types.
+
+        Args:
+            subscription_types: The types of subscriptions to get.
+
+        Returns:
+            A list of subscription classes.
+        """
+        return [
+            self.subscriptions[subscription_type]
+            for subscription_type in subscription_types
+            if subscription_type in self.subscriptions
+        ]
+
+    def get_subscription_instance(
+        self, subscription: Subscription
+    ) -> Optional[SubscriptionBase]:
+        """
+        Get an instance of the subscription class for the given subscription.
+
+        Args:
+            subscription: The subscription to get an instance for.
+
+        Returns:
+            An instance of the subscription class or None if not found.
+        """
+        subscription_class = self.get_subscription_class(subscription.subscription_type)
+        if subscription_class:
+            return subscription_class(subscription)
+        return None
