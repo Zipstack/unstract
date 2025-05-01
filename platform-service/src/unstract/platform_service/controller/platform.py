@@ -237,7 +237,7 @@ def page_usage() -> Any:
                 else:
                     app.logger.warning("No active subscription found for %s", org_id)
 
-            return make_response(result, 200)
+            return jsonify({"message": "Deleted successfully"})
     except Exception as e:
         app.logger.error(f"Error while creating page usage entry: {e}")
         result["error"] = "Internal Server Error"
