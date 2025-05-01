@@ -2,6 +2,8 @@ version: '3.7'
 
 services:
   mariadb:
+    security_opt:
+      - no-new-privileges:true
     image: 'mariadb:11.2.4'
     container_name: unstract-mariadb
     ports:
@@ -12,7 +14,11 @@ services:
       - .env
 
   mysql:
+    security_opt:
+      - no-new-privileges:true
     image: 'mysql:9.0.1'
+    security_opt:
+      - no-new-privileges:true
     container_name: unstract-mysql
     env_file:
       - .env
@@ -22,22 +28,38 @@ services:
       - mysql_data:/var/lib/mysql
 
   mssql:
+    security_opt:
+      - no-new-privileges:true
     image: mcr.microsoft.com/mssql/server:2022-preview-ubuntu-22.04
+    security_opt:
+      - no-new-privileges:true
     container_name: unstract-mssql
+    security_opt:
+      - no-new-privileges:true
     env_file:
       - .env
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "1433:1433"
+    security_opt:
+      - no-new-privileges:true
     volumes:
       - mssql_data:/var/opt/mssql
 
   sftp:
     image: atmoz/sftp:debian
+    read_only: true
     ports:
+    read_only: true
       - "22:22"
+    read_only: true
     volumes:
+    read_only: true
       - sftp_data:/home/foo
+    read_only: true
     command: "${SFTP_USER}:${SFTP_PASS}:${SFTP_USER_ID}::${SFTP_DIR}"
+    read_only: true
 
 volumes:
   mariadb_data:

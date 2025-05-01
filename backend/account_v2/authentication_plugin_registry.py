@@ -1,98 +1,99 @@
+import importlib
 import logging
-import os
-from importlib import import_module
-from typing import Any
+from typing import Dict, List, Optional, Type
 
-from django.apps import apps
-
-from account_v2.constants import PluginConfig
+from account_v2.authentication_plugin import AuthenticationPlugin
+from account_v2.authentication_plugin_config import AuthenticationPluginConfig
+from account_v2.authentication_plugin_registry_config import AuthenticationPluginRegistryConfig
+from account_v2.exceptions import AuthenticationPluginNotFound
 
 logger = logging.getLogger(__name__)
 
 
-def _load_plugins() -> dict[str, dict[str, Any]]:
-    """Iterating through the Authentication plugins and register their
-    metadata.
-    """
-    auth_app = apps.get_app_config(PluginConfig.PLUGINS_APP)
-    auth_package_path = auth_app.module.__package__
-    auth_dir = os.path.join(auth_app.path, PluginConfig.AUTH_PLUGIN_DIR)
-    auth_package_path = f"{auth_package_path}.{PluginConfig.AUTH_PLUGIN_DIR}"
-    auth_modules = {}
-
-    for item in os.listdir(auth_dir):
-        # Loads a plugin only if name starts with `auth`.
-        if not item.startswith(PluginConfig.AUTH_MODULE_PREFIX):
-            continue
-        # Loads a plugin if it is in a directory.
-        if os.path.isdir(os.path.join(auth_dir, item)):
-            auth_module_name = item
-        # Loads a plugin if it is a shared library.
-        # Module name is extracted from shared library name.
-        # `auth.platform_architecture.so` will be file name and
-        # `auth` will be the module name.
-        elif item.endswith(".so"):
-            auth_module_name = item.split(".")[0]
-        else:
-            continue
-        try:
-            full_module_path = f"{auth_package_path}.{auth_module_name}"
-            module = import_module(full_module_path)
-            metadata = getattr(module, PluginConfig.AUTH_METADATA, {})
-            if metadata.get(PluginConfig.METADATA_IS_ACTIVE, False):
-                auth_modules[auth_module_name] = {
-                    PluginConfig.AUTH_MODULE: module,
-                    PluginConfig.AUTH_METADATA: module.metadata,
-                }
-                logger.info(
-                    "Loaded auth plugin: %s, is_active: %s",
-                    module.metadata["name"],
-                    module.metadata["is_active"],
-                )
-            else:
-                logger.warning(
-                    "Metadata is not active for %s authentication module.",
-                    auth_module_name,
-                )
-        except ModuleNotFoundError as exception:
-            logger.error(
-                "Error while importing authentication module : %s",
-                exception,
-            )
-
-    if len(auth_modules) > 1:
-        raise ValueError(
-            "Multiple authentication modules found."
-            "Only one authentication method is allowed."
-        )
-    elif len(auth_modules) == 0:
-        logger.warning(
-            "No authentication modules found."
-            "Application will start without authentication module"
-        )
-    return auth_modules
-
-
 class AuthenticationPluginRegistry:
-    auth_modules: dict[str, dict[str, Any]] = _load_plugins()
+    """Registry for authentication plugins."""
 
-    @classmethod
-    def is_plugin_available(cls) -> bool:
-        """Check if any authentication plugin is available.
+    def __init__(self, config: AuthenticationPluginRegistryConfig):
+        """Initialize the registry.
+
+        Args:
+            config: The registry configuration.
+        """
+        self._config = config
+        self._plugins: Dict[str, Type[AuthenticationPlugin]] = {}
+        self._load_plugins()
+
+    def _load_plugins(self) -> None:
+        """Load all plugins from the configuration."""
+        for plugin_config in self._config.plugins:
+            try:
+                self._load_plugin(plugin_config)
+            except Exception:
+                logger.exception(
+                    "Failed to load authentication plugin %s", plugin_config.name
+                )
+
+    def _load_plugin(self, plugin_config: AuthenticationPluginConfig) -> None:
+        """Load a plugin from the configuration.
+
+        Args:
+            plugin_config: The plugin configuration.
+        """
+        # Define a whitelist of allowed modules for security
+        allowed_modules = {
+            "account_v2.authentication_plugins.basic",
+            "account_v2.authentication_plugins.jwt",
+            "account_v2.authentication_plugins.oauth",
+            "account_v2.authentication_plugins.saml",
+            # Add other legitimate authentication plugin modules here
+        }
+        
+        module_path = plugin_config.module_path
+        
+        if module_path not in allowed_modules:
+            logger.error(f"Attempted to load unauthorized module: {module_path}")
+            return
+            
+        try:
+            module = importlib.import_module(module_path)
+            plugin_class = getattr(module, plugin_config.class_name)
+            self._plugins[plugin_config.name] = plugin_class
+        except (ImportError, AttributeError) as e:
+            logger.error(f"Failed to import plugin {plugin_config.name}: {str(e)}")
+            raise
+
+    def get_plugin(self, name: str) -> Optional[Type[AuthenticationPlugin]]:
+        """Get a plugin by name.
+
+        Args:
+            name: The name of the plugin.
 
         Returns:
-            bool: True if a plugin is available, False otherwise.
+            The plugin class, or None if not found.
         """
-        return len(cls.auth_modules) > 0
+        return self._plugins.get(name)
 
-    @classmethod
-    def get_plugin(cls) -> Any:
-        """Get the selected authentication plugin.
+    def get_plugin_names(self) -> List[str]:
+        """Get all plugin names.
 
         Returns:
-            AuthenticationService: Selected authentication plugin instance.
+            A list of plugin names.
         """
-        chosen_auth_module = next(iter(cls.auth_modules.values()))
-        chosen_metadata = chosen_auth_module[PluginConfig.AUTH_METADATA]
-        service_class_name = chosen_metadata[PluginConfig.METADATA_SERVICE_CLASS]
-        return service_class_name()
+        return list(self._plugins.keys())
+
+    def get_plugin_or_raise(self, name: str) -> Type[AuthenticationPlugin]:
+        """Get a plugin by name, or raise an exception if not found.
+
+        Args:
+            name: The name of the plugin.
+
+        Returns:
+            The plugin class.
+
+        Raises:
+            AuthenticationPluginNotFound: If the plugin is not found.
+        """
+        plugin = self.get_plugin(name)
+        if plugin is None:
+            raise AuthenticationPluginNotFound(name)
+        return plugin

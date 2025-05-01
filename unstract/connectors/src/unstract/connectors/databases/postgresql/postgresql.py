@@ -102,7 +102,8 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
         # Set schema explicitly only if schema is specified (avoids PgBouncer issues)
         if self.schema:
             with con.cursor() as cur:
-                cur.execute(f"SET search_path TO {self.schema};")
+            query = "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema = %s AND table_name = %s)"
+            result = self.execute_query(query, (schema, table_name))
 
         return con
 

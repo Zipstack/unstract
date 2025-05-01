@@ -1,73 +1,63 @@
-name: Automate uv.lock
+name: UV Lock Automation
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, review_requested]
-    branches: [main]
+  push:
+    branches: [ "main" ]
     paths:
-      - "**/pyproject.toml"
+      - 'requirements.txt'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'requirements.txt'
   workflow_dispatch:
-    inputs:
-      directories:
-        description: "Comma-separated list of directories to update"
-        required: false
-        default: "" # Run for all dirs specified in docker/scripts/uv-lock-gen/uv-lock.sh
 
 jobs:
-  update_uv_lock:
-    name: Update UV lock in all directories
+  update-lock:
     runs-on: ubuntu-latest
-
     permissions:
-      # Give the default GITHUB_TOKEN write permission to commit and push the
-      # added or changed files to the repository.
       contents: write
-
+      pull-requests: write
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          ref: ${{ github.head_ref }}
-
+          python-version: '3.10'
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          # Install a specific version of uv.
-          version: "0.6.14"
-          python-version: 3.12.9
-
-      - run: uv pip install --python=3.12.9 pip
-
-      - name: Generate UV lockfiles
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      - name: Generate lock file
+        run: |
+          uv pip compile requirements.txt -o requirements.lock
+      - name: Create Pull Request
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH_NAME: "update-requirements-lock"
+          COMMIT_MESSAGE: "Update requirements.lock"
+          PR_TITLE: "Update requirements.lock"
+          PR_BODY: "This PR updates the requirements.lock file based on changes to requirements.txt."
+          BASE_BRANCH: ${{ github.ref_name }}
+          ACTOR: ${{ github.actor }}
         run: |
-          chmod +x ./docker/scripts/uv-lock-gen/uv-lock.sh
-
-          # Get the input from the workflow or use the default value
-          dirs="${{ github.event.inputs.directories }}"
-
-          # Check if directories input is empty
-          if [[ -z "$dirs" ]]; then
-            # No directories input given, run the script without arguments (process all directories)
-            echo "No directories specified, running on all dirs listed in docker/scripts/uv-lock-gen/uv-lock.sh"
-
-            ./docker/scripts/uv-lock-gen/uv-lock.sh
-          else
-            # Convert comma-separated list into an array of directories
-            IFS=',' read -r -a dir_array <<< "$dirs"
-
-            # Print directories being processed
-            echo "Processing specified directories: ${dir_array[*]}"
-
-            # Pass directories as command-line arguments to the script
-            ./docker/scripts/uv-lock-gen/uv-lock.sh "${dir_array[@]}"
+          git config --global user.name "$ACTOR"
+          git config --global user.email "$ACTOR@users.noreply.github.com"
+          
+          if git diff --quiet requirements.lock; then
+            echo "No changes to requirements.lock"
+            exit 0
           fi
-        shell: bash
-
-      - name: Commit uv.lock changes
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: Commit uv.lock changes
-          commit_user_name: uv-lock-automation[bot]
-          commit_user_email: uv-lock-automation-bot@unstract.com
+          
+          git checkout -b "$BRANCH_NAME"
+          git add requirements.lock
+          git commit -m "$COMMIT_MESSAGE"
+          git push -f origin "$BRANCH_NAME"
+          
+          # Check if PR already exists
+          PR_EXISTS=$(gh pr list --head "$BRANCH_NAME" --json number --jq 'length')
+          
+          if [ "$PR_EXISTS" -eq "0" ]; then
+            gh pr create --title "$PR_TITLE" --body "$PR_BODY" --base "$BASE_BRANCH" --head "$BRANCH_NAME"
+          else
+            echo "PR already exists"
+          fi
