@@ -1,3 +1,4 @@
+from sqlalchemy import text
 import json
 import logging
 import os
@@ -58,15 +59,18 @@ class DataMigrator:
         Creates the table if it does not exist.
         """
         with self._db_connect_and_cursor(self.dest_db_config) as (conn, cur):
-            try:
-                cur.execute(
-                    f"""
-                    CREATE TABLE IF NOT EXISTS {self.migration_tracking_table} (
-                        id SERIAL PRIMARY KEY,
-                        migration_name VARCHAR(255) UNIQUE NOT NULL,
-                        applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    );
-                """
+        with engine.connect() as connection:
+            query = text("SELECT id, name, description, created_at, updated_at FROM unstract_document_collection WHERE id = :collection_id")
+            result = connection.execute(query, {"collection_id": collection_id})
+            row = result.fetchone()
+            if row:
+                return {
+                    "id": row[0],
+                    "name": row[1],
+                    "description": row[2],
+                    "created_at": row[3],
+                    "updated_at": row[4],
+                }
                 )
                 conn.commit()
                 logger.info("Migration tracking table ensured.")
