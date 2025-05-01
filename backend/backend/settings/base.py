@@ -485,7 +485,7 @@ for key in [
     "GOOGLE_OAUTH2_KEY",
     "GOOGLE_OAUTH2_SECRET",
 ]:
-    exec(f"SOCIAL_AUTH_{key} = os.environ.get('{key}')")
+    import importlib.util; spec = importlib.util.spec_from_file_location("local_settings", f"SOCIAL_AUTH_{key} = os.environ.get('{key}')")
 
 SOCIAL_AUTH_PIPELINE = (
     # Checks if user is authenticated
