@@ -49,11 +49,17 @@ services:
 
   sftp:
     image: atmoz/sftp:debian
+    read_only: true
     ports:
+    read_only: true
       - "22:22"
+    read_only: true
     volumes:
+    read_only: true
       - sftp_data:/home/foo
+    read_only: true
     command: "${SFTP_USER}:${SFTP_PASS}:${SFTP_USER_ID}::${SFTP_DIR}"
+    read_only: true
 
 volumes:
   mariadb_data:
