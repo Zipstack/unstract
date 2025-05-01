@@ -331,7 +331,7 @@ def usage() -> Any:
             app.logger.info("Adapter usage recorded with id %s for %s", usage_id, org_id)
             result["status"] = "OK"
             result["unique_id"] = usage_id
-            return make_response(result, 200)
+            return jsonify(result, 200)
     except Exception as e:
         app.logger.error(f"Error while creating usage entry: {e}")
         result["error"] = "Internal Server Error"
