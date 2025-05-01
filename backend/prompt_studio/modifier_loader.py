@@ -1,72 +1,68 @@
-import logging
+import importlib
+import inspect
 import os
-from importlib import import_module
-from typing import Any
+from typing import Dict, List, Optional, Type
 
-from django.apps import apps
-
-logger = logging.getLogger(__name__)
+from prompt_studio.modifiers.base import BaseModifier
+from prompt_studio.modifiers.registry import ModifierRegistry
 
 
-class ModifierConfig:
-    """Loader config for extraction plugins."""
+class ModifierLoader:
+    """
+    Loads modifiers from a directory.
+    """
 
-    PLUGINS_APP = "plugins"
-    PLUGIN_DIR = "modifier"
-    MODULE = "module"
-    METADATA = "metadata"
-    METADATA_NAME = "name"
-    METADATA_SERVICE_CLASS = "service_class"
-    METADATA_IS_ACTIVE = "is_active"
+    def __init__(self, registry: ModifierRegistry):
+        self.registry = registry
 
+    def load_modifiers_from_directory(self, directory: str) -> None:
+        """
+        Loads modifiers from a directory.
+        """
+        for root, _, files in os.walk(directory):
+            for file in files:
+                if file.endswith(".py") and not file.startswith("__"):
+                    module_path = os.path.join(root, file)
+                    module_name = self._get_module_name(module_path, directory)
+                    self._load_modifier_from_module(module_name)
 
-def load_plugins() -> list[Any]:
-    """Iterate through the extraction plugins and register them."""
-    plugins_app = apps.get_app_config(ModifierConfig.PLUGINS_APP)
-    package_path = plugins_app.module.__package__
-    modifier_dir = os.path.join(plugins_app.path, ModifierConfig.PLUGIN_DIR)
-    modifier_package_path = f"{package_path}.{ModifierConfig.PLUGIN_DIR}"
-    modifier_plugins: list[Any] = []
+    def _get_module_name(self, module_path: str, base_dir: str) -> str:
+        """
+        Gets the module name from a module path.
+        """
+        rel_path = os.path.relpath(module_path, base_dir)
+        module_name = rel_path.replace(os.path.sep, ".").replace(".py", "")
+        return module_name
 
-    if not os.path.exists(modifier_dir):
-        return modifier_plugins
-
-    for item in os.listdir(modifier_dir):
-        # Loads a plugin if it is in a directory.
-        if os.path.isdir(os.path.join(modifier_dir, item)):
-            modifier_module_name = item
-        # Loads a plugin if it is a shared library.
-        # Module name is extracted from shared library name.
-        elif item.endswith(".so"):
-            modifier_module_name = item.split(".")[0]
-        else:
-            continue
+    def _load_modifier_from_module(self, module_name: str) -> None:
+        """
+        Loads a modifier from a module.
+        """
+        # Security fix: Implement a whitelist of allowed module prefixes
+        allowed_prefixes = [
+            "prompt_studio.modifiers.",
+            "modifiers.",
+        ]
+        
+        # Check if the module name is in the allowed prefixes
+        if not any(module_name.startswith(prefix) for prefix in allowed_prefixes):
+            print(f"Warning: Skipping module {module_name} as it's not in the allowed prefixes")
+            return
+            
         try:
-            full_module_path = f"{modifier_package_path}.{modifier_module_name}"
-            module = import_module(full_module_path)
-            metadata = getattr(module, ModifierConfig.METADATA, {})
+            module = importlib.import_module(module_name)
+            self._register_modifiers_from_module(module)
+        except (ImportError, AttributeError) as e:
+            print(f"Error loading module {module_name}: {e}")
 
-            if metadata.get(ModifierConfig.METADATA_IS_ACTIVE, False):
-                modifier_plugins.append(
-                    {
-                        ModifierConfig.MODULE: module,
-                        ModifierConfig.METADATA: module.metadata,
-                    }
-                )
-                logger.info(
-                    "Loaded modifier plugin: %s, is_active: %s",
-                    module.metadata[ModifierConfig.METADATA_NAME],
-                    module.metadata[ModifierConfig.METADATA_IS_ACTIVE],
-                )
-            else:
-                logger.info(
-                    "modifier plugin %s is not active.",
-                    modifier_module_name,
-                )
-        except ModuleNotFoundError:
-            logger.warning("No prompt modifier plugins loaded")
-
-    if len(modifier_plugins) == 0:
-        logger.info("No modifier plugins found.")
-
-    return modifier_plugins
+    def _register_modifiers_from_module(self, module) -> None:
+        """
+        Registers modifiers from a module.
+        """
+        for _, obj in inspect.getmembers(module):
+            if (
+                inspect.isclass(obj)
+                and issubclass(obj, BaseModifier)
+                and obj != BaseModifier
+            ):
+                self.registry.register_modifier(obj)
