@@ -42,8 +42,8 @@ class UnstractRunner:
         execution_id: str,
         organization_id: str,
         file_execution_id: str,
+        container_name: str,
         channel: str | None = None,
-        container_name: str | None = None,
     ) -> None:
         for line in container.logs(follow=True):
             log_message = line
@@ -80,8 +80,8 @@ class UnstractRunner:
         execution_id: str,
         organization_id: str,
         file_execution_id: str,
+        container_name: str,
         channel: str | None = None,
-        container_name: str | None = None,
     ) -> dict[str, Any] | None:
         log_dict = self.get_valid_log_message(log_message)
         if not log_dict:
@@ -315,8 +315,8 @@ class UnstractRunner:
         file_execution_id: str,
         settings: dict[str, Any],
         envs: dict[str, Any],
+        container_name: str,
         messaging_channel: str | None = None,
-        container_name: str | None = None,
     ) -> Any | None:
         """RUN container With RUN Command.
 
