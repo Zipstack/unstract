@@ -37,7 +37,7 @@
       "type": "string",
       "title": "Region Name",
       "default": "ap-south",
-      "description": "Mandatory region name of AWS-S3 account. For minio, leave it blank"
+      "description": "Region of the AWS S3 account. For Minio, leave it blank"
     }
   }
 }

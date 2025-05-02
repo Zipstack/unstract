@@ -1,10 +1,6 @@
-import logging
-
 import azure.core.exceptions as AzureException
 
 from unstract.connectors.exceptions import AzureHttpError, ConnectorError
-
-logger = logging.getLogger(__name__)
 
 
 def parse_azure_error(e: Exception) -> ConnectorError:
@@ -30,27 +26,23 @@ def parse_azure_error(e: Exception) -> ConnectorError:
             f"Authentication failed. Please check your connection credentials. \n"
             f"Error: \n```\n{client_error}\n```"
         )
-        logger.error("Azure authentication error: %s", error_message)
-        return ConnectorError(error_message, treat_as_user_message=True)
+        return ConnectorError(error_message)
     elif isinstance(e, AzureException.ServiceRequestError):
         client_error = e.message if hasattr(e, "message") else str(e)
         error_message += (
             f"Failed to connect to Azure service. \n" f"Error: \n```\n{client_error}\n```"
         )
-        logger.error("Azure service request error: %s", error_message)
-        return ConnectorError(error_message, treat_as_user_message=True)
+        return ConnectorError(error_message)
     elif isinstance(e, AzureException.HttpResponseError):
         client_error = e.message if hasattr(e, "message") else str(e)
         error_message += (
             f"Azure service returned an error response. \n"
             f"Error: \n```\n{client_error}\n```"
         )
-        logger.error("Azure HTTP response error: %s", error_message)
-        return AzureHttpError(error_message, treat_as_user_message=True)
+        return AzureHttpError(error_message)
     else:
         error_message += (
             f"Unexpected error from Azure Cloud Storage. \n"
             f"Error: \n```\n{str(e)}\n```"
         )
-        logger.error("Unexpected Azure error: %s", error_message)
-        return ConnectorError(error_message, treat_as_user_message=True)
+        return ConnectorError(error_message)

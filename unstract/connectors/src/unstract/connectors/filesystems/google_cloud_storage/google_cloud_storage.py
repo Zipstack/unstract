@@ -28,17 +28,10 @@ class GoogleCloudStorageFS(UnstractFileSystem):
             json_credentials = json.loads(json_credentials_str)
             self.gcs_fs = GCSFileSystem(token=json_credentials, project=project_id)
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse JSON credentials: {str(e)}", exc_info=True)
+            logger.error(f"Failed to parse JSON credentials: {str(e)}")
             error_msg = (
                 "Failed to connect to Google Cloud Storage. \n"
                 "GCS credentials are not in proper JSON format. \n"
-                f"Error: \n```\n{str(e)}\n```"
-            )
-            raise ConnectorError(error_msg) from e
-        except Exception as e:
-            logger.error(f"Failed to initialize GCSFileSystem: {str(e)}")
-            error_msg = (
-                "Failed to connect to Google Cloud Storage. \n"
                 f"Error: \n```\n{str(e)}\n```"
             )
             raise ConnectorError(error_msg) from e
