@@ -42,7 +42,6 @@ def parse_azure_error(e: Exception) -> ConnectorError:
         return AzureHttpError(error_message)
     else:
         error_message += (
-            f"Unexpected error from Azure Cloud Storage. \n"
-            f"Error: \n```\n{str(e)}\n```"
+            f"Error from Azure Cloud Storage. \n" f"Error: \n```\n{str(e)}\n```"
         )
         return ConnectorError(error_message)
