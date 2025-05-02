@@ -23,6 +23,7 @@ from utils.constants import Account
 from utils.local_context import StateStore
 from utils.user_context import UserContext
 
+from backend.celery_service import app as celery_app
 from unstract.workflow_execution.enums import LogComponent, LogLevel, LogState
 from unstract.workflow_execution.exceptions import StopExecution
 from workflow_manager.endpoint_v2.destination import DestinationConnector
@@ -452,7 +453,7 @@ class WorkflowHelper:
         if not execution.task_id:
             raise TaskDoesNotExistError(f"No task ID found for execution: {execution_id}")
 
-        result = AsyncResult(str(execution.task_id))
+        result = celery_app.AsyncResult(str(execution.task_id))
         task = AsyncResultData(async_result=result)
 
         # Prepare the initial response with the task's current status and result.
@@ -518,7 +519,8 @@ class WorkflowHelper:
             }
             org_schema = UserContext.get_organization_identifier()
             log_events_id = StateStore.get(Common.LOG_EVENTS_ID)
-            async_execution: AsyncResult = cls.execute_bin.apply_async(
+            async_execution: AsyncResult = celery_app.send_task(
+                "async_execute_bin",
                 args=[
                     org_schema,  # schema_name
                     workflow_id,  # workflow_id
