@@ -108,9 +108,8 @@ class ToolSandboxHelper:
             response.raise_for_status()
         except ConnectionError as connect_err:
             msg = "Unable to connect to unstract-runner."
-            msg += " \n" + str(connect_err)
-            logger.error(msg)
-            raise ToolSanboxError(msg)
+            logger.error(f"{msg}\n{connect_err}")
+            raise ToolSanboxError(msg) from connect_err
         except RequestException as e:
             error_message = str(e)
             content_type = response.headers.get("Content-Type", "").lower()
@@ -121,7 +120,7 @@ class ToolSandboxHelper:
             elif response.text:
                 error_message = response.text
             logger.error(f"Error from runner: {error_message}")
-            raise ToolSanboxError(error_message)
+            raise ToolSanboxError(error_message) from e
         return response.json()
 
     def create_tool_request_data(
