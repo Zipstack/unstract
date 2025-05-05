@@ -121,9 +121,7 @@ class ExecutionFileHandler:
         file_storage = file_system.get_file_storage()
         file_storage.json_dump(path=metadata_path, data=content)
 
-        logger.info(
-            f"metadata for {input_file_path} is " "added in to execution directory"
-        )
+        logger.info(f"metadata for {input_file_path} is added in to execution directory")
 
     @classmethod
     def get_execution_dir(
