@@ -177,7 +177,7 @@ class ToolsUtils:
         self,
         file_execution_id: str,
         tool_sandbox: ToolSandbox,
-    ) -> Any:
+    ) -> dict[str, Any] | None:
         return self.run_tool_with_retry(file_execution_id, tool_sandbox)
 
     def run_tool_with_retry(
@@ -185,24 +185,25 @@ class ToolsUtils:
         file_execution_id: str,
         tool_sandbox: ToolSandbox,
         max_retries: int = ToolExecution.MAXIMUM_RETRY,
-    ) -> Any:
-        error: dict[str, Any] | None = None
+    ) -> dict[str, Any] | None:
         for retry_count in range(max_retries):
             try:
                 response = tool_sandbox.run_tool(file_execution_id, retry_count)
                 if response:
                     return response
                 logger.warning(
-                    f"ToolExecutionException - Retrying "
-                    f"({retry_count + 1}/{max_retries})"
+                    f"ToolExecutionException - Retrying ({retry_count + 1}/{max_retries})"
                 )
             except Exception as e:
-                logger.warning(
-                    f"Exception - Retrying ({retry_count + 1}/{max_retries}): "
-                    f"{str(e)}"
-                )
-
-        logger.warning(f"Operation failed after {max_retries} retries, error: {error}")
+                if retry_count < max_retries - 1:
+                    logger.warning(
+                        f"Exception - Retrying ({retry_count + 1}/{max_retries}): {str(e)}"
+                    )
+                else:
+                    logger.warning(
+                        f"Operation failed after '{max_retries}' retries, error: {e}"
+                    )
+                    raise e
         return None
 
     def get_tool_environment_variables(self) -> dict[str, Any]:

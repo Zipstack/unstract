@@ -342,10 +342,12 @@ class PromptStudioRegistryHelper:
             output[JsonSchemaKey.SECTION] = prompt.profile_manager.section
             output[JsonSchemaKey.REINDEX] = prompt.profile_manager.reindex
             output[JsonSchemaKey.EMBEDDING_SUFFIX] = embedding_suffix
-
+            # Retaining the old fields in condition
+            # for backward compatibility. To be removed in future.
             if (
                 prompt.enforce_type == PromptStudioRegistryKeys.TABLE
                 or prompt.enforce_type == PromptStudioRegistryKeys.RECORD
+                or prompt.enforce_type == PromptStudioRegistryKeys.LINE_ITEM
             ):
                 for modifier_plugin in modifier_plugins:
                     cls = modifier_plugin[ModifierConfig.METADATA][
