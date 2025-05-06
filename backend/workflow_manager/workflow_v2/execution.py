@@ -299,7 +299,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         Returns:
             None
         """
-        self.publish_average_cost_log(total_files=successful_files)
+        self.publish_average_cost_log(total_files=total_files)
 
         # To not associate final logs with a file execution
         self.file_execution_id = None
