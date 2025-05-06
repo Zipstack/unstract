@@ -22,10 +22,9 @@ function PdfViewer({ fileUrl, highlightData }) {
   const parentRef = useRef(null);
   function removeZerosAndDeleteIfAllZero(highlightData) {
     return highlightData?.filter((innerArray) => {
-      if (!Array.isArray(innerArray)) {
-        return [];
-      }
-      return innerArray.some((value) => value !== 0);
+      return (
+        Array.isArray(innerArray) && innerArray.some((value) => value !== 0)
+      );
     });
   }
 
