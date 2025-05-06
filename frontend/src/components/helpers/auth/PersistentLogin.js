@@ -14,8 +14,9 @@ let SELECTED_PRODUCT;
 let PRODUCT_NAMES = {};
 try {
   selectedProductStore = require("../../../plugins/store/select-product-store.js");
-  SELECTED_PRODUCT = require("../../../plugins/helper/common").SELECTED_PRODUCT;
-  PRODUCT_NAMES = require("../../../plugins/helper/common").PRODUCT_NAMES;
+  SELECTED_PRODUCT =
+    require("../../../plugins/helpers/common").SELECTED_PRODUCT;
+  PRODUCT_NAMES = require("../../../plugins/helpers/common").PRODUCT_NAMES;
 } catch {
   // Ignore if hook not available
 }
