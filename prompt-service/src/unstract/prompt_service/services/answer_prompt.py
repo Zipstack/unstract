@@ -299,12 +299,17 @@ class AnswerPromptService:
             whisper_hash = highlight_response.get(PSKeys.WHISPER_HASH, "")
             prompt_key = output[PSKeys.NAME]
             if metadata is not None and prompt_key:
-                metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})[prompt_key] = (
-                    highlight_data
-                )
-                metadata.setdefault(PSKeys.LINE_NUMBERS, {})[prompt_key] = line_numbers
+                if PSKeys.HIGHLIGHT_DATA not in metadata:
+                    metadata[PSKeys.HIGHLIGHT_DATA] = {}
+                metadata[PSKeys.HIGHLIGHT_DATA][prompt_key] = highlight_data
+
+                if PSKeys.LINE_NUMBERS not in metadata:
+                    metadata[PSKeys.LINE_NUMBERS] = {}
+                metadata[PSKeys.LINE_NUMBERS][prompt_key] = line_numbers
+
                 metadata[PSKeys.WHISPER_HASH] = whisper_hash
+
                 if confidence_data:
-                    metadata.setdefault(PSKeys.CONFIDENCE_DATA, {})[prompt_key] = (
-                        confidence_data
-                    )
+                    if PSKeys.CONFIDENCE_DATA not in metadata:
+                        metadata[PSKeys.CONFIDENCE_DATA] = {}
+                    metadata[PSKeys.CONFIDENCE_DATA][prompt_key] = confidence_data
