@@ -247,7 +247,7 @@ class AnswerPromptService:
                     structured_output=structured_output,
                     answer=answer,
                 ).run()
-            answer = AnswerPromptService.cut_until_first_bracket(answer)
+            answer = AnswerPromptService.slice_from_first_bracket(answer)
             if enable_highlight:
                 AnswerPromptService.handle_highlight(
                     execution_source=execution_source,
@@ -315,9 +315,11 @@ class AnswerPromptService:
                         metadata[PSKeys.CONFIDENCE_DATA] = {}
                     metadata[PSKeys.CONFIDENCE_DATA][prompt_key] = confidence_data
 
-    @staticmethod
-    def cut_until_first_bracket(text) -> str:
+    def slice_from_first_bracket(text: str) -> str:
         idx_brace = text.find("{")
         idx_bracket = text.find("[")
-        start = min(i for i in [idx_brace, idx_bracket] if i != -1)
+        indices = [i for i in [idx_brace, idx_bracket] if i != -1]
+        if not indices:
+            return text
+        start = min(indices)
         return text[start:]
