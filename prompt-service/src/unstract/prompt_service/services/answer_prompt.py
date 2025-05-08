@@ -154,7 +154,7 @@ class AnswerPromptService:
             completion = llm.complete(
                 prompt=prompt,
                 process_text=highlight_data,
-                extract_json=prompt_type.lower() != PSKeys.JSON,
+                extract_json=False,
             )
             answer: str = completion[PSKeys.RESPONSE].text
             highlight_data = completion.get(PSKeys.HIGHLIGHT_DATA, [])
@@ -247,6 +247,7 @@ class AnswerPromptService:
                     structured_output=structured_output,
                     answer=answer,
                 ).run()
+            answer = AnswerPromptService.cut_until_first_bracket(answer)
             if enable_highlight:
                 AnswerPromptService.handle_highlight(
                     execution_source=execution_source,
@@ -313,3 +314,10 @@ class AnswerPromptService:
                     if PSKeys.CONFIDENCE_DATA not in metadata:
                         metadata[PSKeys.CONFIDENCE_DATA] = {}
                     metadata[PSKeys.CONFIDENCE_DATA][prompt_key] = confidence_data
+
+    @staticmethod
+    def cut_until_first_bracket(text) -> str:
+        idx_brace = text.find("{")
+        idx_bracket = text.find("[")
+        start = min(i for i in [idx_brace, idx_bracket] if i != -1)
+        return text[start:]
