@@ -315,6 +315,7 @@ class AnswerPromptService:
                         metadata[PSKeys.CONFIDENCE_DATA] = {}
                     metadata[PSKeys.CONFIDENCE_DATA][prompt_key] = confidence_data
 
+    @staticmethod
     def slice_from_first_bracket(text: str) -> str:
         idx_brace = text.find("{")
         idx_bracket = text.find("[")
