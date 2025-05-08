@@ -1,3 +1,4 @@
+import datetime
 import logging
 import os
 from typing import Any
@@ -57,6 +58,31 @@ class MSSQL(UnstractDB):
     def can_read() -> bool:
         return True
 
+    def get_string_type(self) -> str:
+        return "text"
+
+    def sql_to_db_mapping(self, value: str) -> str:
+        """Gets the python datatype of value and converts python datatype to
+        corresponding DB datatype.
+
+        Args:
+            value (str): python datatype
+
+        Returns:
+            str: database columntype
+        """
+        python_type = type(value)
+
+        mapping = {
+            str: "TEXT",
+            int: "INT",
+            float: "FLOAT",
+            datetime.datetime: "DATETIMEOFFSET",
+            dict: "NVARCHAR(MAX)",
+            list: "NVARCHAR(MAX)",
+        }
+        return mapping.get(python_type, "TEXT")
+
     def get_engine(self) -> Connection:
         return pymssql.connect(  # type: ignore
             server=self.server,
@@ -81,6 +107,25 @@ class MSSQL(UnstractDB):
             f" CREATE TABLE {table} "
             f"(id TEXT ,"
             f"created_by TEXT, created_at DATETIMEOFFSET, "
+            f"metadata NVARCHAR(MAX), "
+            f"user_field_1 BIT DEFAULT 0, "
+            f"user_field_2 INT DEFAULT 0, "
+            f"user_field_3 TEXT DEFAULT NULL, "
+            f"status NVARCHAR(10) CHECK (status IN ('ERROR', 'STATUS')), "
+            f"error_message TEXT, "
+        )
+        return sql_query
+
+    def prepare_multi_column_migration(self, table_name: str, column_name: str) -> str:
+        sql_query = (
+            f"ALTER TABLE {table_name} "
+            f"ADD COLUMN {column_name}_v2 NVARCHAR(MAX), "
+            f"ADD COLUMN metadata NVARCHAR(MAX), "
+            f"ADD COLUMN user_field_1 BIT DEFAULT 0, "
+            f"ADD COLUMN user_field_2 INT DEFAULT 0, "
+            f"ADD COLUMN user_field_3 TEXT DEFAULT NULL, "
+            f"ADD COLUMN status NVARCHAR(10) CHECK (status IN ('ERROR', 'STATUS')), "
+            f"ADD COLUMN error_message TEXT"
         )
         return sql_query
 
