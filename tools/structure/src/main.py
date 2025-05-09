@@ -61,7 +61,7 @@ class StructureTool(BaseTool):
                 platform_host=self.get_env_or_die(ToolEnv.PLATFORM_HOST),
                 request_id=self.file_execution_id,
             )
-            exported_tool = platform_helper.get_exported_tool(
+            exported_tool = platform_helper.get_prompt_studio_tool(
                 prompt_registry_id=prompt_registry_id
             )
             tool_metadata = exported_tool[SettingsKeys.TOOL_METADATA]
