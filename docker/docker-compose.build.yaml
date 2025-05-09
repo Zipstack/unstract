@@ -22,8 +22,8 @@ services:
   tool-structure:
     image: unstract/tool-structure:${VERSION}
     build:
-      dockerfile: tools/structure/Dockerfile
-      context: tools/structure
+      dockerfile: ./Dockerfile
+      context: ../tools/structure/
   platform-service:
     image: unstract/platform-service:${VERSION}
     build:
