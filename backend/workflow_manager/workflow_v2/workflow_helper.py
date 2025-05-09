@@ -92,34 +92,6 @@ class WorkflowHelper:
         workflow.save()
         return workflow
 
-    @staticmethod
-    def build_workflow_execution_service(
-        organization_id: str | None,
-        workflow: Workflow,
-        tool_instances: list[ToolInstance],
-        pipeline_id: str | None,
-        single_step: bool,
-        scheduled: bool,
-        execution_mode: tuple[str, str],
-        workflow_execution: WorkflowExecution,
-        use_file_history: bool = True,  # Will be False for API deployment alone
-        file_execution_id: str | None = None,
-    ) -> WorkflowExecutionServiceHelper:
-        workflow_execution_service = WorkflowExecutionServiceHelper(
-            organization_id=organization_id,
-            workflow=workflow,
-            tool_instances=tool_instances,
-            pipeline_id=pipeline_id,
-            single_step=single_step,
-            scheduled=scheduled,
-            mode=execution_mode,
-            workflow_execution=workflow_execution,
-            use_file_history=use_file_history,
-            file_execution_id=file_execution_id,
-        )
-        workflow_execution_service.build()
-        return workflow_execution_service
-
     @classmethod
     def get_file_chunks(
         cls, input_files: dict[str, FileHash]

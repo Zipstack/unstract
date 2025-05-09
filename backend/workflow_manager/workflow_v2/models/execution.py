@@ -293,7 +293,6 @@ class WorkflowExecution(BaseModel):
                 execution=execution_cache,
             )
         else:
-            print(f"_handle_execution_cache :: Execution updated: {self}")
             ExecutionCacheUtils.update_status(
                 workflow_id=self.workflow.id, execution_id=self.id, status=self.status
             )
