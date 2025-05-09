@@ -45,7 +45,9 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         mode: tuple[str, str] = WorkflowExecution.Mode.INSTANT,
         workflow_execution: WorkflowExecution | None = None,
         use_file_history: bool = True,
+        file_execution_id: str | None = None,
     ) -> None:
+        self.file_execution_id = file_execution_id
         tool_instances_as_dto = []
         for tool_instance in tool_instances:
             tool_instances_as_dto.append(
@@ -66,6 +68,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             tool_instances=tool_instances_as_dto,
             platform_service_api_key=str(platform_key.key),
             ignore_processed_entities=False,
+            file_execution_id=file_execution_id,
         )
         if not workflow_execution:
             # Use pipline_id for pipelines / API deployment
@@ -146,7 +149,6 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             else WorkflowExecution.Type.COMPLETE
         )
         execution_log_id = log_events_id if log_events_id else pipeline_id
-
         # Create the workflow execution
         workflow_execution = WorkflowExecution.objects.create(
             id=execution_id if execution_id else uuid.uuid4(),
@@ -253,7 +255,6 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         start_time = time.time()
         try:
             self.execute_workflow(
-                file_execution_id=file_execution_id,
                 execution_type=execution_type,
             )
             end_time = time.time()

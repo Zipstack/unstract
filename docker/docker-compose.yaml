@@ -93,6 +93,26 @@ services:
       - ./workflow_data:/data
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
 
+  # Celery worker for handling file processing tasks
+  worker-file-processing:
+    image: unstract/backend:${VERSION}
+    container_name: unstract-worker-file-processing
+    restart: unless-stopped
+    entrypoint: .venv/bin/celery
+    command: "-A backend.workers.file_processing worker --loglevel=info --autoscale=${WORKER_FILE_PROCESSING_AUTOSCALE}"
+    env_file:
+      - ../backend/.env
+    depends_on:
+      - redis
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-file-processing
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+
   # Celery Flower
   celery-flower:
     image: unstract/backend:${VERSION}

@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
-from typing import Any, Optional
+from typing import Any
 
 
 class ContainerInterface(ABC):
@@ -24,7 +26,7 @@ class ContainerInterface(ABC):
         pass
 
     @abstractmethod
-    def cleanup(self, client: Optional["ContainerClientInterface"] = None) -> None:
+    def cleanup(self, client: ContainerClientInterface | None = None) -> None:
         """Stops and removes the running container."""
         pass
 

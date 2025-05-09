@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from enum import Enum
 
 from django.db.models import TextChoices
@@ -30,6 +32,17 @@ class ExecutionStatus(TextChoices):
     COMPLETED = "COMPLETED"
     STOPPED = "STOPPED"
     ERROR = "ERROR"
+
+    @classmethod
+    def is_completed(cls, status: str | ExecutionStatus) -> bool:
+        """Check if the execution status is completed."""
+        try:
+            status_enum = cls(status)
+        except ValueError:
+            raise ValueError(
+                f"Invalid status: {status}. Must be a valid ExecutionStatus."
+            )
+        return status_enum in [cls.COMPLETED, cls.STOPPED, cls.ERROR]
 
 
 class SchemaType(Enum):

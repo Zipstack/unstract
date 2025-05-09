@@ -7,7 +7,6 @@ from utils.common_utils import CommonUtils
 from utils.models.base_model import BaseModel
 
 from workflow_manager.endpoint_v2.dto import FileHash
-from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 
 FILE_NAME_LENGTH = 255
@@ -21,7 +20,7 @@ class WorkflowFileExecutionManager(models.Manager):
         self,
         workflow_execution: Any,
         file_hash: FileHash,
-        connection_type: WorkflowEndpoint.ConnectionType,
+        is_api: bool = False,
     ) -> "WorkflowFileExecution":
         """Retrieves or creates a new input file record for a workflow execution.
 
@@ -34,7 +33,6 @@ class WorkflowFileExecutionManager(models.Manager):
         Returns:
             The `WorkflowFileExecution` object.
         """
-        is_api = connection_type == WorkflowEndpoint.ConnectionType.API
         # Determine file path based on connection type
         execution_file_path = file_hash.file_path if not is_api else None
 
