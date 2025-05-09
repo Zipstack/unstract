@@ -269,13 +269,12 @@ function PromptCardItems({
                         )}
                     </Space>
                     <Space>
-                      {enforceType === TABLE &&
-                        TableExtractionSettingsBtn && (
-                          <TableExtractionSettingsBtn
-                            promptId={promptDetails?.prompt_id}
-                            enforceType={enforceType}
-                          />
-                        )}
+                      {enforceType === TABLE && TableExtractionSettingsBtn && (
+                        <TableExtractionSettingsBtn
+                          promptId={promptDetails?.prompt_id}
+                          enforceType={enforceType}
+                        />
+                      )}
                       <Select
                         className="prompt-card-select-type"
                         size="small"

@@ -11,4 +11,4 @@ const handleUpdateStatus = (isUpdate, promptId, value, setUpdateStatus) => {
   });
 };
 
-export { handleUpdateStatus, LINE_ITEM_ENFORCE_TYPE };
+export { handleUpdateStatus, TABLE, LINE_ITEM_ENFORCE_TYPE };
