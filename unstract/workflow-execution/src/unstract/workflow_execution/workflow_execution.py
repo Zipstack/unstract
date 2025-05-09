@@ -44,6 +44,7 @@ class WorkflowExecutionService:
         tool_instances: list[ToolInstance],
         platform_service_api_key: str,
         ignore_processed_entities: bool = False,
+        file_execution_id: str | None = None,
     ) -> None:
         self.organization_id = organization_id
         self.workflow_id = workflow_id
@@ -60,7 +61,7 @@ class WorkflowExecutionService:
         self.ignore_processed_entities = ignore_processed_entities
         self.override_single_step = False
         self.execution_id: str = ""
-        self.file_execution_id: str | None = None
+        self.file_execution_id: str | None = file_execution_id
         self.messaging_channel: str | None = None
         self.input_files: list[str] = []
         self.log_stage: LogStage = LogStage.COMPILE
@@ -88,8 +89,13 @@ class WorkflowExecutionService:
 
         try:
             self.execution_id = str(execution_id)
+            print(f"====compile_workflow==execution_id==={self.execution_id}")
+            print(f"====compile_workflow==file_execution_id==={self.file_execution_id}")
             self.file_handler = ExecutionFileHandler(
-                self.workflow_id, self.execution_id, self.organization_id
+                self.workflow_id,
+                self.execution_id,
+                self.organization_id,
+                file_execution_id=self.file_execution_id,
             )
 
             logger.info(f"Execution {execution_id}: compilation completed")
@@ -136,9 +142,7 @@ class WorkflowExecutionService:
 
         logger.info(f"Execution {self.execution_id}: Build completed")
 
-    def execute_workflow(
-        self, file_execution_id: str, execution_type: ExecutionType
-    ) -> None:
+    def execute_workflow(self, execution_type: ExecutionType) -> None:
         """Executes the complete workflow by running each tools one by one.
         Returns the result from final tool in a dictionary.
 
@@ -156,10 +160,15 @@ class WorkflowExecutionService:
                   Eg:- {"result": "RESULT_FROM_FINAL_TOOL"}
         """
         self.log_stage = LogStage.RUN
+        # self.file_execution_id = file_execution_id
+        print(f"====execute_workflow==11===={self.execution_id}")
+        print(f"====execute_workflow==22===={self.file_execution_id}")
+        print(f"====self.file_handler==33===={self.file_handler}")
+        print(f"====self.file_handler==44===={self.file_handler.metadata_file}")
+
         self._initialize_execution()
         total_steps = len(self.tool_sandboxes)
         self.total_steps = total_steps
-        self.file_execution_id = file_execution_id
         # Currently each tool is run serially for files and workflows contain 1 tool
         # only. While supporting more tools in a workflow, correct the tool container
         # name to avoid conflicts.
@@ -168,6 +177,8 @@ class WorkflowExecutionService:
                 step=step,
                 sandbox=sandbox,
             )
+        print(f"====self.file_handler==55===={self.file_handler.metadata_file}")
+        print(f"====_execute_workflow==11===={self.execution_id}")
         self._finalize_execution(execution_type)
 
     def _execute_step(
@@ -202,6 +213,7 @@ class WorkflowExecutionService:
             iteration_total=self.total_steps,
         )
         try:
+            print(f"====_execute_step==11===={self.execution_id}")
             self.publish_update_log(
                 state=LogState.RUNNING,
                 message="Ready for execution",
@@ -210,15 +222,19 @@ class WorkflowExecutionService:
             result = self.tool_utils.run_tool(
                 file_execution_id=self.file_execution_id, tool_sandbox=sandbox
             )
+            print(f"====_execute_step==22===={self.execution_id}")
             if result and result.get("error"):
+                print(f"====_execute_step==33===={self.execution_id}")
                 raise ToolOutputNotFoundException(result.get("error"))
             if not self.validate_execution_result(step + 1):
+                print(f"====_execute_step==44===={self.execution_id}")
                 raise ToolOutputNotFoundException(
                     f"Error running tool '{tool_uid}' for run "
                     f"'{self.file_execution_id}' of execution '{self.execution_id}'. "
                     "Check logs for more information"
                 )
             log_message = f"Step {actual_step} executed successfully"
+            print(f"====_execute_step==55===={self.execution_id}")
             self.publish_update_log(
                 state=LogState.SUCCESS,
                 message="executed successfully",
@@ -230,6 +246,7 @@ class WorkflowExecutionService:
 
         # TODO: Catch specific workflow execution error to avoid showing pythonic error
         except Exception as error:
+            print(f"==========Error running tool {error}")
             self.publish_update_log(
                 state=LogState.ERROR,
                 message="Failed to execute",
@@ -315,6 +332,8 @@ class WorkflowExecutionService:
         """
         if not self.execution_id:
             raise BadRequestException("Execution Id not found")
+        if not self.file_execution_id:
+            raise BadRequestException("File Execution Id not found")
 
     def _finalize_execution(self, execution_type: ExecutionType) -> None:
         """Finalize the execution process.
@@ -322,12 +341,15 @@ class WorkflowExecutionService:
         Args:
             execution_type (ExecutionType): ExecutionType
         """
+        print(f"====_finalize_execution======{self.execution_id}")
         if execution_type == ExecutionType.STEP:
             with self.redis_con as r:
                 r.delete(self.execution_id)
 
         log_message = f"Executed workflow {self.workflow_id} successfully."
+        print(f"=====_finalize_execution===1=={log_message}")
         self.publish_log(log_message)
+        print(f"=====_finalize_execution==2==={log_message}")
 
     def _handle_execution_type(self, execution_type: ExecutionType) -> None:
         """Handling execution type Handling STEP and COMPLETE execution type.
@@ -339,11 +361,16 @@ class WorkflowExecutionService:
             self._handling_step_execution()
 
     def validate_execution_result(self, step: int) -> bool:
-        workflow_metadata = self.file_handler.get_workflow_metadata()
-        metadata_list = self.file_handler.get_list_of_tool_metadata(workflow_metadata)
-        if len(metadata_list) == step:
-            return True
-        return False
+        print(f"====validate_execution_result==1==={step}")
+        try:
+            workflow_metadata = self.file_handler.get_workflow_metadata()
+            metadata_list = self.file_handler.get_list_of_tool_metadata(workflow_metadata)
+            if len(metadata_list) == step:
+                return True
+            return False
+        except Exception as e:
+            print(f"====validate_execution_result==2==={e}")
+            return False
 
     def publish_log(
         self,

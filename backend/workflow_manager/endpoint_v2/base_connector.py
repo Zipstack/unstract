@@ -13,13 +13,19 @@ from unstract.workflow_execution.execution_file_handler import ExecutionFileHand
 class BaseConnector(ExecutionFileHandler):
     """Base class for connectors providing common methods and utilities."""
 
-    def __init__(self, workflow_id: str, execution_id: str, organization_id: str) -> None:
+    def __init__(
+        self,
+        workflow_id: str,
+        execution_id: str,
+        organization_id: str,
+        file_execution_id: str | None = None,
+    ) -> None:
         """Initialize the BaseConnector class.
 
         This class serves as a base for connectors and provides common
         utilities.
         """
-        super().__init__(workflow_id, execution_id, organization_id)
+        super().__init__(workflow_id, execution_id, organization_id, file_execution_id)
 
     def get_fsspec(
         self, settings: dict[str, Any], connector_id: str

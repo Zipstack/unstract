@@ -325,6 +325,7 @@ class UnstractRunner:
             organization_id,
             workflow_id,
             execution_id,
+            file_execution_id,
         )
         envs[Env.WORKFLOW_EXECUTION_FILE_STORAGE_CREDENTIALS] = os.getenv(
             Env.WORKFLOW_EXECUTION_FILE_STORAGE_CREDENTIALS, "{}"

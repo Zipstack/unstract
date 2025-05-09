@@ -14,10 +14,9 @@ from workflow_manager.endpoint_v2.constants import (
     ApiDeploymentResultStatus,
     DestinationKey,
     QueueResultStatus,
-    WorkflowFileType,
 )
 from workflow_manager.endpoint_v2.database_utils import DatabaseUtils
-from workflow_manager.endpoint_v2.dto import FileHash
+from workflow_manager.endpoint_v2.dto import DestinationConfig, FileHash
 from workflow_manager.endpoint_v2.exceptions import (
     DestinationConnectorNotConfigured,
     InvalidDestinationConnectionType,
@@ -27,8 +26,8 @@ from workflow_manager.endpoint_v2.exceptions import (
 )
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.endpoint_v2.queue_utils import QueueResult, QueueUtils
+from workflow_manager.utils.workflow_log import WorkflowLog
 from workflow_manager.workflow_v2.enums import ExecutionStatus
-from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelper
 from workflow_manager.workflow_v2.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow_v2.models.file_history import FileHistory
 from workflow_manager.workflow_v2.models.workflow import Workflow
@@ -59,7 +58,9 @@ class DestinationConnector(BaseConnector):
         self,
         workflow: Workflow,
         execution_id: str,
-        execution_service: WorkflowExecutionServiceHelper | None = None,
+        workflow_log: WorkflowLog,
+        use_file_history: bool,
+        file_execution_id: str | None = None,
     ) -> None:
         """Initialize a DestinationConnector object.
 
@@ -67,16 +68,17 @@ class DestinationConnector(BaseConnector):
             workflow (Workflow): _description_
         """
         organization_id = UserContext.get_organization_identifier()
-        super().__init__(workflow.id, execution_id, organization_id)
+        super().__init__(workflow.id, execution_id, organization_id, file_execution_id)
         self.endpoint = self._get_endpoint_for_workflow(workflow=workflow)
         self.source_endpoint = self._get_source_endpoint_for_workflow(workflow=workflow)
         self.execution_id = execution_id
-        self.api_results: list[dict[str, Any]] = []
         self.queue_results: list[dict[str, Any]] = []
-        self.execution_service = execution_service
         self.is_api: bool = (
             self.endpoint.connection_type == WorkflowEndpoint.ConnectionType.API
         )
+        self.workflow_log = workflow_log
+        self.use_file_history = use_file_history
+        self.workflow = workflow
 
     def _get_endpoint_for_workflow(
         self,
@@ -162,7 +164,7 @@ class DestinationConnector(BaseConnector):
         file_execution_id: str,
     ) -> bool:
         """Handles HITL processing, returning True if data was pushed to the queue."""
-        execution_result = self.get_result()
+        execution_result = self.get_tool_execution_result()
         if WorkflowUtil.validate_db_rule(
             execution_result, workflow, file_hash.file_destination
         ):
@@ -182,7 +184,7 @@ class DestinationConnector(BaseConnector):
         input_file_path: str,
         file_execution_id: str,
     ) -> None:
-        result = self.get_result()
+        result = self.get_tool_execution_result()
         meta_data = self.get_metadata()
         self._push_to_queue(
             file_name=file_name,
@@ -199,21 +201,15 @@ class DestinationConnector(BaseConnector):
         file_hash: FileHash,
         workflow: Workflow,
         input_file_path: str,
-        error: str | None = None,
-        use_file_history: bool = True,
         file_execution_id: str = None,
-    ) -> None:
+    ) -> str | None:
         """Handle the output based on the connection type."""
         connection_type = self.endpoint.connection_type
-        result: str | None = None
+        tool_execution_result: str | None = None
         metadata: str | None = None
-        if error:
-            if connection_type == WorkflowEndpoint.ConnectionType.API:
-                self._handle_api_result(file_name=file_name, error=error, result=result)
-            return
 
         file_history = None
-        if use_file_history:
+        if self.use_file_history:
             file_history = FileHistoryHelper.get_file_history(
                 workflow=workflow, cache_key=file_hash.file_hash
             )
@@ -229,11 +225,7 @@ class DestinationConnector(BaseConnector):
             ):
                 self.insert_into_db(input_file_path=input_file_path)
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
-            result = self.get_result(file_history)
-            exec_metadata = self.get_metadata(file_history)
-            self._handle_api_result(
-                file_name=file_name, error=error, result=result, metadata=exec_metadata
-            )
+            tool_execution_result = self.get_tool_execution_result(file_history)
         elif connection_type == WorkflowEndpoint.ConnectionType.MANUALREVIEW:
             self._push_data_to_queue(
                 file_name,
@@ -241,20 +233,20 @@ class DestinationConnector(BaseConnector):
                 input_file_path,
                 file_execution_id,
             )
-        if self.execution_service:
-            self.execution_service.publish_log(
-                message=f"File '{file_name}' processed successfully"
-            )
+        self.workflow_log.publish_log(
+            message=f"File '{file_name}' processed successfully"
+        )
 
-        if use_file_history and not file_history:
+        if self.use_file_history and not file_history:
             FileHistoryHelper.create_file_history(
                 file_hash=file_hash,
                 workflow=workflow,
                 status=ExecutionStatus.COMPLETED,
-                result=result,
+                result=tool_execution_result,
                 metadata=metadata,
                 file_name=file_name,
             )
+        return tool_execution_result
 
     def copy_output_to_output_directory(self) -> None:
         """Copy output to the destination directory."""
@@ -273,7 +265,9 @@ class DestinationConnector(BaseConnector):
             input_dir=output_directory, root_path=root_path
         )
         logger.debug(f"destination output directory {output_directory}")
-        destination_volume_path = os.path.join(self.execution_dir, ToolExecKey.OUTPUT_DIR)
+        destination_volume_path = os.path.join(
+            self.file_execution_dir, ToolExecKey.OUTPUT_DIR
+        )
 
         try:
             destination_fs.create_dir_if_not_exists(input_dir=output_directory)
@@ -328,7 +322,7 @@ class DestinationConnector(BaseConnector):
         execution_id_name = str(
             destination_configurations.get(DestinationKey.EXECUTION_ID, "execution_id")
         )
-        data = self.get_result()
+        data = self.get_tool_execution_result()
         # If data is None, don't execute CREATE or INSERT query
         if not data:
             return
@@ -418,7 +412,10 @@ class DestinationConnector(BaseConnector):
         Returns:
             None
         """
-        api_result: dict[str, Any] = {"file": file_name}
+        api_result: dict[str, Any] = {
+            "file": file_name,
+            "file_execution_id": self.file_execution_id,
+        }
         if error:
             api_result.update(
                 {"status": ApiDeploymentResultStatus.FAILED, "error": error}
@@ -436,7 +433,7 @@ class DestinationConnector(BaseConnector):
                 api_result.update(
                     {"status": ApiDeploymentResultStatus.SUCCESS, "result": ""}
                 )
-        self.api_results.append(api_result)
+        self.update_api_results(api_result)
 
     def parse_string(self, original_string: str) -> Any:
         """Parse the given string, attempting to evaluate it as a Python
@@ -472,15 +469,17 @@ class DestinationConnector(BaseConnector):
             # assume it's a plain string
             return original_string
 
-    def get_result(self, file_history: FileHistory | None = None) -> Any | None:
+    def get_tool_execution_result(
+        self, file_history: FileHistory | None = None
+    ) -> Any | None:
         """Get result data from the output file.
 
         Returns:
             Union[dict[str, Any], str]: Result data.
         """
-        return self.get_result_with_file_storage(file_history=file_history)
+        return self.get_tool_execution_result_from_metadata(file_history=file_history)
 
-    def get_result_with_file_storage(
+    def get_tool_execution_result_from_metadata(
         self, file_history: FileHistory | None = None
     ) -> Any | None:
         """Get result data from the output file.
@@ -490,7 +489,7 @@ class DestinationConnector(BaseConnector):
         """
         if file_history and file_history.result:
             return self.parse_string(file_history.result)
-        output_file = os.path.join(self.execution_dir, WorkflowFileType.INFILE)
+        output_file = self.infile
         metadata: dict[str, Any] = self.get_workflow_metadata()
         output_type = self.get_output_type(metadata)
         result: dict[str, Any] | str = ""
@@ -546,6 +545,17 @@ class DestinationConnector(BaseConnector):
         file_storage = file_system.get_file_storage()
         if file_storage.exists(self.execution_dir):
             file_storage.rm(self.execution_dir, recursive=True)
+
+    def delete_file_execution_directory(self) -> None:
+        """Delete the file execution directory.
+
+        Returns:
+            None
+        """
+        file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+        file_storage = file_system.get_file_storage()
+        if self.file_execution_dir and file_storage.exists(self.file_execution_dir):
+            file_storage.rm(self.file_execution_dir, recursive=True)
 
     def delete_execution_and_api_storage_dir(self) -> None:
         """Delete the execution and api storage directories.
@@ -620,6 +630,44 @@ class DestinationConnector(BaseConnector):
             os.path.dirname(__file__), "static", "dest", "api.json"
         )
         return cls.get_json_schema(file_path=schema_path)
+
+    def get_config(self) -> DestinationConfig:
+        """Get serializable configuration for the destination connector.
+
+        Returns:
+            DestinationConfig: Configuration containing all necessary data to reconstruct the connector
+        """
+        return DestinationConfig(
+            workflow_id=self.workflow.id,
+            execution_id=self.execution_id,
+            use_file_history=self.use_file_history,
+        )
+
+    @classmethod
+    def from_config(
+        cls, workflow_log: WorkflowLog, config: DestinationConfig
+    ) -> "DestinationConnector":
+        """Create a DestinationConnector instance from configuration.
+
+        Args:
+            config (DestinationConfig): Configuration containing all necessary data to reconstruct the connector
+
+        Returns:
+            DestinationConnector: New instance
+        """
+        # Reconstruct workflow
+        workflow = Workflow.objects.get(id=config.workflow_id)
+
+        # Create destination connector instance
+        destination = cls(
+            workflow=workflow,
+            execution_id=config.execution_id,
+            workflow_log=workflow_log,
+            use_file_history=config.use_file_history,
+            file_execution_id=config.file_execution_id,
+        )
+
+        return destination
 
     def _push_to_queue(
         self,
