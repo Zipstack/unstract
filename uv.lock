@@ -1573,15 +1573,16 @@ wheels = [
 
 [[package]]
 name = "kombu"
-version = "5.3.7"
+version = "5.5.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "amqp" },
+    { name = "tzdata" },
     { name = "vine" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/99/3a/2fb09708fef243e35c286414f2bf78543dc311ae7d3de5d343bd8437e38d/kombu-5.3.7.tar.gz", hash = "sha256:011c4cd9a355c14a1de8d35d257314a1d2456d52b7140388561acac3cf1a97bf", size = 439344 }
+sdist = { url = "https://files.pythonhosted.org/packages/60/0a/128b65651ed8120460fc5af754241ad595eac74993115ec0de4f2d7bc459/kombu-5.5.3.tar.gz", hash = "sha256:021a0e11fcfcd9b0260ef1fb64088c0e92beb976eb59c1dfca7ddd4ad4562ea2", size = 461784 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b4/9a/1951f2261271d6994f0df5a55b3e9cdad42ed1fc3020a0dc7f6de80a4566/kombu-5.3.7-py3-none-any.whl", hash = "sha256:5634c511926309c7f9789f1433e9ed402616b56836ef9878f01bd59267b4c7a9", size = 200190 },
+    { url = "https://files.pythonhosted.org/packages/5d/35/1407fb0b2f5b07b50cbaf97fce09ad87d3bfefbf64f7171a8651cd8d2f68/kombu-5.5.3-py3-none-any.whl", hash = "sha256:5b0dbceb4edee50aa464f59469d34b97864be09111338cfb224a10b6a163909b", size = 209921 },
 ]
 
 [[package]]
@@ -3828,7 +3829,7 @@ hook-check-django-migrations = [
     { name = "unstract-core", editable = "unstract/core" },
     { name = "unstract-filesystem", editable = "unstract/filesystem" },
     { name = "unstract-flags", editable = "unstract/flags" },
-    { name = "unstract-sdk", specifier = "~=0.70.0" },
+    { name = "unstract-sdk", specifier = "~=0.71.0" },
     { name = "unstract-tool-registry", editable = "unstract/tool-registry" },
     { name = "unstract-tool-sandbox", editable = "unstract/tool-sandbox" },
     { name = "unstract-workflow-execution", editable = "unstract/workflow-execution" },
@@ -3894,7 +3895,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "flask", marker = "extra == 'flask'", specifier = "~=3.1.0" },
-    { name = "kombu", specifier = "==5.3.7" },
+    { name = "kombu", specifier = "~=5.5.3" },
     { name = "redis", specifier = "~=5.2.1" },
     { name = "requests", specifier = "==2.31.0" },
 ]
@@ -3909,7 +3910,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "unstract-sdk", specifier = "~=0.70.0" }]
+requires-dist = [{ name = "unstract-sdk", specifier = "~=0.71.0" }]
 
 [[package]]
 name = "unstract-flags"
@@ -3928,7 +3929,7 @@ requires-dist = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.70.0"
+version = "0.71.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filetype" },
@@ -3967,9 +3968,9 @@ dependencies = [
     { name = "tiktoken" },
     { name = "transformers" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/00/f7/e88481d199847003a173c8355b4664fa8b272cfe0b99ba425703e75c4a70/unstract_sdk-0.70.0.tar.gz", hash = "sha256:98ce28e8b1e88b4c43ebc1fbc947cafc9efae0b7914043fcd969061169947d1d", size = 2356341 }
+sdist = { url = "https://files.pythonhosted.org/packages/d0/12/efecbf0581040b1bfc44fe939a68ba07e45c65c16b3e91666227e94b52be/unstract_sdk-0.71.0.tar.gz", hash = "sha256:c9269cbd1656e40a03445d3758bc51d7921273af729e0d3813f5f9e28967e31d", size = 2360756 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/21/a3/92240dd060544348d0d45b5560d064aa63e8c2daee25159dce533b1a137b/unstract_sdk-0.70.0-py3-none-any.whl", hash = "sha256:583f6ec793594d3113379f175883597a8af7d58e9faab5d4ff02f31bf8bf3510", size = 264025 },
+    { url = "https://files.pythonhosted.org/packages/3a/88/4ba63cd8611d7bdaf36619e9fe1b19effb5bc10a13ec50b79bf714aa410a/unstract_sdk-0.71.0-py3-none-any.whl", hash = "sha256:0d3bdaf79468f03991f457d040b07ab5d159be3a601b4bfae7f772083d70b705", size = 265087 },
 ]
 
 [[package]]
@@ -3991,7 +3992,7 @@ requires-dist = [
     { name = "jsonschema", specifier = "~=4.18.2" },
     { name = "pyyaml", specifier = "~=6.0.1" },
     { name = "unstract-flags", editable = "unstract/flags" },
-    { name = "unstract-sdk", specifier = "~=0.70.0" },
+    { name = "unstract-sdk", specifier = "~=0.71.0" },
     { name = "unstract-tool-sandbox", editable = "unstract/tool-sandbox" },
 ]
 
