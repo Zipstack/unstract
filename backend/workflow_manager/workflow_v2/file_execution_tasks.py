@@ -113,7 +113,6 @@ class FileExecutionTasks:
 
         successful_files = 0
         failed_files = 0
-        # error_messages = []
         execution_id = file_data.execution_id
         workflow_id = file_data.workflow_id
         # Reconstruct necessary objects
@@ -172,6 +171,7 @@ class FileExecutionTasks:
         }
 
     @file_processing_app.task(
+        bind=True,
         queue="file_processing",
         max_retries=0,  # Maximum number of retries
         retry_backoff=True,
@@ -179,7 +179,7 @@ class FileExecutionTasks:
         retry_jitter=True,  # Add random jitter to prevent thundering herd
         default_retry_delay=5,  # Initial retry delay (5 seconds)
     )
-    def process_chunk_callback(results, **kwargs):
+    def process_chunk_callback(self, results, **kwargs):
         """Callback task to handle chunk processing results.
 
         Args:
@@ -339,7 +339,6 @@ class FileExecutionTasks:
                 use_file_history=use_file_history,
                 file_execution_id=file_execution_id,
             )
-            # execution_service.file_execution_id = file_execution_id
             execution_service.initiate_tool_execution(
                 current_file_idx, total_files, file_name, single_step
             )
@@ -379,7 +378,6 @@ class FileExecutionTasks:
                     file_hash=file_hash,
                     workflow=workflow,
                     input_file_path=input_file,
-                    # error=error,
                     file_execution_id=file_execution_id,
                 )
             if file_history and destination.is_api:

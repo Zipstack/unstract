@@ -51,6 +51,7 @@ from workflow_manager.workflow_v2.exceptions import (
     InvalidRequest,
     TaskDoesNotExistError,
     WorkflowDoesNotExistError,
+    WorkflowExecutionError,
     WorkflowExecutionNotExist,
 )
 from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelper
@@ -212,8 +213,9 @@ class WorkflowHelper:
                 )
             )
             if not result.id:
-                logger.error(f"Failed to queue execution task {workflow_execution.id}")
-                raise Exception("Failed to queue execution task")
+                exception = f"Failed to queue execution task {workflow_execution.id}"
+                logger.error(exception)
+                raise WorkflowExecutionError(exception)
         except Exception as e:
             workflow_execution.update_execution(
                 status=ExecutionStatus.ERROR,
@@ -429,7 +431,6 @@ class WorkflowHelper:
         execution_cache = ExecutionCacheUtils.get_execution(
             workflow_id=workflow_id, execution_id=execution_id
         )
-        print(f"_get_execution_status :: Execution cache: {execution_cache}")
         if not execution_cache:
             execution_model: WorkflowExecution = WorkflowExecution.objects.get(
                 id=execution_id
@@ -445,7 +446,6 @@ class WorkflowHelper:
             ExecutionCacheUtils.create_execution(
                 execution=execution_cache,
             )
-            print(f"_get_execution_status :: Execution created: {execution_cache}")
         return execution_cache.status
 
     @classmethod
