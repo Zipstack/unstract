@@ -65,7 +65,7 @@ def prompt_processor() -> Any:
         {"tool_id": tool_id, "run_id": run_id, "doc_name": doc_name},
         LogLevel.DEBUG,
         RunLevel.RUN,
-        f"Preparing to execute {len(prompts)} prompt(s)",
+        f"Preparing to execute '{len(prompts)}' prompt(s)",
     )
     # Rename "output" to "prompt"
     for output in prompts:  # type:ignore
@@ -85,10 +85,8 @@ def prompt_processor() -> Any:
         # line-item, table and record.
         if execution_source == PSKeys.TOOL:
             if output[PSKeys.TYPE] == PSKeys.LINE_ITEM:
-                try:
-                    output[PSKeys.TABLE_SETTINGS]
-                except KeyError:
-                    output[PSKeys.TYPE] == PSKeys.JSON
+                if PSKeys.TABLE_SETTINGS not in output:
+                    output[PSKeys.TYPE] = PSKeys.JSON
             if (output[PSKeys.TYPE] == PSKeys.TABLE) or (
                 output[PSKeys.TYPE] == PSKeys.RECORD
             ):
@@ -104,7 +102,7 @@ def prompt_processor() -> Any:
                 doc_name=doc_name,
             )
 
-        app.logger.info(f"[{tool_id}] Executing prompt: {prompt_name}")
+        app.logger.info(f"[{tool_id}] Executing prompt: '{prompt_name}'")
         publish_log(
             log_events_id,
             {
@@ -182,7 +180,7 @@ def prompt_processor() -> Any:
                 RunLevel.RUN,
                 "Unable to obtain LLM / embedding / vectorDB",
             )
-            return APIError(message=msg)
+            raise APIError(message=msg)
 
         if output[PSKeys.TYPE] == PSKeys.LINE_ITEM:
             try:

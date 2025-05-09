@@ -194,7 +194,7 @@ class WorkflowExecution(BaseModel):
         return str(timedelta(seconds=time_in_secs)).split(".")[0]
 
     @property
-    def get_aggregated_usage_cost(self) -> float | None:
+    def aggregated_usage_cost(self) -> float | None:
         """Retrieve aggregated cost for the given execution_id.
 
         Returns:
