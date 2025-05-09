@@ -63,7 +63,6 @@ dev = [
     "unstract-tool-sandbox",
     "unstract-workflow-execution",
     "unstract-filesystem",
-    "unstract-sdk~=0.70.0rc1",
     # For file watching
     "inotify>=0.2.10",
     "poethepoet>=0.33.1",
