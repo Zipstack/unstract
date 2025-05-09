@@ -154,7 +154,7 @@ class AnswerPromptService:
             completion = llm.complete(
                 prompt=prompt,
                 process_text=highlight_data,
-                extract_json=prompt_type.lower() != PSKeys.JSON,
+                extract_json=False,
             )
             answer: str = completion[PSKeys.RESPONSE].text
             highlight_data = completion.get(PSKeys.HIGHLIGHT_DATA, [])
@@ -247,6 +247,7 @@ class AnswerPromptService:
                     structured_output=structured_output,
                     answer=answer,
                 ).run()
+            answer = AnswerPromptService.slice_from_first_bracket(answer)
             if enable_highlight:
                 AnswerPromptService.handle_highlight(
                     execution_source=execution_source,
@@ -299,12 +300,27 @@ class AnswerPromptService:
             whisper_hash = highlight_response.get(PSKeys.WHISPER_HASH, "")
             prompt_key = output[PSKeys.NAME]
             if metadata is not None and prompt_key:
-                metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})[prompt_key] = (
-                    highlight_data
-                )
-                metadata.setdefault(PSKeys.LINE_NUMBERS, {})[prompt_key] = line_numbers
+                if PSKeys.HIGHLIGHT_DATA not in metadata:
+                    metadata[PSKeys.HIGHLIGHT_DATA] = {}
+                metadata[PSKeys.HIGHLIGHT_DATA][prompt_key] = highlight_data
+
+                if PSKeys.LINE_NUMBERS not in metadata:
+                    metadata[PSKeys.LINE_NUMBERS] = {}
+                metadata[PSKeys.LINE_NUMBERS][prompt_key] = line_numbers
+
                 metadata[PSKeys.WHISPER_HASH] = whisper_hash
+
                 if confidence_data:
-                    metadata.setdefault(PSKeys.CONFIDENCE_DATA, {})[prompt_key] = (
-                        confidence_data
-                    )
+                    if PSKeys.CONFIDENCE_DATA not in metadata:
+                        metadata[PSKeys.CONFIDENCE_DATA] = {}
+                    metadata[PSKeys.CONFIDENCE_DATA][prompt_key] = confidence_data
+
+    @staticmethod
+    def slice_from_first_bracket(text: str) -> str:
+        idx_brace = text.find("{")
+        idx_bracket = text.find("[")
+        indices = [i for i in [idx_brace, idx_bracket] if i != -1]
+        if not indices:
+            return text
+        start = min(indices)
+        return text[start:]

@@ -4,6 +4,7 @@ from typing import Any
 import requests
 from celery import shared_task
 
+from backend.celery_service import app as celery_app
 from notification_v2.enums import AuthorizationType
 from notification_v2.provider.notification_provider import NotificationProvider
 
@@ -28,8 +29,14 @@ class Webhook(NotificationProvider):
         except ValueError as e:
             logger.error(f"Error validating notification {self.notification} :: {e}")
             return
-        send_webhook_notification.apply_async(
-            (self.notification.url, self.payload, headers, self.NOTIFICATION_TIMEOUT),
+        celery_app.send_task(
+            "send_webhook_notification",
+            args=[
+                self.notification.url,
+                self.payload,
+                headers,
+                self.NOTIFICATION_TIMEOUT,
+            ],
             kwargs={
                 WebhookNotificationArg.MAX_RETRIES: self.notification.max_retries,
                 WebhookNotificationArg.RETRY_DELAY: self.RETRY_DELAY,

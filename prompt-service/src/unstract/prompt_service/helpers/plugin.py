@@ -5,8 +5,6 @@ from typing import Any
 
 from flask import Flask
 
-from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
-
 
 class PluginManager:
     _instance = None
@@ -73,13 +71,6 @@ class PluginManager:
     def get_plugin(self, name: str) -> dict[str, Any]:
         """Get the plugin metadata by name."""
         return self.plugins.get(name, {})
-
-    def get_cleaned_context(self, context: set[str]) -> list[str]:
-        """Returns cleaned context from the clean context plugin."""
-        clean_context_plugin = self.get_plugin(PSKeys.CLEAN_CONTEXT)
-        if clean_context_plugin:
-            return clean_context_plugin["entrypoint_cls"].run(context=context)
-        return list(context)
 
 
 def plugin_loader(app: Flask) -> None:

@@ -299,7 +299,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         Returns:
             None
         """
-        self.publish_average_cost_log(total_files=successful_files)
+        self.publish_average_cost_log(total_files=total_files)
 
         # To not associate final logs with a file execution
         self.file_execution_id = None
@@ -316,7 +316,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
     def publish_average_cost_log(self, total_files: int):
         try:
             execution = WorkflowExecution.objects.get(pk=self.execution_id)
-            total_cost = execution.get_aggregated_usage_cost()
+            total_cost = execution.aggregated_usage_cost
 
             if total_cost is not None:
                 average_cost = round(total_cost / total_files, 5)

@@ -65,7 +65,7 @@ def prompt_processor() -> Any:
         {"tool_id": tool_id, "run_id": run_id, "doc_name": doc_name},
         LogLevel.DEBUG,
         RunLevel.RUN,
-        f"Preparing to execute {len(prompts)} prompt(s)",
+        f"Preparing to execute '{len(prompts)}' prompt(s)",
     )
     # Rename "output" to "prompt"
     for output in prompts:  # type:ignore
@@ -81,6 +81,17 @@ def prompt_processor() -> Any:
         app.logger.info(f"[{tool_id}] chunk size: {chunk_size}")
         util = PromptServiceBaseTool(platform_key=platform_key)
         index = Index(tool=util, run_id=run_id, capture_metrics=True)
+        # To support backward compatability for cell types
+        # line-item, table and record.
+        if execution_source == PSKeys.TOOL:
+            if output[PSKeys.TYPE] == PSKeys.LINE_ITEM:
+                if PSKeys.TABLE_SETTINGS not in output:
+                    output[PSKeys.TYPE] = PSKeys.JSON
+            if (output[PSKeys.TYPE] == PSKeys.TABLE) or (
+                output[PSKeys.TYPE] == PSKeys.RECORD
+            ):
+                output[PSKeys.TYPE] = PSKeys.LINE_ITEM
+
         if VariableReplacementService.is_variables_present(prompt_text=prompt_text):
             prompt_text = VariableReplacementService.replace_variables_in_prompt(
                 prompt=output,
@@ -91,7 +102,7 @@ def prompt_processor() -> Any:
                 doc_name=doc_name,
             )
 
-        app.logger.info(f"[{tool_id}] Executing prompt: {prompt_name}")
+        app.logger.info(f"[{tool_id}] Executing prompt: '{prompt_name}'")
         publish_log(
             log_events_id,
             {
@@ -169,7 +180,7 @@ def prompt_processor() -> Any:
                 RunLevel.RUN,
                 "Unable to obtain LLM / embedding / vectorDB",
             )
-            return APIError(message=msg)
+            raise APIError(message=msg)
 
         if output[PSKeys.TYPE] == PSKeys.LINE_ITEM:
             try:
