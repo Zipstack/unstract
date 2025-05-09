@@ -2,7 +2,7 @@ import { Col, Image, Modal, Row, Typography } from "antd";
 import PropTypes from "prop-types";
 
 import { DisplayPromptResult } from "./DisplayPromptResult";
-import { LINE_ITEM_ENFORCE_TYPE } from "./constants";
+import { TABLE } from "./constants";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import usePromptOutput from "../../../hooks/usePromptOutput";
@@ -81,7 +81,7 @@ function PromptOutputsModal({
                     )}
                   </div>
                   <div className="flex-1 overflow-y-auto pad-top-10">
-                    {enforceType === LINE_ITEM_ENFORCE_TYPE && TableOutput ? (
+                    {enforceType === TABLE && TableOutput ? (
                       <TableOutput
                         output={promptOutputData?.output}
                         pagination={10}

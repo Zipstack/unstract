@@ -181,7 +181,7 @@ class AnswerPromptService:
             raise APIError(str(e)) from e
 
     @staticmethod
-    def extract_line_item(
+    def extract_table(
         output: dict[str, Any],
         structured_output: dict[str, Any],
         llm: LLM,

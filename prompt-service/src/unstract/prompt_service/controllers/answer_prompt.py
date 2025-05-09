@@ -81,17 +81,6 @@ def prompt_processor() -> Any:
         app.logger.info(f"[{tool_id}] chunk size: {chunk_size}")
         util = PromptServiceBaseTool(platform_key=platform_key)
         index = Index(tool=util, run_id=run_id, capture_metrics=True)
-        # To support backward compatability for cell types
-        # line-item, table and record.
-        if execution_source == PSKeys.TOOL:
-            if output[PSKeys.TYPE] == PSKeys.LINE_ITEM:
-                if PSKeys.TABLE_SETTINGS not in output:
-                    output[PSKeys.TYPE] = PSKeys.JSON
-            if (output[PSKeys.TYPE] == PSKeys.TABLE) or (
-                output[PSKeys.TYPE] == PSKeys.RECORD
-            ):
-                output[PSKeys.TYPE] = PSKeys.LINE_ITEM
-
         if VariableReplacementService.is_variables_present(prompt_text=prompt_text):
             prompt_text = VariableReplacementService.replace_variables_in_prompt(
                 prompt=output,
@@ -182,9 +171,9 @@ def prompt_processor() -> Any:
             )
             raise APIError(message=msg)
 
-        if output[PSKeys.TYPE] == PSKeys.LINE_ITEM:
+        if output[PSKeys.TYPE] == PSKeys.TABLE:
             try:
-                structured_output = AnswerPromptService.extract_line_item(
+                structured_output = AnswerPromptService.extract_table(
                     output=output,
                     structured_output=structured_output,
                     llm=llm,
