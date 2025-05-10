@@ -206,6 +206,36 @@ def prompt_processor() -> Any:
                     "Error while extracting table for the prompt",
                 )
                 raise api_error
+        elif output[PSKeys.TYPE] == PSKeys.LINE_ITEM:
+            try:
+                structured_output = AnswerPromptService.extract_line_item(
+                    tool_settings=tool_settings,
+                    output=output,
+                    structured_output=structured_output,
+                    llm=llm,
+                    file_path=file_path,
+                    metadata=metadata,
+                    execution_source=execution_source,
+                )
+                continue
+            except APIError as e:
+                app.logger.error(
+                    "Failed to extract line-item for the prompt %s: %s",
+                    output[PSKeys.NAME],
+                    str(e),
+                )
+                publish_log(
+                    log_events_id,
+                    {
+                        "tool_id": tool_id,
+                        "prompt_key": prompt_name,
+                        "doc_name": doc_name,
+                    },
+                    LogLevel.ERROR,
+                    RunLevel.RUN,
+                    "Error while extracting line-item for the prompt",
+                )
+                raise e
 
         try:
             answer = "NA"
