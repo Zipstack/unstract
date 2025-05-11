@@ -149,6 +149,13 @@ class WorkflowHelper:
             status=ExecutionStatus.EXECUTING, increment_attempt=True
         )
 
+        if not input_files:
+            logger.info(f"Execution {workflow_execution.id} no files to process")
+            workflow_execution.update_execution(
+                status=ExecutionStatus.COMPLETED,
+            )
+            return
+
         chunks = cls.get_file_chunks(input_files=input_files)
         chunk_tasks = []
         mode = (
@@ -157,7 +164,9 @@ class WorkflowHelper:
             else str(execution_mode)
         )
         result = None
-
+        logger.info(
+            f"Execution {workflow_execution.id} processing {total_files} files in {len(chunks)} chunks"
+        )
         for chunk in chunks:
             # Convert all UUIDs to strings in chunk_data
             file_data = FileData(
@@ -188,6 +197,7 @@ class WorkflowHelper:
                 exception = f"Failed to queue execution task {workflow_execution.id}"
                 logger.error(exception)
                 raise WorkflowExecutionError(exception)
+            logger.info(f"Execution {workflow_execution.id} task queued successfully")
         except Exception as e:
             workflow_execution.update_execution(
                 status=ExecutionStatus.ERROR,
@@ -223,7 +233,6 @@ class WorkflowHelper:
                 workflow.id, ToolInstanceKey.STEP
             )
         )
-
         WorkflowHelper.validate_tool_instances_meta(tool_instances=tool_instances)
         execution_mode = execution_mode or WorkflowExecution.Mode.INSTANT
         execution_id = str(workflow_execution.id)
@@ -264,7 +273,6 @@ class WorkflowHelper:
                 input_files=input_files,
                 organization_id=organization_id,
                 pipeline_id=pipeline_id,
-                wait_for_results=False,  # Do not wait for results in run_workflow
                 scheduled=scheduled,
                 use_file_history=use_file_history,
                 execution_mode=execution_mode,
@@ -293,10 +301,6 @@ class WorkflowHelper:
                 pipeline_id=pipeline_id, workflow_execution=workflow_execution
             )
             raise
-        finally:
-            # TODO: Handle error gracefully during delete
-            # Mark status as an ERROR correctly
-            destination.delete_execution_and_api_storage_dir()
 
     @staticmethod
     def _update_pipeline_status(

@@ -535,17 +535,6 @@ class DestinationConnector(BaseConnector):
 
         return metadata
 
-    def delete_execution_directory(self) -> None:
-        """Delete the execution directory.
-
-        Returns:
-            None
-        """
-        file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
-        file_storage = file_system.get_file_storage()
-        if file_storage.exists(self.execution_dir):
-            file_storage.rm(self.execution_dir, recursive=True)
-
     def delete_file_execution_directory(self) -> None:
         """Delete the file execution directory.
 
@@ -557,14 +546,17 @@ class DestinationConnector(BaseConnector):
         if self.file_execution_dir and file_storage.exists(self.file_execution_dir):
             file_storage.rm(self.file_execution_dir, recursive=True)
 
-    def delete_execution_and_api_storage_dir(self) -> None:
+    @classmethod
+    def delete_execution_and_api_storage_dir(
+        cls, workflow_id: str, execution_id: str
+    ) -> None:
         """Delete the execution and api storage directories.
 
         Returns:
             None
         """
-        self.delete_execution_directory()
-        self.delete_api_storage_dir(self.workflow_id, self.execution_id)
+        cls.delete_execution_directory(workflow_id, execution_id)
+        cls.delete_api_storage_dir(workflow_id, execution_id)
 
     @classmethod
     def delete_api_storage_dir(cls, workflow_id: str, execution_id: str) -> None:
@@ -580,6 +572,23 @@ class DestinationConnector(BaseConnector):
         file_storage = file_system.get_file_storage()
         if file_storage.exists(api_storage_dir):
             file_storage.rm(api_storage_dir, recursive=True)
+            logger.info(f"API storage directory deleted: {api_storage_dir}")
+
+    @classmethod
+    def delete_execution_directory(cls, workflow_id: str, execution_id: str) -> None:
+        """Delete the execution directory.
+
+        Returns:
+            None
+        """
+        execution_dir = cls.get_execution_dir_path(
+            workflow_id=workflow_id, execution_id=execution_id
+        )
+        file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+        file_storage = file_system.get_file_storage()
+        if file_storage.exists(execution_dir):
+            file_storage.rm(execution_dir, recursive=True)
+            logger.info(f"Execution directory deleted: {execution_dir}")
 
     @classmethod
     def create_endpoint_for_workflow(

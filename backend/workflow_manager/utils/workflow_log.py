@@ -1,3 +1,5 @@
+import logging
+
 from account_v2.constants import Common
 from utils.local_context import StateStore
 
@@ -42,6 +44,13 @@ class WorkflowLog:
             organization_id=self.organization_id,
         )
         LogPublisher.publish(self.messaging_channel, log_details)
+
+    def log_error(self, logger: logging.Logger, message: str) -> None:
+        self.publish_log(message, level=LogLevel.ERROR)
+        logger.error(message, exc_info=True, stack_info=True)
+
+    def log_info(self, message: str) -> None:
+        self.publish_log(message, level=LogLevel.INFO)
 
     def publish_update_log(
         self,

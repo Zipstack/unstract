@@ -5,6 +5,9 @@ from typing import Any
 
 from celery.result import AsyncResult
 
+from workflow_manager.endpoint_v2.dto import DestinationConfig, SourceConfig
+from workflow_manager.file_execution.models import WorkflowFileExecution
+from workflow_manager.utils.workflow_log import WorkflowLog
 from workflow_manager.workflow_v2.constants import WorkflowKey
 
 
@@ -180,3 +183,30 @@ class ChunkData:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+@dataclass
+class ToolExecutionResult:
+    error: str | None
+    result: Any | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "error": self.error,
+            "result": self.result,
+        }
+
+
+@dataclass
+class FinalOutputResult:
+    output: Any | None
+    metadata: dict[str, Any] | None
+    error: str | None
+
+
+@dataclass
+class ExecutionContext:
+    workflow_log: WorkflowLog
+    workflow_file_execution: WorkflowFileExecution
+    source_config: SourceConfig
+    destination_config: DestinationConfig

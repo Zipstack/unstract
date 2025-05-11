@@ -35,7 +35,7 @@ class ExecutionFileHandler:
         self.workflow_id = workflow_id
         self.execution_id = execution_id
         self.file_execution_id = file_execution_id
-        self.execution_dir = self._get_execution_dir(
+        self.execution_dir = self.get_execution_dir(
             workflow_id, execution_id, organization_id
         )
         self.file_execution_dir = self._get_file_execution_dir()
@@ -155,7 +155,7 @@ class ExecutionFileHandler:
         return os.path.join(self.execution_dir, self.file_execution_id)
 
     @classmethod
-    def _get_execution_dir(
+    def get_execution_dir(
         cls, workflow_id: str, execution_id: str, organization_id: str
     ) -> str:
         """Create the directory path for storing execution-related files.
