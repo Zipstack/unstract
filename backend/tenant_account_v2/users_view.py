@@ -36,9 +36,7 @@ class OrganizationUserViewSet(viewsets.ViewSet):
         auth_controller = AuthenticationController()
 
         auth_controller = AuthenticationController()
-        update_status = auth_controller.add_user_role(
-            request, org_id, user_email, role
-        )
+        update_status = auth_controller.add_user_role(request, org_id, user_email, role)
         if update_status:
             return Response(
                 status=status.HTTP_200_OK,

@@ -1,8 +1,9 @@
+from typing import Any
+
 from django.conf import settings
 from django.db import connection
 from django.http import HttpRequest
 from tenant_account_v2.models import OrganizationMember
-from typing import Any
 
 
 class UserSessionUtils:
