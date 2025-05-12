@@ -1,6 +1,7 @@
 from kombu import Queue
 
 from backend.celery_config import CeleryConfig as BaseCeleryConfig
+from backend.workers.file_processing.constants import QueueNames
 
 
 class CeleryConfig(BaseCeleryConfig):
@@ -10,9 +11,10 @@ class CeleryConfig(BaseCeleryConfig):
     """
 
     task_queues = [
-        Queue("file_processing", routing_key="file_processing"),
+        Queue(QueueNames.FILE_PROCESSING, routing_key=QueueNames.FILE_PROCESSING),
+        Queue(QueueNames.API_FILE_PROCESSING, routing_key=QueueNames.API_FILE_PROCESSING),
     ]
 
-    task_default_queue = "file_processing"
+    task_default_queue = QueueNames.FILE_PROCESSING
 
     imports = ["workflow_manager.workflow_v2.file_execution_tasks"]

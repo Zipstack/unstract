@@ -9,6 +9,7 @@ from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
 from utils.constants import Account
 from utils.local_context import StateStore
 
+from backend.workers.file_processing.constants import QueueNames
 from backend.workers.file_processing.file_processing import app as file_processing_app
 from unstract.workflow_execution.enums import LogComponent, LogStage, LogState
 from unstract.workflow_execution.exceptions import StopExecution
@@ -46,6 +47,11 @@ logger = logging.getLogger(__name__)
 
 
 class FileExecutionTasks:
+    @staticmethod
+    def get_queue_name(source: SourceConnector) -> str:
+        is_api = source.endpoint.connection_type == WorkflowEndpoint.ConnectionType.API
+        return QueueNames.API_FILE_PROCESSING if is_api else QueueNames.FILE_PROCESSING
+
     @staticmethod
     def get_workflow_by_id(id: str) -> Workflow:
         try:
@@ -180,7 +186,6 @@ class FileExecutionTasks:
 
     @file_processing_app.task(
         bind=True,
-        queue="file_processing",
         max_retries=0,  # Maximum number of retries
         retry_backoff=True,
         retry_backoff_max=500,  # Max delay between retries (500 seconds)

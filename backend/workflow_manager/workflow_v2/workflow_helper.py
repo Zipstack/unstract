@@ -183,15 +183,20 @@ class WorkflowHelper:
             )
             batch_data = FileBatchData(files=batch, file_data=file_data)
 
+            # Determine the appropriate queue based on execution_mode
+            file_processing_queue = FileExecutionTasks.get_queue_name(source)
+
             # Send each batch to the dedicated file_processing queue
             batch_tasks.append(
-                FileExecutionTasks.process_file_batch.s(batch_data.to_dict())
+                FileExecutionTasks.process_file_batch.s(batch_data.to_dict()).set(
+                    queue=file_processing_queue
+                )
             )
         try:
             result = chord(batch_tasks)(
                 FileExecutionTasks.process_batch_callback.s(
                     execution_id=str(workflow_execution.id)
-                )
+                ).set(queue=file_processing_queue)
             )
             if not result.id:
                 exception = f"Failed to queue execution task {workflow_execution.id}"
