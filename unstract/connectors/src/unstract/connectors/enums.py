@@ -7,3 +7,4 @@ class ConnectorMode(Enum):
     DATABASE = "DATABASE"
     API = "API"
     MANUAL_REVIEW = "MANUAL_REVIEW"
+    EMAIL = "EMAIL"

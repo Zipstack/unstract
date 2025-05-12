@@ -1,0 +1,11 @@
+# Test framework dependencies
+pytest==7.4.0
+pytest-cov==4.1.0
+pytest-mock==3.11.1
+coverage==7.3.0
+
+# Email connector dependencies
+O365==2.0.26
+google-api-python-client==2.86.0
+google-auth-httplib2==0.1.0
+google-auth-oauthlib==1.0.0

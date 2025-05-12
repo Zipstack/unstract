@@ -47,6 +47,11 @@ class UnstractQueue(UnstractConnector, ABC):
         return False
 
     @staticmethod
+    def can_receive_email() -> bool:
+        """Whether connector supports receiving emails."""
+        return False
+
+    @staticmethod
     def requires_oauth() -> bool:
         return False
 

@@ -7,6 +7,7 @@ from unstract.connectors import ConnectorDict  # type: ignore
 from unstract.connectors.base import UnstractConnector
 from unstract.connectors.constants import Common
 from unstract.connectors.databases import connectors as db_connectors
+from unstract.connectors.email import connectors as email_connectors
 from unstract.connectors.enums import ConnectorMode
 from unstract.connectors.filesystems import connectors as fs_connectors
 from unstract.connectors.queues import connectors as q_connectors
@@ -17,7 +18,9 @@ logger = logging.getLogger(__name__)
 @singleton
 class Connectorkit:
     def __init__(self) -> None:
-        self._connectors: ConnectorDict = fs_connectors | db_connectors | q_connectors
+        self._connectors: ConnectorDict = (
+            fs_connectors | db_connectors | q_connectors | email_connectors
+        )
 
     @property
     def connectors(self) -> ConnectorDict:
@@ -92,6 +95,7 @@ class Connectorkit:
             python_social_auth_backend = m.python_social_auth_backend()
             can_read = m.can_read()
             can_write = m.can_write()
+            receive_email = m.can_receive_email()
             connector_mode = m.get_connector_mode()
             if mode and mode != connector_mode:
                 continue
@@ -107,6 +111,7 @@ class Connectorkit:
                     "python_social_auth_backend": python_social_auth_backend,  # noqa
                     "can_read": can_read,
                     "can_write": can_write,
+                    "receive_email": receive_email,
                     "json_schema": json_schema,
                     "connector_mode": connector_mode,
                 }

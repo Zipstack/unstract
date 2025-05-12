@@ -50,6 +50,11 @@ class UnstractConnector(ABC):
 
     @staticmethod
     @abstractmethod
+    def can_receive_email() -> bool:
+        return False
+
+    @staticmethod
+    @abstractmethod
     def requires_oauth() -> bool:
         return False
 

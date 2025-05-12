@@ -51,6 +51,11 @@ class UnstractFileSystem(UnstractConnector, ABC):
         return False
 
     @staticmethod
+    def can_receive_email() -> bool:
+        """Whether connector supports receiving emails."""
+        return False
+
+    @staticmethod
     def can_read() -> bool:
         return False
 

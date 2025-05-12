@@ -47,6 +47,10 @@ class UnstractDB(UnstractConnector, ABC):
         return False
 
     @staticmethod
+    def can_receive_email() -> bool:
+        return False
+
+    @staticmethod
     def get_connector_mode() -> ConnectorMode:
         return ConnectorMode.DATABASE
 

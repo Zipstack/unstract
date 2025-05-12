@@ -1,0 +1,34 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+        "host": {
+            "type": "string",
+            "title": "POP3 Server",
+            "description": "POP3 server hostname"
+        },
+        "port": {
+            "type": "integer",
+            "title": "Port",
+            "description": "POP3 server port (default: 995 for POP3S)",
+            "default": 995
+        },
+        "username": {
+            "type": "string",
+            "title": "Username",
+            "description": "Email account username"
+        },
+        "password": {
+            "type": "string",
+            "title": "Password",
+            "description": "Email account password"
+        },
+        "use_ssl": {
+            "type": "boolean",
+            "title": "Use SSL",
+            "description": "Whether to use SSL for connection",
+            "default": true
+        }
+    },
+    "required": ["host", "username", "password"]
+}

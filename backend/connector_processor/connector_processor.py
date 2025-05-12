@@ -82,6 +82,10 @@ class ConnectorProcessor:
             updated_connectors = fetch_connectors_by_key_value(
                 ConnectorKeys.CAN_WRITE, True, connector_mode=connector_mode
             )
+        if type == ConnectorKeys.EMAIL:
+            updated_connectors = fetch_connectors_by_key_value(
+                ConnectorKeys.RECEIVE_EMAIL, True, connector_mode=connector_mode
+            )
 
         for each_connector in updated_connectors:
             supported_connectors.append(

@@ -46,6 +46,7 @@ def get_supported_connectors(request: HttpRequest) -> HttpResponse:
         if (
             connector_type == ConnectorKeys.INPUT
             or connector_type == ConnectorKeys.OUTPUT
+            or connector_type == ConnectorKeys.EMAIL
         ):
             json_schema = ConnectorProcessor.get_all_supported_connectors(
                 type=connector_type, connector_mode=connector_mode
