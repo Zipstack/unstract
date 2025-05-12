@@ -37,7 +37,7 @@ class OrganizationUserViewSet(viewsets.ViewSet):
 
         auth_controller = AuthenticationController()
         update_status = auth_controller.add_user_role(
-            request.user, org_id, user_email, role
+            request, org_id, user_email, role
         )
         if update_status:
             return Response(
@@ -63,7 +63,7 @@ class OrganizationUserViewSet(viewsets.ViewSet):
 
         auth_controller = AuthenticationController()
         update_status = auth_controller.remove_user_role(
-            request.user, org_id, user_email, role
+            request, org_id, user_email, role
         )
         if update_status:
             return Response(
@@ -120,6 +120,7 @@ class OrganizationUserViewSet(viewsets.ViewSet):
             admin=request.user,
             org_id=UserSessionUtils.get_organization_id(request),
             user_list=user_list,
+            request=request,
         )
 
         response_serializer = UserInviteResponseSerializer(invite_response, many=True)
@@ -146,7 +147,7 @@ class OrganizationUserViewSet(viewsets.ViewSet):
 
         auth_controller = AuthenticationController()
         is_updated = auth_controller.remove_users_from_organization(
-            admin=request.user,
+            request=request,
             organization_id=organization_id,
             user_emails=user_emails,
         )

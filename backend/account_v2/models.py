@@ -18,7 +18,9 @@ class Organization(models.Model):
 
     name = models.CharField(max_length=NAME_SIZE)
     display_name = models.CharField(max_length=NAME_SIZE)
-    organization_id = models.CharField(max_length=FieldLength.ORG_NAME_SIZE, unique=True)
+    organization_id = models.CharField(
+        max_length=FieldLength.ORG_NAME_SIZE, unique=True
+    )
     created_by = models.ForeignKey(
         "User",
         on_delete=models.SET_NULL,
@@ -140,3 +142,21 @@ class PlatformKey(models.Model):
                 name="unique_key_name_organization",
             ),
         ]
+
+class GroupRoleMapping(models.Model):
+    """Maps Active Directory groups to Auth0 roles.
+
+    This model maintains the mapping between AD groups and Auth0 roles,
+    enabling role-based access control synchronization between
+    Active Directory and Auth0.
+    """
+    # tenant_id = models.IntegerField() TODO: Add tenant_id
+    ad_group = models.CharField(max_length=255)
+    auth0_role = models.CharField(max_length=255)
+
+    class Meta:
+        db_table = "group_role_mapping"
+        unique_together = ("ad_group", "auth0_role")  # Ensures no duplicate mappings
+
+    def __str__(self) -> str:
+        return f"{self.ad_group} -> {self.auth0_role}"

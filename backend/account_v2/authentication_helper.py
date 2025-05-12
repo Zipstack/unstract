@@ -27,6 +27,12 @@ class AuthenticationHelper:
         return members
 
     @staticmethod
+    def create_or_update_user(email: str, user_id: str) -> User:
+        user_service = UserService()
+        user = user_service.create_or_update_user(email, user_id)
+        return user
+
+    @staticmethod
     def get_or_create_user_by_email(user_id: str, email: str) -> User:
         """Get or create a user with the given email.
 

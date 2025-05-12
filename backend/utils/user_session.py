@@ -2,6 +2,7 @@ from django.conf import settings
 from django.db import connection
 from django.http import HttpRequest
 from tenant_account_v2.models import OrganizationMember
+from typing import Any
 
 
 class UserSessionUtils:
@@ -34,6 +35,10 @@ class UserSessionUtils:
     @staticmethod
     def get_organization_member_role(request: HttpRequest) -> str | None:
         return request.session.get("role")
+
+    @staticmethod
+    def get_token_data(request: HttpRequest) -> Any | None:
+        return request.session.get("token_data")
 
     @classmethod
     def is_authorized_path(cls, request: HttpRequest) -> bool:

@@ -7,6 +7,7 @@ from django.db.utils import IntegrityError
 from django.middleware import csrf
 from django.shortcuts import redirect
 from logs_helper.log_service import LogService
+from django.http import HttpRequest
 from rest_framework import status
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -127,8 +128,9 @@ class AuthenticationController:
                 AuthorizationErrorCode.USR,
                 AuthorizationErrorCode.INE001,
                 AuthorizationErrorCode.INE002,
+                AuthorizationErrorCode.INS,
             }:  # type: ignore
-                response.data = ({"domain": ex.data.get("domain"), "code": ex.code},)
+                response.data = {"domain": ex.data.get("domain"), "code": ex.code}
                 return response
             # Return in case even if missed unknown exception in
             # self.auth_service.user_organizations(request)
@@ -319,6 +321,7 @@ class AuthenticationController:
         admin: User,
         org_id: str,
         user_list: list[dict[str, str | None]],
+        request: HttpRequest,
     ) -> list[UserInviteResponse]:
         """Invites users to join an organization.
 
@@ -348,7 +351,7 @@ class AuthenticationController:
                 # Check if user is already part of current organization
                 if not user:
                     status = self.auth_service.invite_user(
-                        admin_user, org_id, email, role=role
+                        admin_user, org_id, email, role=role, request=request
                     )
                     message = "User invitation successful."
 
@@ -362,8 +365,9 @@ class AuthenticationController:
         return response
 
     def remove_users_from_organization(
-        self, admin: User, organization_id: str, user_emails: list[str]
+        self, request: Request, organization_id: str, user_emails: list[str]
     ) -> bool:
+        admin: User = request.user
         admin_user = OrganizationMemberService.get_user_by_id(id=admin.id)
         user_ids = OrganizationMemberService.get_members_by_user_email(
             user_emails=user_emails,
@@ -382,6 +386,7 @@ class AuthenticationController:
                 admin=admin_user,
                 organization_id=organization_id,
                 user_ids=user_ids_list,
+                request=request,
             )
         else:
             is_removed = False
@@ -395,13 +400,14 @@ class AuthenticationController:
         return is_removed
 
     def add_user_role(
-        self, admin: User, org_id: str, email: str, role: str
+        self, request: Request, org_id: str, email: str, role: str
     ) -> str | None:
+        admin: User = request.user
         admin_user = OrganizationMemberService.get_user_by_id(id=admin.id)
         user = OrganizationMemberService.get_user_by_email(email=email)
         if user:
             current_roles = self.auth_service.add_organization_user_role(
-                admin_user, org_id, user.user.user_id, [role]
+                admin_user, org_id, user.user.user_id, [role], request
             )
             if current_roles:
                 self.save_organization_user_role(
@@ -412,13 +418,14 @@ class AuthenticationController:
             return None
 
     def remove_user_role(
-        self, admin: User, org_id: str, email: str, role: str
+        self, request: Request, org_id: str, email: str, role: str
     ) -> str | None:
+        admin: User = request.user
         admin_user = OrganizationMemberService.get_user_by_id(id=admin.id)
         organization_member = OrganizationMemberService.get_user_by_email(email=email)
         if organization_member:
             current_roles = self.auth_service.remove_organization_user_role(
-                admin_user, org_id, organization_member.user.user_id, [role]
+                admin_user, org_id, organization_member.user.user_id, [role], request
             )
             if current_roles:
                 self.save_organization_user_role(
@@ -441,7 +448,14 @@ class AuthenticationController:
     ) -> OrganizationMember:
         existing_tenant_user = OrganizationMemberService.get_user_by_id(id=user.id)
 
+        #even if existing tenat user updat him with latest role from auth0 org
         if existing_tenant_user:
+            user_roles = self.auth_service.get_organization_role_of_user(
+                user_id=existing_tenant_user.user.user_id,
+                organization_id=organization.organization_id,
+            )
+            existing_tenant_user.role = user_roles[0]
+            existing_tenant_user.save()
             return existing_tenant_user
 
         account_user = self.get_or_create_user(user=user)

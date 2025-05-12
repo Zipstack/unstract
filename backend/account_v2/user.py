@@ -14,6 +14,16 @@ class UserService:
     ) -> None:
         pass
 
+    def create_or_update_user(self, email: str, user_id: str) -> Any:
+        try:
+            user, created = User.objects.get_or_create(email=email, user_id=user_id, username=user_id)
+            if created:
+                Logger.debug("User created successfully")
+            return user
+        except IntegrityError as error:
+            Logger.info(f"[Duplicate Id] Failed to create User Error: {error}")
+            raise error
+
     def create_user(self, email: str, user_id: str) -> User:
         try:
             user: User = User(email=email, user_id=user_id, username=email)
