@@ -99,12 +99,12 @@ const CustomLogo = ({ onClick, className }) => {
   }
   return <UnstractLogo className={className} onClick={onClick} />;
 };
-let APIHubLogo;
-try {
-  APIHubLogo = require("../../../plugins/assets/index.js").APIHubLogo;
-} catch {
-  // Ignore if hook not available
-}
+// let APIHubLogo;
+// try {
+//   APIHubLogo = require("../../../plugins/assets/verticals/index.js").APIHubLogo;
+// } catch {
+//   // Ignore if hook not available
+// }
 
 let unstractSubscriptionPlan;
 let unstractSubscriptionPlanStore;
@@ -161,7 +161,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   }, [unstractSubscriptionPlan]);
 
   const isUnstract = !(selectedProduct && selectedProduct !== "unstract");
-  const isAPIHub = selectedProduct && selectedProduct === "verticals";
+  // const isAPIHub = selectedProduct && selectedProduct === "verticals";
 
   // Check user role and whether the onboarding is incomplete
   useEffect(() => {
@@ -393,9 +393,10 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
               navigate(`/${sessionDetails?.orgName}/${homePagePath}`)
             }
           />
-        ) : isAPIHub ? (
-          APIHubLogo && <APIHubLogo className="topbar-logo" />
         ) : (
+          // : isAPIHub ? (
+          //   APIHubLogo && <APIHubLogo className="topbar-logo" />
+          // )
           WhispererLogo && <WhispererLogo className="topbar-logo" />
         )}
         {reviewPageHeader && (
