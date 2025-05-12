@@ -4,22 +4,29 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('account_v2', '0001_initial'),
+        ("account_v2", "0001_initial"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='GroupRoleMapping',
+            name="GroupRoleMapping",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('ad_group', models.CharField(max_length=255)),
-                ('auth0_role', models.CharField(max_length=255)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("ad_group", models.CharField(max_length=255)),
+                ("auth0_role", models.CharField(max_length=255)),
             ],
             options={
-                'db_table': 'group_role_mapping',
-                'unique_together': {('ad_group', 'auth0_role')},
+                "db_table": "group_role_mapping",
+                "unique_together": {("ad_group", "auth0_role")},
             },
         ),
     ]

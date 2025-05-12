@@ -4,10 +4,10 @@ from typing import Any
 from django.conf import settings
 from django.contrib.auth import logout as django_logout
 from django.db.utils import IntegrityError
+from django.http import HttpRequest
 from django.middleware import csrf
 from django.shortcuts import redirect
 from logs_helper.log_service import LogService
-from django.http import HttpRequest
 from rest_framework import status
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -448,7 +448,7 @@ class AuthenticationController:
     ) -> OrganizationMember:
         existing_tenant_user = OrganizationMemberService.get_user_by_id(id=user.id)
 
-        #even if existing tenat user updat him with latest role from auth0 org
+        # even if existing tenat user updat him with latest role from auth0 org
         if existing_tenant_user:
             user_roles = self.auth_service.get_organization_role_of_user(
                 user_id=existing_tenant_user.user.user_id,
