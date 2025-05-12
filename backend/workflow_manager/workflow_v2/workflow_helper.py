@@ -42,8 +42,8 @@ from workflow_manager.workflow_v2.constants import (
     WorkflowMessages,
 )
 from workflow_manager.workflow_v2.dto import (
-    ChunkData,
     ExecutionResponse,
+    FileBatchData,
     FileData,
 )
 from workflow_manager.workflow_v2.enums import ExecutionStatus, SchemaEntity, SchemaType
@@ -93,7 +93,7 @@ class WorkflowHelper:
         return workflow
 
     @classmethod
-    def get_file_chunks(
+    def get_file_batches(
         cls, input_files: dict[str, FileHash]
     ) -> list[list[tuple[str, FileHash]]]:
         """_summary_
@@ -102,29 +102,29 @@ class WorkflowHelper:
             input_files (dict[str, FileHash]): input files
 
         Returns:
-            chunks: chunks of input files
+            batches: batches of input files
         """
         json_serializable_files = {
             file_name: file_hash.to_json() for file_name, file_hash in input_files.items()
         }
 
-        # Prepare chunks of files for parallel processing
-        CHUNK_SIZE = settings.FILE_EXECUTION_CHUNK_SIZE  # Max number of chunks
+        # Prepare batches of files for parallel processing
+        BATCH_SIZE = settings.MAX_PARALLEL_FILE_BATCHES  # Max number of batches
         file_items = list(json_serializable_files.items())
 
-        # Calculate how many items per chunk
+        # Calculate how many items per batch
         num_files = len(file_items)
-        num_chunks = min(CHUNK_SIZE, num_files)
-        items_per_chunk = math.ceil(num_files / num_chunks)
+        num_batches = min(BATCH_SIZE, num_files)
+        items_per_batch = math.ceil(num_files / num_batches)
 
-        # Split into chunks
-        chunks = []
-        for start_index in range(0, len(file_items), items_per_chunk):
-            end_index = start_index + items_per_chunk
-            chunk = file_items[start_index:end_index]
-            chunks.append(chunk)
+        # Split into batches
+        batches = []
+        for start_index in range(0, len(file_items), items_per_batch):
+            end_index = start_index + items_per_batch
+            batch = file_items[start_index:end_index]
+            batches.append(batch)
 
-        return chunks
+        return batches
 
     @classmethod
     def process_input_files(
@@ -156,8 +156,8 @@ class WorkflowHelper:
             )
             return
 
-        chunks = cls.get_file_chunks(input_files=input_files)
-        chunk_tasks = []
+        batches = cls.get_file_batches(input_files=input_files)
+        batch_tasks = []
         mode = (
             execution_mode[1]
             if isinstance(execution_mode, tuple)
@@ -165,10 +165,10 @@ class WorkflowHelper:
         )
         result = None
         logger.info(
-            f"Execution {workflow_execution.id} processing {total_files} files in {len(chunks)} chunks"
+            f"Execution {workflow_execution.id} processing {total_files} files in {len(batches)} batches"
         )
-        for chunk in chunks:
-            # Convert all UUIDs to strings in chunk_data
+        for batch in batches:
+            # Convert all UUIDs to strings in batch_data
             file_data = FileData(
                 workflow_id=str(workflow.id),
                 source_config=source.get_config().to_json(),
@@ -181,15 +181,15 @@ class WorkflowHelper:
                 execution_mode=mode,
                 use_file_history=use_file_history,
             )
-            chunk_data = ChunkData(files=chunk, file_data=file_data)
+            batch_data = FileBatchData(files=batch, file_data=file_data)
 
-            # Send each chunk to the dedicated file_processing queue
-            chunk_tasks.append(
-                FileExecutionTasks.process_file_chunk.s(chunk_data.to_dict())
+            # Send each batch to the dedicated file_processing queue
+            batch_tasks.append(
+                FileExecutionTasks.process_file_batch.s(batch_data.to_dict())
             )
         try:
-            result = chord(chunk_tasks)(
-                FileExecutionTasks.process_chunk_callback.s(
+            result = chord(batch_tasks)(
+                FileExecutionTasks.process_batch_callback.s(
                     execution_id=str(workflow_execution.id)
                 )
             )

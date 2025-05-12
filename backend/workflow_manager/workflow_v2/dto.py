@@ -169,17 +169,17 @@ class FileData:
 
 
 @dataclass
-class ChunkData:
+class FileBatchData:
     files: list
     file_data: FileData
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> ChunkData:
+    def from_dict(cls, data: dict[str, Any]) -> FileBatchData:
         file_data = FileData.from_dict(data["file_data"])
         return cls(files=data["files"], file_data=file_data)
 
     def __str__(self) -> str:
-        return f"ChunkData(files={self.files}, file_data={self.file_data})"
+        return f"FileBatchData(files={self.files}, file_data={self.file_data})"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

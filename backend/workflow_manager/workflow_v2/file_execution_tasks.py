@@ -26,8 +26,8 @@ from workflow_manager.execution.execution_cache_utils import ExecutionCacheUtils
 from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.utils.workflow_log import WorkflowLog
 from workflow_manager.workflow_v2.dto import (
-    ChunkData,
     ExecutionContext,
+    FileBatchData,
     FileData,
     FinalOutputResult,
     ToolExecutionResult,
@@ -92,11 +92,11 @@ class FileExecutionTasks:
         retry_jitter=True,  # Add random jitter to prevent thundering herd
         default_retry_delay=5,  # Initial retry delay (5 seconds)
     )
-    def process_file_chunk(self, chunk_data) -> dict[str, Any]:
-        """Process a chunk of files in parallel using Celery.
+    def process_file_batch(self, file_batch_data) -> dict[str, Any]:
+        """Process a batch of files in parallel using Celery.
 
         Args:
-            chunk_data (dict): Contains all necessary data to process files in the chunk
+            file_batch_data (dict): Contains all necessary data to process files in the batch
                 - files: List of (file_name, file_hash) tuples
                 - workflow_id: ID of the workflow
                 - source_config: Source connector configuration
@@ -104,8 +104,8 @@ class FileExecutionTasks:
                 - execution_id: ID of execution service
                 - single_step: Whether to process in single step mode
         """
-        chunk_data = ChunkData.from_dict(chunk_data)
-        file_data = chunk_data.file_data
+        file_batch_data = FileBatchData.from_dict(file_batch_data)
+        file_data = file_batch_data.file_data
         logger.info(f"File processing context {file_data}")
 
         organization_id = file_data.organization_id
@@ -113,9 +113,9 @@ class FileExecutionTasks:
 
         # Use proper logger instead of print
         logger.info(
-            f"Starting to process file chunk for execution {file_data.execution_id}"
+            f"Starting to process file batch for execution {file_data.execution_id}"
         )
-        logger.debug(f"Chunk data received: {chunk_data}")
+        logger.debug(f"Batch data received: {file_batch_data}")
 
         successful_files = 0
         failed_files = 0
@@ -125,16 +125,18 @@ class FileExecutionTasks:
         workflow = FileExecutionTasks.get_workflow_by_id(str(workflow_id))
         workflow_execution = WorkflowExecution.objects.get(id=UUID(execution_id))
 
-        total_files = len(chunk_data.files)
+        total_files = len(file_batch_data.files)
         q_file_no_list = (
             WorkflowUtil.get_q_no_list(workflow, total_files) if total_files > 0 else []
         )
 
         logger.info(
-            f"Processing {total_files} files of execution {execution_id} in a chunk"
+            f"Processing {total_files} files of execution {execution_id} in a batch"
         )
 
-        for file_number, (file_name, file_hash_dict) in enumerate(chunk_data.files, 1):
+        for file_number, (file_name, file_hash_dict) in enumerate(
+            file_batch_data.files, 1
+        ):
             file_hash = FileHash(
                 file_path=file_hash_dict.get("file_path"),
                 file_name=file_hash_dict.get("file_name"),
@@ -185,11 +187,11 @@ class FileExecutionTasks:
         retry_jitter=True,  # Add random jitter to prevent thundering herd
         default_retry_delay=5,  # Initial retry delay (5 seconds)
     )
-    def process_chunk_callback(self, results, **kwargs):
-        """Callback task to handle chunk processing results.
+    def process_batch_callback(self, results, **kwargs):
+        """Callback task to handle batch processing results.
 
         Args:
-            results (list): List of results from each chunk
+            results (list): List of results from each batch
                 Each result is a dictionary containing:
                 - successful_files: Number of successfully processed files
                 - failed_files: Number of failed files
