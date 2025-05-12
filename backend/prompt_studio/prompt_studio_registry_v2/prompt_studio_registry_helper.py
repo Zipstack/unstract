@@ -125,8 +125,7 @@ class PromptStudioRegistryHelper:
         # Suppress all exceptions to allow processing
         except Exception as e:
             logger.warning(
-                "Error while fetching for prompt registry "
-                f"ID {prompt_registry_id}: {e} "
+                f"Error while fetching for prompt registry ID {prompt_registry_id}: {e} "
             )
             return None
         return Tool(
@@ -215,8 +214,7 @@ class PromptStudioRegistryHelper:
             return obj
         except IntegrityError as error:
             logger.error(
-                "Integrity Error - Error occurred while "
-                f"exporting custom tool : {error}"
+                f"Integrity Error - Error occurred while exporting custom tool : {error}"
             )
             raise ToolSaveError
 

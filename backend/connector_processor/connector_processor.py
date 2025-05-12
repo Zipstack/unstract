@@ -46,9 +46,7 @@ class ConnectorProcessor:
         updated_connectors = fetch_connectors_by_key_value(ConnectorKeys.ID, connector_id)
         if len(updated_connectors) == 0:
             logger.error(
-                f"Invalid connector Id : {connector_id} "
-                f"while fetching "
-                f"JSON Schema"
+                f"Invalid connector Id : {connector_id} while fetching JSON Schema"
             )
             raise InValidConnectorId()
 
@@ -112,8 +110,7 @@ class ConnectorProcessor:
                 )
             except Exception as exc:
                 logger.error(
-                    f"Error while testing file based OAuth supported "
-                    f"connectors: {exc}"
+                    f"Error while testing file based OAuth supported connectors: {exc}"
                 )
                 raise OAuthTimeOut()
 
