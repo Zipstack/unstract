@@ -8,6 +8,7 @@ from pprint import pformat
 from celery import Celery
 
 from backend.settings.base import LOGGING
+from backend.workers.constants import CeleryWorkerNames
 from backend.workers.file_processing.celery_config import CeleryConfig
 
 logger = logging.getLogger(__name__)
@@ -22,7 +23,7 @@ os.environ.setdefault(
 logging.config.dictConfig(LOGGING)
 
 # Create a Celery instance. Default time zone is UTC.
-app = Celery("file_processing")
+app = Celery(CeleryWorkerNames.FILE_PROCESSING)
 
 # Load task modules from all registered Django app configs.
 app.config_from_object(CeleryConfig)

@@ -110,8 +110,5 @@ class UnstractQueueException(APIException):
 
 
 class SourceFileOrInfilePathNotFound(APIException):
-    default_detail = "Error getting source or infile"
-
-    def __init__(self, detail: str = default_detail, code=None):
-        status_code = 500
-        super().__init__(detail=detail, code=status_code)
+    status_code = 500
+    default_detail = "Unable to obtain file (Source or Infile) for execution."

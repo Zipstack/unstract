@@ -6,16 +6,20 @@ from workflow_manager.workflow_v2.enums import ExecutionStatus
 
 
 class ExecutionCacheUtils:
-    expire_time = int(settings.EXECUTION_CACHE_EXPIRE_TIME)
+    """Utility class for accessing and managing workflow execution status and
+    related information from cache to reduce database load.
+    """
+
+    expire_time = int(settings.EXECUTION_CACHE_TTL_SECONDS)
 
     @staticmethod
     def _get_execution_cache_key(workflow_id: str, execution_id: str) -> str:
-        """Get Redis cache key for file_execution."""
+        """Get Redis cache key for execution."""
         return f"execution:{workflow_id}:{execution_id}"
 
     @classmethod
     def get_execution(cls, workflow_id: str, execution_id: str) -> ExecutionCache | None:
-        """Get or create file execution."""
+        """Get or create execution."""
         cache_key = cls._get_execution_cache_key(
             workflow_id=workflow_id, execution_id=execution_id
         )
@@ -29,7 +33,7 @@ class ExecutionCacheUtils:
 
     @classmethod
     def is_execution_exists(cls, workflow_id: str, execution_id: str) -> bool:
-        """Check if file execution exists."""
+        """Check if execution exists."""
         cache_key = cls._get_execution_cache_key(
             workflow_id=workflow_id, execution_id=execution_id
         )
@@ -37,7 +41,7 @@ class ExecutionCacheUtils:
 
     @classmethod
     def create_execution(cls, execution: ExecutionCache) -> None:
-        """Create file execution."""
+        """Create execution."""
         cache_key = cls._get_execution_cache_key(
             workflow_id=execution.workflow_id, execution_id=execution.execution_id
         )
@@ -49,7 +53,7 @@ class ExecutionCacheUtils:
     def update_status(
         cls, workflow_id: str, execution_id: str, status: ExecutionStatus
     ) -> None:
-        """Update file execution."""
+        """Update execution status."""
         try:
             status_enum = ExecutionStatus(status)
         except ValueError:
@@ -84,7 +88,7 @@ class ExecutionCacheUtils:
 
     @classmethod
     def delete_execution(cls, workflow_id: str, execution_id: str) -> None:
-        """Delete file execution."""
+        """Delete execution."""
         cache_key = cls._get_execution_cache_key(
             workflow_id=workflow_id, execution_id=execution_id
         )

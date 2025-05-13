@@ -6,7 +6,7 @@ from workflow_manager.endpoint_v2.dto import FileExecutionResult
 
 
 class ResultCacheUtils:
-    expire_time = int(settings.EXECUTION_RESULT_EXPIRE_TIME)
+    expire_time = int(settings.EXECUTION_RESULT_TTL_SECONDS)
 
     @staticmethod
     def _get_api_results_cache_key(workflow_id: str, execution_id: str) -> str:
