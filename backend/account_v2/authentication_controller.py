@@ -102,7 +102,7 @@ class AuthenticationController:
             )
         except Exception as ex:
             logger.error(f"Error while handling authorization callback: {ex}")
-            return redirect(f"{settings.ERROR_URL}")
+            return redirect("/error")
 
     def user_organizations(self, request: Request) -> Any:
         """List a user's organizations.

@@ -88,6 +88,8 @@ class User(AbstractUser):
         blank=True,
     )
 
+    auth_provider = models.CharField(max_length=64, default="")
+
     def __str__(self):  # type: ignore
         return f"User({self.id}, email: {self.email}, userId: {self.user_id})"
 
@@ -140,23 +142,3 @@ class PlatformKey(models.Model):
                 name="unique_key_name_organization",
             ),
         ]
-
-
-class GroupRoleMapping(models.Model):
-    """Maps Active Directory groups to Auth0 roles.
-
-    This model maintains the mapping between AD groups and Auth0 roles,
-    enabling role-based access control synchronization between
-    Active Directory and Auth0.
-    """
-
-    # tenant_id = models.IntegerField() TODO: Add tenant_id
-    ad_group = models.CharField(max_length=255)
-    auth0_role = models.CharField(max_length=255)
-
-    class Meta:
-        db_table = "group_role_mapping"
-        unique_together = ("ad_group", "auth0_role")  # Ensures no duplicate mappings
-
-    def __str__(self) -> str:
-        return f"{self.ad_group} -> {self.auth0_role}"
