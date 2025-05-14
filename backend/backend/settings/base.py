@@ -124,6 +124,13 @@ LOGS_BATCH_LIMIT = int(get_required_setting("LOGS_BATCH_LIMIT", "30"))
 LOGS_EXPIRATION_TIME_IN_SECOND = int(
     get_required_setting("LOGS_EXPIRATION_TIME_IN_SECOND", "86400")
 )
+EXECUTION_RESULT_TTL_SECONDS = int(
+    os.environ.get("EXECUTION_RESULT_TTL_SECONDS", 10800)
+)  # 3 hours
+EXECUTION_CACHE_TTL_SECONDS = int(
+    os.environ.get("EXECUTION_CACHE_TTL_SECONDS", 10800)
+)  # 3 hours
+MAX_PARALLEL_FILE_BATCHES = int(os.environ.get("MAX_PARALLEL_FILE_BATCHES", 1))
 
 INDEXING_FLAG_TTL = int(get_required_setting("INDEXING_FLAG_TTL"))
 NOTIFICATION_TIMEOUT = int(get_required_setting("NOTIFICATION_TIMEOUT", "5"))

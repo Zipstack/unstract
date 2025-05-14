@@ -44,6 +44,7 @@ class WorkflowExecutionService:
         tool_instances: list[ToolInstance],
         platform_service_api_key: str,
         ignore_processed_entities: bool = False,
+        file_execution_id: str | None = None,
     ) -> None:
         self.organization_id = organization_id
         self.workflow_id = workflow_id
@@ -60,7 +61,7 @@ class WorkflowExecutionService:
         self.ignore_processed_entities = ignore_processed_entities
         self.override_single_step = False
         self.execution_id: str = ""
-        self.file_execution_id: str | None = None
+        self.file_execution_id: str | None = file_execution_id
         self.messaging_channel: str | None = None
         self.input_files: list[str] = []
         self.log_stage: LogStage = LogStage.COMPILE
@@ -89,7 +90,10 @@ class WorkflowExecutionService:
         try:
             self.execution_id = str(execution_id)
             self.file_handler = ExecutionFileHandler(
-                self.workflow_id, self.execution_id, self.organization_id
+                self.workflow_id,
+                self.execution_id,
+                self.organization_id,
+                file_execution_id=self.file_execution_id,
             )
 
             logger.info(f"Execution {execution_id}: compilation completed")
@@ -136,9 +140,7 @@ class WorkflowExecutionService:
 
         logger.info(f"Execution {self.execution_id}: Build completed")
 
-    def execute_workflow(
-        self, file_execution_id: str, execution_type: ExecutionType
-    ) -> None:
+    def execute_workflow(self, execution_type: ExecutionType) -> None:
         """Executes the complete workflow by running each tools one by one.
         Returns the result from final tool in a dictionary.
 
@@ -156,10 +158,10 @@ class WorkflowExecutionService:
                   Eg:- {"result": "RESULT_FROM_FINAL_TOOL"}
         """
         self.log_stage = LogStage.RUN
+
         self._initialize_execution()
         total_steps = len(self.tool_sandboxes)
         self.total_steps = total_steps
-        self.file_execution_id = file_execution_id
         # Currently each tool is run serially for files and workflows contain 1 tool
         # only. While supporting more tools in a workflow, correct the tool container
         # name to avoid conflicts.
@@ -315,6 +317,8 @@ class WorkflowExecutionService:
         """
         if not self.execution_id:
             raise BadRequestException("Execution Id not found")
+        if not self.file_execution_id:
+            raise BadRequestException("File Execution Id not found")
 
     def _finalize_execution(self, execution_type: ExecutionType) -> None:
         """Finalize the execution process.
@@ -339,11 +343,14 @@ class WorkflowExecutionService:
             self._handling_step_execution()
 
     def validate_execution_result(self, step: int) -> bool:
-        workflow_metadata = self.file_handler.get_workflow_metadata()
-        metadata_list = self.file_handler.get_list_of_tool_metadata(workflow_metadata)
-        if len(metadata_list) == step:
-            return True
-        return False
+        try:
+            workflow_metadata = self.file_handler.get_workflow_metadata()
+            metadata_list = self.file_handler.get_list_of_tool_metadata(workflow_metadata)
+            if len(metadata_list) == step:
+                return True
+            return False
+        except Exception:
+            return False
 
     def publish_log(
         self,
