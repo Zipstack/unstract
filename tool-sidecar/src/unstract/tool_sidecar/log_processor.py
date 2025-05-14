@@ -13,6 +13,11 @@ from typing import Any
 
 from unstract.core.constants import LogFieldName
 from unstract.core.pubsub_helper import LogPublisher
+from unstract.core.tool_execution_status import (
+    ToolExecutionData,
+    ToolExecutionStatus,
+    ToolExecutionTracker,
+)
 
 from .constants import Env, LogLevel, LogType
 from .dto import LogLineDTO
@@ -60,6 +65,16 @@ class LogProcessor:
         self.file_execution_id = file_execution_id
         self.messaging_channel = messaging_channel
         self.container_name = container_name
+        self.tool_execution_tracker = ToolExecutionTracker()
+        self.tool_execution_tracker.update_status(
+            tool_execution_data=ToolExecutionData(
+                execution_id=execution_id,
+                tool_instance_id=tool_instance_id,
+                file_execution_id=file_execution_id,
+                organization_id=organization_id,
+                status=ToolExecutionStatus.RUNNING,
+            )
+        )
 
     def wait_for_log_file(self, timeout: int = 300) -> bool:
         """Wait for the log file to be created by the tool container.
@@ -112,10 +127,27 @@ class LogProcessor:
             if log_level == LogLevel.ERROR:
                 logger.error(f"[Tool: {self.container_name}] {log_dict.get('log')}")
                 log_process_status.error = log_dict.get("log")
+                tool_execution_data = ToolExecutionData(
+                    execution_id=self.execution_id,
+                    file_execution_id=self.file_execution_id,
+                    tool_instance_id=self.tool_instance_id,
+                    organization_id=self.organization_id,
+                    status=ToolExecutionStatus.FAILED,
+                    error=log_dict.get("log"),
+                )
+                self.tool_execution_tracker.update_status(tool_execution_data)
             else:
                 logger.info(f"[Tool: {self.container_name}] {log_dict.get('log')}")
         elif log_type == LogType.RESULT:
             logger.info(f"[Tool {self.container_name}] Completed running")
+            tool_execution_data = ToolExecutionData(
+                execution_id=self.execution_id,
+                file_execution_id=self.file_execution_id,
+                tool_instance_id=self.tool_instance_id,
+                organization_id=self.organization_id,
+                status=ToolExecutionStatus.SUCCESS,
+            )
+            self.tool_execution_tracker.update_status(tool_execution_data)
             return LogLineDTO(with_result=True)
         elif log_type == LogType.UPDATE:
             logger.info(f"[Tool: {self.container_name}] Pushing UI updates")
