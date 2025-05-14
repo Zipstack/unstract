@@ -30,6 +30,7 @@ class ToolStudioPrompt(BaseModel):
                 "we try to continue extraction from where it stopped"
             ),
         )
+        TABLE = "table", "Response sent as json"
 
     class PromptType(models.TextChoices):
         PROMPT = "PROMPT", "Response sent as Text"
