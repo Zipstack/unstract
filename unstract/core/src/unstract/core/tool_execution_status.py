@@ -4,6 +4,11 @@ from enum import Enum
 
 import redis
 
+from unstract.core.exceptions import (
+    ToolExecutionStatusException,
+    ToolExecutionValueException,
+)
+
 
 class ToolExecutionStatus(Enum):
     RUNNING = "RUNNING"
@@ -23,15 +28,18 @@ class ToolExecutionField:
 @dataclass
 class ToolExecutionData:
     execution_id: str
-    file_execution_id: str
+    file_execution_id: str | None = None
     tool_instance_id: str | None = None
     organization_id: str | None = None
     status: ToolExecutionStatus | None = None
     error: str | None = None
 
     def __post_init__(self):
+        self.validate()
+
+    def validate(self) -> None:
         if not self.execution_id or not self.file_execution_id:
-            raise ValueError("Execution ID and file execution ID are required")
+            raise ToolExecutionValueException()
 
 
 class ToolExecutionTracker:
@@ -62,32 +70,43 @@ class ToolExecutionTracker:
         Args:
             tool_execution_data (ToolExecutionData): Status of the tool execution
         """
-        if (
-            not tool_execution_data.execution_id
-            or not tool_execution_data.file_execution_id
-        ):
-            raise ValueError("Execution ID and file execution ID are required")
+        tool_execution_data.validate()
 
         try:
             status = ToolExecutionStatus(tool_execution_data.status)
         except ValueError:
-            raise ValueError("Invalid status")
+            raise ToolExecutionStatusException()
 
         key = self.get_cache_key(tool_execution_data)
         with self.redis_client.pipeline() as pipe:
             existing_data = self.get_status(tool_execution_data)
+
             tool_instance_id = (
-                tool_execution_data.tool_instance_id or existing_data.tool_instance_id
-                if existing_data
-                else ""
+                tool_execution_data.tool_instance_id
+                if tool_execution_data.tool_instance_id
+                else (
+                    existing_data.tool_instance_id
+                    if existing_data and existing_data.tool_instance_id
+                    else ""
+                )
             )
+
             organization_id = (
-                tool_execution_data.organization_id or existing_data.organization_id
-                if existing_data
-                else ""
+                tool_execution_data.organization_id
+                if tool_execution_data.organization_id
+                else (
+                    existing_data.organization_id
+                    if existing_data and existing_data.organization_id
+                    else ""
+                )
             )
+
             error = (
-                tool_execution_data.error or existing_data.error if existing_data else ""
+                tool_execution_data.error
+                if tool_execution_data.error
+                else (
+                    existing_data.error if existing_data and existing_data.error else ""
+                )
             )
             pipe.hset(
                 name=key,
@@ -114,11 +133,7 @@ class ToolExecutionTracker:
         Returns:
             ToolExecutionData | None: Status of the tool execution
         """
-        if (
-            not tool_execution_data.execution_id
-            or not tool_execution_data.file_execution_id
-        ):
-            raise ValueError("Execution ID and file execution ID are required")
+        tool_execution_data.validate()
 
         data = self.redis_client.hgetall(self.get_cache_key(tool_execution_data))
         if not data:
@@ -141,9 +156,5 @@ class ToolExecutionTracker:
         Args:
             tool_execution_data (ToolExecutionData): Status of the tool execution
         """
-        if (
-            not tool_execution_data.execution_id
-            or not tool_execution_data.file_execution_id
-        ):
-            raise ValueError("Execution ID and file execution ID are required")
+        tool_execution_data.validate()
         self.redis_client.delete(self.get_cache_key(tool_execution_data))
