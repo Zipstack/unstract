@@ -151,7 +151,7 @@ ENCRYPTION_KEY = get_required_setting("ENCRYPTION_KEY")
 DEBUG = True
 
 ALLOWED_HOSTS = ["*"]
-CSRF_TRUSTED_ORIGINS = [WEB_APP_ORIGIN_URL, "http://*.localhost:3000"]
+CSRF_TRUSTED_ORIGINS = [WEB_APP_ORIGIN_URL]
 CORS_ALLOW_ALL_ORIGINS = False
 
 # Determine if OpenTelemetry trace context should be included in logs
