@@ -33,6 +33,10 @@ class LogStage(Enum):
     BUILD = "BUILD"
     TOOL = "TOOL"
     RUN = "RUN"
+    SOURCE = "SOURCE"
+    DESTINATION = "DESTINATION"
+    INITIALIZE = "INITIALIZE"
+    PROCESSING = "PROCESSING"
 
 
 class LogState(Enum):

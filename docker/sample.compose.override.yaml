@@ -4,6 +4,8 @@
 services:
   worker:
     command: "-A backend worker --loglevel=info -Q celery,celery_periodic_logs,celery_log_task_queue,celery_api_deployments --autoscale=${WORKER_AUTOSCALE}"
+  worker-file-processing:
+    command: "-A backend.workers.file_processing worker --loglevel=info -Q file_processing,api_file_processing --autoscale=${WORKER_FILE_PROCESSING_AUTOSCALE}"
 
   worker-logging:
     profiles:
