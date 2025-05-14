@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
 from dotenv import find_dotenv, load_dotenv
 from utils.common_utils import CommonUtils
@@ -55,6 +56,8 @@ WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND = os.environ.get(
     "WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND", 10800
 )
 WEB_APP_ORIGIN_URL = os.environ.get("WEB_APP_ORIGIN_URL", "http://localhost:3000")
+parsed_url = urlparse(WEB_APP_ORIGIN_URL)
+WEB_APP_ORIGIN_URL_WITH_WILD_CARD = f"{parsed_url.scheme}://*.{parsed_url.netloc}"
 CORS_ALLOWED_ORIGINS = [WEB_APP_ORIGIN_URL]
 
 DJANGO_APP_BACKEND_URL = os.environ.get("DJANGO_APP_BACKEND_URL", "http://localhost:8000")
@@ -151,7 +154,7 @@ ENCRYPTION_KEY = get_required_setting("ENCRYPTION_KEY")
 DEBUG = True
 
 ALLOWED_HOSTS = ["*"]
-CSRF_TRUSTED_ORIGINS = [WEB_APP_ORIGIN_URL]
+CSRF_TRUSTED_ORIGINS = [WEB_APP_ORIGIN_URL, WEB_APP_ORIGIN_URL_WITH_WILD_CARD]
 CORS_ALLOW_ALL_ORIGINS = False
 
 # Determine if OpenTelemetry trace context should be included in logs
