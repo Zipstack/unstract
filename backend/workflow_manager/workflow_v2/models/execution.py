@@ -6,6 +6,7 @@ from api_v2.models import APIDeployment
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
 from django.db.models import QuerySet, Sum
+from django.utils import timezone
 from pipeline_v2.models import Pipeline
 from tags.models import Tag
 from usage_v2.constants import UsageKeys
@@ -13,6 +14,8 @@ from usage_v2.models import Usage
 from utils.common_utils import CommonUtils
 from utils.models.base_model import BaseModel
 
+from workflow_manager.execution.dto import ExecutionCache
+from workflow_manager.execution.execution_cache_utils import ExecutionCacheUtils
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models import Workflow
 
@@ -220,6 +223,10 @@ class WorkflowExecution(BaseModel):
 
         return total_cost
 
+    @property
+    def is_completed(self) -> bool:
+        return ExecutionStatus.is_completed(self.status)
+
     def __str__(self) -> str:
         return (
             f"Workflow execution: {self.id} ("
@@ -229,3 +236,67 @@ class WorkflowExecution(BaseModel):
             f"files: {self.total_files}, "
             f"error message: {self.error_message})"
         )
+
+    def update_execution(
+        self,
+        status: ExecutionStatus | None = None,
+        error: str | None = None,
+        increment_attempt: bool = False,
+    ) -> None:
+        """Update the execution status and related fields.
+
+        Args:
+            status (Optional[ExecutionStatus], optional): New execution status. Defaults to None.
+            error (Optional[str], optional): Error message if any. Defaults to None.
+            increment_attempt (bool, optional): Whether to increment attempt counter. Defaults to False.
+        """
+        if status is not None:
+            self.status = status.value
+            if (
+                status
+                in [
+                    ExecutionStatus.COMPLETED,
+                    ExecutionStatus.ERROR,
+                    ExecutionStatus.STOPPED,
+                ]
+                and not self.execution_time
+            ):
+                self.execution_time = round(
+                    (timezone.now() - self.created_at).total_seconds(), 3
+                )
+        if error:
+            self.error_message = error[:EXECUTION_ERROR_LENGTH]
+        if increment_attempt:
+            self.attempts += 1
+
+        self.save()
+
+    def update_execution_err(self, err_msg: str = "") -> None:
+        """Update execution status to ERROR with an error message.
+
+        Args:
+            err_msg (str, optional): Error message to store. Defaults to "".
+        """
+        self.update_execution(status=ExecutionStatus.ERROR, error=err_msg)
+
+    def _handle_execution_cache(self):
+        if not ExecutionCacheUtils.is_execution_exists(
+            workflow_id=self.workflow.id, execution_id=self.id
+        ):
+            execution_cache = ExecutionCache(
+                workflow_id=self.workflow.id,
+                execution_id=self.id,
+                total_files=self.total_files,
+                status=self.status,
+            )
+            ExecutionCacheUtils.create_execution(
+                execution=execution_cache,
+            )
+        else:
+            ExecutionCacheUtils.update_status(
+                workflow_id=self.workflow.id, execution_id=self.id, status=self.status
+            )
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self._handle_execution_cache()
