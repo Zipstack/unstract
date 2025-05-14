@@ -61,6 +61,29 @@ class ToolExecutionTracker:
             decode_responses=True,  # ensures hgetall returns str instead of bytes
         )
 
+    def _resolve_field(
+        self,
+        field_name: str,
+        new_data: ToolExecutionData,
+        existing_data: ToolExecutionData | None,
+    ) -> str:
+        """Resolves the value of a field based on the new data and existing data.
+
+        Args:
+            field_name (str): Name of the field
+            new_data (ToolExecutionData): New data
+            existing_data (ToolExecutionData | None): Existing data
+
+        Returns:
+            str: Value of the field
+        """
+        new_value = getattr(new_data, field_name)
+        if not new_value:
+            if not existing_data:
+                return ""
+            new_value = getattr(existing_data, field_name)
+        return new_value or ""
+
     def get_cache_key(self, tool_execution_data: ToolExecutionData) -> str:
         return f"tool_execution:{tool_execution_data.execution_id}:{tool_execution_data.file_execution_id}"
 
@@ -81,32 +104,20 @@ class ToolExecutionTracker:
         with self.redis_client.pipeline() as pipe:
             existing_data = self.get_status(tool_execution_data)
 
-            tool_instance_id = (
-                tool_execution_data.tool_instance_id
-                if tool_execution_data.tool_instance_id
-                else (
-                    existing_data.tool_instance_id
-                    if existing_data and existing_data.tool_instance_id
-                    else ""
-                )
+            tool_instance_id = self._resolve_field(
+                ToolExecutionField.TOOL_INSTANCE_ID,
+                tool_execution_data,
+                existing_data,
             )
-
-            organization_id = (
-                tool_execution_data.organization_id
-                if tool_execution_data.organization_id
-                else (
-                    existing_data.organization_id
-                    if existing_data and existing_data.organization_id
-                    else ""
-                )
+            organization_id = self._resolve_field(
+                ToolExecutionField.ORGANIZATION_ID,
+                tool_execution_data,
+                existing_data,
             )
-
-            error = (
-                tool_execution_data.error
-                if tool_execution_data.error
-                else (
-                    existing_data.error if existing_data and existing_data.error else ""
-                )
+            error = self._resolve_field(
+                ToolExecutionField.ERROR,
+                tool_execution_data,
+                existing_data,
             )
             pipe.hset(
                 name=key,
