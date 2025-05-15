@@ -203,6 +203,13 @@ class FinalOutputResult:
     metadata: dict[str, Any] | None
     error: str | None
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "output": self.output,
+            "metadata": self.metadata,
+            "error": self.error,
+        }
+
 
 @dataclass
 class ExecutionContext:

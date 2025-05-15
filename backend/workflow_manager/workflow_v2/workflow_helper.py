@@ -8,14 +8,12 @@ from typing import Any
 
 from account_v2.constants import Common
 from api_v2.models import APIDeployment
-from api_v2.utils import APIDeploymentUtils
 from celery import chord, current_task
 from celery import exceptions as celery_exceptions
 from celery.result import AsyncResult
 from django.conf import settings
 from django.db import IntegrityError
 from pipeline_v2.models import Pipeline
-from pipeline_v2.pipeline_processor import PipelineProcessor
 from rest_framework import serializers
 from tool_instance_v2.constants import ToolInstanceKey
 from tool_instance_v2.models import ToolInstance
@@ -35,6 +33,7 @@ from workflow_manager.endpoint_v2.result_cache_utils import ResultCacheUtils
 from workflow_manager.endpoint_v2.source import SourceConnector
 from workflow_manager.execution.dto import ExecutionCache
 from workflow_manager.execution.execution_cache_utils import ExecutionCacheUtils
+from workflow_manager.utils.pipeline_utils import PipelineUtils
 from workflow_manager.utils.workflow_log import WorkflowLog
 from workflow_manager.workflow_v2.constants import (
     WorkflowErrors,
@@ -282,9 +281,6 @@ class WorkflowHelper:
                 use_file_history=use_file_history,
                 execution_mode=execution_mode,
             )
-            WorkflowHelper._update_pipeline_status(
-                pipeline_id=pipeline_id, workflow_execution=workflow_execution
-            )
             api_results = []
             return ExecutionResponse(
                 str(workflow.id),
@@ -302,45 +298,10 @@ class WorkflowHelper:
                 status=ExecutionStatus.ERROR,
                 error=str(e),
             )
-            WorkflowHelper._update_pipeline_status(
+            PipelineUtils.update_pipeline_status(
                 pipeline_id=pipeline_id, workflow_execution=workflow_execution
             )
             raise
-
-    @staticmethod
-    def _update_pipeline_status(
-        pipeline_id: str | None, workflow_execution: WorkflowExecution
-    ) -> None:
-        try:
-            if pipeline_id:
-                # Update pipeline status
-                if workflow_execution.status != ExecutionStatus.ERROR.value:
-                    PipelineProcessor.update_pipeline(
-                        pipeline_id,
-                        Pipeline.PipelineStatus.SUCCESS,
-                        execution_id=workflow_execution.id,
-                        is_end=True,
-                    )
-                else:
-                    PipelineProcessor.update_pipeline(
-                        pipeline_id,
-                        Pipeline.PipelineStatus.FAILURE,
-                        execution_id=workflow_execution.id,
-                        error_message=workflow_execution.error_message,
-                        is_end=True,
-                    )
-        # Expected exception since API deployments are not tracked in Pipeline
-        except Pipeline.DoesNotExist:
-            api = APIDeploymentUtils.get_api_by_id(api_id=pipeline_id)
-            if api:
-                APIDeploymentUtils.send_notification(
-                    api=api, workflow_execution=workflow_execution
-                )
-        except Exception as e:
-            logger.warning(
-                f"Error updating pipeline {pipeline_id} status: {e}, "
-                f"with workflow execution: {workflow_execution}"
-            )
 
     @classmethod
     def get_status_of_async_task(
