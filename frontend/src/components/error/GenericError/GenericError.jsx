@@ -43,6 +43,10 @@ function GenericError() {
         title: `Invalid Email format`,
         subtitle: "Please give a valid email address",
       },
+      INS: {
+        title: `Access Denied`,
+        subtitle: "Please contact your administrator to request access.",
+      },
 
       // Add more key-value pairs as needed
     };
