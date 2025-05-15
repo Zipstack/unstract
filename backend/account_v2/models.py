@@ -88,6 +88,8 @@ class User(AbstractUser):
         blank=True,
     )
 
+    auth_provider = models.CharField(max_length=64, default="")
+
     def __str__(self):  # type: ignore
         return f"User({self.id}, email: {self.email}, userId: {self.user_id})"
 
