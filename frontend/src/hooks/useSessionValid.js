@@ -20,14 +20,11 @@ try {
 let selectedProduct;
 let selectedProductStore;
 let PRODUCT_NAMES = {};
-let pluginAvailable = false;
 
 try {
   selectedProductStore = require("../plugins/store/select-product-store.js");
   PRODUCT_NAMES = require("../plugins/llm-whisperer/helper").PRODUCT_NAMES;
-  pluginAvailable = true;
 } catch {
-  pluginAvailable = false;
   // Ignore if hook not available
 }
 function useSessionValid() {
@@ -54,6 +51,7 @@ function useSessionValid() {
     if (
       userSessionData &&
       selectedProductStore &&
+      Object.keys(PRODUCT_NAMES).length !== 0 &&
       !Object.values(PRODUCT_NAMES).includes(selectedProduct)
     ) {
       navigate("/selectProduct");
@@ -78,7 +76,7 @@ function useSessionValid() {
         selectedProduct
       );
 
-      if (pluginAvailable && shouldNavigate) return;
+      if (shouldNavigate) return;
 
       const isUnstract = !(selectedProduct && selectedProduct !== "unstract");
 
