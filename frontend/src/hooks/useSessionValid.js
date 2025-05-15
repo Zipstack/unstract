@@ -63,20 +63,22 @@ function useSessionValid() {
     let userAndOrgDetails = null;
     try {
       const userSessionData = await userSession();
+
       // Return if the user is not authenticated
       if (!userSessionData) {
         return;
       }
 
       const signedInOrgId = userSessionData?.organization_id;
-
       const shouldNavigate = navToSelectProduct(
         userSessionData,
         selectedProductStore,
         selectedProduct
       );
 
-      if (shouldNavigate) return;
+      if (shouldNavigate) {
+        return; // Exit early, don't run the remaining steps
+      }
 
       const isUnstract = !(selectedProduct && selectedProduct !== "unstract");
 
