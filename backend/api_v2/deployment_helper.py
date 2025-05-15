@@ -1,9 +1,15 @@
 import logging
+import requests
 from typing import Any
 from urllib.parse import urlencode
+from io import BytesIO
+
 
 from django.conf import settings
 from django.core.files.uploadedfile import UploadedFile
+from django.core.files.uploadedfile import InMemoryUploadedFile
+from rest_framework import status
+from rest_framework.response import Response
 from rest_framework.request import Request
 from rest_framework.serializers import Serializer
 from rest_framework.utils.serializer_helpers import ReturnDict
@@ -220,3 +226,29 @@ class DeploymentHelper(BaseAPIKeyValidator):
             execution_id=execution_id
         )
         return execution_response
+    
+    def load_presigned_files(presigned_urls: list[str], file_objs: list[InMemoryUploadedFile]) -> Response | None:
+
+        for url in presigned_urls:
+            try:
+                resp = requests.get(url)
+                resp.raise_for_status()
+            except Exception as e:
+                return Response(
+                    {"message": f"Failed to fetch file from URL: {url}", "error": str(e)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+    
+            filename = url.split("?")[0].split("/")[-1]
+            file_stream = BytesIO(resp.content)
+            uploaded_file = InMemoryUploadedFile(
+                file=file_stream,
+                field_name="file",
+                name=filename,
+                content_type=resp.headers.get("Content-Type", "application/octet-stream"),
+                size=len(resp.content),
+                charset=None
+            )
+            file_objs.append(uploaded_file)
+
+        return None

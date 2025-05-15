@@ -49,12 +49,19 @@ class DeploymentExecution(views.APIView):
     ) -> Response:
         serializer = ExecutionRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        file_objs = serializer.validated_data.get(ApiExecution.FILES_FORM_DATA)
+        file_objs = serializer.validated_data.get(ApiExecution.FILES_FORM_DATA, [])
+        presigned_urls = serializer.validated_data.get(ApiExecution.PRESIGNED_URLS, [])
         timeout = serializer.validated_data.get(ApiExecution.TIMEOUT_FORM_DATA)
         include_metadata = serializer.validated_data.get(ApiExecution.INCLUDE_METADATA)
         include_metrics = serializer.validated_data.get(ApiExecution.INCLUDE_METRICS)
         use_file_history = serializer.validated_data.get(ApiExecution.USE_FILE_HISTORY)
         tag_names = serializer.validated_data.get(ApiExecution.TAGS)
+
+        if presigned_urls:
+            error_response = DeploymentHelper.load_presigned_files(presigned_urls, file_objs)
+            if error_response:
+                return error_response
+
         response = DeploymentHelper.execute_workflow(
             organization_name=org_name,
             api=api,
