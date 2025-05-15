@@ -33,6 +33,7 @@ let PRODUCT_NAMES = {};
 let ManualReviewPage;
 let SimpleManualReviewPage;
 let ReviewLayout;
+let Manage;
 let UnstractUsagePage;
 let UnstractSubscriptionPage;
 let UnstractSubscriptionCheck;
@@ -79,6 +80,7 @@ try {
     require("../plugins/manual-review/review-layout/ReviewLayout.jsx").ReviewLayout;
   SimpleManualReviewPage =
     require("../plugins/manual-review/page/simple/SimpleManualReviewPage.jsx").SimpleManualReviewPage;
+  Manage = require("../plugins/manual-review/page/manage/Manage.jsx").Manage;
 } catch (err) {
   // Do nothing, Not-found Page will be triggered.
 }
@@ -200,6 +202,7 @@ function useMainAppRoutes() {
             path="review/approve"
             element={<ManualReviewPage type="approve" />}
           />
+          <Route path="review/manage" element={<Manage />} />
         </Route>
       )}
     </>
