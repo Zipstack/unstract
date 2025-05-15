@@ -27,8 +27,6 @@ from workflow_manager.endpoint_v2.exceptions import (
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.endpoint_v2.queue_utils import QueueResult, QueueUtils
 from workflow_manager.utils.workflow_log import WorkflowLog
-from workflow_manager.workflow_v2.enums import ExecutionStatus
-from workflow_manager.workflow_v2.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow_v2.models.file_history import FileHistory
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
@@ -199,6 +197,7 @@ class DestinationConnector(BaseConnector):
         self,
         file_name: str,
         file_hash: FileHash,
+        file_history: FileHistory | None,
         workflow: Workflow,
         input_file_path: str,
         file_execution_id: str = None,
@@ -206,13 +205,7 @@ class DestinationConnector(BaseConnector):
         """Handle the output based on the connection type."""
         connection_type = self.endpoint.connection_type
         tool_execution_result: str | None = None
-        metadata: str | None = None
 
-        file_history = None
-        if self.use_file_history:
-            file_history = FileHistoryHelper.get_file_history(
-                workflow=workflow, cache_key=file_hash.file_hash
-            )
         if connection_type == WorkflowEndpoint.ConnectionType.FILESYSTEM:
             self.copy_output_to_output_directory()
         elif connection_type == WorkflowEndpoint.ConnectionType.DATABASE:
@@ -236,16 +229,6 @@ class DestinationConnector(BaseConnector):
         self.workflow_log.publish_log(
             message=f"File '{file_name}' processed successfully"
         )
-
-        if self.use_file_history and not file_history:
-            FileHistoryHelper.create_file_history(
-                file_hash=file_hash,
-                workflow=workflow,
-                status=ExecutionStatus.COMPLETED,
-                result=tool_execution_result,
-                metadata=metadata,
-                file_name=file_name,
-            )
         return tool_execution_result
 
     def copy_output_to_output_directory(self) -> None:
@@ -521,6 +504,16 @@ class DestinationConnector(BaseConnector):
 
         return result
 
+    def has_valid_metadata(self, metadata: Any) -> bool:
+        # Check if metadata is not None and metadata is a non-empty string
+        if not metadata:
+            return False
+        if not isinstance(metadata, str):
+            return False
+        if metadata.strip().lower() == "none":
+            return False
+        return True
+
     def get_metadata(
         self, file_history: FileHistory | None = None
     ) -> dict[str, Any] | None:
@@ -529,8 +522,11 @@ class DestinationConnector(BaseConnector):
         Returns:
             Union[dict[str, Any], str]: Metadata.
         """
-        if file_history and file_history.metadata:
-            return self.parse_string(file_history.metadata)
+        if file_history:
+            if self.has_valid_metadata(file_history.metadata):
+                return self.parse_string(file_history.metadata)
+            else:
+                return None
         metadata: dict[str, Any] = self.get_workflow_metadata()
 
         return metadata
