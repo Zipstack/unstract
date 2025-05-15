@@ -75,11 +75,9 @@ function useSessionValid() {
         selectedProductStore,
         selectedProduct
       );
-
       if (shouldNavigate) {
         return; // Exit early, don't run the remaining steps
       }
-
       const isUnstract = !(selectedProduct && selectedProduct !== "unstract");
 
       // API to get the list of organizations
