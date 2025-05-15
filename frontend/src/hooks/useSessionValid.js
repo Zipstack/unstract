@@ -20,11 +20,13 @@ try {
 let selectedProduct;
 let selectedProductStore;
 let PRODUCT_NAMES = {};
+let noPlugin = false;
 
 try {
   selectedProductStore = require("../plugins/store/select-product-store.js");
   PRODUCT_NAMES = require("../plugins/llm-whisperer/helper").PRODUCT_NAMES;
 } catch {
+  noPlugin = true;
   // Ignore if hook not available
 }
 function useSessionValid() {
@@ -62,21 +64,23 @@ function useSessionValid() {
     let userAndOrgDetails = null;
     try {
       const userSessionData = await userSession();
-
       // Return if the user is not authenticated
       if (!userSessionData) {
         return;
       }
 
       const signedInOrgId = userSessionData?.organization_id;
-      const shouldNavigate = navToSelectProduct(
-        userSessionData,
-        selectedProductStore,
-        selectedProduct
-      );
-      if (shouldNavigate) {
-        return; // Exit early, don't run the remaining steps
+      if (!noPlugin) {
+        const shouldNavigate = navToSelectProduct(
+          userSessionData,
+          selectedProductStore,
+          selectedProduct
+        );
+        if (shouldNavigate) {
+          return; // Exit early, don't run the remaining steps
+        }
       }
+
       const isUnstract = !(selectedProduct && selectedProduct !== "unstract");
 
       // API to get the list of organizations
