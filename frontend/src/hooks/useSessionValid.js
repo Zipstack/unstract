@@ -51,6 +51,7 @@ function useSessionValid() {
     if (
       userSessionData &&
       selectedProductStore &&
+      Object.keys(PRODUCT_NAMES).length !== 0 &&
       !Object.values(PRODUCT_NAMES).includes(selectedProduct)
     ) {
       navigate("/selectProduct");
