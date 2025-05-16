@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import json
 import logging
 from datetime import UTC, datetime
-from typing import Any, Optional
+from typing import Any
 
 from django.utils import timezone as dj_timezone
 
@@ -43,7 +45,7 @@ class LogDataDTO:
         self.data: dict[str, Any] = data
 
     @classmethod
-    def from_json(cls, json_data: str) -> Optional["LogDataDTO"]:
+    def from_json(cls, json_data: str) -> LogDataDTO | None:
         try:
             json_data = json.loads(json_data)
             execution_id = json_data.get(LogFieldName.EXECUTION_ID)

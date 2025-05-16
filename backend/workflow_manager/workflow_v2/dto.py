@@ -1,8 +1,13 @@
-from dataclasses import dataclass
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass, fields
 from typing import Any
 
 from celery.result import AsyncResult
 
+from workflow_manager.endpoint_v2.dto import DestinationConfig, SourceConfig
+from workflow_manager.file_execution.models import WorkflowFileExecution
+from workflow_manager.utils.workflow_log import WorkflowLog
 from workflow_manager.workflow_v2.constants import WorkflowKey
 
 
@@ -135,3 +140,80 @@ class AsyncResultData:
             "status": self.status,
             "result": self.result,
         }
+
+
+@dataclass
+class FileData:
+    workflow_id: str
+    source_config: dict[str, Any]
+    destination_config: dict[str, Any]
+    execution_id: str
+    single_step: bool
+    organization_id: str
+    pipeline_id: str
+    scheduled: bool
+    execution_mode: str
+    use_file_history: bool
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> FileData:
+        field_names = {f.name for f in fields(cls)}
+        filtered_data = {k: v for k, v in data.items() if k in field_names}
+        return cls(**filtered_data)
+
+    def __str__(self) -> str:
+        return f"FileData({self.__dict__})"
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class FileBatchData:
+    files: list
+    file_data: FileData
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> FileBatchData:
+        file_data = FileData.from_dict(data["file_data"])
+        return cls(files=data["files"], file_data=file_data)
+
+    def __str__(self) -> str:
+        return f"FileBatchData(files={self.files}, file_data={self.file_data})"
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class ToolExecutionResult:
+    error: str | None
+    result: Any | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "error": self.error,
+            "result": self.result,
+        }
+
+
+@dataclass
+class FinalOutputResult:
+    output: Any | None
+    metadata: dict[str, Any] | None
+    error: str | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "output": self.output,
+            "metadata": self.metadata,
+            "error": self.error,
+        }
+
+
+@dataclass
+class ExecutionContext:
+    workflow_log: WorkflowLog
+    workflow_file_execution: WorkflowFileExecution
+    source_config: SourceConfig
+    destination_config: DestinationConfig
