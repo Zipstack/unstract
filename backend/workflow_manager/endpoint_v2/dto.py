@@ -21,6 +21,7 @@ class FileHash:
         None  # To which destination this file wants to go for MRQ percentage
     )
     is_executed: bool = False
+    file_number: int | None = None
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -34,6 +35,7 @@ class FileHash:
             "mime_type": self.mime_type,
             "provider_file_uuid": self.provider_file_uuid,
             "fs_metadata": self.fs_metadata,
+            "file_number": self.file_number,
         }
 
     @staticmethod
