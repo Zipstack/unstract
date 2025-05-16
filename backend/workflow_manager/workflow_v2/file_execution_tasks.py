@@ -544,14 +544,14 @@ class FileExecutionTasks:
         cls._complete_execution(
             workflow_file_execution=workflow_file_execution,
             workflow_log=workflow_log,
-            error=execution_result.error,
+            error=result.error or execution_result.error,
         )
 
         return cls._build_final_result(
             workflow_execution=workflow_execution,
             workflow_file_execution=workflow_file_execution,
             file_hash=file_hash,
-            error=execution_result.error,
+            error=result.error or execution_result.error,
             result=result,
         )
 
