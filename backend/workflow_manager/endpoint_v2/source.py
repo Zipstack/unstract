@@ -450,10 +450,16 @@ class SourceConnector(BaseConnector):
         """
         connection_type = self.endpoint.connection_type
         if connection_type == WorkflowEndpoint.ConnectionType.FILESYSTEM:
-            return self.list_files_from_file_connector()
+            files, count = self.list_files_from_file_connector()
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
-            return self.list_file_from_api_storage(file_hashes)
-        raise InvalidSourceConnectionType()
+            files, count = self.list_file_from_api_storage(file_hashes)
+        else:
+            raise InvalidSourceConnectionType()
+        # TODO: move this to where file is listed at source.
+        for index, file_hash in enumerate(files.values(), start=1):
+            file_hash.file_number = index
+
+        return files, count
 
     def get_file_content_hash(self, source_fs: UnstractFileSystem, file_path: str) -> str:
         """Generate a hash value from the file content.

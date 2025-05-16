@@ -14,6 +14,7 @@ from celery.result import AsyncResult
 from django.conf import settings
 from django.db import IntegrityError
 from pipeline_v2.models import Pipeline
+from plugins.workflow_manager.workflow_v2.utils import WorkflowUtil
 from rest_framework import serializers
 from tool_instance_v2.constants import ToolInstanceKey
 from tool_instance_v2.models import ToolInstance
@@ -148,6 +149,10 @@ class WorkflowHelper:
             status=ExecutionStatus.EXECUTING, increment_attempt=True
         )
 
+        q_file_no_list = (
+            WorkflowUtil.get_q_no_list(workflow, total_files) if total_files > 0 else []
+        )
+
         if not input_files:
             logger.info(f"Execution {workflow_execution.id} no files to process")
             workflow_execution.update_execution(
@@ -179,6 +184,7 @@ class WorkflowHelper:
                 scheduled=scheduled,
                 execution_mode=mode,
                 use_file_history=use_file_history,
+                q_file_no_list=list(q_file_no_list) if q_file_no_list else [],
             )
             batch_data = FileBatchData(files=batch, file_data=file_data)
 
@@ -197,7 +203,7 @@ class WorkflowHelper:
                     execution_id=str(workflow_execution.id)
                 ).set(queue=file_processing_queue)
             )
-            if not result.id:
+            if not result:
                 exception = f"Failed to queue execution task {workflow_execution.id}"
                 logger.error(exception)
                 raise WorkflowExecutionError(exception)
@@ -207,7 +213,9 @@ class WorkflowHelper:
                 status=ExecutionStatus.ERROR,
                 error=f"Error while processing files: {str(e)}",
             )
-            return result.id
+            logger.error(
+                f"Execution {workflow_execution.id} failed: {str(e)}", exc_info=True
+            )
 
     @staticmethod
     def validate_tool_instances_meta(
