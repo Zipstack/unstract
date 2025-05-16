@@ -2,6 +2,7 @@ import logging
 from typing import Any
 from uuid import UUID
 
+from account_v2.constants import Common
 from plugins.workflow_manager.workflow_v2.utils import WorkflowUtil
 from tool_instance_v2.constants import ToolInstanceKey
 from tool_instance_v2.models import ToolInstance
@@ -130,7 +131,11 @@ class FileExecutionTasks:
         workflow_id = file_data.workflow_id
         # Reconstruct necessary objects
         workflow = FileExecutionTasks.get_workflow_by_id(str(workflow_id))
-        workflow_execution = WorkflowExecution.objects.get(id=UUID(execution_id))
+        workflow_execution: WorkflowExecution = WorkflowExecution.objects.get(
+            id=UUID(execution_id)
+        )
+        log_events_id = workflow_execution.execution_log_id
+        StateStore.set(Common.LOG_EVENTS_ID, log_events_id)
 
         total_files = len(file_batch_data.files)
         q_file_no_list = (
@@ -212,6 +217,8 @@ class FileExecutionTasks:
         organization = workflow.organization
         organization_id = organization.organization_id
         pipeline_id = str(workflow_execution.pipeline_id)
+        log_events_id = workflow_execution.execution_log_id
+        StateStore.set(Common.LOG_EVENTS_ID, log_events_id)
 
         # Set organization ID in StateStore
         StateStore.set(Account.ORGANIZATION_ID, organization_id)
