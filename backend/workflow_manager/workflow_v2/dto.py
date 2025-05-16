@@ -154,6 +154,7 @@ class FileData:
     scheduled: bool
     execution_mode: str
     use_file_history: bool
+    q_file_no_list: list[int]
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> FileData:

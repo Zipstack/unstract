@@ -138,9 +138,7 @@ class FileExecutionTasks:
         StateStore.set(Common.LOG_EVENTS_ID, log_events_id)
 
         total_files = len(file_batch_data.files)
-        q_file_no_list = (
-            WorkflowUtil.get_q_no_list(workflow, total_files) if total_files > 0 else []
-        )
+        q_file_no_list = set(file_data.q_file_no_list)
 
         logger.info(
             f"Processing {total_files} files of execution {execution_id} in a batch"
@@ -160,9 +158,10 @@ class FileExecutionTasks:
                 fs_metadata=file_hash_dict.get("fs_metadata"),
                 file_destination=file_hash_dict.get("file_destination"),
                 is_executed=file_hash_dict.get("is_executed"),
+                file_number=file_hash_dict.get("file_number"),
             )
             file_hash = WorkflowUtil.add_file_destination_filehash(
-                file_number,
+                file_hash.file_number,
                 q_file_no_list,
                 file_hash,
             )
