@@ -710,11 +710,13 @@ class WorkflowHelper:
                 or workflow_execution.execution_type != WorkflowExecution.Type.COMPLETE
             ):
                 raise InvalidRequest(WorkflowErrors.INVALID_EXECUTION_ID)
+            organization_identifier = UserContext.get_organization_identifier()
             return WorkflowHelper.run_workflow(
                 workflow=workflow,
                 workflow_execution=workflow_execution,
                 hash_values_of_files=hash_values_of_files,
                 use_file_history=use_file_history,
+                organization_id=organization_identifier,
             )
         except WorkflowExecution.DoesNotExist:
             return WorkflowHelper.create_and_make_execution_response(
