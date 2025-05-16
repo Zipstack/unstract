@@ -10,6 +10,7 @@ from unstract.prompt_service.constants import ExecutionSource, FileStorageKeys, 
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.exceptions import RateLimitError
 from unstract.prompt_service.helpers.plugin import PluginManager
+from unstract.prompt_service.utils.env_loader import get_env_or_die
 from unstract.prompt_service.utils.log import publish_log
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError
@@ -59,6 +60,7 @@ class AnswerPromptService:
         platform_postamble = tool_settings.get(PSKeys.PLATFORM_POSTAMBLE, "")
         summarize_as_source = tool_settings.get(PSKeys.SUMMARIZE_AS_SOURCE)
         enable_highlight = tool_settings.get(PSKeys.ENABLE_HIGHLIGHT, False)
+        prompt_type = output.get(PSKeys.TYPE, PSKeys.TEXT)
         if not enable_highlight or summarize_as_source:
             platform_postamble = ""
         plugin = PluginManager().get_plugin("json-extraction")
@@ -71,6 +73,7 @@ class AnswerPromptService:
             grammar_list=tool_settings.get(PSKeys.GRAMMAR, []),
             context=context,
             platform_postamble=platform_postamble,
+            prompt_type=prompt_type,
         )
         output[PSKeys.COMBINED_PROMPT] = prompt
         return AnswerPromptService.run_completion(
@@ -78,7 +81,7 @@ class AnswerPromptService:
             prompt=prompt,
             metadata=metadata,
             prompt_key=output[PSKeys.NAME],
-            prompt_type=output.get(PSKeys.TYPE, PSKeys.TEXT),
+            prompt_type=prompt_type,
             enable_highlight=enable_highlight,
             file_path=file_path,
             execution_source=execution_source,
@@ -92,6 +95,7 @@ class AnswerPromptService:
         grammar_list: list[dict[str, Any]],
         context: str,
         platform_postamble: str,
+        prompt_type: str = PSKeys.TEXT,
     ) -> str:
         prompt = f"{preamble}\n\nQuestion or Instruction: {prompt}"
         if grammar_list is not None and len(grammar_list) > 0:
@@ -106,6 +110,11 @@ class AnswerPromptService:
                 if len(synonyms) > 0 and word != "":
                     prompt += f'\nNote: You can consider that the word {word} is same as \
                         {", ".join(synonyms)} in both the quesiton and the context.'  # noqa
+        if prompt_type == PSKeys.JSON:
+            json_postamble = get_env_or_die(
+                PSKeys.JSON_POSTAMBLE, PSKeys.DEFAULT_JSON_POSTAMBLE
+            )
+            postamble += f"\n{json_postamble}"
         if platform_postamble:
             platform_postamble += "\n\n"
         prompt += (
