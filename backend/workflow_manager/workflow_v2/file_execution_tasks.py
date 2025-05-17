@@ -343,8 +343,9 @@ class FileExecutionTasks:
                 workflow_execution=workflow_execution,
                 workflow_file_execution=workflow_file_execution,
                 file_hash=file_hash,
-                error=error_msg,
+                is_api=destination.is_api,
                 result=result,
+                error=error_msg,
             )
 
     @classmethod
@@ -551,8 +552,9 @@ class FileExecutionTasks:
             workflow_execution=workflow_execution,
             workflow_file_execution=workflow_file_execution,
             file_hash=file_hash,
-            error=result.error or execution_result.error,
+            is_api=destination.is_api,
             result=result,
+            error=result.error or execution_result.error,
         )
 
     @classmethod
@@ -640,8 +642,9 @@ class FileExecutionTasks:
         workflow_execution: WorkflowExecution,
         workflow_file_execution: WorkflowFileExecution,
         file_hash: FileHash,
-        error: str | None,
+        is_api: bool,
         result: FinalOutputResult,
+        error: str | None,
     ) -> FileExecutionResult:
         """Construct and cache the final execution result."""
         final_result = FileExecutionResult(
@@ -652,11 +655,12 @@ class FileExecutionTasks:
             metadata=result.metadata,
         )
 
-        # Update cache with final result
-        ResultCacheUtils.update_api_results(
-            workflow_id=workflow_execution.workflow.id,
-            execution_id=str(workflow_execution.id),
-            api_result=final_result,
-        )
+        if is_api:
+            # Update cache with final result
+            ResultCacheUtils.update_api_results(
+                workflow_id=workflow_execution.workflow.id,
+                execution_id=str(workflow_execution.id),
+                api_result=final_result,
+            )
 
         return final_result
