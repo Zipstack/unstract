@@ -652,6 +652,7 @@ class WorkflowHelper:
         execution_mode: WorkflowExecution | None = WorkflowExecution.Mode.QUEUE,
         hash_values_of_files: dict[str, FileHash] = {},
         use_file_history: bool = False,
+        timeout: int | None = None,
     ) -> ExecutionResponse:
         if pipeline_id:
             logger.info(f"Executing pipeline: {pipeline_id}")
@@ -711,7 +712,7 @@ class WorkflowHelper:
                 workflow_id=workflow.id, pipeline_id=pipeline_id
             )
         try:
-            # Normal execution
+            # Normal Workflow page execution
             workflow_execution = WorkflowExecution.objects.get(pk=execution_id)
             if (
                 workflow_execution.status != ExecutionStatus.PENDING
@@ -719,17 +720,52 @@ class WorkflowHelper:
             ):
                 raise InvalidRequest(WorkflowErrors.INVALID_EXECUTION_ID)
             organization_identifier = UserContext.get_organization_identifier()
-            return WorkflowHelper.run_workflow(
+            result: ExecutionResponse = WorkflowHelper.run_workflow(
                 workflow=workflow,
                 workflow_execution=workflow_execution,
                 hash_values_of_files=hash_values_of_files,
                 use_file_history=use_file_history,
                 organization_id=organization_identifier,
             )
+            result = WorkflowHelper.wait_for_execution(result, timeout=timeout)
+            return result
+
         except WorkflowExecution.DoesNotExist:
             return WorkflowHelper.create_and_make_execution_response(
                 workflow_id=workflow.id, pipeline_id=pipeline_id
             )
+
+    @classmethod
+    def wait_for_execution(
+        cls, result: ExecutionResponse, timeout: int | None = None
+    ) -> ExecutionResponse:
+        """Wait for the execution to complete.
+
+        Args:
+            result (ExecutionResponse): The execution response.
+            timeout (int | None, optional): The timeout in seconds. Defaults to None.
+
+        Returns:
+            ExecutionResponse: The execution response.
+        """
+        if (
+            result.execution_status in [ExecutionStatus.COMPLETED, ExecutionStatus.ERROR]
+            or not timeout
+        ):
+            return result
+        execution_status = result.execution_status
+        workflow_id = result.workflow_id
+        execution_id = result.execution_id
+        if timeout > 0:
+            while not ExecutionStatus.is_completed(execution_status) and timeout > 0:
+                time.sleep(2)
+                timeout -= 2
+
+                execution_status = cls._get_execution_status(
+                    workflow_id=workflow_id, execution_id=execution_id
+                )
+        result.execution_status = execution_status
+        return result
 
     @staticmethod
     def get_current_execution(execution_id: str) -> ExecutionResponse:
