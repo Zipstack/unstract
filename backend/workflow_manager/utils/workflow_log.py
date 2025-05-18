@@ -89,3 +89,60 @@ class WorkflowLog:
         self.publish_update_log(
             LogState.RUNNING, "Ready for execution", LogComponent.WORKFLOW
         )
+
+    def publish_final_workflow_logs(
+        self,
+        total_files: int,
+        successful_files: int,
+        failed_files: int,
+    ) -> None:
+        """Publishes the final logs for the workflow.
+
+        Args:
+            total_files (int): The total number of matched files.
+            successful_files (int): The number of successfully executed files.
+            failed_files (int): The number of failed files.
+
+        Returns:
+            None
+        """
+        self.publish_update_log(LogState.END_WORKFLOW, "1", LogComponent.STATUS_BAR)
+        self.publish_update_log(
+            LogState.SUCCESS, "Executed successfully", LogComponent.WORKFLOW
+        )
+        self.publish_log(
+            f"Total files: {total_files}, "
+            f"{successful_files} successfully executed and {failed_files} error(s)"
+        )
+
+    def publish_average_cost_log(
+        self,
+        logger: logging.Logger,
+        total_files: int,
+        execution_id: str,
+        total_cost: float,
+    ):
+        """Publishes the average cost log for the workflow.
+
+        Args:
+            logger (logging.Logger): The logger to use for logging.
+            total_files (int): The total number of files.
+            execution_id (str): The ID of the execution.
+            total_cost (float): The total cost of the execution.
+
+        Returns:
+            None
+        """
+        try:
+            if total_cost is not None:
+                average_cost = round(total_cost / total_files, 5)
+                self.publish_log(
+                    message=(
+                        f"The average cost per file for execution "
+                        f"'{execution_id}' is '${average_cost}'"
+                    )
+                )
+        except Exception as e:
+            logger.warning(
+                f"Unable to get aggregated cost for '{execution_id}': {str(e)}"
+            )
