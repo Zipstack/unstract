@@ -328,6 +328,11 @@ class FileExecutionTasks:
                 workflow_log,
                 workflow_file_execution,
             ):
+                cls._complete_execution(
+                    workflow_file_execution=workflow_file_execution,
+                    workflow_log=workflow_log,
+                    error=early_result.error,
+                )
                 return early_result
 
             # Core Execution Phase
@@ -634,7 +639,7 @@ class FileExecutionTasks:
         workflow_log: WorkflowLog,
         error: str | None,
     ) -> None:
-        """Final cleanup and status updates for the execution."""
+        """Final status updates for the file execution."""
         try:
             # Update execution status
             final_status = ExecutionStatus.ERROR if error else ExecutionStatus.COMPLETED
@@ -651,7 +656,7 @@ class FileExecutionTasks:
             )
 
         except Exception as e:
-            logger.error(f"Completion cleanup failed: {str(e)}", exc_info=True)
+            logger.error(f"Completion status update failed: {str(e)}", exc_info=True)
 
     @classmethod
     def _build_final_result(
