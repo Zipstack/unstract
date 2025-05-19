@@ -217,6 +217,12 @@ class FileExecutionTasks:
         organization_id = organization.organization_id
         pipeline_id = str(workflow_execution.pipeline_id)
         log_events_id = workflow_execution.execution_log_id
+        workflow_log = WorkflowLog(
+            execution_id=execution_id,
+            log_stage=LogStage.FINALIZE,
+            organization_id=organization_id,
+            pipeline_id=pipeline_id,
+        )
         StateStore.set(Common.LOG_EVENTS_ID, log_events_id)
 
         # Set organization ID in StateStore
@@ -247,6 +253,17 @@ class FileExecutionTasks:
         # clean up execution and api storage directories
         DestinationConnector.delete_execution_and_api_storage_dir(
             workflow_id=workflow.id, execution_id=execution_id
+        )
+        workflow_log.publish_average_cost_log(
+            logger=logger,
+            total_files=total_files,
+            execution_id=execution_id,
+            total_cost=workflow_execution.aggregated_usage_cost,
+        )
+        workflow_log.publish_final_workflow_logs(
+            total_files=total_files,
+            successful_files=total_successful,
+            failed_files=total_failed,
         )
         return {
             "execution_id": execution_id,
@@ -311,6 +328,11 @@ class FileExecutionTasks:
                 workflow_log,
                 workflow_file_execution,
             ):
+                cls._complete_execution(
+                    workflow_file_execution=workflow_file_execution,
+                    workflow_log=workflow_log,
+                    error=early_result.error,
+                )
                 return early_result
 
             # Core Execution Phase
@@ -617,7 +639,7 @@ class FileExecutionTasks:
         workflow_log: WorkflowLog,
         error: str | None,
     ) -> None:
-        """Final cleanup and status updates for the execution."""
+        """Final status updates for the file execution."""
         try:
             # Update execution status
             final_status = ExecutionStatus.ERROR if error else ExecutionStatus.COMPLETED
@@ -634,7 +656,7 @@ class FileExecutionTasks:
             )
 
         except Exception as e:
-            logger.error(f"Completion cleanup failed: {str(e)}", exc_info=True)
+            logger.error(f"Completion status update failed: {str(e)}", exc_info=True)
 
     @classmethod
     def _build_final_result(
