@@ -13,8 +13,8 @@ from rest_framework.serializers import (
     ListField,
     ModelSerializer,
     Serializer,
+    URLField,
     ValidationError,
-    URLField
 )
 from tags.serializers import TagParamsSerializer
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
@@ -126,10 +126,7 @@ class ExecutionRequestSerializer(TagParamsSerializer):
     include_metrics = BooleanField(default=False)
     use_file_history = BooleanField(default=False)
 
-    presigned_urls = ListField(
-        child=URLField(), 
-        required=False
-    )   
+    presigned_urls = ListField(child=URLField(), required=False)
 
     files = ListField(
         child=FileField(),

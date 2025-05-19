@@ -58,7 +58,9 @@ class DeploymentExecution(views.APIView):
         tag_names = serializer.validated_data.get(ApiExecution.TAGS)
 
         if presigned_urls:
-            error_response = DeploymentHelper.load_presigned_files(presigned_urls, file_objs)
+            error_response = DeploymentHelper.load_presigned_files(
+                presigned_urls, file_objs
+            )
             if error_response:
                 return error_response
 
