@@ -274,64 +274,6 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             )
             raise WorkflowExecutionError(message) from exception
 
-    def publish_initial_workflow_logs(self, total_files: int) -> None:
-        """Publishes the initial logs for the workflow.
-
-        Args:
-            total_files (int): The total number of matched files.
-
-        Returns:
-            None
-        """
-        self.publish_log(f"Total matched files: {total_files}")
-        self.publish_update_log(LogState.BEGIN_WORKFLOW, "1", LogComponent.STATUS_BAR)
-        self.publish_update_log(
-            LogState.RUNNING, "Ready for execution", LogComponent.WORKFLOW
-        )
-
-    def publish_final_workflow_logs(
-        self,
-        total_files: int,
-        successful_files: int,
-        failed_files: int,
-    ) -> None:
-        """Publishes the final logs for the workflow.
-
-        Returns:
-            None
-        """
-        self.publish_average_cost_log(total_files=total_files)
-
-        # To not associate final logs with a file execution
-        self.file_execution_id = None
-
-        self.publish_update_log(LogState.END_WORKFLOW, "1", LogComponent.STATUS_BAR)
-        self.publish_update_log(
-            LogState.SUCCESS, "Executed successfully", LogComponent.WORKFLOW
-        )
-        self.publish_log(
-            f"Total files: {total_files}, "
-            f"{successful_files} successfully executed and {failed_files} error(s)"
-        )
-
-    def publish_average_cost_log(self, total_files: int):
-        try:
-            execution = WorkflowExecution.objects.get(pk=self.execution_id)
-            total_cost = execution.aggregated_usage_cost
-
-            if total_cost is not None:
-                average_cost = round(total_cost / total_files, 5)
-                self.publish_log(
-                    message=(
-                        f"The average cost per file for execution "
-                        f"'{self.execution_id}' is '${average_cost}'"
-                    )
-                )
-        except Exception as e:
-            logger.warning(
-                f"Unable to get aggregated cost for '{self.execution_id}': {str(e)}"
-            )
-
     def log_total_cost_per_file(self, run_id: str, file_name: str):
         """Log cost details to user
 
