@@ -46,7 +46,7 @@ class FileHistoryHelper:
         workflow: Workflow,
         status: ExecutionStatus,
         result: Any,
-        metadata: Any,
+        metadata: str | None,
         error: str | None = None,
         file_name: str | None = None,
     ) -> None:
@@ -65,7 +65,7 @@ class FileHistoryHelper:
                 provider_file_uuid=file_hash.provider_file_uuid,
                 status=status,
                 result=str(result),
-                metadata=str(metadata),
+                metadata=str(metadata) if metadata else "",
                 error=str(error) if error else "",
             )
         except IntegrityError as e:
