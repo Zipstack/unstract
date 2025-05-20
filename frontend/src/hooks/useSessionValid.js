@@ -162,6 +162,7 @@ function useSessionValid() {
         userAndOrgDetails["isPlatformAdmin"] = await isPlatformAdmin();
       }
       userAndOrgDetails["role"] = userSessionData.role;
+      userAndOrgDetails["provider"] = userSessionData.provider;
     } catch (err) {
       // TODO: Throw popup error message
       // REVIEW: Add condition to check for trial period status

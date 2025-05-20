@@ -140,7 +140,7 @@ function Users() {
       ),
     },
   ];
-  const columns = [
+  const baseColumns = [
     {
       title: "Email",
       dataIndex: "email",
@@ -149,24 +149,29 @@ function Users() {
       title: "Role",
       dataIndex: "role",
     },
-    {
-      title: "Actions",
-      align: "center",
-      render: (_, record) => (
-        <Dropdown
-          menu={{ items: actionItems }}
-          trigger={["click"]}
-          placement="bottomLeft"
-        >
-          <EllipsisOutlined
-            rotate={90}
-            style={{ cursor: "pointer" }}
-            onClick={() => setSelectedUserEmail(record)}
-          />
-        </Dropdown>
-      ),
-    },
   ];
+
+  const actionColumn = {
+    title: "Actions",
+    align: "center",
+    render: (_, record) => (
+      <Dropdown
+        menu={{ items: actionItems }}
+        trigger={["click"]}
+        placement="bottomLeft"
+      >
+        <EllipsisOutlined
+          rotate={90}
+          style={{ cursor: "pointer" }}
+          onClick={() => setSelectedUserEmail(record)}
+        />
+      </Dropdown>
+    ),
+  };
+
+  const columns = !sessionDetails?.provider
+    ? [...baseColumns, actionColumn]
+    : baseColumns;
 
   const handleInviteUsers = () => {
     navigate(`/${sessionDetails?.orgName}/users/invite`);
@@ -195,13 +200,15 @@ function Users() {
         searchData={userList}
         setFilteredUserList={setFilteredUserList}
       >
-        <CustomButton
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={handleInviteUsers}
-        >
-          Invite User
-        </CustomButton>
+        {!sessionDetails?.provider && (
+          <CustomButton
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={handleInviteUsers}
+          >
+            Invite User
+          </CustomButton>
+        )}
         <Button
           shape="circle"
           icon={<ReloadOutlined />}
