@@ -333,7 +333,12 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
       });
     }
 
-    if (isUnstract && UnstractPricingMenuLink && sessionDetails?.isAdmin) {
+    if (
+      isUnstract &&
+      UnstractPricingMenuLink &&
+      sessionDetails?.isAdmin &&
+      !sessionDetails?.provider
+    ) {
       menuItems.push({
         key: "7",
         label: <UnstractPricingMenuLink orgName={orgName} />,
