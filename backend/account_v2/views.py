@@ -140,6 +140,7 @@ def make_session_response(
     """
     auth_controller = AuthenticationController()
     token_data = UserSessionUtils.get_token_data(request)
+    provider = "" if token_data is None else token_data.get("provider", "")
     return UserSessionResponseSerializer(
         UserSessionInfo(
             id=request.user.id,
@@ -148,7 +149,7 @@ def make_session_response(
             user=auth_controller.get_user_info(request),
             organization_id=UserSessionUtils.get_organization_id(request),
             role=UserSessionUtils.get_organization_member_role(request),
-            provider=token_data.get("provider", ""),
+            provider=provider,
         )
     ).data
 
