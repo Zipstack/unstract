@@ -43,6 +43,7 @@ from workflow_manager.workflow_v2.exceptions import (
 from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelper
 from workflow_manager.workflow_v2.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
+from workflow_manager.workflow_v2.models.file_history import FileHistory
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 logger = logging.getLogger(__name__)
@@ -165,13 +166,27 @@ class FileExecutionTasks:
                 q_file_no_list,
                 file_hash,
             )
-            file_execution_result = FileExecutionTasks._process_file(
-                current_file_idx=file_number,
-                total_files=total_files,
-                file_data=file_data,
-                file_hash=file_hash,
-                workflow_execution=workflow_execution,
-            )
+            try:
+                file_execution_result = FileExecutionTasks._process_file(
+                    current_file_idx=file_number,
+                    total_files=total_files,
+                    file_data=file_data,
+                    file_hash=file_hash,
+                    workflow_execution=workflow_execution,
+                )
+            except Exception as e:
+                # It is unlikely to happen but if it does, we should handle it
+                # TODO: Add proper error handling and return error message
+                logger.error(
+                    f"Error processing file {file_name}: {str(e)}", exc_info=True
+                )
+                failed_files += 1
+                ExecutionCacheUtils.increment_failed_files(
+                    workflow_id=workflow.id,
+                    execution_id=execution_id,
+                )
+                continue
+
             if file_execution_result.error:
                 failed_files += 1
                 ExecutionCacheUtils.increment_failed_files(
@@ -614,7 +629,7 @@ class FileExecutionTasks:
 
             if destination.is_api:
                 execution_metadata = destination.get_metadata(file_history)
-            if destination.use_file_history and not file_history:
+            if cls._should_create_file_history(destination, file_history, output_result):
                 FileHistoryHelper.create_file_history(
                     file_hash=file_hash,
                     workflow=workflow,
@@ -631,6 +646,36 @@ class FileExecutionTasks:
         return FinalOutputResult(
             output=output_result, metadata=execution_metadata, error=None
         )
+
+    @classmethod
+    def _should_create_file_history(
+        cls,
+        destination: DestinationConnector,
+        file_history: FileHistory | None,
+        output_result: str | None,
+    ) -> bool:
+        """Determine whether a new FileHistory record should be created.
+
+        Returns True if:
+        - File history is enabled for the destination,
+        - No existing file history record is present, and
+        - Either:
+            - The destination is not API, or
+            - The destination is API and a valid output_result exists.
+
+        Args:
+            destination: Destination connector
+            file_history: File history
+            output_result: Output result
+
+        Returns:
+            bool: True if file history should be created, False otherwise
+        """
+        if not destination.use_file_history or file_history:
+            return False
+        if destination.is_api and not output_result:
+            return False
+        return True
 
     @classmethod
     def _complete_execution(

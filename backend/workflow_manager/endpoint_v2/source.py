@@ -202,6 +202,7 @@ class SourceConnector(BaseConnector):
 
         total_files_to_process = 0
         total_matched_files = {}
+        unique_file_hashes: set[str] = set()
 
         for input_directory in folders_to_process:
             input_directory = source_fs.get_connector_root_dir(
@@ -209,7 +210,7 @@ class SourceConnector(BaseConnector):
             )
             logger.debug(f"Listing files from:  {input_directory}")
             matched_files, count = self._get_matched_files(
-                source_fs, input_directory, patterns, recursive, limit
+                source_fs, input_directory, patterns, recursive, limit, unique_file_hashes
             )
             self.publish_user_sys_log(f"Matched '{count}' files from '{input_directory}'")
             total_matched_files.update(matched_files)
@@ -274,6 +275,7 @@ class SourceConnector(BaseConnector):
         patterns: list[str],
         recursive: bool,
         limit: int,
+        unique_file_hashes: set[str],
     ) -> tuple[dict[str, FileHash], int]:
         """Get a dictionary of matched files based on patterns in a directory.
 
@@ -309,10 +311,18 @@ class SourceConnector(BaseConnector):
                         workflow=self.endpoint.workflow,
                         source_fs=source_fs,
                     ):
-                        matched_files[file_path] = self._create_file_hash(
+                        file_hash = self._create_file_hash(
                             file_path=file_path,
                             source_fs=source_fs,
                         )
+
+                        # Skip duplicate files
+                        if file_hash.file_hash in unique_file_hashes:
+                            logger.info(f"Skipping duplicate files to list: {file_path}")
+                            continue
+                        unique_file_hashes.add(file_hash.file_hash)
+
+                        matched_files[file_path] = file_hash
                         count += 1
         return matched_files, count
 
@@ -641,6 +651,12 @@ class SourceConnector(BaseConnector):
             file_content_hash = self.add_input_from_api_storage_to_volume(
                 input_file_path=input_file_path
             )
+            # Filehash created from Django requests files might be different
+            # from file_content_hash created from file content here.
+            # So use file_content_hash only when file_hash is not available
+            file_content_hash = (
+                file_hash.file_hash if file_hash.file_hash else file_content_hash
+            )
         else:
             raise InvalidSourceConnectionType()
 
@@ -709,6 +725,7 @@ class SourceConnector(BaseConnector):
         )
         workflow: Workflow = Workflow.objects.get(id=workflow_id)
         file_hashes: dict[str, FileHash] = {}
+        unique_file_hashes: set[str] = set()
         for file in file_objs:
             file_name = file.name
             destination_path = os.path.join(api_storage_dir, file_name)
@@ -721,6 +738,12 @@ class SourceConnector(BaseConnector):
                 file_storage.write(path=destination_path, mode="ab", data=chunk)
             file_hash = file_hash.hexdigest()
             connection_type = WorkflowEndpoint.ConnectionType.API
+
+            # Skip duplicate files
+            if file_hash in unique_file_hashes:
+                logger.info(f"Skipping duplicate files to list: {file_name}")
+                continue
+            unique_file_hashes.add(file_hash)
 
             file_history = None
             if use_file_history:
