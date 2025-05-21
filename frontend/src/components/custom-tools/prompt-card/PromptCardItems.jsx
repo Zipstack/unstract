@@ -32,6 +32,7 @@ try {
 function PromptCardItems({
   promptDetails,
   enforceTypeList,
+  allTableSettings,
   promptKey,
   setPromptKey,
   promptText,
@@ -81,6 +82,7 @@ function PromptCardItems({
   const isNotSingleLlmProfile = llmProfiles.length > 1;
   const divRef = useRef(null);
   const [enforceType, setEnforceType] = useState("");
+  const [tableSettings, setTableSettings] = useState({});
   const promptId = promptDetails?.prompt_id;
 
   useEffect(() => {
@@ -88,6 +90,12 @@ function PromptCardItems({
       setEnforceType(promptDetails?.enforce_type);
     }
   }, [promptDetails]);
+
+  useEffect(() => {
+    setTableSettings(
+      allTableSettings.find((item) => item.prompt_id === promptId) || {}
+    );
+  }, [allTableSettings]);
 
   const getModelOrAdapterId = (profile, adapters) => {
     const result = { conf: {} };
@@ -310,6 +318,7 @@ function PromptCardItems({
               isNotSingleLlmProfile={isNotSingleLlmProfile}
               setIsIndexOpen={setIsIndexOpen}
               enforceType={enforceType}
+              tableSettings={tableSettings}
               promptOutputs={promptOutputs}
               promptRunStatus={promptRunStatus}
               isChallenge={isChallenge}
@@ -330,6 +339,7 @@ function PromptCardItems({
 PromptCardItems.propTypes = {
   promptDetails: PropTypes.object.isRequired,
   enforceTypeList: PropTypes.array,
+  allTableSettings: PropTypes.array,
   promptKey: PropTypes.text,
   setPromptKey: PropTypes.func.isRequired,
   promptText: PropTypes.text,

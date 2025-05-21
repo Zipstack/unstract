@@ -22,6 +22,7 @@ const PromptCard = memo(
     updatePlaceHolder,
     promptOutputs,
     enforceTypeList,
+    allTableSettings,
     setUpdatedPromptsCopy,
     handlePromptRunRequest,
     promptRunStatus,
@@ -312,6 +313,7 @@ const PromptCard = memo(
         <PromptCardItems
           promptDetails={promptDetailsState}
           enforceTypeList={enforceTypeList}
+          allTableSettings={allTableSettings}
           promptKey={promptKey}
           setPromptKey={setPromptKey}
           promptText={promptText}
@@ -356,6 +358,7 @@ PromptCard.propTypes = {
   updatePlaceHolder: PropTypes.string,
   promptOutputs: PropTypes.object.isRequired,
   enforceTypeList: PropTypes.array.isRequired,
+  allTableSettings: PropTypes.array.isRequired,
   setUpdatedPromptsCopy: PropTypes.func.isRequired,
   handlePromptRunRequest: PropTypes.func.isRequired,
   promptRunStatus: PropTypes.object.isRequired,
