@@ -3872,7 +3872,7 @@ dependencies = [
     { name = "unstract-core" },
     { name = "unstract-filesystem" },
     { name = "unstract-flags" },
-    { name = "unstract-sdk" },
+    { name = "unstract-sdk", extra = ["azure"] },
     { name = "unstract-tool-registry" },
     { name = "unstract-tool-sandbox" },
     { name = "unstract-workflow-execution" },
@@ -3933,7 +3933,7 @@ requires-dist = [
     { name = "unstract-core", editable = "../unstract/core" },
     { name = "unstract-filesystem", editable = "../unstract/filesystem" },
     { name = "unstract-flags", editable = "../unstract/flags" },
-    { name = "unstract-sdk", specifier = "~=0.71.0" },
+    { name = "unstract-sdk", extras = ["azure"], specifier = "~=0.71.0" },
     { name = "unstract-tool-registry", editable = "../unstract/tool-registry" },
     { name = "unstract-tool-sandbox", editable = "../unstract/tool-sandbox" },
     { name = "unstract-workflow-execution", editable = "../unstract/workflow-execution" },
@@ -4097,6 +4097,11 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/d0/12/efecbf0581040b1bfc44fe939a68ba07e45c65c16b3e91666227e94b52be/unstract_sdk-0.71.0.tar.gz", hash = "sha256:c9269cbd1656e40a03445d3758bc51d7921273af729e0d3813f5f9e28967e31d", size = 2360756 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/3a/88/4ba63cd8611d7bdaf36619e9fe1b19effb5bc10a13ec50b79bf714aa410a/unstract_sdk-0.71.0-py3-none-any.whl", hash = "sha256:0d3bdaf79468f03991f457d040b07ab5d159be3a601b4bfae7f772083d70b705", size = 265087 },
+]
+
+[package.optional-dependencies]
+azure = [
+    { name = "adlfs" },
 ]
 
 [[package]]
