@@ -63,7 +63,7 @@
     }
   },
   "restrictions": {
-    "maxFileSize": "50MB",
+    "maxFileSize": "200MB",
     "allowedFileTypes": [
       "*"
     ]
