@@ -191,12 +191,13 @@ class AnswerPromptService:
         structured_output: dict[str, Any],
         llm: LLM,
         execution_source: str,
+        prompt:str,
     ) -> dict[str, Any]:
         table_settings = output[PSKeys.TABLE_SETTINGS]
         table_extractor: dict[str, Any] = PluginManager().get_plugin("table-extractor")
         if not table_extractor:
             raise APIError(
-                "Unable to extract line-item details. "
+                "Unable to extract table details. "
                 "Please contact admin to resolve this issue."
             )
         fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
@@ -211,10 +212,11 @@ class AnswerPromptService:
                 env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
             )
         try:
-            answer = table_extractor["entrypoint_cls"].extract_large_table(
+            answer = table_extractor["entrypoint_cls"].run_table_extraction(
                 llm=llm,
                 table_settings=table_settings,
                 fs_instance=fs_instance,
+                prompt=prompt,
             )
             structured_output[output[PSKeys.NAME]] = answer
             # We do not support summary and eval for table.
