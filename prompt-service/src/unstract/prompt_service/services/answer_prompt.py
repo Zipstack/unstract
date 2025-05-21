@@ -191,7 +191,7 @@ class AnswerPromptService:
         structured_output: dict[str, Any],
         llm: LLM,
         execution_source: str,
-        prompt:str,
+        prompt: str,
     ) -> dict[str, Any]:
         table_settings = output[PSKeys.TABLE_SETTINGS]
         table_extractor: dict[str, Any] = PluginManager().get_plugin("table-extractor")
