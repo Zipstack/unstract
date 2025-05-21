@@ -33,6 +33,7 @@ function PromptCardItems({
   promptDetails,
   enforceTypeList,
   allTableSettings,
+  setAllTableSettings,
   promptKey,
   setPromptKey,
   promptText,
@@ -281,6 +282,7 @@ function PromptCardItems({
                         <TableExtractionSettingsBtn
                           promptId={promptDetails?.prompt_id}
                           enforceType={enforceType}
+                          setAllTableSettings={setAllTableSettings}
                         />
                       )}
                       <Select
@@ -340,6 +342,7 @@ PromptCardItems.propTypes = {
   promptDetails: PropTypes.object.isRequired,
   enforceTypeList: PropTypes.array,
   allTableSettings: PropTypes.array,
+  setAllTableSettings: PropTypes.func,
   promptKey: PropTypes.text,
   setPromptKey: PropTypes.func.isRequired,
   promptText: PropTypes.text,

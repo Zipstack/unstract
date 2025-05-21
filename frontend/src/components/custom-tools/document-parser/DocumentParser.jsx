@@ -226,6 +226,7 @@ function DocumentParser({
               outputs={getPromptOutputs(item?.prompt_id)}
               enforceTypeList={enforceTypeList}
               allTableSettings={allTableSettings}
+              setAllTableSettings={setAllTableSettings}
               setUpdatedPromptsCopy={setUpdatedPromptsCopy}
               coverageCountData={item?.coverage}
               isChallenge={isChallenge}

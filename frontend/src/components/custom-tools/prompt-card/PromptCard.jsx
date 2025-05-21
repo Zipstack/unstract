@@ -23,6 +23,7 @@ const PromptCard = memo(
     promptOutputs,
     enforceTypeList,
     allTableSettings,
+    setAllTableSettings,
     setUpdatedPromptsCopy,
     handlePromptRunRequest,
     promptRunStatus,
@@ -315,6 +316,7 @@ const PromptCard = memo(
           enforceTypeList={enforceTypeList}
           allTableSettings={allTableSettings}
           promptKey={promptKey}
+          setAllTableSettings={setAllTableSettings}
           setPromptKey={setPromptKey}
           promptText={promptText}
           setPromptText={setPromptText}
@@ -359,6 +361,7 @@ PromptCard.propTypes = {
   promptOutputs: PropTypes.object.isRequired,
   enforceTypeList: PropTypes.array.isRequired,
   allTableSettings: PropTypes.array.isRequired,
+  setAllTableSettings: PropTypes.func.isRequired,
   setUpdatedPromptsCopy: PropTypes.func.isRequired,
   handlePromptRunRequest: PropTypes.func.isRequired,
   promptRunStatus: PropTypes.object.isRequired,
