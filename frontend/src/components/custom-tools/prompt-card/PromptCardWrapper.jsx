@@ -14,6 +14,8 @@ const PromptCardWrapper = memo(function PromptCardWrapper({
   handleDelete,
   outputs,
   enforceTypeList,
+  allTableSettings,
+  setAllTableSettings,
   setUpdatedPromptsCopy,
   coverageCountData,
   isChallenge,
@@ -34,6 +36,8 @@ const PromptCardWrapper = memo(function PromptCardWrapper({
           updatePlaceHolder="Enter Prompt"
           promptOutputs={outputs}
           enforceTypeList={enforceTypeList}
+          allTableSettings={allTableSettings}
+          setAllTableSettings={setAllTableSettings}
           setUpdatedPromptsCopy={setUpdatedPromptsCopy}
           handlePromptRunRequest={handlePromptRunRequest}
           promptRunStatus={promptRunStatus}
@@ -62,6 +66,8 @@ PromptCardWrapper.propTypes = {
   handleDelete: PropTypes.func.isRequired,
   outputs: PropTypes.object.isRequired,
   enforceTypeList: PropTypes.array.isRequired,
+  allTableSettings: PropTypes.array.isRequired,
+  setAllTableSettings: PropTypes.func.isRequired,
   setUpdatedPromptsCopy: PropTypes.func.isRequired,
   coverageCountData: PropTypes.object.isRequired,
   isChallenge: PropTypes.bool.isRequired,
