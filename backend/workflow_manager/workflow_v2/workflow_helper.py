@@ -8,14 +8,13 @@ from typing import Any
 
 from account_v2.constants import Common
 from api_v2.models import APIDeployment
-from api_v2.utils import APIDeploymentUtils
 from celery import chord, current_task
 from celery import exceptions as celery_exceptions
 from celery.result import AsyncResult
 from django.conf import settings
 from django.db import IntegrityError
 from pipeline_v2.models import Pipeline
-from pipeline_v2.pipeline_processor import PipelineProcessor
+from plugins.workflow_manager.workflow_v2.utils import WorkflowUtil
 from rest_framework import serializers
 from tool_instance_v2.constants import ToolInstanceKey
 from tool_instance_v2.models import ToolInstance
@@ -35,6 +34,7 @@ from workflow_manager.endpoint_v2.result_cache_utils import ResultCacheUtils
 from workflow_manager.endpoint_v2.source import SourceConnector
 from workflow_manager.execution.dto import ExecutionCache
 from workflow_manager.execution.execution_cache_utils import ExecutionCacheUtils
+from workflow_manager.utils.pipeline_utils import PipelineUtils
 from workflow_manager.utils.workflow_log import WorkflowLog
 from workflow_manager.workflow_v2.constants import (
     WorkflowErrors,
@@ -149,6 +149,10 @@ class WorkflowHelper:
             status=ExecutionStatus.EXECUTING, increment_attempt=True
         )
 
+        q_file_no_list = (
+            WorkflowUtil.get_q_no_list(workflow, total_files) if total_files > 0 else []
+        )
+
         if not input_files:
             logger.info(f"Execution {workflow_execution.id} no files to process")
             workflow_execution.update_execution(
@@ -180,6 +184,7 @@ class WorkflowHelper:
                 scheduled=scheduled,
                 execution_mode=mode,
                 use_file_history=use_file_history,
+                q_file_no_list=list(q_file_no_list) if q_file_no_list else [],
             )
             batch_data = FileBatchData(files=batch, file_data=file_data)
 
@@ -198,7 +203,7 @@ class WorkflowHelper:
                     execution_id=str(workflow_execution.id)
                 ).set(queue=file_processing_queue)
             )
-            if not result.id:
+            if not result:
                 exception = f"Failed to queue execution task {workflow_execution.id}"
                 logger.error(exception)
                 raise WorkflowExecutionError(exception)
@@ -208,7 +213,9 @@ class WorkflowHelper:
                 status=ExecutionStatus.ERROR,
                 error=f"Error while processing files: {str(e)}",
             )
-            return result.id
+            logger.error(
+                f"Execution {workflow_execution.id} failed: {str(e)}", exc_info=True
+            )
 
     @staticmethod
     def validate_tool_instances_meta(
@@ -282,9 +289,6 @@ class WorkflowHelper:
                 use_file_history=use_file_history,
                 execution_mode=execution_mode,
             )
-            WorkflowHelper._update_pipeline_status(
-                pipeline_id=pipeline_id, workflow_execution=workflow_execution
-            )
             api_results = []
             return ExecutionResponse(
                 str(workflow.id),
@@ -302,45 +306,10 @@ class WorkflowHelper:
                 status=ExecutionStatus.ERROR,
                 error=str(e),
             )
-            WorkflowHelper._update_pipeline_status(
+            PipelineUtils.update_pipeline_status(
                 pipeline_id=pipeline_id, workflow_execution=workflow_execution
             )
             raise
-
-    @staticmethod
-    def _update_pipeline_status(
-        pipeline_id: str | None, workflow_execution: WorkflowExecution
-    ) -> None:
-        try:
-            if pipeline_id:
-                # Update pipeline status
-                if workflow_execution.status != ExecutionStatus.ERROR.value:
-                    PipelineProcessor.update_pipeline(
-                        pipeline_id,
-                        Pipeline.PipelineStatus.SUCCESS,
-                        execution_id=workflow_execution.id,
-                        is_end=True,
-                    )
-                else:
-                    PipelineProcessor.update_pipeline(
-                        pipeline_id,
-                        Pipeline.PipelineStatus.FAILURE,
-                        execution_id=workflow_execution.id,
-                        error_message=workflow_execution.error_message,
-                        is_end=True,
-                    )
-        # Expected exception since API deployments are not tracked in Pipeline
-        except Pipeline.DoesNotExist:
-            api = APIDeploymentUtils.get_api_by_id(api_id=pipeline_id)
-            if api:
-                APIDeploymentUtils.send_notification(
-                    api=api, workflow_execution=workflow_execution
-                )
-        except Exception as e:
-            logger.warning(
-                f"Error updating pipeline {pipeline_id} status: {e}, "
-                f"with workflow execution: {workflow_execution}"
-            )
 
     @classmethod
     def get_status_of_async_task(
@@ -683,6 +652,7 @@ class WorkflowHelper:
         execution_mode: WorkflowExecution | None = WorkflowExecution.Mode.QUEUE,
         hash_values_of_files: dict[str, FileHash] = {},
         use_file_history: bool = False,
+        timeout: int | None = None,
     ) -> ExecutionResponse:
         if pipeline_id:
             logger.info(f"Executing pipeline: {pipeline_id}")
@@ -742,23 +712,60 @@ class WorkflowHelper:
                 workflow_id=workflow.id, pipeline_id=pipeline_id
             )
         try:
-            # Normal execution
+            # Normal Workflow page execution
             workflow_execution = WorkflowExecution.objects.get(pk=execution_id)
             if (
                 workflow_execution.status != ExecutionStatus.PENDING
                 or workflow_execution.execution_type != WorkflowExecution.Type.COMPLETE
             ):
                 raise InvalidRequest(WorkflowErrors.INVALID_EXECUTION_ID)
-            return WorkflowHelper.run_workflow(
+            organization_identifier = UserContext.get_organization_identifier()
+            result: ExecutionResponse = WorkflowHelper.run_workflow(
                 workflow=workflow,
                 workflow_execution=workflow_execution,
                 hash_values_of_files=hash_values_of_files,
                 use_file_history=use_file_history,
+                organization_id=organization_identifier,
             )
+            result = WorkflowHelper.wait_for_execution(result, timeout=timeout)
+            return result
+
         except WorkflowExecution.DoesNotExist:
             return WorkflowHelper.create_and_make_execution_response(
                 workflow_id=workflow.id, pipeline_id=pipeline_id
             )
+
+    @classmethod
+    def wait_for_execution(
+        cls, result: ExecutionResponse, timeout: int | None = None
+    ) -> ExecutionResponse:
+        """Wait for the execution to complete.
+
+        Args:
+            result (ExecutionResponse): The execution response.
+            timeout (int | None, optional): The timeout in seconds. Defaults to None.
+
+        Returns:
+            ExecutionResponse: The execution response.
+        """
+        if (
+            result.execution_status in [ExecutionStatus.COMPLETED, ExecutionStatus.ERROR]
+            or not timeout
+        ):
+            return result
+        execution_status = result.execution_status
+        workflow_id = result.workflow_id
+        execution_id = result.execution_id
+        if timeout > 0:
+            while not ExecutionStatus.is_completed(execution_status) and timeout > 0:
+                time.sleep(2)
+                timeout -= 2
+
+                execution_status = cls._get_execution_status(
+                    workflow_id=workflow_id, execution_id=execution_id
+                )
+        result.execution_status = execution_status
+        return result
 
     @staticmethod
     def get_current_execution(execution_id: str) -> ExecutionResponse:

@@ -227,7 +227,7 @@ const SideNavBar = ({ collapsed }) => {
       return false;
     }
 
-    return unstractSubscriptionPlan?.remainingDays <= 0;
+    return unstractSubscriptionPlan?.remainingDays < 0;
   }, [unstractSubscriptionPlan]);
 
   data.forEach((mainMenuItem) => {

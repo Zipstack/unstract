@@ -154,6 +154,7 @@ class FileData:
     scheduled: bool
     execution_mode: str
     use_file_history: bool
+    q_file_no_list: list[int]
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> FileData:
@@ -202,6 +203,13 @@ class FinalOutputResult:
     output: Any | None
     metadata: dict[str, Any] | None
     error: str | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "output": self.output,
+            "metadata": self.metadata,
+            "error": self.error,
+        }
 
 
 @dataclass

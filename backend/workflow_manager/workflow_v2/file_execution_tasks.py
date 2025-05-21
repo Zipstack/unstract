@@ -2,6 +2,7 @@ import logging
 from typing import Any
 from uuid import UUID
 
+from account_v2.constants import Common
 from plugins.workflow_manager.workflow_v2.utils import WorkflowUtil
 from tool_instance_v2.constants import ToolInstanceKey
 from tool_instance_v2.models import ToolInstance
@@ -25,6 +26,7 @@ from workflow_manager.endpoint_v2.result_cache_utils import ResultCacheUtils
 from workflow_manager.endpoint_v2.source import SourceConnector
 from workflow_manager.execution.execution_cache_utils import ExecutionCacheUtils
 from workflow_manager.file_execution.models import WorkflowFileExecution
+from workflow_manager.utils.pipeline_utils import PipelineUtils
 from workflow_manager.utils.workflow_log import WorkflowLog
 from workflow_manager.workflow_v2.dto import (
     ExecutionContext,
@@ -129,12 +131,14 @@ class FileExecutionTasks:
         workflow_id = file_data.workflow_id
         # Reconstruct necessary objects
         workflow = FileExecutionTasks.get_workflow_by_id(str(workflow_id))
-        workflow_execution = WorkflowExecution.objects.get(id=UUID(execution_id))
+        workflow_execution: WorkflowExecution = WorkflowExecution.objects.get(
+            id=UUID(execution_id)
+        )
+        log_events_id = workflow_execution.execution_log_id
+        StateStore.set(Common.LOG_EVENTS_ID, log_events_id)
 
         total_files = len(file_batch_data.files)
-        q_file_no_list = (
-            WorkflowUtil.get_q_no_list(workflow, total_files) if total_files > 0 else []
-        )
+        q_file_no_list = set(file_data.q_file_no_list)
 
         logger.info(
             f"Processing {total_files} files of execution {execution_id} in a batch"
@@ -154,9 +158,10 @@ class FileExecutionTasks:
                 fs_metadata=file_hash_dict.get("fs_metadata"),
                 file_destination=file_hash_dict.get("file_destination"),
                 is_executed=file_hash_dict.get("is_executed"),
+                file_number=file_hash_dict.get("file_number"),
             )
             file_hash = WorkflowUtil.add_file_destination_filehash(
-                file_number,
+                file_hash.file_number,
                 q_file_no_list,
                 file_hash,
             )
@@ -210,6 +215,15 @@ class FileExecutionTasks:
         workflow = workflow_execution.workflow
         organization = workflow.organization
         organization_id = organization.organization_id
+        pipeline_id = str(workflow_execution.pipeline_id)
+        log_events_id = workflow_execution.execution_log_id
+        workflow_log = WorkflowLog(
+            execution_id=execution_id,
+            log_stage=LogStage.FINALIZE,
+            organization_id=organization_id,
+            pipeline_id=pipeline_id,
+        )
+        StateStore.set(Common.LOG_EVENTS_ID, log_events_id)
 
         # Set organization ID in StateStore
         StateStore.set(Account.ORGANIZATION_ID, organization_id)
@@ -233,9 +247,23 @@ class FileExecutionTasks:
             status=final_status,
             error=error_message,
         )
+        PipelineUtils.update_pipeline_status(
+            pipeline_id=pipeline_id, workflow_execution=workflow_execution
+        )
         # clean up execution and api storage directories
         DestinationConnector.delete_execution_and_api_storage_dir(
             workflow_id=workflow.id, execution_id=execution_id
+        )
+        workflow_log.publish_average_cost_log(
+            logger=logger,
+            total_files=total_files,
+            execution_id=execution_id,
+            total_cost=workflow_execution.aggregated_usage_cost,
+        )
+        workflow_log.publish_final_workflow_logs(
+            total_files=total_files,
+            successful_files=total_successful,
+            failed_files=total_failed,
         )
         return {
             "execution_id": execution_id,
@@ -300,6 +328,11 @@ class FileExecutionTasks:
                 workflow_log,
                 workflow_file_execution,
             ):
+                cls._complete_execution(
+                    workflow_file_execution=workflow_file_execution,
+                    workflow_log=workflow_log,
+                    error=early_result.error,
+                )
                 return early_result
 
             # Core Execution Phase
@@ -332,8 +365,9 @@ class FileExecutionTasks:
                 workflow_execution=workflow_execution,
                 workflow_file_execution=workflow_file_execution,
                 file_hash=file_hash,
-                error=error_msg,
+                is_api=destination.is_api,
                 result=result,
+                error=error_msg,
             )
 
     @classmethod
@@ -533,15 +567,16 @@ class FileExecutionTasks:
         cls._complete_execution(
             workflow_file_execution=workflow_file_execution,
             workflow_log=workflow_log,
-            error=execution_result.error,
+            error=result.error or execution_result.error,
         )
 
         return cls._build_final_result(
             workflow_execution=workflow_execution,
             workflow_file_execution=workflow_file_execution,
             file_hash=file_hash,
-            error=execution_result.error,
+            is_api=destination.is_api,
             result=result,
+            error=result.error or execution_result.error,
         )
 
     @classmethod
@@ -558,23 +593,36 @@ class FileExecutionTasks:
         execution_metadata = None
 
         try:
+            if destination.use_file_history:
+                # Collect metadata from file history if available
+                file_history = FileHistoryHelper.get_file_history(
+                    workflow=workflow, cache_key=file_hash.file_hash
+                )
+            else:
+                file_history = None
+
             if not processing_error:
                 # Process final output through destination
                 output_result = destination.handle_output(
                     file_name=file_hash.file_name,
                     file_hash=file_hash,
+                    file_history=file_history,
                     workflow=workflow,
                     input_file_path=file_hash.file_path,
                     file_execution_id=file_execution_id,
                 )
 
-            # Collect metadata from file history if available
-            file_history = FileHistoryHelper.get_file_history(
-                workflow=workflow, cache_key=file_hash.file_hash
-            )
-            if file_history and destination.is_api:
+            if destination.is_api:
                 execution_metadata = destination.get_metadata(file_history)
-
+            if destination.use_file_history and not file_history:
+                FileHistoryHelper.create_file_history(
+                    file_hash=file_hash,
+                    workflow=workflow,
+                    status=ExecutionStatus.COMPLETED,
+                    result=output_result,
+                    metadata=execution_metadata,
+                    file_name=file_hash.file_name,
+                )
         except Exception as e:
             error_msg = f"Final output processing failed: {str(e)}"
             logger.error(error_msg, exc_info=True)
@@ -591,7 +639,7 @@ class FileExecutionTasks:
         workflow_log: WorkflowLog,
         error: str | None,
     ) -> None:
-        """Final cleanup and status updates for the execution."""
+        """Final status updates for the file execution."""
         try:
             # Update execution status
             final_status = ExecutionStatus.ERROR if error else ExecutionStatus.COMPLETED
@@ -608,7 +656,7 @@ class FileExecutionTasks:
             )
 
         except Exception as e:
-            logger.error(f"Completion cleanup failed: {str(e)}", exc_info=True)
+            logger.error(f"Completion status update failed: {str(e)}", exc_info=True)
 
     @classmethod
     def _build_final_result(
@@ -616,8 +664,9 @@ class FileExecutionTasks:
         workflow_execution: WorkflowExecution,
         workflow_file_execution: WorkflowFileExecution,
         file_hash: FileHash,
-        error: str | None,
+        is_api: bool,
         result: FinalOutputResult,
+        error: str | None,
     ) -> FileExecutionResult:
         """Construct and cache the final execution result."""
         final_result = FileExecutionResult(
@@ -628,11 +677,12 @@ class FileExecutionTasks:
             metadata=result.metadata,
         )
 
-        # Update cache with final result
-        ResultCacheUtils.update_api_results(
-            workflow_id=workflow_execution.workflow.id,
-            execution_id=str(workflow_execution.id),
-            api_result=final_result,
-        )
+        if is_api:
+            # Update cache with final result
+            ResultCacheUtils.update_api_results(
+                workflow_id=workflow_execution.workflow.id,
+                execution_id=str(workflow_execution.id),
+                api_result=final_result,
+            )
 
         return final_result
