@@ -304,26 +304,28 @@ class SourceConnector(BaseConnector):
             for file in files:
                 if count >= limit:
                     break
-                if self._should_process_file(file, patterns):
-                    file_path = str(os.path.join(root, file))
-                    if self._is_new_file(
-                        file_path=file_path,
-                        workflow=self.endpoint.workflow,
-                        source_fs=source_fs,
-                    ):
-                        file_hash = self._create_file_hash(
-                            file_path=file_path,
-                            source_fs=source_fs,
-                        )
+                if not self._should_process_file(file, patterns):
+                    continue
+                file_path = str(os.path.join(root, file))
+                if not self._is_new_file(
+                    file_path=file_path,
+                    workflow=self.endpoint.workflow,
+                    source_fs=source_fs,
+                ):
+                    continue
+                file_hash = self._create_file_hash(
+                    file_path=file_path,
+                    source_fs=source_fs,
+                )
 
-                        # Skip duplicate files
-                        if file_hash.file_hash in unique_file_hashes:
-                            logger.info(f"Skipping duplicate files to list: {file_path}")
-                            continue
-                        unique_file_hashes.add(file_hash.file_hash)
+                # Skip duplicate files
+                if file_hash.file_hash in unique_file_hashes:
+                    logger.info(f"Skipping duplicate files to list: {file_path}")
+                    continue
+                unique_file_hashes.add(file_hash.file_hash)
 
-                        matched_files[file_path] = file_hash
-                        count += 1
+                matched_files[file_path] = file_hash
+                count += 1
         return matched_files, count
 
     def _should_process_file(self, file: str, patterns: list[str]) -> bool:
