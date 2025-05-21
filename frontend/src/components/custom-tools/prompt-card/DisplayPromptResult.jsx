@@ -22,6 +22,8 @@ function DisplayPromptResult({
   highlightData,
   promptDetails,
   confidenceData,
+  isTable = false,
+  setOpenExpandModal = () => {},
 }) {
   const [isLoading, setIsLoading] = useState(false);
   const [parsedOutput, setParsedOutput] = useState(null);
@@ -46,14 +48,20 @@ function DisplayPromptResult({
     }
 
     setIsLoading(false);
+    const isFormattingRequired = isTable ? false : true;
     setParsedOutput(
-      displayPromptResult(output, true, details?.enable_highlight)
+      displayPromptResult(
+        output,
+        isFormattingRequired,
+        details?.enable_highlight
+      )
     );
   }, [
     promptRunStatus,
     isSinglePassExtractLoading,
     details?.enable_highlight,
     output,
+    isTable,
   ]);
 
   if (isLoading) {
@@ -91,8 +99,30 @@ function DisplayPromptResult({
     highlightData,
     confidenceData,
     indent = 0,
-    path = ""
+    path = "",
+    isTable = false
   ) => {
+    if (isTable) {
+      const stringData =
+        typeof data === "string" ? data : JSON.stringify(data, null, 4);
+      const lines = stringData.split("\n");
+      const truncated = lines.slice(0, 25).join("\n");
+      return (
+        <div>
+          {truncated}
+          {lines.length > 25 && (
+            <Typography.Link
+              className="font-size-12"
+              onClick={() => {
+                setOpenExpandModal(true);
+              }}
+            >
+              ...show more
+            </Typography.Link>
+          )}
+        </div>
+      );
+    }
     if (typeof data === "object" && !details?.enable_highlight) {
       return JSON.stringify(data, null, 4);
     }
@@ -117,7 +147,8 @@ function DisplayPromptResult({
                   highlightData?.[index],
                   confidenceData?.[index],
                   indent + 1,
-                  `${path}[${index}]`
+                  `${path}[${index}]`,
+                  isTable
                 )}
                 {index < data.length - 1 ? "," : ""}
               </div>
@@ -163,7 +194,8 @@ function DisplayPromptResult({
                       highlightData?.[key],
                       confidenceData?.[key],
                       indent + 1,
-                      newPath
+                      newPath,
+                      isTable
                     )}
                   </Typography.Text>
                   {index < array.length - 1 ? "," : ""}
@@ -182,7 +214,7 @@ function DisplayPromptResult({
   return (
     <Typography.Paragraph className="prompt-card-display-output font-size-12">
       {parsedOutput && typeof parsedOutput === "object" ? (
-        renderJson(parsedOutput, highlightData, confidenceData, 0)
+        renderJson(parsedOutput, highlightData, confidenceData, 0, "", isTable)
       ) : (
         <TextResult
           enableHighlight={details?.enable_highlight}
@@ -245,6 +277,8 @@ DisplayPromptResult.propTypes = {
   highlightData: PropTypes.object,
   promptDetails: PropTypes.object,
   confidenceData: PropTypes.object,
+  isTable: PropTypes.bool,
+  setOpenExpandModal: PropTypes.func,
 };
 
 export { DisplayPromptResult };
