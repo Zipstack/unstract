@@ -178,6 +178,7 @@ def prompt_processor() -> Any:
                     structured_output=structured_output,
                     llm=llm,
                     execution_source=execution_source,
+                    prompt=prompt_text,
                 )
                 metadata = UsageHelper.query_usage_metadata(
                     token=platform_key, metadata=metadata
