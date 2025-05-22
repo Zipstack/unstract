@@ -185,6 +185,7 @@ class SourceConnector(BaseConnector):
         source_fs_fsspec = source_fs.get_fsspec_fs()
         # Checking if folders exist at source before processing
         # TODO: Validate while receiving this input configuration as well
+        valid_directories = []
         for input_directory in folders_to_process:
             # TODO: Move to connector class for better error handling
             try:
@@ -193,6 +194,7 @@ class SourceConnector(BaseConnector):
                 )
                 if not source_fs_fsspec.isdir(input_directory):
                     raise InvalidInputDirectory(dir=input_directory)
+                valid_directories.append(input_directory)
             except Exception as e:
                 msg = f"Error while validating path '{input_directory}'. {str(e)}"
                 self.publish_user_sys_log(msg)
@@ -204,10 +206,7 @@ class SourceConnector(BaseConnector):
         total_matched_files = {}
         unique_file_hashes: set[str] = set()
 
-        for input_directory in folders_to_process:
-            input_directory = source_fs.get_connector_root_dir(
-                input_dir=input_directory, root_path=root_dir_path
-            )
+        for input_directory in valid_directories:
             logger.debug(f"Listing files from:  {input_directory}")
             matched_files, count = self._get_matched_files(
                 source_fs, input_directory, patterns, recursive, limit, unique_file_hashes
@@ -300,33 +299,127 @@ class SourceConnector(BaseConnector):
         count = 0
         max_depth = int(SourceConstant.MAX_RECURSIVE_DEPTH) if recursive else 1
         fs_fsspec = source_fs.get_fsspec_fs()
-        for root, dirs, files in fs_fsspec.walk(input_directory, maxdepth=max_depth):
-            for file in files:
+        for root, dirs, _ in fs_fsspec.walk(input_directory, maxdepth=max_depth):
+            try:
+                fs_metadata_list: list[dict[str, Any]] = fs_fsspec.listdir(
+                    root
+                )  # Single call for file system metadata
+            except Exception as e:
+                logger.warning(f"Failed to list directory from path: {root}, error: {e}")
+                continue
+
+            for fs_metadata in fs_metadata_list:
                 if count >= limit:
                     break
-                if not self._should_process_file(file, patterns):
+
+                file_path: str | None = fs_metadata.get("name")
+                file_size = fs_metadata.get("size", 0)
+                if not file_path:
                     continue
-                file_path = str(os.path.join(root, file))
+
+                if self._is_directory(source_fs, file_path, fs_metadata, dirs):
+                    continue
+
+                file_name = os.path.basename(file_path)
+
+                if not self._should_process_file(file_name, patterns):
+                    continue
+
                 if not self._is_new_file(
                     file_path=file_path,
+                    fs_metadata=fs_metadata,
                     workflow=self.endpoint.workflow,
                     source_fs=source_fs,
                 ):
                     continue
+
                 file_hash = self._create_file_hash(
                     file_path=file_path,
                     source_fs=source_fs,
+                    file_size=file_size,
+                    fs_metadata=fs_metadata,
                 )
 
                 # Skip duplicate files
-                if file_hash.file_hash in unique_file_hashes:
-                    logger.info(f"Skipping duplicate files to list: {file_path}")
+                if (
+                    file_hash.provider_file_uuid in unique_file_hashes
+                    or file_hash.file_hash in unique_file_hashes
+                ):
+                    logger.info(
+                        f"[Matched Files] Skipping execution of duplicate file: {file_path}"
+                    )
                     continue
-                unique_file_hashes.add(file_hash.file_hash)
+                if file_hash.provider_file_uuid:
+                    unique_file_hashes.add(file_hash.provider_file_uuid)
+                elif file_hash.file_hash:
+                    unique_file_hashes.add(file_hash.file_hash)
 
                 matched_files[file_path] = file_hash
                 count += 1
         return matched_files, count
+
+    def _is_directory(
+        self,
+        source_fs: UnstractFileSystem,
+        file_path: str,
+        metadata: dict[str, Any],
+        dirs: list[str],
+    ) -> bool:
+        """Check if the given path is a directory.
+
+        Args:
+            source_fs (UnstractFileSystem): The file system object used for
+                reading the file.
+            file_path (str): The path of the file.
+            metadata (dict[str, Any]): The metadata of the file.
+            dirs (list[str]): The list of directories.
+
+        Returns:
+            bool: True if the file is a directory, False otherwise.
+        """
+        try:
+            # Check if the path is a directory using metadata first.
+            # Some connectors incorrectly label directories as files, so if metadata is inconclusive or fails,
+            # fall back to other checks: directory listing, path suffix ("/"), or zero file size.
+            if source_fs.is_dir_by_metadata(metadata):
+                logger.info(
+                    f"[Directory Check] '{file_path}' identified as a directory via metadata."
+                )
+                return True
+        except NotImplementedError:
+            logger.debug(
+                f"[Directory Check] Metadata-based check not implemented for '{file_path}'."
+            )
+            pass
+        except Exception as e:
+            logger.warning(
+                f"[Directory Check] Error while checking metadata for '{file_path}': {e}"
+            )
+
+        file_name = os.path.basename(file_path)
+
+        # Fallback 1: Check if the file is explicitly listed in directory entries
+        if file_name in dirs:
+            logger.info(
+                f"[Directory Check] '{file_path}' identified as a directory via checking list of directories."
+            )
+            return True
+
+        # Fallback 2: Check if the path ends with a slash
+        if file_path.endswith("/"):
+            logger.info(
+                f"[Directory Check] '{file_path}' identified as a directory based on path suffix '/'."
+            )
+            return True
+
+        # Fallback 3: Check if the file has size zero
+        if source_fs.get_file_size(metadata=metadata) == 0:
+            logger.info(
+                f"[Directory Check] '{file_path}' identified as a directory based on file size = 0."
+            )
+            return True
+
+        return False
 
     def _should_process_file(self, file: str, patterns: list[str]) -> bool:
         """Check if the file should be processed based on the patterns.
@@ -372,10 +465,14 @@ class SourceConnector(BaseConnector):
         return True
 
     def _is_new_file(
-        self, file_path: str, workflow: Workflow, source_fs: UnstractFileSystem
+        self,
+        file_path: str,
+        fs_metadata: dict[str, Any],
+        workflow: Workflow,
+        source_fs: UnstractFileSystem,
     ) -> bool:
         """Check if the file is new or already processed."""
-        file_history = self._get_file_history(workflow, source_fs, file_path)
+        file_history = self._get_file_history(fs_metadata, workflow, source_fs, file_path)
         # In case of ETL pipelines, its necessary to skip files which have
         # already been processed
         if self.use_file_history and file_history and file_history.is_completed():
@@ -388,57 +485,36 @@ class SourceConnector(BaseConnector):
         return True
 
     def _get_file_history(
-        self, workflow: Workflow, source_fs: UnstractFileSystem, file_path: str
+        self,
+        fs_metadata: dict[str, Any],
+        workflow: Workflow,
+        source_fs: UnstractFileSystem,
+        file_path: str,
     ) -> FileHistory | None:
         """Retrieve file history using provider UUID or legacy cache key."""
-        provider_file_uuid = source_fs.get_file_system_uuid(file_path)
+        provider_file_uuid = source_fs.get_file_system_uuid(file_path, fs_metadata)
 
         if provider_file_uuid:
             logger.info(f"Checking file history for provider UUID: {provider_file_uuid}")
             file_history = FileHistoryHelper.get_file_history(
                 workflow=workflow, provider_file_uuid=provider_file_uuid
             )
-
-            if file_history:
-                return file_history  # Early return if history exists
-
-            # The provider_file_uuid was recently integrated,
-            # so we also check the cache_key for backward compatibility.
-            # This ensures older files without a provider UUID
-            # can still be identified.
-            # In the future, this check can be removed as file history validation
-            # is already handled during file execution.
-            file_content_hash = self.get_file_content_hash(source_fs, file_path)
-            logger.info(
-                f"Checking file history for legacy cache key: {file_content_hash}"
-            )
-            file_history = FileHistoryHelper.get_file_history(
-                workflow=workflow, cache_key=file_content_hash
-            )
-
-            if file_history and file_history.is_completed():
-                file_history.update(provider_file_uuid=provider_file_uuid)
-
-        # Fallback for connectors that do not support provider_file_uuid
-        else:
-            file_content_hash = self.get_file_content_hash(source_fs, file_path)
-            logger.info(
-                f"Checking file history for legacy cache key: {file_content_hash}"
-            )
-            file_history = FileHistoryHelper.get_file_history(
-                workflow=workflow, cache_key=file_content_hash
-            )
-
-        return file_history
+            return file_history
+        return None
 
     def _create_file_hash(
-        self, file_path: str, source_fs: UnstractFileSystem
+        self,
+        file_path: str,
+        source_fs: UnstractFileSystem,
+        file_size: int,
+        fs_metadata: dict[str, Any],
     ) -> FileHash:
         """Create a FileHash object for the matched file."""
         file_name = os.path.basename(file_path)
-        provider_file_uuid = source_fs.get_file_system_uuid(file_path)
-        file_size = source_fs.get_file_size(file_path)
-        fs_metadata = source_fs.get_file_metadata(file_path)
+        provider_file_uuid = source_fs.get_file_system_uuid(
+            file_path=file_path, metadata=fs_metadata
+        )
+        serialized_metadata = source_fs.serialize_metadata_value(value=fs_metadata)
         connection_type = self.endpoint.connection_type
         return FileHash(
             file_path=file_path,
@@ -446,7 +522,7 @@ class SourceConnector(BaseConnector):
             file_name=file_name,
             file_size=file_size,
             provider_file_uuid=provider_file_uuid,
-            fs_metadata=fs_metadata,
+            fs_metadata=serialized_metadata,
         )
 
     def list_files_from_source(
@@ -743,7 +819,9 @@ class SourceConnector(BaseConnector):
 
             # Skip duplicate files
             if file_hash in unique_file_hashes:
-                logger.info(f"Skipping duplicate files to list: {file_name}")
+                logger.info(
+                    f"[Matched Files] Skipping execution of duplicate file: {file_name}"
+                )
                 continue
             unique_file_hashes.add(file_hash)
 

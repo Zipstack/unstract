@@ -89,6 +89,24 @@ class AzureCloudStorageFS(UnstractFileSystem):
         )
         return None
 
+    def is_dir_by_metadata(self, metadata: dict[str, Any]) -> bool:
+        """Check if the given path is a directory.
+
+        Args:
+            metadata (dict): Metadata dictionary obtained from fsspec or cloud API.
+
+        Returns:
+            bool: True if the path is a directory, False otherwise.
+        """
+        inner_metadata = metadata.get("metadata")
+        if not isinstance(inner_metadata, dict):
+            inner_metadata = {}
+
+        is_dir = inner_metadata.get("is_directory") == "true"
+        if not is_dir:
+            is_dir = metadata.get("type") == "directory"
+        return is_dir
+
     def test_credentials(self) -> bool:
         """To test credentials for Azure Cloud Storage."""
         try:
