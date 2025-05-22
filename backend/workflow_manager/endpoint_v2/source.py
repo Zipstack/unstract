@@ -308,55 +308,105 @@ class SourceConnector(BaseConnector):
                 logger.warning(f"Failed to list directory from path: {root}, error: {e}")
                 continue
 
-            for fs_metadata in fs_metadata_list:
-                if count >= limit:
-                    break
-
-                file_path: str | None = fs_metadata.get("name")
-                file_size = fs_metadata.get("size", 0)
-                if not file_path:
-                    continue
-
-                if self._is_directory(source_fs, file_path, fs_metadata, dirs):
-                    continue
-
-                file_name = os.path.basename(file_path)
-
-                if not self._should_process_file(file_name, patterns):
-                    continue
-
-                if not self._is_new_file(
-                    file_path=file_path,
-                    fs_metadata=fs_metadata,
-                    workflow=self.endpoint.workflow,
-                    source_fs=source_fs,
-                ):
-                    continue
-
-                file_hash = self._create_file_hash(
-                    file_path=file_path,
-                    source_fs=source_fs,
-                    file_size=file_size,
-                    fs_metadata=fs_metadata,
-                )
-
-                # Skip duplicate files
-                if (
-                    file_hash.provider_file_uuid in unique_file_hashes
-                    or file_hash.file_hash in unique_file_hashes
-                ):
-                    logger.info(
-                        f"[Matched Files] Skipping execution of duplicate file: {file_path}"
-                    )
-                    continue
-                if file_hash.provider_file_uuid:
-                    unique_file_hashes.add(file_hash.provider_file_uuid)
-                elif file_hash.file_hash:
-                    unique_file_hashes.add(file_hash.file_hash)
-
-                matched_files[file_path] = file_hash
-                count += 1
+            count = self._process_file_fs_directory(
+                fs_metadata_list=fs_metadata_list,
+                count=count,
+                limit=limit,
+                unique_file_hashes=unique_file_hashes,
+                matched_files=matched_files,
+                patterns=patterns,
+                source_fs=source_fs,
+                dirs=dirs,
+            )
         return matched_files, count
+
+    def _process_file_fs_directory(
+        self,
+        fs_metadata_list: list[dict[str, Any]],
+        count: int,
+        limit: int,
+        unique_file_hashes: set[str],
+        matched_files: dict[str, FileHash],
+        patterns: list[str],
+        source_fs: UnstractFileSystem,
+        dirs: list[str],
+    ) -> int:
+        for fs_metadata in fs_metadata_list:
+            if count >= limit:
+                break
+
+            file_path: str | None = fs_metadata.get("name")
+            file_size = fs_metadata.get("size", 0)
+
+            if not file_path or self._is_directory(
+                source_fs, file_path, fs_metadata, dirs
+            ):
+                continue
+
+            if self._should_skip_file(file_path, fs_metadata, patterns, source_fs):
+                continue
+
+            file_hash = self._create_file_hash(
+                file_path=file_path,
+                source_fs=source_fs,
+                file_size=file_size,
+                fs_metadata=fs_metadata,
+            )
+
+            # Skip duplicate files
+            if self._is_duplicate(file_hash, unique_file_hashes):
+                logger.info(
+                    f"[Matched Files] Skipping execution of duplicate file: {file_path}"
+                )
+                continue
+            self._update_unique_file_hashes(file_hash, unique_file_hashes)
+
+            matched_files[file_path] = file_hash
+            count += 1
+        return count
+
+    def _should_skip_file(
+        self,
+        file_path: str,
+        fs_metadata: dict[str, Any],
+        patterns: list[str],
+        source_fs: UnstractFileSystem,
+    ) -> bool:
+        """Check if the given file should be skipped.
+
+        Args:
+            file_path (str): The path of the file.
+            fs_metadata (dict[str, Any]): The metadata of the file.
+            patterns (list[str]): The patterns to match against file names.
+            source_fs (UnstractFileSystem): The file system object used for
+                reading the file.
+
+        Returns:
+            bool: True if the file should be skipped, False otherwise.
+        """
+        file_name = os.path.basename(file_path)
+        return not self._should_process_file(
+            file_name, patterns
+        ) or not self._is_new_file(
+            file_path=file_path,
+            fs_metadata=fs_metadata,
+            workflow=self.endpoint.workflow,
+            source_fs=source_fs,
+        )
+
+    def _is_duplicate(self, file_hash: FileHash, unique_file_hashes: set[str]) -> bool:
+        return (
+            file_hash.provider_file_uuid in unique_file_hashes
+            or file_hash.file_hash in unique_file_hashes
+        )
+
+    def _update_unique_file_hashes(
+        self, file_hash: FileHash, unique_file_hashes: set[str]
+    ) -> None:
+        if file_hash.provider_file_uuid:
+            unique_file_hashes.add(file_hash.provider_file_uuid)
+        elif file_hash.file_hash:
+            unique_file_hashes.add(file_hash.file_hash)
 
     def _is_directory(
         self,
