@@ -205,6 +205,7 @@ class AuthenticationService:
         admin: OrganizationMember,
         organization_id: str,
         user_ids: list[str],
+        request: Request,
     ) -> bool:
         raise MethodNotImplemented()
 
@@ -277,6 +278,7 @@ class AuthenticationService:
         organization_id: str,
         user_id: str,
         role_ids: list[str],
+        request: Request,
     ) -> list[str]:
         if admin.role == UserRole.ADMIN.value:
             return role_ids
@@ -288,6 +290,7 @@ class AuthenticationService:
         organization_id: str,
         user_id: str,
         role_ids: list[str],
+        request: Request,
     ) -> list[str]:
         if admin.role == UserRole.ADMIN.value:
             return role_ids
@@ -468,5 +471,6 @@ class AuthenticationService:
         org_id: str,
         email: str,
         role: str | None = None,
+        request: HttpRequest | None = None,
     ) -> bool:
         raise MethodNotImplemented()

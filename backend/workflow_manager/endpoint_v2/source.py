@@ -19,19 +19,19 @@ from workflow_manager.endpoint_v2.constants import (
     FileType,
     SourceConstant,
     SourceKey,
-    WorkflowFileType,
 )
-from workflow_manager.endpoint_v2.dto import FileHash
+from workflow_manager.endpoint_v2.dto import FileHash, SourceConfig
 from workflow_manager.endpoint_v2.exceptions import (
     InvalidInputDirectory,
     InvalidSourceConnectionType,
     MissingSourceConnectionType,
     OrganizationIdNotFound,
     SourceConnectorNotConfigured,
+    SourceFileOrInfilePathNotFound,
 )
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.file_execution.models import WorkflowFileExecution
-from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelper
+from workflow_manager.utils.workflow_log import WorkflowLog
 from workflow_manager.workflow_v2.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow_v2.models.file_history import FileHistory
 from workflow_manager.workflow_v2.models.workflow import Workflow
@@ -65,8 +65,10 @@ class SourceConnector(BaseConnector):
         self,
         workflow: Workflow,
         execution_id: str,
+        workflow_log: WorkflowLog,
+        use_file_history: bool,
         organization_id: str | None = None,
-        execution_service: WorkflowExecutionServiceHelper | None = None,
+        file_execution_id: str | None = None,
     ) -> None:
         """Create a SourceConnector.
 
@@ -84,13 +86,14 @@ class SourceConnector(BaseConnector):
         organization_id = organization_id or UserContext.get_organization_identifier()
         if not organization_id:
             raise OrganizationIdNotFound()
-        super().__init__(workflow.id, execution_id, organization_id)
+        super().__init__(workflow.id, execution_id, organization_id, file_execution_id)
         self.endpoint = self._get_endpoint_for_workflow(workflow=workflow)
         self.workflow = workflow
         self.execution_id = execution_id
         self.organization_id = organization_id
         self.hash_value_of_file_content: str | None = None
-        self.execution_service = execution_service
+        self.workflow_log = workflow_log
+        self.use_file_history = use_file_history
 
     def _get_endpoint_for_workflow(
         self,
@@ -226,36 +229,30 @@ class SourceConnector(BaseConnector):
             msg (str): Message to log
         """
         logger.info(msg)
-        if self.execution_service:
-            self.execution_service.publish_log(msg)
+        self.workflow_log.publish_log(message=msg)
 
     def publish_input_output_list_file_logs(
         self, folders: list[str], matched_files: dict[str, FileHash], count: int
     ) -> None:
-        if not self.execution_service:
-            return None
-
         folders_list = "\n".join(f"- `{folder.strip()}`" for folder in folders)
         input_log = f"## Folders to process:\n\n{folders_list}\n\n"
-        self.execution_service.publish_update_log(
+        self.workflow_log.publish_update_log(
             state=LogState.INPUT_UPDATE, message=input_log
         )
         output_log = self._matched_files_component_log(matched_files, count)
-        self.execution_service.publish_update_log(
+        self.workflow_log.publish_update_log(
             state=LogState.OUTPUT_UPDATE, message=output_log
         )
 
     def publish_input_file_content(self, input_file_path: str, input_text: str) -> None:
-        if not self.execution_service:
-            return None
         output_log_message = f"## Input text:\n\n```text\n{input_text}\n```\n\n"
         input_log_message = (
             f"## Input file:\n\n```text\n{os.path.basename(input_file_path)}\n```\n\n"
         )
-        self.execution_service.publish_update_log(
+        self.workflow_log.publish_update_log(
             state=LogState.INPUT_UPDATE, message=input_log_message
         )
-        self.execution_service.publish_update_log(
+        self.workflow_log.publish_update_log(
             state=LogState.OUTPUT_UPDATE, message=output_log_message
         )
 
@@ -357,7 +354,7 @@ class SourceConnector(BaseConnector):
         if matches_blocked:
             message = f"Skipping '{file_name}' as it has an unsupported file format"
             logger.debug(message)
-            self.execution_service.publish_log(message)
+            self.workflow_log.publish_log(message)
             return False
 
         return True
@@ -369,12 +366,8 @@ class SourceConnector(BaseConnector):
         file_history = self._get_file_history(workflow, source_fs, file_path)
         # In case of ETL pipelines, its necessary to skip files which have
         # already been processed
-        if (
-            self.execution_service.use_file_history
-            and file_history
-            and file_history.is_completed()
-        ):
-            self.execution_service.publish_log(
+        if self.use_file_history and file_history and file_history.is_completed():
+            self.workflow_log.publish_log(
                 f"Skipping file {file_path} as it has already been processed. "
                 "Clear the file markers to process it again."
             )
@@ -457,10 +450,16 @@ class SourceConnector(BaseConnector):
         """
         connection_type = self.endpoint.connection_type
         if connection_type == WorkflowEndpoint.ConnectionType.FILESYSTEM:
-            return self.list_files_from_file_connector()
+            files, count = self.list_files_from_file_connector()
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
-            return self.list_file_from_api_storage(file_hashes)
-        raise InvalidSourceConnectionType()
+            files, count = self.list_file_from_api_storage(file_hashes)
+        else:
+            raise InvalidSourceConnectionType()
+        # TODO: move this to where file is listed at source.
+        for index, file_hash in enumerate(files.values(), start=1):
+            file_hash.file_number = index
+
+        return files, count
 
     def get_file_content_hash(self, source_fs: UnstractFileSystem, file_path: str) -> str:
         """Generate a hash value from the file content.
@@ -505,6 +504,8 @@ class SourceConnector(BaseConnector):
         input_file_path = file_hash.file_path
         source_file_path = self.source_file
         infile_path = self.infile
+        if not source_file_path or not infile_path:
+            raise SourceFileOrInfilePathNotFound()
         connector: ConnectorInstance = self.endpoint.connector_instance
         connector_settings: dict[str, Any] = connector.connector_metadata
         source_fs = self.get_fsspec(
@@ -544,8 +545,10 @@ class SourceConnector(BaseConnector):
 
     def add_input_from_api_storage_to_volume(self, input_file_path: str) -> str:
         """Add input file to execution directory from api storage."""
-        infile_path = os.path.join(self.execution_dir, WorkflowFileType.INFILE)
-        source_path = os.path.join(self.execution_dir, WorkflowFileType.SOURCE)
+        source_file_path = self.source_file
+        infile_path = self.infile
+        if not source_file_path or not infile_path:
+            raise SourceFileOrInfilePathNotFound()
 
         api_file_system = FileSystem(FileStorageType.API_EXECUTION)
         api_file_storage = api_file_system.get_file_storage()
@@ -555,7 +558,7 @@ class SourceConnector(BaseConnector):
             source_storage=api_file_storage,
             destination_storage=workflow_file_storage,
             source_path=input_file_path,
-            destination_paths=[infile_path, source_path],
+            destination_paths=[infile_path, source_file_path],
         )
         logger.info(f"File {input_file_path} added to execution directory")
         return file_content_hash
@@ -770,3 +773,45 @@ class SourceConnector(BaseConnector):
             os.path.dirname(__file__), "static", "src", "file.json"
         )
         return cls.get_json_schema(file_path=schema_path)
+
+    def get_config(self) -> SourceConfig:
+        """Get serializable configuration for the source connector.
+
+        Returns:
+            SourceConfig: Configuration containing all necessary data to reconstruct the connector
+        """
+        source_config = SourceConfig(
+            workflow_id=self.workflow.id,
+            execution_id=self.execution_id,
+            organization_id=self.organization_id,
+            use_file_history=self.use_file_history,
+        )
+        return source_config
+
+    @classmethod
+    def from_config(
+        cls, workflow_log: WorkflowLog, config: SourceConfig
+    ) -> "SourceConnector":
+        """Create a SourceConnector instance from configuration.
+
+        Args:
+            workflow_log (WorkflowLog): Workflow log instance
+            config (SourceConfig): Configuration containing all necessary data to reconstruct the connector
+
+        Returns:
+            SourceConnector: New instance
+        """
+        # Reconstruct workflow
+        workflow = Workflow.objects.get(id=config.workflow_id)
+
+        # Create source connector instance
+        source = cls(
+            workflow=workflow,
+            execution_id=config.execution_id,
+            workflow_log=workflow_log,
+            use_file_history=config.use_file_history,
+            organization_id=config.organization_id,
+            file_execution_id=config.file_execution_id,
+        )
+
+        return source
