@@ -39,9 +39,12 @@ function Workflows() {
   const [showModal, setShowModal] = useState(false);
   const [modalDismissed, setModalDismissed] = useState(false);
   const { getPromptStudioCount } = usePromptStudioService();
+  const [initialFetchComplete, setInitialFetchComplete] = useState(false);
 
   useEffect(() => {
-    fetchCount(getPromptStudioCount);
+    fetchCount(getPromptStudioCount).finally(() => {
+      setInitialFetchComplete(true);
+    });
   }, [fetchCount]);
 
   const [projectList, setProjectList] = useState();
@@ -201,12 +204,12 @@ function Workflows() {
   };
 
   useEffect(() => {
-    if (!isLoading && count === 0 && !modalDismissed) {
+    if (initialFetchComplete && !isLoading && count === 0 && !modalDismissed) {
       setShowModal(true);
     } else if (!isLoading && count > 0) {
       setShowModal(false);
     }
-  }, [isLoading, count, modalDismissed]);
+  }, [initialFetchComplete, isLoading, count, modalDismissed]);
 
   const handleModalClose = useCallback(() => {
     setShowModal(false);
