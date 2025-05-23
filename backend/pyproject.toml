@@ -37,7 +37,7 @@ dependencies = [
     "social-auth-core==4.4.2",         # For OAuth
     # TODO: Temporarily removing the extra dependencies of aws and gcs from unstract-sdk
     # to resolve lock file. Will have to be re-looked into
-    "unstract-sdk[azure]~=0.71.0",
+    "unstract-sdk[azure]~=0.72.0",
     "gcsfs==2024.10.0",
     "s3fs==2024.10.0",
     "azure-identity==1.16.0",
