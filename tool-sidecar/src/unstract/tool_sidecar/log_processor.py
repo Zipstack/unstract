@@ -66,9 +66,9 @@ class LogProcessor:
         self.messaging_channel = messaging_channel
         self.container_name = container_name
         self.tool_execution_tracker = ToolExecutionTracker()
-        self._update_status(status=ToolExecutionStatus.RUNNING)
+        self._update_tool_execution_status(status=ToolExecutionStatus.RUNNING)
 
-    def _update_status(
+    def _update_tool_execution_status(
         self, status: ToolExecutionStatus, error: str | None = None
     ) -> None:
         try:
@@ -137,14 +137,14 @@ class LogProcessor:
             if log_level == LogLevel.ERROR:
                 logger.error(f"[Tool: {self.container_name}] {log_dict.get('log')}")
                 log_process_status.error = log_dict.get("log")
-                self._update_status(
+                self._update_tool_execution_status(
                     status=ToolExecutionStatus.FAILED, error=log_dict.get("log")
                 )
             else:
                 logger.info(f"[Tool: {self.container_name}] {log_dict.get('log')}")
         elif log_type == LogType.RESULT:
             logger.info(f"[Tool {self.container_name}] Completed running")
-            self._update_status(status=ToolExecutionStatus.SUCCESS)
+            self._update_tool_execution_status(status=ToolExecutionStatus.SUCCESS)
             return LogLineDTO(with_result=True)
         elif log_type == LogType.UPDATE:
             logger.info(f"[Tool: {self.container_name}] Pushing UI updates")

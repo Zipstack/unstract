@@ -312,7 +312,7 @@ class UnstractRunner:
         shell_script = f"{mkdir_cmd} && {run_tool_fn}; {execute_cmd}"
         return shell_script
 
-    def _get_tool_execution_status(
+    def _handle_tool_execution_status(
         self, execution_id: str, file_execution_id: str, container_name: str
     ):
         """Get the tool execution status data from the tool execution tracker."""
@@ -353,7 +353,8 @@ class UnstractRunner:
         except Exception as e:
             self.logger.error(
                 f"Execution ID: {execution_id}, docker "
-                f"container: {container_name} - failed to fetch execution status. Error: {e}"
+                f"container: {container_name} - failed to fetch execution status. Error: {e}",
+                exc_info=True,
             )
         finally:
             # Delete the status from cache since it is no longer needed
@@ -464,7 +465,7 @@ class UnstractRunner:
                     f"Execution ID: {execution_id}, docker "
                     f"container: {container_name} completed execution"
                 )
-                self._get_tool_execution_status(
+                self._handle_tool_execution_status(
                     execution_id=execution_id,
                     file_execution_id=file_execution_id,
                     container_name=container_name,
