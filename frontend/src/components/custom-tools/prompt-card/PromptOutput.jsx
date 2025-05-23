@@ -37,6 +37,7 @@ import { DisplayPromptResult } from "./DisplayPromptResult";
 import usePromptOutput from "../../../hooks/usePromptOutput";
 import { PromptRunTimer } from "./PromptRunTimer";
 import { PromptRunCost } from "./PromptRunCost";
+import { useState } from "react";
 
 let TableOutput;
 try {
@@ -64,11 +65,13 @@ function PromptOutput({
   isNotSingleLlmProfile,
   setIsIndexOpen,
   enforceType,
+  tableSettings,
   promptOutputs,
   promptRunStatus,
   isChallenge,
   handleSelectHighlight,
 }) {
+  const [openExpandModal, setOpenExpandModal] = useState(false);
   const { width: windowWidth } = useWindowDimensions();
   const componentWidth = windowWidth * 0.4;
   const {
@@ -100,6 +103,37 @@ function PromptOutput({
         ? [...prevState, profileId]
         : prevState.filter((id) => id !== profileId)
     );
+  };
+
+  const handleTable = (profileId, promptOutputData) => {
+    if (tableSettings?.document_type !== "rent_rolls")
+      return <TableOutput output={promptOutputData?.output} />;
+    else
+      return (
+        <>
+          <DisplayPromptResult
+            output={promptOutputData?.output}
+            profileId={profileId}
+            docId={selectedDoc?.document_id}
+            promptRunStatus={promptRunStatus}
+            handleSelectHighlight={handleSelectHighlight}
+            highlightData={promptOutputData?.highlightData}
+            confidenceData={promptOutputData?.confidenceData}
+            promptDetails={promptDetails}
+            isTable={true}
+            setOpenExpandModal={setOpenExpandModal}
+          />
+          <div className="prompt-profile-run">
+            <CopyPromptOutputBtn
+              copyToClipboard={() =>
+                copyOutputToClipboard(
+                  displayPromptResult(promptOutputData?.output, true)
+                )
+              }
+            />
+          </div>
+        </>
+      );
   };
 
   const getColSpan = () => (componentWidth < 1200 ? 24 : 6);
@@ -195,9 +229,12 @@ function PromptOutput({
               promptId={promptDetails?.prompt_id}
               llmProfiles={llmProfileDetails}
               enforceType={enforceType}
+              tableSettings={tableSettings}
               displayLlmProfile={false}
               promptOutputs={promptOutputs}
               promptRunStatus={promptRunStatus}
+              openExpandModal={openExpandModal}
+              setOpenExpandModal={setOpenExpandModal}
             />
           </div>
         </Space>
@@ -405,9 +442,12 @@ function PromptOutput({
                         promptId={promptDetails?.prompt_id}
                         llmProfiles={llmProfileDetails}
                         enforceType={enforceType}
+                        tableSettings={tableSettings}
                         displayLlmProfile={true}
                         promptOutputs={promptOutputs}
                         promptRunStatus={promptRunStatus}
+                        openExpandModal={openExpandModal}
+                        setOpenExpandModal={setOpenExpandModal}
                       />
                     </div>
                   </div>
@@ -416,7 +456,7 @@ function PromptOutput({
                   <Divider className="prompt-card-divider" />
                   <div className="prompt-card-result prompt-card-div">
                     {isTableExtraction && TableOutput ? (
-                      <TableOutput output={promptOutputData?.output} />
+                      handleTable(profileId, promptOutputData)
                     ) : (
                       <>
                         <DisplayPromptResult
@@ -466,6 +506,7 @@ PromptOutput.propTypes = {
   isNotSingleLlmProfile: PropTypes.bool.isRequired,
   setIsIndexOpen: PropTypes.func.isRequired,
   enforceType: PropTypes.string,
+  tableSettings: PropTypes.object.isRequired,
   promptOutputs: PropTypes.object.isRequired,
   promptRunStatus: PropTypes.object.isRequired,
   isChallenge: PropTypes.bool,
