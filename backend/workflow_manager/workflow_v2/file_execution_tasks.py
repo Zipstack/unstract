@@ -167,6 +167,9 @@ class FileExecutionTasks:
                 q_file_no_list,
                 file_hash,
             )
+            logger.info(
+                f"Start to process file {file_name} with file hash {file_hash.to_json()}"
+            )
             file_execution_result = FileExecutionTasks._process_file(
                 current_file_idx=file_number,
                 total_files=total_files,
