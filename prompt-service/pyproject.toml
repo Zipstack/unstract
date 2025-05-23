@@ -11,7 +11,7 @@ dependencies = [
     "peewee~=3.16",
     "nltk~=3.8",
     "flask~=3.0",
-    "llama-index==0.12.8",
+    "llama-index==0.12.37",
     "python-dotenv==1.0.0",
     "json-repair~=0.42.0",
     # TODO: Temporarily removing the extra dependencies of aws and gcs from unstract-sdk
