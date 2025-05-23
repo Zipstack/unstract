@@ -81,6 +81,17 @@ class HttpFS(UnstractFileSystem):
         logger.error(f"[HTTP] File hash not found for the metadata: {metadata}")
         return None
 
+    def is_dir_by_metadata(self, metadata: dict[str, Any]) -> bool:
+        """Check if the given path is a directory.
+
+        Args:
+            metadata (dict): Metadata dictionary obtained from fsspec or cloud API.
+
+        Returns:
+            bool: True if the path is a directory, False otherwise.
+        """
+        raise NotImplementedError
+
     def test_credentials(self) -> bool:
         """To test credentials for HTTP(S)."""
         is_dir = False

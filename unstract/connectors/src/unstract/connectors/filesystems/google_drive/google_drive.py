@@ -107,8 +107,23 @@ class GoogleDriveFS(UnstractFileSystem):
         Returns:
             Optional[str]: The file hash in hexadecimal format or None if not found.
         """
+        # Extracts checksum for GDrive
+        file_hash = metadata.get("checksum")
+        if file_hash:
+            return file_hash.lower()
         logger.error(f"[Google Drive] File hash not found for the metadata: {metadata}")
         return None
+
+    def is_dir_by_metadata(self, metadata: dict[str, Any]) -> bool:
+        """Check if the given path is a directory.
+
+        Args:
+            metadata (dict): Metadata dictionary obtained from fsspec or cloud API.
+
+        Returns:
+            bool: True if the path is a directory, False otherwise.
+        """
+        return metadata.get("type") == "directory"
 
     def test_credentials(self) -> bool:
         """To test credentials for Google Drive."""

@@ -59,3 +59,7 @@ class InternalException(APIException):
 class WorkflowExecutionNotExist(APIException):
     status_code = 404
     default_detail = "Workflow execution does not exist"
+
+
+class ExecutionContextInitializationError(APIException):
+    default_detail = "Error initializing execution context."
