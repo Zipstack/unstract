@@ -11,7 +11,8 @@ from api_v2.models import APIDeployment
 from celery import chord, current_task
 from celery import exceptions as celery_exceptions
 from celery.result import AsyncResult
-from django.conf import settings
+from configuration.enums import ConfigKey
+from configuration.models import Configuration
 from django.db import IntegrityError
 from pipeline_v2.models import Pipeline
 from plugins.workflow_manager.workflow_v2.utils import WorkflowUtil
@@ -109,7 +110,14 @@ class WorkflowHelper:
         }
 
         # Prepare batches of files for parallel processing
-        BATCH_SIZE = settings.MAX_PARALLEL_FILE_BATCHES  # Max number of batches
+        organization = UserContext.get_organization()
+        BATCH_SIZE = (
+            Configuration.get_value_by_organization(
+                config_key=ConfigKey.MAX_PARALLEL_FILE_BATCHES, organization=organization
+            )
+            or 1
+        )  # Max number of batches
+
         file_items = list(json_serializable_files.items())
 
         # Calculate how many items per batch
