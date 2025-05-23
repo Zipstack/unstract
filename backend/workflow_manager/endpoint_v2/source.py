@@ -443,7 +443,6 @@ class SourceConnector(BaseConnector):
             logger.debug(
                 f"[Directory Check] Metadata-based check not implemented for '{file_path}'."
             )
-            pass
         except Exception as e:
             logger.warning(
                 f"[Directory Check] Error while checking metadata for '{file_path}': {e}"
@@ -642,6 +641,9 @@ class SourceConnector(BaseConnector):
         Raises:
             FileHashNotFound: If the hash value of the file content is not found.
         """
+        logger.info(
+            f"Adding input file from source connector to execution directory: {file_hash.file_name}"
+        )
         input_file_path = file_hash.file_path
         source_file_path = self.source_file
         infile_path = self.infile
@@ -686,6 +688,9 @@ class SourceConnector(BaseConnector):
 
     def add_input_from_api_storage_to_volume(self, input_file_path: str) -> str:
         """Add input file to execution directory from api storage."""
+        logger.info(
+            f"Adding input file from api storage to execution directory: {input_file_path}"
+        )
         source_file_path = self.source_file
         infile_path = self.infile
         if not source_file_path or not infile_path:
@@ -772,6 +777,7 @@ class SourceConnector(BaseConnector):
         Returns:
             str: file_name
         """
+        logger.info(f"Adding input file to execution directory: {file_hash.file_name}")
         connection_type = self.endpoint.connection_type
         input_file_path = file_hash.file_path
         if connection_type == WorkflowEndpoint.ConnectionType.FILESYSTEM:

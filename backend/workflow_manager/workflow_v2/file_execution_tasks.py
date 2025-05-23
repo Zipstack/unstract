@@ -31,6 +31,7 @@ from workflow_manager.utils.workflow_log import WorkflowLog
 from workflow_manager.workflow_v2.dto import (
     ExecutionContext,
     FileBatchData,
+    FileBatchResult,
     FileData,
     FinalOutputResult,
     ToolExecutionResult,
@@ -115,22 +116,23 @@ class FileExecutionTasks:
                 - single_step: Whether to process in single step mode
         """
         file_batch_data = FileBatchData.from_dict(file_batch_data)
+        logger.debug(f"Batch data received: {file_batch_data}")
+
         file_data = file_batch_data.file_data
         logger.info(f"File processing context {file_data}")
 
+        execution_id = file_data.execution_id
+        workflow_id = file_data.workflow_id
         organization_id = file_data.organization_id
-        StateStore.set(Account.ORGANIZATION_ID, organization_id)
 
-        # Use proper logger instead of print
-        logger.info(
-            f"Starting to process file batch for execution {file_data.execution_id}"
-        )
-        logger.debug(f"Batch data received: {file_batch_data}")
+        StateStore.set(Account.ORGANIZATION_ID, organization_id)
 
         successful_files = 0
         failed_files = 0
-        execution_id = file_data.execution_id
-        workflow_id = file_data.workflow_id
+
+        logger.info(
+            f"Initializing file batch processing for execution {execution_id}, organization {organization_id}"
+        )
         # Reconstruct necessary objects
         workflow = FileExecutionTasks.get_workflow_by_id(str(workflow_id))
         workflow_execution: WorkflowExecution = WorkflowExecution.objects.get(
@@ -142,13 +144,12 @@ class FileExecutionTasks:
         total_files = len(file_batch_data.files)
         q_file_no_list = set(file_data.q_file_no_list)
 
-        logger.info(
-            f"Processing {total_files} files of execution {execution_id} in a batch"
-        )
+        logger.info(f"Processing {total_files} files of execution {execution_id}")
 
         for file_number, (file_name, file_hash_dict) in enumerate(
             file_batch_data.files, 1
         ):
+            logger.info(f"[{file_number}/{total_files}] Processing file '{file_name}'")
             file_hash = FileHash(
                 file_path=file_hash_dict.get("file_path"),
                 file_name=file_hash_dict.get("file_name"),
@@ -167,9 +168,7 @@ class FileExecutionTasks:
                 q_file_no_list,
                 file_hash,
             )
-            logger.info(
-                f"Start to process file {file_name} with file hash {file_hash.to_json()}"
-            )
+            logger.info(f"File hash for file {file_name}: {file_hash.to_json()}")
             file_execution_result = FileExecutionTasks._process_file(
                 current_file_idx=file_number,
                 total_files=total_files,
@@ -190,10 +189,10 @@ class FileExecutionTasks:
                     workflow_id=workflow.id,
                     execution_id=execution_id,
                 )
-        return {
-            "successful_files": successful_files,
-            "failed_files": failed_files,
-        }
+        return FileBatchResult(
+            successful_files=successful_files,
+            failed_files=failed_files,
+        ).to_dict()
 
     @file_processing_app.task(
         bind=True,
@@ -241,8 +240,12 @@ class FileExecutionTasks:
         total_successful = sum(result["successful_files"] for result in results)
         total_failed = sum(result["failed_files"] for result in results)
 
-        total_files = total_successful + total_failed
+        batch_result = FileBatchResult(
+            successful_files=total_successful,
+            failed_files=total_failed,
+        )
 
+        total_files = batch_result.total_files
         # Update final status
         final_status = (
             ExecutionStatus.COMPLETED if total_successful else ExecutionStatus.ERROR
@@ -468,6 +471,7 @@ class FileExecutionTasks:
         workflow_file_exec.update_status(ExecutionStatus.EXECUTING)
 
         try:
+            logger.info(f"Preparing file for processing: {file_hash.file_name}")
             content_hash = source.add_file_to_volume(
                 workflow_file_execution=workflow_file_exec,
                 tags=workflow_execution.tag_names,
@@ -547,6 +551,7 @@ class FileExecutionTasks:
         total_files: int,
     ) -> ToolExecutionResult:
         """Execute main workflow processing steps with proper error handling."""
+        logger.info(f"Executing workflow steps for file: '{file_hash.file_name}'")
         tool_instances: list[ToolInstance] = (
             ToolInstanceHelper.get_tool_instances_by_workflow(
                 file_data.workflow_id, ToolInstanceKey.STEP
@@ -615,6 +620,7 @@ class FileExecutionTasks:
         execution_result: ToolExecutionResult,
     ) -> FileExecutionResult:
         """Handle final processing steps and result generation."""
+        logger.info(f"Finalizing execution for file: '{file_hash.file_name}'")
         result = cls._process_final_output(
             destination,
             workflow_execution.workflow,
@@ -673,7 +679,12 @@ class FileExecutionTasks:
 
             if destination.is_api:
                 execution_metadata = destination.get_metadata(file_history)
-            if cls._should_create_file_history(destination, file_history, output_result):
+            if cls._should_create_file_history(
+                destination=destination,
+                file_history=file_history,
+                output_result=output_result,
+                processing_error=processing_error,
+            ):
                 FileHistoryHelper.create_file_history(
                     file_hash=file_hash,
                     workflow=workflow,
@@ -697,20 +708,23 @@ class FileExecutionTasks:
         destination: DestinationConnector,
         file_history: FileHistory | None,
         output_result: str | None,
+        processing_error: str | None,
     ) -> bool:
         """Determine whether a new FileHistory record should be created.
 
         Returns True if:
         - File history is enabled for the destination,
-        - No existing file history record is present, and
-        - Either:
-            - The destination is not API, or
-            - The destination is API and a valid output_result exists.
+        - No existing file history record is present,
+        - There is no processing error (`processing_error` is None),
+        - And one of the following conditions is met:
+            - The destination is not an API, or
+            - The destination is an API and a valid output_result exists.
 
         Args:
             destination: Destination connector
             file_history: File history
             output_result: Output result
+            processing_error: Processing error
 
         Returns:
             bool: True if file history should be created, False otherwise
@@ -718,6 +732,8 @@ class FileExecutionTasks:
         if not destination.use_file_history or file_history:
             return False
         if destination.is_api and not output_result:
+            return False
+        if processing_error:
             return False
         return True
 

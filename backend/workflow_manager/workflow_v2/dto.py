@@ -187,6 +187,22 @@ class FileBatchData:
 
 
 @dataclass
+class FileBatchResult:
+    successful_files: int = 0
+    failed_files: int = 0
+
+    @property
+    def total_files(self) -> int:
+        return self.successful_files + self.failed_files
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            "successful_files": self.successful_files,
+            "failed_files": self.failed_files,
+        }
+
+
+@dataclass
 class ToolExecutionResult:
     error: str | None
     result: Any | None
