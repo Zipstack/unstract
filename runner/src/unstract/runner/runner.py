@@ -9,6 +9,11 @@ from flask import Flask
 
 from unstract.core.constants import LogFieldName
 from unstract.core.pubsub_helper import LogPublisher
+from unstract.core.tool_execution_status import (
+    ToolExecutionData,
+    ToolExecutionStatus,
+    ToolExecutionTracker,
+)
 from unstract.runner.clients.helper import ContainerClientHelper
 from unstract.runner.clients.interface import (
     ContainerClientInterface,
@@ -307,6 +312,54 @@ class UnstractRunner:
         shell_script = f"{mkdir_cmd} && {run_tool_fn}; {execute_cmd}"
         return shell_script
 
+    def _handle_tool_execution_status(
+        self, execution_id: str, file_execution_id: str, container_name: str
+    ):
+        """Get the tool execution status data from the tool execution tracker."""
+        try:
+            tool_execution_data = ToolExecutionData(
+                execution_id=execution_id,
+                file_execution_id=file_execution_id,
+            )
+            tool_execution_tracker = ToolExecutionTracker()
+            tool_execution_status = tool_execution_tracker.get_status(tool_execution_data)
+            if not tool_execution_status:
+                self.logger.warning(
+                    f"Execution ID: {execution_id}, docker "
+                    f"container: {container_name} - failed to fetch execution status"
+                )
+                return
+            status = tool_execution_status.status
+            error = tool_execution_status.error
+            if status == ToolExecutionStatus.FAILED:
+                self.logger.error(
+                    f"Execution ID: {execution_id}, docker "
+                    f"container: {container_name} - tool run failed. Error: {error}"
+                )
+                raise ToolRunException(error)
+            elif status == ToolExecutionStatus.SUCCESS:
+                self.logger.info(
+                    f"Execution ID: {execution_id}, docker "
+                    f"container: {container_name} - tool execution completed successfully"
+                )
+            else:
+                self.logger.warning(
+                    f"Execution ID: {execution_id}, docker "
+                    f"container: {container_name} - unexpected tool status: {status}"
+                )
+        except ToolRunException as e:
+            # Tool execution failed; propagate the exception to be handled by the caller
+            raise e
+        except Exception as e:
+            self.logger.error(
+                f"Execution ID: {execution_id}, docker "
+                f"container: {container_name} - failed to fetch execution status. Error: {e}",
+                exc_info=True,
+            )
+        finally:
+            # Delete the status from cache since it is no longer needed
+            tool_execution_tracker.delete_status(tool_execution_data)
+
     def run_container(
         self,
         organization_id: str,
@@ -412,6 +465,12 @@ class UnstractRunner:
                     f"Execution ID: {execution_id}, docker "
                     f"container: {container_name} completed execution"
                 )
+                self._handle_tool_execution_status(
+                    execution_id=execution_id,
+                    file_execution_id=file_execution_id,
+                    container_name=container_name,
+                )
+
             else:
                 container: ContainerInterface = self.client.run_container(
                     container_config
