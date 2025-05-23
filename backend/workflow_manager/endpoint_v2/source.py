@@ -333,6 +333,9 @@ class SourceConnector(BaseConnector):
     ) -> int:
         for fs_metadata in fs_metadata_list:
             if count >= limit:
+                logger.info(
+                    f"[Matched Files] Maximum limit {limit} of files reached, count: {count}"
+                )
                 break
 
             file_path: str | None = fs_metadata.get("name")
