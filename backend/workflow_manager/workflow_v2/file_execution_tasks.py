@@ -25,6 +25,7 @@ from workflow_manager.endpoint_v2.result_cache_utils import ResultCacheUtils
 from workflow_manager.endpoint_v2.source import SourceConnector
 from workflow_manager.execution.execution_cache_utils import ExecutionCacheUtils
 from workflow_manager.file_execution.models import WorkflowFileExecution
+from workflow_manager.utils.pipeline_utils import PipelineUtils
 from workflow_manager.utils.workflow_log import WorkflowLog
 from workflow_manager.workflow_v2.dto import (
     ExecutionContext,
@@ -210,6 +211,7 @@ class FileExecutionTasks:
         workflow = workflow_execution.workflow
         organization = workflow.organization
         organization_id = organization.organization_id
+        pipeline_id = str(workflow_execution.pipeline_id)
 
         # Set organization ID in StateStore
         StateStore.set(Account.ORGANIZATION_ID, organization_id)
@@ -232,6 +234,9 @@ class FileExecutionTasks:
         workflow_execution.update_execution(
             status=final_status,
             error=error_message,
+        )
+        PipelineUtils.update_pipeline_status(
+            pipeline_id=pipeline_id, workflow_execution=workflow_execution
         )
         # clean up execution and api storage directories
         DestinationConnector.delete_execution_and_api_storage_dir(
@@ -558,23 +563,36 @@ class FileExecutionTasks:
         execution_metadata = None
 
         try:
+            if destination.use_file_history:
+                # Collect metadata from file history if available
+                file_history = FileHistoryHelper.get_file_history(
+                    workflow=workflow, cache_key=file_hash.file_hash
+                )
+            else:
+                file_history = None
+
             if not processing_error:
                 # Process final output through destination
                 output_result = destination.handle_output(
                     file_name=file_hash.file_name,
                     file_hash=file_hash,
+                    file_history=file_history,
                     workflow=workflow,
                     input_file_path=file_hash.file_path,
                     file_execution_id=file_execution_id,
                 )
 
-            # Collect metadata from file history if available
-            file_history = FileHistoryHelper.get_file_history(
-                workflow=workflow, cache_key=file_hash.file_hash
-            )
-            if file_history and destination.is_api:
+            if destination.is_api:
                 execution_metadata = destination.get_metadata(file_history)
-
+            if destination.use_file_history and not file_history:
+                FileHistoryHelper.create_file_history(
+                    file_hash=file_hash,
+                    workflow=workflow,
+                    status=ExecutionStatus.COMPLETED,
+                    result=output_result,
+                    metadata=execution_metadata,
+                    file_name=file_hash.file_name,
+                )
         except Exception as e:
             error_msg = f"Final output processing failed: {str(e)}"
             logger.error(error_msg, exc_info=True)
