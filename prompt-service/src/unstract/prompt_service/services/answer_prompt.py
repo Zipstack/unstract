@@ -39,7 +39,7 @@ class AnswerPromptService:
                     )
                 else:
                     raise ValueError(
-                        f"Variable {variable_name} not found " "in structured output"
+                        f"Variable {variable_name} not found in structured output"
                     )
 
         if promptx != output[PSKeys.PROMPT]:
@@ -108,8 +108,8 @@ class AnswerPromptService:
                     if PSKeys.SYNONYMS in grammar:
                         synonyms = grammar[PSKeys.SYNONYMS]
                 if len(synonyms) > 0 and word != "":
-                    prompt += f'\nNote: You can consider that the word {word} is same as \
-                        {", ".join(synonyms)} in both the quesiton and the context.'  # noqa
+                    prompt += f"\nNote: You can consider that the word {word} is same as \
+                        {', '.join(synonyms)} in both the quesiton and the context."  # noqa
         if prompt_type == PSKeys.JSON:
             json_postamble = get_env_or_die(
                 PSKeys.JSON_POSTAMBLE, PSKeys.DEFAULT_JSON_POSTAMBLE
@@ -256,7 +256,7 @@ class AnswerPromptService:
             parsed_data = a if len(json.dumps(b)) - len(json.dumps(a)) == 2 else b
 
             if isinstance(parsed_data, str):
-                err_msg = "Error parsing response (to json)\n" f"Candidate JSON: {answer}"
+                err_msg = f"Error parsing response (to json)\nCandidate JSON: {answer}"
                 app.logger.info(err_msg, LogLevel.ERROR)
                 publish_log(
                     log_events_id,
