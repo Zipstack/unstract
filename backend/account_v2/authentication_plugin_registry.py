@@ -3,15 +3,17 @@ import os
 from importlib import import_module
 from typing import Any
 
-from account_v2.constants import PluginConfig
 from django.apps import apps
+
+from account_v2.constants import PluginConfig
 
 logger = logging.getLogger(__name__)
 
 
 def _load_plugins() -> dict[str, dict[str, Any]]:
     """Iterating through the Authentication plugins and register their
-    metadata."""
+    metadata.
+    """
     auth_app = apps.get_app_config(PluginConfig.PLUGINS_APP)
     auth_package_path = auth_app.module.__package__
     auth_dir = os.path.join(auth_app.path, PluginConfig.AUTH_PLUGIN_DIR)

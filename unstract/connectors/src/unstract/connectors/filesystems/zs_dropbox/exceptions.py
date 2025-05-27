@@ -1,9 +1,8 @@
 import logging
 
 from dropbox.auth import AuthError
-from dropbox.exceptions import ApiError
+from dropbox.exceptions import ApiError, DropboxException
 from dropbox.exceptions import AuthError as ExcAuthError
-from dropbox.exceptions import DropboxException
 
 from unstract.connectors.exceptions import ConnectorError
 

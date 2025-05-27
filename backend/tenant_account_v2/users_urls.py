@@ -1,4 +1,5 @@
 from django.urls import path
+
 from tenant_account_v2.users_view import OrganizationUserViewSet
 
 organization_user_role = OrganizationUserViewSet.as_view(

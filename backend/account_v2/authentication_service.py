@@ -1,6 +1,17 @@
 import logging
 import uuid
-from typing import Any, Optional
+from typing import Any
+
+from django.conf import settings
+from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.hashers import make_password
+from django.http import HttpRequest
+from django.shortcuts import redirect, render
+from rest_framework.request import Request
+from rest_framework.response import Response
+from tenant_account_v2.models import OrganizationMember as OrganizationMember
+from tenant_account_v2.organization_member_service import OrganizationMemberService
+from utils.user_context import UserContext
 
 from account_v2.authentication_helper import AuthenticationHelper
 from account_v2.constants import DefaultOrg, ErrorMessage, UserLoginTemplate
@@ -18,16 +29,6 @@ from account_v2.enums import UserRole
 from account_v2.models import Organization, User
 from account_v2.organization import OrganizationService
 from account_v2.serializer import LoginRequestSerializer
-from django.conf import settings
-from django.contrib.auth import authenticate, login, logout
-from django.contrib.auth.hashers import make_password
-from django.http import HttpRequest
-from django.shortcuts import redirect, render
-from rest_framework.request import Request
-from rest_framework.response import Response
-from tenant_account_v2.models import OrganizationMember as OrganizationMember
-from tenant_account_v2.organization_member_service import OrganizationMemberService
-from utils.user_context import UserContext
 
 logger = logging.getLogger(__name__)
 
@@ -92,10 +93,7 @@ class AuthenticationService:
                 False otherwise.
         """
         # Validation of user credentials
-        if (
-            username != DefaultOrg.MOCK_USER
-            or password != DefaultOrg.MOCK_USER_PASSWORD
-        ):
+        if username != DefaultOrg.MOCK_USER or password != DefaultOrg.MOCK_USER_PASSWORD:
             return False
 
         user = authenticate(request, username=username, password=password)
@@ -193,7 +191,7 @@ class AuthenticationService:
         self,
         request: Request,
         user: User,
-        data: Optional[dict[str, Any]] = None,
+        data: dict[str, Any] | None = None,
     ) -> MemberData:
         member_data: MemberData = MemberData(
             user_id=user.user_id,
@@ -207,6 +205,7 @@ class AuthenticationService:
         admin: OrganizationMember,
         organization_id: str,
         user_ids: list[str],
+        request: Request,
     ) -> bool:
         raise MethodNotImplemented()
 
@@ -279,6 +278,7 @@ class AuthenticationService:
         organization_id: str,
         user_id: str,
         role_ids: list[str],
+        request: Request,
     ) -> list[str]:
         if admin.role == UserRole.ADMIN.value:
             return role_ids
@@ -290,6 +290,7 @@ class AuthenticationService:
         organization_id: str,
         user_id: str,
         role_ids: list[str],
+        request: Request,
     ) -> list[str]:
         if admin.role == UserRole.ADMIN.value:
             return role_ids
@@ -324,7 +325,7 @@ class AuthenticationService:
             logger.error(f"Failed to set default user: {str(e)}")
             return False
 
-    def _get_or_create_user(self, organization: Optional[Organization]) -> User:
+    def _get_or_create_user(self, organization: Organization | None) -> User:
         """Get existing user or create a new one based on organization context.
 
         Args:
@@ -365,7 +366,7 @@ class AuthenticationService:
 
         return self._create_mock_user()
 
-    def _get_admin_user(self) -> Optional[User]:
+    def _get_admin_user(self) -> User | None:
         """Get the first admin user from the organization.
 
         Returns:
@@ -376,7 +377,7 @@ class AuthenticationService:
         )
         return admin_members[0].user if admin_members else None
 
-    def _promote_first_member_to_admin(self) -> Optional[OrganizationMember]:
+    def _promote_first_member_to_admin(self) -> OrganizationMember | None:
         """Promote the first organization member to admin role.
 
         Returns:
@@ -406,7 +407,7 @@ class AuthenticationService:
         user.save()
         logger.info(f"Updated user {user} with username {DefaultOrg.MOCK_USER}")
 
-    def get_user_info(self, request: Request) -> Optional[UserInfo]:
+    def get_user_info(self, request: Request) -> UserInfo | None:
         user: User = request.user
         if user:
             return UserInfo(
@@ -419,16 +420,16 @@ class AuthenticationService:
         else:
             return None
 
-    def get_organization_info(self, org_id: str) -> Optional[Organization]:
+    def get_organization_info(self, org_id: str) -> Organization | None:
         return OrganizationService.get_organization_by_org_id(org_id=org_id)
 
     def make_organization_and_add_member(
         self,
         user_id: str,
         user_name: str,
-        organization_name: Optional[str] = None,
-        display_name: Optional[str] = None,
-    ) -> Optional[OrganizationData]:
+        organization_name: str | None = None,
+        display_name: str | None = None,
+    ) -> OrganizationData | None:
         organization: OrganizationData = OrganizationData(
             id=str(uuid.uuid4()),
             display_name=DefaultOrg.MOCK_ORG,
@@ -469,6 +470,7 @@ class AuthenticationService:
         admin: OrganizationMember,
         org_id: str,
         email: str,
-        role: Optional[str] = None,
+        role: str | None = None,
+        request: HttpRequest | None = None,
     ) -> bool:
         raise MethodNotImplemented()

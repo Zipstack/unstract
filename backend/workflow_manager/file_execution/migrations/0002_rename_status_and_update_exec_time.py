@@ -58,7 +58,6 @@ def restore_statuses_and_reset_execution_time(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("file_execution", "0001_initial"),
     ]

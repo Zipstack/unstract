@@ -2,7 +2,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import google.api_core.exceptions as GoogleApiException
 from oauth2client.client import OAuth2Credentials
@@ -98,9 +98,8 @@ class GoogleDriveFS(UnstractFileSystem):
     def get_fsspec_fs(self) -> GDriveFileSystem:
         return self.drive
 
-    def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> Optional[str]:
-        """
-        Extracts a unique file hash from metadata.
+    def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> str | None:
+        """Extracts a unique file hash from metadata.
 
         Args:
             metadata (dict): Metadata dictionary obtained from fsspec.

@@ -1,9 +1,10 @@
-from typing import Any, Optional
+from typing import Any
+
+from flask import Request, current_app, request
 
 from app.constants import DBTable
 from app.env import Env
 from app.models import be_db
-from flask import Request, current_app, request
 
 
 def authentication_middleware(func: Any) -> Any:
@@ -21,7 +22,7 @@ def authentication_middleware(func: Any) -> Any:
 
 class AuthenticationMiddleware:
     @classmethod
-    def validate_bearer_token(cls, token: Optional[str]) -> bool:
+    def validate_bearer_token(cls, token: str | None) -> bool:
         try:
             if token is None:
                 current_app.logger.error("Authentication failed. Empty bearer token")
@@ -60,7 +61,7 @@ class AuthenticationMiddleware:
         return True
 
     @classmethod
-    def get_token_from_auth_header(cls, request: Request) -> Optional[str]:
+    def get_token_from_auth_header(cls, request: Request) -> str | None:
         try:
             bearer_token = request.headers.get("Authorization")
             if not bearer_token:
@@ -72,9 +73,7 @@ class AuthenticationMiddleware:
             return None
 
     @classmethod
-    def get_organization_from_bearer_token(
-        cls, token: str
-    ) -> tuple[Optional[int], str]:
+    def get_organization_from_bearer_token(cls, token: str) -> tuple[int | None, str]:
         """Retrieve organization ID and identifier using a bearer token.
 
         Args:
@@ -86,13 +85,13 @@ class AuthenticationMiddleware:
         platform_key_table = f'"{Env.DB_SCHEMA}".{DBTable.PLATFORM_KEY}'
         organization_table = f'"{Env.DB_SCHEMA}".{DBTable.ORGANIZATION}'
 
-        organization_uid: Optional[int] = cls.execute_query(
+        organization_uid: int | None = cls.execute_query(
             f"SELECT organization_id FROM {platform_key_table} WHERE key=%s", (token,)
         )
         if organization_uid is None:
             return None, None
 
-        organization_identifier: Optional[str] = cls.execute_query(
+        organization_identifier: str | None = cls.execute_query(
             f"SELECT organization_id FROM {organization_table} WHERE id=%s",
             (organization_uid,),
         )

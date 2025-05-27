@@ -16,6 +16,7 @@ on:
           - tool-classifier
           - tool-structure
           - tool-text-extractor
+          - tool-sidecar
 
 run-name: "[${{ inputs.service_name }}:${{ inputs.tag }}] Docker Image Build and Push (Development)"
 
@@ -44,6 +45,8 @@ jobs:
         - name: Build tool-text-extractor
           if: github.event.inputs.service_name=='tool-text-extractor'
           run: docker build -t unstract/${{github.event.inputs.service_name}}:${{ github.event.inputs.tag }} ./tools/text_extractor
-
+        - name: Build tool-sidecar
+          if: github.event.inputs.service_name=='tool-sidecar'
+          run: docker build -t unstract/${{github.event.inputs.service_name}}:${{ github.event.inputs.tag }} -f docker/dockerfiles/tool-sidecar.Dockerfile .
         - name: Push Docker image to Docker Hub
           run: docker push unstract/${{ github.event.inputs.service_name }}:${{ github.event.inputs.tag }}

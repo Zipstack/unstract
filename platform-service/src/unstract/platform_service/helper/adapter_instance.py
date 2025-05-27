@@ -1,7 +1,7 @@
-from typing import Any, Optional
+from typing import Any
 
+from unstract.core.flask.exceptions import APIError
 from unstract.platform_service.constants import DBTable
-from unstract.platform_service.exceptions import APIError
 from unstract.platform_service.extensions import db
 from unstract.platform_service.utils import EnvManager
 
@@ -13,7 +13,7 @@ class AdapterInstanceRequestHelper:
     def get_adapter_instance_from_db(
         organization_id: str,
         adapter_instance_id: str,
-        organization_uid: Optional[int] = None,
+        organization_uid: int | None = None,
     ) -> dict[str, Any]:
         """Get adapter instance from Backend Database.
 
@@ -33,10 +33,8 @@ class AdapterInstanceRequestHelper:
         cursor = db.execute_sql(query)
         result_row = cursor.fetchone()
         if not result_row:
-            raise APIError(
-                message=f"Adapter '{adapter_instance_id}' not found", code=404
-            )
+            raise APIError(message=f"Adapter '{adapter_instance_id}' not found", code=404)
         columns = [desc[0] for desc in cursor.description]
-        data_dict: dict[str, Any] = dict(zip(columns, result_row))
+        data_dict: dict[str, Any] = dict(zip(columns, result_row, strict=False))
         cursor.close()
         return data_dict

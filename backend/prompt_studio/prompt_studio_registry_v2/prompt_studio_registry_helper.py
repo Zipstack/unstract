@@ -1,10 +1,11 @@
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from account_v2.models import User
 from adapter_processor_v2.models import AdapterInstance
 from django.conf import settings
 from django.db import IntegrityError
+
 from prompt_studio.modifier_loader import ModifierConfig
 from prompt_studio.modifier_loader import load_plugins as load_modifier_plugins
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
@@ -110,7 +111,7 @@ class PromptStudioRegistryHelper:
     @staticmethod
     def get_tool_by_prompt_registry_id(
         prompt_registry_id: str,
-    ) -> Optional[Tool]:
+    ) -> Tool | None:
         """Gets the `Tool` associated with a prompt registry ID if it exists.
 
         Args:
@@ -120,9 +121,7 @@ class PromptStudioRegistryHelper:
             Optional[Tool]: The `Tool` exported from Prompt Studio
         """
         try:
-            prompt_registry_tool = PromptStudioRegistry.objects.get(
-                pk=prompt_registry_id
-            )
+            prompt_registry_tool = PromptStudioRegistry.objects.get(pk=prompt_registry_id)
         # Suppress all exceptions to allow processing
         except Exception as e:
             logger.warning(
@@ -254,8 +253,8 @@ class PromptStudioRegistryHelper:
         export_metadata[JsonSchemaKey.TOOL_ID] = str(tool.tool_id)
 
         default_llm_profile = ProfileManager.get_default_llm_profile(tool)
-        challenge_llm_instance: Optional[AdapterInstance] = tool.challenge_llm
-        challenge_llm: Optional[str] = None
+        challenge_llm_instance: AdapterInstance | None = tool.challenge_llm
+        challenge_llm: str | None = None
         # Using default profile manager llm if challenge_llm is None
         if challenge_llm_instance:
             challenge_llm = str(challenge_llm_instance.id)
@@ -343,10 +342,12 @@ class PromptStudioRegistryHelper:
             output[JsonSchemaKey.SECTION] = prompt.profile_manager.section
             output[JsonSchemaKey.REINDEX] = prompt.profile_manager.reindex
             output[JsonSchemaKey.EMBEDDING_SUFFIX] = embedding_suffix
-
+            # Retaining the old fields in condition
+            # for backward compatibility. To be removed in future.
             if (
                 prompt.enforce_type == PromptStudioRegistryKeys.TABLE
                 or prompt.enforce_type == PromptStudioRegistryKeys.RECORD
+                or prompt.enforce_type == PromptStudioRegistryKeys.LINE_ITEM
             ):
                 for modifier_plugin in modifier_plugins:
                     cls = modifier_plugin[ModifierConfig.METADATA][

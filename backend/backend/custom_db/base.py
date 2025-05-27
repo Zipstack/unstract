@@ -10,7 +10,8 @@ logger = logging.getLogger(__name__)
 
 class DatabaseWrapper(PostgresDatabaseWrapper):
     """Custom DatabaseWrapper to manage PostgreSQL connections and set the
-    search path."""
+    search path.
+    """
 
     def get_new_connection(self, conn_params):
         """Establish a new database connection or reuse an existing one, and
@@ -45,8 +46,6 @@ class DatabaseWrapper(PostgresDatabaseWrapper):
             )
             with connection.cursor() as cursor:
                 cursor.execute(f"SET search_path TO {settings.DB_SCHEMA}")
-            logger.debug(
-                f"Successfully set search_path for DB connection ID {conn_id}."
-            )
+            logger.debug(f"Successfully set search_path for DB connection ID {conn_id}.")
         finally:
             connection.autocommit = original_autocommit

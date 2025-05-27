@@ -1,5 +1,3 @@
-from typing import Optional
-
 from rest_framework.exceptions import APIException
 
 
@@ -9,9 +7,9 @@ class InvalidInputDirectory(APIException):
 
     def __init__(
         self,
-        dir: Optional[str] = None,
-        detail: Optional[str] = None,
-        code: Optional[str] = None,
+        dir: str | None = None,
+        detail: str | None = None,
+        code: str | None = None,
     ):
         if dir:
             detail = self.default_detail.replace("path", f"path '{dir}'")
@@ -80,7 +78,7 @@ class ToolOutputTypeMismatch(APIException):
     status_code = 500
     default_detail = "The tool's output type does not match the expected type"
 
-    def __init__(self, detail: Optional[str] = None, code: Optional[str] = None):
+    def __init__(self, detail: str | None = None, code: str | None = None):
         detail += (
             ". Please report this error to the administrator for further assistance."
         )
@@ -109,3 +107,8 @@ class UnstractQueueException(APIException):
     def __init__(self, detail: str = default_detail) -> None:
         status_code = 500
         super().__init__(detail=detail, code=status_code)
+
+
+class SourceFileOrInfilePathNotFound(APIException):
+    status_code = 500
+    default_detail = "Unable to obtain file (Source or Infile) for execution."

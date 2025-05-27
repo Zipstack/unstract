@@ -1,5 +1,3 @@
-from typing import Optional
-
 from unstract.sdk.llm import LLM
 from unstract.sdk.vector_db import VectorDB
 
@@ -11,7 +9,7 @@ class BaseRetriever:
         prompt: str,
         doc_id: str,
         top_k: int,
-        llm: Optional[LLM] = None,
+        llm: LLM | None = None,
     ):
         """Initialize the Retrieval class.
 

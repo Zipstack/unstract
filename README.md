@@ -5,9 +5,12 @@
 
 ## No-code LLM Platform to launch APIs and ETL Pipelines to structure unstructured documents
 
-## 
+##
 
-[![pdm-managed](https://img.shields.io/badge/pdm-managed-blueviolet)](https://pdm-project.org)
+![Python Version from PEP 621 TOML](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2FZipstack%2Funstract%2Frefs%2Fheads%2Fmain%2Fpyproject.toml)
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
+![GitHub License](https://img.shields.io/github/license/Zipstack/unstract)
+![Docker Pulls](https://img.shields.io/docker/pulls/unstract/backend)
 [![CLA assistant](https://cla-assistant.io/readme/badge/Zipstack/unstract)](https://cla-assistant.io/Zipstack/unstract)
 [![pre-commit.ci status](https://results.pre-commit.ci/badge/github/Zipstack/unstract/main.svg)](https://results.pre-commit.ci/latest/github/Zipstack/unstract/main)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=Zipstack_unstract&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=Zipstack_unstract)
@@ -57,8 +60,8 @@ Next, either download a release or clone this repo and do the following:
 
 That's all there is to it!
 
-Follow [these steps](backend/README.md#authentication) to change the default username and password.  
-See [user guide](https://docs.unstract.com/unstract/unstract_platform/user_guides/run_platform) for more details on managing the platform.  
+Follow [these steps](backend/README.md#authentication) to change the default username and password.
+See [user guide](https://docs.unstract.com/unstract/unstract_platform/user_guides/run_platform) for more details on managing the platform.
 
 Another really quick way to experience Unstract is by signing up for our [hosted version](https://us-central.unstract.com/). It comes with a 14 day free trial!
 
@@ -154,9 +157,9 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for fur
 
 ## 🚨 Backup encryption key
 
-Do copy the value of `ENCRYPTION_KEY` config in either `backend/.env` or `platform-service/.env` file to a secure location.  
+Do copy the value of `ENCRYPTION_KEY` config in either `backend/.env` or `platform-service/.env` file to a secure location.
 
-Adapter credentials are encrypted by the platform using this key. Its loss or change will make all existing adapters inaccessible!  
+Adapter credentials are encrypted by the platform using this key. Its loss or change will make all existing adapters inaccessible!
 
 ## 📊 A note on analytics
 

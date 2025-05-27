@@ -1,8 +1,7 @@
-from typing import Optional
+from rest_framework.exceptions import APIException
 
 from prompt_studio.prompt_profile_manager_v2.constants import ProfileManagerKeys
 from prompt_studio.prompt_studio_core_v2.constants import ToolStudioErrors
-from rest_framework.exceptions import APIException
 
 
 class PlatformServiceError(APIException):
@@ -19,7 +18,16 @@ class IndexingAPIError(APIException):
     status_code = 500
     default_detail = "Error while indexing file"
 
-    def __init__(self, detail: Optional[str] = None, status_code: int = 500):
+    def __init__(self, detail: str | None = None, status_code: int = 500):
+        super().__init__(detail)
+        self.status_code = status_code
+
+
+class ExtractionAPIError(APIException):
+    status_code = 500
+    default_detail = "Error while extracting file"
+
+    def __init__(self, detail: str | None = None, status_code: int = 500):
         super().__init__(detail)
         self.status_code = status_code
 
@@ -28,7 +36,7 @@ class AnswerFetchError(APIException):
     status_code = 500
     default_detail = "Error occured while fetching response for the prompt"
 
-    def __init__(self, detail: Optional[str] = None, status_code: int = 500):
+    def __init__(self, detail: str | None = None, status_code: int = 500):
         super().__init__(detail)
         self.status_code = status_code
 
@@ -97,7 +105,7 @@ class PromptNotRun(APIException):
         "Please execute the prompt first and try again."
     )
 
-    def __init__(self, detail: Optional[str] = None, code: Optional[int] = None):
+    def __init__(self, detail: str | None = None, code: int | None = None):
         if detail is not None:
             self.detail = detail
         if code is not None:

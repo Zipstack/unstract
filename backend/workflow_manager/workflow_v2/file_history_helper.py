@@ -1,7 +1,8 @@
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from django.db.utils import IntegrityError
+
 from workflow_manager.endpoint_v2.dto import FileHash
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models.file_history import FileHistory
@@ -16,9 +17,9 @@ class FileHistoryHelper:
     @staticmethod
     def get_file_history(
         workflow: Workflow,
-        cache_key: Optional[str] = None,
-        provider_file_uuid: Optional[str] = None,
-    ) -> Optional[FileHistory]:
+        cache_key: str | None = None,
+        provider_file_uuid: str | None = None,
+    ) -> FileHistory | None:
         """Retrieve a file history record based on the cache key.
 
         Args:
@@ -28,7 +29,6 @@ class FileHistoryHelper:
         Returns:
             Optional[FileHistory]: The matching file history record, if found.
         """
-
         if not cache_key and not provider_file_uuid:
             return None
         try:
@@ -46,9 +46,9 @@ class FileHistoryHelper:
         workflow: Workflow,
         status: ExecutionStatus,
         result: Any,
-        metadata: Any,
-        error: Optional[str] = None,
-        file_name: Optional[str] = None,
+        metadata: str | None,
+        error: str | None = None,
+        file_name: str | None = None,
     ) -> None:
         """Create a new file history record.
 
@@ -65,7 +65,7 @@ class FileHistoryHelper:
                 provider_file_uuid=file_hash.provider_file_uuid,
                 status=status,
                 result=str(result),
-                metadata=str(metadata),
+                metadata=str(metadata) if metadata else "",
                 error=str(error) if error else "",
             )
         except IntegrityError as e:

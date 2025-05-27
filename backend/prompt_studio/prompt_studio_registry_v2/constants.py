@@ -11,6 +11,7 @@ class PromptStudioRegistryKeys:
     UNDEFINED = "undefined"
     TABLE = "table"
     RECORD = "record"
+    LINE_ITEM = "line-item"
 
 
 class PromptStudioRegistryErrors:

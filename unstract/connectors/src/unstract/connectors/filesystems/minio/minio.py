@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any, Optional
+from typing import Any
 
 from s3fs.core import S3FileSystem
 
@@ -14,9 +14,9 @@ logger = logging.getLogger(__name__)
 class MinioFS(UnstractFileSystem):
     def __init__(self, settings: dict[str, Any]):
         super().__init__("MinioFS/S3")
-        key = settings["key"]
-        secret = settings["secret"]
-        endpoint_url = settings["endpoint_url"]
+        key = settings.get("key", "")
+        secret = settings.get("secret", "")
+        endpoint_url = settings.get("endpoint_url", "")
         client_kwargs = {}
         if "region_name" in settings and settings["region_name"] != "":
             client_kwargs = {"region_name": settings["region_name"]}
@@ -70,9 +70,8 @@ class MinioFS(UnstractFileSystem):
     def can_read() -> bool:
         return True
 
-    def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> Optional[str]:
-        """
-        Extracts a unique file hash from metadata.
+    def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> str | None:
+        """Extracts a unique file hash from metadata.
 
         Args:
             metadata (dict): Metadata dictionary obtained from fsspec.
@@ -100,9 +99,7 @@ class MinioFS(UnstractFileSystem):
     def test_credentials(self) -> bool:
         """To test credentials for Minio."""
         try:
-            is_dir = bool(self.get_fsspec_fs().isdir(""))
-            if not is_dir:
-                raise RuntimeError("Could not access root directory.")
+            self.get_fsspec_fs().ls("")
         except Exception as e:
             raise handle_s3fs_exception(e) from e
         return True

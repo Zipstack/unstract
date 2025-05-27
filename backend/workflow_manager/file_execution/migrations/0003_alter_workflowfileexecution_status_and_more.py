@@ -5,7 +5,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("workflow_v2", "0008_workflowexecution_total_files_and_more"),
         ("file_execution", "0002_rename_status_and_update_exec_time"),

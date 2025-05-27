@@ -1,5 +1,3 @@
-from typing import Optional
-
 from rest_framework.exceptions import APIException
 
 
@@ -17,9 +15,7 @@ class UserForbidden(APIException):
 
 class KeyCountExceeded(APIException):
     status_code = 403
-    default_detail = (
-        "Maximum key count is exceeded. Please delete one before generation."
-    )
+    default_detail = "Maximum key count is exceeded. Please delete one before generation."
 
 
 class FoundActiveKey(APIException):
@@ -41,7 +37,7 @@ class DuplicateData(APIException):
     status_code = 400
     default_detail = "Duplicate Data"
 
-    def __init__(self, detail: Optional[str] = None, code: Optional[int] = None):
+    def __init__(self, detail: str | None = None, code: int | None = None):
         if detail is not None:
             self.detail = detail
         if code is not None:

@@ -14,6 +14,16 @@ services:
     build:
       dockerfile: docker/dockerfiles/runner.Dockerfile
       context: ..
+  tool-sidecar:
+    image: unstract/tool-sidecar:${VERSION}
+    build:
+      dockerfile: docker/dockerfiles/tool-sidecar.Dockerfile
+      context: ..
+  tool-structure:
+    image: unstract/tool-structure:${VERSION}
+    build:
+      dockerfile: ./Dockerfile
+      context: ../tools/structure/
   platform-service:
     image: unstract/platform-service:${VERSION}
     build:

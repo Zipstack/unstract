@@ -1,5 +1,5 @@
 from dataclasses import asdict, dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from unstract.sdk.adapters.enums import AdapterTypes
 from unstract.tool_registry.constants import AdapterPropertyKey
@@ -49,7 +49,7 @@ class Spec:
         to_json(self) -> dict[str, Any]:
             Converts the Spec object to a JSON format.
 
-            Returns:
+    Returns:
                 dict[str, Any]: The Spec object in JSON format.
     """
 
@@ -183,9 +183,9 @@ class AdapterProperties:
 
     is_enabled: bool = False
     is_required: bool = False
-    title: Optional[str] = None
-    description: Optional[str] = None
-    adapter_id: Optional[str] = None
+    title: str | None = None
+    description: str | None = None
+    adapter_id: str | None = None
 
     @classmethod
     def from_dict(cls, data_dict: dict[str, Any]) -> "AdapterProperties":

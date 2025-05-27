@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from unstract.sdk.file_storage import FileStorage, FileStorageProvider
 from unstract.tool_registry.constants import PropKey
@@ -49,9 +49,9 @@ class ToolRegistryHelper:
         tools: list[str] = registry.get("tools", [])
         return tools
 
-    def get_tool_unique_id(self, properties: dict[str, Any]) -> Optional[str]:
+    def get_tool_unique_id(self, properties: dict[str, Any]) -> str | None:
         """Get Tool uuid Considering function_name as uuid."""
-        tool_unique_id: Optional[str] = properties.get(PropKey.FUNCTION_NAME)
+        tool_unique_id: str | None = properties.get(PropKey.FUNCTION_NAME)
         return tool_unique_id
 
     def get_all_registry_tools(self) -> list[str]:
@@ -88,7 +88,7 @@ class ToolRegistryHelper:
             image_tag=tool_meta.tag,
         )
 
-        tool_spec: Optional[dict[str, Any]] = tool_sandbox.get_spec()
+        tool_spec: dict[str, Any] | None = tool_sandbox.get_spec()
         if not tool_spec:
             return {}
         return tool_spec
@@ -109,7 +109,7 @@ class ToolRegistryHelper:
             image_tag=tool_meta.tag,
         )
 
-        tool_properties: Optional[dict[str, Any]] = tool_sandbox.get_properties()
+        tool_properties: dict[str, Any] | None = tool_sandbox.get_properties()
         if not tool_properties:
             return {}
         return tool_properties
@@ -151,7 +151,7 @@ class ToolRegistryHelper:
             image_tag=tool_meta.tag,
         )
 
-        variables: Optional[dict[str, Any]] = tool_sandbox.get_variables()
+        variables: dict[str, Any] | None = tool_sandbox.get_variables()
         if not variables:
             return {}
         return variables
@@ -284,9 +284,7 @@ class ToolRegistryHelper:
             RegistryNotFound: _description_
         """
         try:
-            ToolUtils.save_tools_in_to_disk(
-                file_path=self.private_tools_file, data=data
-            )
+            ToolUtils.save_tools_in_to_disk(file_path=self.private_tools_file, data=data)
         except FileNotFoundError:
             logger.error(f"File not found: {self.registry_file}")
             raise RegistryNotFound()
@@ -301,9 +299,7 @@ class ToolRegistryHelper:
         tools = {}
         for tool_file in tool_files:
             try:
-                data = ToolUtils.get_all_tools_from_disk(
-                    file_path=tool_file, fs=self.fs
-                )
+                data = ToolUtils.get_all_tools_from_disk(file_path=tool_file, fs=self.fs)
                 if not data:
                     logger.info(f"No data from {tool_file}")
                 tool_version_list = [

@@ -1,14 +1,20 @@
 import json
 import logging
 import os
-from typing import Any, Optional, Union
+from typing import Any
 
 import requests
-from unstract.tool_sandbox.constants import UnstractRunner
+from requests import Response
+from requests.exceptions import ConnectionError, RequestException
 
 from unstract.core.utilities import UnstractUtils
+from unstract.tool_sandbox.constants import UnstractRunner
 
 logger = logging.getLogger(__name__)
+
+
+class ToolSanboxError(Exception):
+    pass
 
 
 class ToolSandboxHelper:
@@ -29,7 +35,7 @@ class ToolSandboxHelper:
         self.envs = environment_variables
         self.messaging_channel = str(messaging_channel)
 
-    def convert_str_to_dict(self, data: Union[str, dict[str, Any]]) -> dict[str, Any]:
+    def convert_str_to_dict(self, data: str | dict[str, Any]) -> dict[str, Any]:
         if isinstance(data, str):
             output: dict[str, Any] = {}
             try:
@@ -41,7 +47,7 @@ class ToolSandboxHelper:
 
     def make_get_request(
         self, image_name: str, image_tag: str, endpoint: str
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Make unstract runner Get request.
 
         Args:
@@ -55,7 +61,7 @@ class ToolSandboxHelper:
         url = f"{self.base_url}{endpoint}"
         params = {"image_name": image_name, "image_tag": image_tag}
         response = requests.get(url, params=params)
-        result: Optional[dict[str, Any]] = None
+        result: dict[str, Any] | None = None
         if response.status_code == 200:
             result = response.json()
         elif response.status_code == 404:
@@ -65,7 +71,7 @@ class ToolSandboxHelper:
             )
         else:
             logger.error(
-                f"Error while calling tool {image_name} " f" reason: {response.reason}"
+                f"Error while calling tool {image_name} reason: {response.reason}"
             )
         return result
 
@@ -75,8 +81,8 @@ class ToolSandboxHelper:
         image_name: str,
         image_tag: str,
         settings: dict[str, Any],
-        retry_count: Optional[int] = None,
-    ) -> Optional[dict[str, Any]]:
+        retry_count: int | None = None,
+    ) -> dict[str, Any] | None:
         """Calling unstract runner to run the required tool.
 
         Args:
@@ -96,20 +102,26 @@ class ToolSandboxHelper:
             file_execution_id, image_name, image_tag, settings, retry_count
         )
 
-        response = requests.post(url, headers=headers, json=data)
-        result: Optional[dict[str, Any]] = None
-        if response.status_code == 200:
-            result = response.json()
-        elif response.status_code == 404:
-            logger.error(
-                f"Error while calling tool {image_name}: "
-                f"for tool instance status code {response.status_code}"
-            )
-        else:
-            logger.error(
-                f"Error while calling tool {image_name} " f" reason: {response.reason}"
-            )
-        return result
+        response: Response = Response()
+        try:
+            response = requests.post(url, headers=headers, json=data)
+            response.raise_for_status()
+        except ConnectionError as connect_err:
+            msg = "Unable to connect to unstract-runner."
+            logger.error(f"{msg}\n{connect_err}")
+            raise ToolSanboxError(msg) from connect_err
+        except RequestException as e:
+            error_message = str(e)
+            content_type = response.headers.get("Content-Type", "").lower()
+            if "application/json" in content_type:
+                response_json = response.json()
+                if "error" in response_json:
+                    error_message = response_json["error"]
+            elif response.text:
+                error_message = response.text
+            logger.error(f"Error from runner: {error_message}")
+            raise ToolSanboxError(error_message) from e
+        return response.json()
 
     def create_tool_request_data(
         self,
@@ -117,7 +129,7 @@ class ToolSandboxHelper:
         image_name: str,
         image_tag: str,
         settings: dict[str, Any],
-        retry_count: Optional[int] = None,
+        retry_count: int | None = None,
     ) -> dict[str, Any]:
         container_name = UnstractUtils.build_tool_container_name(
             tool_image=image_name,

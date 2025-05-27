@@ -1,12 +1,18 @@
-import os
+import json
 from logging import Logger
-from typing import Any, Optional
+from typing import Any
 
 from flask import current_app as app
-from unstract.prompt_service.constants import ExecutionSource, FileStorageKeys
+from json_repair import repair_json
+
+from unstract.core.flask.exceptions import APIError
+from unstract.prompt_service.constants import ExecutionSource, FileStorageKeys, RunLevel
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.exceptions import RateLimitError
 from unstract.prompt_service.helpers.plugin import PluginManager
+from unstract.prompt_service.utils.env_loader import get_env_or_die
+from unstract.prompt_service.utils.log import publish_log
+from unstract.sdk.constants import LogLevel
 from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError
 from unstract.sdk.exceptions import SdkError
 from unstract.sdk.file_storage import FileStorage, FileStorageProvider
@@ -14,11 +20,8 @@ from unstract.sdk.file_storage.constants import StorageType
 from unstract.sdk.file_storage.env_helper import EnvHelper
 from unstract.sdk.llm import LLM
 
-from unstract.core.flask.exceptions import APIError
-
 
 class AnswerPromptService:
-
     @staticmethod
     def extract_variable(
         structured_output: dict[str, Any],
@@ -52,13 +55,17 @@ class AnswerPromptService:
         prompt: str,
         metadata: dict[str, Any],
         file_path: str = "",
-        execution_source: Optional[str] = ExecutionSource.IDE.value,
+        execution_source: str | None = ExecutionSource.IDE.value,
     ) -> str:
         platform_postamble = tool_settings.get(PSKeys.PLATFORM_POSTAMBLE, "")
         summarize_as_source = tool_settings.get(PSKeys.SUMMARIZE_AS_SOURCE)
         enable_highlight = tool_settings.get(PSKeys.ENABLE_HIGHLIGHT, False)
+        prompt_type = output.get(PSKeys.TYPE, PSKeys.TEXT)
         if not enable_highlight or summarize_as_source:
             platform_postamble = ""
+        plugin = PluginManager().get_plugin("json-extraction")
+        if plugin and hasattr(plugin["entrypoint_cls"], "update_settings"):
+            plugin["entrypoint_cls"].update_settings(tool_settings, output)
         prompt = AnswerPromptService.construct_prompt(
             preamble=tool_settings.get(PSKeys.PREAMBLE, ""),
             prompt=output[prompt],
@@ -66,13 +73,15 @@ class AnswerPromptService:
             grammar_list=tool_settings.get(PSKeys.GRAMMAR, []),
             context=context,
             platform_postamble=platform_postamble,
+            prompt_type=prompt_type,
         )
+        output[PSKeys.COMBINED_PROMPT] = prompt
         return AnswerPromptService.run_completion(
             llm=llm,
             prompt=prompt,
             metadata=metadata,
             prompt_key=output[PSKeys.NAME],
-            prompt_type=output.get(PSKeys.TYPE, PSKeys.TEXT),
+            prompt_type=prompt_type,
             enable_highlight=enable_highlight,
             file_path=file_path,
             execution_source=execution_source,
@@ -86,6 +95,7 @@ class AnswerPromptService:
         grammar_list: list[dict[str, Any]],
         context: str,
         platform_postamble: str,
+        prompt_type: str = PSKeys.TEXT,
     ) -> str:
         prompt = f"{preamble}\n\nQuestion or Instruction: {prompt}"
         if grammar_list is not None and len(grammar_list) > 0:
@@ -100,6 +110,11 @@ class AnswerPromptService:
                 if len(synonyms) > 0 and word != "":
                     prompt += f'\nNote: You can consider that the word {word} is same as \
                         {", ".join(synonyms)} in both the quesiton and the context.'  # noqa
+        if prompt_type == PSKeys.JSON:
+            json_postamble = get_env_or_die(
+                PSKeys.JSON_POSTAMBLE, PSKeys.DEFAULT_JSON_POSTAMBLE
+            )
+            postamble += f"\n{json_postamble}"
         if platform_postamble:
             platform_postamble += "\n\n"
         prompt += (
@@ -112,12 +127,12 @@ class AnswerPromptService:
     def run_completion(
         llm: LLM,
         prompt: str,
-        metadata: Optional[dict[str, str]] = None,
-        prompt_key: Optional[str] = None,
-        prompt_type: Optional[str] = PSKeys.TEXT,
+        metadata: dict[str, str] | None = None,
+        prompt_key: str | None = None,
+        prompt_type: str | None = PSKeys.TEXT,
         enable_highlight: bool = False,
         file_path: str = "",
-        execution_source: Optional[str] = None,
+        execution_source: str | None = None,
     ) -> str:
         logger: Logger = app.logger
         try:
@@ -152,15 +167,15 @@ class AnswerPromptService:
             line_numbers = completion.get(PSKeys.LINE_NUMBERS, [])
             whisper_hash = completion.get(PSKeys.WHISPER_HASH, "")
             if metadata is not None and prompt_key:
-                metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})[
-                    prompt_key
-                ] = highlight_data
+                metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})[prompt_key] = (
+                    highlight_data
+                )
                 metadata.setdefault(PSKeys.LINE_NUMBERS, {})[prompt_key] = line_numbers
                 metadata[PSKeys.WHISPER_HASH] = whisper_hash
                 if confidence_data:
-                    metadata.setdefault(PSKeys.CONFIDENCE_DATA, {})[
-                        prompt_key
-                    ] = confidence_data
+                    metadata.setdefault(PSKeys.CONFIDENCE_DATA, {})[prompt_key] = (
+                        confidence_data
+                    )
             return answer
         # TODO: Catch and handle specific exception here
         except SdkRateLimitError as e:
@@ -175,8 +190,8 @@ class AnswerPromptService:
         output: dict[str, Any],
         structured_output: dict[str, Any],
         llm: LLM,
-        enforce_type: str,
         execution_source: str,
+        prompt: str,
     ) -> dict[str, Any]:
         table_settings = output[PSKeys.TABLE_SETTINGS]
         table_extractor: dict[str, Any] = PluginManager().get_plugin("table-extractor")
@@ -197,11 +212,11 @@ class AnswerPromptService:
                 env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
             )
         try:
-            answer = table_extractor["entrypoint_cls"].extract_large_table(
+            answer = table_extractor["entrypoint_cls"].run_table_extraction(
                 llm=llm,
                 table_settings=table_settings,
-                enforce_type=enforce_type,
                 fs_instance=fs_instance,
+                prompt=prompt,
             )
             structured_output[output[PSKeys.NAME]] = answer
             # We do not support summary and eval for table.
@@ -212,13 +227,61 @@ class AnswerPromptService:
             raise APIError(message=msg)
 
     @staticmethod
+    def handle_json(
+        answer: str,
+        structured_output: dict[str, Any],
+        output: dict[str, Any],
+        log_events_id: str,
+        tool_id: str,
+        doc_name: str,
+        llm: LLM,
+        enable_highlight: bool = False,
+        execution_source: str = ExecutionSource.IDE.value,
+        metadata: dict[str, Any] | None = None,
+        file_path: str = "",
+    ) -> None:
+        """Handle JSON responses from the LLM."""
+        prompt_key = output[PSKeys.NAME]
+        if answer.lower() == "na":
+            structured_output[prompt_key] = None
+        else:
+            # Attempt parsing as-is (could be a valid object, array, or partial JSON)
+            a = repair_json(json_str=answer, return_objects=True)
+
+            # Attempt parsing with array wrap (useful for multiple comma-separated objects like {}, {}, {})
+            b = repair_json(json_str="[" + answer, return_objects=True)
+
+            # Heuristic: if wrapping only added '[' and ']', len(b) - len(a) == 2 → original was valid, use 'a'
+            # Otherwise, fallback to 'b' which likely fixed multiple items or invalid top-level structure
+            parsed_data = a if len(json.dumps(b)) - len(json.dumps(a)) == 2 else b
+
+            if isinstance(parsed_data, str):
+                err_msg = "Error parsing response (to json)\n" f"Candidate JSON: {answer}"
+                app.logger.info(err_msg, LogLevel.ERROR)
+                publish_log(
+                    log_events_id,
+                    {
+                        "tool_id": tool_id,
+                        "prompt_key": prompt_key,
+                        "doc_name": doc_name,
+                    },
+                    LogLevel.INFO,
+                    RunLevel.RUN,
+                    "Unable to parse JSON response from LLM, try using our"
+                    " cloud / enterprise feature 'record' or 'table' type",
+                )
+                structured_output[prompt_key] = {}
+            else:
+                structured_output[prompt_key] = parsed_data
+
+    @staticmethod
     def extract_line_item(
         tool_settings: dict[str, Any],
         output: dict[str, Any],
         structured_output: dict[str, Any],
         llm: LLM,
         file_path: str,
-        metadata: Optional[dict[str, str]],
+        metadata: dict[str, str] | None,
         execution_source: str,
     ) -> dict[str, Any]:
         line_item_extraction_plugin: dict[str, Any] = PluginManager().get_plugin(
@@ -228,12 +291,6 @@ class AnswerPromptService:
             raise APIError(PSKeys.PAID_FEATURE_MSG)
 
         extract_file_path = file_path
-        if execution_source == ExecutionSource.IDE.value:
-            # Adjust file path to read from the extract folder
-            base_name = os.path.splitext(os.path.basename(file_path))[0]
-            extract_file_path = os.path.join(
-                os.path.dirname(file_path), "extract", f"{base_name}.txt"
-            )
 
         # Read file content into context
         fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
@@ -262,7 +319,6 @@ class AnswerPromptService:
             context=context,
             platform_postamble="",
         )
-
         try:
             line_item_extraction = line_item_extraction_plugin["entrypoint_cls"](
                 llm=llm,

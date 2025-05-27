@@ -11,7 +11,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 
 import os
 from pathlib import Path
-from typing import Optional
+from urllib.parse import urlparse
 
 from dotenv import find_dotenv, load_dotenv
 from utils.common_utils import CommonUtils
@@ -19,9 +19,7 @@ from utils.common_utils import CommonUtils
 missing_settings = []
 
 
-def get_required_setting(
-    setting_key: str, default: Optional[str] = None
-) -> Optional[str]:
+def get_required_setting(setting_key: str, default: str | None = None) -> str | None:
     """Get the value of an environment variable specified by the given key. Add
     missing keys to `missing_settings` so that exception can be raised at the
     end.
@@ -58,15 +56,11 @@ WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND = os.environ.get(
     "WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND", 10800
 )
 WEB_APP_ORIGIN_URL = os.environ.get("WEB_APP_ORIGIN_URL", "http://localhost:3000")
+parsed_url = urlparse(WEB_APP_ORIGIN_URL)
+WEB_APP_ORIGIN_URL_WITH_WILD_CARD = f"{parsed_url.scheme}://*.{parsed_url.netloc}"
 CORS_ALLOWED_ORIGINS = [WEB_APP_ORIGIN_URL]
 
-LOGIN_NEXT_URL = os.environ.get("LOGIN_NEXT_URL", "http://localhost:3000/org")
-LANDING_URL = os.environ.get("LANDING_URL", "http://localhost:3000/landing")
-ERROR_URL = os.environ.get("ERROR_URL", "http://localhost:3000/error")
-
-DJANGO_APP_BACKEND_URL = os.environ.get(
-    "DJANGO_APP_BACKEND_URL", "http://localhost:8000"
-)
+DJANGO_APP_BACKEND_URL = os.environ.get("DJANGO_APP_BACKEND_URL", "http://localhost:8000")
 INTERNAL_SERVICE_API_KEY = os.environ.get("INTERNAL_SERVICE_API_KEY")
 
 GOOGLE_STORAGE_ACCESS_KEY_ID = os.environ.get("GOOGLE_STORAGE_ACCESS_KEY_ID")
@@ -133,6 +127,16 @@ LOGS_BATCH_LIMIT = int(get_required_setting("LOGS_BATCH_LIMIT", "30"))
 LOGS_EXPIRATION_TIME_IN_SECOND = int(
     get_required_setting("LOGS_EXPIRATION_TIME_IN_SECOND", "86400")
 )
+EXECUTION_RESULT_TTL_SECONDS = int(
+    os.environ.get("EXECUTION_RESULT_TTL_SECONDS", 10800)
+)  # 3 hours
+EXECUTION_CACHE_TTL_SECONDS = int(
+    os.environ.get("EXECUTION_CACHE_TTL_SECONDS", 10800)
+)  # 3 hours
+INSTANT_WF_POLLING_TIMEOUT = int(
+    os.environ.get("INSTANT_WF_POLLING_TIMEOUT", "300")
+)  # 5 minutes
+MAX_PARALLEL_FILE_BATCHES = int(os.environ.get("MAX_PARALLEL_FILE_BATCHES", 1))
 
 INDEXING_FLAG_TTL = int(get_required_setting("INDEXING_FLAG_TTL"))
 NOTIFICATION_TIMEOUT = int(get_required_setting("NOTIFICATION_TIMEOUT", "5"))
@@ -153,7 +157,7 @@ ENCRYPTION_KEY = get_required_setting("ENCRYPTION_KEY")
 DEBUG = True
 
 ALLOWED_HOSTS = ["*"]
-CSRF_TRUSTED_ORIGINS = [WEB_APP_ORIGIN_URL]
+CSRF_TRUSTED_ORIGINS = [WEB_APP_ORIGIN_URL, WEB_APP_ORIGIN_URL_WITH_WILD_CARD]
 CORS_ALLOW_ALL_ORIGINS = False
 
 # Determine if OpenTelemetry trace context should be included in logs
@@ -481,7 +485,7 @@ for key in [
     "GOOGLE_OAUTH2_KEY",
     "GOOGLE_OAUTH2_SECRET",
 ]:
-    exec("SOCIAL_AUTH_{key} = os.environ.get('{key}')".format(key=key))
+    exec(f"SOCIAL_AUTH_{key} = os.environ.get('{key}')")
 
 SOCIAL_AUTH_PIPELINE = (
     # Checks if user is authenticated
@@ -520,6 +524,4 @@ if missing_settings:
     )
     raise ValueError(ERROR_MESSAGE)
 
-ENABLE_HIGHLIGHT_API_DEPLOYMENT = os.environ.get(
-    "ENABLE_HIGHLIGHT_API_DEPLOYMENT", False
-)
+ENABLE_HIGHLIGHT_API_DEPLOYMENT = os.environ.get("ENABLE_HIGHLIGHT_API_DEPLOYMENT", False)

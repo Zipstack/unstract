@@ -1,14 +1,11 @@
-"""
-Published API Controller
-"""
+"""Published API Controller"""
 
-import json
-from json import JSONDecodeError
 from typing import Any
 
-from flask import Blueprint
+from flask import Blueprint, request
 from flask import current_app as app
-from flask import request
+
+from unstract.core.flask.exceptions import APIError
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.constants import RunLevel
 from unstract.prompt_service.exceptions import BadRequest
@@ -29,8 +26,6 @@ from unstract.sdk.exceptions import SdkError
 from unstract.sdk.index import Index
 from unstract.sdk.llm import LLM
 from unstract.sdk.vector_db import VectorDB
-
-from unstract.core.flask.exceptions import APIError
 
 answer_prompt_bp = Blueprint("answer-prompt", __name__)
 
@@ -64,12 +59,13 @@ def prompt_processor() -> Any:
     variable_names: list[str] = []
     # Identifier for source of invocation
     execution_source = payload.get(PSKeys.EXECUTION_SOURCE, "")
+    context_retrieval_metrics = {}
     publish_log(
         log_events_id,
         {"tool_id": tool_id, "run_id": run_id, "doc_name": doc_name},
         LogLevel.DEBUG,
         RunLevel.RUN,
-        f"Preparing to execute {len(prompts)} prompt(s)",
+        f"Preparing to execute '{len(prompts)}' prompt(s)",
     )
     # Rename "output" to "prompt"
     for output in prompts:  # type:ignore
@@ -95,7 +91,7 @@ def prompt_processor() -> Any:
                 doc_name=doc_name,
             )
 
-        app.logger.info(f"[{tool_id}] Executing prompt: {prompt_name}")
+        app.logger.info(f"[{tool_id}] Executing prompt: '{prompt_name}'")
         publish_log(
             log_events_id,
             {
@@ -173,16 +169,16 @@ def prompt_processor() -> Any:
                 RunLevel.RUN,
                 "Unable to obtain LLM / embedding / vectorDB",
             )
-            return APIError(message=msg)
+            raise APIError(message=msg)
 
-        if output[PSKeys.TYPE] == PSKeys.TABLE or output[PSKeys.TYPE] == PSKeys.RECORD:
+        if output[PSKeys.TYPE] == PSKeys.TABLE:
             try:
                 structured_output = AnswerPromptService.extract_table(
                     output=output,
                     structured_output=structured_output,
                     llm=llm,
-                    enforce_type=output[PSKeys.TYPE],
                     execution_source=execution_source,
+                    prompt=prompt_text,
                 )
                 metadata = UsageHelper.query_usage_metadata(
                     token=platform_key, metadata=metadata
@@ -243,7 +239,6 @@ def prompt_processor() -> Any:
                 raise e
 
         try:
-
             answer = "NA"
             publish_log(
                 log_events_id,
@@ -272,6 +267,7 @@ def prompt_processor() -> Any:
                     chunk_size=chunk_size,
                     execution_source=execution_source,
                     file_path=file_path,
+                    context_retrieval_metrics=context_retrieval_metrics,
                 )
                 metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = context
             else:
@@ -385,46 +381,19 @@ def prompt_processor() -> Any:
                     else:
                         structured_output[output[PSKeys.NAME]] = False
             elif output[PSKeys.TYPE] == PSKeys.JSON:
-                if answer.lower() == "[]" or answer.lower() == "na":
-                    structured_output[output[PSKeys.NAME]] = None
-                else:
-                    try:
-                        structured_output[output[PSKeys.NAME]] = json.loads(answer)
-                    except JSONDecodeError:
-                        prompt = f"Convert the following text into valid JSON string: \
-                            \n{answer}\n\n The JSON string should be able to be parsed \
-                            into a Python dictionary. \
-                            Output just the JSON string. No explanation is required. \
-                            If you cannot extract the JSON string, output {{}}"
-                        try:
-                            answer = AnswerPromptService.run_completion(
-                                llm=llm,
-                                prompt=prompt,
-                                prompt_type=PSKeys.JSON,
-                            )
-                            structured_output[output[PSKeys.NAME]] = json.loads(answer)
-                        except JSONDecodeError as e:
-                            err_msg = (
-                                f"Error parsing response (to json): {e}\n"
-                                f"Candidate JSON: {answer}"
-                            )
-                            app.logger.info(err_msg, LogLevel.ERROR)
-                            # Format log message after unifying these types
-                            publish_log(
-                                log_events_id,
-                                {
-                                    "tool_id": tool_id,
-                                    "prompt_key": prompt_name,
-                                    "doc_name": doc_name,
-                                },
-                                LogLevel.INFO,
-                                RunLevel.RUN,
-                                "Unable to parse JSON response from LLM, try using our"
-                                " cloud / enterprise feature of 'line-item', "
-                                "'record' or 'table' type",
-                            )
-                            structured_output[output[PSKeys.NAME]] = {}
-
+                AnswerPromptService.handle_json(
+                    answer=answer,
+                    structured_output=structured_output,
+                    output=output,
+                    log_events_id=log_events_id,
+                    tool_id=tool_id,
+                    doc_name=doc_name,
+                    llm=llm,
+                    enable_highlight=tool_settings.get(PSKeys.ENABLE_HIGHLIGHT, False),
+                    execution_source=execution_source,
+                    metadata=metadata,
+                    file_path=file_path,
+                )
             else:
                 structured_output[output[PSKeys.NAME]] = answer
 
@@ -568,7 +537,7 @@ def prompt_processor() -> Any:
             )
             metrics.setdefault(prompt_name, {}).update(
                 {
-                    "context_retrieval": index.get_metrics(),
+                    "context_retrieval": context_retrieval_metrics.get(prompt_name, {}),
                     f"{llm.get_usage_reason()}_llm": llm.get_metrics(),
                     **challenge_metrics,
                 }

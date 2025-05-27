@@ -1,3 +1,4 @@
+import datetime
 import json
 import logging
 import os
@@ -7,11 +8,13 @@ from typing import Any
 
 from constants import SettingsKeys  # type: ignore [attr-defined]
 from helpers import StructureToolHelper as STHelper
-from unstract.sdk.constants import LogLevel, LogState, MetadataKey, ToolEnv, UsageKwargs
+from utils import json_to_markdown
+
+from unstract.sdk.constants import LogState, MetadataKey, ToolEnv, UsageKwargs
+from unstract.sdk.platform import PlatformHelper
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.tool.base import BaseTool
 from unstract.sdk.tool.entrypoint import ToolEntrypoint
-from utils import json_to_markdown
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +39,7 @@ class StructureTool(BaseTool):
     ) -> None:
         prompt_registry_id: str = settings[SettingsKeys.PROMPT_REGISTRY_ID]
         enable_challenge: bool = settings.get(SettingsKeys.ENABLE_CHALLENGE, False)
-        summarize_as_source: bool = settings.get(
-            SettingsKeys.SUMMARIZE_AS_SOURCE, False
-        )
+        summarize_as_source: bool = settings.get(SettingsKeys.SUMMARIZE_AS_SOURCE, False)
         single_pass_extraction_mode: bool = settings.get(
             SettingsKeys.SINGLE_PASS_EXTRACTION_MODE, False
         )
@@ -48,32 +49,45 @@ class StructureTool(BaseTool):
             tool=self,
             prompt_port=self.get_env_or_die(SettingsKeys.PROMPT_PORT),
             prompt_host=self.get_env_or_die(SettingsKeys.PROMPT_HOST),
+            request_id=self.file_execution_id,
         )
         self.stream_log(
             f"Fetching prompt studio exported tool with UUID '{prompt_registry_id}'"
         )
         try:
-            exported_tool = responder.get_exported_tool(
-                tool=self, prompt_registry_id=prompt_registry_id
+            platform_helper: PromptTool = PlatformHelper(
+                tool=self,
+                platform_port=self.get_env_or_die(ToolEnv.PLATFORM_PORT),
+                platform_host=self.get_env_or_die(ToolEnv.PLATFORM_HOST),
+                request_id=self.file_execution_id,
+            )
+            exported_tool = platform_helper.get_prompt_studio_tool(
+                prompt_registry_id=prompt_registry_id
             )
             tool_metadata = exported_tool[SettingsKeys.TOOL_METADATA]
             ps_project_name = tool_metadata.get("name", prompt_registry_id)
+            # Count only the active (enabled) prompts
             total_prompt_count = len(tool_metadata[SettingsKeys.OUTPUTS])
-            tool.stream_log(
+            self.stream_log(
                 f"Retrieved prompt studio exported tool '{ps_project_name}' having "
                 f"'{total_prompt_count}' prompts"
             )
         except Exception as e:
-            self.stream_error_and_exit(f"Error loading structure definition: {e}")
+            self.stream_error_and_exit(f"Error fetching prompt studio project: {e}")
 
-        # Update GUI
-        input_log = (
-            f"## Loaded '{ps_project_name}'\n{json_to_markdown(tool_metadata)}\n"
+        active_prompt_count = len(
+            [
+                output
+                for output in tool_metadata[SettingsKeys.OUTPUTS]
+                if output.get("active", False)
+            ]
         )
+        # Update GUI
+        input_log = f"## Loaded '{ps_project_name}'\n{json_to_markdown(tool_metadata)}\n"
         output_log = (
             f"## Processing '{self.source_file_name}'\nThis might take a while and "
             "involve...\n- Extracting text\n- Indexing\n- Retrieving answers "
-            f"for possibly '{total_prompt_count}' prompts"
+            f"for '{active_prompt_count}' prompts"
         )
         self.stream_update(input_log, state=LogState.INPUT_UPDATE)
         self.stream_update(output_log, state=LogState.OUTPUT_UPDATE)
@@ -89,14 +103,11 @@ class StructureTool(BaseTool):
         )
         tool_settings[SettingsKeys.SUMMARIZE_AS_SOURCE] = summarize_as_source
         tool_settings[SettingsKeys.ENABLE_HIGHLIGHT] = enable_highlight
-        prompt_service_resp = None
         _, file_name = os.path.split(input_file)
         if summarize_as_source:
             file_name = SettingsKeys.SUMMARIZE
         tool_data_dir = Path(self.get_env_or_die(ToolEnv.EXECUTION_DATA_DIR))
-        execution_run_data_folder = Path(
-            self.get_env_or_die(ToolEnv.EXECUTION_DATA_DIR)
-        )
+        execution_run_data_folder = Path(self.get_env_or_die(ToolEnv.EXECUTION_DATA_DIR))
 
         index_metrics = {}
         extracted_input_file = str(execution_run_data_folder / SettingsKeys.EXTRACT)
@@ -128,129 +139,93 @@ class StructureTool(BaseTool):
             execution_run_data_folder=str(execution_run_data_folder),
         )
 
-        if tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION]:
-            if summarize_as_source:
-                summarize_file_hash = self._summarize_and_index(
-                    tool_id=tool_id,
-                    tool_settings=tool_settings,
-                    tool_data_dir=tool_data_dir,
-                    responder=responder,
-                    outputs=outputs,
-                    usage_kwargs=usage_kwargs,
-                )
-                payload[SettingsKeys.FILE_HASH] = summarize_file_hash
-                # STHelper.dynamic_indexing(
-                #     tool_settings=tool_settings,
-                #     run_id=self.file_execution_id,
-                #     file_path=tool_data_dir / SettingsKeys.EXTRACT,
-                #     tool=self,
-                #     execution_run_data_folder=execution_run_data_folder,
-                #     chunk_overlap=tool_settings[SettingsKeys.CHUNK_OVERLAP],
-                #     chunk_size=tool_settings[SettingsKeys.CHUNK_SIZE],
-                #     reIndex=True,
-                #     usage_kwargs=usage_kwargs,
-                #     enable_highlight=enable_highlight,
-                #     extracted_text=extracted_text,
-                #     tool_id=tool_metadata[SettingsKeys.TOOL_ID],
-                #     file_hash=file_hash,
-                # )
-                #  Handle metrics for single pass extraction
-                # index_metrics = {SettingsKeys.INDEXING: index.get_metrics()}
+        summarize_file_hash = None
+        if summarize_as_source:
+            summarize_file_path, summarize_file_hash = self._summarize_and_index(
+                tool_settings=tool_settings,
+                tool_data_dir=tool_data_dir,
+                responder=responder,
+                outputs=outputs,
+                usage_kwargs=usage_kwargs,
+            )
+            payload[SettingsKeys.FILE_HASH] = summarize_file_hash
+            payload[SettingsKeys.FILE_PATH] = summarize_file_path
 
-            self.stream_log("Fetching response for single pass extraction")
-            prompt_service_resp = responder.single_pass_extraction(
+        if tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION]:
+            self.stream_log("Fetching response for single pass extraction...")
+            # Since indexing is not involved for single pass
+            index_metrics = {"time_taken(s)": 0}
+            structured_output = responder.single_pass_extraction(
                 payload=payload,
             )
         else:
-            try:
-                # To reindex even if file is already
-                # indexed to get the output in required path
-                reindex = True
-                for output in outputs:
-                    if summarize_as_source:
-                        summarize_file_hash = self._summarize_and_index(
-                            tool_id=tool_id,
-                            tool_settings=tool_settings,
-                            tool_data_dir=tool_data_dir,
-                            responder=responder,
-                            outputs=outputs,
-                            usage_kwargs=usage_kwargs,
-                        )
-                        payload[SettingsKeys.OUTPUTS] = outputs
-                        payload[SettingsKeys.FILE_HASH] = summarize_file_hash
-                        break
+            # To reindex even if file is already
+            # indexed to get the output in required path
+            reindex = True
+            index_metrics = {}
+            for output in outputs:
+                if summarize_as_source:
+                    # Since indexing is not involved for summary
+                    index_metrics[output[SettingsKeys.NAME]] = {"time_taken(s)": 0}
+                    break
+                if (reindex or not summarize_as_source) and output[
+                    SettingsKeys.CHUNK_SIZE
+                ] != 0:
+                    indexing_start_time = datetime.datetime.now()
                     self.stream_log(
-                        f"Chunk size '{output[SettingsKeys.CHUNK_SIZE]}', "
-                        f"indexing '{tool_data_dir / SettingsKeys.EXTRACT}'.."
+                        f"Indexing document with chunk size '{output[SettingsKeys.CHUNK_SIZE]}' and overlap '{output[SettingsKeys.CHUNK_OVERLAP]}'"
                     )
-                    if (reindex or not summarize_as_source) and output[
-                        SettingsKeys.CHUNK_SIZE
-                    ] != 0:
-                        self.stream_log(
-                            f"Sucessfully extracted text, "
-                            f"indexing {tool_data_dir / SettingsKeys.EXTRACT}.."
-                        )
-                        STHelper.dynamic_indexing(
-                            tool_settings=tool_settings,
-                            run_id=self.file_execution_id,
-                            file_path=tool_data_dir / SettingsKeys.EXTRACT,
-                            tool=self,
-                            execution_run_data_folder=str(execution_run_data_folder),
-                            chunk_overlap=output[SettingsKeys.CHUNK_OVERLAP],
-                            reindex=reindex,
-                            usage_kwargs=usage_kwargs,
-                            enable_highlight=enable_highlight,
-                            chunk_size=output[SettingsKeys.CHUNK_SIZE],
-                            tool_id=tool_metadata[SettingsKeys.TOOL_ID],
-                            file_hash=file_hash,
-                            extracted_text=extracted_text,
-                        )
-                        # Handle metrics for single pass extraction
-                        # index_metrics[output[SettingsKeys.NAME]] = {
-                        #     SettingsKeys.INDEXING: index.get_metrics()
-                        # }
-                        # index.clear_metrics()
-
-                    reindex = False
-            except Exception as e:
-                self.stream_log(
-                    f"Error fetching data and indexing: {e}", level=LogLevel.ERROR
-                )
-                raise
+                    STHelper.dynamic_indexing(
+                        tool_settings=tool_settings,
+                        run_id=self.file_execution_id,
+                        file_path=tool_data_dir / SettingsKeys.EXTRACT,
+                        tool=self,
+                        execution_run_data_folder=str(execution_run_data_folder),
+                        chunk_overlap=output[SettingsKeys.CHUNK_OVERLAP],
+                        reindex=reindex,
+                        usage_kwargs=usage_kwargs,
+                        enable_highlight=enable_highlight,
+                        chunk_size=output[SettingsKeys.CHUNK_SIZE],
+                        tool_id=tool_metadata[SettingsKeys.TOOL_ID],
+                        file_hash=file_hash,
+                        extracted_text=extracted_text,
+                    )
+                    index_metrics[output[SettingsKeys.NAME]] = {
+                        SettingsKeys.INDEXING: {
+                            "time_taken(s)": STHelper.elapsed_time(
+                                start_time=indexing_start_time
+                            )
+                        }
+                    }
+                reindex = False
 
             for output in outputs:
                 if SettingsKeys.TABLE_SETTINGS in output:
                     table_settings = output[SettingsKeys.TABLE_SETTINGS]
+                    is_directory_mode: bool = table_settings.get(
+                        SettingsKeys.IS_DIRECTORY_MODE, False
+                    )
                     table_settings[SettingsKeys.INPUT_FILE] = extracted_input_file
+                    table_settings[SettingsKeys.IS_DIRECTORY_MODE] = is_directory_mode
                     output.update({SettingsKeys.TABLE_SETTINGS: table_settings})
 
-            self.stream_log(f"Fetching responses for {len(outputs)} prompt(s)...")
-            prompt_service_resp = responder.answer_prompt(
+            self.stream_log(f"Fetching responses for '{len(outputs)}' prompt(s)...")
+            structured_output = responder.answer_prompt(
                 payload=payload,
             )
 
-        if prompt_service_resp[SettingsKeys.STATUS] != SettingsKeys.OK:
-            self.stream_error_and_exit(
-                f"Failed to fetch responses for "
-                f"prompts: {prompt_service_resp[SettingsKeys.ERROR]}"
+        # HACK: Replacing actual file's name instead of INFILE
+        if SettingsKeys.METADATA in structured_output:
+            structured_output[SettingsKeys.METADATA][SettingsKeys.FILE_NAME] = (
+                self.source_file_name
             )
 
-        structured_output = prompt_service_resp[SettingsKeys.STRUCTURE_OUTPUT]
-        structured_output_dict = json.loads(structured_output)
-
-        # HACK: Replacing actual file's name instead of INFILE
-        if SettingsKeys.METADATA in structured_output_dict:
-            structured_output_dict[SettingsKeys.METADATA][
-                SettingsKeys.FILE_NAME
-            ] = self.source_file_name
-
         if not summarize_as_source:
-            metadata = structured_output_dict[SettingsKeys.METADATA]
+            metadata = structured_output[SettingsKeys.METADATA]
             # Update the dictionary with modified metadata
-            structured_output_dict[SettingsKeys.METADATA] = metadata
-            structured_output = json.dumps(structured_output_dict)
+            structured_output[SettingsKeys.METADATA] = metadata
 
-        metrics = structured_output_dict.get(SettingsKeys.METRICS, {})
+        metrics = structured_output.get(SettingsKeys.METRICS, {})
         new_metrics = {}
         if tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION]:
             new_metrics = {
@@ -265,39 +240,35 @@ class StructureTool(BaseTool):
                 | set(index_metrics)  # Union of keys from both dictionaries
             }
         if new_metrics:
-            structured_output_dict[SettingsKeys.METRICS] = new_metrics
+            structured_output[SettingsKeys.METRICS] = new_metrics
         # Update GUI
         output_log = (
             f"## Result\n**NOTE:** In case of a deployed pipeline, the result would "
             "be a JSON. This has been rendered for readability here\n"
-            f"{json_to_markdown(structured_output_dict)}\n"
+            f"{json_to_markdown(structured_output)}\n"
         )
         self.stream_update(output_log, state=LogState.OUTPUT_UPDATE)
 
-        # Write the translated text to output file
         try:
-            self.stream_log("Writing parsed output...")
-            output_path = Path(output_dir) / f"{Path(self.source_file_name).stem}.json"
-            self.workflow_filestorage.json_dump(
-                path=output_path, data=structured_output_dict
+            self.stream_log(
+                "Dumping prompt studio project's output to workflow's storage"
             )
+            output_path = Path(output_dir) / f"{Path(self.source_file_name).stem}.json"
+            self.workflow_filestorage.json_dump(path=output_path, data=structured_output)
         except OSError as e:
             self.stream_error_and_exit(f"Error creating output file: {e}")
         except json.JSONDecodeError as e:
             self.stream_error_and_exit(f"Error encoding JSON: {e}")
-        self.write_tool_result(data=structured_output_dict)
+        self.write_tool_result(data=structured_output)
 
     def _summarize_and_index(
         self,
-        tool_id: str,
         tool_settings: dict[str, Any],
         tool_data_dir: Path,
         responder: PromptTool,
         outputs: dict[str, Any],
         usage_kwargs: dict[Any, Any] = {},
-        enable_highlight: bool = False,
-        execution_run_data_folder: str = None,
-    ) -> str:
+    ) -> tuple[str, str]:
         """Summarizes the context of the file and indexes the summarized
         content.
 
@@ -323,7 +294,7 @@ class StructureTool(BaseTool):
 
         summarized_context = ""
         self.stream_log(
-            f"Checking if summarized context exists at {summarize_file_path}"
+            f"Checking if summarized context exists at '{summarize_file_path}'..."
         )
         if self.workflow_filestorage.exists(summarize_file_path):
             summarized_context = self.workflow_filestorage.read(
@@ -340,7 +311,7 @@ class StructureTool(BaseTool):
                 output[SettingsKeys.X2TEXT_ADAPTER] = x2text_instance_id
                 output[SettingsKeys.CHUNK_SIZE] = 0
                 output[SettingsKeys.CHUNK_OVERLAP] = 0
-            self.stream_log("Summarizing context")
+            self.stream_log("Summarized context not found, summarizing...")
             payload = {
                 SettingsKeys.RUN_ID: run_id,
                 SettingsKeys.LLM_ADAPTER_INSTANCE_ID: llm_adapter_instance_id,
@@ -348,38 +319,17 @@ class StructureTool(BaseTool):
                 SettingsKeys.CONTEXT: context,
                 SettingsKeys.PROMPT_KEYS: prompt_keys,
             }
-            response = responder.summarize(payload=payload)
-            if response[SettingsKeys.STATUS] != SettingsKeys.OK:
-                self.stream_error_and_exit(
-                    f"Error summarizing response: {response[SettingsKeys.ERROR]}"
-                )
-            structure_output = json.loads(response[SettingsKeys.STRUCTURE_OUTPUT])
+            structure_output = responder.summarize(payload=payload)
             summarized_context = structure_output.get(SettingsKeys.DATA, "")
-            self.stream_log("Writing summarized context to a file")
+            self.stream_log(f"Writing summarized context to '{summarize_file_path}'")
             self.workflow_filestorage.write(
                 path=summarize_file_path, mode="w", data=summarized_context
             )
 
-        self.stream_log("Indexing summarized context")
         summarize_file_hash: str = self.workflow_filestorage.get_hash_from_file(
             path=summarize_file_path
         )
-        STHelper.dynamic_indexing(
-            file_path=summarize_file_path,
-            tool_settings=tool_settings,
-            run_id=self.file_execution_id,
-            execution_run_data_folder=execution_run_data_folder,
-            reindex=True,
-            usage_kwargs=usage_kwargs,
-            enable_highlight=enable_highlight,
-            file_hash=summarize_file_hash,
-            tool_id=tool_id,
-            tool=self,
-            chunk_overlap=0,
-            chunk_size=0,
-            extracted_text=summarized_context,
-        )
-        return summarize_file_hash
+        return str(summarize_file_path), summarize_file_hash
 
 
 if __name__ == "__main__":
