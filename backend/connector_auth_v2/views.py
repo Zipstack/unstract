@@ -30,7 +30,7 @@ class ConnectorAuthViewSet(viewsets.ViewSet):
                 f"Keys not configured for {backend}, add env vars "
                 f"`GOOGLE_OAUTH2_KEY` and `GOOGLE_OAUTH2_SECRET`."
             )
-            logger.warn(msg)
+            logger.warning(msg)
             raise KeyNotConfigured(
                 f"{msg}\nRefer to: "
                 "https://developers.google.com/identity/protocols/oauth2#1.-"
