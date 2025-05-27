@@ -81,17 +81,6 @@ def prompt_processor() -> Any:
         app.logger.info(f"[{tool_id}] chunk size: {chunk_size}")
         util = PromptServiceBaseTool(platform_key=platform_key)
         index = Index(tool=util, run_id=run_id, capture_metrics=True)
-        # To support backward compatability for cell types
-        # line-item, table and record.
-        if execution_source == PSKeys.TOOL:
-            if output[PSKeys.TYPE] == PSKeys.LINE_ITEM:
-                if PSKeys.TABLE_SETTINGS not in output:
-                    output[PSKeys.TYPE] = PSKeys.JSON
-            if (output[PSKeys.TYPE] == PSKeys.TABLE) or (
-                output[PSKeys.TYPE] == PSKeys.RECORD
-            ):
-                output[PSKeys.TYPE] = PSKeys.LINE_ITEM
-
         if VariableReplacementService.is_variables_present(prompt_text=prompt_text):
             prompt_text = VariableReplacementService.replace_variables_in_prompt(
                 prompt=output,
@@ -182,13 +171,14 @@ def prompt_processor() -> Any:
             )
             raise APIError(message=msg)
 
-        if output[PSKeys.TYPE] == PSKeys.LINE_ITEM:
+        if output[PSKeys.TYPE] == PSKeys.TABLE:
             try:
-                structured_output = AnswerPromptService.extract_line_item(
+                structured_output = AnswerPromptService.extract_table(
                     output=output,
                     structured_output=structured_output,
                     llm=llm,
                     execution_source=execution_source,
+                    prompt=prompt_text,
                 )
                 metadata = UsageHelper.query_usage_metadata(
                     token=platform_key, metadata=metadata
@@ -217,6 +207,36 @@ def prompt_processor() -> Any:
                     "Error while extracting table for the prompt",
                 )
                 raise api_error
+        elif output[PSKeys.TYPE] == PSKeys.LINE_ITEM:
+            try:
+                structured_output = AnswerPromptService.extract_line_item(
+                    tool_settings=tool_settings,
+                    output=output,
+                    structured_output=structured_output,
+                    llm=llm,
+                    file_path=file_path,
+                    metadata=metadata,
+                    execution_source=execution_source,
+                )
+                continue
+            except APIError as e:
+                app.logger.error(
+                    "Failed to extract line-item for the prompt %s: %s",
+                    output[PSKeys.NAME],
+                    str(e),
+                )
+                publish_log(
+                    log_events_id,
+                    {
+                        "tool_id": tool_id,
+                        "prompt_key": prompt_name,
+                        "doc_name": doc_name,
+                    },
+                    LogLevel.ERROR,
+                    RunLevel.RUN,
+                    "Error while extracting line-item for the prompt",
+                )
+                raise e
 
         try:
             answer = "NA"

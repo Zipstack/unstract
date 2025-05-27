@@ -1,6 +1,7 @@
 import logging
 from typing import Any
 
+from django.conf import settings
 from django.db.models.query import QuerySet
 from permissions.permission import IsOwner
 from pipeline_v2.models import Pipeline
@@ -227,6 +228,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 execution_mode=WorkflowExecution.Mode.INSTANT,
                 hash_values_of_files=hash_values_of_files,
                 use_file_history=use_file_history,
+                timeout=settings.INSTANT_WF_POLLING_TIMEOUT,
             )
         return execution_response
 

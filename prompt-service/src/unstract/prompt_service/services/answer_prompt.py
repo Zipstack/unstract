@@ -1,3 +1,4 @@
+import json
 from logging import Logger
 from typing import Any
 
@@ -9,7 +10,7 @@ from unstract.prompt_service.constants import ExecutionSource, FileStorageKeys, 
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.exceptions import RateLimitError
 from unstract.prompt_service.helpers.plugin import PluginManager
-from unstract.prompt_service.utils.file_utils import FileUtils
+from unstract.prompt_service.utils.env_loader import get_env_or_die
 from unstract.prompt_service.utils.log import publish_log
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError
@@ -59,6 +60,7 @@ class AnswerPromptService:
         platform_postamble = tool_settings.get(PSKeys.PLATFORM_POSTAMBLE, "")
         summarize_as_source = tool_settings.get(PSKeys.SUMMARIZE_AS_SOURCE)
         enable_highlight = tool_settings.get(PSKeys.ENABLE_HIGHLIGHT, False)
+        prompt_type = output.get(PSKeys.TYPE, PSKeys.TEXT)
         if not enable_highlight or summarize_as_source:
             platform_postamble = ""
         plugin = PluginManager().get_plugin("json-extraction")
@@ -71,6 +73,7 @@ class AnswerPromptService:
             grammar_list=tool_settings.get(PSKeys.GRAMMAR, []),
             context=context,
             platform_postamble=platform_postamble,
+            prompt_type=prompt_type,
         )
         output[PSKeys.COMBINED_PROMPT] = prompt
         return AnswerPromptService.run_completion(
@@ -78,7 +81,7 @@ class AnswerPromptService:
             prompt=prompt,
             metadata=metadata,
             prompt_key=output[PSKeys.NAME],
-            prompt_type=output.get(PSKeys.TYPE, PSKeys.TEXT),
+            prompt_type=prompt_type,
             enable_highlight=enable_highlight,
             file_path=file_path,
             execution_source=execution_source,
@@ -92,6 +95,7 @@ class AnswerPromptService:
         grammar_list: list[dict[str, Any]],
         context: str,
         platform_postamble: str,
+        prompt_type: str = PSKeys.TEXT,
     ) -> str:
         prompt = f"{preamble}\n\nQuestion or Instruction: {prompt}"
         if grammar_list is not None and len(grammar_list) > 0:
@@ -106,6 +110,11 @@ class AnswerPromptService:
                 if len(synonyms) > 0 and word != "":
                     prompt += f'\nNote: You can consider that the word {word} is same as \
                         {", ".join(synonyms)} in both the quesiton and the context.'  # noqa
+        if prompt_type == PSKeys.JSON:
+            json_postamble = get_env_or_die(
+                PSKeys.JSON_POSTAMBLE, PSKeys.DEFAULT_JSON_POSTAMBLE
+            )
+            postamble += f"\n{json_postamble}"
         if platform_postamble:
             platform_postamble += "\n\n"
         prompt += (
@@ -131,11 +140,7 @@ class AnswerPromptService:
                 PSKeys.HIGHLIGHT_DATA_PLUGIN
             )
             highlight_data = None
-            if (
-                highlight_data_plugin
-                and enable_highlight
-                and prompt_type.lower() != PSKeys.JSON
-            ):
+            if highlight_data_plugin and enable_highlight:
                 fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
                 if execution_source == ExecutionSource.IDE.value:
                     fs_instance = EnvHelper.get_storage(
@@ -154,7 +159,7 @@ class AnswerPromptService:
             completion = llm.complete(
                 prompt=prompt,
                 process_text=highlight_data,
-                extract_json=False,
+                extract_json=prompt_type.lower() != PSKeys.TEXT,
             )
             answer: str = completion[PSKeys.RESPONSE].text
             highlight_data = completion.get(PSKeys.HIGHLIGHT_DATA, [])
@@ -181,17 +186,18 @@ class AnswerPromptService:
             raise APIError(str(e)) from e
 
     @staticmethod
-    def extract_line_item(
+    def extract_table(
         output: dict[str, Any],
         structured_output: dict[str, Any],
         llm: LLM,
         execution_source: str,
+        prompt: str,
     ) -> dict[str, Any]:
         table_settings = output[PSKeys.TABLE_SETTINGS]
         table_extractor: dict[str, Any] = PluginManager().get_plugin("table-extractor")
         if not table_extractor:
             raise APIError(
-                "Unable to extract line-item details. "
+                "Unable to extract table details. "
                 "Please contact admin to resolve this issue."
             )
         fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
@@ -206,10 +212,11 @@ class AnswerPromptService:
                 env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
             )
         try:
-            answer = table_extractor["entrypoint_cls"].extract_large_table(
+            answer = table_extractor["entrypoint_cls"].run_table_extraction(
                 llm=llm,
                 table_settings=table_settings,
                 fs_instance=fs_instance,
+                prompt=prompt,
             )
             structured_output[output[PSKeys.NAME]] = answer
             # We do not support summary and eval for table.
@@ -238,28 +245,16 @@ class AnswerPromptService:
         if answer.lower() == "na":
             structured_output[prompt_key] = None
         else:
-            json_extraction_plugin = PluginManager().get_plugin("json-extraction")
-            if json_extraction_plugin:
-                answer = json_extraction_plugin["entrypoint_cls"](
-                    llm=llm,
-                    output=output,
-                    prompt=output[PSKeys.COMBINED_PROMPT],
-                    structured_output=structured_output,
-                    answer=answer,
-                ).run()
-            answer = AnswerPromptService.slice_from_first_bracket(answer)
-            if enable_highlight:
-                AnswerPromptService.handle_highlight(
-                    execution_source=execution_source,
-                    output=output,
-                    answer=answer,
-                    metadata=metadata,
-                    file_path=file_path,
-                )
-            parsed_data = repair_json(
-                json_str=answer,
-                return_objects=True,
-            )
+            # Attempt parsing as-is (could be a valid object, array, or partial JSON)
+            a = repair_json(json_str=answer, return_objects=True)
+
+            # Attempt parsing with array wrap (useful for multiple comma-separated objects like {}, {}, {})
+            b = repair_json(json_str="[" + answer, return_objects=True)
+
+            # Heuristic: if wrapping only added '[' and ']', len(b) - len(a) == 2 → original was valid, use 'a'
+            # Otherwise, fallback to 'b' which likely fixed multiple items or invalid top-level structure
+            parsed_data = a if len(json.dumps(b)) - len(json.dumps(a)) == 2 else b
+
             if isinstance(parsed_data, str):
                 err_msg = "Error parsing response (to json)\n" f"Candidate JSON: {answer}"
                 app.logger.info(err_msg, LogLevel.ERROR)
@@ -280,47 +275,62 @@ class AnswerPromptService:
                 structured_output[prompt_key] = parsed_data
 
     @staticmethod
-    def handle_highlight(
-        execution_source: str,
+    def extract_line_item(
+        tool_settings: dict[str, Any],
         output: dict[str, Any],
-        answer: str,
-        metadata: dict[str, Any] | None = None,
-        file_path: str = "",
-    ) -> None:
-        """Handle highlight data from the LLM."""
-        highlight_data_plugin = PluginManager().get_plugin("highlight-data")
-        if highlight_data_plugin:
-            highlight_response = highlight_data_plugin["entrypoint_cls"](
-                file_path=file_path,
-                fs_instance=FileUtils.get_fs_instance(execution_source=execution_source),
-            ).run(None, True, answer)
-            highlight_data = highlight_response.get(PSKeys.HIGHLIGHT_DATA, [])
-            confidence_data = highlight_response.get(PSKeys.CONFIDENCE_DATA)
-            line_numbers = highlight_response.get(PSKeys.LINE_NUMBERS, [])
-            whisper_hash = highlight_response.get(PSKeys.WHISPER_HASH, "")
-            prompt_key = output[PSKeys.NAME]
-            if metadata is not None and prompt_key:
-                if PSKeys.HIGHLIGHT_DATA not in metadata:
-                    metadata[PSKeys.HIGHLIGHT_DATA] = {}
-                metadata[PSKeys.HIGHLIGHT_DATA][prompt_key] = highlight_data
+        structured_output: dict[str, Any],
+        llm: LLM,
+        file_path: str,
+        metadata: dict[str, str] | None,
+        execution_source: str,
+    ) -> dict[str, Any]:
+        line_item_extraction_plugin: dict[str, Any] = PluginManager().get_plugin(
+            "line-item-extraction"
+        )
+        if not line_item_extraction_plugin:
+            raise APIError(PSKeys.PAID_FEATURE_MSG)
 
-                if PSKeys.LINE_NUMBERS not in metadata:
-                    metadata[PSKeys.LINE_NUMBERS] = {}
-                metadata[PSKeys.LINE_NUMBERS][prompt_key] = line_numbers
+        extract_file_path = file_path
 
-                metadata[PSKeys.WHISPER_HASH] = whisper_hash
+        # Read file content into context
+        fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
+        if execution_source == ExecutionSource.IDE.value:
+            fs_instance = EnvHelper.get_storage(
+                storage_type=StorageType.PERMANENT,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+            )
+        if execution_source == ExecutionSource.TOOL.value:
+            fs_instance = EnvHelper.get_storage(
+                storage_type=StorageType.SHARED_TEMPORARY,
+                env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
+            )
 
-                if confidence_data:
-                    if PSKeys.CONFIDENCE_DATA not in metadata:
-                        metadata[PSKeys.CONFIDENCE_DATA] = {}
-                    metadata[PSKeys.CONFIDENCE_DATA][prompt_key] = confidence_data
+        if not fs_instance.exists(extract_file_path):
+            raise FileNotFoundError(
+                f"The file at path '{extract_file_path}' does not exist."
+            )
+        context = fs_instance.read(path=extract_file_path, encoding="utf-8", mode="r")
 
-    @staticmethod
-    def slice_from_first_bracket(text: str) -> str:
-        idx_brace = text.find("{")
-        idx_bracket = text.find("[")
-        indices = [i for i in [idx_brace, idx_bracket] if i != -1]
-        if not indices:
-            return text
-        start = min(indices)
-        return text[start:]
+        prompt = AnswerPromptService.construct_prompt(
+            preamble=tool_settings.get(PSKeys.PREAMBLE, ""),
+            prompt=output["promptx"],
+            postamble=tool_settings.get(PSKeys.POSTAMBLE, ""),
+            grammar_list=tool_settings.get(PSKeys.GRAMMAR, []),
+            context=context,
+            platform_postamble="",
+        )
+        try:
+            line_item_extraction = line_item_extraction_plugin["entrypoint_cls"](
+                llm=llm,
+                tool_settings=tool_settings,
+                output=output,
+                prompt=prompt,
+                structured_output=structured_output,
+            )
+            answer = line_item_extraction.run()
+            structured_output[output[PSKeys.NAME]] = answer
+            metadata[PSKeys.CONTEXT][output[PSKeys.NAME]] = [context]
+            return structured_output
+        except line_item_extraction_plugin["exception_cls"] as e:
+            msg = f"Couldn't extract table. {e}"
+            raise APIError(message=msg)
