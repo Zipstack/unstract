@@ -113,7 +113,7 @@ class DestinationConfig:
 @dataclass
 class FileExecutionResult:
     file: str
-    file_execution_id: str
+    file_execution_id: str | None = None
     status: str | None = None
     result: str | None = None
     error: str | None = None

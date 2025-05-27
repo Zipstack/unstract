@@ -31,18 +31,21 @@ from workflow_manager.utils.workflow_log import WorkflowLog
 from workflow_manager.workflow_v2.dto import (
     ExecutionContext,
     FileBatchData,
+    FileBatchResult,
     FileData,
     FinalOutputResult,
     ToolExecutionResult,
 )
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.exceptions import (
+    ExecutionContextInitializationError,
     WorkflowDoesNotExistError,
     WorkflowExecutionError,
 )
 from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelper
 from workflow_manager.workflow_v2.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
+from workflow_manager.workflow_v2.models.file_history import FileHistory
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 logger = logging.getLogger(__name__)
@@ -113,22 +116,23 @@ class FileExecutionTasks:
                 - single_step: Whether to process in single step mode
         """
         file_batch_data = FileBatchData.from_dict(file_batch_data)
+        logger.debug(f"Batch data received: {file_batch_data}")
+
         file_data = file_batch_data.file_data
         logger.info(f"File processing context {file_data}")
 
+        execution_id = file_data.execution_id
+        workflow_id = file_data.workflow_id
         organization_id = file_data.organization_id
-        StateStore.set(Account.ORGANIZATION_ID, organization_id)
 
-        # Use proper logger instead of print
-        logger.info(
-            f"Starting to process file batch for execution {file_data.execution_id}"
-        )
-        logger.debug(f"Batch data received: {file_batch_data}")
+        StateStore.set(Account.ORGANIZATION_ID, organization_id)
 
         successful_files = 0
         failed_files = 0
-        execution_id = file_data.execution_id
-        workflow_id = file_data.workflow_id
+
+        logger.info(
+            f"Initializing file batch processing for execution {execution_id}, organization {organization_id}"
+        )
         # Reconstruct necessary objects
         workflow = FileExecutionTasks.get_workflow_by_id(str(workflow_id))
         workflow_execution: WorkflowExecution = WorkflowExecution.objects.get(
@@ -140,13 +144,12 @@ class FileExecutionTasks:
         total_files = len(file_batch_data.files)
         q_file_no_list = set(file_data.q_file_no_list)
 
-        logger.info(
-            f"Processing {total_files} files of execution {execution_id} in a batch"
-        )
+        logger.info(f"Processing {total_files} files of execution {execution_id}")
 
         for file_number, (file_name, file_hash_dict) in enumerate(
             file_batch_data.files, 1
         ):
+            logger.info(f"[{file_number}/{total_files}] Processing file '{file_name}'")
             file_hash = FileHash(
                 file_path=file_hash_dict.get("file_path"),
                 file_name=file_hash_dict.get("file_name"),
@@ -165,6 +168,7 @@ class FileExecutionTasks:
                 q_file_no_list,
                 file_hash,
             )
+            logger.info(f"File hash for file {file_name}: {file_hash.to_json()}")
             file_execution_result = FileExecutionTasks._process_file(
                 current_file_idx=file_number,
                 total_files=total_files,
@@ -172,6 +176,7 @@ class FileExecutionTasks:
                 file_hash=file_hash,
                 workflow_execution=workflow_execution,
             )
+
             if file_execution_result.error:
                 failed_files += 1
                 ExecutionCacheUtils.increment_failed_files(
@@ -184,10 +189,10 @@ class FileExecutionTasks:
                     workflow_id=workflow.id,
                     execution_id=execution_id,
                 )
-        return {
-            "successful_files": successful_files,
-            "failed_files": failed_files,
-        }
+        return FileBatchResult(
+            successful_files=successful_files,
+            failed_files=failed_files,
+        ).to_dict()
 
     @file_processing_app.task(
         bind=True,
@@ -235,8 +240,12 @@ class FileExecutionTasks:
         total_successful = sum(result["successful_files"] for result in results)
         total_failed = sum(result["failed_files"] for result in results)
 
-        total_files = total_successful + total_failed
+        batch_result = FileBatchResult(
+            successful_files=total_successful,
+            failed_files=total_failed,
+        )
 
+        total_files = batch_result.total_files
         # Update final status
         final_status = (
             ExecutionStatus.COMPLETED if total_successful else ExecutionStatus.ERROR
@@ -296,6 +305,9 @@ class FileExecutionTasks:
             FileExecutionResult: Result of the file execution
         """
         try:
+            logger.info(
+                f"[Execution {workflow_execution.id}] Processing file: '{file_hash.file_name}'"
+            )
             # Initialization Phase
             execution_context = cls._initialize_execution_context(
                 file_data, file_hash, workflow_execution
@@ -354,6 +366,26 @@ class FileExecutionTasks:
                 destination,
                 execution_result,
             )
+        except ExecutionContextInitializationError as error:
+            # This case is not expected under normal conditions — handled here as a safety net.
+            # If it occurs, it likely indicates a logical error (e.g., the same file being processed with a different name under the same execution_id).
+            error_msg = f"Error initializing execution context. {error}"
+            workflow_log = WorkflowLog(
+                execution_id=str(workflow_execution.id),
+                log_stage=LogStage.PROCESSING,
+                organization_id=file_data.organization_id,
+                pipeline_id=str(workflow_execution.pipeline_id),
+            )
+            workflow_log.log_error(logger=logger, message=error_msg)
+            result = FinalOutputResult(output=None, metadata=None, error=error_msg)
+            return cls._build_final_result(
+                workflow_execution=workflow_execution,
+                file_hash=file_hash,
+                result=result,
+                workflow_file_execution=None,
+                error=error_msg,
+                is_api=destination.is_api,
+            )
         except Exception as error:
             error_msg = f"File execution failed: {error}"
             workflow_log.log_error(logger=logger, message=error_msg)
@@ -363,11 +395,11 @@ class FileExecutionTasks:
             result = FinalOutputResult(output=None, metadata=None, error=error_msg)
             return cls._build_final_result(
                 workflow_execution=workflow_execution,
-                workflow_file_execution=workflow_file_execution,
                 file_hash=file_hash,
-                is_api=destination.is_api,
                 result=result,
+                workflow_file_execution=workflow_file_execution,
                 error=error_msg,
+                is_api=destination.is_api,
             )
 
     @classmethod
@@ -378,45 +410,53 @@ class FileExecutionTasks:
         workflow_execution: WorkflowExecution,
     ) -> ExecutionContext:
         """Set up all required execution context objects and configurations."""
-        workflow = workflow_execution.workflow
-        endpoint: WorkflowEndpoint = WorkflowEndpoint.objects.get(
-            workflow=workflow,
-            endpoint_type=WorkflowEndpoint.EndpointType.SOURCE,
-        )
-
-        is_api = endpoint.connection_type == WorkflowEndpoint.ConnectionType.API
-
-        # Create execution record
-        file_execution: WorkflowFileExecution = (
-            WorkflowFileExecution.objects.get_or_create_file_execution(
-                workflow_execution=workflow_execution,
-                file_hash=file_hash,
-                is_api=is_api,
+        try:
+            workflow = workflow_execution.workflow
+            endpoint: WorkflowEndpoint = WorkflowEndpoint.objects.get(
+                workflow=workflow,
+                endpoint_type=WorkflowEndpoint.EndpointType.SOURCE,
             )
-        )
 
-        # Create configurations
-        source_config = SourceConfig.from_json(file_data.source_config)
-        destination_config = DestinationConfig.from_json(file_data.destination_config)
-        source_config.file_execution_id = destination_config.file_execution_id = str(
-            file_execution.id
-        )
+            is_api = endpoint.connection_type == WorkflowEndpoint.ConnectionType.API
 
-        # Initialize logging
-        workflow_log = WorkflowLog(
-            execution_id=str(workflow_execution.id),
-            log_stage=LogStage.PROCESSING,
-            organization_id=file_data.organization_id,
-            pipeline_id=str(workflow_execution.pipeline_id),
-            file_execution_id=str(file_execution.id),
-        )
+            # Create execution record
+            file_execution: WorkflowFileExecution = (
+                WorkflowFileExecution.objects.get_or_create_file_execution(
+                    workflow_execution=workflow_execution,
+                    file_hash=file_hash,
+                    is_api=is_api,
+                )
+            )
 
-        return ExecutionContext(
-            workflow_log=workflow_log,
-            workflow_file_execution=file_execution,
-            source_config=source_config,
-            destination_config=destination_config,
-        )
+            # Create configurations
+            source_config = SourceConfig.from_json(file_data.source_config)
+            destination_config = DestinationConfig.from_json(file_data.destination_config)
+            source_config.file_execution_id = destination_config.file_execution_id = str(
+                file_execution.id
+            )
+
+            # Initialize logging
+            workflow_log = WorkflowLog(
+                execution_id=str(workflow_execution.id),
+                log_stage=LogStage.PROCESSING,
+                organization_id=file_data.organization_id,
+                pipeline_id=str(workflow_execution.pipeline_id),
+                file_execution_id=str(file_execution.id),
+            )
+
+            return ExecutionContext(
+                workflow_log=workflow_log,
+                workflow_file_execution=file_execution,
+                source_config=source_config,
+                destination_config=destination_config,
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to initialize execution context: {str(e)}", exc_info=True
+            )
+            raise ExecutionContextInitializationError(
+                f"Failed to initialize execution context: {str(e)}"
+            ) from e
 
     @classmethod
     def _prepare_file_for_processing(
@@ -431,6 +471,7 @@ class FileExecutionTasks:
         workflow_file_exec.update_status(ExecutionStatus.EXECUTING)
 
         try:
+            logger.info(f"Preparing file for processing: {file_hash.file_name}")
             content_hash = source.add_file_to_volume(
                 workflow_file_execution=workflow_file_exec,
                 tags=workflow_execution.tag_names,
@@ -462,13 +503,35 @@ class FileExecutionTasks:
         if destination.is_api:
             return None
 
+        # Check for existing file processing history by content hash
         file_history = FileHistoryHelper.get_file_history(
             workflow=workflow, cache_key=content_hash
         )
         if not file_history:
             return None
 
-        workflow_log.log_info(f"Skipping duplicate '{file_hash.file_name}'")
+        workflow_log.log_info(
+            logger=logger,
+            message=f"Skipping duplicate file: '{file_hash.file_name}' in workflow '{workflow}' (content hash match)",
+        )
+
+        # Check for provider_file_uuid consistency
+        if file_history.provider_file_uuid and file_hash.provider_file_uuid:
+            logger.warning(
+                f"Provider file UUID mismatch for file '{file_hash.file_name}' in workflow '{workflow}'"
+            )
+        elif file_history.provider_file_uuid and not file_hash.provider_file_uuid:
+            logger.warning(
+                f"Provider file UUID is missing for file '{file_hash.file_name}' in workflow '{workflow}'"
+            )
+        elif not file_history.provider_file_uuid and file_hash.provider_file_uuid:
+            logger.info(
+                f"Backfilling provider UUID for '{file_hash.file_name}' in workflow '{workflow}' with value: "
+                f"{file_hash.provider_file_uuid}"
+            )
+            file_history.provider_file_uuid = file_hash.provider_file_uuid
+            file_history.save()
+
         return FileExecutionResult(
             file=file_hash.file_name,
             file_execution_id=str(workflow_file_exec.id),
@@ -488,6 +551,7 @@ class FileExecutionTasks:
         total_files: int,
     ) -> ToolExecutionResult:
         """Execute main workflow processing steps with proper error handling."""
+        logger.info(f"Executing workflow steps for file: '{file_hash.file_name}'")
         tool_instances: list[ToolInstance] = (
             ToolInstanceHelper.get_tool_instances_by_workflow(
                 file_data.workflow_id, ToolInstanceKey.STEP
@@ -556,6 +620,7 @@ class FileExecutionTasks:
         execution_result: ToolExecutionResult,
     ) -> FileExecutionResult:
         """Handle final processing steps and result generation."""
+        logger.info(f"Finalizing execution for file: '{file_hash.file_name}'")
         result = cls._process_final_output(
             destination,
             workflow_execution.workflow,
@@ -572,11 +637,11 @@ class FileExecutionTasks:
 
         return cls._build_final_result(
             workflow_execution=workflow_execution,
-            workflow_file_execution=workflow_file_execution,
             file_hash=file_hash,
-            is_api=destination.is_api,
             result=result,
+            workflow_file_execution=workflow_file_execution,
             error=result.error or execution_result.error,
+            is_api=destination.is_api,
         )
 
     @classmethod
@@ -614,7 +679,12 @@ class FileExecutionTasks:
 
             if destination.is_api:
                 execution_metadata = destination.get_metadata(file_history)
-            if destination.use_file_history and not file_history:
+            if cls._should_create_file_history(
+                destination=destination,
+                file_history=file_history,
+                output_result=output_result,
+                processing_error=processing_error,
+            ):
                 FileHistoryHelper.create_file_history(
                     file_hash=file_hash,
                     workflow=workflow,
@@ -631,6 +701,41 @@ class FileExecutionTasks:
         return FinalOutputResult(
             output=output_result, metadata=execution_metadata, error=None
         )
+
+    @classmethod
+    def _should_create_file_history(
+        cls,
+        destination: DestinationConnector,
+        file_history: FileHistory | None,
+        output_result: str | None,
+        processing_error: str | None,
+    ) -> bool:
+        """Determine whether a new FileHistory record should be created.
+
+        Returns True if:
+        - File history is enabled for the destination,
+        - No existing file history record is present,
+        - There is no processing error (`processing_error` is None),
+        - And one of the following conditions is met:
+            - The destination is not an API, or
+            - The destination is an API and a valid output_result exists.
+
+        Args:
+            destination: Destination connector
+            file_history: File history
+            output_result: Output result
+            processing_error: Processing error
+
+        Returns:
+            bool: True if file history should be created, False otherwise
+        """
+        if not destination.use_file_history or file_history:
+            return False
+        if destination.is_api and not output_result:
+            return False
+        if processing_error:
+            return False
+        return True
 
     @classmethod
     def _complete_execution(
@@ -662,11 +767,11 @@ class FileExecutionTasks:
     def _build_final_result(
         cls,
         workflow_execution: WorkflowExecution,
-        workflow_file_execution: WorkflowFileExecution,
         file_hash: FileHash,
-        is_api: bool,
         result: FinalOutputResult,
-        error: str | None,
+        workflow_file_execution: WorkflowFileExecution | None = None,
+        error: str | None = None,
+        is_api: bool = False,
     ) -> FileExecutionResult:
         """Construct and cache the final execution result."""
         final_result = FileExecutionResult(
