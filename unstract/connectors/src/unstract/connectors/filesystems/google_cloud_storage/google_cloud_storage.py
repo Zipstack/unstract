@@ -26,7 +26,12 @@ class GoogleCloudStorageFS(UnstractFileSystem):
         json_credentials_str = settings.get("json_credentials", "{}")
         try:
             json_credentials = json.loads(json_credentials_str)
-            self.gcs_fs = GCSFileSystem(token=json_credentials, project=project_id)
+            self.gcs_fs = GCSFileSystem(
+                token=json_credentials,
+                project=project_id,
+                cache_timeout=0,
+                use_listings_cache=False,
+            )
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON credentials: {str(e)}")
             error_msg = (
