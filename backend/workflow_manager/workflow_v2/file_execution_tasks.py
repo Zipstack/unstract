@@ -10,8 +10,16 @@ from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
 from utils.constants import Account
 from utils.local_context import StateStore
 
-from backend.workers.file_processing.constants import QueueNames
+from backend.workers.file_processing.constants import (
+    QueueNames as FileProcessingQueueNames,
+)
 from backend.workers.file_processing.file_processing import app as file_processing_app
+from backend.workers.file_processing_callback.constants import (
+    QueueNames as FileProcessingCallbackQueueNames,
+)
+from backend.workers.file_processing_callback.file_processing_callback import (
+    app as file_processing_callback_app,
+)
 from unstract.workflow_execution.enums import LogComponent, LogStage, LogState
 from unstract.workflow_execution.exceptions import StopExecution
 from workflow_manager.endpoint_v2.destination import DestinationConnector
@@ -36,7 +44,7 @@ from workflow_manager.workflow_v2.dto import (
     FinalOutputResult,
     ToolExecutionResult,
 )
-from workflow_manager.workflow_v2.enums import ExecutionStatus
+from workflow_manager.workflow_v2.enums import ExecutionStatus, TaskType
 from workflow_manager.workflow_v2.exceptions import (
     ExecutionContextInitializationError,
     WorkflowDoesNotExistError,
@@ -53,9 +61,20 @@ logger = logging.getLogger(__name__)
 
 class FileExecutionTasks:
     @staticmethod
-    def get_queue_name(source: SourceConnector) -> str:
+    def get_queue_name(source: SourceConnector, type: TaskType) -> str:
         is_api = source.endpoint.connection_type == WorkflowEndpoint.ConnectionType.API
-        return QueueNames.API_FILE_PROCESSING if is_api else QueueNames.FILE_PROCESSING
+        if type == TaskType.FILE_PROCESSING:
+            return (
+                FileProcessingQueueNames.API_FILE_PROCESSING
+                if is_api
+                else FileProcessingQueueNames.FILE_PROCESSING
+            )
+        if type == TaskType.FILE_PROCESSING_CALLBACK:
+            return (
+                FileProcessingCallbackQueueNames.API_FILE_PROCESSING_CALLBACK
+                if is_api
+                else FileProcessingCallbackQueueNames.FILE_PROCESSING_CALLBACK
+            )
 
     @staticmethod
     def get_workflow_by_id(id: str) -> Workflow:
@@ -176,15 +195,18 @@ class FileExecutionTasks:
                 file_hash=file_hash,
                 workflow_execution=workflow_execution,
             )
-
             if file_execution_result.error:
                 failed_files += 1
+                logger.info(
+                    f"File execution for file {file_name} marked as failed with error: {file_execution_result.error}"
+                )
                 ExecutionCacheUtils.increment_failed_files(
                     workflow_id=workflow.id,
                     execution_id=execution_id,
                 )
             else:
                 successful_files += 1
+                logger.info(f"File execution for file {file_name} marked as successful")
                 ExecutionCacheUtils.increment_completed_files(
                     workflow_id=workflow.id,
                     execution_id=execution_id,
@@ -194,7 +216,7 @@ class FileExecutionTasks:
             failed_files=failed_files,
         ).to_dict()
 
-    @file_processing_app.task(
+    @file_processing_callback_app.task(
         bind=True,
         max_retries=0,  # Maximum number of retries
         retry_backoff=True,
@@ -233,6 +255,7 @@ class FileExecutionTasks:
         # Set organization ID in StateStore
         StateStore.set(Account.ORGANIZATION_ID, organization_id)
 
+        logger.info(f"Processing batch callback for execution id: '{execution_id}'")
         if not results:
             return None
 
@@ -273,6 +296,13 @@ class FileExecutionTasks:
             total_files=total_files,
             successful_files=total_successful,
             failed_files=total_failed,
+        )
+        logger.info(
+            f"Execution completed for execution id: '{execution_id}' "
+            f"with status: '{final_status}' "
+            f"and total files: '{total_files}' "
+            f"and successful files: '{total_successful}' "
+            f"and failed files: '{total_failed}'"
         )
         return {
             "execution_id": execution_id,
@@ -569,7 +599,7 @@ class FileExecutionTasks:
             use_file_history=file_data.use_file_history,
             file_execution_id=str(workflow_file_execution.id),
         )
-
+        logger.info(f"Execution service built for file: '{file_hash.file_name}'")
         try:
             execution_service.initiate_tool_execution(
                 current_file_idx=current_file_idx,
@@ -577,13 +607,18 @@ class FileExecutionTasks:
                 file_name=file_hash.file_name,
                 single_step=file_data.single_step,
             )
-
+            logger.info(
+                f"Initiated tool execution for file id: '{workflow_file_execution.id}' file name: '{file_hash.file_name}'"
+            )
             if not file_hash.is_executed:
                 execution_service.execute_input_file(
                     file_execution_id=str(workflow_file_execution.id),
                     file_name=file_hash.file_name,
                     single_step=file_data.single_step,
                     workflow_file_execution=workflow_file_execution,
+                )
+                logger.info(
+                    f"Executed input file for file id: '{workflow_file_execution.id}' file name: '{file_hash.file_name}'"
                 )
                 # Log execution costs
                 execution_service.log_total_cost_per_file(
