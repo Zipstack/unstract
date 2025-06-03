@@ -127,6 +127,14 @@ help = "Runs the Unstract file processing worker"
 cmd = "celery -A backend.workers.file_processing worker --loglevel=info -Q api_file_processing --autoscale 4,1"
 help = "Runs the Unstract file processing api worker"
 
+[tool.poe.tasks.worker-file-processing-callback]
+cmd = "celery -A backend.workers.file_processing_callback worker --loglevel=info -Q file_processing_callback --autoscale 4,1"
+help = "Runs the Unstract file processing callback worker"
+
+[tool.poe.tasks.worker-api-file-processing-callback]
+cmd = "celery -A backend.workers.file_processing_callback worker --loglevel=info -Q api_file_processing_callback --autoscale 4,1"
+help = "Runs the Unstract api file processing callback worker"
+
 [tool.poe.tasks.flower]
 cmd = "celery -A backend flower --port=5555"
 help = "Runs the Unstract Celery Monitoring Tool"

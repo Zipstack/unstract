@@ -251,10 +251,13 @@ class StructureTool(BaseTool):
 
         try:
             self.stream_log(
-                "Dumping prompt studio project's output to workflow's storage"
+                "Writing prompt studio project's output to workflow's storage"
             )
             output_path = Path(output_dir) / f"{Path(self.source_file_name).stem}.json"
             self.workflow_filestorage.json_dump(path=output_path, data=structured_output)
+            self.stream_log(
+                "Prompt studio project's output written successfully to workflow's storage"
+            )
         except OSError as e:
             self.stream_error_and_exit(f"Error creating output file: {e}")
         except json.JSONDecodeError as e:
