@@ -138,6 +138,10 @@ INSTANT_WF_POLLING_TIMEOUT = int(
 )  # 5 minutes
 MAX_PARALLEL_FILE_BATCHES = int(os.environ.get("MAX_PARALLEL_FILE_BATCHES", 1))
 
+CELERY_RESULT_CHORD_RETRY_INTERVAL = int(
+    os.environ.get("CELERY_RESULT_CHORD_RETRY_INTERVAL", "3")
+)
+
 INDEXING_FLAG_TTL = int(get_required_setting("INDEXING_FLAG_TTL"))
 NOTIFICATION_TIMEOUT = int(get_required_setting("NOTIFICATION_TIMEOUT", "5"))
 ATOMIC_REQUESTS = CommonUtils.str_to_bool(
