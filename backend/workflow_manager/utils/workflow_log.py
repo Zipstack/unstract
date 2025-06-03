@@ -49,8 +49,19 @@ class WorkflowLog:
         self.publish_log(message, level=LogLevel.ERROR)
         logger.error(message, exc_info=True, stack_info=True)
 
-    def log_info(self, message: str) -> None:
+    def log_info(self, logger: logging.Logger, message: str) -> None:
+        """Publishes an info log message to the configured logger and to the
+        websocket channel if the `execution_service` is configured.
+
+        Args:
+            logger (logging.Logger): The logger to use for logging.
+            message (str): The log message to be published.
+
+        Returns:
+            None
+        """
         self.publish_log(message, level=LogLevel.INFO)
+        logger.info(message)
 
     def publish_update_log(
         self,
