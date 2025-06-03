@@ -1,3 +1,4 @@
+from django.conf import settings
 from kombu import Queue
 
 from backend.celery_config import CeleryConfig as BaseCeleryConfig
@@ -27,6 +28,8 @@ class CeleryConfig(BaseCeleryConfig):
     broker_connection_retry_on_startup = True
 
     # Chord-specific settings
-    result_chord_retry_interval = 3  # Backend check interval in seconds
+    result_chord_retry_interval = (
+        settings.CELERY_RESULT_CHORD_RETRY_INTERVAL
+    )  # Backend check interval in seconds
 
     imports = ["workflow_manager.workflow_v2.file_execution_tasks"]
