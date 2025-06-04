@@ -333,9 +333,9 @@ class SourceConnector(BaseConnector):
     ) -> int:
         for fs_metadata in fs_metadata_list:
             if count >= limit:
-                logger.info(
-                    f"[Matched Files] Maximum limit {limit} of files reached, count: {count}"
-                )
+                msg = f"Maximum limit of '{limit}' files to process reached"
+                self.workflow_log.publish_log(msg)
+                logger.info(msg)
                 break
 
             file_path: str | None = fs_metadata.get("name")
@@ -358,9 +358,9 @@ class SourceConnector(BaseConnector):
 
             # Skip duplicate files
             if self._is_duplicate(file_hash, unique_file_hashes):
-                logger.info(
-                    f"[Matched Files] Skipping execution of duplicate file: {file_path}"
-                )
+                msg = f"Skipping execution of duplicate file '{file_path}'"
+                self.workflow_log.publish_log(msg)
+                logger.info(msg)
                 continue
             self._update_unique_file_hashes(file_hash, unique_file_hashes)
 
@@ -528,10 +528,11 @@ class SourceConnector(BaseConnector):
         # In case of ETL pipelines, its necessary to skip files which have
         # already been processed
         if self.use_file_history and file_history and file_history.is_completed():
+            msg = f"Skipping file '{file_path}' as it has already been processed."
             self.workflow_log.publish_log(
-                f"Skipping file {file_path} as it has already been processed. "
-                "Clear the file markers to process it again."
+                msg + " Clear the file markers to process it again."
             )
+            logger.info(msg)
             return False
 
         return True
