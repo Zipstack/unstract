@@ -17,6 +17,10 @@ const config = {
     process.env.REACT_APP_FAVICON_PATH ||
     "../public/favicon.ico",
   logoUrl: runtimeConfig.logoUrl || process.env.REACT_APP_CUSTOM_LOGO_URL,
+  mimetype:
+    runtimeConfig.mimetype ||
+    process.env.REACT_APP_MIMETYPE ||
+    "application/json",
   // Add more values as OR case, if needed for fallback.
 };
 
