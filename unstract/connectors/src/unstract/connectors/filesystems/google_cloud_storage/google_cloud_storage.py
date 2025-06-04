@@ -26,7 +26,12 @@ class GoogleCloudStorageFS(UnstractFileSystem):
         json_credentials_str = settings.get("json_credentials", "{}")
         try:
             json_credentials = json.loads(json_credentials_str)
-            self.gcs_fs = GCSFileSystem(token=json_credentials, project=project_id)
+            self.gcs_fs = GCSFileSystem(
+                token=json_credentials,
+                project=project_id,
+                cache_timeout=0,
+                use_listings_cache=False,
+            )
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON credentials: {str(e)}")
             error_msg = (
@@ -93,6 +98,18 @@ class GoogleCloudStorageFS(UnstractFileSystem):
             return base64.b64decode(file_hash).hex()
         logger.error(f"[GCS] File hash not found for the metadata: {metadata}")
         return None
+
+    def is_dir_by_metadata(self, metadata: dict[str, Any]) -> bool:
+        """Check if the given path is a directory.
+
+        Args:
+            metadata (dict): Metadata dictionary obtained from fsspec or cloud API.
+
+        Returns:
+            bool: True if the path is a directory, False otherwise.
+        """
+        # Note: Here Metadata type seems to be always "file" even for directories
+        return metadata.get("type") == "directory"
 
     def test_credentials(self) -> bool:
         """Test Google Cloud Storage credentials by accessing the root path info.
