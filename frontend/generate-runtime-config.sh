@@ -12,7 +12,6 @@ cat > /usr/share/nginx/html/config/runtime-config.js << EOF
 window.RUNTIME_CONFIG = {
   faviconPath: "${REACT_APP_FAVICON_PATH}",
   logoUrl: "${REACT_APP_CUSTOM_LOGO_URL}",
-  mimetype: "${REACT_APP_MIMETYPE:-application/json}"
 };
 EOF
 
