@@ -30,6 +30,10 @@ class FileHistoryHelper:
             Optional[FileHistory]: The matching file history record, if found.
         """
         if not cache_key and not provider_file_uuid:
+            logger.warning(
+                "No cache key or provider file UUID provided "
+                f"while fetching file history for {workflow}"
+            )
             return None
         try:
             if not cache_key:
@@ -38,6 +42,11 @@ class FileHistoryHelper:
                 )
             return FileHistory.objects.get(cache_key=cache_key, workflow=workflow)
         except FileHistory.DoesNotExist:
+            logger.debug(
+                f"File history not found for cache key: {cache_key}, "
+                f"provider_file_uuid: {provider_file_uuid} while fetching "
+                f"file history for {workflow}"
+            )
             return None
 
     @staticmethod
