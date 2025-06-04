@@ -21,10 +21,10 @@ class CeleryConfig:
         f"@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
     )
 
-    # Broker URL configuration
+    # Broker URL configuration for RabbitMQ
     broker_url = UnstractUtils.get_env(
         CELERY_BROKER_URL,
-        f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}",
+        f"amqp://{settings.RABBITMQ_USER}:{settings.RABBITMQ_PASS}@{settings.RABBITMQ_HOST}:{settings.RABBITMQ_PORT}//",
         raise_err=True,
     )
 
@@ -41,9 +41,3 @@ class CeleryConfig:
     beat_scheduler = "django_celery_beat.schedulers:DatabaseScheduler"
 
     task_acks_late = True
-    # Large timeout avoids worker to pick up same unacknowledged task again
-    broker_transport_options = {
-        "visibility_timeout": float(
-            UnstractUtils.get_env(CELERY_BROKER_VISIBILITY_TIMEOUT, 7200)
-        )
-    }

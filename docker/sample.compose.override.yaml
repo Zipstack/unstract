@@ -12,7 +12,3 @@ services:
   worker-logging:
     profiles:
       - high_memory
-
-  worker-api-deployment:
-    profiles:
-      - high_memory

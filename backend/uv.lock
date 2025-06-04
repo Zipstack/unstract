@@ -3924,7 +3924,7 @@ requires-dist = [
     { name = "azure-identity", specifier = "==1.16.0" },
     { name = "azure-mgmt-apimanagement", specifier = "==3.0.0" },
     { name = "boto3", specifier = "~=1.34.0" },
-    { name = "celery", specifier = ">=5.3.4" },
+    { name = "celery", extras = ["amqp"], specifier = ">=5.3.4" },
     { name = "cron-descriptor", specifier = "==1.4.0" },
     { name = "croniter", specifier = ">=3.0.3" },
     { name = "cryptography", specifier = ">=41.0.7" },

@@ -36,13 +36,13 @@ activate_venv
 
 # This implementation is easier than docker compose run sanity checks and usage parameters
 echo -e "${blue_text}Running schema creation command...${default_text}"
-DB_HOST="localhost" REDIS_HOST="localhost" CELERY_BROKER_URL="redis://localhost:6379" \
+DB_HOST="localhost" REDIS_HOST="localhost" CELERY_BROKER_URL="amqp://admin:password@unstract-rabbitmq:5672//"" \
 python manage.py create_schema || { echo "Schema creation failed"; exit 1; }
 
 echo -e "${blue_text}Running schema migration command...${default_text}"
-DB_HOST="localhost" REDIS_HOST="localhost" CELERY_BROKER_URL="redis://localhost:6379" \
+DB_HOST="localhost" REDIS_HOST="localhost" CELERY_BROKER_URL="amqp://admin:password@unstract-rabbitmq:5672//"" \
 python manage.py migrate || { echo "Schema migration failed"; exit 1; }
 
 echo -e "${blue_text}Running data migration command...${default_text}"
-DB_HOST="localhost" REDIS_HOST="localhost" CELERY_BROKER_URL="redis://localhost:6379" \
+DB_HOST="localhost" REDIS_HOST="localhost" CELERY_BROKER_URL="amqp://admin:password@unstract-rabbitmq:5672//"" \
 SCHEMAS_TO_MIGRATE=_ALL_ python manage.py migrate_to_v2 || { echo "Data migration failed"; exit 1; }

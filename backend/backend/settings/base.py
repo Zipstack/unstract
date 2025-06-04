@@ -45,6 +45,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Load default log from env
 DEFAULT_LOG_LEVEL = os.environ.get("DEFAULT_LOG_LEVEL", "INFO")
 
+# RabbitMQ Configuration
+RABBITMQ_USER = os.environ.get("RABBITMQ_USER", "admin")
+RABBITMQ_PASS = os.environ.get("RABBITMQ_PASS", "password")
+RABBITMQ_HOST = os.environ.get("RABBITMQ_HOST", "unstract-rabbitmq")
+RABBITMQ_PORT = os.environ.get("RABBITMQ_PORT", 5672)
 
 ENV_FILE = find_dotenv()
 if ENV_FILE:
@@ -397,13 +402,13 @@ AUTH_PASSWORD_VALIDATORS = [
         "UserAttributeSimilarityValidator",
     },
     {
-        "NAME": "django.contrib.auth.password_validation." "MinimumLengthValidator",
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
     },
     {
-        "NAME": "django.contrib.auth.password_validation." "CommonPasswordValidator",
+        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
     },
     {
-        "NAME": "django.contrib.auth.password_validation." "NumericPasswordValidator",
+        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
     },
 ]
 
