@@ -39,4 +39,10 @@ queues_to_purge = [ExecutionLogConstants.CELERY_QUEUE_NAME]
 with app.connection() as connection:
     channel = connection.channel()
     for queue_name in queues_to_purge:
-        channel.queue_purge(queue_name)
+        try:
+            # Declare the queue (will be created if it doesn't exist)
+            channel.queue_declare(queue=queue_name, durable=True, auto_delete=False)
+            channel.queue_purge(queue_name)
+            logger.info(f"Successfully purged queue: {queue_name}")
+        except Exception as e:
+            logger.warning(f"Could not purge queue {queue_name}: {str(e)}")
