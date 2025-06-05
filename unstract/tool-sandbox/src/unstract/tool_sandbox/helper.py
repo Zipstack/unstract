@@ -187,7 +187,20 @@ class ToolSandboxHelper:
             logger.warning(
                 f"File execution data not found for execution_id: {self.execution_id} and file_execution_id: {file_execution_id}"
             )
-            self._mark_success_status_for_initialization(file_execution_id)
+            file_execution_tracker.set_data(
+                execution_id=self.execution_id,
+                file_execution_id=file_execution_id,
+                file_execution_data=FileExecutionData(
+                    execution_id=self.execution_id,
+                    file_execution_id=file_execution_id,
+                    organization_id=self.organization_id,
+                    stage_status=FileExecutionStageData(
+                        stage=FileExecutionStage.INITIALIZATION,
+                        status=FileExecutionStageStatus.SUCCESS,
+                    ),
+                    status_history=[],
+                ),
+            )
             response = self._run_and_poll(
                 file_execution_id=file_execution_id,
                 image_name=image_name,
@@ -195,26 +208,45 @@ class ToolSandboxHelper:
                 settings=settings,
                 retry_count=retry_count,
             )
+
             self._update_stage_status_for_tool_execution(file_execution_id, response)
-            self._mark_in_progress_status_for_finalization(file_execution_id)
+            self._update_stage_status(
+                status=FileExecutionStageStatus.IN_PROGRESS,
+                stage=FileExecutionStage.FINALIZATION,
+                file_execution_id=file_execution_id,
+            )
         else:
             logger.info(
                 f"File execution data {file_execution_data} found for execution_id: {self.execution_id} and file_execution_id: {file_execution_id}"
             )
+            if file_execution_data.error:
+                response = self._create_run_response(
+                    status=RunnerContainerRunStatus.ERROR,
+                    error=file_execution_data.error,
+                )
+                return response
+
             stage = file_execution_data.stage_status.stage
             logger.info(
                 f"Current File execution stage {stage.value} for execution_id: {self.execution_id} and file_execution_id: {file_execution_id}"
             )
             if stage == FileExecutionStage.TOOL_EXECUTION:
-                self._mark_success_status_for_initialization(file_execution_id)
                 response = self.poll_tool_status(
                     file_execution_id=file_execution_id,
                     file_execution_data=file_execution_data,
                 )
                 self._update_stage_status_for_tool_execution(file_execution_id, response)
-                self._mark_in_progress_status_for_finalization(file_execution_id)
+                self._update_stage_status(
+                    status=FileExecutionStageStatus.IN_PROGRESS,
+                    stage=FileExecutionStage.FINALIZATION,
+                    file_execution_id=file_execution_id,
+                )
             elif stage.is_before(FileExecutionStage.TOOL_EXECUTION):
-                self._mark_success_status_for_initialization(file_execution_id)
+                self._update_stage_status(
+                    status=FileExecutionStageStatus.SUCCESS,
+                    stage=stage,
+                    file_execution_id=file_execution_id,
+                )
                 response = self._run_and_poll(
                     file_execution_id=file_execution_id,
                     image_name=image_name,
@@ -223,20 +255,19 @@ class ToolSandboxHelper:
                     retry_count=retry_count,
                 )
                 self._update_stage_status_for_tool_execution(file_execution_id, response)
-                self._mark_in_progress_status_for_finalization(file_execution_id)
+                self._update_stage_status(
+                    status=FileExecutionStageStatus.IN_PROGRESS,
+                    stage=FileExecutionStage.FINALIZATION,
+                    file_execution_id=file_execution_id,
+                )
             else:
                 logger.warning(
                     f"File execution data stage {file_execution_data.stage_status.stage} is after tool execution for execution_id: {self.execution_id} and file_execution_id: {file_execution_id}"
                 )
-                if file_execution_data.error:
-                    response = self._create_run_response(
-                        error=file_execution_data.error,
-                        status=RunnerContainerRunStatus.ERROR,
-                    )
-                else:
-                    response = self._create_run_response(
-                        status=RunnerContainerRunStatus.SUCCESS,
-                    )
+                # Assuming the tool execution is successful
+                response = self._create_run_response(
+                    status=RunnerContainerRunStatus.SUCCESS,
+                )
         logger.info(
             f"Tool execution response: {response} for execution_id={self.execution_id}, file_execution_id={file_execution_id}"
         )
@@ -292,56 +323,52 @@ class ToolSandboxHelper:
             )
         return response.json()
 
+    def _update_stage_status(
+        self,
+        status: FileExecutionStageStatus,
+        stage: FileExecutionStage,
+        file_execution_id: str,
+    ) -> None:
+        file_execution_tracker = FileExecutionStatusTracker()
+
+        file_execution_data = file_execution_tracker.get_data(
+            execution_id=self.execution_id,
+            file_execution_id=file_execution_id,
+        )
+        if not file_execution_data:
+            logger.warning(
+                f"File execution data not found for execution_id: {self.execution_id} and file_execution_id: {file_execution_id}"
+            )
+            return
+        if file_execution_data.stage_status.stage != stage:
+            logger.warning(
+                f"File execution data stage {file_execution_data.stage_status.stage} is not {stage} for execution_id: {self.execution_id} and file_execution_id: {file_execution_id}"
+            )
+            return
+
+        stage_status = file_execution_data.stage_status
+        stage_status.status = status
+
+        file_execution_tracker.update_stage_status(
+            execution_id=self.execution_id,
+            file_execution_id=file_execution_id,
+            stage_status=stage_status,
+        )
+
     def _update_stage_status_for_tool_execution(
         self,
         file_execution_id: str,
         response: RunnerContainerRunResponse,
     ) -> None:
-        file_execution_tracker = FileExecutionStatusTracker()
         stage_status = (
             FileExecutionStageStatus.SUCCESS
             if response.status == RunnerContainerRunStatus.SUCCESS
             else FileExecutionStageStatus.FAILED
         )
-        stage_data = FileExecutionStageData(
-            stage=FileExecutionStage.TOOL_EXECUTION,
+        self._update_stage_status(
             status=stage_status,
-            error=response.error,
-        )
-        file_execution_tracker.update_stage_status(
-            execution_id=self.execution_id,
+            stage=FileExecutionStage.TOOL_EXECUTION,
             file_execution_id=file_execution_id,
-            stage_status=stage_data,
-        )
-
-    def _mark_in_progress_status_for_finalization(
-        self,
-        file_execution_id: str,
-    ) -> None:
-        file_execution_tracker = FileExecutionStatusTracker()
-        stage_data = FileExecutionStageData(
-            stage=FileExecutionStage.FINALIZATION,
-            status=FileExecutionStageStatus.IN_PROGRESS,
-        )
-        file_execution_tracker.update_stage_status(
-            execution_id=self.execution_id,
-            file_execution_id=file_execution_id,
-            stage_status=stage_data,
-        )
-
-    def _mark_success_status_for_initialization(
-        self,
-        file_execution_id: str,
-    ) -> None:
-        file_execution_tracker = FileExecutionStatusTracker()
-        stage_data = FileExecutionStageData(
-            stage=FileExecutionStage.INITIALIZATION,
-            status=FileExecutionStageStatus.SUCCESS,
-        )
-        file_execution_tracker.update_stage_status(
-            execution_id=self.execution_id,
-            file_execution_id=file_execution_id,
-            stage_status=stage_data,
         )
 
     def run_tool_container(
