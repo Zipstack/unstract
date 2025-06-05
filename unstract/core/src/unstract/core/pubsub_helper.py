@@ -6,6 +6,7 @@ import traceback
 from datetime import UTC, datetime
 from typing import Any
 
+import httpx
 import redis
 from kombu import Connection
 
@@ -13,7 +14,13 @@ from unstract.core.constants import LogEventArgument, LogProcessingTask
 
 
 class LogPublisher:
-    kombu_conn = Connection(os.environ.get("CELERY_BROKER_URL"))
+    broker_url = str(
+        httpx.URL(os.getenv("CELERY_BROKER_BASE_URL", "amqp://")).copy_with(
+            username=os.getenv("CELERY_BROKER_USER"),
+            password=os.getenv("CELERY_BROKER_PASS"),
+        )
+    )
+    kombu_conn = Connection(broker_url)
     r = redis.Redis(
         host=os.environ.get("REDIS_HOST"),
         port=os.environ.get("REDIS_PORT", 6379),
