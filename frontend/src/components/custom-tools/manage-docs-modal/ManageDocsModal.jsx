@@ -667,7 +667,7 @@ function ManageDocsModal({
               </Typography.Text>
             </Space>
             <div>
-              <Upload
+              <Upload.Dragger
                 name="file"
                 action={`/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${details?.tool_id}`}
                 headers={{
@@ -697,10 +697,10 @@ function ManageDocsModal({
                       isPublicSource
                     }
                   >
-                    Upload New File
+                    Click or drag file to this area to upload
                   </Button>
                 </Tooltip>
-              </Upload>
+              </Upload.Dragger>
             </div>
             <Divider className="manage-docs-div" />
             <SpaceWrapper>
