@@ -3,6 +3,7 @@ from typing import Any
 from uuid import UUID
 
 from account_v2.constants import Common
+from django.conf import settings
 from plugins.workflow_manager.workflow_v2.utils import WorkflowUtil
 from tool_instance_v2.constants import ToolInstanceKey
 from tool_instance_v2.models import ToolInstance
@@ -10,8 +11,23 @@ from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
 from utils.constants import Account
 from utils.local_context import StateStore
 
-from backend.workers.file_processing.constants import QueueNames
+from backend.workers.file_processing.constants import (
+    QueueNames as FileProcessingQueueNames,
+)
 from backend.workers.file_processing.file_processing import app as file_processing_app
+from backend.workers.file_processing_callback.constants import (
+    QueueNames as FileProcessingCallbackQueueNames,
+)
+from backend.workers.file_processing_callback.file_processing_callback import (
+    app as file_processing_callback_app,
+)
+from unstract.core.file_execution_tracker import (
+    FileExecutionData,
+    FileExecutionStage,
+    FileExecutionStageData,
+    FileExecutionStageStatus,
+    FileExecutionStatusTracker,
+)
 from unstract.workflow_execution.enums import LogComponent, LogStage, LogState
 from unstract.workflow_execution.exceptions import StopExecution
 from workflow_manager.endpoint_v2.destination import DestinationConnector
@@ -36,7 +52,7 @@ from workflow_manager.workflow_v2.dto import (
     FinalOutputResult,
     ToolExecutionResult,
 )
-from workflow_manager.workflow_v2.enums import ExecutionStatus
+from workflow_manager.workflow_v2.enums import ExecutionStatus, TaskType
 from workflow_manager.workflow_v2.exceptions import (
     ExecutionContextInitializationError,
     WorkflowDoesNotExistError,
@@ -53,9 +69,20 @@ logger = logging.getLogger(__name__)
 
 class FileExecutionTasks:
     @staticmethod
-    def get_queue_name(source: SourceConnector) -> str:
+    def get_queue_name(source: SourceConnector, type: TaskType) -> str:
         is_api = source.endpoint.connection_type == WorkflowEndpoint.ConnectionType.API
-        return QueueNames.API_FILE_PROCESSING if is_api else QueueNames.FILE_PROCESSING
+        if type == TaskType.FILE_PROCESSING:
+            return (
+                FileProcessingQueueNames.API_FILE_PROCESSING
+                if is_api
+                else FileProcessingQueueNames.FILE_PROCESSING
+            )
+        if type == TaskType.FILE_PROCESSING_CALLBACK:
+            return (
+                FileProcessingCallbackQueueNames.API_FILE_PROCESSING_CALLBACK
+                if is_api
+                else FileProcessingCallbackQueueNames.FILE_PROCESSING_CALLBACK
+            )
 
     @staticmethod
     def get_workflow_by_id(id: str) -> Workflow:
@@ -176,15 +203,18 @@ class FileExecutionTasks:
                 file_hash=file_hash,
                 workflow_execution=workflow_execution,
             )
-
             if file_execution_result.error:
                 failed_files += 1
+                logger.info(
+                    f"File execution for file {file_name} marked as failed with error: {file_execution_result.error}"
+                )
                 ExecutionCacheUtils.increment_failed_files(
                     workflow_id=workflow.id,
                     execution_id=execution_id,
                 )
             else:
                 successful_files += 1
+                logger.info(f"File execution for file {file_name} marked as successful")
                 ExecutionCacheUtils.increment_completed_files(
                     workflow_id=workflow.id,
                     execution_id=execution_id,
@@ -194,7 +224,7 @@ class FileExecutionTasks:
             failed_files=failed_files,
         ).to_dict()
 
-    @file_processing_app.task(
+    @file_processing_callback_app.task(
         bind=True,
         max_retries=0,  # Maximum number of retries
         retry_backoff=True,
@@ -233,6 +263,7 @@ class FileExecutionTasks:
         # Set organization ID in StateStore
         StateStore.set(Account.ORGANIZATION_ID, organization_id)
 
+        logger.info(f"Processing batch callback for execution id: '{execution_id}'")
         if not results:
             return None
 
@@ -273,6 +304,13 @@ class FileExecutionTasks:
             total_files=total_files,
             successful_files=total_successful,
             failed_files=total_failed,
+        )
+        logger.info(
+            f"Execution completed for execution id: '{execution_id}' "
+            f"with status: '{final_status}' "
+            f"and total files: '{total_files}' "
+            f"and successful files: '{total_successful}' "
+            f"and failed files: '{total_failed}'"
         )
         return {
             "execution_id": execution_id,
@@ -320,7 +358,50 @@ class FileExecutionTasks:
             destination = DestinationConnector.from_config(
                 workflow_log, destination_config
             )
-            destination.delete_file_execution_directory()
+
+            # Set file execution tracker
+            file_execution_data = cls._set_file_execution_tracker(
+                execution_id=str(workflow_execution.id),
+                file_execution_id=str(workflow_file_execution.id),
+                organization_id=str(workflow_execution.workflow.organization_id),
+            )
+
+            # Check if file execution is already in progress
+            stage = file_execution_data.stage_status.stage
+            if stage.is_after(FileExecutionStage.INITIALIZATION):
+                logger.info(
+                    f"File already tracked. Resuming execution for execution_id: {workflow_execution.id}, "
+                    f"file_execution_id: {workflow_file_execution.id}, current_stage: {stage.value}"
+                )
+                # Not required to prepare file again
+                # Not required to check processing history again
+                if stage.is_before(FileExecutionStage.COMPLETED):
+                    # Core Execution Phase
+                    execution_result = cls._execute_workflow_steps(
+                        file_data,
+                        workflow_execution,
+                        workflow_file_execution,
+                        file_hash,
+                        current_file_idx,
+                        total_files,
+                    )
+
+                    # Finalization Phase
+                    return cls._finalize_execution(
+                        workflow_execution,
+                        workflow_file_execution,
+                        file_hash,
+                        workflow_log,
+                        destination,
+                        execution_result,
+                    )
+                # If stage is already completed, skip execution
+                return cls._build_final_result(
+                    workflow_execution,
+                    file_hash,
+                    FinalOutputResult.skipped(),
+                    workflow_file_execution,
+                )
 
             # File Preparation Phase
             content_hash = cls._prepare_file_for_processing(
@@ -401,6 +482,82 @@ class FileExecutionTasks:
                 error=error_msg,
                 is_api=destination.is_api,
             )
+
+    @classmethod
+    def _set_file_execution_tracker(
+        cls,
+        execution_id: str,
+        file_execution_id: str,
+        organization_id: str,
+    ) -> FileExecutionData:
+        # Initialize file execution tracker
+        file_execution_tracker = FileExecutionStatusTracker()
+        file_execution_stage_data = FileExecutionStageData(
+            stage=FileExecutionStage.INITIALIZATION,
+            status=FileExecutionStageStatus.IN_PROGRESS,
+        )
+        file_execution_data = FileExecutionData(
+            execution_id=str(execution_id),
+            file_execution_id=str(file_execution_id),
+            organization_id=str(organization_id),
+            stage_status=file_execution_stage_data,
+            status_history=[],
+        )
+        if not file_execution_tracker.exists(execution_id, file_execution_id):
+            file_execution_tracker.set_data(file_execution_data)
+        else:
+            file_execution_data = file_execution_tracker.get_data(
+                execution_id, file_execution_id
+            )
+            logger.info(
+                f"File execution tracker already exists for execution_id: {execution_id}, file_execution_id: {file_execution_id}"
+            )
+        return file_execution_data
+
+    @classmethod
+    def _mark_file_execution_tracker_finalization_status(
+        cls,
+        execution_id: str,
+        file_execution_id: str,
+        status: FileExecutionStageStatus,
+        error: str | None = None,
+    ) -> None:
+        file_execution_tracker = FileExecutionStatusTracker()
+        stage_data = FileExecutionStageData(
+            stage=FileExecutionStage.FINALIZATION,
+            status=status,
+            error=error,
+        )
+        file_execution_tracker.update_stage_status(
+            execution_id=execution_id,
+            file_execution_id=file_execution_id,
+            stage_status=stage_data,
+        )
+
+    @classmethod
+    def _mark_file_execution_tracker_completed_status(
+        cls,
+        execution_id: str,
+        file_execution_id: str,
+        status: FileExecutionStageStatus,
+        error: str | None = None,
+    ) -> None:
+        # This is the cache ttl for completed file execution to prevent long term cache
+        COMPLETED_EXECUTION_CACHE_TTL_IN_SECOND = (
+            settings.FILE_EXECUTION_TRACKER_COMPLETED_TTL_IN_SECOND
+        )
+        file_execution_tracker = FileExecutionStatusTracker()
+        stage_data = FileExecutionStageData(
+            stage=FileExecutionStage.COMPLETED,
+            status=status,
+            error=error,
+        )
+        file_execution_tracker.update_stage_status(
+            execution_id=execution_id,
+            file_execution_id=file_execution_id,
+            stage_status=stage_data,
+            ttl_in_second=COMPLETED_EXECUTION_CACHE_TTL_IN_SECOND,
+        )
 
     @classmethod
     def _initialize_execution_context(
@@ -569,7 +726,7 @@ class FileExecutionTasks:
             use_file_history=file_data.use_file_history,
             file_execution_id=str(workflow_file_execution.id),
         )
-
+        logger.info(f"Execution service built for file: '{file_hash.file_name}'")
         try:
             execution_service.initiate_tool_execution(
                 current_file_idx=current_file_idx,
@@ -577,13 +734,18 @@ class FileExecutionTasks:
                 file_name=file_hash.file_name,
                 single_step=file_data.single_step,
             )
-
+            logger.info(
+                f"Initiated tool execution for file id: '{workflow_file_execution.id}' file name: '{file_hash.file_name}'"
+            )
             if not file_hash.is_executed:
                 execution_service.execute_input_file(
                     file_execution_id=str(workflow_file_execution.id),
                     file_name=file_hash.file_name,
                     single_step=file_data.single_step,
                     workflow_file_execution=workflow_file_execution,
+                )
+                logger.info(
+                    f"Executed input file for file id: '{workflow_file_execution.id}' file name: '{file_hash.file_name}'"
                 )
                 # Log execution costs
                 execution_service.log_total_cost_per_file(
@@ -634,7 +796,7 @@ class FileExecutionTasks:
             workflow_log=workflow_log,
             error=result.error or execution_result.error,
         )
-
+        destination.delete_file_execution_directory()
         return cls._build_final_result(
             workflow_execution=workflow_execution,
             file_hash=file_hash,
@@ -760,6 +922,18 @@ class FileExecutionTasks:
                 component=LogComponent.DESTINATION,
             )
 
+            file_execution_tracker_status = (
+                FileExecutionStageStatus.SUCCESS
+                if not error
+                else FileExecutionStageStatus.FAILED
+            )
+            cls._mark_file_execution_tracker_finalization_status(
+                execution_id=str(workflow_file_execution.workflow_execution.id),
+                file_execution_id=str(workflow_file_execution.id),
+                status=file_execution_tracker_status,
+                error=error,
+            )
+
         except Exception as e:
             logger.error(f"Completion status update failed: {str(e)}", exc_info=True)
 
@@ -789,5 +963,17 @@ class FileExecutionTasks:
                 execution_id=str(workflow_execution.id),
                 api_result=final_result,
             )
+
+        status = (
+            FileExecutionStageStatus.SUCCESS
+            if not error
+            else FileExecutionStageStatus.FAILED
+        )
+        cls._mark_file_execution_tracker_completed_status(
+            execution_id=str(workflow_execution.id),
+            file_execution_id=str(workflow_file_execution.id),
+            status=status,
+            error=error,
+        )
 
         return final_result

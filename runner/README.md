@@ -39,7 +39,9 @@ sudo ln -s "$HOME/.docker/run/docker.sock" /var/run/docker.sock
 
 | Variable                   | Description                                                                                   |
 | -------------------------- |-----------------------------------------------------------------------------------------------|
-| `CELERY_BROKER_URL`        | URL for Celery's message broker, used to queue tasks. Must match backend configuration.       |
+| `CELERY_BROKER_BASE_URL`   | Base URL for Celery's message broker, used to queue tasks. Must match backend configuration.       |
+| `CELERY_BROKER_USER`       | Username for Celery's message broker.                                                         |
+| `CELERY_BROKER_PASS`       | Password for Celery's message broker.                                                         |
 | `TOOL_CONTAINER_NETWORK`   | Network used for running tool containers.                                                     |
 | `TOOL_CONTAINER_LABELS`    | Labels applied to tool containers for observability [Optional].                               |
 | `EXECUTION_DATA_DIR`       | Target mount directory within tool containers. (Default: "/data")                             |

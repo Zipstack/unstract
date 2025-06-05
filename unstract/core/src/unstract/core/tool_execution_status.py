@@ -167,5 +167,8 @@ class ToolExecutionTracker:
         Args:
             tool_execution_data (ToolExecutionData): Status of the tool execution
         """
-        tool_execution_data.validate()
-        self.redis_client.delete(self.get_cache_key(tool_execution_data))
+        try:
+            tool_execution_data.validate()
+            self.redis_client.delete(self.get_cache_key(tool_execution_data))
+        except ToolExecutionValueException:
+            return

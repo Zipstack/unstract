@@ -42,6 +42,7 @@ function DocumentParser({
     updateCustomTool,
     getDropdownItems,
     isChallengeEnabled,
+    isPublicSource,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
@@ -50,7 +51,7 @@ function DocumentParser({
   const { promptOutputs } = usePromptOutputStore();
   let promptCardApiService;
 
-  if (promptCardService) {
+  if (promptCardService && !isPublicSource) {
     promptCardApiService = promptCardService();
   }
 

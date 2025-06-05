@@ -1,6 +1,7 @@
 from typing import Any
 
 from unstract.tool_sandbox.constants import ToolCommandKey, UnstractRunner
+from unstract.tool_sandbox.dto import RunnerContainerRunResponse
 from unstract.tool_sandbox.helper import ToolSandboxHelper
 
 
@@ -95,7 +96,7 @@ class ToolSandbox:
 
     def run_tool(
         self, file_execution_id: str, retry_count: int | None = None
-    ) -> dict[str, Any] | None:
+    ) -> RunnerContainerRunResponse | None:
         return self.helper.call_tool_handler(  # type: ignore
             file_execution_id,
             self.image_name,
