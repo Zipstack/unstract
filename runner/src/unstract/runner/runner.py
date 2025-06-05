@@ -231,7 +231,9 @@ class UnstractRunner:
             "FILE_EXECUTION_ID": file_execution_id,
             "MESSAGING_CHANNEL": messaging_channel,
             "LOG_LEVEL": os.getenv(Env.LOG_LEVEL, "INFO"),
-            "CELERY_BROKER_URL": os.getenv(Env.CELERY_BROKER_URL),
+            "CELERY_BROKER_BASE_URL": os.getenv(Env.CELERY_BROKER_BASE_URL),
+            "CELERY_BROKER_USER": os.getenv(Env.CELERY_BROKER_USER),
+            "CELERY_BROKER_PASS": os.getenv(Env.CELERY_BROKER_PASS),
             "CONTAINER_NAME": container_name,
         }
         sidecar_config = self.client.get_container_run_config(

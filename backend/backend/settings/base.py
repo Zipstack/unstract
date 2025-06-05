@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 from urllib.parse import urlparse
 
+import httpx
 from dotenv import find_dotenv, load_dotenv
 from utils.common_utils import CommonUtils
 
@@ -46,10 +47,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_LOG_LEVEL = os.environ.get("DEFAULT_LOG_LEVEL", "INFO")
 
 # RabbitMQ Configuration
-RABBITMQ_USER = os.environ.get("RABBITMQ_USER", "admin")
-RABBITMQ_PASS = os.environ.get("RABBITMQ_PASS", "password")
-RABBITMQ_HOST = os.environ.get("RABBITMQ_HOST", "unstract-rabbitmq")
-RABBITMQ_PORT = os.environ.get("RABBITMQ_PORT", 5672)
+CELERY_BROKER_BASE_URL = os.environ.get(
+    "CELERY_BROKER_BASE_URL", "amqp://unstract-rabbitmq:5672//"
+)
+CELERY_BROKER_USER = os.environ.get("CELERY_BROKER_USER", "admin")
+CELERY_BROKER_PASS = os.environ.get("CELERY_BROKER_PASS", "password")
+CELERY_BROKER_URL = str(
+    httpx.URL(CELERY_BROKER_BASE_URL).copy_with(
+        username=CELERY_BROKER_USER, password=CELERY_BROKER_PASS
+    )
+)
 
 ENV_FILE = find_dotenv()
 if ENV_FILE:
