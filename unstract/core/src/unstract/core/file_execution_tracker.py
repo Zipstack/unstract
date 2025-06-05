@@ -184,6 +184,11 @@ class FileExecutionStatusTracker:
         )
         self.redis_client.expire(key, ttl_in_second or self.CACHE_TTL_IN_SECOND)
 
+    def exists(self, execution_id: str, file_execution_id: str) -> bool:
+        """Check if file execution tracker data exists."""
+        key = self.get_cache_key(execution_id, file_execution_id)
+        return self.redis_client.exists(key)
+
     def update_stage_status(
         self,
         execution_id: str,
