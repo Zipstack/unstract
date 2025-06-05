@@ -2,7 +2,6 @@ import {
   CheckCircleFilled,
   CloseCircleFilled,
   DeleteOutlined,
-  PlusOutlined,
   ReloadOutlined,
 } from "@ant-design/icons";
 import {
@@ -685,10 +684,7 @@ function ManageDocsModal({
                   }
                 >
                   <Button
-                    className="width-100"
-                    icon={<PlusOutlined />}
                     type="text"
-                    block
                     loading={isUploading}
                     disabled={
                       !defaultLlmProfile ||
