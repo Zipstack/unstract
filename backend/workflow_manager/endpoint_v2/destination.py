@@ -308,6 +308,7 @@ class DestinationConnector(BaseConnector):
         data = self.get_tool_execution_result()
         # If data is None, don't execute CREATE or INSERT query
         if not data:
+            logger.info("No data obtained from tool to insert into destination DB.")
             return
 
         # Remove metadata from result
