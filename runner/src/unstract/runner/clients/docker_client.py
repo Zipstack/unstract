@@ -5,8 +5,9 @@ from collections.abc import Iterator
 from typing import Any
 
 from docker import DockerClient
-from docker.errors import APIError, ImageNotFound
+from docker.errors import APIError, ImageNotFound, NotFound
 from docker.models.containers import Container
+from unstract.core.runner.enum import ContainerStatus
 from unstract.core.utilities import UnstractUtils
 from unstract.runner.clients.interface import (
     ContainerClientInterface,
@@ -328,3 +329,61 @@ class Client(ContainerClientInterface):
         if not container:
             return None
         return container.wait_until_stop(main_container_status)
+
+    def get_container_status(self, container_name: str) -> str:
+        """Get status of a Docker container by name.
+
+        Returns one of the defined values in ContainerStatus enum.
+        """
+        try:
+            container = self.client.containers.get(container_name)
+            status = container.status.lower()
+        except NotFound:
+            return ContainerStatus.NOT_FOUND.value
+        except Exception as e:
+            self.logger.error(f"Error checking status of {container_name}: {e}")
+            return ContainerStatus.ERROR.value
+
+        try:
+            return ContainerStatus(status.upper()).value
+        except ValueError:
+            self.logger.warning(
+                f"Unexpected container status '{status}' for {container_name}"
+            )
+            return status
+
+    def remove_container_by_name(
+        self, container_name: str, with_sidecar: bool = False, force: bool = True
+    ) -> None:
+        """Remove a container by its name."""
+        try:
+            container = self.client.containers.get(container_name)
+            container.remove(force=force)
+            self.logger.info(f"Container '{container_name}' removed successfully.")
+        except NotFound:
+            self.logger.warning(f"Container '{container_name}' not found.")
+        except APIError as e:
+            self.logger.error(
+                f"An API error occurred while removing container '{container_name}': {e}"
+            )
+        except Exception as e:
+            self.logger.error(
+                f"An unexpected error occurred while removing container '{container_name}': {e}"
+            )
+
+        if with_sidecar:
+            sidecar_name = Utils.get_sidecar_container_name(container_name)
+            try:
+                sidecar = self.client.containers.get(sidecar_name)
+                sidecar.remove(force=force)
+                self.logger.info(f"Sidecar '{sidecar_name}' removed successfully.")
+            except NotFound:
+                self.logger.warning(f"Sidecar '{sidecar_name}' not found.")
+            except APIError as e:
+                self.logger.error(
+                    f"An API error occurred while removing sidecar '{sidecar_name}': {e}"
+                )
+            except Exception as e:
+                self.logger.error(
+                    f"An unexpected error occurred while removing sidecar '{sidecar_name}': {e}"
+                )

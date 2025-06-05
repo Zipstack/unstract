@@ -212,8 +212,8 @@ class WorkflowExecutionService:
             result = self.tool_utils.run_tool(
                 file_execution_id=self.file_execution_id, tool_sandbox=sandbox
             )
-            if result and result.get("error"):
-                raise ToolOutputNotFoundException(result.get("error"))
+            if result and result.error:
+                raise ToolOutputNotFoundException(result.error)
             if not self.validate_execution_result(step + 1):
                 raise ToolOutputNotFoundException(
                     f"Error running tool '{tool_uid}' for run "
