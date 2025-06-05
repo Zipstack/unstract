@@ -83,3 +83,8 @@ class AgentName(Enum):
 class RuleLogic(Enum):
     AND = "AND"
     OR = "OR"
+
+
+class TaskType(Enum):
+    FILE_PROCESSING = "FILE_PROCESSING"
+    FILE_PROCESSING_CALLBACK = "FILE_PROCESSING_CALLBACK"

@@ -7,6 +7,7 @@ from redis import Redis
 from unstract.core.pubsub_helper import LogPublisher
 from unstract.tool_registry import ToolRegistry
 from unstract.tool_sandbox import ToolSandbox
+from unstract.tool_sandbox.dto import RunnerContainerRunResponse
 from unstract.workflow_execution.constants import ToolExecution
 from unstract.workflow_execution.constants import ToolRuntimeVariable as ToolRV
 from unstract.workflow_execution.dto import ToolInstance, WorkflowDto
@@ -177,7 +178,7 @@ class ToolsUtils:
         self,
         file_execution_id: str,
         tool_sandbox: ToolSandbox,
-    ) -> dict[str, Any] | None:
+    ) -> RunnerContainerRunResponse | None:
         return self.run_tool_with_retry(file_execution_id, tool_sandbox)
 
     def run_tool_with_retry(
@@ -185,7 +186,7 @@ class ToolsUtils:
         file_execution_id: str,
         tool_sandbox: ToolSandbox,
         max_retries: int = ToolExecution.MAXIMUM_RETRY,
-    ) -> dict[str, Any] | None:
+    ) -> RunnerContainerRunResponse | None:
         for retry_count in range(max_retries):
             try:
                 response = tool_sandbox.run_tool(file_execution_id, retry_count)
