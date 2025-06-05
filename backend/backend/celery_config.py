@@ -2,18 +2,12 @@ from urllib.parse import quote_plus
 
 from django.conf import settings
 
-from unstract.core.utilities import UnstractUtils
-
 
 class CeleryConfig:
     """Specifies celery configuration
 
     Refer https://docs.celeryq.dev/en/stable/userguide/configuration.html
     """
-
-    # Envs defined for configuration with Unstract
-    CELERY_BROKER_URL = "CELERY_BROKER_URL"
-    CELERY_BROKER_VISIBILITY_TIMEOUT = "CELERY_BROKER_VISIBILITY_TIMEOUT"
 
     # Result backend configuration
     result_backend = (
@@ -22,11 +16,7 @@ class CeleryConfig:
     )
 
     # Broker URL configuration
-    broker_url = UnstractUtils.get_env(
-        CELERY_BROKER_URL,
-        f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}",
-        raise_err=True,
-    )
+    broker_url = settings.CELERY_BROKER_URL
 
     # Task serialization and content settings
     accept_content = ["json"]
@@ -41,9 +31,3 @@ class CeleryConfig:
     beat_scheduler = "django_celery_beat.schedulers:DatabaseScheduler"
 
     task_acks_late = True
-    # Large timeout avoids worker to pick up same unacknowledged task again
-    broker_transport_options = {
-        "visibility_timeout": float(
-            UnstractUtils.get_env(CELERY_BROKER_VISIBILITY_TIMEOUT, 7200)
-        )
-    }
