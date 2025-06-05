@@ -15,7 +15,7 @@ from unstract.core.constants import LogEventArgument, LogProcessingTask
 
 class LogPublisher:
     broker_url = str(
-        httpx.URL(os.getenv("CELERY_BROKER_BASE_URL")).copy_with(
+        httpx.URL(os.getenv("CELERY_BROKER_BASE_URL", "amqp://")).copy_with(
             username=os.getenv("CELERY_BROKER_USER"),
             password=os.getenv("CELERY_BROKER_PASS"),
         )
