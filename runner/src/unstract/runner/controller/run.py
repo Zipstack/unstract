@@ -38,6 +38,26 @@ def run_container() -> Any | None:
     return result
 
 
+@run_bp.route("container/run-status", methods=["GET"])
+def run_status() -> Any | None:
+    data = request.args
+    container_name = data.get("container_name")
+    runner = UnstractRunner(None, None, app)
+    status = runner.get_container_status(
+        container_name=container_name,
+    )
+    return {"status": status}
+
+
+@run_bp.route("container/remove", methods=["POST"])
+def remove_container() -> Any | None:
+    data = request.get_json()
+    container_name = data["container_name"]
+    runner = UnstractRunner(None, None, app)
+    result = runner.remove_container_by_name(container_name)
+    return result
+
+
 @run_bp.route("container/<command>", methods=["GET"])
 def run_command(command: str) -> Any | None:
     """Endpoint which will can execute any of the below commands.
