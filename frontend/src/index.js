@@ -7,6 +7,7 @@ import { GenericLoader } from "./components/generic-loader/GenericLoader";
 import { LazyLoader } from "./components/widgets/lazy-loader/LazyLoader.jsx";
 import { SocketProvider } from "./helpers/SocketContext.js";
 import "./index.css";
+import config from "./config.js";
 
 const enablePosthog = process.env.REACT_APP_ENABLE_POSTHOG;
 if (enablePosthog !== "false") {
@@ -21,6 +22,20 @@ if (enablePosthog !== "false") {
     autocapture: false,
   });
 }
+
+// Utility to set favicon
+function setFavicon(url) {
+  let link = document.querySelector("link[rel~='icon']");
+  if (!link) {
+    link = document.createElement("link");
+    link.rel = "icon";
+    document.head.appendChild(link);
+  }
+  link.href = url;
+}
+
+// Call this after config is loaded
+setFavicon(config.favicon);
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(
