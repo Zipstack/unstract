@@ -46,12 +46,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Load default log from env
 DEFAULT_LOG_LEVEL = os.environ.get("DEFAULT_LOG_LEVEL", "INFO")
 
-# RabbitMQ Configuration
-CELERY_BROKER_BASE_URL = os.environ.get(
-    "CELERY_BROKER_BASE_URL", "amqp://unstract-rabbitmq:5672//"
-)
-CELERY_BROKER_USER = os.environ.get("CELERY_BROKER_USER", "admin")
-CELERY_BROKER_PASS = os.environ.get("CELERY_BROKER_PASS", "password")
+# Celery Broker Configuration
+CELERY_BROKER_BASE_URL = get_required_setting("CELERY_BROKER_BASE_URL")
+CELERY_BROKER_USER = get_required_setting("CELERY_BROKER_USER")
+CELERY_BROKER_PASS = get_required_setting("CELERY_BROKER_PASS")
 CELERY_BROKER_URL = str(
     httpx.URL(CELERY_BROKER_BASE_URL).copy_with(
         username=CELERY_BROKER_USER, password=CELERY_BROKER_PASS

@@ -44,6 +44,7 @@ dependencies = [
     "azure-mgmt-apimanagement==3.0.0",
     "croniter>=3.0.3",
     "django-filter>=24.3",
+    "httpx>=0.27.0",
     # Hence required to add all indirect local dependencies too here.
     "unstract-connectors",
     "unstract-core",
