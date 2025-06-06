@@ -163,6 +163,12 @@ class WorkflowHelper:
             workflow_execution.update_execution(
                 status=ExecutionStatus.COMPLETED,
             )
+            PipelineUtils.update_pipeline_status(
+                pipeline_id=pipeline_id, workflow_execution=workflow_execution
+            )
+            logger.info(
+                f"Updated execution {workflow_execution.id} and pipeline {pipeline_id} status to COMPLETED"
+            )
             return
 
         batches = cls.get_file_batches(input_files=input_files)
