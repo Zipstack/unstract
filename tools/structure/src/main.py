@@ -139,7 +139,6 @@ class StructureTool(BaseTool):
             execution_run_data_folder=str(execution_run_data_folder),
         )
 
-        summarize_file_hash = None
         if is_summarization_enabled:
             summarize_file_path, summarize_file_hash = self._summarize_and_index(
                 tool_settings=tool_settings,
@@ -152,6 +151,22 @@ class StructureTool(BaseTool):
             payload[SettingsKeys.FILE_PATH] = summarize_file_path
             # Since indexing is not involved for summary
             index_metrics = {"time_taken(s)": 0}
+
+            for output in outputs:
+                if SettingsKeys.TABLE_SETTINGS in output:
+                    table_settings = output[SettingsKeys.TABLE_SETTINGS]
+                    is_directory_mode: bool = table_settings.get(
+                        SettingsKeys.IS_DIRECTORY_MODE, False
+                    )
+                    table_settings[SettingsKeys.INPUT_FILE] = extracted_input_file
+                    table_settings[SettingsKeys.IS_DIRECTORY_MODE] = is_directory_mode
+                    self.stream_log(f"Performing table extraction with: {table_settings}")
+                    output.update({SettingsKeys.TABLE_SETTINGS: table_settings})
+
+            self.stream_log(f"Fetching responses for '{len(outputs)}' prompt(s)...")
+            structured_output = responder.answer_prompt(
+                payload=payload,
+            )
         elif is_single_pass_enabled:
             self.stream_log("Fetching response for single pass extraction...")
             # Since indexing is not involved for single pass
