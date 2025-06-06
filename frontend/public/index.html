@@ -13,23 +13,5 @@
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
-    <script type="module">
-      // Set favicon dynamically based on configuration
-      import config from '../src/config.js';
-
-      // Create a new link element for the favicon
-      const faviconLink = document.createElement('link');
-      faviconLink.rel = 'icon';
-      faviconLink.type = 'image/svg+xml';
-      faviconLink.href = config.favicon;
-
-      // Replace any existing favicon or add if none exists
-      const existingFavicon = document.querySelector('link[rel="icon"]');
-      if (existingFavicon) {
-        document.head.removeChild(existingFavicon);
-      }
-      document.head.appendChild(faviconLink);
-
-    </script>
   </body>
 </html>

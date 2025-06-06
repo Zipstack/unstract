@@ -3,9 +3,6 @@
 # This script generates a runtime config file with environment variables
 # It will be executed when the container starts
 
-# Create config directory if it doesn't exist
-mkdir -p /usr/share/nginx/html/config
-
 # Generate the runtime-config.js file with the current environment variables
 cat > /usr/share/nginx/html/config/runtime-config.js << EOF
 // This file is auto-generated at runtime. Do not modify manually.
