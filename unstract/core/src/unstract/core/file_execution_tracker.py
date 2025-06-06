@@ -179,10 +179,9 @@ class FileExecutionStatusTracker:
         key = self.get_cache_key(data.execution_id, data.file_execution_id)
         logger.info(f"Setting file execution data for {key}: {data.to_serializable()}")
         self.redis_client.hset(key, mapping=data.to_serializable())
-        logger.info(
-            f"Setting file execution data for {key} to expire in {ttl_in_second} seconds"
-        )
-        self.redis_client.expire(key, ttl_in_second or self.CACHE_TTL_IN_SECOND)
+        ttl = ttl_in_second or self.CACHE_TTL_IN_SECOND
+        logger.info(f"Setting file execution data for {key} to expire in {ttl} seconds")
+        self.redis_client.expire(key, ttl)
 
     def exists(self, execution_id: str, file_execution_id: str) -> bool:
         """Check if file execution tracker data exists."""

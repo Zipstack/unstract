@@ -342,7 +342,7 @@ class ToolSandboxHelper:
             return
         if file_execution_data.stage_status.stage != stage:
             logger.warning(
-                f"File execution data stage {file_execution_data.stage_status.stage} is not {stage} for execution_id: {self.execution_id} and file_execution_id: {file_execution_id}"
+                f"Existing file execution data stage {file_execution_data.stage_status.stage} is not {stage} for execution_id: {self.execution_id} and file_execution_id: {file_execution_id}"
             )
             return
 
