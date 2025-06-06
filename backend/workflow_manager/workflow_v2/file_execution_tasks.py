@@ -395,13 +395,22 @@ class FileExecutionTasks:
                         destination,
                         execution_result,
                     )
-                # If stage is already completed, skip execution
-                return cls._build_final_result(
-                    workflow_execution,
-                    file_hash,
-                    FinalOutputResult.skipped(),
-                    workflow_file_execution,
+                # If stage is already completed.
+                # Skip execution since the result is already cached (For API)
+                # or shared with destination (For ETL/Task)
+                logger.info(
+                    f"File already completed. Skipping execution for execution_id: {workflow_execution.id}, "
+                    f"file_execution_id: {workflow_file_execution.id}, current_stage: {stage.value}"
                 )
+                final_result = FileExecutionResult(
+                    file=file_hash.file_name,
+                    file_execution_id=str(workflow_file_execution.id),
+                    error=file_execution_data.error
+                    or file_execution_data.stage_status.error,
+                    result=None,
+                    metadata=None,
+                )
+                return final_result
 
             # File Preparation Phase
             content_hash = cls._prepare_file_for_processing(
@@ -466,6 +475,7 @@ class FileExecutionTasks:
                 workflow_file_execution=None,
                 error=error_msg,
                 is_api=destination.is_api,
+                destination=destination,
             )
         except Exception as error:
             error_msg = f"File execution failed: {error}"
@@ -481,6 +491,7 @@ class FileExecutionTasks:
                 workflow_file_execution=workflow_file_execution,
                 error=error_msg,
                 is_api=destination.is_api,
+                destination=destination,
             )
 
     @classmethod
@@ -510,7 +521,7 @@ class FileExecutionTasks:
                 execution_id, file_execution_id
             )
             logger.info(
-                f"File execution tracker already exists for execution_id: {execution_id}, file_execution_id: {file_execution_id}"
+                f"File execution tracker already exists for execution_id: {execution_id}, file_execution_id: {file_execution_id}, stage: {file_execution_data.stage_status.stage.value}"
             )
         return file_execution_data
 
@@ -542,6 +553,9 @@ class FileExecutionTasks:
         status: FileExecutionStageStatus,
         error: str | None = None,
     ) -> None:
+        logger.info(
+            f"Marking file execution tracker completed status for execution_id: {execution_id}, file_execution_id: {file_execution_id}, stage: {FileExecutionStage.COMPLETED.value}, status: {status.value}, error: {error}"
+        )
         # This is the cache ttl for completed file execution to prevent long term cache
         COMPLETED_EXECUTION_CACHE_TTL_IN_SECOND = (
             settings.FILE_EXECUTION_TRACKER_COMPLETED_TTL_IN_SECOND
@@ -796,7 +810,6 @@ class FileExecutionTasks:
             workflow_log=workflow_log,
             error=result.error or execution_result.error,
         )
-        destination.delete_file_execution_directory()
         return cls._build_final_result(
             workflow_execution=workflow_execution,
             file_hash=file_hash,
@@ -804,6 +817,7 @@ class FileExecutionTasks:
             workflow_file_execution=workflow_file_execution,
             error=result.error or execution_result.error,
             is_api=destination.is_api,
+            destination=destination,
         )
 
     @classmethod
@@ -946,6 +960,7 @@ class FileExecutionTasks:
         workflow_file_execution: WorkflowFileExecution | None = None,
         error: str | None = None,
         is_api: bool = False,
+        destination: DestinationConnector | None = None,
     ) -> FileExecutionResult:
         """Construct and cache the final execution result."""
         final_result = FileExecutionResult(
@@ -963,6 +978,12 @@ class FileExecutionTasks:
                 execution_id=str(workflow_execution.id),
                 api_result=final_result,
             )
+
+        if destination:
+            logger.info(
+                f"Deleting file execution directory for file: '{file_hash.file_name}'"
+            )
+            destination.delete_file_execution_directory()
 
         status = (
             FileExecutionStageStatus.SUCCESS
