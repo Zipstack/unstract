@@ -536,4 +536,10 @@ class ToolSandboxHelper:
             return str(error)
         finally:
             # Delete the status from cache since it is no longer needed
-            tool_execution_tracker.delete_status(tool_execution_data)
+            # Note: Instead of deleting the status, we are updating the TTL to a lower value
+            # to avoid deleting the status from cache when the file is still processing
+            # TODO: Remove this if not required since it delete after completion
+            tool_execution_tracker.update_ttl(
+                tool_execution_data,
+                ToolExecutionTracker.TOOL_EXECUTION_TRACKER_COMPLETED_TTL_IN_SECOND,
+            )
