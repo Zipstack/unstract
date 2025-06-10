@@ -3049,6 +3049,7 @@ name = "unstract-core"
 version = "0.0.1"
 source = { editable = "../unstract/core" }
 dependencies = [
+    { name = "httpx" },
     { name = "kombu" },
     { name = "redis" },
     { name = "requests" },
@@ -3057,6 +3058,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "flask", marker = "extra == 'flask'", specifier = "~=3.1.0" },
+    { name = "httpx", specifier = ">=0.27.0" },
     { name = "kombu", specifier = "~=5.5.3" },
     { name = "redis", specifier = "~=5.2.1" },
     { name = "requests", specifier = "==2.31.0" },
