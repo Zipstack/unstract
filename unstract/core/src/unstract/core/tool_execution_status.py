@@ -52,6 +52,12 @@ class ToolExecutionTracker:
         os.environ.get("TOOL_EXECUTION_CACHE_TTL_IN_SECOND", 60 * 60 * 24)
     )
 
+    TOOL_EXECUTION_TRACKER_COMPLETED_TTL_IN_SECOND = int(
+        os.environ.get(
+            "TOOL_EXECUTION_TRACKER_COMPLETED_TTL_IN_SECOND", CACHE_TTL_IN_SECOND
+        )
+    )
+
     def __init__(self):
         self.redis_client = redis.Redis(
             host=os.environ.get("REDIS_HOST"),
@@ -167,5 +173,25 @@ class ToolExecutionTracker:
         Args:
             tool_execution_data (ToolExecutionData): Status of the tool execution
         """
-        tool_execution_data.validate()
-        self.redis_client.delete(self.get_cache_key(tool_execution_data))
+        try:
+            tool_execution_data.validate()
+            self.redis_client.delete(self.get_cache_key(tool_execution_data))
+        except ToolExecutionValueException:
+            return
+
+    def update_ttl(
+        self, tool_execution_data: ToolExecutionData, ttl_in_second: int
+    ) -> None:
+        """Update the TTL of a tool execution.
+
+        Args:
+            tool_execution_data (ToolExecutionData): Status of the tool execution
+            ttl_in_second (int): TTL in seconds
+        """
+        try:
+            tool_execution_data.validate()
+            self.redis_client.expire(
+                self.get_cache_key(tool_execution_data), ttl_in_second
+            )
+        except ToolExecutionValueException:
+            return

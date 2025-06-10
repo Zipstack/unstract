@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 from urllib.parse import urlparse
 
+import httpx
 from dotenv import find_dotenv, load_dotenv
 from utils.common_utils import CommonUtils
 
@@ -45,6 +46,15 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Load default log from env
 DEFAULT_LOG_LEVEL = os.environ.get("DEFAULT_LOG_LEVEL", "INFO")
 
+# Celery Broker Configuration
+CELERY_BROKER_BASE_URL = get_required_setting("CELERY_BROKER_BASE_URL")
+CELERY_BROKER_USER = get_required_setting("CELERY_BROKER_USER")
+CELERY_BROKER_PASS = get_required_setting("CELERY_BROKER_PASS")
+CELERY_BROKER_URL = str(
+    httpx.URL(CELERY_BROKER_BASE_URL).copy_with(
+        username=CELERY_BROKER_USER, password=CELERY_BROKER_PASS
+    )
+)
 
 ENV_FILE = find_dotenv()
 if ENV_FILE:
@@ -133,6 +143,13 @@ EXECUTION_RESULT_TTL_SECONDS = int(
 EXECUTION_CACHE_TTL_SECONDS = int(
     os.environ.get("EXECUTION_CACHE_TTL_SECONDS", 10800)
 )  # 3 hours
+FILE_EXECUTION_TRACKER_TTL_IN_SECOND = int(
+    os.environ.get("FILE_EXECUTION_TRACKER_TTL_IN_SECOND", 60 * 60 * 5)
+)
+FILE_EXECUTION_TRACKER_COMPLETED_TTL_IN_SECOND = int(
+    os.environ.get("FILE_EXECUTION_TRACKER_COMPLETED_TTL_IN_SECOND", 60 * 10)
+)  # 10 minutes
+
 INSTANT_WF_POLLING_TIMEOUT = int(
     os.environ.get("INSTANT_WF_POLLING_TIMEOUT", "300")
 )  # 5 minutes
@@ -397,13 +414,13 @@ AUTH_PASSWORD_VALIDATORS = [
         "UserAttributeSimilarityValidator",
     },
     {
-        "NAME": "django.contrib.auth.password_validation." "MinimumLengthValidator",
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
     },
     {
-        "NAME": "django.contrib.auth.password_validation." "CommonPasswordValidator",
+        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
     },
     {
-        "NAME": "django.contrib.auth.password_validation." "NumericPasswordValidator",
+        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
     },
 ]
 
