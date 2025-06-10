@@ -17,6 +17,7 @@ import { getBackendErrorDetail } from "../../../helpers/GetStaticData.js";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import { PromptStudioModal } from "../../common/PromptStudioModal";
 import { usePromptStudioService } from "../../api/prompt-studio-service";
+import { useInitialFetchCount } from "../../../hooks/usePromptStudioFetchCount";
 
 const defaultFromDetails = {
   pipeline_name: "",
@@ -60,13 +61,7 @@ const EtlTaskDeploy = ({
   const [showModal, setShowModal] = useState(false);
   const [modalDismissed, setModalDismissed] = useState(false);
   const { getPromptStudioCount } = usePromptStudioService();
-  const [initialFetchComplete, setInitialFetchComplete] = useState(false);
-
-  useEffect(() => {
-    fetchCount(getPromptStudioCount).finally(() => {
-      setInitialFetchComplete(true);
-    });
-  }, [fetchCount]);
+  const initialFetchComplete = useInitialFetchCount(fetchCount, getPromptStudioCount);
 
   useEffect(() => {
     if (workflowId) {

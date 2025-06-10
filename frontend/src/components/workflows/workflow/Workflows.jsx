@@ -21,6 +21,7 @@ import { ViewTools } from "../../custom-tools/view-tools/ViewTools.jsx";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import { PromptStudioModal } from "../../common/PromptStudioModal";
 import { usePromptStudioService } from "../../api/prompt-studio-service";
+import { useInitialFetchCount } from "../../../hooks/usePromptStudioFetchCount";
 
 const PROJECT_FILTER_OPTIONS = [
   { label: "My Workflows", value: "mine" },
@@ -39,13 +40,8 @@ function Workflows() {
   const [showModal, setShowModal] = useState(false);
   const [modalDismissed, setModalDismissed] = useState(false);
   const { getPromptStudioCount } = usePromptStudioService();
-  const [initialFetchComplete, setInitialFetchComplete] = useState(false);
 
-  useEffect(() => {
-    fetchCount(getPromptStudioCount).finally(() => {
-      setInitialFetchComplete(true);
-    });
-  }, [fetchCount]);
+  const initialFetchComplete = useInitialFetchCount(fetchCount, getPromptStudioCount);
 
   const [projectList, setProjectList] = useState();
   const [editingProject, setEditProject] = useState();
