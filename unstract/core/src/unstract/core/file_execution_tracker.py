@@ -63,6 +63,7 @@ class FileExecutionField:
     STAGE_STATUS = "stage_status"
     TOOL_CONTAINER_NAME = "tool_container_name"
     STATUS_HISTORY = "status_history"
+    FILE_HASH = "file_hash"
 
 
 @dataclass
@@ -100,6 +101,7 @@ class FileExecutionData:
     status_history: list[FileExecutionStageData]
     tool_container_name: str | None = None
     error: str | None = None
+    file_hash: str | None = None  # File hash in serialized format
 
     def __post_init__(self):
         self.validate()
@@ -124,9 +126,21 @@ class FileExecutionData:
             ),
             FileExecutionField.TOOL_CONTAINER_NAME: self.tool_container_name,
             FileExecutionField.ERROR: self.error,
+            FileExecutionField.FILE_HASH: self.file_hash,
         }
         # Remove any keys with value None (Redis doesn't support None in HSET)
         return {k: v for k, v in data.items() if v is not None}
+
+    def __str__(self) -> str:
+        return (
+            f"Execution ID: {self.execution_id}, "
+            f"File Execution ID: {self.file_execution_id}, "
+            f"Organization ID: {self.organization_id}, "
+            f"Stage Status: {self.stage_status}, "
+            f"Status History: {self.status_history}, "
+            f"Tool Container Name: {self.tool_container_name}, "
+            f"Error: {self.error}, "
+        )
 
 
 class FileExecutionStatusTracker:
@@ -177,12 +191,11 @@ class FileExecutionStatusTracker:
     def set_data(self, data: FileExecutionData, ttl_in_second: int | None = None) -> None:
         data.validate()
         key = self.get_cache_key(data.execution_id, data.file_execution_id)
-        logger.info(f"Setting file execution data for {key}: {data.to_serializable()}")
+        logger.info(f"Setting file execution data for {key}: {data}")
         self.redis_client.hset(key, mapping=data.to_serializable())
-        logger.info(
-            f"Setting file execution data for {key} to expire in {ttl_in_second} seconds"
-        )
-        self.redis_client.expire(key, ttl_in_second or self.CACHE_TTL_IN_SECOND)
+        ttl = ttl_in_second or self.CACHE_TTL_IN_SECOND
+        logger.info(f"Setting file execution data for {key} to expire in {ttl} seconds")
+        self.redis_client.expire(key, ttl)
 
     def exists(self, execution_id: str, file_execution_id: str) -> bool:
         """Check if file execution tracker data exists."""
@@ -195,6 +208,7 @@ class FileExecutionStatusTracker:
         file_execution_id: str,
         stage_status: FileExecutionStageData,
         ttl_in_second: int | None = None,
+        file_hash: str | None = None,
     ) -> None:
         key = self.get_cache_key(execution_id, file_execution_id)
 
@@ -207,6 +221,7 @@ class FileExecutionStatusTracker:
                     organization_id="",
                     stage_status=stage_status,
                     status_history=[stage_status],
+                    file_hash=file_hash,
                 )
             )
 
@@ -241,6 +256,10 @@ class FileExecutionStatusTracker:
             ] + existing_data.status_history
         # Update error
         existing_data.error = stage_status.error or existing_data.error
+
+        # Update file hash
+        existing_data.file_hash = file_hash or existing_data.file_hash
+
         self.set_data(existing_data, ttl_in_second)
 
     def update_tool_container_name(
@@ -300,6 +319,7 @@ class FileExecutionStatusTracker:
                 for entry in status_history_list
             ],
             error=data.get(FileExecutionField.ERROR) or None,
+            file_hash=data.get(FileExecutionField.FILE_HASH),
         )
 
     def delete_data(self, execution_id: str, file_execution_id: str) -> None:

@@ -18,6 +18,7 @@ from unstract.core.tool_execution_status import (
     ToolExecutionStatus,
     ToolExecutionTracker,
 )
+from unstract.core.utilities import redact_sensitive_string
 
 from .constants import Env, LogLevel, LogType
 from .dto import LogLineDTO
@@ -280,7 +281,7 @@ def main():
         Env.REDIS_PORT: redis_port,
         Env.CELERY_BROKER_BASE_URL: celery_broker_base_url,
         Env.CELERY_BROKER_USER: celery_broker_user,
-        Env.CELERY_BROKER_PASS: celery_broker_pass,
+        Env.CELERY_BROKER_PASS: redact_sensitive_string(celery_broker_pass),
     }
 
     logger.info(f"Log processor started with params: {required_params}")
