@@ -103,3 +103,15 @@ class Utils:
         """
         raw_timeout = os.getenv(Env.TOOL_SIDECAR_CONTAINER_WAIT_TIMEOUT)
         return Utils.str_to_int(raw_timeout, default=5)
+
+    @staticmethod
+    def get_sidecar_container_name(container_name: str) -> str:
+        """Get sidecar container name from tool container name.
+
+        Args:
+            container_name (str): Container name
+
+        Returns:
+            str: Sidecar container name
+        """
+        return f"{container_name}-sidecar"

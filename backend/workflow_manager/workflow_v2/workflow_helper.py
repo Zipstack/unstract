@@ -46,7 +46,12 @@ from workflow_manager.workflow_v2.dto import (
     FileBatchData,
     FileData,
 )
-from workflow_manager.workflow_v2.enums import ExecutionStatus, SchemaEntity, SchemaType
+from workflow_manager.workflow_v2.enums import (
+    ExecutionStatus,
+    SchemaEntity,
+    SchemaType,
+    TaskType,
+)
 from workflow_manager.workflow_v2.exceptions import (
     InvalidRequest,
     TaskDoesNotExistError,
@@ -158,6 +163,12 @@ class WorkflowHelper:
             workflow_execution.update_execution(
                 status=ExecutionStatus.COMPLETED,
             )
+            PipelineUtils.update_pipeline_status(
+                pipeline_id=pipeline_id, workflow_execution=workflow_execution
+            )
+            logger.info(
+                f"Updated execution {workflow_execution.id} and pipeline {pipeline_id} status to COMPLETED"
+            )
             return
 
         batches = cls.get_file_batches(input_files=input_files)
@@ -189,7 +200,9 @@ class WorkflowHelper:
             batch_data = FileBatchData(files=batch, file_data=file_data)
 
             # Determine the appropriate queue based on execution_mode
-            file_processing_queue = FileExecutionTasks.get_queue_name(source)
+            file_processing_queue = FileExecutionTasks.get_queue_name(
+                source, TaskType.FILE_PROCESSING
+            )
 
             # Send each batch to the dedicated file_processing queue
             batch_tasks.append(
@@ -198,10 +211,13 @@ class WorkflowHelper:
                 )
             )
         try:
+            file_processing_callback_queue = FileExecutionTasks.get_queue_name(
+                source, TaskType.FILE_PROCESSING_CALLBACK
+            )
             result = chord(batch_tasks)(
                 FileExecutionTasks.process_batch_callback.s(
                     execution_id=str(workflow_execution.id)
-                ).set(queue=file_processing_queue)
+                ).set(queue=file_processing_callback_queue)
             )
             if not result:
                 exception = f"Failed to queue execution task {workflow_execution.id}"

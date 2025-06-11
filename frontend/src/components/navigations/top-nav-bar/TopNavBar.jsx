@@ -101,7 +101,7 @@ const CustomLogo = ({ onClick, className }) => {
 };
 let APIHubLogo;
 try {
-  APIHubLogo = require("../../../plugins/assets/index.js").APIHubLogo;
+  APIHubLogo = require("../../../plugins/assets/verticals/index.js").APIHubLogo;
 } catch {
   // Ignore if hook not available
 }

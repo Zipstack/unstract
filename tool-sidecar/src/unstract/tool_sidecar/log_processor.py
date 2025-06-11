@@ -18,6 +18,7 @@ from unstract.core.tool_execution_status import (
     ToolExecutionStatus,
     ToolExecutionTracker,
 )
+from unstract.core.utilities import redact_sensitive_string
 
 from .constants import Env, LogLevel, LogType
 from .dto import LogLineDTO
@@ -255,7 +256,10 @@ def main():
     redis_port = os.getenv(Env.REDIS_PORT)
     redis_user = os.getenv(Env.REDIS_USER)
     redis_password = os.getenv(Env.REDIS_PASSWORD)
-    celery_broker_url = os.getenv(Env.CELERY_BROKER_URL)
+    # Needed for Kombu (used from unstract-core)
+    celery_broker_base_url = os.getenv(Env.CELERY_BROKER_BASE_URL)
+    celery_broker_user = os.getenv(Env.CELERY_BROKER_USER)
+    celery_broker_pass = os.getenv(Env.CELERY_BROKER_PASS)
 
     # Get execution parameters from environment
     tool_instance_id = os.getenv(Env.TOOL_INSTANCE_ID)
@@ -275,7 +279,9 @@ def main():
         Env.LOG_PATH: log_path,
         Env.REDIS_HOST: redis_host,
         Env.REDIS_PORT: redis_port,
-        Env.CELERY_BROKER_URL: celery_broker_url,
+        Env.CELERY_BROKER_BASE_URL: celery_broker_base_url,
+        Env.CELERY_BROKER_USER: celery_broker_user,
+        Env.CELERY_BROKER_PASS: redact_sensitive_string(celery_broker_pass),
     }
 
     logger.info(f"Log processor started with params: {required_params}")
