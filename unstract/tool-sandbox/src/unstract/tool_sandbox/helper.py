@@ -3,11 +3,14 @@ import logging
 import os
 import time
 from datetime import UTC, datetime, timedelta
+from enum import Enum
 from typing import Any
 
 import requests
 from requests import Response
+from requests.adapters import HTTPAdapter
 from requests.exceptions import ConnectionError, RequestException
+from urllib3.util.retry import Retry
 
 from unstract.core.file_execution_tracker import (
     FileExecutionData,
@@ -43,6 +46,11 @@ class ToolSanboxError(Exception):
     pass
 
 
+class HTTPMethod(str, Enum):
+    GET = "GET"
+    POST = "POST"
+
+
 class ToolSandboxHelper:
     def __init__(
         self,
@@ -60,6 +68,26 @@ class ToolSandboxHelper:
         self.execution_id = str(execution_id)
         self.envs = environment_variables
         self.messaging_channel = str(messaging_channel)
+        self.session = requests.Session()
+        self.timeout = int(os.getenv("UNSTRACT_RUNNER_API_TIMEOUT", 60))
+        self.retry_count = int(os.getenv("UNSTRACT_RUNNER_API_RETRY_COUNT", 5))
+        self.backoff_factor = int(os.getenv("UNSTRACT_RUNNER_API_BACKOFF_FACTOR", 3))
+
+        # Configure retry strategy
+        retry_strategy = Retry(
+            total=self.retry_count,  # Total retries (including initial request)
+            status_forcelist=[429, 500, 502, 503, 504],  # HTTP status codes to retry
+            allowed_methods=[
+                HTTPMethod.GET.value,
+                HTTPMethod.POST.value,
+            ],  # HTTP methods to retry
+            backoff_factor=self.backoff_factor,  # Exponential backoff factor (Ex: 2^1, 2^2, 2^3, ...)
+            raise_on_status=False,  # Do not raise exception on status codes
+        )
+        # Mount retry adapter to all requests
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
 
     def convert_str_to_dict(self, data: str | dict[str, Any]) -> dict[str, Any]:
         if isinstance(data, str):
@@ -100,6 +128,28 @@ class ToolSandboxHelper:
                 f"Error while calling tool {image_name} reason: {response.reason}"
             )
         return result
+
+    def _request(self, method: HTTPMethod, endpoint: str, **kwargs):
+        """Make unstract runner request.
+
+        Args:
+            method (HTTPMethod): HTTP method
+            endpoint (str): API endpoint
+            **kwargs: Additional keyword arguments to pass to requests.request
+
+        Returns:
+            requests.Response: Response object
+        """
+        url = f"{self.base_url}/{endpoint}"
+        try:
+            response = self.session.request(
+                method=method.value, url=url, timeout=self.timeout, **kwargs
+            )
+            response.raise_for_status()  # Raise HTTP errors
+            return response
+        except requests.exceptions.RequestException as e:
+            logger.error(f"{method} {url} failed after {self.retry_count} retries: {e}")
+            raise
 
     def poll_tool_status(
         self,
@@ -311,12 +361,16 @@ class ToolSandboxHelper:
         container_name: str,
         file_execution_id: str,
     ) -> None:
-        url = f"{self.base_url}{UnstractRunner.CLEANUP_TOOL_CONTAINER_API_ENDPOINT}"
         headers = {
             "X-Request-ID": file_execution_id,
         }
         data = self.cleanup_tool_container_request_data(container_name=container_name)
-        response = requests.post(url, headers=headers, json=data)
+        response = self._request(
+            method=HTTPMethod.POST,
+            endpoint=UnstractRunner.CLEANUP_TOOL_CONTAINER_API_ENDPOINT,
+            headers=headers,
+            json=data,
+        )
         if response.status_code != 200:
             logger.error(
                 f"Error while calling tool {container_name} reason: {response.reason}"
@@ -390,7 +444,6 @@ class ToolSandboxHelper:
         Returns:
             Optional[dict[str, Any]]: tool response
         """
-        url = f"{self.base_url}{UnstractRunner.RUN_API_ENDPOINT}"
         headers = {
             "X-Request-ID": file_execution_id,
         }
@@ -400,7 +453,12 @@ class ToolSandboxHelper:
 
         response: Response = Response()
         try:
-            response = requests.post(url, headers=headers, json=data)
+            response = self._request(
+                method=HTTPMethod.POST,
+                endpoint=UnstractRunner.RUN_API_ENDPOINT,
+                headers=headers,
+                json=data,
+            )
             response.raise_for_status()
         except ConnectionError as connect_err:
             msg = "Unable to connect to unstract-runner."
@@ -469,8 +527,9 @@ class ToolSandboxHelper:
         container_name: str,
     ) -> dict[str, Any] | None:
         params = self._create_tool_run_status_check_request_data(container_name)
-        response = requests.get(
-            url=f"{self.base_url}{UnstractRunner.RUN_STATUS_API_ENDPOINT}",
+        response = self._request(
+            method=HTTPMethod.GET,
+            endpoint=UnstractRunner.RUN_STATUS_API_ENDPOINT,
             params=params,
         )
         result: dict[str, Any] | None = None
