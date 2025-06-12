@@ -34,9 +34,9 @@ def setup_logging(log_level: int):
                 "default": {
                     "format": (
                         "%(levelname)s : [%(asctime)s]"
-                        "{pid:%(process)d tid:%(thread)d request_id:%(request_id)s} "
+                        "{pid:%(process)d tid:%(thread)d request_id:%(request_id)s "
                         + "trace_id:%(otelTraceID)s span_id:%(otelSpanID)s "
-                        "%(name)s:- %(message)s"
+                        + "%(name)s}:- %(message)s"
                     ),
                 },
             },
