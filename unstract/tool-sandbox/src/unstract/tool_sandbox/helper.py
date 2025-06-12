@@ -61,7 +61,7 @@ class ToolSandboxHelper:
         self.execution_id = str(execution_id)
         self.envs = environment_variables
         self.messaging_channel = str(messaging_channel)
-        self.timeout = int(os.getenv("UNSTRACT_RUNNER_API_TIMEOUT", 60))
+        self.timeout = int(os.getenv("UNSTRACT_RUNNER_API_TIMEOUT", 120))
         self.retry_count = int(os.getenv("UNSTRACT_RUNNER_API_RETRY_COUNT", 5))
         self.backoff_factor = int(os.getenv("UNSTRACT_RUNNER_API_BACKOFF_FACTOR", 3))
 
