@@ -16,7 +16,7 @@ from unstract.core.file_execution_tracker import (
     FileExecutionStageStatus,
     FileExecutionStatusTracker,
 )
-from unstract.core.network import HTTPMethod, get_retry_session
+from unstract.core.network import HttpClient, HTTPMethod, get_retry_session
 from unstract.core.runner.enum import ContainerStatus
 from unstract.core.tool_execution_status import (
     ToolExecutionData,
@@ -70,6 +70,9 @@ class ToolSandboxHelper:
             backoff_factor=self.backoff_factor,
             raise_on_status=False,
         )
+        self.http_client = HttpClient(
+            session=self.session, base_url=self.base_url, timeout=self.timeout
+        )
 
     def convert_str_to_dict(self, data: str | dict[str, Any]) -> dict[str, Any]:
         if isinstance(data, str):
@@ -110,28 +113,6 @@ class ToolSandboxHelper:
                 f"Error while calling tool {image_name} reason: {response.reason}"
             )
         return result
-
-    def _request(self, method: HTTPMethod, endpoint: str, **kwargs):
-        """Make unstract runner request.
-
-        Args:
-            method (HTTPMethod): HTTP method
-            endpoint (str): API endpoint
-            **kwargs: Additional keyword arguments to pass to requests.request
-
-        Returns:
-            requests.Response: Response object
-        """
-        url = f"{self.base_url}/{endpoint}"
-        try:
-            response = self.session.request(
-                method=method.value, url=url, timeout=self.timeout, **kwargs
-            )
-            response.raise_for_status()  # Raise HTTP errors
-            return response
-        except requests.exceptions.RequestException as e:
-            logger.error(f"{method} {url} failed after {self.retry_count} retries: {e}")
-            raise
 
     def poll_tool_status(
         self,
@@ -347,7 +328,7 @@ class ToolSandboxHelper:
             "X-Request-ID": file_execution_id,
         }
         data = self.cleanup_tool_container_request_data(container_name=container_name)
-        response = self._request(
+        response = self.http_client(
             method=HTTPMethod.POST,
             endpoint=UnstractRunner.CLEANUP_TOOL_CONTAINER_API_ENDPOINT,
             headers=headers,
@@ -435,7 +416,7 @@ class ToolSandboxHelper:
 
         response: Response = Response()
         try:
-            response = self._request(
+            response = self.http_client(
                 method=HTTPMethod.POST,
                 endpoint=UnstractRunner.RUN_API_ENDPOINT,
                 headers=headers,
@@ -509,7 +490,7 @@ class ToolSandboxHelper:
         container_name: str,
     ) -> dict[str, Any] | None:
         params = self._create_tool_run_status_check_request_data(container_name)
-        response = self._request(
+        response = self.http_client(
             method=HTTPMethod.GET,
             endpoint=UnstractRunner.RUN_STATUS_API_ENDPOINT,
             params=params,
