@@ -23,10 +23,6 @@ from unstract.core.utilities import redact_sensitive_string
 from .constants import Env, LogLevel, LogType
 from .dto import LogLineDTO
 
-logging.basicConfig(
-    level=getattr(logging, os.getenv(Env.LOG_LEVEL, "INFO")),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
 logger = logging.getLogger(__name__)
 
 
