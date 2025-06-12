@@ -103,7 +103,6 @@ class HttpFS(UnstractFileSystem):
             ) from e
         if not is_dir:
             raise ConnectorError(
-                "Unable to connect to HTTP server, "
-                "please check the connection settings."
+                "Unable to connect to HTTP server, please check the connection settings."
             )
         return True
