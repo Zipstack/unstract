@@ -20,7 +20,15 @@ def get_retry_session(
 
     Args:
         retry_count (int, optional): Number of retries. Defaults to 5.
-        backoff_factor (int, optional): Backoff factor. Defaults to 3.
+        backoff_factor (int, optional): Base delay for exponential backoff.
+            The wait time before retry attempt N is:
+                backoff_factor * (2^(N-1)) seconds
+
+            Example (backoff_factor=3):
+                Attempt 1: 3 * 1 = 3s
+                Attempt 2: 3 * 2 = 6s
+                Attempt 3: 3 * 4 = 12s
+            Defaults to 3.
         status_forcelist (list, optional): List of status codes to retry. Defaults to None.
         allowed_methods (list, optional): List of allowed methods. Defaults to None.
         raise_on_status (bool, optional): Whether to raise on status. Defaults to False.
