@@ -16,6 +16,8 @@ def get_retry_session(
 ) -> requests.Session:
     """Get retry adapter for requests.
 
+    This function creates a requests session with a retry strategy.
+
     Args:
         retry_count (int, optional): Number of retries. Defaults to 5.
         backoff_factor (int, optional): Backoff factor. Defaults to 3.
@@ -38,6 +40,7 @@ def get_retry_session(
             enable_http=True,
             enable_https=True,
         )
+        >>> response = session.get("https://example.com")
     """
     status_forcelist = status_forcelist or [429, 500, 502, 503, 504]
     allowed_methods = allowed_methods or [HTTPMethod.GET.value, HTTPMethod.POST.value]
