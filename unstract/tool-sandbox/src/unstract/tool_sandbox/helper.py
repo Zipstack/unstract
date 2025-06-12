@@ -3,14 +3,11 @@ import logging
 import os
 import time
 from datetime import UTC, datetime, timedelta
-from enum import Enum
 from typing import Any
 
 import requests
 from requests import Response
-from requests.adapters import HTTPAdapter
 from requests.exceptions import ConnectionError, RequestException
-from urllib3.util.retry import Retry
 
 from unstract.core.file_execution_tracker import (
     FileExecutionData,
@@ -19,6 +16,7 @@ from unstract.core.file_execution_tracker import (
     FileExecutionStageStatus,
     FileExecutionStatusTracker,
 )
+from unstract.core.network import HTTPMethod, get_retry_session
 from unstract.core.runner.enum import ContainerStatus
 from unstract.core.tool_execution_status import (
     ToolExecutionData,
@@ -46,11 +44,6 @@ class ToolSanboxError(Exception):
     pass
 
 
-class HTTPMethod(str, Enum):
-    GET = "GET"
-    POST = "POST"
-
-
 class ToolSandboxHelper:
     def __init__(
         self,
@@ -68,26 +61,15 @@ class ToolSandboxHelper:
         self.execution_id = str(execution_id)
         self.envs = environment_variables
         self.messaging_channel = str(messaging_channel)
-        self.session = requests.Session()
         self.timeout = int(os.getenv("UNSTRACT_RUNNER_API_TIMEOUT", 60))
         self.retry_count = int(os.getenv("UNSTRACT_RUNNER_API_RETRY_COUNT", 5))
         self.backoff_factor = int(os.getenv("UNSTRACT_RUNNER_API_BACKOFF_FACTOR", 3))
 
-        # Configure retry strategy
-        retry_strategy = Retry(
-            total=self.retry_count,  # Total retries (including initial request)
-            status_forcelist=[429, 500, 502, 503, 504],  # HTTP status codes to retry
-            allowed_methods=[
-                HTTPMethod.GET.value,
-                HTTPMethod.POST.value,
-            ],  # HTTP methods to retry
-            backoff_factor=self.backoff_factor,  # Exponential backoff factor (Ex: 2^1, 2^2, 2^3, ...)
-            raise_on_status=False,  # Do not raise exception on status codes
+        self.session = get_retry_session(
+            retry_count=self.retry_count,
+            backoff_factor=self.backoff_factor,
+            raise_on_status=False,
         )
-        # Mount retry adapter to all requests
-        adapter = HTTPAdapter(max_retries=retry_strategy)
-        self.session.mount("http://", adapter)
-        self.session.mount("https://", adapter)
 
     def convert_str_to_dict(self, data: str | dict[str, Any]) -> dict[str, Any]:
         if isinstance(data, str):
