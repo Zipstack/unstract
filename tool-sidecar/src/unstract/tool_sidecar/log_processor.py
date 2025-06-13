@@ -23,10 +23,6 @@ from unstract.core.utilities import redact_sensitive_string
 from .constants import Env, LogLevel, LogType
 from .dto import LogLineDTO
 
-logging.basicConfig(
-    level=getattr(logging, os.getenv(Env.LOG_LEVEL, "INFO")),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
 logger = logging.getLogger(__name__)
 
 
@@ -122,7 +118,7 @@ class LogProcessor:
 
         log_dict = self.get_valid_log_message(line)
         if not log_dict:
-            logger.info(f"[Tool: {self.container_name}] {line}")
+            logger.info(f"{line}")
             return LogLineDTO()
 
         log_type = log_dict.get("type")
@@ -136,19 +132,19 @@ class LogProcessor:
         log_process_status = LogLineDTO()
         if log_type == LogType.LOG:
             if log_level == LogLevel.ERROR:
-                logger.error(f"[Tool: {self.container_name}] {log_dict.get('log')}")
+                logger.error(f"{log_dict.get('log')}")
                 log_process_status.error = log_dict.get("log")
                 self._update_tool_execution_status(
                     status=ToolExecutionStatus.FAILED, error=log_dict.get("log")
                 )
             else:
-                logger.info(f"[Tool: {self.container_name}] {log_dict.get('log')}")
+                logger.info(f"{log_dict.get('log')}")
         elif log_type == LogType.RESULT:
-            logger.info(f"[Tool {self.container_name}] Completed running")
+            logger.info(f"Tool '{self.container_name}' completed running")
             self._update_tool_execution_status(status=ToolExecutionStatus.SUCCESS)
             return LogLineDTO(with_result=True)
         elif log_type == LogType.UPDATE:
-            logger.info(f"[Tool: {self.container_name}] Pushing UI updates")
+            logger.info("Pushing UI updates")
             log_dict["component"] = self.tool_instance_id
 
         log_dict[LogFieldName.EXECUTION_ID] = self.execution_id
