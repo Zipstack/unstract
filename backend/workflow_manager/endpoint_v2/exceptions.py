@@ -112,3 +112,8 @@ class UnstractQueueException(APIException):
 class SourceFileOrInfilePathNotFound(APIException):
     status_code = 500
     default_detail = "Unable to obtain file (Source or Infile) for execution."
+
+
+class UnsupportedMimeTypeError(APIException):
+    status_code = 400
+    default_detail = "Unsupported MIME type."

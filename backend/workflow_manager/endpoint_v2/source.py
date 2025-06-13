@@ -8,6 +8,7 @@ from itertools import islice
 from typing import Any
 
 import fsspec
+import magic
 from connector_processor.constants import ConnectorKeys
 from connector_v2.models import ConnectorInstance
 from django.core.files.uploadedfile import UploadedFile
@@ -21,6 +22,7 @@ from workflow_manager.endpoint_v2.constants import (
     SourceKey,
 )
 from workflow_manager.endpoint_v2.dto import FileHash, SourceConfig
+from workflow_manager.endpoint_v2.enums import AllowedFileTypes
 from workflow_manager.endpoint_v2.exceptions import (
     InvalidInputDirectory,
     InvalidSourceConnectionType,
@@ -28,6 +30,7 @@ from workflow_manager.endpoint_v2.exceptions import (
     OrganizationIdNotFound,
     SourceConnectorNotConfigured,
     SourceFileOrInfilePathNotFound,
+    UnsupportedMimeTypeError,
 )
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.file_execution.models import WorkflowFileExecution
@@ -502,13 +505,7 @@ class SourceConnector(BaseConnector):
         Returns:
             bool: True if file format is supported, False otherwise
         """
-        file_lower = file_name.lower()
-        matches_blocked = any(
-            fnmatch.fnmatchcase(file_lower, ext.lower())
-            for ext in FilePattern.UNSUPPORTED_FILE_EXTENSIONS
-        )
-
-        if matches_blocked:
+        if not FilePattern.is_supported(file_name):
             message = f"Skipping '{file_name}' as it has an unsupported file format"
             logger.debug(message)
             self.workflow_log.publish_log(message)
@@ -661,11 +658,20 @@ class SourceConnector(BaseConnector):
 
         first_iteration = True
         input_log = ""
-        file_hash = sha256()
+        file_content_hash = sha256()
         with source_fs.open(input_file_path, "rb") as remote_file:
             while chunk := remote_file.read(self.READ_CHUNK_SIZE):
-                file_hash.update(chunk)
+                file_content_hash.update(chunk)
                 if first_iteration:
+                    # Detect MIME type using first chunk
+                    mime_type = magic.from_buffer(chunk, mime=True)
+                    logger.info(
+                        f"Detected MIME type: {mime_type} for file {input_file_path}"
+                    )
+                    if not AllowedFileTypes.is_allowed(mime_type):
+                        raise UnsupportedMimeTypeError(
+                            f"Unsupported MIME type '{mime_type}' for file '{input_file_path}'"
+                        )
                     input_log = (
                         chunk[:500].decode("utf-8", errors="replace") + "...(truncated)"
                     )
@@ -679,7 +685,8 @@ class SourceConnector(BaseConnector):
         # This function is typically relevant for extracted text content,
         # may not be necessary for PDFs, images, or other non-text formats.
         self.publish_input_file_content(input_file_path, input_log)
-        hash_value_of_file_content = file_hash.hexdigest()
+        hash_value_of_file_content = file_content_hash.hexdigest()
+        file_hash.mime_type = mime_type
         logger.info(
             f"hash_value_of_file {source_file_path} is : {hash_value_of_file_content}"
         )
@@ -864,9 +871,28 @@ class SourceConnector(BaseConnector):
         workflow: Workflow = Workflow.objects.get(id=workflow_id)
         file_hashes: dict[str, FileHash] = {}
         unique_file_hashes: set[str] = set()
+        connection_type = WorkflowEndpoint.ConnectionType.API
         for file in file_objs:
             file_name = file.name
             destination_path = os.path.join(api_storage_dir, file_name)
+
+            mime_type = file.content_type
+            logger.info(f"Detected MIME type: {mime_type} for file {file_name}")
+            if not AllowedFileTypes.is_allowed(mime_type):
+                logger.info(
+                    f"Skipping file '{file_name}' due to unsupported MIME type '{mime_type}'"
+                )
+                file_hash = FileHash(
+                    file_path=destination_path,
+                    source_connection_type=connection_type,
+                    file_name=file_name,
+                    file_hash=None,
+                    is_executed=True,
+                    file_size=file.size,
+                    mime_type=mime_type,
+                )
+                file_hashes.update({file_name: file_hash})
+                continue
 
             file_system = FileSystem(FileStorageType.API_EXECUTION)
             file_storage = file_system.get_file_storage()
@@ -875,7 +901,6 @@ class SourceConnector(BaseConnector):
                 file_hash.update(chunk)
                 file_storage.write(path=destination_path, mode="ab", data=chunk)
             file_hash = file_hash.hexdigest()
-            connection_type = WorkflowEndpoint.ConnectionType.API
 
             # Skip duplicate files
             if file_hash in unique_file_hashes:
@@ -898,7 +923,7 @@ class SourceConnector(BaseConnector):
                 file_hash=file_hash,
                 is_executed=is_executed,
                 file_size=file.size,
-                mime_type=file.content_type,
+                mime_type=mime_type,
             )
             file_hashes.update({file_name: file_hash})
         return file_hashes
