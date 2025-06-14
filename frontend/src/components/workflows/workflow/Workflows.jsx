@@ -21,6 +21,7 @@ import { ViewTools } from "../../custom-tools/view-tools/ViewTools.jsx";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import { PromptStudioModal } from "../../common/PromptStudioModal";
 import { usePromptStudioService } from "../../api/prompt-studio-service";
+import { useInitialFetchCount } from "../../../hooks/usePromptStudioFetchCount";
 
 const PROJECT_FILTER_OPTIONS = [
   { label: "My Workflows", value: "mine" },
@@ -40,9 +41,7 @@ function Workflows() {
   const [modalDismissed, setModalDismissed] = useState(false);
   const { getPromptStudioCount } = usePromptStudioService();
 
-  useEffect(() => {
-    fetchCount(getPromptStudioCount);
-  }, [fetchCount]);
+  const initialFetchComplete = useInitialFetchCount(fetchCount, getPromptStudioCount);
 
   const [projectList, setProjectList] = useState();
   const [editingProject, setEditProject] = useState();
@@ -201,12 +200,12 @@ function Workflows() {
   };
 
   useEffect(() => {
-    if (!isLoading && count === 0 && !modalDismissed) {
+    if (initialFetchComplete && !isLoading && count === 0 && !modalDismissed) {
       setShowModal(true);
     } else if (!isLoading && count > 0) {
       setShowModal(false);
     }
-  }, [isLoading, count, modalDismissed]);
+  }, [initialFetchComplete, isLoading, count, modalDismissed]);
 
   const handleModalClose = useCallback(() => {
     setShowModal(false);

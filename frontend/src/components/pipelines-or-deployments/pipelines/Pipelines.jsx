@@ -47,6 +47,7 @@ import { NotificationModal } from "../notification-modal/NotificationModal.jsx";
 import { usePromptStudioStore } from "../../../store/prompt-studio-store";
 import { PromptStudioModal } from "../../common/PromptStudioModal";
 import { usePromptStudioService } from "../../api/prompt-studio-service";
+import { useInitialFetchCount } from "../../../hooks/usePromptStudioFetchCount";
 
 function Pipelines({ type }) {
   const [tableData, setTableData] = useState([]);
@@ -74,9 +75,7 @@ function Pipelines({ type }) {
   const [modalDismissed, setModalDismissed] = useState(false);
   const { getPromptStudioCount } = usePromptStudioService();
 
-  useEffect(() => {
-    fetchCount(getPromptStudioCount);
-  }, [fetchCount]);
+  const initialFetchComplete = useInitialFetchCount(fetchCount, getPromptStudioCount);
 
   const handleFetchLogs = (page, pageSize) => {
     fetchExecutionLogs(
@@ -609,12 +608,12 @@ function Pipelines({ type }) {
   ];
 
   useEffect(() => {
-    if (!isLoading && count === 0 && !modalDismissed) {
+    if (initialFetchComplete && !isLoading && count === 0 && !modalDismissed) {
       setShowModal(true);
     } else if (!isLoading && count > 0) {
       setShowModal(false);
     }
-  }, [isLoading, count, modalDismissed]);
+  }, [initialFetchComplete, isLoading, count, modalDismissed]);
 
   const handleModalClose = useCallback(() => {
     setShowModal(false);
