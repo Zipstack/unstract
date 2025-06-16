@@ -63,7 +63,8 @@ jobs:
         with:
           context: .
           file: ${{ env.DOCKERFILE_PATH }}
-          push: true
+          # push: true
+          push: false  # TODO: Make true after testing is complete
           tags: |
             unstract/${{ matrix.service_name }}:${{ env.DOCKER_VERSION_TAG }}
             ${{ github.event_name == 'release' && format('unstract/{0}:latest', matrix.service_name) || '' }}

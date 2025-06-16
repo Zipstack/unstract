@@ -47,7 +47,8 @@ jobs:
           uses: docker/build-push-action@v5
           with:
             context: ./tools/classifier
-            push: true
+            # push: true
+            push: false  # TODO: Make true after testing is complete
             tags: unstract/${{github.event.inputs.service_name}}:${{ github.event.inputs.tag }}
             cache-from: type=gha
             cache-to: type=gha,mode=max
@@ -58,7 +59,8 @@ jobs:
           uses: docker/build-push-action@v5
           with:
             context: ./tools/structure
-            push: true
+            # push: true
+            push: false  # TODO: Make true after testing is complete
             tags: unstract/${{github.event.inputs.service_name}}:${{ github.event.inputs.tag }}
             cache-from: type=gha
             cache-to: type=gha,mode=max
@@ -69,7 +71,8 @@ jobs:
           uses: docker/build-push-action@v5
           with:
             context: ./tools/text_extractor
-            push: true
+            # push: true
+            push: false  # TODO: Make true after testing is complete
             tags: unstract/${{github.event.inputs.service_name}}:${{ github.event.inputs.tag }}
             cache-from: type=gha
             cache-to: type=gha,mode=max
@@ -81,7 +84,8 @@ jobs:
           with:
             context: .
             file: docker/dockerfiles/tool-sidecar.Dockerfile
-            push: true
+            # push: true
+            push: false  # TODO: Make true after testing is complete
             tags: unstract/${{github.event.inputs.service_name}}:${{ github.event.inputs.tag }}
             cache-from: type=gha
             cache-to: type=gha,mode=max
