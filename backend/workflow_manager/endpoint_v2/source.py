@@ -2,6 +2,7 @@ import fnmatch
 import logging
 import os
 import shutil
+import uuid
 from hashlib import sha256
 from io import BytesIO
 from itertools import islice
@@ -42,7 +43,7 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 from unstract.filesystem import FileStorageType, FileSystem
 from unstract.sdk.file_storage import FileStorage
-from unstract.workflow_execution.enums import LogState
+from unstract.workflow_execution.enums import LogStage, LogState
 
 logger = logging.getLogger(__name__)
 
@@ -849,6 +850,7 @@ class SourceConnector(BaseConnector):
     @classmethod
     def add_input_file_to_api_storage(
         cls,
+        pipeline_id: str,
         workflow_id: str,
         execution_id: str,
         file_objs: list[UploadedFile],
@@ -865,6 +867,16 @@ class SourceConnector(BaseConnector):
         Returns:
             dict[str, FileHash]: Dict containing file name and its corresponding hash
         """
+        org_schema = UserContext.get_organization_identifier()
+        workflow_log = WorkflowLog(
+            execution_id=execution_id,
+            log_stage=LogStage.SOURCE,
+            pipeline_id=pipeline_id,
+            organization_id=org_schema,
+        )
+        workflow_log.publish_log(
+            "Staging files in API storage for validation and processing."
+        )
         api_storage_dir = cls.get_api_storage_dir_path(
             workflow_id=workflow_id, execution_id=execution_id
         )
@@ -879,14 +891,16 @@ class SourceConnector(BaseConnector):
             mime_type = file.content_type
             logger.info(f"Detected MIME type: {mime_type} for file {file_name}")
             if not AllowedFileTypes.is_allowed(mime_type):
-                logger.info(
-                    f"Skipping file '{file_name}' due to unsupported MIME type '{mime_type}'"
-                )
+                log_message = f"Skipping file '{file_name}' to stage due to unsupported MIME type '{mime_type}'"
+                workflow_log.log_info(logger=logger, message=log_message)
+                # Generate a clearly marked temporary hash to avoid reading the file content
+                # Helps to prevent duplicate entries in file executions
+                fake_hash = f"temp-hash-{uuid.uuid4().hex}"
                 file_hash = FileHash(
                     file_path=destination_path,
                     source_connection_type=connection_type,
                     file_name=file_name,
-                    file_hash=None,
+                    file_hash=fake_hash,
                     is_executed=True,
                     file_size=file.size,
                     mime_type=mime_type,
@@ -904,9 +918,8 @@ class SourceConnector(BaseConnector):
 
             # Skip duplicate files
             if file_hash in unique_file_hashes:
-                logger.info(
-                    f"[Matched Files] Skipping execution of duplicate file: {file_name}"
-                )
+                log_message = f"Skipping file '{file_name}' — duplicate detected within the current request. Already staged for processing."
+                workflow_log.log_info(logger=logger, message=log_message)
                 continue
             unique_file_hashes.add(file_hash)
 
