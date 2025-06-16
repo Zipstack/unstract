@@ -47,21 +47,60 @@ jobs:
         id: set-tag
         run: echo "DOCKER_VERSION_TAG=${{ github.event.release.tag_name || github.event.inputs.tag }}" >> $GITHUB_ENV
 
-      # Find the Dockerfile path for the current service
-      - name: Set Dockerfile path
+      # Find the Dockerfile path and context for the current service from docker-compose.build.yaml
+      - name: Set Dockerfile path and context
         id: dockerfile-path
         run: |
-          if [ -f "./docker/dockerfiles/${{ matrix.service_name }}.Dockerfile" ]; then
-            echo "DOCKERFILE_PATH=./docker/dockerfiles/${{ matrix.service_name }}.Dockerfile" >> $GITHUB_ENV
-          else
+          # Use docker compose config to get the full configuration
+          echo "Getting configuration for service: ${{ matrix.service_name }}"
+          CONFIG=$(VERSION=${{ env.DOCKER_VERSION_TAG }} docker compose -f ./docker/docker-compose.build.yaml config)
+
+          # Check if service exists in the config
+          if ! echo "$CONFIG" | grep -q "^  ${{ matrix.service_name }}:"; then
+            echo "Service ${{ matrix.service_name }} not found in docker-compose.build.yaml" && exit 1
+          fi
+
+          # Extract the dockerfile path for the current service
+          DOCKERFILE=$(echo "$CONFIG" | grep -A 10 "^  ${{ matrix.service_name }}:" | grep "dockerfile:" | head -n 1 | awk '{print $2}')
+
+          # Extract the context for the current service
+          CONTEXT=$(echo "$CONFIG" | grep -A 10 "^  ${{ matrix.service_name }}:" | grep "context:" | head -n 1 | awk '{print $2}')
+
+          if [ -z "$DOCKERFILE" ]; then
             echo "Could not find Dockerfile for ${{ matrix.service_name }}" && exit 1
           fi
+
+          if [ -z "$CONTEXT" ]; then
+            echo "Could not find context for ${{ matrix.service_name }}, using default context '.'"
+            CONTEXT="."
+          fi
+
+          # If context is ".." (parent directory), we need to adjust the dockerfile path
+          if [ "$CONTEXT" = ".." ]; then
+            # The dockerfile path is already relative to the repository root
+            echo "DOCKERFILE_PATH=$DOCKERFILE" >> $GITHUB_ENV
+            echo "CONTEXT_PATH=." >> $GITHUB_ENV
+          else
+            # Need to combine context and dockerfile path
+            # If dockerfile is relative to context (starts with ./)
+            if [[ "$DOCKERFILE" == ./* ]]; then
+              # Remove ./ prefix from dockerfile path
+              DOCKERFILE_REL=${DOCKERFILE#./}
+              echo "DOCKERFILE_PATH=$CONTEXT/$DOCKERFILE_REL" >> $GITHUB_ENV
+            else
+              # Dockerfile is specified with absolute path from repo root
+              echo "DOCKERFILE_PATH=$DOCKERFILE" >> $GITHUB_ENV
+            fi
+            echo "CONTEXT_PATH=$CONTEXT" >> $GITHUB_ENV
+          fi
+
+          echo "Using Dockerfile: $DOCKERFILE with context: $CONTEXT"
 
       # Build and push using BuildKit cache
       - name: Build and push image
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: ${{ env.CONTEXT_PATH }}
           file: ${{ env.DOCKERFILE_PATH }}
           # push: true
           push: false  # TODO: Make true after testing is complete
