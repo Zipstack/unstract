@@ -27,26 +27,47 @@ jobs:
         with:
           ref: ${{ github.event.release.tag_name }}
 
-
       - name: Checkout code for branch
         if: github.event_name != 'release'
         uses: actions/checkout@v4
 
+      # Set up Docker Buildx for better caching
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
+      # Log in to Docker Hub
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push images
-        working-directory: ./docker
+      # Set version tag based on event type
+      - name: Set version tag
+        id: set-tag
+        run: echo "DOCKER_VERSION_TAG=${{ github.event.release.tag_name || github.event.inputs.tag }}" >> $GITHUB_ENV
+
+      # Find the Dockerfile path for the current service
+      - name: Set Dockerfile path
+        id: dockerfile-path
         run: |
-          DOCKER_VERSION_TAG=${{ github.event.release.tag_name  || github.event.inputs.tag}}
-          VERSION=$DOCKER_VERSION_TAG docker compose -f docker-compose.build.yaml build --no-cache ${{ matrix.service_name }}
-          docker push unstract/${{ matrix.service_name }}:$DOCKER_VERSION_TAG
-          if [ "${{ github.event_name }}" = "release" ]; then
-            echo "This workflow was triggered by a release event."
-            docker tag unstract/${{ matrix.service_name }}:$DOCKER_VERSION_TAG unstract/${{ matrix.service_name }}:latest
-            docker push unstract/${{ matrix.service_name }}:latest
+          if [ -f "./docker/dockerfiles/${{ matrix.service_name }}.Dockerfile" ]; then
+            echo "DOCKERFILE_PATH=./docker/dockerfiles/${{ matrix.service_name }}.Dockerfile" >> $GITHUB_ENV
+          else
+            echo "Could not find Dockerfile for ${{ matrix.service_name }}" && exit 1
           fi
+
+      # Build and push using BuildKit cache
+      - name: Build and push image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ env.DOCKERFILE_PATH }}
+          push: true
+          tags: |
+            unstract/${{ matrix.service_name }}:${{ env.DOCKER_VERSION_TAG }}
+            ${{ github.event_name == 'release' && format('unstract/{0}:latest', matrix.service_name) || '' }}
+          build-args: |
+            VERSION=${{ env.DOCKER_VERSION_TAG }}
+          cache-from: type=gha,scope=${{ matrix.service_name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service_name }}
