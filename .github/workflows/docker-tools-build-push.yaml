@@ -65,8 +65,7 @@ jobs:
           with:
             context: ${{ steps.build-config.outputs.context }}
             file: ${{ steps.build-config.outputs.dockerfile }}
-            # push: true
-            push: false  # Remove after testing
+            push: true
             tags: unstract/${{ github.event.inputs.service_name }}:${{ github.event.inputs.tag }}
             cache-from: type=gha
             cache-to: type=gha,mode=max

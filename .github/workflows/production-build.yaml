@@ -74,9 +74,7 @@ jobs:
         with:
           files: ./docker/docker-compose.build.yaml
           targets: ${{ matrix.service_name }}
-          # push: true
-          push: false  # Remove after testing
-
+          push: true
           # Context resolved along with docker-compose.build.yaml, ensure resolved path is repo root
           set: |
             *.tags=${{ env.IMAGE_TAGS }}
