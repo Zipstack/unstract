@@ -193,7 +193,7 @@ setup_env() {
     # Skip services that are spawned at runtime
     for ignore_service in "${spawned_services[@]}"; do
       if [[ "$service" == "$ignore_service" ]]; then
-        echo -e "Skipped env for ${blue_text}$service${default_text} as it's spawned at runtime"
+        echo -e "Skipped env for ${blue_text}$service${default_text} as it's generated at runtime"
         continue 2
       fi
     done
