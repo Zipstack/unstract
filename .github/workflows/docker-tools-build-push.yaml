@@ -41,47 +41,32 @@ jobs:
             username: ${{ secrets.DOCKERHUB_USERNAME }}
             password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-        # Set up cache for tool-classifier
-        - name: Build and push tool-classifier
-          if: github.event.inputs.service_name=='tool-classifier'
-          uses: docker/build-push-action@v5
-          with:
-            context: ./tools/classifier
-            push: true
-            tags: unstract/${{github.event.inputs.service_name}}:${{ github.event.inputs.tag }}
-            cache-from: type=gha
-            cache-to: type=gha,mode=max
+        # Define build configuration based on service name
+        - name: Set build configuration
+          id: build-config
+          run: |
+            if [ "${{ github.event.inputs.service_name }}" == "tool-classifier" ]; then
+              echo "context=./tools/classifier" >> $GITHUB_OUTPUT
+              echo "dockerfile=" >> $GITHUB_OUTPUT
+            elif [ "${{ github.event.inputs.service_name }}" == "tool-structure" ]; then
+              echo "context=./tools/structure" >> $GITHUB_OUTPUT
+              echo "dockerfile=" >> $GITHUB_OUTPUT
+            elif [ "${{ github.event.inputs.service_name }}" == "tool-text-extractor" ]; then
+              echo "context=./tools/text_extractor" >> $GITHUB_OUTPUT
+              echo "dockerfile=" >> $GITHUB_OUTPUT
+            elif [ "${{ github.event.inputs.service_name }}" == "tool-sidecar" ]; then
+              echo "context=." >> $GITHUB_OUTPUT
+              echo "dockerfile=docker/dockerfiles/tool-sidecar.Dockerfile" >> $GITHUB_OUTPUT
+            fi
 
-        # Set up cache for tool-structure
-        - name: Build and push tool-structure
-          if: github.event.inputs.service_name=='tool-structure'
+        # Build and push Docker image
+        - name: Build and push ${{ github.event.inputs.service_name }}
           uses: docker/build-push-action@v5
           with:
-            context: ./tools/structure
-            push: true
-            tags: unstract/${{github.event.inputs.service_name}}:${{ github.event.inputs.tag }}
-            cache-from: type=gha
-            cache-to: type=gha,mode=max
-
-        # Set up cache for tool-text-extractor
-        - name: Build and push tool-text-extractor
-          if: github.event.inputs.service_name=='tool-text-extractor'
-          uses: docker/build-push-action@v5
-          with:
-            context: ./tools/text_extractor
-            push: true
-            tags: unstract/${{github.event.inputs.service_name}}:${{ github.event.inputs.tag }}
-            cache-from: type=gha
-            cache-to: type=gha,mode=max
-
-        # Set up cache for tool-sidecar
-        - name: Build and push tool-sidecar
-          if: github.event.inputs.service_name=='tool-sidecar'
-          uses: docker/build-push-action@v5
-          with:
-            context: .
-            file: docker/dockerfiles/tool-sidecar.Dockerfile
-            push: true
-            tags: unstract/${{github.event.inputs.service_name}}:${{ github.event.inputs.tag }}
+            context: ${{ steps.build-config.outputs.context }}
+            file: ${{ steps.build-config.outputs.dockerfile }}
+            # push: true
+            push: false  # Remove after testing
+            tags: unstract/${{ github.event.inputs.service_name }}:${{ github.event.inputs.tag }}
             cache-from: type=gha
             cache-to: type=gha,mode=max
