@@ -67,6 +67,8 @@ jobs:
       # Build and push using Docker Bake
       - name: Build and push image
         uses: docker/bake-action@v5
+        env:
+          VERSION: ${{ env.DOCKER_VERSION_TAG }}
         with:
           files: ./docker/docker-compose.build.yaml
           targets: ${{ matrix.service_name }}
@@ -77,3 +79,5 @@ jobs:
             *.args.VERSION=${{ env.DOCKER_VERSION_TAG }}
             *.cache-from=type=gha,scope=${{ matrix.service_name }}
             *.cache-to=type=gha,mode=max,scope=${{ matrix.service_name }}
+            # Context resolved along with docker-compose.build.yaml, ensure resolved path is repo root
+            ${{ matrix.service_name }}.context=.
