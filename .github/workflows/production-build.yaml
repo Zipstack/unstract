@@ -60,8 +60,10 @@ jobs:
           # Set latest tag for releases
           if [ "${{ github.event_name }}" = "release" ]; then
             echo "latest=true" >> $GITHUB_OUTPUT
+            echo "IMAGE_TAGS=unstract/${{ matrix.service_name }}:${{ env.DOCKER_VERSION_TAG }},unstract/${{ matrix.service_name }}:latest" >> $GITHUB_ENV
           else
             echo "latest=false" >> $GITHUB_OUTPUT
+            echo "IMAGE_TAGS=unstract/${{ matrix.service_name }}:${{ env.DOCKER_VERSION_TAG }}" >> $GITHUB_ENV
           fi
 
       # Build and push using Docker Bake
@@ -75,7 +77,7 @@ jobs:
           # push: true
           push: false  # Remove after testing
           set: |
-            *.tags=unstract/${{ matrix.service_name }}:${{ env.DOCKER_VERSION_TAG }}${{ steps.tags.outputs.latest == 'true' && ',unstract/' || '' }}${{ steps.tags.outputs.latest == 'true' && matrix.service_name || '' }}${{ steps.tags.outputs.latest == 'true' && ':latest' || '' }}
+            *.tags=${{ env.IMAGE_TAGS }}
             *.args.VERSION=${{ env.DOCKER_VERSION_TAG }}
             *.cache-from=type=gha,scope=${{ matrix.service_name }}
             *.cache-to=type=gha,mode=max,scope=${{ matrix.service_name }}
