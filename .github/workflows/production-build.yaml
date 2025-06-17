@@ -76,10 +76,11 @@ jobs:
           targets: ${{ matrix.service_name }}
           # push: true
           push: false  # Remove after testing
+
+          # Context resolved along with docker-compose.build.yaml, ensure resolved path is repo root
           set: |
             *.tags=${{ env.IMAGE_TAGS }}
+            *.context=.
             *.args.VERSION=${{ env.DOCKER_VERSION_TAG }}
             *.cache-from=type=gha,scope=${{ matrix.service_name }}
             *.cache-to=type=gha,mode=max,scope=${{ matrix.service_name }}
-            # Context resolved along with docker-compose.build.yaml, ensure resolved path is repo root
-            ${{ matrix.service_name }}.context=.
