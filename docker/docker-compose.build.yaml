@@ -14,6 +14,16 @@ services:
     build:
       dockerfile: docker/dockerfiles/runner.Dockerfile
       context: ..
+  tool-sidecar:
+    image: unstract/tool-sidecar:${VERSION}
+    build:
+      dockerfile: docker/dockerfiles/tool-sidecar.Dockerfile
+      context: ..
+  tool-structure:
+    image: unstract/tool-structure:${VERSION}
+    build:
+      dockerfile: ./Dockerfile
+      context: ../tools/structure/
   platform-service:
     image: unstract/platform-service:${VERSION}
     build:
@@ -29,32 +39,3 @@ services:
     build:
       dockerfile: docker/dockerfiles/x2text.Dockerfile
       context: ..
-  # Tools
-  tool-sidecar:
-    image: unstract/tool-sidecar:${VERSION}
-    build:
-      dockerfile: docker/dockerfiles/tool-sidecar.Dockerfile
-      context: ..
-    profiles:
-      - tools
-  tool-structure:
-    image: unstract/tool-structure:${VERSION}
-    build:
-      dockerfile: tools/structure/Dockerfile
-      context: ..
-    profiles:
-      - tools
-  tool-text-extractor:
-    image: unstract/tool-text-extractor:${VERSION}
-    build:
-      dockerfile: tools/text_extractor/Dockerfile
-      context: ..
-    profiles:
-      - tools
-  tool-classifier:
-    image: unstract/tool-classifier:${VERSION}
-    build:
-      dockerfile: tools/classifier/Dockerfile
-      context: ..
-    profiles:
-      - tools

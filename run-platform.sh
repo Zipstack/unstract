@@ -190,6 +190,14 @@ setup_env() {
   DEFAULT_AUTH_KEY="unstract"
 
   for service in "${services[@]}"; do
+    # Skip services that are spawned at runtime
+    for ignore_service in "${spawned_services[@]}"; do
+      if [[ "$service" == "$ignore_service" ]]; then
+        echo -e "Skipped env for ${blue_text}$service${default_text} as it's generated at runtime"
+        continue 2
+      fi
+    done
+
     sample_env_path="$script_dir/$service/sample.env"
     env_path="$script_dir/$service/.env"
 
@@ -323,6 +331,7 @@ script_dir=$(dirname "$(readlink -f "$BASH_SOURCE")")
 first_setup=false
 # Extract service names from docker compose file
 services=($(VERSION=$opt_version $docker_compose_cmd -f "$script_dir/docker/docker-compose.build.yaml" config --services))
+spawned_services=("tool-structure" "tool-sidecar")
 current_version=""
 target_branch=""
 

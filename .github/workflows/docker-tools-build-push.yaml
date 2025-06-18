@@ -41,30 +41,31 @@ jobs:
             username: ${{ secrets.DOCKERHUB_USERNAME }}
             password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-        # Validate service exists in docker-compose.build.yaml
-        - name: Validate service exists
+        # Define build configuration based on service name
+        - name: Set build configuration
+          id: build-config
           run: |
-            if ! grep -q "${{ github.event.inputs.service_name }}:" ./docker/docker-compose.build.yaml; then
-              echo "Error: Service ${{ github.event.inputs.service_name }} not found in docker-compose.build.yaml"
-              exit 1
+            if [ "${{ github.event.inputs.service_name }}" == "tool-classifier" ]; then
+              echo "context=./tools/classifier" >> $GITHUB_OUTPUT
+              echo "dockerfile=" >> $GITHUB_OUTPUT
+            elif [ "${{ github.event.inputs.service_name }}" == "tool-structure" ]; then
+              echo "context=./tools/structure" >> $GITHUB_OUTPUT
+              echo "dockerfile=" >> $GITHUB_OUTPUT
+            elif [ "${{ github.event.inputs.service_name }}" == "tool-text-extractor" ]; then
+              echo "context=./tools/text_extractor" >> $GITHUB_OUTPUT
+              echo "dockerfile=" >> $GITHUB_OUTPUT
+            elif [ "${{ github.event.inputs.service_name }}" == "tool-sidecar" ]; then
+              echo "context=." >> $GITHUB_OUTPUT
+              echo "dockerfile=docker/dockerfiles/tool-sidecar.Dockerfile" >> $GITHUB_OUTPUT
             fi
 
-        # Set version tag for Docker images
-        - name: Set version tag
-          run: echo "DOCKER_VERSION_TAG=${{ github.event.inputs.tag }}" >> $GITHUB_ENV
-
-        # Build and push using Docker Bake
-        - name: Build and push using Docker Bake
-          uses: docker/bake-action@v5
-          env:
-            VERSION: ${{ github.event.inputs.tag }}
+        # Build and push Docker image
+        - name: Build and push ${{ github.event.inputs.service_name }}
+          uses: docker/build-push-action@v5
           with:
-            files: ./docker/docker-compose.build.yaml
-            targets: ${{ github.event.inputs.service_name }}
-            # push: true
-            push: false  # Remove after testing
-            set: |
-              *.cache-from=type=gha,scope=${{ github.event.inputs.service_name }}
-              *.cache-to=type=gha,mode=max,scope=${{ github.event.inputs.service_name }}
-              *.context=.
-              *.args.PROFILE=tools
+            context: ${{ steps.build-config.outputs.context }}
+            file: ${{ steps.build-config.outputs.dockerfile }}
+            push: true
+            tags: unstract/${{ github.event.inputs.service_name }}:${{ github.event.inputs.tag }}
+            cache-from: type=gha
+            cache-to: type=gha,mode=max
