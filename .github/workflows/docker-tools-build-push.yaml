@@ -66,4 +66,5 @@ jobs:
             set: |
               *.cache-from=type=gha,scope=${{ github.event.inputs.service_name }}
               *.cache-to=type=gha,mode=max,scope=${{ github.event.inputs.service_name }}
+              *.context=.
               *.args.PROFILE=tools

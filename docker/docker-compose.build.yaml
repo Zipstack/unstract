@@ -40,21 +40,21 @@ services:
   tool-structure:
     image: unstract/tool-structure:${VERSION}
     build:
-      dockerfile: ./Dockerfile
-      context: ../tools/structure/
+      dockerfile: tools/structure/Dockerfile
+      context: ..
     profiles:
       - tools
   tool-text-extractor:
     image: unstract/tool-text-extractor:${VERSION}
     build:
-      dockerfile: ./Dockerfile
-      context: ../tools/text_extractor/
+      dockerfile: tools/text_extractor/Dockerfile
+      context: ..
     profiles:
       - tools
   tool-classifier:
     image: unstract/tool-classifier:${VERSION}
     build:
-      dockerfile: ./Dockerfile
-      context: ../tools/classifier/
+      dockerfile: tools/classifier/Dockerfile
+      context: ..
     profiles:
       - tools
