@@ -706,7 +706,6 @@ class FileExecutionTasks:
         )
         if cls._is_new_file(
             file_history=file_history,
-            source=source,
             file_hash=file_hash,
             workflow=workflow,
         ):
@@ -749,7 +748,6 @@ class FileExecutionTasks:
     def _is_new_file(
         cls,
         file_history: FileHistory,
-        source: SourceConnector,
         file_hash: FileHash,
         workflow: Workflow,
     ) -> bool:
@@ -758,8 +756,8 @@ class FileExecutionTasks:
         if not file_history or not file_history.is_completed():
             return True
 
-        if source.use_content_deduplication_only:
-            return False
+        # Note: To enforce content-only deduplication (ignoring file path), use the `source.use_content_deduplication_only` flag
+        # If enabled, skip the file path comparison and return False here to treat the file as already processed.
 
         if file_history.file_path and file_hash.file_path != file_history.file_path:
             logger.info(

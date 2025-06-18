@@ -95,7 +95,6 @@ class SourceConnector(BaseConnector):
         self.hash_value_of_file_content: str | None = None
         self.workflow_log = workflow_log
         self.use_file_history = use_file_history
-        self.use_content_deduplication_only = False
 
     def _get_endpoint_for_workflow(
         self,
@@ -531,10 +530,8 @@ class SourceConnector(BaseConnector):
         if not file_history or not file_history.is_completed():
             return True
 
-        # If content deduplication is enforced, skip processing regardless of file path
-        if self.use_content_deduplication_only:
-            self._log_file_skipped(current_file_path)
-            return False
+        # Note: To enforce content-only deduplication (ignoring file path), introduce a
+        # `use_content_deduplication_only` flag. If enabled, apply the check here and return False accordingly.
 
         # Compare file paths
         if file_history.file_path and file_history.file_path != current_file_path:
@@ -563,6 +560,8 @@ class SourceConnector(BaseConnector):
     ) -> FileHistory | None:
         """Retrieve file history using provider UUID or legacy cache key."""
         provider_file_uuid = file_hash.provider_file_uuid
+        # Note: For content-only deduplication, use the `use_content_deduplication_only` flag to fetch file history
+        # without including file path as a filter.
 
         if provider_file_uuid:
             logger.info(f"Checking file history for provider UUID: {provider_file_uuid}")
