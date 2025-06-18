@@ -445,6 +445,7 @@ class FileExecutionTasks:
             # History Check Phase
             if early_result := cls._check_processing_history(
                 destination,
+                source,
                 workflow_execution.workflow,
                 content_hash,
                 file_hash,
@@ -688,6 +689,7 @@ class FileExecutionTasks:
     def _check_processing_history(
         cls,
         destination: DestinationConnector,
+        source: SourceConnector,
         workflow: Workflow,
         content_hash: str,
         file_hash: FileHash,
@@ -700,14 +702,21 @@ class FileExecutionTasks:
 
         # Check for existing file processing history by content hash
         file_history = FileHistoryHelper.get_file_history(
-            workflow=workflow, cache_key=content_hash
+            workflow=workflow, cache_key=content_hash, file_path=file_hash.file_path
         )
-        if not file_history:
+        if cls._is_new_file(
+            file_history=file_history,
+            file_hash=file_hash,
+            workflow=workflow,
+        ):
+            logger.info(
+                f"File '{file_hash.file_path}' is treated as *new* in workflow '{workflow}'."
+            )
             return None
 
         workflow_log.log_info(
             logger=logger,
-            message=f"Skipping duplicate file: '{file_hash.file_name}' in workflow '{workflow}' (content hash match)",
+            message=f"Skipping duplicate file: '{file_hash.file_path}' in workflow '{workflow}' (content hash match)",
         )
 
         # Check for provider_file_uuid consistency
@@ -734,6 +743,30 @@ class FileExecutionTasks:
             result=file_history.result,
             metadata=file_history.metadata,
         )
+
+    @classmethod
+    def _is_new_file(
+        cls,
+        file_history: FileHistory,
+        file_hash: FileHash,
+        workflow: Workflow,
+    ) -> bool:
+        """Check if the file is new based on file history and source configuration."""
+        # No history or incomplete history means the file is new
+        if not file_history or not file_history.is_completed():
+            return True
+
+        # Note: To enforce content-only deduplication (ignoring file path), use the `source.use_content_deduplication_only` flag
+        # If enabled, skip the file path comparison and return False here to treat the file as already processed.
+
+        if file_history.file_path and file_hash.file_path != file_history.file_path:
+            logger.info(
+                f"[File Path Mismatch] Existing file path '{file_history.file_path}' does not match expected path "
+                f"'{file_hash.file_path}' for file '{file_hash.file_name}' in workflow '{workflow}'. Marking as new."
+            )
+            return True
+
+        return False
 
     @classmethod
     def _execute_workflow_steps(
@@ -859,9 +892,10 @@ class FileExecutionTasks:
 
         try:
             if destination.use_file_history:
+                file_path = file_hash.file_path if not destination.is_api else None
                 # Collect metadata from file history if available
                 file_history = FileHistoryHelper.get_file_history(
-                    workflow=workflow, cache_key=file_hash.file_hash
+                    workflow=workflow, cache_key=file_hash.file_hash, file_path=file_path
                 )
             else:
                 file_history = None
@@ -886,12 +920,12 @@ class FileExecutionTasks:
                 processing_error=processing_error,
             ):
                 FileHistoryHelper.create_file_history(
+                    is_api=destination.is_api,
                     file_hash=file_hash,
                     workflow=workflow,
                     status=ExecutionStatus.COMPLETED,
                     result=output_result,
                     metadata=execution_metadata,
-                    file_name=file_hash.file_name,
                 )
         except Exception as e:
             error_msg = f"Final output processing failed: {str(e)}"
