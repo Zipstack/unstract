@@ -49,10 +49,10 @@ class CostCalculationHelper:
 
         if not self.model_token_data:
             return json.loads(format_float_positional(cost))
-        
+
         # Redirect APAC models to use US variant since cost data is unavailable for APAC
         if provider == "bedrock":
-            model_name = re.sub(r'^apac', 'us', model_name)
+            model_name = re.sub(r"^apac", "us", model_name)
 
         # Filter the model objects by model name
         filtered_models = {
