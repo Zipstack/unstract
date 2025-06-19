@@ -9,6 +9,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
+import logging
 import os
 from pathlib import Path
 from urllib.parse import urlparse
@@ -181,12 +182,20 @@ ALLOWED_HOSTS = ["*"]
 CSRF_TRUSTED_ORIGINS = [WEB_APP_ORIGIN_URL, WEB_APP_ORIGIN_URL_WITH_WILD_CARD]
 CORS_ALLOW_ALL_ORIGINS = False
 
-# Determine if OpenTelemetry trace context should be included in logs
-OTEL_TRACE_CONTEXT = (
-    " trace_id:%(otelTraceID)s span_id:%(otelSpanID)s"
-    if os.environ.get("OTEL_TRACES_EXPORTER", "none").lower() != "none"
-    else ""
-)
+# Request ID middleware settings
+LOG_REQUEST_ID_HEADER = "X-Request-ID"
+REQUEST_ID_RESPONSE_HEADER = "X-Request-ID"
+GENERATE_REQUEST_ID_IF_NOT_IN_HEADER = True
+NO_REQUEST_ID = "-"
+
+
+class OTelFieldFilter(logging.Filter):
+    def filter(self, record):
+        for attr in ["otelTraceID", "otelSpanID"]:
+            if not hasattr(record, attr):
+                setattr(record, attr, "-")
+        return True
+
 
 # Logging configuration
 LOGGING = {
@@ -194,15 +203,15 @@ LOGGING = {
     "disable_existing_loggers": False,
     "filters": {
         "request_id": {"()": "log_request_id.filters.RequestIDFilter"},
+        "otel_ids": {"()": "backend.settings.base.OTelFieldFilter"},
     },
     "formatters": {
         "enriched": {
             "format": (
                 "%(levelname)s : [%(asctime)s]"
                 "{module:%(module)s process:%(process)d "
-                "thread:%(thread)d request_id:%(request_id)s"
-                + OTEL_TRACE_CONTEXT
-                + "} :- %(message)s"
+                "thread:%(thread)d request_id:%(request_id)s "
+                "trace_id:%(otelTraceID)s span_id:%(otelSpanID)s} :- %(message)s"
             ),
         },
         "verbose": {
@@ -218,7 +227,7 @@ LOGGING = {
         "console": {
             "level": DEFAULT_LOG_LEVEL,  # Set the desired logging level here
             "class": "logging.StreamHandler",
-            "filters": ["request_id"],
+            "filters": ["request_id", "otel_ids"],
             "formatter": "enriched",
         },
     },
@@ -228,6 +237,7 @@ LOGGING = {
         # Set the desired logging level here as well
     },
 }
+
 SHARED_APPS = (
     # Multitenancy
     # "django_tenants",
@@ -532,11 +542,6 @@ SOCIAL_AUTH_GOOGLE_OAUTH2_AUTH_EXTRA_ARGUMENTS = {
 }
 SOCIAL_AUTH_GOOGLE_OAUTH2_USE_UNIQUE_USER_ID = True
 
-# Request ID middleware settings
-LOG_REQUEST_ID_HEADER = "X-Request-ID"
-REQUEST_ID_RESPONSE_HEADER = "X-Request-ID"
-GENERATE_REQUEST_ID_IF_NOT_IN_HEADER = True
-NO_REQUEST_ID = "N/A"
 
 # Always keep this line at the bottom of the file.
 if missing_settings:
