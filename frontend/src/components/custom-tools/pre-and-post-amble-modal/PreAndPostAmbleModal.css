@@ -29,6 +29,12 @@
 
 .text-area-wrapper {
     position: relative;
+    margin-bottom: 5px;
+}
+
+/* Fix for text area resizing issues */
+.text-area-wrapper .ant-input-textarea-show-count::after {
+    content: none !important; /* Remove character count if present */
 }
 
 .expand-button {
@@ -64,7 +70,6 @@
 
 .expanded-modal-body .ant-modal-body {
     padding: 0;
-    max-height: 70vh;
     overflow-y: auto;
 }
 
@@ -73,9 +78,11 @@
 .expanded-textarea {
     width: 100%;
     margin-bottom: 20px;
-    height: auto; /* Let content determine height */
-    min-height: 300px; /* Minimum height */
-    overflow-y: visible; /* Let the parent container handle scrolling */
+    height: auto !important; /* Let content determine height */
+    min-height: 80vh !important; /* Minimum height */
+    overflow-y: auto !important; /* Enable scrolling when needed */
+    resize: none !important; /* Prevent manual resizing */
+    transition: none !important; /* Disable transitions to prevent jumping */
 }
 
 .modal-footer {

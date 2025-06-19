@@ -34,11 +34,6 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
       setTitle("Postamble Settings");
       setText(details?.postamble || "");
     }
-
-    // Adjust text area height after content is set
-    setTimeout(() => {
-      adjustTextAreaHeight();
-    }, 0);
   }, [type, details]);
 
   const setDefaultPrompt = () => {
@@ -47,32 +42,10 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
     } else if (type === fieldNames.postamble) {
       setText(DefaultPrompts.postamble);
     }
-
-    // Adjust height after setting default text
-    setTimeout(() => {
-      adjustTextAreaHeight();
-    }, 0);
-  };
-
-  const adjustTextAreaHeight = () => {
-    if (textAreaRef.current) {
-      const textArea = textAreaRef.current.resizableTextArea.textArea;
-      // Reset height to calculate scroll height properly
-      textArea.style.height = "auto";
-      // Set new height based on scroll height (with min/max constraints)
-      const minHeight = 80; // 80px is approx 4 rows
-      const maxHeight = 300; // Max height before scrolling
-      const newHeight = Math.min(
-        Math.max(textArea.scrollHeight, minHeight),
-        maxHeight
-      );
-      textArea.style.height = `${newHeight}px`;
-    }
   };
 
   const handleTextChange = (e) => {
     setText(e.target.value);
-    adjustTextAreaHeight();
   };
 
   const toggleExpandModal = () => {
