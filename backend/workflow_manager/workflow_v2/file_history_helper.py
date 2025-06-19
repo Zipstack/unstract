@@ -55,7 +55,7 @@ class FileHistoryHelper:
             if file_path:
                 # Legacy fallback: file_path was not stored in older file history records; fallback ensures backward compatibility.
                 return cls._fallback_file_history_lookup(
-                    workflow=workflow, filters=filters, cache_key=cache_key
+                    workflow=workflow, filters=filters
                 )
             logger.info(
                 f"File history not found for cache key: {cache_key}, "
@@ -66,10 +66,7 @@ class FileHistoryHelper:
 
     @classmethod
     def _fallback_file_history_lookup(
-        cls,
-        workflow: Workflow,
-        filters: Q,
-        cache_key: str | None,
+        cls, workflow: Workflow, filters: Q
     ) -> FileHistory | None:
         """Handle fallback for workflows where file_path was not stored (e.g., API deployments or older records)."""
         try:
@@ -85,13 +82,12 @@ class FileHistoryHelper:
                 file_history.file_path = file_execution.file_path
                 file_history.save(update_fields=["file_path"])
                 logger.info(
-                    f"[FileHistory] Backfilled file_path {file_history.file_path} for file history (workflow={workflow}, cache_key={cache_key})"
+                    f"[FileHistory] Backfilled file_path {file_history.file_path} for file history (workflow={workflow}, cache_key={file_history.cache_key} provider_file_uuid={file_history.provider_file_uuid})"
                 )
             return file_history
         except FileHistory.DoesNotExist:
             logger.info(
-                f"File history not found for cache key: {cache_key}, "
-                f"workflow={workflow}"
+                f"File history not found with filter {filters} for workflow={workflow}"
             )
             return None
 
@@ -107,15 +103,25 @@ class FileHistoryHelper:
         base_conditions = Q(workflow_execution__workflow=workflow)
         content_conditions = Q()
         if cache_key:
-            content_conditions |= Q(cache_key=cache_key)
-        if provider_file_uuid:
+            content_conditions |= Q(file_hash=cache_key)
+        elif provider_file_uuid:
             content_conditions |= Q(provider_file_uuid=provider_file_uuid)
+        else:
+            logger.info(
+                f"File execution fetch failed due to missing cache_key and provider_file_uuid for workflow={workflow}"
+            )
+            return None
 
         # Filter file executions based on conditions
         conditions = base_conditions & content_conditions
         file_execution = WorkflowFileExecution.objects.filter(conditions).first()
         if file_execution:
             return file_execution
+        logger.info(
+            f"File execution not found for cache key: {cache_key}, "
+            f"provider_file_uuid: {provider_file_uuid}, "
+            f"workflow={workflow}"
+        )
         return None
 
     @staticmethod
