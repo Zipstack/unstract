@@ -80,8 +80,7 @@ jobs:
         with:
           files: ./docker/docker-compose.build.yaml
           targets: ${{ matrix.service_name }}
-          # push: true
-          push: false  # Make true after testing
+          push: true
           set: |
             *.tags=${{ env.SEMVER_IMAGE_TAG }}
             ${{ env.LATEST_IMAGE_TAG && format('*.tags={0}', env.LATEST_IMAGE_TAG) || '' }}
