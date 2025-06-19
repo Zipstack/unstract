@@ -58,12 +58,12 @@ jobs:
           fi
 
           # Set latest tag for releases
-          if [ "${{ github.event_name }}" = "release" ]; then
-            echo "latest=true" >> $GITHUB_OUTPUT
-            echo "IMAGE_TAGS=unstract/${{ matrix.service_name }}:${{ env.DOCKER_VERSION_TAG }},unstract/${{ matrix.service_name }}:latest" >> $GITHUB_ENV
+          if [ "${{ github.event_name }}" = "release" ] && [ "${{ github.event.release.prerelease }}" != "true" ]; then
+            echo "SEMVER_IMAGE_TAG=unstract/${{ matrix.service_name }}:${{ env.DOCKER_VERSION_TAG }}" >> $GITHUB_ENV
+            echo "LATEST_IMAGE_TAG=unstract/${{ matrix.service_name }}:latest" >> $GITHUB_ENV
           else
-            echo "latest=false" >> $GITHUB_OUTPUT
-            echo "IMAGE_TAGS=unstract/${{ matrix.service_name }}:${{ env.DOCKER_VERSION_TAG }}" >> $GITHUB_ENV
+            echo "SEMVER_IMAGE_TAG=unstract/${{ matrix.service_name }}:${{ env.DOCKER_VERSION_TAG }}" >> $GITHUB_ENV
+            echo "LATEST_IMAGE_TAG=" >> $GITHUB_ENV
           fi
 
       # Build and push using Docker Bake
@@ -75,9 +75,9 @@ jobs:
           files: ./docker/docker-compose.build.yaml
           targets: ${{ matrix.service_name }}
           push: true
-          # Context resolved along with docker-compose.build.yaml, ensure resolved path is repo root
           set: |
-            *.tags=${{ env.IMAGE_TAGS }}
+            *.tags=${{ env.SEMVER_IMAGE_TAG }}
+            ${{ env.LATEST_IMAGE_TAG && format('*.tags={0}', env.LATEST_IMAGE_TAG) || '' }}
             *.context=.
             *.args.VERSION=${{ env.DOCKER_VERSION_TAG }}
             *.cache-from=type=gha,scope=${{ matrix.service_name }}
