@@ -255,7 +255,7 @@ def main():
     # Needed for Kombu (used from unstract-core)
     celery_broker_base_url = os.getenv(Env.CELERY_BROKER_BASE_URL)
     celery_broker_user = os.getenv(Env.CELERY_BROKER_USER)
-    celery_broker_pass = os.getenv(Env.CELERY_BROKER_PASS)
+    celery_broker_pass = os.getenv(Env.CELERY_BROKER_PASS, "")
 
     # Get execution parameters from environment
     tool_instance_id = os.getenv(Env.TOOL_INSTANCE_ID)
