@@ -27,12 +27,14 @@ class WorkflowExecutionLogViewSet(viewsets.ModelViewSet):
     filterset_class = ExecutionLogFilter
 
     def get_queryset(self) -> QuerySet:
+        """Get execution logs for a workflow execution."""
         # Get the execution_id:pk from the URL path
         execution_id = self.kwargs.get("pk")
 
-        # Query by execution_id for backward compatiblity
-        # Remove filter after execution_id is removed
-        queryset = ExecutionLog.objects.filter(
+        # Return all logs and let the filter handle the execution_id filtering
+        queryset = ExecutionLog.objects.all().order_by("event_time")
+
+        # Apply the execution_id filter directly
+        return queryset.filter(
             Q(wf_execution_id=execution_id) | Q(execution_id=execution_id)
         )
-        return queryset
