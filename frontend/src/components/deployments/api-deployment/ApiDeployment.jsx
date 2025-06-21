@@ -32,6 +32,7 @@ import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
 import { NotificationModal } from "../../pipelines-or-deployments/notification-modal/NotificationModal.jsx";
 import { usePromptStudioService } from "../../api/prompt-studio-service";
+import { useInitialFetchCount } from "../../../hooks/usePromptStudioFetchCount";
 
 function ApiDeployment() {
   const { sessionDetails } = useSessionStore();
@@ -62,9 +63,7 @@ function ApiDeployment() {
   const [modalDismissed, setModalDismissed] = useState(false);
   const { getPromptStudioCount } = usePromptStudioService();
 
-  useEffect(() => {
-    fetchCount(getPromptStudioCount);
-  }, [fetchCount]);
+  const initialFetchComplete = useInitialFetchCount(fetchCount, getPromptStudioCount);
 
   const handleFetchLogs = (page, pageSize) => {
     fetchExecutionLogs(
@@ -387,12 +386,12 @@ function ApiDeployment() {
   ];
 
   useEffect(() => {
-    if (!isLoading && count === 0 && !modalDismissed) {
+    if (initialFetchComplete && !isLoading && count === 0 && !modalDismissed) {
       setShowModal(true);
     } else if (!isLoading && count > 0) {
       setShowModal(false);
     }
-  }, [isLoading, count, modalDismissed]);
+  }, [initialFetchComplete, isLoading, count, modalDismissed]);
 
   const handleModalClose = useCallback(() => {
     setShowModal(false);
