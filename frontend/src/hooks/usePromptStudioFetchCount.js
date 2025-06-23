@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 
 /**
  * Custom hook to fetch count and track initial fetch completion.
@@ -8,11 +8,16 @@ import { useEffect, useState, useCallback } from "react";
  */
 export function useInitialFetchCount(fetchCount, getPromptStudioCount) {
   const [initialFetchComplete, setInitialFetchComplete] = useState(false);
+  const hasFetchedRef = useRef(false);
 
   useEffect(() => {
-    fetchCount(getPromptStudioCount).finally(() => {
-      setInitialFetchComplete(true);
-    });
+    // Only fetch once and prevent re-fetching
+    if (!hasFetchedRef.current) {
+      hasFetchedRef.current = true;
+      fetchCount(getPromptStudioCount).finally(() => {
+        setInitialFetchComplete(true);
+      });
+    }
   }, [fetchCount, getPromptStudioCount]);
 
   return initialFetchComplete;
