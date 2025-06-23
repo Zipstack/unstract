@@ -22,7 +22,7 @@ import {
   Typography,
 } from "antd";
 import PropTypes from "prop-types";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import cronstrue from "cronstrue";
 
 import {
@@ -47,7 +47,10 @@ import { NotificationModal } from "../notification-modal/NotificationModal.jsx";
 import { usePromptStudioStore } from "../../../store/prompt-studio-store";
 import { PromptStudioModal } from "../../common/PromptStudioModal";
 import { usePromptStudioService } from "../../api/prompt-studio-service";
-import { useInitialFetchCount } from "../../../hooks/usePromptStudioFetchCount";
+import {
+  useInitialFetchCount,
+  usePromptStudioModal,
+} from "../../../hooks/usePromptStudioFetchCount";
 
 function Pipelines({ type }) {
   const [tableData, setTableData] = useState([]);
@@ -71,11 +74,12 @@ function Pipelines({ type }) {
     usePipelineHelper();
   const [openNotificationModal, setOpenNotificationModal] = useState(false);
   const { count, isLoading, fetchCount } = usePromptStudioStore();
-  const [showModal, setShowModal] = useState(false);
-  const [modalDismissed, setModalDismissed] = useState(false);
   const { getPromptStudioCount } = usePromptStudioService();
 
-  const initialFetchComplete = useInitialFetchCount(fetchCount, getPromptStudioCount);
+  const initialFetchComplete = useInitialFetchCount(
+    fetchCount,
+    getPromptStudioCount
+  );
 
   const handleFetchLogs = (page, pageSize) => {
     fetchExecutionLogs(
@@ -607,18 +611,12 @@ function Pipelines({ type }) {
     },
   ];
 
-  useEffect(() => {
-    if (initialFetchComplete && !isLoading && count === 0 && !modalDismissed) {
-      setShowModal(true);
-    } else if (!isLoading && count > 0) {
-      setShowModal(false);
-    }
-  }, [initialFetchComplete, isLoading, count, modalDismissed]);
-
-  const handleModalClose = useCallback(() => {
-    setShowModal(false);
-    setModalDismissed(true); // Prevent modal reopen.
-  }, []); // Prevents re-renders.
+  // Using the custom hook to manage modal state
+  const { showModal, handleModalClose } = usePromptStudioModal(
+    initialFetchComplete,
+    isLoading,
+    count
+  );
 
   return (
     <div className="p-or-d-layout">

@@ -61,7 +61,10 @@ const EtlTaskDeploy = ({
   const [showModal, setShowModal] = useState(false);
   const [modalDismissed, setModalDismissed] = useState(false);
   const { getPromptStudioCount } = usePromptStudioService();
-  const initialFetchComplete = useInitialFetchCount(fetchCount, getPromptStudioCount);
+  const initialFetchComplete = useInitialFetchCount(
+    fetchCount,
+    getPromptStudioCount
+  );
 
   useEffect(() => {
     if (workflowId) {

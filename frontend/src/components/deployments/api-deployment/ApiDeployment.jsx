@@ -10,7 +10,7 @@ import {
   NotificationOutlined,
 } from "@ant-design/icons";
 import { Button, Dropdown, Space, Switch, Tooltip, Typography } from "antd";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { deploymentApiTypes, displayURL } from "../../../helpers/GetStaticData";
@@ -32,7 +32,10 @@ import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
 import { NotificationModal } from "../../pipelines-or-deployments/notification-modal/NotificationModal.jsx";
 import { usePromptStudioService } from "../../api/prompt-studio-service";
-import { useInitialFetchCount } from "../../../hooks/usePromptStudioFetchCount";
+import {
+  useInitialFetchCount,
+  usePromptStudioModal,
+} from "../../../hooks/usePromptStudioFetchCount";
 
 function ApiDeployment() {
   const { sessionDetails } = useSessionStore();
@@ -59,11 +62,12 @@ function ApiDeployment() {
     usePipelineHelper();
   const [openNotificationModal, setOpenNotificationModal] = useState(false);
   const { count, isLoading, fetchCount } = usePromptStudioStore();
-  const [showModal, setShowModal] = useState(false);
-  const [modalDismissed, setModalDismissed] = useState(false);
   const { getPromptStudioCount } = usePromptStudioService();
 
-  const initialFetchComplete = useInitialFetchCount(fetchCount, getPromptStudioCount);
+  const initialFetchComplete = useInitialFetchCount(
+    fetchCount,
+    getPromptStudioCount
+  );
 
   const handleFetchLogs = (page, pageSize) => {
     fetchExecutionLogs(
@@ -385,18 +389,12 @@ function ApiDeployment() {
     },
   ];
 
-  useEffect(() => {
-    if (initialFetchComplete && !isLoading && count === 0 && !modalDismissed) {
-      setShowModal(true);
-    } else if (!isLoading && count > 0) {
-      setShowModal(false);
-    }
-  }, [initialFetchComplete, isLoading, count, modalDismissed]);
-
-  const handleModalClose = useCallback(() => {
-    setShowModal(false);
-    setModalDismissed(true); // Prevent modal reopen.
-  }, []); // Prevents re-renders.
+  // Using the custom hook to manage modal state
+  const { showModal, handleModalClose } = usePromptStudioModal(
+    initialFetchComplete,
+    isLoading,
+    count
+  );
 
   return (
     <>
