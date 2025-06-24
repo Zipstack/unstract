@@ -22,6 +22,9 @@ dependencies = [
     "redis>=5.0.3,<5.3",
     "unstract-core",
     "unstract-flags",
+    # AutoGen dependencies
+    "autogen-agentchat>=0.2.0",
+    "autogen-ext[openai]>=0.2.0",
 ]
 
 [tool.uv.sources]
