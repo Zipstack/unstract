@@ -88,3 +88,93 @@ jobs:
             *.args.VERSION=${{ env.DOCKER_VERSION_TAG }}
             *.cache-from=type=gha,scope=${{ matrix.service_name }}
             *.cache-to=type=gha,mode=max,scope=${{ matrix.service_name }}
+
+      # Notify Slack on successful build
+      - name: Notify Slack on Success
+        if: success()
+        uses: slackapi/slack-github-action@v2.1.0
+        with:
+          payload: |
+            {
+              "text": "✅ Docker Build Successful",
+              "attachments": [
+                {
+                  "color": "good",
+                  "fields": [
+                    {
+                      "title": "Service",
+                      "value": "${{ matrix.service_name }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Tag",
+                      "value": "${{ env.DOCKER_VERSION_TAG }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Repository",
+                      "value": "${{ github.repository }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Workflow",
+                      "value": "${{ github.workflow }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Run URL",
+                      "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                      "short": false
+                    }
+                  ],
+                  "footer": "GitHub Actions"
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      # Notify Slack on failed build
+      - name: Notify Slack on Failure
+        if: failure()
+        uses: slackapi/slack-github-action@v2.1.0
+        with:
+          payload: |
+            {
+              "text": "❌ Docker Build Failed",
+              "attachments": [
+                {
+                  "color": "danger",
+                  "fields": [
+                    {
+                      "title": "Service",
+                      "value": "${{ matrix.service_name }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Tag",
+                      "value": "${{ env.DOCKER_VERSION_TAG }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Repository",
+                      "value": "${{ github.repository }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Workflow",
+                      "value": "${{ github.workflow }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Run URL",
+                      "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                      "short": false
+                    }
+                  ],
+                  "footer": "GitHub Actions"
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
