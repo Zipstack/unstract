@@ -94,6 +94,7 @@ jobs:
         if: success()
         uses: slackapi/slack-github-action@v2.1.0
         with:
+          webhook-type: incoming-webhook
           payload: |
             {
               "text": "✅ Docker Build Successful",
@@ -139,6 +140,7 @@ jobs:
         if: failure()
         uses: slackapi/slack-github-action@v2.1.0
         with:
+          webhook-type: incoming-webhook
           payload: |
             {
               "text": "❌ Docker Build Failed",
