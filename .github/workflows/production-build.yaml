@@ -101,7 +101,7 @@ jobs:
           # Initialize variables
           TOTAL_SERVICES=6
           JOBS_JSON='${{ toJson(needs.build-and-push) }}'
-          
+
           # Check overall result
           if echo "$JOBS_JSON" | grep -q '"result":"success"'; then
             SUMMARY_STATUS="✅ All Docker builds successful"
@@ -110,7 +110,7 @@ jobs:
             SUMMARY_STATUS="❌ Some Docker builds failed"
             SUMMARY_COLOR="danger"
           fi
-          
+
           echo "summary_status=$SUMMARY_STATUS" >> $GITHUB_OUTPUT
           echo "summary_color=$SUMMARY_COLOR" >> $GITHUB_OUTPUT
           echo "total_count=$TOTAL_SERVICES" >> $GITHUB_OUTPUT
@@ -185,4 +185,3 @@ jobs:
             }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-
