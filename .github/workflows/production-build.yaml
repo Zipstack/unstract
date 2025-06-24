@@ -89,27 +89,72 @@ jobs:
             *.cache-from=type=gha,scope=${{ matrix.service_name }}
             *.cache-to=type=gha,mode=max,scope=${{ matrix.service_name }}
 
-      # Notify Slack on successful build
-      - name: Notify Slack on Success
-        if: success()
+  # Summary job that runs after all builds
+  build-summary:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Generate build summary
+        id: summary
+        run: |
+          # Initialize variables
+          TOTAL_SERVICES=6
+          JOBS_JSON='${{ toJson(needs.build-and-push) }}'
+          
+          # Check overall result
+          if echo "$JOBS_JSON" | grep -q '"result":"success"'; then
+            SUMMARY_STATUS="✅ All Docker builds successful"
+            SUMMARY_COLOR="good"
+          else
+            SUMMARY_STATUS="❌ Some Docker builds failed"
+            SUMMARY_COLOR="danger"
+          fi
+          
+          echo "summary_status=$SUMMARY_STATUS" >> $GITHUB_OUTPUT
+          echo "summary_color=$SUMMARY_COLOR" >> $GITHUB_OUTPUT
+          echo "total_count=$TOTAL_SERVICES" >> $GITHUB_OUTPUT
+
+      # Write to GitHub Summary
+      - name: Write GitHub Summary
+        run: |
+          echo "# 🐳 Docker Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status**: ${{ steps.summary.outputs.summary_status }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag**: ${{ github.event.release.tag_name || github.event.inputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Total Services**: ${{ steps.summary.outputs.total_count }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Services" >> $GITHUB_STEP_SUMMARY
+          echo "- backend" >> $GITHUB_STEP_SUMMARY
+          echo "- frontend" >> $GITHUB_STEP_SUMMARY
+          echo "- platform-service" >> $GITHUB_STEP_SUMMARY
+          echo "- prompt-service" >> $GITHUB_STEP_SUMMARY
+          echo "- runner" >> $GITHUB_STEP_SUMMARY
+          echo "- x2text-service" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "[View Workflow Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
+
+      # Send summary notification to Slack
+      - name: Send Slack summary notification
+        if: always()
         uses: slackapi/slack-github-action@v2.1.0
         with:
           webhook-type: incoming-webhook
           payload: |
             {
-              "text": "✅ Docker Build Successful",
+              "text": "${{ steps.summary.outputs.summary_status }}",
               "attachments": [
                 {
-                  "color": "good",
+                  "color": "${{ steps.summary.outputs.summary_color }}",
                   "fields": [
                     {
-                      "title": "Service",
-                      "value": "${{ matrix.service_name }}",
+                      "title": "Docker Tag",
+                      "value": "${{ github.event.release.tag_name || github.event.inputs.tag }}",
                       "short": true
                     },
                     {
-                      "title": "Tag",
-                      "value": "${{ env.DOCKER_VERSION_TAG }}",
+                      "title": "Total Services",
+                      "value": "${{ steps.summary.outputs.total_count }}",
                       "short": true
                     },
                     {
@@ -123,60 +168,21 @@ jobs:
                       "short": true
                     },
                     {
-                      "title": "Run URL",
+                      "title": "Services",
+                      "value": "backend, frontend, platform-service, prompt-service, runner, x2text-service",
+                      "short": false
+                    },
+                    {
+                      "title": "Workflow Run",
                       "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
                       "short": false
                     }
                   ],
-                  "footer": "GitHub Actions"
+                  "footer": "GitHub Actions",
+                  "ts": "${{ github.event.head_commit.timestamp }}"
                 }
               ]
             }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
-      # Notify Slack on failed build
-      - name: Notify Slack on Failure
-        if: failure()
-        uses: slackapi/slack-github-action@v2.1.0
-        with:
-          webhook-type: incoming-webhook
-          payload: |
-            {
-              "text": "❌ Docker Build Failed",
-              "attachments": [
-                {
-                  "color": "danger",
-                  "fields": [
-                    {
-                      "title": "Service",
-                      "value": "${{ matrix.service_name }}",
-                      "short": true
-                    },
-                    {
-                      "title": "Tag",
-                      "value": "${{ env.DOCKER_VERSION_TAG }}",
-                      "short": true
-                    },
-                    {
-                      "title": "Repository",
-                      "value": "${{ github.repository }}",
-                      "short": true
-                    },
-                    {
-                      "title": "Workflow",
-                      "value": "${{ github.workflow }}",
-                      "short": true
-                    },
-                    {
-                      "title": "Run URL",
-                      "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-                      "short": false
-                    }
-                  ],
-                  "footer": "GitHub Actions"
-                }
-              ]
-            }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
