@@ -38,6 +38,8 @@ from workflow_manager.endpoint_v2.dto import (
     FileHash,
     SourceConfig,
 )
+from workflow_manager.endpoint_v2.enums import AllowedFileTypes
+from workflow_manager.endpoint_v2.exceptions import UnsupportedMimeTypeError
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.endpoint_v2.result_cache_utils import ResultCacheUtils
 from workflow_manager.endpoint_v2.source import SourceConnector
@@ -488,7 +490,9 @@ class FileExecutionTasks:
                 organization_id=file_data.organization_id,
                 pipeline_id=str(workflow_execution.pipeline_id),
             )
-            workflow_log.log_error(logger=logger, message=error_msg)
+            workflow_log.log_error(
+                logger=logger, message=error_msg, exc_info=True, stack_info=True
+            )
             result = FinalOutputResult(output=None, metadata=None, error=error_msg)
             return cls._build_final_result(
                 workflow_execution=workflow_execution,
@@ -500,8 +504,13 @@ class FileExecutionTasks:
                 destination=destination,
             )
         except Exception as error:
-            error_msg = f"File execution failed: {error}"
-            workflow_log.log_error(logger=logger, message=error_msg)
+            if isinstance(error, UnsupportedMimeTypeError):
+                error_msg = str(error)
+            else:
+                error_msg = f"File execution failed: {error}"
+                workflow_log.log_error(
+                    logger=logger, message=error_msg, exc_info=True, stack_info=True
+                )
             workflow_file_execution.update_status(
                 status=ExecutionStatus.ERROR, execution_error=error_msg[:500]
             )
@@ -668,6 +677,12 @@ class FileExecutionTasks:
 
         try:
             logger.info(f"Preparing file for processing: {file_hash.file_name}")
+            if file_hash.mime_type and not AllowedFileTypes.is_allowed(
+                file_hash.mime_type
+            ):
+                raise UnsupportedMimeTypeError(
+                    f"Unsupported MIME type '{file_hash.mime_type}'"
+                )
             content_hash = source.add_file_to_volume(
                 workflow_file_execution=workflow_file_exec,
                 tags=workflow_execution.tag_names,
@@ -676,13 +691,32 @@ class FileExecutionTasks:
             file_hash.file_hash = content_hash
             workflow_file_exec.update(file_hash=content_hash)
             return content_hash
+        except UnsupportedMimeTypeError as error:
+            error_msg = f"Unsupported MIME type: {error}"
+            logger_message = f"Skipping file {file_hash.file_name} due to {error_msg}"
+            workflow_log.log_error(logger=logger, message=logger_message)
+
+            # TODO: (Optional) Handle unsupported MIME types in file_history
+            #   Goal: Record failure to prevent retries, but cache_key is missing
+            #   Constraints:
+            #     - cache_key required (NOT NULL) but unavailable (file not fully read)
+            #   Solutions:
+            #     1. Allow null cache_key (schema change)
+            #     2. Generate fallback hash (e.g., f"UNSUPPORTED_{file_hash.file_name}")
+            #     3. Read full file for hash (performance cost)
+            #   Action: Requires team decision on preferred approach.
+            raise
         except FileNotFoundError as error:
             error_msg = f"File not Found in execution dir: {error}"
-            workflow_log.log_error(logger=logger, message=error_msg)
+            workflow_log.log_error(
+                logger=logger, message=error_msg, exc_info=True, stack_info=True
+            )
             raise WorkflowExecutionError(error_msg) from error
         except Exception as error:
             error_msg = f"File preparation failed: {error}"
-            workflow_log.log_error(logger=logger, message=error_msg)
+            workflow_log.log_error(
+                logger=logger, message=error_msg, exc_info=True, stack_info=True
+            )
             raise WorkflowExecutionError(error_msg) from error
 
     @classmethod

@@ -155,6 +155,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         if file_objs and execution_id and workflow_id:
             use_file_history = False
             hashes_of_files = SourceConnector.add_input_file_to_api_storage(
+                pipeline_id=pipeline_guid,
                 workflow_id=workflow_id,
                 execution_id=execution_id,
                 file_objs=file_objs,
