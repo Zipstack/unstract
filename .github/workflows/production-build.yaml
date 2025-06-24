@@ -92,10 +92,9 @@ jobs:
       # Notify Slack on successful build
       - name: Notify Slack on Success
         if: success()
-        uses: 8398a7/action-slack@v3
+        uses: slackapi/slack-github-action@v2.1.0
         with:
-          status: success
-          custom_payload: |
+          payload: |
             {
               "text": "✅ Docker Build Successful",
               "attachments": [
@@ -128,8 +127,7 @@ jobs:
                       "short": false
                     }
                   ],
-                  "footer": "GitHub Actions",
-                  "ts": "${{ github.event.head_commit.timestamp }}"
+                  "footer": "GitHub Actions"
                 }
               ]
             }
@@ -139,10 +137,9 @@ jobs:
       # Notify Slack on failed build
       - name: Notify Slack on Failure
         if: failure()
-        uses: 8398a7/action-slack@v3
+        uses: slackapi/slack-github-action@v2.1.0
         with:
-          status: failure
-          custom_payload: |
+          payload: |
             {
               "text": "❌ Docker Build Failed",
               "attachments": [
@@ -175,8 +172,7 @@ jobs:
                       "short": false
                     }
                   ],
-                  "footer": "GitHub Actions",
-                  "ts": "${{ github.event.head_commit.timestamp }}"
+                  "footer": "GitHub Actions"
                 }
               ]
             }
