@@ -115,7 +115,9 @@ class AdapterProcessor:
             )
 
     @staticmethod
-    def update_adapter_metadata(adapter_metadata_b: Any) -> Any:
+    def update_adapter_metadata(
+        adapter_metadata_b: Any, paid_subscription: bool = False
+    ) -> Any:
         if add_unstract_key:
             encryption_secret: str = settings.ENCRYPTION_KEY
             f: Fernet = Fernet(encryption_secret.encode("utf-8"))
@@ -123,7 +125,7 @@ class AdapterProcessor:
             adapter_metadata = json.loads(
                 f.decrypt(bytes(adapter_metadata_b).decode("utf-8"))
             )
-            adapter_metadata = add_unstract_key(adapter_metadata)
+            adapter_metadata = add_unstract_key(adapter_metadata, paid_subscription)
 
             adapter_metadata_b = f.encrypt(json.dumps(adapter_metadata).encode("utf-8"))
             return adapter_metadata_b
