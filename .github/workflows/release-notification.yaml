@@ -2,7 +2,7 @@ name: Release Notification
 
 on:
   release:
-    types: [created, published]
+    types: [created]
 
 jobs:
   notify-slack:
@@ -12,6 +12,7 @@ jobs:
       - name: Send Slack notification
         uses: slackapi/slack-github-action@v2.1.0
         with:
+          webhook-type: incoming-webhook
           payload: |
             {
               "text": "🚀 New Release: ${{ github.event.release.name || github.event.release.tag_name }}",
