@@ -98,8 +98,7 @@ jobs:
           {
             "service": "${{ matrix.service_name }}",
             "status": "${{ job.status }}",
-            "tag": "${{ env.DOCKER_VERSION_TAG }}",
-            "cache": "GitHub Actions cache enabled"
+            "tag": "${{ env.DOCKER_VERSION_TAG }}"
           }
           EOF
 
@@ -183,6 +182,14 @@ jobs:
           echo "failed_count=$FAILED_COUNT" >> $GITHUB_OUTPUT
           echo "failed_services=$FAILED_SERVICES" >> $GITHUB_OUTPUT
           echo "success_services=$SUCCESS_SERVICES" >> $GITHUB_OUTPUT
+          
+          # Create a concise summary for Slack
+          if [ "$ALL_SUCCESS" = "true" ]; then
+            SLACK_DETAILS="All $TOTAL_SERVICES services built successfully ✅"
+          else
+            SLACK_DETAILS="❌ Failed: $FAILED_SERVICES | ✅ Succeeded: $SUCCESS_SERVICES"
+          fi
+          echo "slack_details=$SLACK_DETAILS" >> $GITHUB_OUTPUT
 
       # Write to GitHub Summary
       - name: Write GitHub Summary
@@ -209,21 +216,20 @@ jobs:
           
           # Process and display individual service statuses
           if [ -d "build-status" ]; then
-            echo "| Service | Status | Cache |" >> $GITHUB_STEP_SUMMARY
-            echo "|---------|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Service | Status |" >> $GITHUB_STEP_SUMMARY
+            echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
             
             # Define services in order
             for service in backend frontend platform-service prompt-service runner x2text-service; do
               if [ -f "build-status/${service}.json" ]; then
                 STATUS=$(jq -r '.status' "build-status/${service}.json")
-                CACHE=$(jq -r '.cache' "build-status/${service}.json")
                 if [ "$STATUS" = "success" ]; then
-                  echo "| ${service} | ✅ Success | ${CACHE} |" >> $GITHUB_STEP_SUMMARY
+                  echo "| ${service} | ✅ Success |" >> $GITHUB_STEP_SUMMARY
                 else
-                  echo "| ${service} | ❌ Failed | N/A |" >> $GITHUB_STEP_SUMMARY
+                  echo "| ${service} | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
                 fi
               else
-                echo "| ${service} | ⚠️ Unknown | N/A |" >> $GITHUB_STEP_SUMMARY
+                echo "| ${service} | ⚠️ Unknown |" >> $GITHUB_STEP_SUMMARY
               fi
             done
           else
@@ -244,10 +250,6 @@ jobs:
             echo "${{ steps.summary.outputs.failed_services }}" >> $GITHUB_STEP_SUMMARY
           fi
           
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## Build Information" >> $GITHUB_STEP_SUMMARY
-          echo "- **Caching**: GitHub Actions cache (gha)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Registry**: Docker Hub (unstract/*)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "---" >> $GITHUB_STEP_SUMMARY
           echo "[View Workflow Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
@@ -287,7 +289,7 @@ jobs:
                     },
                     {
                       "title": "Build Details",
-                      "value": "${{ steps.summary.outputs.all_success == 'true' && 'All 6 services built successfully ✅' || format('❌ Failed: %s | ✅ Succeeded: %s', steps.summary.outputs.failed_services, steps.summary.outputs.success_services) }}",
+                      "value": "${{ steps.summary.outputs.slack_details }}",
                       "short": false
                     },
                     {
