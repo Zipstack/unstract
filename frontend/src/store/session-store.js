@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 const STORE_VARIABLES = {
   sessionDetails: {},
+  isLogoutLoading: false,
 };
 const useSessionStore = create((setState, getState) => ({
   ...STORE_VARIABLES,
@@ -14,6 +15,9 @@ const useSessionStore = create((setState, getState) => ({
     setState(() => {
       return { sessionDetails: { ...getState().sessionDetails, ...details } };
     });
+  },
+  setLogoutLoading: (loading) => {
+    setState(() => ({ isLogoutLoading: loading }));
   },
 }));
 
