@@ -134,7 +134,8 @@ class AgentyContextExtractorV2:
                 name="context_extractor",
                 conversation_id=conversation_id,
                 enable_logging=self.enable_logging,
-                log_level=self.log_level
+                log_level=self.log_level,
+                tools=[self.process_document]
             )
             
             # Create user proxy agent to initiate the conversation
@@ -167,9 +168,10 @@ class AgentyContextExtractorV2:
             # Track start time for performance monitoring
             start_time = datetime.now()
             
+            
             try:
                 # Start the conversation between agents
-                result = user_proxy.initiate_chat(
+                extracted_text = user_proxy.initiate_chat(
                     extraction_agent,
                     message=initial_message,
                     clear_history=True
@@ -213,42 +215,31 @@ class AgentyContextExtractorV2:
                 
                 logger.info(f"Saved conversation logs to {log_file}")
             
-            # Get the extracted text from the function call result
-            for msg in reversed(extraction_agent.chat_messages[user_proxy]):
-                if "function_call" in msg and msg["function_call"].get("name") == "process_document":
-                    # Function was called, get the result
-                    function_result = json.loads(msg.get("content", "{}"))
-                    extracted_text = function_result.get("extracted_text", "")
-                    
-                    # Update execution metadata if necessary
-                    if (execution_source == ExecutionSource.TOOL.value and 
-                        tool_exec_metadata is not None and 
-                        execution_run_data_folder is not None and 
-                        "metadata" in function_result):
+            # Update execution metadata if necessary
+            if (execution_source == ExecutionSource.TOOL.value and 
+                tool_exec_metadata is not None and 
+                execution_run_data_folder is not None and 
+                "metadata" in function_result):
                         
-                        metadata = function_result["metadata"]
-                        if "whisper_hash" in metadata:
-                            metadata_to_save = {IKeys.WHISPER_HASH: metadata["whisper_hash"]}
-                            for key, value in metadata_to_save.items():
-                                tool_exec_metadata[key] = value
-                                
-                            # Add agent metadata to track agent performance
-                            if self.enable_logging:
-                                metadata_to_save["agent_conversation_id"] = conversation_id
-                                metadata_to_save["agent_duration_seconds"] = duration
-                                
-                            metadata_path = str(Path(execution_run_data_folder) / IKeys.METADATA_FILE)
-                            ToolUtils.dump_json(
-                                file_to_dump=metadata_path,
-                                json_to_dump=metadata_to_save,
-                                fs=fs,
-                            )
-                    
-                    return extracted_text
-        
-            # If we get here, something went wrong
-            raise ExtractionError("Failed to extract text: no result from extraction agent", code=500)
+                    metadata = function_result["metadata"]
+                    if "whisper_hash" in metadata:
+                        metadata_to_save = {IKeys.WHISPER_HASH: metadata["whisper_hash"]}
+                        for key, value in metadata_to_save.items():
+                            tool_exec_metadata[key] = value
+                            
+                        # Add agent metadata to track agent performance
+                        if self.enable_logging:
+                            metadata_to_save["agent_conversation_id"] = conversation_id
+                            metadata_to_save["agent_duration_seconds"] = duration
+                            
+                        metadata_path = str(Path(execution_run_data_folder) / IKeys.METADATA_FILE)
+                        ToolUtils.dump_json(
+                            file_to_dump=metadata_path,
+                            json_to_dump=metadata_to_save,
+                            fs=fs,
+                        )
             
+            return extracted_text            
         except AdapterError as e:
             msg = f"Error from text extractor '{x2text.x2text_instance.get_name()}'. "
             msg += str(e)
@@ -258,3 +249,31 @@ class AgentyContextExtractorV2:
             msg = f"Error during agentic context extraction: {str(e)}"
             logger.error(msg)
             raise ExtractionError(msg, code=500) from e
+
+
+    def process_document(self, input_file_path: str, output_file_path: Optional[str] = None, 
+                            enable_highlight: bool = False, tags: Optional[list[str]] = None) -> Dict[str, Any]:
+            """Process document with X2Text extraction."""
+            logger.info(f"Processing document: {input_file_path}")
+            result = self.x2text_tool.process_document(
+                input_file_path=input_file_path,
+                output_file_path=output_file_path,
+                enable_highlight=enable_highlight,
+                tags=tags
+            )
+            
+            # Log function call if logging is enabled
+            if self.enable_logging:
+                self.conversation_logger.log_function_call(
+                    agent_name=name,
+                    function_name="process_document",
+                    arguments={
+                        "input_file_path": input_file_path,
+                        "output_file_path": output_file_path,
+                        "enable_highlight": enable_highlight,
+                        "tags": tags
+                    },
+                    result=result
+                )
+                
+            return result

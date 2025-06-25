@@ -53,64 +53,27 @@ class ContextExtractionAgent(ConversableAgent):
             self.conversation_logger = AgentConversationLogger(
                 conversation_id=self.conversation_id,
                 log_level=log_level,
-                agent_type="autogen",  # Specify the agent framework type
                 max_content_length=2000  # Increase content length for document extraction
             )
             
             # Prepare callbacks for logging
             self._setup_logging_callbacks()
         
-        # Create custom function for X2Text processing
-        def process_document(input_file_path: str, output_file_path: Optional[str] = None, 
-                            enable_highlight: bool = False, tags: Optional[list[str]] = None) -> Dict[str, Any]:
-            """Process document with X2Text extraction."""
-            logger.info(f"Processing document: {input_file_path}")
-            result = self.x2text_tool.process_document(
-                input_file_path=input_file_path,
-                output_file_path=output_file_path,
-                enable_highlight=enable_highlight,
-                tags=tags
-            )
-            
-            # Log function call if logging is enabled
-            if self.enable_logging:
-                self.conversation_logger.log_function_call(
-                    agent_name=name,
-                    function_name="process_document",
-                    arguments={
-                        "input_file_path": input_file_path,
-                        "output_file_path": output_file_path,
-                        "enable_highlight": enable_highlight,
-                        "tags": tags
-                    },
-                    result=result
-                )
-                
-            return result
-        
-        # Configure agent with the X2Text processing tool
-        function_map = {
-            "process_document": process_document
-        }
-
         # Complete system message
         complete_system_message = f"""
 {system_message}
 
 You have access to a document processing tool through the process_document function.
 When given a file path, you should:
-1. Process the document to extract its text content
-2. Analyze the extracted text to identify key information
-3. Return the extracted text
+1. Process the document and extract its text content
+2. Return the extracted text
 
-Always use the process_document function to extract text from documents.
 """
         
         # Initialize the base ConversableAgent
         super().__init__(
             name=name,
             system_message=complete_system_message,
-            function_map=function_map,
             model=model_client,
             **kwargs
         )

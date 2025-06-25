@@ -96,7 +96,6 @@ class AgentConversationLogger:
                  conversation_id: str, 
                  log_level: int = logging.INFO,
                  include_message_content: bool = True,
-                 agent_type: str = "generic",
                  max_content_length: int = 1000):
         """
         Initialize the conversation logger.
@@ -105,13 +104,11 @@ class AgentConversationLogger:
             conversation_id: ID for the conversation
             log_level: Logging level
             include_message_content: Whether to include full message content
-            agent_type: Type of agent being logged ("autogen", "langchain", etc.)
             max_content_length: Maximum length for content truncation
         """
         self.conversation_id = conversation_id
         self.log_level = log_level
         self.include_message_content = include_message_content
-        self.agent_type = agent_type
         self.max_content_length = max_content_length
         self.conversation_log = []
         
