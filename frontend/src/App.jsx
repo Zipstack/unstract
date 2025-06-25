@@ -1,14 +1,15 @@
 import { Button, ConfigProvider, notification, theme } from "antd";
 import { BrowserRouter } from "react-router-dom";
 import { HelmetProvider } from "react-helmet-async";
+import { useEffect } from "react";
 
 import { THEME } from "./helpers/GetStaticData.js";
 import { Router } from "./routes/Router.jsx";
 import { useAlertStore } from "./store/alert-store.js";
 import { useSessionStore } from "./store/session-store.js";
+import { GenericLoader } from "./components/generic-loader/GenericLoader";
 import PostHogPageviewTracker from "./PostHogPageviewTracker.js";
 import { PageTitle } from "./components/widgets/page-title/PageTitle.jsx";
-import { useEffect } from "react";
 import CustomMarkdown from "./components/helpers/custom-markdown/CustomMarkdown.jsx";
 import { useSocketLogsStore } from "./store/socket-logs-store.js";
 
@@ -23,7 +24,7 @@ try {
 function App() {
   const [notificationAPI, contextHolder] = notification.useNotification();
   const { defaultAlgorithm, darkAlgorithm } = theme;
-  const { sessionDetails } = useSessionStore();
+  const { sessionDetails, isLogoutLoading } = useSessionStore();
   const { alertDetails } = useAlertStore();
   const { pushLogMessages } = useSocketLogsStore();
 
@@ -86,6 +87,11 @@ function App() {
       }}
     >
       <HelmetProvider>
+        {isLogoutLoading && (
+          <div className="fullscreen-loader">
+            <GenericLoader />
+          </div>
+        )}
         <BrowserRouter>
           <PostHogPageviewTracker />
           <PageTitle title={"Unstract"} />
