@@ -89,31 +89,100 @@ jobs:
             *.cache-from=type=gha,scope=${{ matrix.service_name }}
             *.cache-to=type=gha,mode=max,scope=${{ matrix.service_name }}
 
+      # Capture build result and write to artifact
+      - name: Write build status
+        if: always()
+        run: |
+          mkdir -p build-status
+          cat > build-status/${{ matrix.service_name }}.json << EOF
+          {
+            "service": "${{ matrix.service_name }}",
+            "status": "${{ job.status }}",
+            "tag": "${{ env.DOCKER_VERSION_TAG }}",
+            "cache": "GitHub Actions cache enabled"
+          }
+          EOF
+
+      # Upload status for summary job
+      - name: Upload build status
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-status-${{ matrix.service_name }}
+          path: build-status/${{ matrix.service_name }}.json
+          retention-days: 1
+
   # Summary job that runs after all builds
   build-summary:
     needs: build-and-push
     runs-on: ubuntu-latest
     if: always()
     steps:
+      # Download all build status artifacts
+      - name: Download build statuses
+        uses: actions/download-artifact@v4
+        with:
+          pattern: build-status-*
+          merge-multiple: true
+          path: build-status
+
       - name: Generate build summary
         id: summary
         run: |
           # Initialize variables
           TOTAL_SERVICES=6
-          JOBS_JSON='${{ toJson(needs.build-and-push) }}'
-
-          # Check overall result
-          if echo "$JOBS_JSON" | grep -q '"result":"success"'; then
+          OVERALL_RESULT='${{ needs.build-and-push.result }}'
+          SUCCESS_COUNT=0
+          FAILED_COUNT=0
+          FAILED_SERVICES=""
+          SUCCESS_SERVICES=""
+          
+          # Process individual service results if artifacts exist
+          if [ -d "build-status" ]; then
+            for status_file in build-status/*.json; do
+              if [ -f "$status_file" ]; then
+                SERVICE=$(jq -r '.service' "$status_file")
+                STATUS=$(jq -r '.status' "$status_file")
+                
+                if [ "$STATUS" = "success" ]; then
+                  SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
+                  SUCCESS_SERVICES="${SUCCESS_SERVICES}${SERVICE}, "
+                else
+                  FAILED_COUNT=$((FAILED_COUNT + 1))
+                  FAILED_SERVICES="${FAILED_SERVICES}${SERVICE}, "
+                fi
+              fi
+            done
+            
+            # Trim trailing comma and space
+            SUCCESS_SERVICES=${SUCCESS_SERVICES%, }
+            FAILED_SERVICES=${FAILED_SERVICES%, }
+          fi
+          
+          # Set overall status based on results
+          if [ "$OVERALL_RESULT" = "success" ]; then
             SUMMARY_STATUS="✅ All Docker builds successful"
             SUMMARY_COLOR="good"
+            ALL_SUCCESS="true"
+          elif [ "$OVERALL_RESULT" = "cancelled" ]; then
+            SUMMARY_STATUS="⚠️ Docker builds cancelled"
+            SUMMARY_COLOR="warning"
+            ALL_SUCCESS="false"
           else
             SUMMARY_STATUS="❌ Some Docker builds failed"
             SUMMARY_COLOR="danger"
+            ALL_SUCCESS="false"
           fi
-
+          
           echo "summary_status=$SUMMARY_STATUS" >> $GITHUB_OUTPUT
           echo "summary_color=$SUMMARY_COLOR" >> $GITHUB_OUTPUT
           echo "total_count=$TOTAL_SERVICES" >> $GITHUB_OUTPUT
+          echo "all_success=$ALL_SUCCESS" >> $GITHUB_OUTPUT
+          echo "overall_result=$OVERALL_RESULT" >> $GITHUB_OUTPUT
+          echo "success_count=$SUCCESS_COUNT" >> $GITHUB_OUTPUT
+          echo "failed_count=$FAILED_COUNT" >> $GITHUB_OUTPUT
+          echo "failed_services=$FAILED_SERVICES" >> $GITHUB_OUTPUT
+          echo "success_services=$SUCCESS_SERVICES" >> $GITHUB_OUTPUT
 
       # Write to GitHub Summary
       - name: Write GitHub Summary
@@ -123,15 +192,64 @@ jobs:
           echo "**Status**: ${{ steps.summary.outputs.summary_status }}" >> $GITHUB_STEP_SUMMARY
           echo "**Tag**: ${{ github.event.release.tag_name || github.event.inputs.tag }}" >> $GITHUB_STEP_SUMMARY
           echo "**Total Services**: ${{ steps.summary.outputs.total_count }}" >> $GITHUB_STEP_SUMMARY
+          
+          # Show counts if available
+          if [ -n "${{ steps.summary.outputs.success_count }}" ] && [ "${{ steps.summary.outputs.success_count }}" != "0" ]; then
+            echo "**Successful**: ${{ steps.summary.outputs.success_count }}/${{ steps.summary.outputs.total_count }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ -n "${{ steps.summary.outputs.failed_count }}" ] && [ "${{ steps.summary.outputs.failed_count }}" != "0" ]; then
+            echo "**Failed**: ${{ steps.summary.outputs.failed_count }}/${{ steps.summary.outputs.total_count }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## Services" >> $GITHUB_STEP_SUMMARY
-          echo "- backend" >> $GITHUB_STEP_SUMMARY
-          echo "- frontend" >> $GITHUB_STEP_SUMMARY
-          echo "- platform-service" >> $GITHUB_STEP_SUMMARY
-          echo "- prompt-service" >> $GITHUB_STEP_SUMMARY
-          echo "- runner" >> $GITHUB_STEP_SUMMARY
-          echo "- x2text-service" >> $GITHUB_STEP_SUMMARY
+          
+          # Show service status table
+          echo "## Service Build Status" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Process and display individual service statuses
+          if [ -d "build-status" ]; then
+            echo "| Service | Status | Cache |" >> $GITHUB_STEP_SUMMARY
+            echo "|---------|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            
+            # Define services in order
+            for service in backend frontend platform-service prompt-service runner x2text-service; do
+              if [ -f "build-status/${service}.json" ]; then
+                STATUS=$(jq -r '.status' "build-status/${service}.json")
+                CACHE=$(jq -r '.cache' "build-status/${service}.json")
+                if [ "$STATUS" = "success" ]; then
+                  echo "| ${service} | ✅ Success | ${CACHE} |" >> $GITHUB_STEP_SUMMARY
+                else
+                  echo "| ${service} | ❌ Failed | N/A |" >> $GITHUB_STEP_SUMMARY
+                fi
+              else
+                echo "| ${service} | ⚠️ Unknown | N/A |" >> $GITHUB_STEP_SUMMARY
+              fi
+            done
+          else
+            # Fallback if no artifacts (shouldn't happen but just in case)
+            if [ "${{ steps.summary.outputs.all_success }}" = "true" ]; then
+              echo "All services built successfully! ✅" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "⚠️ Build workflow result: **${{ steps.summary.outputs.overall_result }}**" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "Unable to determine individual service status. Please check the job logs above." >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+          
+          # Show failed services if any
+          if [ -n "${{ steps.summary.outputs.failed_services }}" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "## ❌ Failed Services" >> $GITHUB_STEP_SUMMARY
+            echo "${{ steps.summary.outputs.failed_services }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Build Information" >> $GITHUB_STEP_SUMMARY
+          echo "- **Caching**: GitHub Actions cache (gha)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Registry**: Docker Hub (unstract/*)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
           echo "[View Workflow Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
 
       # Send summary notification to Slack
@@ -168,8 +286,8 @@ jobs:
                       "short": true
                     },
                     {
-                      "title": "Services",
-                      "value": "backend, frontend, platform-service, prompt-service, runner, x2text-service",
+                      "title": "Build Details",
+                      "value": "${{ steps.summary.outputs.all_success == 'true' && 'All 6 services built successfully ✅' || format('❌ Failed: %s | ✅ Succeeded: %s', steps.summary.outputs.failed_services, steps.summary.outputs.success_services) }}",
                       "short": false
                     },
                     {
@@ -178,8 +296,7 @@ jobs:
                       "short": false
                     }
                   ],
-                  "footer": "GitHub Actions",
-                  "ts": "${{ github.event.head_commit.timestamp }}"
+                  "footer": "GitHub Actions"
                 }
               ]
             }
