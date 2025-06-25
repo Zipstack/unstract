@@ -46,3 +46,15 @@ class ExecutionLog(BaseModel):
         verbose_name = "Execution Log"
         verbose_name_plural = "Execution Logs"
         db_table = "execution_log"
+        indexes = [
+            models.Index(
+                fields=["wf_execution", "event_time"], name="idx_wf_execution_event_time"
+            ),
+            models.Index(
+                fields=["file_execution", "event_time"],
+                name="idx_file_execution_event_time",
+            ),
+            models.Index(
+                fields=["execution_id", "event_time"], name="idx_execution_id_event_time"
+            ),
+        ]

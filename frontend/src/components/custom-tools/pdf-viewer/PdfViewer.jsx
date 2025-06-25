@@ -21,9 +21,11 @@ function PdfViewer({ fileUrl, highlightData }) {
   const { jumpToPage } = pageNavigationPluginInstance;
   const parentRef = useRef(null);
   function removeZerosAndDeleteIfAllZero(highlightData) {
-    return highlightData?.filter((innerArray) =>
-      innerArray.some((value) => value !== 0)
-    );
+    return highlightData?.filter((innerArray) => {
+      return (
+        Array.isArray(innerArray) && innerArray.some((value) => value !== 0)
+      );
+    });
   }
 
   const processHighlightData = highlightData

@@ -15,14 +15,12 @@ class VariableType(str, Enum):
 
 
 class VariableConstants:
-
     VARIABLE_REGEX = "{{(.+?)}}"
     DYNAMIC_VARIABLE_DATA_REGEX = r"\[(.*?)\]"
     DYNAMIC_VARIABLE_URL_REGEX = r"(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'\".,<>?«»“”‘’]))"  # noqa: E501
 
 
 class PromptStudioVariableService:
-
     @staticmethod
     def fetch_variable_outputs(variable: str, doc_id: str, tool_id: str) -> Any:
         variable_prompt: ToolStudioPrompt = ToolStudioPrompt.objects.get(

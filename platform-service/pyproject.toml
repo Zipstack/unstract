@@ -2,51 +2,55 @@
 name = "unstract-platform-service"
 version = "0.0.1"
 description = "Helps tools interact and retrieve details from the Unstract platform through the Unstract SDK"
-authors = [
-    {name = "Zipstack Inc.", email = "devsupport@zipstack.com"},
-]
+authors = [{ name = "Zipstack Inc.", email = "devsupport@zipstack.com" }]
+requires-python = ">=3.12,<3.13"
+readme = "README.md"
+license = { text = "MIT" }
+
 dependencies = [
-    "flask~=3.0.0",
+    "flask~=3.1.0",
     "peewee~=3.16",
     "psycopg2-binary~=2.9",
     "python-dotenv~=1.0",
     "redis~=5.2.1",
     "cryptography>=41.0.7",
     "requests>=2.31.0",
-    "unstract-sdk[gcs, azure, aws]~=0.62.1",
-    "unstract-flags @ file:///${PROJECT_ROOT}/../unstract/flags",
+    "unstract-sdk[gcs, azure, aws]~=0.73.0", # Add version
+    "unstract-flags",
+    "unstract-core[flask]",
 ]
-requires-python = ">=3.9,<3.11.1"
-readme = "README.md"
-license = {text = "MIT"}
 
-[project.optional-dependencies]
+[tool.uv.sources]
+unstract-flags = { path = "../unstract/flags", editable = true }
+unstract-core = { path = "../unstract/core", editable = true }
+
+[dependency-groups]
+test = ["pytest>=8.0.1"]
 deploy = [
     "gunicorn[gevent]~=23.0",
     # OpenTelemetry for tracing and profiling
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",
 ]
+dev = ["poethepoet>=0.33.1", "debugpy>=1.8.14"]
 
+# [project.scripts]
+# platform_service = "./entrypoint.sh"
+# uv run flask --app unstract.platform_service.run:app run --port 3001
 [build-system]
-requires = ["pdm-backend"]
-build-backend = "pdm.backend"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-[tool.pdm.build]
-includes = ["src"]
-package-dir = "src"
+[tool.hatch.build.targets.wheel]
+packages = ["src/unstract"]
 
-[tool.pdm.dev-dependencies]
-test = [
-    "pytest>=8.0.1",
-]
+[tool.poe]
+envfile = ".env"
 
-[tool.pdm.resolution.overrides]
-aioboto3 = "13.1.1"
-aiobotocore = "2.13.1"
-boto3 = "1.34.131"
+[tool.poe.tasks.platform-service]
+cmd = "./entrypoint.sh"
+help = "Runs the Unstract platform service (Gunicorn)"
 
-[tool.pdm.scripts]
-platform_service.cmd = "./entrypoint.sh"
-platform_service.env_file = ".env"
-platform_service.help = "Runs the Unstract platform service"
+[tool.poe.tasks.platform-service-flask]
+cmd = "uv run flask --app unstract.platform_service.run:app run --port 3001"
+help = "Runs the Unstract platform service (Flask)"

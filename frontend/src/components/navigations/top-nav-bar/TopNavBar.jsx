@@ -15,6 +15,7 @@ import {
   DownloadOutlined,
   FileProtectOutlined,
   LikeOutlined,
+  LoginOutlined,
 } from "@ant-design/icons";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -49,7 +50,7 @@ let selectedProductStore;
 let selectedProduct;
 
 try {
-  selectedProductStore = require("../../../plugins/llm-whisperer/store/select-product-store.js");
+  selectedProductStore = require("../../../plugins/store/select-product-store.js");
 } catch {
   // Ignore if hook not available
 }
@@ -80,6 +81,7 @@ const CustomLogo = ({ onClick, className }) => {
         className={className}
         onClick={onClick}
         alt="logo"
+        width={120}
         style={{
           cursor: onClick ? "pointer" : undefined,
           background: "transparent",
@@ -97,6 +99,12 @@ const CustomLogo = ({ onClick, className }) => {
   }
   return <UnstractLogo className={className} onClick={onClick} />;
 };
+let APIHubLogo;
+try {
+  APIHubLogo = require("../../../plugins/assets/verticals/index.js").APIHubLogo;
+} catch {
+  // Ignore if hook not available
+}
 
 let unstractSubscriptionPlan;
 let unstractSubscriptionPlanStore;
@@ -115,7 +123,7 @@ try {
 function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
-  const { orgName, allOrganization, orgId } = sessionDetails;
+  const { orgName, allOrganization, orgId, isLoggedIn } = sessionDetails;
   const baseUrl = getBaseUrl();
   const onBoardUrl = `${baseUrl}/${orgName}/onboard`;
   const logout = useLogout();
@@ -153,6 +161,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   }, [unstractSubscriptionPlan]);
 
   const isUnstract = !(selectedProduct && selectedProduct !== "unstract");
+  const isAPIHub = selectedProduct && selectedProduct === "verticals";
 
   // Check user role and whether the onboarding is incomplete
   useEffect(() => {
@@ -324,19 +333,35 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
       });
     }
 
-    if (isUnstract && UnstractPricingMenuLink && sessionDetails?.isAdmin) {
+    if (
+      isUnstract &&
+      UnstractPricingMenuLink &&
+      sessionDetails?.isAdmin &&
+      !sessionDetails?.provider
+    ) {
       menuItems.push({
         key: "7",
         label: <UnstractPricingMenuLink orgName={orgName} />,
       });
     }
 
+    const handleLogin = () => {
+      const baseUrl = getBaseUrl();
+      const newURL = baseUrl + "/api/v1/login";
+      window.location.href = newURL;
+    };
+
     // Logout
+
+    const handleClick = isLoggedIn ? logout : handleLogin;
+    const icon = isLoggedIn ? <LogoutOutlined /> : <LoginOutlined />;
+    const label = isLoggedIn ? "Logout" : "Login";
+
     menuItems.push({
       key: "2",
       label: (
-        <Button onClick={logout} className="logout-button">
-          <LogoutOutlined /> Logout
+        <Button onClick={handleClick} icon={icon} className="logout-button">
+          {label}
         </Button>
       ),
     });
@@ -373,6 +398,8 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
               navigate(`/${sessionDetails?.orgName}/${homePagePath}`)
             }
           />
+        ) : isAPIHub ? (
+          APIHubLogo && <APIHubLogo className="topbar-logo" />
         ) : (
           WhispererLogo && <WhispererLogo className="topbar-logo" />
         )}

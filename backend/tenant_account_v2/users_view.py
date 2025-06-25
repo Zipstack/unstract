@@ -6,6 +6,8 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
+from utils.user_session import UserSessionUtils
+
 from tenant_account_v2.models import OrganizationMember
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from tenant_account_v2.serializer import (
@@ -17,7 +19,6 @@ from tenant_account_v2.serializer import (
     UserInfoSerializer,
     UserInviteResponseSerializer,
 )
-from utils.user_session import UserSessionUtils
 
 Logger = logging.getLogger(__name__)
 
@@ -35,9 +36,7 @@ class OrganizationUserViewSet(viewsets.ViewSet):
         auth_controller = AuthenticationController()
 
         auth_controller = AuthenticationController()
-        update_status = auth_controller.add_user_role(
-            request.user, org_id, user_email, role
-        )
+        update_status = auth_controller.add_user_role(request, org_id, user_email, role)
         if update_status:
             return Response(
                 status=status.HTTP_200_OK,
@@ -62,7 +61,7 @@ class OrganizationUserViewSet(viewsets.ViewSet):
 
         auth_controller = AuthenticationController()
         update_status = auth_controller.remove_user_role(
-            request.user, org_id, user_email, role
+            request, org_id, user_email, role
         )
         if update_status:
             return Response(
@@ -89,9 +88,7 @@ class OrganizationUserViewSet(viewsets.ViewSet):
             serialized_user_info = UserInfoSerializer(user_info).data
             # Temporary fix for getting user role along with user info.
             # Proper implementation would be adding role field to UserInfo.
-            serialized_user_info["is_admin"] = auth_controller.is_admin_by_role(
-                role.role
-            )
+            serialized_user_info["is_admin"] = auth_controller.is_admin_by_role(role.role)
             # changes for displying onboarding msgs
             org_member = OrganizationMemberService.get_user_by_id(id=request.user.id)
             serialized_user_info["login_onboarding_message_displayed"] = (
@@ -121,6 +118,7 @@ class OrganizationUserViewSet(viewsets.ViewSet):
             admin=request.user,
             org_id=UserSessionUtils.get_organization_id(request),
             user_list=user_list,
+            request=request,
         )
 
         response_serializer = UserInviteResponseSerializer(invite_response, many=True)
@@ -147,7 +145,7 @@ class OrganizationUserViewSet(viewsets.ViewSet):
 
         auth_controller = AuthenticationController()
         is_updated = auth_controller.remove_users_from_organization(
-            admin=request.user,
+            request=request,
             organization_id=organization_id,
             user_emails=user_emails,
         )

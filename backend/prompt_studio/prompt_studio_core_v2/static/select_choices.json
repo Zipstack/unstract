@@ -8,15 +8,14 @@
         "AZURE":"Azure OpenAI"
     },
     "output_type":{
-        "string":"Text",
+        "string":"text",
         "number":"number",
         "email":"email",
         "date":"date",
         "boolean":"boolean",
         "json":"json",
-        "table":"table",
-        "record":"record",
-        "line_item":"line-item"
+        "line_item":"line-item",
+        "table":"table"
     },
     "output_processing":{
         "DEFAULT":"Default"

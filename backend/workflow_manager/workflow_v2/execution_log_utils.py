@@ -1,7 +1,6 @@
 import logging
 import sys
 from collections import defaultdict
-from typing import Optional
 
 from celery import shared_task
 from django.db import IntegrityError
@@ -10,6 +9,7 @@ from django_celery_beat.models import IntervalSchedule, PeriodicTask
 from utils.cache_service import CacheService
 from utils.constants import ExecutionLogConstants
 from utils.dto import LogDataDTO
+
 from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.models import ExecutionLog, WorkflowExecution
 
@@ -28,7 +28,7 @@ def consume_log_history() -> None:
         if not log:
             break
 
-        log_data: Optional[LogDataDTO] = LogDataDTO.from_json(log)
+        log_data: LogDataDTO | None = LogDataDTO.from_json(log)
         if log_data:
             logs_to_process.append(log_data)
             logs_count += 1
@@ -45,8 +45,7 @@ def consume_log_history() -> None:
     }
 
     execution_map = {
-        str(obj.id): obj
-        for obj in WorkflowExecution.objects.filter(id__in=execution_ids)
+        str(obj.id): obj for obj in WorkflowExecution.objects.filter(id__in=execution_ids)
     }
     file_execution_map = {
         str(obj.id): obj

@@ -99,6 +99,7 @@ class ToolStudioPromptKeys:
     ENABLE_HIGHLIGHT = "enable_highlight"
     REQUIRED = "required"
     EXECUTION_SOURCE = "execution_source"
+    LINE_ITEM = "line-item"
 
 
 class FileViewTypes:

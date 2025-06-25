@@ -30,23 +30,42 @@ jobs:
         - name: Checkout code
           uses: actions/checkout@v4
 
+        # Set up Docker Buildx for better caching
+        - name: Set up Docker Buildx
+          uses: docker/setup-buildx-action@v3
+
+        # Log in to Docker Hub
         - name: Login to Docker Hub
           uses: docker/login-action@v3
           with:
             username: ${{ secrets.DOCKERHUB_USERNAME }}
             password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-        - name: Build tool-classifier
-          if: github.event.inputs.service_name=='tool-classifier'
-          run: docker build -t unstract/${{github.event.inputs.service_name}}:${{ github.event.inputs.tag }} ./tools/classifier
-        - name: Build tool-structure
-          if: github.event.inputs.service_name=='tool-structure'
-          run: docker build -t unstract/${{github.event.inputs.service_name}}:${{ github.event.inputs.tag }} ./tools/structure
-        - name: Build tool-text-extractor
-          if: github.event.inputs.service_name=='tool-text-extractor'
-          run: docker build -t unstract/${{github.event.inputs.service_name}}:${{ github.event.inputs.tag }} ./tools/text_extractor
-        - name: Build tool-sidecar
-          if: github.event.inputs.service_name=='tool-sidecar'
-          run: docker build -t unstract/${{github.event.inputs.service_name}}:${{ github.event.inputs.tag }} -f docker/dockerfiles/tool-sidecar.Dockerfile .
-        - name: Push Docker image to Docker Hub
-          run: docker push unstract/${{ github.event.inputs.service_name }}:${{ github.event.inputs.tag }}
+        # Define build configuration based on service name
+        - name: Set build configuration
+          id: build-config
+          run: |
+            if [ "${{ github.event.inputs.service_name }}" == "tool-classifier" ]; then
+              echo "context=./tools/classifier" >> $GITHUB_OUTPUT
+              echo "dockerfile=" >> $GITHUB_OUTPUT
+            elif [ "${{ github.event.inputs.service_name }}" == "tool-structure" ]; then
+              echo "context=./tools/structure" >> $GITHUB_OUTPUT
+              echo "dockerfile=" >> $GITHUB_OUTPUT
+            elif [ "${{ github.event.inputs.service_name }}" == "tool-text-extractor" ]; then
+              echo "context=./tools/text_extractor" >> $GITHUB_OUTPUT
+              echo "dockerfile=" >> $GITHUB_OUTPUT
+            elif [ "${{ github.event.inputs.service_name }}" == "tool-sidecar" ]; then
+              echo "context=." >> $GITHUB_OUTPUT
+              echo "dockerfile=docker/dockerfiles/tool-sidecar.Dockerfile" >> $GITHUB_OUTPUT
+            fi
+
+        # Build and push Docker image
+        - name: Build and push ${{ github.event.inputs.service_name }}
+          uses: docker/build-push-action@v5
+          with:
+            context: ${{ steps.build-config.outputs.context }}
+            file: ${{ steps.build-config.outputs.dockerfile }}
+            push: true
+            tags: unstract/${{ github.event.inputs.service_name }}:${{ github.event.inputs.tag }}
+            cache-from: type=gha
+            cache-to: type=gha,mode=max

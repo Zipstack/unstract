@@ -4,7 +4,7 @@ import os
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from account_v2.constants import Common
 from account_v2.models import User
@@ -12,6 +12,10 @@ from adapter_processor_v2.constants import AdapterKeys
 from adapter_processor_v2.models import AdapterInstance
 from django.conf import settings
 from django.db.models.manager import BaseManager
+from utils.file_storage.constants import FileStorageKeys
+from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
+from utils.local_context import StateStore
+
 from prompt_studio.modifier_loader import ModifierConfig
 from prompt_studio.modifier_loader import load_plugins as load_modifier_plugins
 from prompt_studio.processor_loader import get_plugin_class_by_name
@@ -20,10 +24,13 @@ from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_profile_manager_v2.profile_manager_helper import (
     ProfileManagerHelper,
 )
-from prompt_studio.prompt_studio_core_v2.constants import ExecutionSource
+from prompt_studio.prompt_studio_core_v2.constants import (
+    ExecutionSource,
+    IndexingStatus,
+    LogLevels,
+    ToolStudioPromptKeys,
+)
 from prompt_studio.prompt_studio_core_v2.constants import IndexingConstants as IKeys
-from prompt_studio.prompt_studio_core_v2.constants import IndexingStatus, LogLevels
-from prompt_studio.prompt_studio_core_v2.constants import ToolStudioPromptKeys
 from prompt_studio.prompt_studio_core_v2.constants import (
     ToolStudioPromptKeys as TSPKeys,
 )
@@ -54,17 +61,13 @@ from prompt_studio.prompt_studio_output_manager_v2.output_manager_helper import 
     OutputManagerHelper,
 )
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
+from unstract.core.pubsub_helper import LogPublisher
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.exceptions import IndexingError, SdkError
 from unstract.sdk.file_storage.constants import StorageType
 from unstract.sdk.file_storage.env_helper import EnvHelper
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.utils.indexing_utils import IndexingUtils
-from utils.file_storage.constants import FileStorageKeys
-from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
-from utils.local_context import StateStore
-
-from unstract.core.pubsub_helper import LogPublisher
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +154,6 @@ class PromptStudioHelper:
             PermissionError: If the owner does not have permission to perform
               the action.
         """
-
         error_msg = "Permission Error: Free usage for the configured trial adapter exhausted.Please connect your own service accounts to continue.Please see our documentation for more details:https://docs.unstract.com/unstract_platform/setup_accounts/whats_needed"  # noqa: E501
         adapters = [
             profile_manager.llm,
@@ -486,9 +488,9 @@ class PromptStudioHelper:
         org_id: str,
         user_id: str,
         document_id: str,
-        id: Optional[str] = None,
+        id: str | None = None,
         run_id: str = None,
-        profile_manager_id: Optional[str] = None,
+        profile_manager_id: str | None = None,
     ) -> Any:
         """Execute chain/single run of the prompts. Makes a call to prompt
         service and returns the dict of response.
@@ -740,7 +742,7 @@ class PromptStudioHelper:
         document_id: str,
         run_id: str,
         user_id: str,
-        profile_manager_id: Optional[str] = None,
+        profile_manager_id: str | None = None,
     ) -> Any:
         """Utility function to invoke prompt service. Used internally.
 
@@ -762,7 +764,6 @@ class PromptStudioHelper:
         Returns:
             Any: Output from LLM
         """
-
         # Fetch the ProfileManager instance using the profile_manager_id if provided
         profile_manager = prompt.profile_manager
         if profile_manager_id:
@@ -770,10 +771,10 @@ class PromptStudioHelper:
                 profile_manager_id=profile_manager_id
             )
 
-        monitor_llm_instance: Optional[AdapterInstance] = tool.monitor_llm
-        monitor_llm: Optional[str] = None
-        challenge_llm_instance: Optional[AdapterInstance] = tool.challenge_llm
-        challenge_llm: Optional[str] = None
+        monitor_llm_instance: AdapterInstance | None = tool.monitor_llm
+        monitor_llm: str | None = None
+        challenge_llm_instance: AdapterInstance | None = tool.challenge_llm
+        challenge_llm: str | None = None
         if monitor_llm_instance:
             monitor_llm = str(monitor_llm_instance.id)
         else:
@@ -905,9 +906,9 @@ class PromptStudioHelper:
         output[TSPKeys.EVAL_SETTINGS] = {}
         output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_EVALUATE] = prompt.evaluate
         output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_MONITOR_LLM] = [monitor_llm]
-        output[TSPKeys.EVAL_SETTINGS][
-            TSPKeys.EVAL_SETTINGS_EXCLUDE_FAILED
-        ] = tool.exclude_failed
+        output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_EXCLUDE_FAILED] = (
+            tool.exclude_failed
+        )
         for attr in dir(prompt):
             if attr.startswith(TSPKeys.EVAL_METRIC_PREFIX):
                 attr_val = getattr(prompt, attr)
@@ -951,25 +952,24 @@ class PromptStudioHelper:
             TSPKeys.EXECUTION_SOURCE: ExecutionSource.IDE.value,
         }
 
-        responder = PromptTool(
-            tool=util,
-            prompt_host=settings.PROMPT_HOST,
-            prompt_port=settings.PROMPT_PORT,
-        )
-        include_metadata = {TSPKeys.INCLUDE_METADATA: True}
-        headers = {Common.X_REQUEST_ID: StateStore.get(Common.REQUEST_ID)}
-        answer = responder.answer_prompt(
-            payload=payload, params=include_metadata, headers=headers
-        )
-        if answer["status"] == "ERROR":
-            error_message = answer.get("error", "")
+        try:
+            responder = PromptTool(
+                tool=util,
+                prompt_host=settings.PROMPT_HOST,
+                prompt_port=settings.PROMPT_PORT,
+                request_id=StateStore.get(Common.REQUEST_ID),
+            )
+            params = {TSPKeys.INCLUDE_METADATA: True}
+            return responder.answer_prompt(payload=payload, params=params)
+        except SdkError as e:
+            msg = str(e)
+            if e.actual_err and hasattr(e.actual_err, "response"):
+                msg = e.actual_err.response.json().get("error", str(e))
             raise AnswerFetchError(
                 "Error while fetching response for "
-                f"'{prompt.prompt_key}' with '{doc_name}'. {error_message}",
-                status_code=int(answer.get("status_code")),
+                f"'{prompt.prompt_key}' with '{doc_name}'. {msg}",
+                status_code=int(e.status_code or 500),
             )
-        output_response = json.loads(answer["structure_output"])
-        return output_response
 
     @staticmethod
     def fetch_table_settings_if_enabled(
@@ -980,11 +980,7 @@ class PromptStudioHelper:
         tool_id: str,
         output: dict[str, Any],
     ) -> dict[str, Any]:
-
-        if (
-            prompt.enforce_type == TSPKeys.TABLE
-            or prompt.enforce_type == TSPKeys.RECORD
-        ):
+        if prompt.enforce_type == TSPKeys.TABLE or prompt.enforce_type == TSPKeys.RECORD:
             extract_doc_path: str = (
                 PromptStudioHelper._get_extract_or_summary_document_path(
                     org_id, user_id, tool_id, doc_name, TSPKeys.EXTRACT
@@ -1017,7 +1013,7 @@ class PromptStudioHelper:
         reindex: bool = False,
         run_id: str = None,
         enable_highlight: bool = False,
-        doc_id_key: Optional[str] = None,
+        doc_id_key: str | None = None,
     ) -> Any:
         """Used to index a file based on the passed arguments.
 
@@ -1037,7 +1033,6 @@ class PromptStudioHelper:
         Returns:
             str: Index key for the combination of arguments
         """
-
         if profile_manager.chunk_size == 0:
             PromptStudioIndexHelper.handle_index_manager(
                 document_id=document_id,
@@ -1058,7 +1053,6 @@ class PromptStudioHelper:
             directory, "extract", os.path.splitext(filename)[0] + ".txt"
         )
         try:
-
             usage_kwargs = {"run_id": run_id}
             # Orginal file name with which file got uploaded in prompt studio
             usage_kwargs["file_name"] = filename
@@ -1106,22 +1100,22 @@ class PromptStudioHelper:
 
             util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
 
-            responder = PromptTool(
-                tool=util,
-                prompt_host=settings.PROMPT_HOST,
-                prompt_port=settings.PROMPT_PORT,
-            )
-            headers = {Common.X_REQUEST_ID: StateStore.get(Common.REQUEST_ID)}
-            response = responder.index(payload=payload, headers=headers)
-
-            status_code = response.get("status_code")
-            if status_code == 200:
-                doc_id = json.loads(response.get("structure_output")).get("doc_id")
-            else:
-                error_message = f"Failed to index '{filename}'. " + response.get(
-                    "error", ""
+            try:
+                responder = PromptTool(
+                    tool=util,
+                    prompt_host=settings.PROMPT_HOST,
+                    prompt_port=settings.PROMPT_PORT,
+                    request_id=StateStore.get(Common.REQUEST_ID),
                 )
-                raise IndexingAPIError(error_message)
+                doc_id = responder.index(payload=payload)
+            except SdkError as e:
+                msg = str(e)
+                if e.actual_err and hasattr(e.actual_err, "response"):
+                    msg = e.actual_err.response.json().get("error", str(e))
+                raise IndexingAPIError(
+                    f"Failed to index '{filename}'. {msg}",
+                    status_code=int(e.status_code or 500),
+                )
 
             PromptStudioIndexHelper.handle_index_manager(
                 document_id=document_id,
@@ -1133,17 +1127,19 @@ class PromptStudioHelper:
             )
             return {"status": IndexingStatus.COMPLETED_STATUS.value, "output": doc_id}
         except (IndexingError, IndexingAPIError, SdkError) as e:
-            logger.error(f"Indexing failed : {e} ", stack_info=True, exc_info=True)
-            doc_name = os.path.split(file_path)[1]
+            msg = str(e)
+            if isinstance(e, SdkError) and hasattr(e.actual_err, "response"):
+                msg = e.actual_err.response.json().get("error", str(e))
+
+            msg = f"Error while indexing '{filename}'. {msg}"
+            logger.error(msg, stack_info=True, exc_info=True)
             PromptStudioHelper._publish_log(
-                {"tool_id": tool_id, "run_id": run_id, "doc_name": doc_name},
+                {"tool_id": tool_id, "run_id": run_id, "doc_name": filename},
                 LogLevels.ERROR,
                 LogLevels.RUN,
-                f"Indexing failed : {e}",
+                msg,
             )
-            raise IndexingAPIError(
-                f"Error while indexing '{doc_name}'. {str(e)}"
-            ) from e
+            raise IndexingAPIError(msg) from e
 
     @staticmethod
     def _fetch_single_pass_response(
@@ -1160,8 +1156,8 @@ class PromptStudioHelper:
         grammar: list[dict[str, Any]] = []
         prompt_grammar = tool.prompt_grammer
         default_profile = ProfileManager.get_default_llm_profile(tool)
-        challenge_llm_instance: Optional[AdapterInstance] = tool.challenge_llm
-        challenge_llm: Optional[str] = None
+        challenge_llm_instance: AdapterInstance | None = tool.challenge_llm
+        challenge_llm: str | None = None
         # Using default profile manager llm if challenge_llm is None
         if challenge_llm_instance:
             challenge_llm = str(challenge_llm_instance.id)
@@ -1242,9 +1238,7 @@ class PromptStudioHelper:
 
         if tool.summarize_as_source:
             path = Path(file_path)
-            file_path = str(
-                path.parent.parent / TSPKeys.SUMMARIZE / (path.stem + ".txt")
-            )
+            file_path = str(path.parent.parent / TSPKeys.SUMMARIZE / (path.stem + ".txt"))
         file_hash = fs_instance.get_hash_from_file(path=file_path)
         logger.info("payload constructued, calling prompt service..")
         payload = {
@@ -1263,25 +1257,13 @@ class PromptStudioHelper:
             tool=util,
             prompt_host=settings.PROMPT_HOST,
             prompt_port=settings.PROMPT_PORT,
+            request_id=StateStore.get(Common.REQUEST_ID),
         )
-        include_metadata = {TSPKeys.INCLUDE_METADATA: True}
-        headers = {Common.X_REQUEST_ID: StateStore.get(Common.REQUEST_ID)}
-        answer = responder.single_pass_extraction(
-            payload=payload,
-            params=include_metadata,
-            headers=headers,
-        )
-        if answer["status"] == "ERROR":
-            error_message = answer.get("error", None)
-            logger.info(f"{str(answer)}")
-            raise AnswerFetchError(
-                f"Error while fetching response for prompt(s). {error_message}"
-            )
-        output_response = json.loads(answer["structure_output"])
-        return output_response
+        params = {TSPKeys.INCLUDE_METADATA: True}
+        return responder.single_pass_extraction(payload=payload, params=params)
 
     @staticmethod
-    def get_tool_from_tool_id(tool_id: str) -> Optional[CustomTool]:
+    def get_tool_from_tool_id(tool_id: str) -> CustomTool | None:
         try:
             tool: CustomTool = CustomTool.objects.get(tool_id=tool_id)
             return tool
@@ -1297,11 +1279,11 @@ class PromptStudioHelper:
         profile_manager: ProfileManager,
         document_id: str,
         doc_id: str,
-        reindex: Optional[bool] = False,
+        reindex: bool | None = False,
     ) -> str:
         x2text = str(profile_manager.x2text.id)
         is_extracted: bool = False
-        extract_file_path: Optional[str] = None
+        extract_file_path: str | None = None
         extracted_text = ""
         directory, filename = os.path.split(file_path)
         extract_file_path = os.path.join(
@@ -1343,27 +1325,26 @@ class PromptStudioHelper:
 
         util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
 
-        responder = PromptTool(
-            tool=util,
-            prompt_host=settings.PROMPT_HOST,
-            prompt_port=settings.PROMPT_PORT,
-        )
-        headers = {Common.X_REQUEST_ID: StateStore.get(Common.REQUEST_ID)}
-        response = responder.extract(payload=payload, headers=headers)
-        status_code = response.get("status_code")
-        if status_code == 200:
-            response_data = response.get("structure_output")
-            structure_output = json.loads(response_data)
-            extracted_text = structure_output.get("extracted_text")
+        try:
+            responder = PromptTool(
+                tool=util,
+                prompt_host=settings.PROMPT_HOST,
+                prompt_port=settings.PROMPT_PORT,
+                request_id=StateStore.get(Common.REQUEST_ID),
+            )
+            extracted_text = responder.extract(payload=payload)
             PromptStudioIndexHelper.mark_extraction_status(
                 document_id=document_id,
                 profile_manager=profile_manager,
                 doc_id=doc_id,
             )
-        else:
-            error_message = f"Failed to extract '{filename}'. " + response.get(
-                "error", ""
+        except SdkError as e:
+            msg = str(e)
+            if e.actual_err and hasattr(e.actual_err, "response"):
+                msg = e.actual_err.response.json().get("error", str(e))
+            raise ExtractionAPIError(
+                f"Failed to extract '{filename}'. {msg}",
+                status_code=int(e.status_code or 500),
             )
-            raise ExtractionAPIError(error_message)
 
         return extracted_text

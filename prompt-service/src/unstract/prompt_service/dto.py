@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
@@ -9,7 +9,7 @@ class InstanceIdentifiers:
     x2text_instance_id: str
     llm_instance_id: str
     tool_id: str
-    tags: Optional[list[str]] = None
+    tags: list[str] | None = None
 
 
 @dataclass

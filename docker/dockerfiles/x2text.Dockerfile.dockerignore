@@ -42,9 +42,6 @@
 *.idea
 *.vscode
 *.git
-**/.pdm.toml
-**/.pdm-build
-**/.pdm-python
 !LICENSE
 *.md
 !README.md

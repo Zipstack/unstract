@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 
 
 class IndexingService:
-
     @staticmethod
     def index(
         execution_source: str,

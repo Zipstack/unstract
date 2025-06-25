@@ -1,6 +1,5 @@
 # Refer https://docs.docker.com/compose/how-tos/multiple-compose-files/merge/
-# This is an example configuration which aims to minimize the number of celery workers
-# It helps reduce memory usage during development
+# Minimize celery workers to reduce memory usage of Unstract (aids development)
 services:
   worker:
     command: "-A backend worker --loglevel=info -Q celery,celery_periodic_logs,celery_log_task_queue,celery_api_deployments --autoscale=${WORKER_AUTOSCALE}"
@@ -9,6 +8,155 @@ services:
     profiles:
       - high_memory
 
-  worker-api-deployment:
-    profiles:
-      - high_memory
+
+# Watch configuration
+# Refer https://docs.docker.com/compose/how-tos/file-watch/
+  frontend:
+    develop:
+      watch:
+      # Sync the frontend directory with the container
+      - action: sync
+        path: ../frontend/
+        target: /app
+        ignore: node_modules/
+      # Rebuild when dependencies change
+      - action: rebuild
+        path: ../frontend/package-lock.json
+      - action: rebuild
+        path: ../frontend/package.json
+
+  backend:
+    entrypoint: ["bash", "-c"]
+    command: [
+      "source .venv/bin/activate && \
+      uv sync --all-groups && \
+      python /tmp/debugpy --listen 0.0.0.0:5678 .venv/bin/gunicorn \
+        --bind 0.0.0.0:8000 \
+        --workers 2 \
+        --threads 4 \
+        --worker-class gthread \
+        --log-level debug \
+        --timeout 900 \
+        --access-logfile - \
+        --reload --graceful-timeout 5 backend.wsgi:application"
+    ]
+    develop:
+      watch:
+      # Sync the backend directory with the container
+      - action: sync+restart
+        path: ../backend/
+        target: /app
+        ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
+      # Rebuild when dependencies change
+      - action: rebuild
+        path: ../backend/uv.lock
+    ## Uncomment below lines to use local version of unstract-sdk
+    ## NOTE: Restart the containers on code change though
+    # environment:
+    #   - PYTHONPATH=/unstract-sdk/src
+    # volumes:
+    #   - <path_to_unstract_sdk>/unstract-sdk:/unstract-sdk
+
+  runner:
+    entrypoint: ["bash", "-c"]
+    command: [
+      "source .venv/bin/activate && \
+      uv sync --all-groups && \
+      python /tmp/debugpy --listen 0.0.0.0:5681 .venv/bin/gunicorn \
+        --bind 0.0.0.0:5002 \
+        --workers 2 \
+        --threads 2 \
+        --worker-class gthread \
+        --log-level debug \
+        --timeout 900 \
+        --access-logfile - \
+        --reload --graceful-timeout 5 unstract.runner:app"
+    ]
+    develop:
+      watch:
+      # Sync the runner directory with the container
+      - action: sync+restart
+        path: ../runner/
+        target: /app
+        ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
+      # Rebuild when dependencies change
+      - action: rebuild
+        path: ../runner/uv.lock
+
+  platform-service:
+    entrypoint: ["bash", "-c"]
+    command: [
+      "source .venv/bin/activate && \
+      uv sync --all-groups && \
+      python /tmp/debugpy --listen 0.0.0.0:5679 .venv/bin/gunicorn \
+        --bind 0.0.0.0:3001 \
+        --workers 2 \
+        --threads 2 \
+        --worker-class gevent \
+        --log-level debug \
+        --timeout 900 \
+        --access-logfile - \
+        --reload --graceful-timeout 5 unstract.platform_service.run:app"
+    ]
+    develop:
+      watch:
+      # Sync the platform-service directory with the container
+      - action: sync+restart
+        path: ../platform-service/
+        target: /app
+        ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
+      # Rebuild when dependencies change
+      - action: rebuild
+        path: ../platform-service/uv.lock
+
+  prompt-service:
+    entrypoint: ["bash", "-c"]
+    command: [
+      "source .venv/bin/activate && \
+      uv sync --all-groups && \
+      python /tmp/debugpy --listen 0.0.0.0:5680 .venv/bin/gunicorn \
+        --bind 0.0.0.0:3003 \
+        --workers 2 \
+        --threads 2 \
+        --worker-class gthread \
+        --log-level debug \
+        --timeout 900 \
+        --access-logfile - \
+        --reload --graceful-timeout 5 unstract.prompt_service.run:app"
+    ]
+    develop:
+      watch:
+      # Sync the prompt-service directory with the container
+      - action: sync+restart
+        path: ../prompt-service/
+        target: /app
+        ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
+      # Rebuild when dependencies change
+      - action: rebuild
+        path: ../prompt-service/uv.lock
+
+  x2text-service:
+    entrypoint: ["bash", "-c"]
+    command: [
+      "source .venv/bin/activate && \
+      uv sync --all-groups && \
+      python /tmp/debugpy --listen 0.0.0.0:5682 .venv/bin/gunicorn \
+        --bind 0.0.0.0:3004 \
+        --workers 2 \
+        --threads 2 \
+        --worker-class gthread \
+        --log-level debug \
+        --timeout 900 \
+        --access-logfile - \
+        --reload --graceful-timeout 5 unstract.x2text_service.run:app"
+    ]
+    develop:
+      watch:
+      # Sync the x2text-service directory with the container
+      - action: sync+restart
+        path: ../x2text-service/
+        target: /app
+        ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
+      # Rebuild when dependencies change
+      - action: rebuild
+        path: ../x2text-service/uv.lock

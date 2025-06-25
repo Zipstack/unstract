@@ -2,26 +2,30 @@ import json
 from typing import Any
 
 from fsspec import AbstractFileSystem
-from unstract.workflow_execution.execution_file_handler import ExecutionFileHandler
 from utils.constants import Common
 from utils.user_context import UserContext
 
 from unstract.connectors.filesystems import connectors
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
+from unstract.workflow_execution.execution_file_handler import ExecutionFileHandler
 
 
 class BaseConnector(ExecutionFileHandler):
     """Base class for connectors providing common methods and utilities."""
 
     def __init__(
-        self, workflow_id: str, execution_id: str, organization_id: str
+        self,
+        workflow_id: str,
+        execution_id: str,
+        organization_id: str,
+        file_execution_id: str | None = None,
     ) -> None:
         """Initialize the BaseConnector class.
 
         This class serves as a base for connectors and provides common
         utilities.
         """
-        super().__init__(workflow_id, execution_id, organization_id)
+        super().__init__(workflow_id, execution_id, organization_id, file_execution_id)
 
     def get_fsspec(
         self, settings: dict[str, Any], connector_id: str
@@ -97,3 +101,20 @@ class BaseConnector(ExecutionFileHandler):
             workflow_id, execution_id, organization_id
         )
         return api_storage_dir
+
+    @classmethod
+    def get_execution_dir_path(cls, workflow_id: str, execution_id: str) -> str:
+        """Get the directory path for storing execution-related files.
+
+        Parameters:
+        - workflow_id (str): Identifier for the workflow.
+        - execution_id (str): Identifier for the execution.
+
+        Returns:
+        str: The directory path for the execution.
+        """
+        organization_id = UserContext.get_organization_identifier()
+        execution_dir: str = cls.get_execution_dir(
+            workflow_id, execution_id, organization_id
+        )
+        return execution_dir

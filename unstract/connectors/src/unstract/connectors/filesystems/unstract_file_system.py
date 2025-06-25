@@ -3,7 +3,7 @@ import logging
 import os
 from abc import ABC, abstractmethod
 from datetime import date, datetime
-from typing import Any, Optional
+from typing import Any
 
 from fsspec import AbstractFileSystem
 
@@ -78,9 +78,8 @@ class UnstractFileSystem(UnstractConnector, ABC):
         pass
 
     @abstractmethod
-    def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> Optional[str]:
-        """
-        Extracts a unique file hash from metadata.
+    def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> str | None:
+        """Extracts a unique file hash from metadata.
 
         This method must be implemented in subclasses.
 
@@ -92,22 +91,38 @@ class UnstractFileSystem(UnstractConnector, ABC):
         """
         pass
 
+    @abstractmethod
+    def is_dir_by_metadata(self, metadata: dict[str, Any]) -> bool:
+        """Check if the given path is a directory.
+
+        Args:
+            metadata (dict): Metadata dictionary obtained from fsspec or cloud API.
+
+        Returns:
+            bool: True if the path is a directory, False otherwise.
+        """
+        pass
+
     @staticmethod
     def get_connector_root_dir(input_dir: str, **kwargs: Any) -> str:
         """Override to get root dir of a connector."""
         return f"{input_dir.strip('/')}/"
 
-    def get_file_size(self, file_path: str) -> Optional[int]:
+    def get_file_size(
+        self, file_path: str | None = None, metadata: dict[str, Any] | None = None
+    ) -> int | None:
         """Get the size of a file."""
-        fs_fsspec = self.get_fsspec_fs()
-        metadata = fs_fsspec.stat(file_path)
+        if not metadata:
+            if not file_path:
+                return None
+            fs_fsspec = self.get_fsspec_fs()
+            metadata = fs_fsspec.stat(file_path)
         if not metadata or not isinstance(metadata, dict):
             return None
         return metadata.get("size")
 
-    def _serialize_metadata_value(self, value: Any, depth: int = 0) -> Any:
-        """
-        Recursively serialize metadata values to ensure JSON compatibility.
+    def serialize_metadata_value(self, value: Any, depth: int = 0) -> Any:
+        """Recursively serialize metadata values to ensure JSON compatibility.
 
         Args:
             value: Any value that needs to be serialized
@@ -130,24 +145,22 @@ class UnstractFileSystem(UnstractConnector, ABC):
             return base64.b64encode(value).decode("utf-8")
         elif isinstance(value, dict):
             return {
-                k: self._serialize_metadata_value(v, depth + 1)
-                for k, v in value.items()
+                k: self.serialize_metadata_value(v, depth + 1) for k, v in value.items()
             }
         elif isinstance(value, (list, tuple)):
-            return [self._serialize_metadata_value(v, depth + 1) for v in value]
+            return [self.serialize_metadata_value(v, depth + 1) for v in value]
         else:
             # For custom objects like ContentSettings, convert to dict if possible
             if hasattr(value, "__dict__"):
                 try:
-                    return self._serialize_metadata_value(value.__dict__, depth + 1)
+                    return self.serialize_metadata_value(value.__dict__, depth + 1)
                 except Exception:
                     return str(value)
             # Last resort: convert to string
             return str(value)
 
     def get_file_metadata(self, file_path: str) -> dict[str, Any]:
-        """
-        Get the metadata of a file.
+        """Get the metadata of a file.
 
         Args:
             file_path (str): Path of the file.
@@ -166,27 +179,29 @@ class UnstractFileSystem(UnstractConnector, ABC):
             # Recursively serialize all metadata values
             serialized_metadata = {}
             for key, value in metadata.items():
-                serialized_metadata[key] = self._serialize_metadata_value(value)
+                serialized_metadata[key] = self.serialize_metadata_value(value)
 
             return serialized_metadata
         except Exception as e:
-            logger.error(
-                f"Error getting file system metadata for {file_path}: {str(e)}"
-            )
+            logger.error(f"Error getting file system metadata for {file_path}: {str(e)}")
             return {}
 
-    def get_file_system_uuid(self, file_path: str) -> Optional[str]:
-        """
-        Get the UUID of a file.
+    def get_file_system_uuid(
+        self, file_path: str, metadata: dict[str, Any]
+    ) -> str | None:
+        """Get the UUID of a file.
 
         Args:
             file_path (str): Path of the file.
+            metadata (dict[str, Any]): Metadata of the file.
 
         Returns:
             Optional[str]: UUID of the file in hex format or None if not found.
         """
-        fs_fsspec = self.get_fsspec_fs()
-        metadata = fs_fsspec.stat(file_path)
+        if not metadata:
+            fs_fsspec = self.get_fsspec_fs()
+            metadata = fs_fsspec.stat(file_path)
+
         file_hash = self.extract_metadata_file_hash(metadata)
         if not file_hash:
             logger.error(f"File hash not found for {file_path}.")

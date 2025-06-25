@@ -630,6 +630,7 @@ backend/pluggable_apps/*
 
 # FE Plugins
 frontend/src/plugins/*
+frontend/public/llm-whisperer/
 
 
 # TODO: Ensure its made generic to abstract subfolder and file names

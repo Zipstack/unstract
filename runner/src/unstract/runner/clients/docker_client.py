@@ -1,19 +1,20 @@
 import logging
 import os
+import pprint
 from collections.abc import Iterator
-from typing import Any, Optional
+from typing import Any
 
-from docker.errors import APIError, ImageNotFound
+from docker import DockerClient
+from docker.errors import APIError, ImageNotFound, NotFound
 from docker.models.containers import Container
+from unstract.core.runner.enum import ContainerStatus
+from unstract.core.utilities import UnstractUtils
 from unstract.runner.clients.interface import (
     ContainerClientInterface,
     ContainerInterface,
 )
 from unstract.runner.constants import Env
 from unstract.runner.utils import Utils
-
-from docker import DockerClient
-from unstract.core.utilities import UnstractUtils
 
 
 class DockerContainer(ContainerInterface):
@@ -30,7 +31,7 @@ class DockerContainer(ContainerInterface):
             yield line.decode().strip()
 
     def wait_until_stop(
-        self, main_container_status: Optional[dict[str, Any]] = None
+        self, main_container_status: dict[str, Any] | None = None
     ) -> dict:
         """Wait until the container stops and return the status.
 
@@ -47,7 +48,7 @@ class DockerContainer(ContainerInterface):
 
         return self.container.wait()
 
-    def cleanup(self, client: Optional[ContainerClientInterface] = None) -> None:
+    def cleanup(self, client: ContainerClientInterface | None = None) -> None:
         if not self.container or not Utils.remove_container_on_exit():
             return
         try:
@@ -73,7 +74,7 @@ class Client(ContainerClientInterface):
         self.image_tag = image_tag or "latest"
         self.logger = logger
         self.sidecar_enabled = sidecar_enabled
-        self.volume_name: Optional[str] = None
+        self.volume_name: str | None = None
 
         # Create a Docker client that communicates with
         #   the Docker daemon in the host environment
@@ -82,9 +83,7 @@ class Client(ContainerClientInterface):
 
     def __private_login(self):
         """Performs login for private registry if required."""
-        private_registry_credential_path = os.getenv(
-            Env.PRIVATE_REGISTRY_CREDENTIAL_PATH
-        )
+        private_registry_credential_path = os.getenv(Env.PRIVATE_REGISTRY_CREDENTIAL_PATH)
         private_registry_username = os.getenv(Env.PRIVATE_REGISTRY_USERNAME)
         private_registry_url = os.getenv(Env.PRIVATE_REGISTRY_URL)
         if not (
@@ -133,13 +132,10 @@ class Client(ContainerClientInterface):
         Returns:
             bool: True if the image exists, False otherwise.
         """
-
         try:
             # Attempt to get the image information
             self.client.images.get(image_name_with_tag)
-            self.logger.info(
-                f"Image '{image_name_with_tag}' found in the local system."
-            )
+            self.logger.info(f"Image '{image_name_with_tag}' found in the local system.")
             return True
         except ImageNotFound:  # type: ignore[attr-defined]
             self.logger.info(
@@ -169,16 +165,18 @@ class Client(ContainerClientInterface):
         if sidecar:
             image_name_with_tag = f"{self.sidecar_image_name}:{self.sidecar_image_tag}"
             repository = self.sidecar_image_name
+            image_tag = self.sidecar_image_tag
         else:
             image_name_with_tag = f"{self.image_name}:{self.image_tag}"
             repository = self.image_name
+            image_tag = self.image_tag
         if self.__image_exists(image_name_with_tag):
             return image_name_with_tag
 
         self.logger.info("Pulling the container: %s", image_name_with_tag)
         resp = self.client.api.pull(
             repository=repository,
-            tag=self.image_tag,
+            tag=image_tag,
             stream=True,
             decode=True,
         )
@@ -205,8 +203,8 @@ class Client(ContainerClientInterface):
         command: list[str],
         file_execution_id: str,
         shared_log_dir: str,
-        container_name: Optional[str] = None,
-        envs: Optional[dict[str, Any]] = None,
+        container_name: str | None = None,
+        envs: dict[str, Any] | None = None,
         auto_remove: bool = False,
         sidecar: bool = False,
         **kwargs,
@@ -269,7 +267,9 @@ class Client(ContainerClientInterface):
             DockerContainer: Running container instance
         """
         try:
-            self.logger.info("Running container with config: %s", container_config)
+            self.logger.info(
+                "Running container with config: %s", pprint.pformat(container_config)
+            )
             container = self.client.containers.run(**container_config)
             return DockerContainer(
                 container=container,
@@ -281,7 +281,7 @@ class Client(ContainerClientInterface):
 
     def run_container_with_sidecar(
         self, container_config: dict[str, Any], sidecar_config: dict[str, Any]
-    ) -> tuple[DockerContainer, Optional[DockerContainer]]:
+    ) -> tuple[DockerContainer, DockerContainer | None]:
         """Run a container with sidecar.
 
         Args:
@@ -293,9 +293,13 @@ class Client(ContainerClientInterface):
                 Running container and sidecar instance
         """
         try:
-            self.logger.info("Running container with config: %s", container_config)
+            self.logger.info(
+                "Running container with config: %s", pprint.pformat(container_config)
+            )
             container = self.client.containers.run(**container_config)
-            self.logger.info("Running sidecar with config: %s", sidecar_config)
+            self.logger.info(
+                "Running sidecar with config: %s", pprint.pformat(sidecar_config)
+            )
             sidecar = self.client.containers.run(**sidecar_config)
             return DockerContainer(
                 container=container,
@@ -310,9 +314,9 @@ class Client(ContainerClientInterface):
 
     def wait_for_container_stop(
         self,
-        container: Optional[DockerContainer],
-        main_container_status: Optional[dict[str, Any]] = None,
-    ) -> Optional[dict]:
+        container: DockerContainer | None,
+        main_container_status: dict[str, Any] | None = None,
+    ) -> dict | None:
         """Wait for the container to stop and return its exit status.
 
         Args:
@@ -325,3 +329,61 @@ class Client(ContainerClientInterface):
         if not container:
             return None
         return container.wait_until_stop(main_container_status)
+
+    def get_container_status(self, container_name: str) -> str:
+        """Get status of a Docker container by name.
+
+        Returns one of the defined values in ContainerStatus enum.
+        """
+        try:
+            container = self.client.containers.get(container_name)
+            status = container.status.lower()
+        except NotFound:
+            return ContainerStatus.NOT_FOUND.value
+        except Exception as e:
+            self.logger.error(f"Error checking status of {container_name}: {e}")
+            return ContainerStatus.ERROR.value
+
+        try:
+            return ContainerStatus(status.upper()).value
+        except ValueError:
+            self.logger.warning(
+                f"Unexpected container status '{status}' for {container_name}"
+            )
+            return status
+
+    def remove_container_by_name(
+        self, container_name: str, with_sidecar: bool = False, force: bool = True
+    ) -> None:
+        """Remove a container by its name."""
+        try:
+            container = self.client.containers.get(container_name)
+            container.remove(force=force)
+            self.logger.info(f"Container '{container_name}' removed successfully.")
+        except NotFound:
+            self.logger.warning(f"Container '{container_name}' not found.")
+        except APIError as e:
+            self.logger.error(
+                f"An API error occurred while removing container '{container_name}': {e}"
+            )
+        except Exception as e:
+            self.logger.error(
+                f"An unexpected error occurred while removing container '{container_name}': {e}"
+            )
+
+        if with_sidecar:
+            sidecar_name = Utils.get_sidecar_container_name(container_name)
+            try:
+                sidecar = self.client.containers.get(sidecar_name)
+                sidecar.remove(force=force)
+                self.logger.info(f"Sidecar '{sidecar_name}' removed successfully.")
+            except NotFound:
+                self.logger.warning(f"Sidecar '{sidecar_name}' not found.")
+            except APIError as e:
+                self.logger.error(
+                    f"An API error occurred while removing sidecar '{sidecar_name}': {e}"
+                )
+            except Exception as e:
+                self.logger.error(
+                    f"An unexpected error occurred while removing sidecar '{sidecar_name}': {e}"
+                )

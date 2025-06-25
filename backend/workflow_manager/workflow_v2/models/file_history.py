@@ -1,12 +1,14 @@
 import uuid
-from typing import Optional
 
 from django.db import models
+from django.db.models import Q
 from utils.models.base_model import BaseModel
+
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 HASH_LENGTH = 64
+FILE_PATH_LENGTH = 1000
 
 
 class FileHistory(BaseModel):
@@ -45,29 +47,44 @@ class FileHistory(BaseModel):
     result = models.TextField(blank=True, db_comment="Result from execution")
     metadata = models.TextField(blank=True, db_comment="MetaData from execution")
 
+    file_path = models.CharField(
+        max_length=FILE_PATH_LENGTH, null=True, db_comment="Full Path of the file"
+    )
+
     class Meta:
         verbose_name = "File History"
         verbose_name_plural = "File Histories"
         db_table = "file_history"
         constraints = [
+            # Legacy behavior: file_path is not present or is null
             models.UniqueConstraint(
                 fields=["workflow", "cache_key"],
                 name="unique_workflow_cacheKey",
-                condition=models.Q(cache_key__isnull=False),
+                condition=Q(file_path__isnull=True, cache_key__isnull=False),
             ),
             models.UniqueConstraint(
                 fields=["workflow", "provider_file_uuid"],
                 name="unique_workflow_providerFileUUID",
-                condition=models.Q(provider_file_uuid__isnull=False),
+                condition=Q(file_path__isnull=True, provider_file_uuid__isnull=False),
+            ),
+            # New behavior: file_path exists and is not null
+            models.UniqueConstraint(
+                fields=["workflow", "cache_key", "file_path"],
+                name="unique_workflow_cacheKey_with_filePath",
+                condition=Q(file_path__isnull=False, cache_key__isnull=False),
+            ),
+            models.UniqueConstraint(
+                fields=["workflow", "provider_file_uuid", "file_path"],
+                name="unique_workflow_providerFileUUID_with_filePath",
+                condition=Q(file_path__isnull=False, provider_file_uuid__isnull=False),
             ),
         ]
 
     def update(
         self,
-        provider_file_uuid: Optional[str] = None,
+        provider_file_uuid: str | None = None,
     ) -> None:
-        """
-        Updates the file execution details.
+        """Updates the file execution details.
 
         Args:
             provider_file_uuid: (Optional) UUID of the file in the storage provider

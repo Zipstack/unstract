@@ -1,12 +1,14 @@
+from __future__ import annotations
+
 import json
 import logging
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from django.utils import timezone as dj_timezone
-from unstract.workflow_execution.enums import LogType
 
 from unstract.core.constants import LogFieldName
+from unstract.workflow_execution.enums import LogType
 
 logger = logging.getLogger(__name__)
 
@@ -30,20 +32,20 @@ class LogDataDTO:
         timestamp: int,
         log_type: str,
         data: dict[str, Any],
-        file_execution_id: Optional[str] = None,
+        file_execution_id: str | None = None,
     ):
         self.execution_id: str = execution_id
-        self.file_execution_id: Optional[str] = file_execution_id
+        self.file_execution_id: str | None = file_execution_id
         self.organization_id: str = organization_id
         self.timestamp: int = timestamp
         self.event_time: datetime = dj_timezone.make_aware(
-            datetime.fromtimestamp(timestamp), timezone.utc
+            datetime.fromtimestamp(timestamp), UTC
         )
         self.log_type: LogType = log_type
         self.data: dict[str, Any] = data
 
     @classmethod
-    def from_json(cls, json_data: str) -> Optional["LogDataDTO"]:
+    def from_json(cls, json_data: str) -> LogDataDTO | None:
         try:
             json_data = json.loads(json_data)
             execution_id = json_data.get(LogFieldName.EXECUTION_ID)

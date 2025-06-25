@@ -1,4 +1,5 @@
-from typing import Any, Optional
+import json
+from typing import Any
 
 from django.conf import settings
 from django.core.cache import cache
@@ -9,7 +10,7 @@ redis_cache = get_redis_connection("default")
 
 class CacheService:
     @staticmethod
-    def get_key(key: str) -> Optional[Any]:
+    def get_key(key: str) -> Any | None:
         data = cache.get(str(key))
         if data is not None:
             if isinstance(data, bytes):
@@ -19,9 +20,7 @@ class CacheService:
         return data
 
     @staticmethod
-    def set_key(
-        key: str, value: Any, expire: int = int(settings.CACHE_TTL_SEC)
-    ) -> None:
+    def set_key(key: str, value: Any, expire: int = int(settings.CACHE_TTL_SEC)) -> None:
         cache.set(
             str(key),
             value,
@@ -80,10 +79,99 @@ class CacheService:
         return redis_cache.lrange(key, start_index, end_index)
 
     @staticmethod
+    def hset(
+        key: str,
+        field: str = None,
+        value: Any = None,
+        mapping: dict[str, Any] = None,
+        expire_time: int = int(settings.CACHE_TTL_SEC),
+    ) -> None:
+        """Set Redis hash fields. Supports both single field-value and full mapping.
+
+        Args:
+            key (str): The key of the Redis hash.
+            field (str, optional): The field to set. Defaults to None.
+            value (Any, optional): The value to set. Defaults to None.
+            mapping (dict[str, Any], optional): The mapping of fields to values.
+                Defaults to None.
+            expire_time (int, optional): The expiration time for hash in seconds.
+                Defaults to int(settings.CACHE_TTL_SEC).
+        """
+        if mapping is not None:
+            redis_cache.hset(key, mapping=mapping)
+        elif field is not None and value is not None:
+            redis_cache.hset(key, field, value)
+        else:
+            raise ValueError("Provide either 'mapping' or both 'field' and 'value'")
+
+        redis_cache.expire(key, expire_time)
+
+    @staticmethod
+    def hget(key: str, field: str) -> Any:
+        """Get a value from a Redis hash."""
+        return redis_cache.hget(key, field)
+
+    @staticmethod
+    def hgetall(key: str) -> Any:
+        """Get all values from a Redis hash."""
+        return redis_cache.hgetall(key)
+
+    @staticmethod
+    def hincrby(key: str, field: str, increment: int) -> None:
+        """Increment a value in a Redis hash."""
+        redis_cache.hincrby(key, field, increment)
+
+    @staticmethod
+    def exists(key: str) -> bool:
+        """Check if a key exists in Redis."""
+        return redis_cache.exists(key)
+
+    @staticmethod
+    def rpush_with_expire(
+        key: str, value: Any, expire: int = int(settings.CACHE_TTL_SEC)
+    ) -> None:
+        """Push a value to a Redis list and reset the list's TTL in a single atomic operation.
+
+        Args:
+            key (str): The key of the Redis list.
+            value (Any): The value to push to the list.
+            expire (int, optional): The expiration time for list in seconds.
+                Defaults to int(settings.CACHE_TTL_SEC).
+
+        Returns:
+            None
+        """
+        pipe = redis_cache.pipeline()
+        pipe.rpush(key, json.dumps(value))
+        pipe.expire(key, expire)
+        pipe.execute()
+
+    @staticmethod
+    def lrange_json(key: str, start_index: int = 0, end_index: int = -1) -> list[Any]:
+        """Get all items from list and parse JSON.
+
+        Args:
+            key (str): The key of the Redis list.
+            start_index (int, optional): The starting index for the range.
+                Defaults to 0.
+            end_index (int, optional): The ending index for the range.
+                Defaults to -1.
+
+        Returns:
+            list[Any]: A list of parsed JSON values from the list.
+        """
+        results = redis_cache.lrange(key, start_index, end_index)
+        if not results:
+            return []
+        return [
+            json.loads(r.decode("utf-8") if isinstance(r, bytes) else r) for r in results
+        ]
+
+    @staticmethod
     def remove_all_session_keys(
-        user_id: Optional[str] = None,
-        cookie_id: Optional[str] = None,
-        key: Optional[str] = None,
+        user_id: str | None = None,
+        cookie_id: str | None = None,
+        key: str | None = None,
     ) -> None:
         if cookie_id is not None:
             cache.delete(cookie_id)

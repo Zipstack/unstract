@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Optional
 
 from django.utils import timezone
+
 from utils.date.exceptions import InvalidDateRange
 
 
@@ -43,7 +45,7 @@ class DateRangePresets(Enum):
         return self.get_start_date(), self.get_end_date()
 
     @classmethod
-    def from_value(cls, value: str) -> Optional["DateRangePresets"]:
+    def from_value(cls, value: str) -> DateRangePresets | None:
         try:
             return next(preset for preset in cls if preset.key == value)
         except StopIteration as e:

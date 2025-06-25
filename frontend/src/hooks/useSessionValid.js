@@ -22,7 +22,7 @@ let selectedProductStore;
 let PRODUCT_NAMES = {};
 
 try {
-  selectedProductStore = require("../plugins/llm-whisperer/store/select-product-store.js");
+  selectedProductStore = require("../plugins/store/select-product-store.js");
   PRODUCT_NAMES = require("../plugins/llm-whisperer/helper").PRODUCT_NAMES;
 } catch {
   // Ignore if hook not available
@@ -51,6 +51,7 @@ function useSessionValid() {
     if (
       userSessionData &&
       selectedProductStore &&
+      Object.keys(PRODUCT_NAMES).length !== 0 &&
       !Object.values(PRODUCT_NAMES).includes(selectedProduct)
     ) {
       navigate("/selectProduct");
@@ -161,6 +162,7 @@ function useSessionValid() {
         userAndOrgDetails["isPlatformAdmin"] = await isPlatformAdmin();
       }
       userAndOrgDetails["role"] = userSessionData.role;
+      userAndOrgDetails["provider"] = userSessionData.provider;
     } catch (err) {
       // TODO: Throw popup error message
       // REVIEW: Add condition to check for trial period status

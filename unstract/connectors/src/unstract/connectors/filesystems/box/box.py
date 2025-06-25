@@ -2,7 +2,7 @@ import json
 import logging
 import os
 from json import JSONDecodeError
-from typing import Any, Optional
+from typing import Any
 
 from boxfs import BoxFileSystem
 from boxsdk import JWTAuth
@@ -110,9 +110,8 @@ class BoxFS(UnstractFileSystem):
     def get_fsspec_fs(self) -> BoxFileSystem:
         return self.box_fs
 
-    def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> Optional[str]:
-        """
-        Extracts a unique file hash from metadata.
+    def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> str | None:
+        """Extracts a unique file hash from metadata.
 
         Args:
             metadata (dict): Metadata dictionary obtained from fsspec.
@@ -122,6 +121,17 @@ class BoxFS(UnstractFileSystem):
         """
         logger.error(f"[Box] File hash not found for the metadata: {metadata}")
         return None
+
+    def is_dir_by_metadata(self, metadata: dict[str, Any]) -> bool:
+        """Check if the given path is a directory.
+
+        Args:
+            metadata (dict): Metadata dictionary obtained from fsspec or cloud API.
+
+        Returns:
+            bool: True if the path is a directory, False otherwise.
+        """
+        raise NotImplementedError
 
     def test_credentials(self) -> bool:
         """To test credentials for the Box connector."""

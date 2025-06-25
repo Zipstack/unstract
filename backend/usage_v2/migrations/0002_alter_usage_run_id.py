@@ -9,7 +9,6 @@ def convert_empty_to_null(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("usage_v2", "0001_initial"),
     ]
