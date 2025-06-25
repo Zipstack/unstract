@@ -1,6 +1,7 @@
-import { Button, Input, Space, Typography } from "antd";
+import { Button, Input, Space, Typography, Modal } from "antd";
 import PropTypes from "prop-types";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { ExpandOutlined } from "@ant-design/icons";
 import "./PreAndPostAmbleModal.css";
 
 import { useAlertStore } from "../../../store/alert-store";
@@ -19,6 +20,8 @@ const fieldNames = {
 function PreAndPostAmbleModal({ type, handleUpdateTool }) {
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
+  const [expandModalVisible, setExpandModalVisible] = useState(false);
+  const textAreaRef = useRef(null);
   const { details, updateCustomTool, isPublicSource } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
@@ -27,24 +30,26 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
     if (type === fieldNames.preamble) {
       setTitle("Preamble Settings");
       setText(details?.preamble || "");
-      return;
-    }
-
-    if (type === fieldNames.postamble) {
+    } else if (type === fieldNames.postamble) {
       setTitle("Postamble Settings");
       setText(details?.postamble || "");
     }
-  }, [type]);
+  }, [type, details]);
 
   const setDefaultPrompt = () => {
     if (type === fieldNames.preamble) {
       setText(DefaultPrompts.preamble);
-      return;
-    }
-
-    if (type === fieldNames.postamble) {
+    } else if (type === fieldNames.postamble) {
       setText(DefaultPrompts.postamble);
     }
+  };
+
+  const handleTextChange = (e) => {
+    setText(e.target.value);
+  };
+
+  const toggleExpandModal = () => {
+    setExpandModalVisible(!expandModalVisible);
   };
 
   const handleSave = () => {
@@ -84,17 +89,29 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
           </Typography.Text>
         </div>
         <div>
-          <div>
+          <div className="text-area-header">
             <Typography.Text>Add {title}</Typography.Text>
           </div>
         </div>
-        <div>
-          <Input.TextArea
-            rows={4}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            disabled={isPublicSource}
-          />
+        <div className="text-area-container">
+          <div className="text-area-wrapper">
+            <Input.TextArea
+              ref={textAreaRef}
+              rows={4}
+              value={text}
+              onChange={handleTextChange}
+              disabled={isPublicSource}
+              autoSize={{ minRows: 4 }}
+            />
+            <Button
+              icon={<ExpandOutlined />}
+              className="expand-button"
+              onClick={toggleExpandModal}
+              type="text"
+              disabled={isPublicSource}
+              title="Expand view"
+            />
+          </div>
           <Button
             size="small"
             type="link"
@@ -103,6 +120,29 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
           >
             Reset with default prompt
           </Button>
+
+          <Modal
+            title={title}
+            open={expandModalVisible}
+            onCancel={toggleExpandModal}
+            footer={null}
+            width="60%"
+            className="expanded-modal-body"
+            centered={true}
+          >
+            <Input.TextArea
+              value={text}
+              onChange={handleTextChange}
+              disabled={isPublicSource}
+              autoSize={{ minRows: 15 }}
+              className="expanded-textarea"
+            />
+            <div className="modal-footer">
+              <Button type="primary" onClick={toggleExpandModal}>
+                Close
+              </Button>
+            </div>
+          </Modal>
         </div>
         <div className="display-flex-right">
           <Space>
