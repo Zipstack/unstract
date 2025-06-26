@@ -12,6 +12,12 @@ services:
 # Watch configuration
 # Refer https://docs.docker.com/compose/how-tos/file-watch/
   frontend:
+    build:
+      dockerfile: docker/dockerfiles/frontend.Dockerfile
+      context: ..
+      target: development
+    env_file:
+      - ../frontend/.env
     develop:
       watch:
       # Sync the frontend directory with the container
