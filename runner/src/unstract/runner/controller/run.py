@@ -49,7 +49,7 @@ def run_status() -> Any | None:
     return {"status": status}
 
 
-@run_bp.route("container/remove", methods=["POST"])
+@run_bp.route("container/remove", methods=["DELETE"])
 def remove_container() -> Any | None:
     data = request.get_json()
     container_name = data["container_name"]

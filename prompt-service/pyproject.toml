@@ -42,7 +42,7 @@ deploy = [
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",
 ]
-dev = ["poethepoet>=0.33.1"]
+dev = ["poethepoet>=0.33.1", "debugpy>=1.8.14"]
 
 [build-system]
 requires = ["hatchling"]

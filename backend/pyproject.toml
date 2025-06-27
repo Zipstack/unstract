@@ -67,6 +67,7 @@ dev = [
     # For file watching
     "inotify>=0.2.10",
     "poethepoet>=0.33.1",
+    "debugpy>=1.8.14"
 ]
 test = ["pytest>=8.0.1", "pytest-dotenv==0.5.2"]
 deploy = [

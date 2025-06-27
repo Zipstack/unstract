@@ -329,7 +329,7 @@ class ToolSandboxHelper:
         }
         data = self.cleanup_tool_container_request_data(container_name=container_name)
         response = self.http_client(
-            method=HTTPMethod.POST,
+            method=HTTPMethod.DELETE,
             endpoint=UnstractRunner.CLEANUP_TOOL_CONTAINER_API_ENDPOINT,
             headers=headers,
             json=data,

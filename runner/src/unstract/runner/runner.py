@@ -376,11 +376,22 @@ class UnstractRunner:
         return self.client.get_container_status(container_name)
 
     def remove_container_by_name(self, container_name: str) -> dict[str, Any]:
-        """Remove container by name."""
-        self.client.remove_container_by_name(
+        """Remove container by name and its sidecar if enabled.
+
+        Args:
+            container_name (str): Name of the container to remove
+
+        Returns:
+            dict[str, Any]: Status of the operation
+        """
+        if not Utils.remove_container_on_exit():
+            return {"status": "skipped"}
+
+        success = self.client.remove_container_by_name(
             container_name, with_sidecar=self.sidecar_enabled
         )
-        return {"status": "success"}
+
+        return {"status": "success" if success else "error"}
 
     def run_container(
         self,

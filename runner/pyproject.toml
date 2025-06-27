@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["unstract-core[flask]", "poethepoet>=0.33.1"]
+dev = ["unstract-core[flask]", "poethepoet>=0.33.1", "debugpy>=1.8.14"]
 test = [
     "pytest>=8.2.2",
     "pytest-mock>=3.14.0",

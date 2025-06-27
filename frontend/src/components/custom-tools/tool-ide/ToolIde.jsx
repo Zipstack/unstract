@@ -14,21 +14,11 @@ import "./ToolIde.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import { PageTitle } from "../../widgets/page-title/PageTitle.jsx";
 
-let OnboardMessagesModal;
 let PromptShareModal;
 let PromptShareLink;
 let CloneTitle;
 let HeaderPublic;
-let slides;
-try {
-  OnboardMessagesModal =
-    require("../../../plugins/onboarding-messages/OnboardMessagesModal.jsx").OnboardMessagesModal;
-  slides =
-    require("../../../plugins/onboarding-messages/prompt-slides.jsx").PromptSlides;
-} catch (err) {
-  OnboardMessagesModal = null;
-  slides = [];
-}
+
 try {
   PromptShareModal =
     require("../../../plugins/prompt-studio-public-share/public-share-modal/PromptShareModal.jsx").PromptShareModal;
@@ -59,11 +49,9 @@ function ToolIde() {
     isPublicSource,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
-  const { promptOnboardingMessage } = sessionDetails;
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
-  const [loginModalOpen, setLoginModalOpen] = useState(true);
   const { setPostHogCustomEvent } = usePostHogEvents();
   const [openShareLink, setOpenShareLink] = useState(false);
   const [openShareConfirmation, setOpenShareConfirmation] = useState(false);
@@ -252,13 +240,6 @@ function ToolIde() {
         <CloneTitle
           open={openCloneModal}
           setOpenCloneModal={setOpenCloneModal}
-        />
-      )}
-      {!promptOnboardingMessage && OnboardMessagesModal && !isPublicSource && (
-        <OnboardMessagesModal
-          open={loginModalOpen}
-          setOpen={setLoginModalOpen}
-          slides={slides}
         />
       )}
     </div>

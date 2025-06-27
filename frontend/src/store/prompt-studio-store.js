@@ -10,7 +10,8 @@ const usePromptStudioStore = create((set, get) => {
   return {
     ...STORE_VARIABLES,
     fetchCount: async (getPromptStudioCount) => {
-      if (get().isLoading) return;
+      // Prevent duplicate calls if already loading or if we already have a count
+      if (get().isLoading || (get().count > 0 && !get().error)) return;
 
       set({ isLoading: true });
       try {
