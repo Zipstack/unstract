@@ -25,6 +25,7 @@ import { useSessionStore } from "../../../store/session-store";
 import { useWorkflowStore } from "../../../store/workflow-store";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { ConfigureConnectorModal } from "../configure-connector-modal/ConfigureConnectorModal";
+import { SharedConnectorModal } from "../../connectors/SharedConnectorModal";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import "./DsSettingsCard.css";
 
@@ -61,6 +62,12 @@ function DsSettingsCard({ type, endpointDetails, message }) {
   const [formDataConfig, setFormDataConfig] = useState({});
   const [selectedId, setSelectedId] = useState("");
   const [selectedItemName, setSelectedItemName] = useState("");
+
+  // Shared connector state
+  const [sharedConnectors, setSharedConnectors] = useState([]);
+  const [selectedSharedConnector, setSelectedSharedConnector] = useState(null);
+  const [showSharedConnectors, setShowSharedConnectors] = useState(false);
+  const [openSharedModal, setOpenSharedModal] = useState(false);
   const [inputOptions, setInputOptions] = useState([
     {
       value: "API",
@@ -146,6 +153,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
 
     if (!endpointDetails?.connector_instance?.length) {
       setConnDetails({});
+      setSelectedSharedConnector(null);
       return;
     }
 
@@ -245,6 +253,124 @@ function DsSettingsCard({ type, endpointDetails, message }) {
       .finally(() => {});
   }, [type]);
 
+  // Load shared connectors when connection type is selected
+  useEffect(() => {
+    if (connType && connType !== "API" && connType !== "APPDEPLOYMENT") {
+      loadSharedConnectors();
+    } else {
+      setSharedConnectors([]);
+      setSelectedSharedConnector(null);
+      setShowSharedConnectors(false);
+    }
+  }, [connType]);
+
+  const loadSharedConnectors = async () => {
+    try {
+      const response = await axiosPrivate.get(
+        `/api/v1/unstract/${
+          sessionDetails?.orgId
+        }/shared-connectors/by-type/?type=${type.toUpperCase()}`
+      );
+
+      // If no connType is set or if we have connectors, show them
+      // The filtering should be more lenient to avoid showing "No connectors available"
+      // when connectors actually exist and are usable
+      let filtered = response.data || [];
+
+      // Only apply strict filtering if connType is specifically set
+      if (connType && (connType === "FILESYSTEM" || connType === "DATABASE")) {
+        filtered = response.data.filter((connector) => {
+          if (connType === "FILESYSTEM") {
+            return connector.connector_mode === 1; // FILE_SYSTEM
+          } else if (connType === "DATABASE") {
+            return connector.connector_mode === 2; // DATABASE
+          }
+          return false;
+        });
+
+        // If strict filtering removes all connectors but we have connectors available,
+        // fall back to showing all connectors rather than showing "No connectors available"
+        if (filtered.length === 0 && response.data.length > 0) {
+          filtered = response.data;
+        }
+      }
+
+      setSharedConnectors(filtered);
+      setShowSharedConnectors(filtered.length > 0);
+    } catch (error) {
+      console.error("Error loading shared connectors:", error);
+      setSharedConnectors([]);
+      setShowSharedConnectors(false);
+    }
+  };
+
+  const handleSharedConnectorSelect = async (connectorId) => {
+    if (connectorId === null) {
+      // Clear selected connector to create a new one
+      setSelectedSharedConnector(null);
+      setConnDetails({});
+      setSelectedId("");
+      setSelectedItemName("");
+      setFormDataConfig({});
+      return;
+    }
+
+    const connector = sharedConnectors.find((c) => c.id === connectorId);
+    if (connector) {
+      setSelectedSharedConnector(connector);
+
+      // Update the workflow endpoint to use this shared connector
+      try {
+        await handleUpdate({
+          connection_type: connType,
+          connector_instance: connectorId,
+        });
+
+        // Update local state to show the connector as configured
+        setConnDetails(connector);
+        setSelectedId(connector.connector_id);
+        setSelectedItemName(connector.connector_name);
+
+        // Load the connector's configuration
+        if (connector.configuration) {
+          setFormDataConfig(connector.configuration);
+        }
+
+        setAlertDetails({
+          type: "success",
+          content: "Connector updated successfully",
+        });
+      } catch (error) {
+        console.error("Error updating connector:", error);
+        setAlertDetails({
+          type: "error",
+          content: "Failed to update connector",
+        });
+      }
+    }
+  };
+
+  const handleSharedConnectorSaved = () => {
+    setOpenSharedModal(false);
+    // Reload shared connectors to include the new one
+    loadSharedConnectors();
+    setAlertDetails({
+      type: "success",
+      content: "Shared connector created successfully",
+    });
+  };
+
+  const handleSettingsClick = () => {
+    if (showSharedConnectors) {
+      // Always use the workflow configuration modal when shared connectors are enabled
+      // This will show shared connectors list and allow creating new ones if needed
+      setOpenModal(true);
+    } else {
+      // Use the original workflow-specific connector modal for legacy workflows
+      setOpenModal(true);
+    }
+  };
+
   const sourceIcon = (src) => {
     return <Image src={src} height={25} width={25} preview={false} />;
   };
@@ -331,6 +457,11 @@ function DsSettingsCard({ type, endpointDetails, message }) {
           data?.connector_name || "";
         setConnDetails(data);
         setSelectedId(data?.connector_id);
+
+        // Check if this is a shared connector
+        if (data?.is_shared && data?.workflow === null) {
+          setSelectedSharedConnector(data);
+        }
       })
       .catch((err) => {
         setAlertDetails(handleException(err));
@@ -339,13 +470,52 @@ function DsSettingsCard({ type, endpointDetails, message }) {
 
   return (
     <>
-      <Row className="ds-set-card-row">
+      {/* No connectors available message - displayed above the bordered card */}
+      {showSharedConnectors && sharedConnectors.length === 0 && (
+        <div
+          style={{
+            padding: "8px 12px 4px 12px",
+            backgroundColor: "#F8FBFF",
+            borderTop: "1px solid #D4D4D4",
+            borderLeft: "1px solid #D4D4D4",
+            borderRight: "1px solid #D4D4D4",
+            borderTopLeftRadius: "8px",
+            borderTopRightRadius: "8px",
+          }}
+        >
+          <Typography.Text
+            type="secondary"
+            style={{
+              fontSize: 12,
+              display: "block",
+              textAlign: "left",
+            }}
+          >
+            No connectors available
+          </Typography.Text>
+        </div>
+      )}
+
+      <Row
+        className="ds-set-card-row"
+        style={{
+          border: "1px solid #D4D4D4",
+          borderTop:
+            showSharedConnectors && sharedConnectors.length === 0
+              ? "none"
+              : "1px solid #D4D4D4",
+          borderRadius:
+            showSharedConnectors && sharedConnectors.length === 0
+              ? "0px 0px 8px 8px"
+              : "8px",
+        }}
+      >
         <Col span={4} className="ds-set-card-col1">
           <Tooltip title={tooltip[type]}>{icons[type]}</Tooltip>
         </Col>
-        <Col span={12} className="ds-set-card-col2">
+        <Col span={16} className="ds-set-card-col2">
           <SpaceWrapper>
-            <Space>
+            <Space direction="horizontal" wrap={false} align="center">
               <Tooltip
                 title={
                   !allowChangeEndpoint &&
@@ -367,27 +537,6 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                     updateDestination();
                   }}
                 />
-              </Tooltip>
-
-              <Tooltip
-                title={`${
-                  endpointDetails?.connection_type
-                    ? ""
-                    : "Select the connector type from the dropdown"
-                }`}
-              >
-                <Button
-                  type="text"
-                  size="small"
-                  onClick={() => setOpenModal(true)}
-                  disabled={
-                    !endpointDetails?.connection_type ||
-                    connType === "API" ||
-                    connType === "APPDEPLOYMENT"
-                  }
-                >
-                  <SettingOutlined />
-                </Button>
               </Tooltip>
             </Space>
             <div className="display-flex-align-center">
@@ -431,16 +580,50 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                 </>
               )}
             </div>
+            <div style={{ marginTop: 4 }}>
+              <Typography.Paragraph
+                ellipsis={{ rows: 2, expandable: false }}
+                className="font-size-12"
+                type="secondary"
+                style={{ marginBottom: 0 }}
+              >
+                {message}
+              </Typography.Paragraph>
+            </div>
           </SpaceWrapper>
         </Col>
-        <Col span={8} className="ds-set-card-col3">
-          <Typography.Paragraph
-            ellipsis={{ rows: 2, expandable: false }}
-            className="font-size-12"
-            type="secondary"
+        <Col span={4} className="ds-set-card-col3">
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              height: "100%",
+            }}
           >
-            {message}
-          </Typography.Paragraph>
+            <Tooltip
+              title={
+                showSharedConnectors && sharedConnectors.length > 0
+                  ? "Create new connector"
+                  : endpointDetails?.connection_type
+                  ? "Configure connector"
+                  : "Select the connector type from the dropdown"
+              }
+            >
+              <Button
+                type="text"
+                size="small"
+                onClick={handleSettingsClick}
+                disabled={
+                  !endpointDetails?.connection_type ||
+                  connType === "API" ||
+                  connType === "APPDEPLOYMENT"
+                }
+              >
+                <SettingOutlined />
+              </Button>
+            </Tooltip>
+          </div>
         </Col>
       </Row>
       <ConfigureConnectorModal
@@ -462,6 +645,17 @@ function DsSettingsCard({ type, endpointDetails, message }) {
         selectedItemName={selectedItemName}
         setSelectedItemName={setSelectedItemName}
         workflowDetails={details}
+        showSharedConnectors={showSharedConnectors}
+        sharedConnectors={sharedConnectors}
+        selectedSharedConnector={selectedSharedConnector}
+        handleSharedConnectorSelect={handleSharedConnectorSelect}
+      />
+
+      <SharedConnectorModal
+        open={openSharedModal}
+        onCancel={() => setOpenSharedModal(false)}
+        onSave={handleSharedConnectorSaved}
+        connectorData={null}
       />
     </>
   );

@@ -5,6 +5,7 @@
     display: flex;
     flex-direction: column;
     overflow-y: hidden;
+    padding: 16px;
 }
 
 .conn-modal-row {
@@ -31,7 +32,7 @@
 }
 
 .conn-modal-gap {
-    margin-bottom: 8px;
+    margin-bottom: 16px;
 }
 
 .conn-modal-menu {
@@ -41,24 +42,22 @@
 }
 
 .conn-modal-form-pad-right {
-    padding: 0px 8px 0px 8px;
+    padding: 16px 16px 16px 16px;
     border-right: 1px solid #D4D4D4;
 }
 
 .conn-modal-form-pad-left {
-    padding: 4px 20px 0px 20px;
+    padding: 16px 20px 16px 20px;
 }
 
 .conn-modal-form-right {
-    padding: 12px 12px 0px 0px;
-    padding-right: 20px;
+    padding: 16px 20px 16px 16px;
     border-right: 1px solid #D4D4D4;
     height: 100%;
 }
 
 .conn-modal-form-left {
-    padding: 12px 0px 0px 12px;
-    padding-left: 20px;
+    padding: 16px 16px 16px 20px;
     height: 100%;
 }
 
@@ -75,11 +74,11 @@
 }
 
 .form-right {
-    padding: 8px 8px 0px 0px;
+    padding: 16px 16px 0px 0px;
 }
 
 .sidebar-menu {
-    margin-top: 10px;
+    margin-top: 16px;
     background-color: transparent;
 }
 
@@ -93,4 +92,20 @@
 
 .conn-modal-col .ant-tabs-nav {
     margin: 0px;
+    padding: 0px 16px;
+}
+
+/* Additional padding for tab content */
+.conn-modal-col .ant-tabs-tabpane {
+    padding: 16px;
+}
+
+/* Improve form spacing within tabs */
+.conn-modal-col .ant-form {
+    padding: 0px;
+}
+
+/* Better spacing for modal header */
+.modal-header {
+    margin-bottom: 4px;
 }

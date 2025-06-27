@@ -18,7 +18,7 @@ const TextWidget = (props) => {
     >
       <Input
         id={id}
-        value={value}
+        value={value?.toString() || ""}
         onChange={handleTextChange}
         disabled={readonly}
       />
@@ -28,7 +28,7 @@ const TextWidget = (props) => {
 
 TextWidget.propTypes = {
   id: PropTypes.string.isRequired,
-  value: PropTypes.string,
+  value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
   onChange: PropTypes.func.isRequired,
   label: PropTypes.string.isRequired,
   schema: PropTypes.object.isRequired,

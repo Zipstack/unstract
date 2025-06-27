@@ -679,3 +679,7 @@ backend/backend/*_urls.py
 # TODO: Remove after v2 migration is completed
 backend/backend/*_urls_v2.py
 !backend/backend/public_urls_v2.py
+
+# Prompting-related files
+CLAUDE.md
+prompting/

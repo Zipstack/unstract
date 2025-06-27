@@ -13,7 +13,14 @@ import "./FileSystem.css";
 const { DirectoryTree } = Tree;
 const { Text } = Typography;
 
-function FileExplorer({ selectedItem = "", data = [], loadingData, error }) {
+function FileExplorer({
+  selectedItem = "",
+  data = [],
+  loadingData,
+  error,
+  onFolderSelect,
+  selectedFolderPath,
+}) {
   const inpService = inputService();
 
   const [tree, setTree] = useState([]);
@@ -74,6 +81,10 @@ function FileExplorer({ selectedItem = "", data = [], loadingData, error }) {
       uploadPathRef.current = "";
     } else {
       uploadPathRef.current = event.node.key;
+      // Call the folder selection callback if provided
+      if (onFolderSelect) {
+        onFolderSelect(event.node.key);
+      }
     }
   }
 
@@ -190,6 +201,8 @@ FileExplorer.propTypes = {
   data: PropTypes.array,
   loadingData: PropTypes.bool,
   error: PropTypes.bool,
+  onFolderSelect: PropTypes.func,
+  selectedFolderPath: PropTypes.string,
 };
 
 export { FileExplorer };

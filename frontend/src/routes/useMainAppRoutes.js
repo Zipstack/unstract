@@ -20,6 +20,7 @@ import { CustomToolsHelper } from "../components/helpers/custom-tools/CustomTool
 import { ToolIdePage } from "../pages/ToolIdePage.jsx";
 import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
 import { LogsPage } from "../pages/LogsPage.jsx";
+import { ConnectorsPage } from "../pages/ConnectorsPage.jsx";
 import { deploymentTypes } from "../helpers/GetStaticData.js";
 
 let RequirePlatformAdmin;
@@ -161,6 +162,7 @@ function useMainAppRoutes() {
           element={<ToolsSettingsPage type="x2text" />}
         />
         <Route path="settings/ocr" element={<ToolsSettingsPage type="ocr" />} />
+        <Route path="connectors" element={<ConnectorsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         {ManualReviewSettings && (
           <Route path="settings/review" element={<ManualReviewSettings />} />

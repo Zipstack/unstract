@@ -45,8 +45,12 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
         "workflow_v2.Workflow",
         on_delete=models.CASCADE,
         related_name="connector_workflow",
-        null=False,
-        blank=False,
+        null=True,
+        blank=True,
+    )
+    is_shared = models.BooleanField(
+        default=True,
+        help_text="True for centralized connectors, False for workflow-specific connectors"
     )
     connector_id = models.CharField(max_length=FLC.CONNECTOR_ID_LENGTH, default="")
     connector_metadata = models.BinaryField(null=True)
@@ -156,6 +160,12 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
         constraints = [
             models.UniqueConstraint(
                 fields=["connector_name", "workflow", "connector_type"],
-                name="unique_workflow_connector",
+                condition=models.Q(is_shared=False),
+                name="unique_workflow_specific_connector",
+            ),
+            models.UniqueConstraint(
+                fields=["connector_name", "organization", "connector_type"],
+                condition=models.Q(is_shared=True),
+                name="unique_shared_connector",
             ),
         ]

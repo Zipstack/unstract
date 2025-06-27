@@ -4,7 +4,7 @@ import PropTypes from "prop-types";
 import { inputService } from "../../input-output/input-output/input-service.js";
 import { FileExplorer } from "../file-system/FileSystem.jsx";
 
-function ManageFiles({ selectedItem }) {
+function ManageFiles({ selectedItem, onFolderSelect, selectedFolderPath }) {
   const inpService = inputService();
 
   const [files, setFiles] = useState([]);
@@ -35,12 +35,16 @@ function ManageFiles({ selectedItem }) {
       data={files}
       loadingData={loadingData}
       error={error}
+      onFolderSelect={onFolderSelect}
+      selectedFolderPath={selectedFolderPath}
     />
   );
 }
 
 ManageFiles.propTypes = {
   selectedItem: PropTypes.string,
+  onFolderSelect: PropTypes.func,
+  selectedFolderPath: PropTypes.string,
 };
 
 export { ManageFiles };
