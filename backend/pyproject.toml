@@ -13,11 +13,11 @@ classifiers = [
 ]
 
 dependencies = [
-    "Authlib==1.2.1",              # For Auth plugins
-    "boto3~=1.34.0",               # For Unstract-cloud-storage
-    "celery[amqp]>=5.3.4",         # For Celery
-    "flower>=2.0.1",               # Celery Monitoring
-    "cron-descriptor==1.4.0",      # For cron string description
+    "Authlib==1.2.1", # For Auth plugins
+    "boto3~=1.34.0", # For Unstract-cloud-storage
+    "celery[amqp]>=5.3.4", # For Celery
+    "flower>=2.0.1", # Celery Monitoring
+    "cron-descriptor==1.4.0", # For cron string description
     "cryptography>=41.0.7",
     "django==4.2.1",
     "djangorestframework==3.14.0",
@@ -28,13 +28,13 @@ dependencies = [
     "django-redis==5.4.0",
     "django-tenants==3.5.0",
     "drf-standardized-errors>=0.12.6",
-    "drf-yasg==1.21.7",                # For API docs
+    "drf-yasg==1.21.7", # For API docs
     "psycopg2-binary==2.9.9",
     "python-dotenv==1.0.0",
-    "python-magic==0.4.27",            # For file upload/download
-    "python-socketio==5.9.0",          # For log_events
-    "social-auth-app-django==5.3.0",   # For OAuth
-    "social-auth-core==4.4.2",         # For OAuth
+    "python-magic==0.4.27", # For file upload/download
+    "python-socketio==5.9.0", # For log_events
+    "social-auth-app-django==5.3.0", # For OAuth
+    "social-auth-core==4.4.2", # For OAuth
     # TODO: Temporarily removing the extra dependencies of aws and gcs from unstract-sdk
     # to resolve lock file. Will have to be re-looked into
     "unstract-sdk[azure]~=0.73.0",
@@ -53,6 +53,7 @@ dependencies = [
     "unstract-tool-sandbox",
     "unstract-workflow-execution",
     "unstract-filesystem",
+    "gevent>=25.5.1",
 ]
 
 [dependency-groups]
