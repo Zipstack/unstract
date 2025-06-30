@@ -6,6 +6,7 @@ from django.conf import settings
 from django.db.models import QuerySet
 from django.http import HttpResponse
 from permissions.permission import IsOwner
+from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from rest_framework import serializers, status, views, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
@@ -55,6 +56,12 @@ class DeploymentExecution(views.APIView):
         include_metrics = serializer.validated_data.get(ApiExecution.INCLUDE_METRICS)
         use_file_history = serializer.validated_data.get(ApiExecution.USE_FILE_HISTORY)
         tag_names = serializer.validated_data.get(ApiExecution.TAGS)
+        llm_profile_id = serializer.validated_data.get(ApiExecution.LLM_PROFILE_ID)
+
+        # Validate llm_profile_id ownership if provided
+        if llm_profile_id:
+            self._validate_llm_profile_ownership(llm_profile_id, api)
+
         response = DeploymentHelper.execute_workflow(
             organization_name=org_name,
             api=api,
@@ -64,6 +71,7 @@ class DeploymentExecution(views.APIView):
             include_metrics=include_metrics,
             use_file_history=use_file_history,
             tag_names=tag_names,
+            llm_profile_id=llm_profile_id,
         )
         if "error" in response and response["error"]:
             return Response(
@@ -71,6 +79,36 @@ class DeploymentExecution(views.APIView):
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY,
             )
         return Response({"message": response}, status=status.HTTP_200_OK)
+
+    def _validate_llm_profile_ownership(
+        self, llm_profile_id: str, api: APIDeployment
+    ) -> None:
+        """Validate that the llm_profile_id belongs to the API key owner.
+
+        Args:
+            llm_profile_id (str): The profile ID to validate
+            api (APIDeployment): The API deployment instance
+
+        Raises:
+            ValidationError: If profile doesn't exist or user doesn't own it
+        """
+        try:
+            profile = ProfileManager.objects.get(profile_id=llm_profile_id)
+        except ProfileManager.DoesNotExist:
+            raise serializers.ValidationError({"llm_profile_id": "Profile not found"})
+
+        # Get the API key owner from the active API key
+        active_api_key = api.api_keys.filter(is_active=True).first()
+        if not active_api_key:
+            raise serializers.ValidationError(
+                {"api": "No active API key found for this deployment"}
+            )
+
+        # Check if the profile owner matches the API key owner
+        if profile.created_by != active_api_key.created_by:
+            raise serializers.ValidationError(
+                {"llm_profile_id": "You can only use profiles that you own"}
+            )
 
     @DeploymentHelper.validate_api_key
     def get(

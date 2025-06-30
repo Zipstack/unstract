@@ -155,6 +155,7 @@ class FileData:
     execution_mode: str
     use_file_history: bool
     q_file_no_list: list[int]
+    llm_profile_id: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> FileData:

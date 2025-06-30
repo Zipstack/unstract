@@ -114,6 +114,8 @@ class ExecutionRequestSerializer(TagParamsSerializer):
             helpful for demos.
         tags (str): Comma-separated List of tags to associate with the execution.
             e.g:'tag1,tag2-name,tag3_name'
+        llm_profile_id (str): UUID of the LLM profile to override the default profile.
+            If not provided, the default profile will be used.
     """
 
     MAX_FILES_ALLOWED = 32
@@ -124,6 +126,7 @@ class ExecutionRequestSerializer(TagParamsSerializer):
     include_metadata = BooleanField(default=False)
     include_metrics = BooleanField(default=False)
     use_file_history = BooleanField(default=False)
+    llm_profile_id = CharField(required=False, allow_null=True, allow_blank=True)
     files = ListField(
         child=FileField(),
         required=True,
