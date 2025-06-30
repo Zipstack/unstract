@@ -367,7 +367,7 @@ class DataMigrator:
 
             if max_id is None:
                 logger.info(
-                    f"Table '{dest_table}' is empty. No need to adjust " "auto-increment."
+                    f"Table '{dest_table}' is empty. No need to adjust auto-increment."
                 )
                 return
 
