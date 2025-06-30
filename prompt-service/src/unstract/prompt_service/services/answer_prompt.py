@@ -246,10 +246,12 @@ class AnswerPromptService:
             structured_output[prompt_key] = None
         else:
             # Attempt parsing as-is (could be a valid object, array, or partial JSON)
-            a = repair_json(json_str=answer, return_objects=True)
+            a = repair_json(json_str=answer, return_objects=True, ensure_ascii=False)
 
             # Attempt parsing with array wrap (useful for multiple comma-separated objects like {}, {}, {})
-            b = repair_json(json_str="[" + answer, return_objects=True)
+            b = repair_json(
+                json_str="[" + answer, return_objects=True, ensure_ascii=False
+            )
 
             # Heuristic: if wrapping only added '[' and ']', len(b) - len(a) == 2 → original was valid, use 'a'
             # Otherwise, fallback to 'b' which likely fixed multiple items or invalid top-level structure
