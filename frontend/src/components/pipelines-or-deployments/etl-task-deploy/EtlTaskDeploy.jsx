@@ -16,7 +16,8 @@ import { useWorkflowStore } from "../../../store/workflow-store.js";
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData.js";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import { PromptStudioModal } from "../../common/PromptStudioModal";
-import { useCallback } from "react";
+import { usePromptStudioService } from "../../api/prompt-studio-service";
+import { useInitialFetchCount } from "../../../hooks/usePromptStudioFetchCount";
 
 const defaultFromDetails = {
   pipeline_name: "",
@@ -59,14 +60,11 @@ const EtlTaskDeploy = ({
   const { count, isLoadingModal, fetchCount } = usePromptStudioStore();
   const [showModal, setShowModal] = useState(false);
   const [modalDismissed, setModalDismissed] = useState(false);
-
-  const fetchPromptCount = useCallback(() => {
-    fetchCount();
-  }, [fetchCount]);
-
-  useEffect(() => {
-    fetchPromptCount();
-  }, [fetchPromptCount]);
+  const { getPromptStudioCount } = usePromptStudioService();
+  const initialFetchComplete = useInitialFetchCount(
+    fetchCount,
+    getPromptStudioCount
+  );
 
   useEffect(() => {
     if (workflowId) {
@@ -268,15 +266,19 @@ const EtlTaskDeploy = ({
   };
 
   useEffect(() => {
-    if (!isLoadingModal && count === 0 && !modalDismissed) {
+    if (
+      initialFetchComplete &&
+      !isLoadingModal &&
+      count === 0 &&
+      !modalDismissed
+    ) {
       setShowModal(true);
     }
-  }, [isLoadingModal, count, modalDismissed]);
+  }, [initialFetchComplete, isLoadingModal, count, modalDismissed]);
 
   const handleModalClose = () => {
     setShowModal(false);
     setModalDismissed(true);
-    fetchPromptCount();
   };
 
   return (
