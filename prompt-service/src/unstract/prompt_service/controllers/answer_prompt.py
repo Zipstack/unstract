@@ -15,6 +15,7 @@ from unstract.prompt_service.helpers.prompt_ide_base_tool import PromptServiceBa
 from unstract.prompt_service.helpers.usage import UsageHelper
 from unstract.prompt_service.services.answer_prompt import AnswerPromptService
 from unstract.prompt_service.services.retrieval import RetrievalService
+from unstract.prompt_service.services.rentrolls_extractor.interface import RentRollExtractor
 from unstract.prompt_service.services.variable_replacement import (
     VariableReplacementService,
 )
@@ -26,7 +27,11 @@ from unstract.sdk.exceptions import SdkError
 from unstract.sdk.index import Index
 from unstract.sdk.llm import LLM
 from unstract.sdk.vector_db import VectorDB
+from unstract.sdk.adapter import ToolAdapter
+from typing import Any
 
+from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
+from unstract.prompt_service.utils.file_utils import FileUtils
 answer_prompt_bp = Blueprint("answer-prompt", __name__)
 
 
@@ -172,6 +177,40 @@ def prompt_processor() -> Any:
             raise APIError(message=msg)
 
         if output[PSKeys.TYPE] == PSKeys.TABLE:
+            llm_config = ToolAdapter.get_adapter_config(
+                util, output[PSKeys.LLM]
+            ).get("adapter_metadata").to_dict()
+            table_settings = output[PSKeys.TABLE_SETTINGS]
+            document_type: str = table_settings.get(PSKeys.DOCUMENT_TYPE)
+            app.logger.info("Document type: %s", document_type)
+            if document_type == "rent_rolls":
+                # Create RentRollExtractor instance and process the extraction
+                extractor = RentRollExtractor()
+                fs_instance = FileUtils.get_fs_instance(execution_source=execution_source)
+                extracted_data = fs_instance.read(path=file_path, mode="r")
+                app.logger.info("Starting asyncio.run...")
+                # Call the process method asynchronously
+                try:
+                    import asyncio
+                    # Get the extraction result
+                    extraction_result = asyncio.run(extractor.process(
+                        extractor_settings=output,
+                        extracted_data=extracted_data,
+                        llm_config=llm_config,
+                        schema=prompt_text,
+                    ))
+                    
+                    # Update structured output with the extraction result
+                    #TODO: Add metrics
+                    #TODO: Add metadata
+                    response = {
+                        PSKeys.OUTPUT: extraction_result,
+                    }
+                    app.logger.info("Rent roll extraction completed successfully")
+                    return response
+                except Exception as e:
+                    app.logger.error(f"Failed to process rent roll: {str(e)}")
+                    # Continue with regular table extraction as fallback
             try:
                 structured_output = AnswerPromptService.extract_table(
                     output=output,
