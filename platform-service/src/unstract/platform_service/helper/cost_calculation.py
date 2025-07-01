@@ -48,7 +48,6 @@ class CostCalculationHelper:
 
         if not self.model_token_data:
             return json.loads(format_float_positional(cost))
-
         # Filter the model objects by model name
         filtered_models = {
             k: v for k, v in self.model_token_data.items() if k.endswith(model_name)
