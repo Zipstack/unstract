@@ -37,7 +37,7 @@ class RentRollExtractor:
         try:
             # Load environment variables for rent roll service
             rentroll_host = os.environ.get("RENTROLL_SERVICE_HOST", "http://localhost")
-            rentroll_port = os.environ.get("RENTROLL_SERVICE_PORT", "5001")
+            rentroll_port = os.environ.get("RENTROLL_SERVICE_PORT", "5003")
             rentroll_url = f"{rentroll_host}:{rentroll_port}/api/extract-rentrolls"
 
             # Prepare the request payload

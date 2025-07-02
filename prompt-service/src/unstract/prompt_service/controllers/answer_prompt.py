@@ -177,11 +177,28 @@ def prompt_processor() -> Any:
             raise APIError(message=msg)
 
         if output[PSKeys.TYPE] == PSKeys.TABLE:
-            llm_config = (
-                ToolAdapter.get_adapter_config(util, output[PSKeys.LLM])
-                .get("adapter_metadata")
-                .to_dict()
-            )
+            adapter_parent_data = ToolAdapter.get_adapter_config(util, output[PSKeys.LLM])
+            llm_config = adapter_parent_data.get("adapter_metadata")
+            adapter_id = adapter_parent_data.get("adapter_id")
+            adapter_prefix = adapter_id.split("|")[0]
+            llm_adapter_config = {"adapter_id": adapter_prefix}
+            if adapter_prefix == "azureopenai":
+                llm_adapter_config["model"] = llm_config.get("model")
+                llm_adapter_config["api_key"] = llm_config.get("api_key")
+                llm_adapter_config["api_base"] = llm_config.get("azure_endpoint")
+                llm_adapter_config["max_retries"] = llm_config.get("max_retries")
+                llm_adapter_config["timeout"] = llm_config.get("timeout")
+            if adapter_prefix == "openai":
+                llm_adapter_config["model"] = llm_config.get("model")
+                llm_adapter_config["api_key"] = llm_config.get("api_key")
+                llm_adapter_config["api_base"] = llm_config.get("api_base")
+                llm_adapter_config["max_retries"] = llm_config.get("max_retries")
+                llm_adapter_config["timeout"] = llm_config.get("timeout")
+            if adapter_prefix == "anthropic":
+                llm_adapter_config["model"] = llm_config.get("model")
+                llm_adapter_config["api_key"] = llm_config.get("api_key")
+                llm_adapter_config["max_retries"] = llm_config.get("max_retries")
+                llm_adapter_config["timeout"] = llm_config.get("timeout")
             table_settings = output[PSKeys.TABLE_SETTINGS]
             document_type: str = table_settings.get(PSKeys.DOCUMENT_TYPE)
             app.logger.info("Document type: %s", document_type)
@@ -200,7 +217,7 @@ def prompt_processor() -> Any:
                         extractor.process(
                             extractor_settings=output,
                             extracted_data=extracted_data,
-                            llm_config=llm_config,
+                            llm_config=llm_adapter_config,
                             schema=prompt_text,
                         )
                     )
