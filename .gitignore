@@ -578,9 +578,6 @@ sketch
 .history
 .ionide
 
-## Windsurf ###
-.windsurfrules
-
 ### Windows ###
 # Windows thumbnail cache files
 Thumbs.db
@@ -606,9 +603,6 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
-
-# Windsurf
-.qodo
 
 ### Unstract ###
 
@@ -680,6 +674,14 @@ backend/backend/*_urls.py
 backend/backend/*_urls_v2.py
 !backend/backend/public_urls_v2.py
 
-# Prompting-related files
-CLAUDE.md
+## Vibe coding / Prompting-related files ##
 prompting/
+.prompting/
+
+# Claude
+CLAUDE.md
+
+# Windsurf
+.qodo
+.windsurfrules
+.windsurf/rules

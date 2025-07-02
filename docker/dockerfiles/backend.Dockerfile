@@ -67,13 +67,3 @@ RUN uv sync --group deploy --locked && \
 EXPOSE 8000
 
 ENTRYPOINT [ "./entrypoint.sh" ]
-
-#  Patched code
-WORKDIR /app
-
-RUN set -e; \
-    uv add -r requirements.txt
-
-ENV DJANGO_SETTINGS_MODULE=backend.settings.cloud
-WORKDIR /app
-
