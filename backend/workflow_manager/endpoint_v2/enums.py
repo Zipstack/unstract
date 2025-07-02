@@ -27,3 +27,16 @@ class AllowedFileTypes(Enum):
     @classmethod
     def is_allowed(cls, mime_type: str) -> bool:
         return mime_type in cls._value2member_map_
+
+
+class InvalidFileTypes(Enum):
+    OCTET_STREAM = "application/octet-stream"
+
+
+class UncertainMimeTypes(Enum):
+    OCTET_STREAM = "application/octet-stream"
+    ZIP = "application/zip"
+
+    @classmethod
+    def is_uncertain(cls, mime_type: str) -> bool:
+        return mime_type in cls._value2member_map_
