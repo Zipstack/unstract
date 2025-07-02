@@ -1348,3 +1348,171 @@ class PromptStudioHelper:
             )
 
         return extracted_text
+
+    @staticmethod
+    def export_project_settings(tool: CustomTool) -> dict:
+        """Export project settings as a comprehensive JSON structure.
+
+        Args:
+            tool (CustomTool): The CustomTool instance to export
+
+        Returns:
+            dict: Complete project configuration including tool settings and prompts
+        """
+        return {
+            "tool_metadata": PromptStudioHelper._export_tool_metadata(tool),
+            "tool_settings": PromptStudioHelper._export_tool_settings(tool),
+            "default_profile_settings": PromptStudioHelper._export_default_profile_settings(
+                tool
+            ),
+            "prompts": PromptStudioHelper._export_prompts(tool),
+            "export_metadata": PromptStudioHelper._export_metadata(tool),
+        }
+
+    @staticmethod
+    def _export_tool_metadata(tool: CustomTool) -> dict:
+        """Export tool metadata information.
+
+        Args:
+            tool (CustomTool): The CustomTool instance
+
+        Returns:
+            dict: Tool metadata configuration
+        """
+        return {
+            "tool_name": tool.tool_name,
+            "description": tool.description,
+            "author": tool.author,
+            "icon": tool.icon,
+            "output": tool.output,
+        }
+
+    @staticmethod
+    def _export_tool_settings(tool: CustomTool) -> dict:
+        """Export tool settings configuration.
+
+        Args:
+            tool (CustomTool): The CustomTool instance
+
+        Returns:
+            dict: Tool settings configuration
+        """
+        return {
+            "preamble": tool.preamble,
+            "postamble": tool.postamble,
+            "summarize_prompt": tool.summarize_prompt,
+            "summarize_context": tool.summarize_context,
+            "summarize_as_source": tool.summarize_as_source,
+            "enable_challenge": tool.enable_challenge,
+            "enable_highlight": tool.enable_highlight,
+            "exclude_failed": tool.exclude_failed,
+            "single_pass_extraction_mode": tool.single_pass_extraction_mode,
+            "prompt_grammer": tool.prompt_grammer,
+        }
+
+    @staticmethod
+    def _export_default_profile_settings(tool: CustomTool) -> dict:
+        """Export default profile settings with safe fallbacks.
+
+        Args:
+            tool (CustomTool): The CustomTool instance
+
+        Returns:
+            dict: Default profile configuration
+        """
+        default_profile = PromptStudioHelper._get_default_profile(tool)
+
+        return {
+            "chunk_size": default_profile.chunk_size if default_profile else 0,
+            "chunk_overlap": default_profile.chunk_overlap if default_profile else 0,
+            "retrieval_strategy": (
+                default_profile.retrieval_strategy if default_profile else "simple"
+            ),
+            "similarity_top_k": (
+                default_profile.similarity_top_k if default_profile else 3
+            ),
+            "section": default_profile.section if default_profile else "Default",
+            "profile_name": (
+                default_profile.profile_name if default_profile else "Default Profile"
+            ),
+        }
+
+    @staticmethod
+    def _get_default_profile(tool: CustomTool) -> ProfileManager | None:
+        """Safely retrieve the default profile for a tool.
+
+        Args:
+            tool (CustomTool): The CustomTool instance
+
+        Returns:
+            ProfileManager | None: Default profile or None if not found
+        """
+        try:
+            return ProfileManager.objects.filter(
+                prompt_studio_tool=tool, is_default=True
+            ).first()
+        except Exception as e:
+            logger.warning(
+                f"Failed to retrieve default profile for tool {tool.tool_id}: {e}"
+            )
+            return None
+
+    @staticmethod
+    def _export_prompts(tool: CustomTool) -> list[dict]:
+        """Export all prompts for the tool.
+
+        Args:
+            tool (CustomTool): The CustomTool instance
+
+        Returns:
+            list[dict]: List of prompt configurations
+        """
+        prompts = PromptStudioHelper.fetch_prompt_from_tool(str(tool.tool_id))
+        return [PromptStudioHelper._export_single_prompt(prompt) for prompt in prompts]
+
+    @staticmethod
+    def _export_single_prompt(prompt: ToolStudioPrompt) -> dict:
+        """Export a single prompt configuration.
+
+        Args:
+            prompt (ToolStudioPrompt): The prompt instance to export
+
+        Returns:
+            dict: Prompt configuration
+        """
+        return {
+            "prompt_key": prompt.prompt_key,
+            "prompt": prompt.prompt,
+            "active": prompt.active,
+            "required": prompt.required,
+            "enforce_type": prompt.enforce_type,
+            "sequence_number": prompt.sequence_number,
+            "prompt_type": prompt.prompt_type,
+            "output": prompt.output,
+            "assert_prompt": prompt.assert_prompt,
+            "assertion_failure_prompt": prompt.assertion_failure_prompt,
+            "is_assert": prompt.is_assert,
+            "output_metadata": prompt.output_metadata,
+            "evaluate": prompt.evaluate,
+            "eval_quality_faithfulness": prompt.eval_quality_faithfulness,
+            "eval_quality_correctness": prompt.eval_quality_correctness,
+            "eval_quality_relevance": prompt.eval_quality_relevance,
+            "eval_security_pii": prompt.eval_security_pii,
+            "eval_guidance_toxicity": prompt.eval_guidance_toxicity,
+            "eval_guidance_completeness": prompt.eval_guidance_completeness,
+        }
+
+    @staticmethod
+    def _export_metadata(tool: CustomTool) -> dict:
+        """Export metadata about the export itself.
+
+        Args:
+            tool (CustomTool): The CustomTool instance
+
+        Returns:
+            dict: Export metadata
+        """
+        return {
+            "exported_at": tool.modified_at.isoformat() if tool.modified_at else None,
+            "tool_id": str(tool.tool_id),
+        }

@@ -1,5 +1,5 @@
 import { SettingOutlined } from "@ant-design/icons";
-import { Button, Modal, Tooltip, Typography } from "antd";
+import { Button, Modal, Tooltip, Typography, Dropdown } from "antd";
 import PropTypes from "prop-types";
 import { useCallback, useState } from "react";
 
@@ -175,6 +175,73 @@ function Header({
     return userList;
   };
 
+  const handleExportProject = () => {
+    try {
+      setPostHogCustomEvent("intent_tool_export_project", {
+        info: "Clicked Export Project in tool IDE",
+        tool_id: details?.tool_id,
+        tool_name: details?.tool_name,
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+
+    setIsExportLoading(true);
+    // Create a download link
+    const downloadUrl = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/export-project/${details?.tool_id}`;
+
+    // Create a temporary link element and trigger download
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = `${details?.tool_name}_export.json`;
+
+    // Add authorization header by fetching the file
+    const requestOptions = {
+      method: "GET",
+      url: downloadUrl,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
+      responseType: "blob",
+    };
+
+    axiosPrivate(requestOptions)
+      .then((response) => {
+        // Create blob link to download
+        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const link = document.createElement("a");
+        link.href = url;
+
+        // Get filename from response headers or use default
+        const contentDisposition = response.headers["content-disposition"];
+        let filename = `${details?.tool_name}_export.json`;
+        if (contentDisposition) {
+          const filenameMatch =
+            contentDisposition.match(/filename="?([^"]+)"?/);
+          if (filenameMatch) {
+            filename = filenameMatch[1];
+          }
+        }
+
+        link.setAttribute("download", filename);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+
+        setAlertDetails({
+          type: "success",
+          content: "Project exported successfully",
+        });
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err, "Failed to export project"));
+      })
+      .finally(() => {
+        setIsExportLoading(false);
+      });
+  };
+
   return (
     <div className="custom-tools-header-layout">
       {isPublicSource ? (
@@ -203,18 +270,34 @@ function Header({
           <PromptShareButton setOpenShareModal={setOpenShareModal} />
         )}
         <div className="custom-tools-header-v-divider" />
-        <div>
-          <Tooltip title="Export as tool">
-            <CustomButton
-              type="primary"
-              onClick={() => handleShare(true)}
-              loading={isExportLoading}
-              disabled={isPublicSource}
-            >
-              <ExportToolIcon />
-            </CustomButton>
-          </Tooltip>
-        </div>
+        <Dropdown
+          menu={{
+            items: [
+              {
+                key: "export-tool",
+                label: "Export as Tool",
+                onClick: () => handleShare(true),
+              },
+              {
+                key: "export-json",
+                label: "Export as JSON",
+                onClick: handleExportProject,
+              },
+            ],
+          }}
+          trigger={["click"]}
+          disabled={isPublicSource}
+        >
+          <CustomButton
+            type="primary"
+            loading={isExportLoading}
+            disabled={isPublicSource}
+            icon={<ExportToolIcon />}
+            className="export-text"
+          >
+            Export
+          </CustomButton>
+        </Dropdown>
         <ExportTool
           allUsers={userList}
           open={openExportToolModal}
