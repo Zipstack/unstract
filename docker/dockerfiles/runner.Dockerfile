@@ -1,13 +1,13 @@
 # Use a specific version of Python slim image
-FROM python:3.12.9-slim
+FROM python:3.12.9-slim AS base
 
-LABEL maintainer="Zipstack Inc."
-LABEL description="Runner Service Container"
-LABEL version="1.0"
+ARG VERSION=dev
+LABEL maintainer="Zipstack Inc." \
+    description="Runner Service Container" \
+    version="${VERSION}"
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    # Set to immediately flush stdout and stderr streams without first buffering
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/unstract \
     BUILD_CONTEXT_PATH=runner \
@@ -19,41 +19,54 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     OTEL_LOGS_EXPORTER=none \
     OTEL_SERVICE_NAME=unstract_runner
 
+# Install system dependencies
 RUN apt-get update \
-    && apt-get --no-install-recommends install -y docker git\
-    && apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
-
+    && apt-get --no-install-recommends install -y \
+       docker \
+       git \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
 # Install uv package manager
 COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /uvx /bin/
 
+# Create working directory
 WORKDIR ${APP_HOME}
 
-# Copy only requirements files first to leverage Docker cache
-COPY ${BUILD_CONTEXT_PATH}/pyproject.toml .
-COPY ${BUILD_CONTEXT_PATH}/uv.lock .
-# Copy local dependency packages
+# -----------------------------------------------
+# EXTERNAL DEPENDENCIES STAGE - This layer gets cached if external dependencies don't change
+# -----------------------------------------------
+FROM base AS ext-dependencies
+
+# Copy dependency-related files
+COPY ${BUILD_CONTEXT_PATH}/pyproject.toml ${BUILD_CONTEXT_PATH}/uv.lock ${BUILD_CONTEXT_PATH}/README.md ./
+
+# Copy local package dependencies
 COPY ${BUILD_PACKAGES_PATH}/core /unstract/core
 COPY ${BUILD_PACKAGES_PATH}/flags /unstract/flags
-COPY ${BUILD_CONTEXT_PATH} /app/
 
-# Create virtual environment and install dependencies in one layer
-RUN uv sync --frozen \
-    && uv sync --group deploy \
-    && .venv/bin/python3 -m ensurepip --upgrade \
-    && uv run opentelemetry-bootstrap -a install
+# Install external dependencies from pyproject.toml
+RUN uv sync --group deploy --locked --no-install-project --no-dev && \
+    uv run opentelemetry-bootstrap -a install
 
-RUN \
-    uv pip install --system; \
-    \
-    if [ -f cloud_requirements.txt ]; then \
-    uv pip install --no-cache-dir -r cloud_requirements.txt; \
+# -----------------------------------------------
+# FINAL STAGE - Minimal image for production
+# -----------------------------------------------
+FROM ext-dependencies AS production
+
+# Copy application code (this layer changes most frequently)
+COPY ${BUILD_CONTEXT_PATH} ./
+
+# Install the application
+RUN uv sync --group deploy --no-dev --locked
+
+# Install cloud requirements if they exist
+RUN if [ -f cloud_requirements.txt ]; then \
+    uv pip install --system -r cloud_requirements.txt; \
     else \
     echo "cloud_requirements.txt does not exist"; \
     fi
 
 EXPOSE 5002
 
-# During debugging, this entry point will be overridden. For more information, please refer to https://aka.ms/vscode-docker-python-debug
-# The suggested maximum concurrent requests when using workers and threads is (2*CPU)+1
 CMD [ "./entrypoint.sh" ]

@@ -1,3 +1,7 @@
+import os
+from fnmatch import fnmatch
+
+
 class TableColumns:
     CREATED_BY = "created_by"
     CREATED_AT = "created_at"
@@ -80,22 +84,38 @@ class FilePattern:
         "*.bmp",
         "*.tif",
         "*.tiff",
+        "*.webp",
     ]
-    UNSUPPORTED_FILE_EXTENSIONS = [
-        # Archive formats
-        "*.zip",
-        "*.tar",
-        "*.gz",
-        "*.tar.gz",
-        "*.xz",
-        "*.tar.xz",
-        "*.7z",
-        "*.rar",
-        "*.bz2",
-        "*.tar.bz2",
-        "*.tgz",
-        "*.tbz2",
-    ]
+    SPREADSHEETS = ["*.xls", "*.xlsx", "*.ods"]
+    PRESENTATIONS = ["*.ppt", "*.pptx", "*.odp"]
+    OPEN_DOCS = ["*.odt"]
+    DATA_FILES = ["*.csv", "*.json"]
+    OTHER_FILES = ["*.cdfv2"]
+
+    @classmethod
+    def get_supported_extensions(cls) -> list[str]:
+        """Aggregate all supported file extensions."""
+        return [
+            *cls.PDF_DOCUMENTS,
+            *cls.TEXT_DOCUMENTS,
+            *cls.IMAGES,
+            *cls.SPREADSHEETS,
+            *cls.PRESENTATIONS,
+            *cls.OPEN_DOCS,
+            *cls.DATA_FILES,
+            *cls.OTHER_FILES,
+        ]
+
+    @classmethod
+    def is_supported(cls, filename: str) -> bool:
+        """Check if the file extension of the given filename is supported."""
+        _, ext = os.path.splitext(filename)
+        if not ext:
+            return True  # allow files with no extension
+        return any(
+            fnmatch(filename.lower(), pattern)
+            for pattern in cls.get_supported_extensions()
+        )
 
 
 class SourceConstant:

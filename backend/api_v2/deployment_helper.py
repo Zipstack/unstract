@@ -170,6 +170,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         execution_id = workflow_execution.id
 
         hash_values_of_files = SourceConnector.add_input_file_to_api_storage(
+            pipeline_id=pipeline_id,
             workflow_id=workflow_id,
             execution_id=execution_id,
             file_objs=file_objs,

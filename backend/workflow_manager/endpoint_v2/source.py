@@ -2,15 +2,18 @@ import fnmatch
 import logging
 import os
 import shutil
+import uuid
 from hashlib import sha256
 from io import BytesIO
 from itertools import islice
 from typing import Any
 
 import fsspec
+import magic
 from connector_processor.constants import ConnectorKeys
 from connector_v2.models import ConnectorInstance
 from django.core.files.uploadedfile import UploadedFile
+from django.db.models import Q
 from utils.user_context import UserContext
 from workflow_manager.endpoint_v2.base_connector import BaseConnector
 from workflow_manager.endpoint_v2.constants import (
@@ -21,6 +24,7 @@ from workflow_manager.endpoint_v2.constants import (
     SourceKey,
 )
 from workflow_manager.endpoint_v2.dto import FileHash, SourceConfig
+from workflow_manager.endpoint_v2.enums import AllowedFileTypes
 from workflow_manager.endpoint_v2.exceptions import (
     InvalidInputDirectory,
     InvalidSourceConnectionType,
@@ -28,6 +32,7 @@ from workflow_manager.endpoint_v2.exceptions import (
     OrganizationIdNotFound,
     SourceConnectorNotConfigured,
     SourceFileOrInfilePathNotFound,
+    UnsupportedMimeTypeError,
 )
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.file_execution.models import WorkflowFileExecution
@@ -39,7 +44,7 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 from unstract.filesystem import FileStorageType, FileSystem
 from unstract.sdk.file_storage import FileStorage
-from unstract.workflow_execution.enums import LogState
+from unstract.workflow_execution.enums import LogStage, LogState
 
 logger = logging.getLogger(__name__)
 
@@ -204,12 +209,12 @@ class SourceConnector(BaseConnector):
 
         total_files_to_process = 0
         total_matched_files = {}
-        unique_file_hashes: set[str] = set()
+        unique_file_paths: set[str] = set()
 
         for input_directory in valid_directories:
             logger.debug(f"Listing files from:  {input_directory}")
             matched_files, count = self._get_matched_files(
-                source_fs, input_directory, patterns, recursive, limit, unique_file_hashes
+                source_fs, input_directory, patterns, recursive, limit, unique_file_paths
             )
             self.publish_user_sys_log(f"Matched '{count}' files from '{input_directory}'")
             total_matched_files.update(matched_files)
@@ -274,7 +279,7 @@ class SourceConnector(BaseConnector):
         patterns: list[str],
         recursive: bool,
         limit: int,
-        unique_file_hashes: set[str],
+        unique_file_paths: set[str],
     ) -> tuple[dict[str, FileHash], int]:
         """Get a dictionary of matched files based on patterns in a directory.
 
@@ -312,7 +317,7 @@ class SourceConnector(BaseConnector):
                 fs_metadata_list=fs_metadata_list,
                 count=count,
                 limit=limit,
-                unique_file_hashes=unique_file_hashes,
+                unique_file_paths=unique_file_paths,
                 matched_files=matched_files,
                 patterns=patterns,
                 source_fs=source_fs,
@@ -325,7 +330,7 @@ class SourceConnector(BaseConnector):
         fs_metadata_list: list[dict[str, Any]],
         count: int,
         limit: int,
-        unique_file_hashes: set[str],
+        unique_file_paths: set[str],
         matched_files: dict[str, FileHash],
         patterns: list[str],
         source_fs: UnstractFileSystem,
@@ -346,23 +351,22 @@ class SourceConnector(BaseConnector):
             ):
                 continue
 
-            if self._should_skip_file(file_path, fs_metadata, patterns, source_fs):
-                continue
-
             file_hash = self._create_file_hash(
                 file_path=file_path,
                 source_fs=source_fs,
                 file_size=file_size,
                 fs_metadata=fs_metadata,
             )
+            if self._should_skip_file(file_hash, patterns):
+                continue
 
             # Skip duplicate files
-            if self._is_duplicate(file_hash, unique_file_hashes):
+            if self._is_duplicate(file_hash, unique_file_paths):
                 msg = f"Skipping execution of duplicate file '{file_path}'"
                 self.workflow_log.publish_log(msg)
                 logger.info(msg)
                 continue
-            self._update_unique_file_hashes(file_hash, unique_file_hashes)
+            self._update_unique_file_paths(file_hash, unique_file_paths)
 
             matched_files[file_path] = file_hash
             count += 1
@@ -370,46 +374,39 @@ class SourceConnector(BaseConnector):
 
     def _should_skip_file(
         self,
-        file_path: str,
-        fs_metadata: dict[str, Any],
+        file_hash: FileHash,
         patterns: list[str],
-        source_fs: UnstractFileSystem,
     ) -> bool:
         """Check if the given file should be skipped.
 
         Args:
-            file_path (str): The path of the file.
-            fs_metadata (dict[str, Any]): The metadata of the file.
+            file_hash (FileHash): The hash of the file.
             patterns (list[str]): The patterns to match against file names.
-            source_fs (UnstractFileSystem): The file system object used for
-                reading the file.
 
         Returns:
             bool: True if the file should be skipped, False otherwise.
         """
-        file_name = os.path.basename(file_path)
+        file_name = os.path.basename(file_hash.file_path)
         return not self._should_process_file(
             file_name, patterns
         ) or not self._is_new_file(
-            file_path=file_path,
-            fs_metadata=fs_metadata,
+            file_hash=file_hash,
             workflow=self.endpoint.workflow,
-            source_fs=source_fs,
         )
 
-    def _is_duplicate(self, file_hash: FileHash, unique_file_hashes: set[str]) -> bool:
+    def _is_duplicate(self, file_hash: FileHash, unique_file_paths: set[str]) -> bool:
         return (
-            file_hash.provider_file_uuid in unique_file_hashes
-            or file_hash.file_hash in unique_file_hashes
+            file_hash.file_path in unique_file_paths
+            or file_hash.file_name in unique_file_paths
         )
 
-    def _update_unique_file_hashes(
-        self, file_hash: FileHash, unique_file_hashes: set[str]
+    def _update_unique_file_paths(
+        self, file_hash: FileHash, unique_file_paths: set[str]
     ) -> None:
-        if file_hash.provider_file_uuid:
-            unique_file_hashes.add(file_hash.provider_file_uuid)
-        elif file_hash.file_hash:
-            unique_file_hashes.add(file_hash.file_hash)
+        if file_hash.file_path:
+            unique_file_paths.add(file_hash.file_path)
+        elif file_hash.file_name:
+            unique_file_paths.add(file_hash.file_name)
 
     def _is_directory(
         self,
@@ -502,13 +499,7 @@ class SourceConnector(BaseConnector):
         Returns:
             bool: True if file format is supported, False otherwise
         """
-        file_lower = file_name.lower()
-        matches_blocked = any(
-            fnmatch.fnmatchcase(file_lower, ext.lower())
-            for ext in FilePattern.UNSUPPORTED_FILE_EXTENSIONS
-        )
-
-        if matches_blocked:
+        if not FilePattern.is_supported(file_name):
             message = f"Skipping '{file_name}' as it has an unsupported file format"
             logger.debug(message)
             self.workflow_log.publish_log(message)
@@ -518,41 +509,86 @@ class SourceConnector(BaseConnector):
 
     def _is_new_file(
         self,
-        file_path: str,
-        fs_metadata: dict[str, Any],
+        file_hash: FileHash,
         workflow: Workflow,
-        source_fs: UnstractFileSystem,
     ) -> bool:
         """Check if the file is new or already processed."""
-        file_history = self._get_file_history(fs_metadata, workflow, source_fs, file_path)
-        # In case of ETL pipelines, its necessary to skip files which have
-        # already been processed
-        if self.use_file_history and file_history and file_history.is_completed():
-            msg = f"Skipping file '{file_path}' as it has already been processed."
-            self.workflow_log.publish_log(
-                msg + " Clear the file markers to process it again."
-            )
-            logger.info(msg)
-            return False
+        # Always treat the file as new if history usage is not enforced
+        if not self.use_file_history:
+            return True
 
-        return True
+        # Always treat the file as new if neither identifier is available
+        if not file_hash.provider_file_uuid and not file_hash.file_hash:
+            return True
+
+        current_file_path = file_hash.file_path
+        file_history = self._get_file_history(file_hash=file_hash, workflow=workflow)
+
+        # No history or incomplete history means the file is new
+        if not file_history or not file_history.is_completed():
+            return True
+
+        # Note: To enforce content-only deduplication (ignoring file path), introduce a
+        # `use_content_deduplication_only` flag. If enabled, apply the check here and return False accordingly.
+
+        # Compare file paths
+        if file_history.file_path and file_history.file_path != current_file_path:
+            return True
+
+        # Default: file has been processed with the same path
+        self._log_file_skipped(current_file_path)
+        return False
+
+    def _log_file_skipped(self, file_path: str):
+        """Log a message indicating that a file has been skipped.
+
+        Args:
+            file_path (str): The path of the file.
+        """
+        msg = f"Skipping file '{file_path}' as it has already been processed."
+        self.workflow_log.publish_log(
+            msg + " Clear the file markers to process it again."
+        )
+        logger.info(msg)
 
     def _get_file_history(
         self,
-        fs_metadata: dict[str, Any],
+        file_hash: FileHash,
         workflow: Workflow,
-        source_fs: UnstractFileSystem,
-        file_path: str,
     ) -> FileHistory | None:
         """Retrieve file history using provider UUID or legacy cache key."""
-        provider_file_uuid = source_fs.get_file_system_uuid(file_path, fs_metadata)
+        provider_file_uuid = file_hash.provider_file_uuid
+        # Note: For content-only deduplication, use the `use_content_deduplication_only` flag to fetch file history
+        # without including file path as a filter.
 
         if provider_file_uuid:
             logger.info(f"Checking file history for provider UUID: {provider_file_uuid}")
-            file_history = FileHistoryHelper.get_file_history(
-                workflow=workflow, provider_file_uuid=provider_file_uuid
+            return FileHistoryHelper.get_file_history(
+                workflow=workflow,
+                provider_file_uuid=provider_file_uuid,
+                file_path=file_hash.file_path,
             )
-            return file_history
+        return None
+
+    def _get_file_execution_by_file_hash(
+        self,
+        file_hash: FileHash,
+        workflow: Workflow,
+    ) -> WorkflowFileExecution | None:
+        """Retrieve file execution by file hash."""
+        # Build base query conditions
+        base_conditions = Q(workflow_execution__workflow=workflow)
+        content_conditions = Q()
+        if file_hash.provider_file_uuid:
+            content_conditions |= Q(provider_file_uuid=file_hash.provider_file_uuid)
+        if file_hash.file_hash:
+            content_conditions |= Q(file_hash=file_hash.file_hash)
+
+        # Filter file executions based on conditions
+        conditions = base_conditions & content_conditions
+        file_execution = WorkflowFileExecution.objects.filter(conditions).first()
+        if file_execution:
+            return file_execution
         return None
 
     def _create_file_hash(
@@ -661,11 +697,20 @@ class SourceConnector(BaseConnector):
 
         first_iteration = True
         input_log = ""
-        file_hash = sha256()
+        file_content_hash = sha256()
         with source_fs.open(input_file_path, "rb") as remote_file:
             while chunk := remote_file.read(self.READ_CHUNK_SIZE):
-                file_hash.update(chunk)
+                file_content_hash.update(chunk)
                 if first_iteration:
+                    # Detect MIME type using first chunk
+                    mime_type = magic.from_buffer(chunk, mime=True)
+                    logger.info(
+                        f"Detected MIME type: {mime_type} for file {input_file_path}"
+                    )
+                    if not AllowedFileTypes.is_allowed(mime_type):
+                        raise UnsupportedMimeTypeError(
+                            f"Unsupported MIME type '{mime_type}' for file '{input_file_path}'"
+                        )
                     input_log = (
                         chunk[:500].decode("utf-8", errors="replace") + "...(truncated)"
                     )
@@ -679,7 +724,8 @@ class SourceConnector(BaseConnector):
         # This function is typically relevant for extracted text content,
         # may not be necessary for PDFs, images, or other non-text formats.
         self.publish_input_file_content(input_file_path, input_log)
-        hash_value_of_file_content = file_hash.hexdigest()
+        hash_value_of_file_content = file_content_hash.hexdigest()
+        file_hash.mime_type = mime_type
         logger.info(
             f"hash_value_of_file {source_file_path} is : {hash_value_of_file_content}"
         )
@@ -842,6 +888,7 @@ class SourceConnector(BaseConnector):
     @classmethod
     def add_input_file_to_api_storage(
         cls,
+        pipeline_id: str,
         workflow_id: str,
         execution_id: str,
         file_objs: list[UploadedFile],
@@ -858,15 +905,46 @@ class SourceConnector(BaseConnector):
         Returns:
             dict[str, FileHash]: Dict containing file name and its corresponding hash
         """
+        org_schema = UserContext.get_organization_identifier()
+        workflow_log = WorkflowLog(
+            execution_id=execution_id,
+            log_stage=LogStage.SOURCE,
+            pipeline_id=pipeline_id,
+            organization_id=org_schema,
+        )
+        workflow_log.publish_log(
+            "Staging files in API storage for validation and processing."
+        )
         api_storage_dir = cls.get_api_storage_dir_path(
             workflow_id=workflow_id, execution_id=execution_id
         )
         workflow: Workflow = Workflow.objects.get(id=workflow_id)
         file_hashes: dict[str, FileHash] = {}
         unique_file_hashes: set[str] = set()
+        connection_type = WorkflowEndpoint.ConnectionType.API
         for file in file_objs:
             file_name = file.name
             destination_path = os.path.join(api_storage_dir, file_name)
+
+            mime_type = file.content_type
+            logger.info(f"Detected MIME type: {mime_type} for file {file_name}")
+            if not AllowedFileTypes.is_allowed(mime_type):
+                log_message = f"Skipping file '{file_name}' to stage due to unsupported MIME type '{mime_type}'"
+                workflow_log.log_info(logger=logger, message=log_message)
+                # Generate a clearly marked temporary hash to avoid reading the file content
+                # Helps to prevent duplicate entries in file executions
+                fake_hash = f"temp-hash-{uuid.uuid4().hex}"
+                file_hash = FileHash(
+                    file_path=destination_path,
+                    source_connection_type=connection_type,
+                    file_name=file_name,
+                    file_hash=fake_hash,
+                    is_executed=True,
+                    file_size=file.size,
+                    mime_type=mime_type,
+                )
+                file_hashes.update({file_name: file_hash})
+                continue
 
             file_system = FileSystem(FileStorageType.API_EXECUTION)
             file_storage = file_system.get_file_storage()
@@ -875,13 +953,11 @@ class SourceConnector(BaseConnector):
                 file_hash.update(chunk)
                 file_storage.write(path=destination_path, mode="ab", data=chunk)
             file_hash = file_hash.hexdigest()
-            connection_type = WorkflowEndpoint.ConnectionType.API
 
             # Skip duplicate files
             if file_hash in unique_file_hashes:
-                logger.info(
-                    f"[Matched Files] Skipping execution of duplicate file: {file_name}"
-                )
+                log_message = f"Skipping file '{file_name}' — duplicate detected within the current request. Already staged for processing."
+                workflow_log.log_info(logger=logger, message=log_message)
                 continue
             unique_file_hashes.add(file_hash)
 
@@ -898,7 +974,7 @@ class SourceConnector(BaseConnector):
                 file_hash=file_hash,
                 is_executed=is_executed,
                 file_size=file.size,
-                mime_type=file.content_type,
+                mime_type=mime_type,
             )
             file_hashes.update({file_name: file_hash})
         return file_hashes

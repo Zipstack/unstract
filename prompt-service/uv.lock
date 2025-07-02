@@ -505,6 +505,19 @@ wheels = [
 ]
 
 [[package]]
+name = "debugpy"
+version = "1.8.14"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/bd/75/087fe07d40f490a78782ff3b0a30e3968936854105487decdb33446d4b0e/debugpy-1.8.14.tar.gz", hash = "sha256:7cd287184318416850aa8b60ac90105837bb1e59531898c07569d197d2ed5322", size = 1641444 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d9/2a/ac2df0eda4898f29c46eb6713a5148e6f8b2b389c8ec9e425a4a1d67bf07/debugpy-1.8.14-cp312-cp312-macosx_14_0_universal2.whl", hash = "sha256:8899c17920d089cfa23e6005ad9f22582fd86f144b23acb9feeda59e84405b84", size = 2501268 },
+    { url = "https://files.pythonhosted.org/packages/10/53/0a0cb5d79dd9f7039169f8bf94a144ad3efa52cc519940b3b7dde23bcb89/debugpy-1.8.14-cp312-cp312-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f6bb5c0dcf80ad5dbc7b7d6eac484e2af34bdacdf81df09b6a3e62792b722826", size = 4221077 },
+    { url = "https://files.pythonhosted.org/packages/f8/d5/84e01821f362327bf4828728aa31e907a2eca7c78cd7c6ec062780d249f8/debugpy-1.8.14-cp312-cp312-win32.whl", hash = "sha256:281d44d248a0e1791ad0eafdbbd2912ff0de9eec48022a5bfbc332957487ed3f", size = 5255127 },
+    { url = "https://files.pythonhosted.org/packages/33/16/1ed929d812c758295cac7f9cf3dab5c73439c83d9091f2d91871e648093e/debugpy-1.8.14-cp312-cp312-win_amd64.whl", hash = "sha256:5aa56ef8538893e4502a7d79047fe39b1dae08d9ae257074c6464a7b290b806f", size = 5297249 },
+    { url = "https://files.pythonhosted.org/packages/97/1a/481f33c37ee3ac8040d3d51fc4c4e4e7e61cb08b8bc8971d6032acc2279f/debugpy-1.8.14-py2.py3-none-any.whl", hash = "sha256:5cd9a579d553b6cb9759a7908a41988ee6280b961f24f63336835d9418216a20", size = 5256230 },
+]
+
+[[package]]
 name = "decorator"
 version = "5.2.1"
 source = { registry = "https://pypi.org/simple" }
@@ -3106,6 +3119,7 @@ deploy = [
     { name = "opentelemetry-exporter-otlp" },
 ]
 dev = [
+    { name = "debugpy" },
     { name = "poethepoet" },
 ]
 test = [
@@ -3129,7 +3143,7 @@ requires-dist = [
     { name = "s3fs", specifier = "==2024.10.0" },
     { name = "unstract-core", editable = "../unstract/core" },
     { name = "unstract-flags", editable = "../unstract/flags" },
-    { name = "unstract-sdk", extras = ["azure"], specifier = "~=0.73.0" },
+    { name = "unstract-sdk", extras = ["azure"], specifier = "~=0.73.2" },
 ]
 
 [package.metadata.requires-dev]
@@ -3138,7 +3152,10 @@ deploy = [
     { name = "opentelemetry-distro" },
     { name = "opentelemetry-exporter-otlp" },
 ]
-dev = [{ name = "poethepoet", specifier = ">=0.33.1" }]
+dev = [
+    { name = "debugpy", specifier = ">=1.8.14" },
+    { name = "poethepoet", specifier = ">=0.33.1" },
+]
 test = [
     { name = "flask-wtf", specifier = "~=1.1" },
     { name = "pytest", specifier = "~=8.0.1" },
@@ -3149,7 +3166,7 @@ test = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.73.0"
+version = "0.73.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filetype" },
@@ -3188,9 +3205,9 @@ dependencies = [
     { name = "tiktoken" },
     { name = "transformers" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e2/92/361a921424e864df60a6ea59e534592a84b27367212770b9b171d8664b19/unstract_sdk-0.73.0.tar.gz", hash = "sha256:aab1209ce3036de46da5bb557f8144862e09b18c0c96b771fc529a7eb62801ba", size = 2376083 }
+sdist = { url = "https://files.pythonhosted.org/packages/ad/07/8bdc82327d6d30ed5c120aa607b044fad88dd50a0e0ac340a0214834d254/unstract_sdk-0.73.2.tar.gz", hash = "sha256:8285e44997b2145ec5920e0cd651312fd0cebf1742bb314f516f59f87f7846f4", size = 2376138 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/54/83/a2935d58a8e5a8676ee97811bb6f399eaefd3f0fc0dd0e56bfd734882b12/unstract_sdk-0.73.0-py3-none-any.whl", hash = "sha256:c18681d9c09c5cacde3e082f0ae2c519b84a7af6042f062c3c5c8ce8f8310e15", size = 266240 },
+    { url = "https://files.pythonhosted.org/packages/e5/45/c90c9d922e62bd3935e3fbb045b3083ae56148aa7bc56ba5ee8c3549ade1/unstract_sdk-0.73.2-py3-none-any.whl", hash = "sha256:7faf204411e5c8b7037fbaae4697e772b22cb4b045e0ec3d961dd1469952e330", size = 266302 },
 ]
 
 [package.optional-dependencies]
