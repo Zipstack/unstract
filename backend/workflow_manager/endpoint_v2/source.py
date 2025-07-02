@@ -66,6 +66,25 @@ class SourceConnector(BaseConnector):
 
     READ_CHUNK_SIZE = 4194304  # Chunk size for reading files
 
+    @classmethod
+    def _detect_mime_type(cls, chunk: bytes, file_name: str) -> str:
+        """Detect MIME type from file chunk using Python Magic.
+        
+        Args:
+            chunk (bytes): File chunk to analyze
+            file_name (str): Name of the file being processed
+            
+        Returns:
+            str: Detected MIME type (may be unsupported)
+        """
+        # Primary MIME type detection using Python Magic
+        mime_type = magic.from_buffer(chunk, mime=True)
+        logger.info(
+            f"Detected MIME type using Python Magic: {mime_type} for file {file_name}"
+        )
+        
+        return mime_type
+
     def __init__(
         self,
         workflow: Workflow,
@@ -919,22 +938,45 @@ class SourceConnector(BaseConnector):
             workflow_id=workflow_id, execution_id=execution_id
         )
         workflow: Workflow = Workflow.objects.get(id=workflow_id)
-        file_hashes: dict[str, FileHash] = {}
+        file_hashes_objects: dict[str, FileHash] = {}
         unique_file_hashes: set[str] = set()
         connection_type = WorkflowEndpoint.ConnectionType.API
         for file in file_objs:
             file_name = file.name
             destination_path = os.path.join(api_storage_dir, file_name)
 
+            file_system = FileSystem(FileStorageType.API_EXECUTION)
+            file_storage = file_system.get_file_storage()
+            file_hash = sha256()
+            first_iteration = True
             mime_type = file.content_type
-            logger.info(f"Detected MIME type: {mime_type} for file {file_name}")
-            if not AllowedFileTypes.is_allowed(mime_type):
+            logger.info(f"Detected MIME type from content type header: {mime_type} for file {file_name}")
+
+            # Ensure file is at beginning
+            file.seek(0)
+            
+            try:
+                for chunk in file.chunks(chunk_size=cls.READ_CHUNK_SIZE):
+                    if first_iteration:
+                        mime_type = cls._detect_mime_type(chunk, file_name)
+                        # Validate MIME type
+                        if not AllowedFileTypes.is_allowed(mime_type):
+                            raise UnsupportedMimeTypeError(
+                                f"Unsupported MIME type '{mime_type}' for file '{file_name}'"
+                            )
+                        first_iteration = False
+                    
+                    # Process each chunk
+                    file_hash.update(chunk)
+                    file_storage.write(path=destination_path, mode="ab", data=chunk)
+                file_hash = file_hash.hexdigest()
+            except UnsupportedMimeTypeError:
                 log_message = f"Skipping file '{file_name}' to stage due to unsupported MIME type '{mime_type}'"
                 workflow_log.log_info(logger=logger, message=log_message)
                 # Generate a clearly marked temporary hash to avoid reading the file content
                 # Helps to prevent duplicate entries in file executions
                 fake_hash = f"temp-hash-{uuid.uuid4().hex}"
-                file_hash = FileHash(
+                file_hash_object = FileHash(
                     file_path=destination_path,
                     source_connection_type=connection_type,
                     file_name=file_name,
@@ -943,16 +985,8 @@ class SourceConnector(BaseConnector):
                     file_size=file.size,
                     mime_type=mime_type,
                 )
-                file_hashes.update({file_name: file_hash})
+                file_hashes_objects.update({file_name: file_hash_object})
                 continue
-
-            file_system = FileSystem(FileStorageType.API_EXECUTION)
-            file_storage = file_system.get_file_storage()
-            file_hash = sha256()
-            for chunk in file.chunks(chunk_size=cls.READ_CHUNK_SIZE):
-                file_hash.update(chunk)
-                file_storage.write(path=destination_path, mode="ab", data=chunk)
-            file_hash = file_hash.hexdigest()
 
             # Skip duplicate files
             if file_hash in unique_file_hashes:
@@ -967,7 +1001,7 @@ class SourceConnector(BaseConnector):
                     workflow=workflow, cache_key=file_hash
                 )
             is_executed = True if file_history and file_history.is_completed() else False
-            file_hash = FileHash(
+            file_hash_object = FileHash(
                 file_path=destination_path,
                 source_connection_type=connection_type,
                 file_name=file_name,
@@ -976,8 +1010,8 @@ class SourceConnector(BaseConnector):
                 file_size=file.size,
                 mime_type=mime_type,
             )
-            file_hashes.update({file_name: file_hash})
-        return file_hashes
+            file_hashes_objects.update({file_name: file_hash_object})
+        return file_hashes_objects
 
     @classmethod
     def create_endpoint_for_workflow(
