@@ -5,7 +5,6 @@ from datetime import datetime
 from typing import Any
 
 from account_v2.custom_exceptions import DuplicateData
-from adapter_processor_v2.models import AdapterInstance
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
@@ -555,56 +554,10 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
     def import_project(self, request: Request) -> Response:
         """API Endpoint for importing project settings from JSON file."""
         try:
-            # Get the uploaded file
-            if "file" not in request.FILES:
-                return Response(
-                    {"error": "No file provided"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+            import_data, selected_adapters = PromptStudioHelper.validate_import_file(
+                request
+            )
 
-            file = request.FILES["file"]
-
-            # Get selected adapter IDs from form data
-            selected_adapters = {
-                "llm_adapter_id": request.data.get("llm_adapter_id"),
-                "vector_db_adapter_id": request.data.get("vector_db_adapter_id"),
-                "embedding_adapter_id": request.data.get("embedding_adapter_id"),
-                "x2text_adapter_id": request.data.get("x2text_adapter_id"),
-            }
-
-            # Validate file type
-            if not file.name.endswith(".json"):
-                return Response(
-                    {"error": "Only JSON files are supported"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            # Parse JSON content
-            try:
-                import_data = json.loads(file.read().decode("utf-8"))
-            except json.JSONDecodeError:
-                return Response(
-                    {"error": "Invalid JSON file"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            # Validate required structure
-            required_keys = ["tool_metadata", "tool_settings", "prompts"]
-            if not all(key in import_data for key in required_keys):
-                return Response(
-                    {"error": "Invalid project file structure"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            # Create new tool from import data
-            tool_metadata = import_data["tool_metadata"]
-            tool_settings = import_data["tool_settings"]
-
-            # Ensure unique tool name
-            base_name = tool_metadata["tool_name"]
-            tool_name = base_name
-            counter = 1
-            # Get the organization instance
             organization = UserContext.get_organization()
             if not organization:
                 return Response(
@@ -612,202 +565,39 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            while CustomTool.objects.filter(
-                tool_name=tool_name,
-                organization=organization,
-            ).exists():
-                tool_name = f"{base_name} (imported {counter})"
-                counter += 1
-
-            # Create the new tool
-            new_tool = CustomTool.objects.create(
-                tool_name=tool_name,
-                description=tool_metadata["description"],
-                author=tool_metadata["author"],
-                icon=tool_metadata.get("icon", ""),
-                output=tool_metadata.get("output", ""),
-                preamble=tool_settings.get("preamble", ""),
-                postamble=tool_settings.get("postamble", ""),
-                summarize_prompt=tool_settings.get("summarize_prompt", ""),
-                summarize_context=tool_settings.get("summarize_context", False),
-                summarize_as_source=tool_settings.get("summarize_as_source", False),
-                enable_challenge=tool_settings.get("enable_challenge", False),
-                enable_highlight=tool_settings.get("enable_highlight", False),
-                exclude_failed=tool_settings.get("exclude_failed", True),
-                single_pass_extraction_mode=tool_settings.get(
-                    "single_pass_extraction_mode", False
-                ),
-                prompt_grammer=tool_settings.get("prompt_grammer"),
-                created_by=request.user,
-                modified_by=request.user,
-                organization=organization,
+            tool_name = PromptStudioHelper.generate_unique_tool_name(
+                import_data["tool_metadata"]["tool_name"], organization
             )
 
-            # Create profile manager with imported settings and selected adapters
-            profile_settings = import_data.get("default_profile_settings", {})
+            new_tool = PromptStudioHelper.create_tool_from_import_data(
+                import_data, tool_name, organization, request.user
+            )
 
-            # Create default profile manager with selected adapters
-            if all(selected_adapters.values()):
-                # User provided all required adapters, use them
-                try:
-                    # Get adapter instances
-                    llm_adapter = AdapterInstance.objects.get(
-                        id=selected_adapters["llm_adapter_id"]
-                    )
-                    vector_db_adapter = AdapterInstance.objects.get(
-                        id=selected_adapters["vector_db_adapter_id"]
-                    )
-                    embedding_adapter = AdapterInstance.objects.get(
-                        id=selected_adapters["embedding_adapter_id"]
-                    )
-                    x2text_adapter = AdapterInstance.objects.get(
-                        id=selected_adapters["x2text_adapter_id"]
-                    )
-
-                    # Create profile manager with selected adapters
-                    default_profile = ProfileManager.objects.create(
-                        profile_name=profile_settings.get(
-                            "profile_name", "Default Profile"
-                        ),
-                        vector_store=vector_db_adapter,
-                        embedding_model=embedding_adapter,
-                        llm=llm_adapter,
-                        x2text=x2text_adapter,
-                        chunk_size=profile_settings.get("chunk_size", 0),
-                        chunk_overlap=profile_settings.get("chunk_overlap", 0),
-                        retrieval_strategy=profile_settings.get(
-                            "retrieval_strategy", "simple"
-                        ),
-                        similarity_top_k=profile_settings.get("similarity_top_k", 3),
-                        section=profile_settings.get("section", "Default"),
-                        prompt_studio_tool=new_tool,
-                        is_default=True,
-                        created_by=request.user,
-                        modified_by=request.user,
-                    )
-                except AdapterInstance.DoesNotExist as e:
-                    return Response(
-                        {"error": f"One or more selected adapters not found: {e}"},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-                except Exception as e:
-                    logger.error(f"Error creating profile with selected adapters: {e}")
-                    return Response(
-                        {"error": "Failed to create profile with selected adapters"},
-                        status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    )
-            else:
-                # Fallback to default profile creation if no adapters selected
-                PromptStudioHelper.create_default_profile_manager(
-                    user=request.user, tool_id=new_tool.tool_id
+            try:
+                PromptStudioHelper.create_profile_manager(
+                    import_data, selected_adapters, new_tool, request.user
+                )
+            except ValueError as e:
+                return Response(
+                    {"error": str(e)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            except Exception as e:
+                logger.error(f"Error creating profile manager: {e}")
+                return Response(
+                    {"error": "Failed to create profile manager"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
-                # Update the profile with imported settings if available
-                if profile_settings:
-                    try:
-                        default_profile = ProfileManager.objects.filter(
-                            prompt_studio_tool=new_tool, is_default=True
-                        ).first()
+            PromptStudioHelper.import_prompts(
+                import_data["prompts"], new_tool, request.user
+            )
 
-                        if default_profile:
-                            default_profile.chunk_size = profile_settings.get(
-                                "chunk_size", 0
-                            )
-                            default_profile.chunk_overlap = profile_settings.get(
-                                "chunk_overlap", 0
-                            )
-                            default_profile.retrieval_strategy = profile_settings.get(
-                                "retrieval_strategy", "simple"
-                            )
-                            default_profile.similarity_top_k = profile_settings.get(
-                                "similarity_top_k", 3
-                            )
-                            default_profile.section = profile_settings.get(
-                                "section", "Default"
-                            )
-                            default_profile.profile_name = profile_settings.get(
-                                "profile_name", "Default Profile"
-                            )
-                            default_profile.save()
-                    except Exception as e:
-                        logger.warning(f"Could not update profile settings: {e}")
-
-            # Import prompts
-            for prompt_data in import_data["prompts"]:
-                # Get default profile manager for the tool
-                default_profile = ProfileManager.objects.filter(
-                    prompt_studio_tool=new_tool, is_default=True
-                ).first()
-
-                ToolStudioPrompt.objects.create(
-                    prompt_key=prompt_data["prompt_key"],
-                    prompt=prompt_data["prompt"],
-                    active=prompt_data.get("active", True),
-                    required=prompt_data.get("required"),
-                    enforce_type=prompt_data.get("enforce_type", "text"),
-                    sequence_number=prompt_data.get("sequence_number"),
-                    prompt_type=prompt_data.get("prompt_type"),
-                    output=prompt_data.get("output", ""),
-                    assert_prompt=prompt_data.get("assert_prompt"),
-                    assertion_failure_prompt=prompt_data.get("assertion_failure_prompt"),
-                    is_assert=prompt_data.get("is_assert", False),
-                    output_metadata=prompt_data.get("output_metadata", {}),
-                    evaluate=prompt_data.get("evaluate", True),
-                    eval_quality_faithfulness=prompt_data.get(
-                        "eval_quality_faithfulness", True
-                    ),
-                    eval_quality_correctness=prompt_data.get(
-                        "eval_quality_correctness", True
-                    ),
-                    eval_quality_relevance=prompt_data.get(
-                        "eval_quality_relevance", True
-                    ),
-                    eval_security_pii=prompt_data.get("eval_security_pii", True),
-                    eval_guidance_toxicity=prompt_data.get(
-                        "eval_guidance_toxicity", True
-                    ),
-                    eval_guidance_completeness=prompt_data.get(
-                        "eval_guidance_completeness", True
-                    ),
-                    tool_id=new_tool,
-                    profile_manager=default_profile,
-                    created_by=request.user,
-                    modified_by=request.user,
+            needs_adapter_config, warning_message = (
+                PromptStudioHelper.validate_adapter_configuration(
+                    selected_adapters, new_tool
                 )
-
-            # Determine adapter configuration status
-            needs_adapter_config = False
-            warning_message = ""
-
-            if all(selected_adapters.values()):
-                # User selected all adapters, should be good to go
-                needs_adapter_config = False
-                warning_message = ""
-            else:
-                # Using default adapters, check if they're accessible
-                try:
-                    default_profile = ProfileManager.objects.filter(
-                        prompt_studio_tool=new_tool, is_default=True
-                    ).first()
-
-                    if default_profile:
-                        # Check if any required adapters are missing or not accessible
-                        adapters_to_check = [
-                            default_profile.llm,
-                            default_profile.vector_store,
-                            default_profile.embedding_model,
-                            default_profile.x2text,
-                        ]
-
-                        for adapter in adapters_to_check:
-                            if not adapter or not adapter.is_usable:
-                                needs_adapter_config = True
-                                break
-                except Exception:
-                    needs_adapter_config = True
-
-                if needs_adapter_config:
-                    warning_message = "Some adapters may need to be configured before you can use this project. Please check the profile settings."
+            )
 
             response_data = {
                 "message": f"Project imported successfully as '{tool_name}'",

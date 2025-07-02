@@ -12,6 +12,7 @@ from adapter_processor_v2.constants import AdapterKeys
 from adapter_processor_v2.models import AdapterInstance
 from django.conf import settings
 from django.db.models.manager import BaseManager
+from rest_framework.request import Request
 from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.local_context import StateStore
@@ -1516,3 +1517,286 @@ class PromptStudioHelper:
             "exported_at": tool.modified_at.isoformat() if tool.modified_at else None,
             "tool_id": str(tool.tool_id),
         }
+
+    @staticmethod
+    def validate_import_file(request: Request) -> tuple[dict, dict]:
+        """Validate uploaded file and extract import data.
+
+        Returns:
+            tuple: (import_data, selected_adapters)
+        """
+        if "file" not in request.FILES:
+            raise ValueError("No file provided")
+
+        file = request.FILES["file"]
+
+        if not file.name.endswith(".json"):
+            raise ValueError("Only JSON files are supported")
+
+        try:
+            import_data = json.loads(file.read().decode("utf-8"))
+        except json.JSONDecodeError:
+            raise ValueError("Invalid JSON file")
+
+        required_keys = ["tool_metadata", "tool_settings", "prompts"]
+        if not all(key in import_data for key in required_keys):
+            raise ValueError("Invalid project file structure")
+
+        selected_adapters = {
+            "llm_adapter_id": request.data.get("llm_adapter_id"),
+            "vector_db_adapter_id": request.data.get("vector_db_adapter_id"),
+            "embedding_adapter_id": request.data.get("embedding_adapter_id"),
+            "x2text_adapter_id": request.data.get("x2text_adapter_id"),
+        }
+
+        return import_data, selected_adapters
+
+    @staticmethod
+    def generate_unique_tool_name(base_name: str, organization) -> str:
+        """Generate a unique tool name for import.
+
+        Args:
+            base_name: Original tool name from import data
+            organization: Organization instance
+
+        Returns:
+            str: Unique tool name
+        """
+        tool_name = base_name
+        counter = 1
+
+        while CustomTool.objects.filter(
+            tool_name=tool_name,
+            organization=organization,
+        ).exists():
+            tool_name = f"{base_name} (imported {counter})"
+            counter += 1
+
+        return tool_name
+
+    @staticmethod
+    def create_tool_from_import_data(
+        import_data: dict, tool_name: str, organization, user
+    ) -> CustomTool:
+        """Create a new CustomTool from import data.
+
+        Args:
+            import_data: Parsed JSON data from import file
+            tool_name: Unique tool name
+            organization: Organization instance
+            user: User creating the tool
+
+        Returns:
+            CustomTool: Created tool instance
+        """
+        tool_metadata = import_data["tool_metadata"]
+        tool_settings = import_data["tool_settings"]
+
+        return CustomTool.objects.create(
+            tool_name=tool_name,
+            description=tool_metadata["description"],
+            author=tool_metadata["author"],
+            icon=tool_metadata.get("icon", ""),
+            output=tool_metadata.get("output", ""),
+            preamble=tool_settings.get("preamble", ""),
+            postamble=tool_settings.get("postamble", ""),
+            summarize_prompt=tool_settings.get("summarize_prompt", ""),
+            summarize_context=tool_settings.get("summarize_context", False),
+            summarize_as_source=tool_settings.get("summarize_as_source", False),
+            enable_challenge=tool_settings.get("enable_challenge", False),
+            enable_highlight=tool_settings.get("enable_highlight", False),
+            exclude_failed=tool_settings.get("exclude_failed", True),
+            single_pass_extraction_mode=tool_settings.get(
+                "single_pass_extraction_mode", False
+            ),
+            prompt_grammer=tool_settings.get("prompt_grammer"),
+            created_by=user,
+            modified_by=user,
+            organization=organization,
+        )
+
+    @staticmethod
+    def create_profile_manager(
+        import_data: dict, selected_adapters: dict, new_tool: CustomTool, user
+    ) -> None:
+        """Create profile manager with imported settings and selected adapters.
+
+        Args:
+            import_data: Parsed JSON data from import file
+            selected_adapters: Dictionary of selected adapter IDs
+            new_tool: Created tool instance
+            user: User creating the profile
+        """
+        profile_settings = import_data.get("default_profile_settings", {})
+
+        if all(selected_adapters.values()):
+            PromptStudioHelper._create_profile_with_selected_adapters(
+                profile_settings, selected_adapters, new_tool, user
+            )
+        else:
+            PromptStudioHelper._create_default_profile_with_settings(
+                profile_settings, new_tool, user
+            )
+
+    @staticmethod
+    def _create_profile_with_selected_adapters(
+        profile_settings: dict, selected_adapters: dict, new_tool: CustomTool, user
+    ) -> None:
+        """Create profile manager with user-selected adapters."""
+        try:
+            llm_adapter = AdapterInstance.objects.get(
+                id=selected_adapters["llm_adapter_id"]
+            )
+            vector_db_adapter = AdapterInstance.objects.get(
+                id=selected_adapters["vector_db_adapter_id"]
+            )
+            embedding_adapter = AdapterInstance.objects.get(
+                id=selected_adapters["embedding_adapter_id"]
+            )
+            x2text_adapter = AdapterInstance.objects.get(
+                id=selected_adapters["x2text_adapter_id"]
+            )
+
+            ProfileManager.objects.create(
+                profile_name=profile_settings.get("profile_name", "Default Profile"),
+                vector_store=vector_db_adapter,
+                embedding_model=embedding_adapter,
+                llm=llm_adapter,
+                x2text=x2text_adapter,
+                chunk_size=profile_settings.get("chunk_size", 0),
+                chunk_overlap=profile_settings.get("chunk_overlap", 0),
+                retrieval_strategy=profile_settings.get("retrieval_strategy", "simple"),
+                similarity_top_k=profile_settings.get("similarity_top_k", 3),
+                section=profile_settings.get("section", "Default"),
+                prompt_studio_tool=new_tool,
+                is_default=True,
+                created_by=user,
+                modified_by=user,
+            )
+        except AdapterInstance.DoesNotExist as e:
+            raise ValueError(f"One or more selected adapters not found: {e}")
+
+    @staticmethod
+    def _create_default_profile_with_settings(
+        profile_settings: dict, new_tool: CustomTool, user
+    ) -> None:
+        """Create default profile and update with imported settings."""
+        PromptStudioHelper.create_default_profile_manager(
+            user=user, tool_id=new_tool.tool_id
+        )
+
+        if profile_settings:
+            try:
+                default_profile = ProfileManager.objects.filter(
+                    prompt_studio_tool=new_tool, is_default=True
+                ).first()
+
+                if default_profile:
+                    default_profile.chunk_size = profile_settings.get("chunk_size", 0)
+                    default_profile.chunk_overlap = profile_settings.get(
+                        "chunk_overlap", 0
+                    )
+                    default_profile.retrieval_strategy = profile_settings.get(
+                        "retrieval_strategy", "simple"
+                    )
+                    default_profile.similarity_top_k = profile_settings.get(
+                        "similarity_top_k", 3
+                    )
+                    default_profile.section = profile_settings.get("section", "Default")
+                    default_profile.profile_name = profile_settings.get(
+                        "profile_name", "Default Profile"
+                    )
+                    default_profile.save()
+            except Exception as e:
+                logger.warning(f"Could not update profile settings: {e}")
+
+    @staticmethod
+    def import_prompts(prompts_data: list, new_tool: CustomTool, user) -> None:
+        """Import prompts from import data.
+
+        Args:
+            prompts_data: List of prompt data from import file
+            new_tool: Created tool instance
+            user: User creating the prompts
+        """
+        default_profile = ProfileManager.objects.filter(
+            prompt_studio_tool=new_tool, is_default=True
+        ).first()
+
+        for prompt_data in prompts_data:
+            ToolStudioPrompt.objects.create(
+                prompt_key=prompt_data["prompt_key"],
+                prompt=prompt_data["prompt"],
+                active=prompt_data.get("active", True),
+                required=prompt_data.get("required"),
+                enforce_type=prompt_data.get("enforce_type", "text"),
+                sequence_number=prompt_data.get("sequence_number"),
+                prompt_type=prompt_data.get("prompt_type"),
+                output=prompt_data.get("output", ""),
+                assert_prompt=prompt_data.get("assert_prompt"),
+                assertion_failure_prompt=prompt_data.get("assertion_failure_prompt"),
+                is_assert=prompt_data.get("is_assert", False),
+                output_metadata=prompt_data.get("output_metadata", {}),
+                evaluate=prompt_data.get("evaluate", True),
+                eval_quality_faithfulness=prompt_data.get(
+                    "eval_quality_faithfulness", True
+                ),
+                eval_quality_correctness=prompt_data.get(
+                    "eval_quality_correctness", True
+                ),
+                eval_quality_relevance=prompt_data.get("eval_quality_relevance", True),
+                eval_security_pii=prompt_data.get("eval_security_pii", True),
+                eval_guidance_toxicity=prompt_data.get("eval_guidance_toxicity", True),
+                eval_guidance_completeness=prompt_data.get(
+                    "eval_guidance_completeness", True
+                ),
+                tool_id=new_tool,
+                profile_manager=default_profile,
+                created_by=user,
+                modified_by=user,
+            )
+
+    @staticmethod
+    def validate_adapter_configuration(
+        selected_adapters: dict, new_tool: CustomTool
+    ) -> tuple[bool, str]:
+        """Validate adapter configuration and determine if config is needed.
+
+        Args:
+            selected_adapters: Dictionary of selected adapter IDs
+            new_tool: Created tool instance
+
+        Returns:
+            tuple: (needs_adapter_config, warning_message)
+        """
+        if all(selected_adapters.values()):
+            return False, ""
+
+        try:
+            default_profile = ProfileManager.objects.filter(
+                prompt_studio_tool=new_tool, is_default=True
+            ).first()
+
+            if default_profile:
+                adapters_to_check = [
+                    default_profile.llm,
+                    default_profile.vector_store,
+                    default_profile.embedding_model,
+                    default_profile.x2text,
+                ]
+
+                for adapter in adapters_to_check:
+                    if not adapter or not adapter.is_usable:
+                        warning_message = (
+                            "Some adapters may need to be configured before you can use "
+                            "this project. Please check the profile settings."
+                        )
+                        return True, warning_message
+        except Exception:
+            warning_message = (
+                "Some adapters may need to be configured before you can use "
+                "this project. Please check the profile settings."
+            )
+            return True, warning_message
+
+        return False, ""
