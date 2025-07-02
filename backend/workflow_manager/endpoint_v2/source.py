@@ -69,11 +69,11 @@ class SourceConnector(BaseConnector):
     @classmethod
     def _detect_mime_type(cls, chunk: bytes, file_name: str) -> str:
         """Detect MIME type from file chunk using Python Magic.
-        
+
         Args:
             chunk (bytes): File chunk to analyze
             file_name (str): Name of the file being processed
-            
+
         Returns:
             str: Detected MIME type (may be unsupported)
         """
@@ -82,7 +82,7 @@ class SourceConnector(BaseConnector):
         logger.info(
             f"Detected MIME type using Python Magic: {mime_type} for file {file_name}"
         )
-        
+
         return mime_type
 
     def __init__(
@@ -950,11 +950,13 @@ class SourceConnector(BaseConnector):
             file_hash = sha256()
             first_iteration = True
             mime_type = file.content_type
-            logger.info(f"Detected MIME type from content type header: {mime_type} for file {file_name}")
+            logger.info(
+                f"Detected MIME type from content type header: {mime_type} for file {file_name}"
+            )
 
             # Ensure file is at beginning
             file.seek(0)
-            
+
             try:
                 for chunk in file.chunks(chunk_size=cls.READ_CHUNK_SIZE):
                     if first_iteration:
@@ -965,7 +967,7 @@ class SourceConnector(BaseConnector):
                                 f"Unsupported MIME type '{mime_type}' for file '{file_name}'"
                             )
                         first_iteration = False
-                    
+
                     # Process each chunk
                     file_hash.update(chunk)
                     file_storage.write(path=destination_path, mode="ab", data=chunk)
