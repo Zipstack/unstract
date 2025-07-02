@@ -69,11 +69,11 @@ class SourceConnector(BaseConnector):
     @classmethod
     def _detect_mime_type(cls, chunk: bytes, file_name: str) -> str:
         """Detect MIME type from file chunk using Python Magic.
-        
+
         Args:
             chunk (bytes): File chunk to analyze
             file_name (str): Name of the file being processed
-            
+
         Returns:
             str: Detected MIME type (may be unsupported)
         """
@@ -82,7 +82,7 @@ class SourceConnector(BaseConnector):
         logger.info(
             f"Detected MIME type using Python Magic: {mime_type} for file {file_name}"
         )
-        
+
         return mime_type
 
     def __init__(
@@ -905,6 +905,117 @@ class SourceConnector(BaseConnector):
         return os.path.basename(input_file_path), file_stream
 
     @classmethod
+    def _process_file_chunks(
+        cls, file: UploadedFile, file_storage, destination_path: str
+    ) -> tuple[str, str, bool]:
+        """Process file chunks and detect MIME type.
+
+        Args:
+            file: The uploaded file to process
+            file_storage: File storage instance
+            destination_path: Path where file should be stored
+
+        Returns:
+            tuple: (file_hash, mime_type, success) where success indicates if processing completed
+        """
+        file_hash = sha256()
+        first_iteration = True
+        mime_type = file.content_type
+
+        file.seek(0)
+
+        try:
+            for chunk in file.chunks(chunk_size=cls.READ_CHUNK_SIZE):
+                if first_iteration:
+                    mime_type = cls._detect_mime_type(chunk, file.name)
+                    if not AllowedFileTypes.is_allowed(mime_type):
+                        raise UnsupportedMimeTypeError(
+                            f"Unsupported MIME type '{mime_type}' for file '{file.name}'"
+                        )
+                    first_iteration = False
+
+                file_hash.update(chunk)
+                file_storage.write(path=destination_path, mode="ab", data=chunk)
+
+            return file_hash.hexdigest(), mime_type, True
+
+        except UnsupportedMimeTypeError:
+            return "", mime_type, False
+
+    @classmethod
+    def _create_file_hash_object(
+        cls,
+        file_path: str,
+        connection_type,
+        file_name: str,
+        file_hash: str,
+        is_executed: bool,
+        file_size: int,
+        mime_type: str,
+    ) -> FileHash:
+        """Create FileHash object with provided parameters."""
+        return FileHash(
+            file_path=file_path,
+            source_connection_type=connection_type,
+            file_name=file_name,
+            file_hash=file_hash,
+            is_executed=is_executed,
+            file_size=file_size,
+            mime_type=mime_type,
+        )
+
+    @classmethod
+    def _handle_unsupported_file(
+        cls,
+        file_name: str,
+        mime_type: str,
+        destination_path: str,
+        connection_type,
+        file_size: int,
+        workflow_log,
+    ) -> FileHash:
+        """Handle files with unsupported MIME types."""
+        log_message = f"Skipping file '{file_name}' to stage due to unsupported MIME type '{mime_type}'"
+        workflow_log.log_info(logger=logger, message=log_message)
+
+        fake_hash = f"temp-hash-{uuid.uuid4().hex}"
+        return cls._create_file_hash_object(
+            file_path=destination_path,
+            connection_type=connection_type,
+            file_name=file_name,
+            file_hash=fake_hash,
+            is_executed=True,
+            file_size=file_size,
+            mime_type=mime_type,
+        )
+
+    @classmethod
+    def _check_duplicate_file(
+        cls, file_hash: str, unique_file_hashes: set[str], file_name: str, workflow_log
+    ) -> bool:
+        """Check if file is duplicate and log if needed."""
+        if file_hash in unique_file_hashes:
+            log_message = f"Skipping file '{file_name}' — duplicate detected within the current request. Already staged for processing."
+            workflow_log.log_info(logger=logger, message=log_message)
+            return True
+
+        unique_file_hashes.add(file_hash)
+        return False
+
+    @classmethod
+    def _get_execution_status(
+        cls, use_file_history: bool, workflow, file_hash: str
+    ) -> bool:
+        """Get execution status for file based on history."""
+        if not use_file_history:
+            return False
+
+        file_history = FileHistoryHelper.get_file_history(
+            workflow=workflow, cache_key=file_hash
+        )
+        return True if file_history and file_history.is_completed() else False
+
+    @classmethod
     def add_input_file_to_api_storage(
         cls,
         pipeline_id: str,
@@ -941,76 +1052,57 @@ class SourceConnector(BaseConnector):
         file_hashes_objects: dict[str, FileHash] = {}
         unique_file_hashes: set[str] = set()
         connection_type = WorkflowEndpoint.ConnectionType.API
+
         for file in file_objs:
             file_name = file.name
             destination_path = os.path.join(api_storage_dir, file_name)
 
+            logger.info(
+                f"Detected MIME type from content type header: {file.content_type} for file {file_name}"
+            )
+
             file_system = FileSystem(FileStorageType.API_EXECUTION)
             file_storage = file_system.get_file_storage()
-            file_hash = sha256()
-            first_iteration = True
-            mime_type = file.content_type
-            logger.info(f"Detected MIME type from content type header: {mime_type} for file {file_name}")
 
-            # Ensure file is at beginning
-            file.seek(0)
-            
-            try:
-                for chunk in file.chunks(chunk_size=cls.READ_CHUNK_SIZE):
-                    if first_iteration:
-                        mime_type = cls._detect_mime_type(chunk, file_name)
-                        # Validate MIME type
-                        if not AllowedFileTypes.is_allowed(mime_type):
-                            raise UnsupportedMimeTypeError(
-                                f"Unsupported MIME type '{mime_type}' for file '{file_name}'"
-                            )
-                        first_iteration = False
-                    
-                    # Process each chunk
-                    file_hash.update(chunk)
-                    file_storage.write(path=destination_path, mode="ab", data=chunk)
-                file_hash = file_hash.hexdigest()
-            except UnsupportedMimeTypeError:
-                log_message = f"Skipping file '{file_name}' to stage due to unsupported MIME type '{mime_type}'"
-                workflow_log.log_info(logger=logger, message=log_message)
-                # Generate a clearly marked temporary hash to avoid reading the file content
-                # Helps to prevent duplicate entries in file executions
-                fake_hash = f"temp-hash-{uuid.uuid4().hex}"
-                file_hash_object = FileHash(
-                    file_path=destination_path,
-                    source_connection_type=connection_type,
-                    file_name=file_name,
-                    file_hash=fake_hash,
-                    is_executed=True,
-                    file_size=file.size,
-                    mime_type=mime_type,
+            # Process file chunks and detect MIME type
+            file_hash, mime_type, success = cls._process_file_chunks(
+                file, file_storage, destination_path
+            )
+
+            # Handle unsupported files
+            if not success:
+                file_hash_object = cls._handle_unsupported_file(
+                    file_name,
+                    mime_type,
+                    destination_path,
+                    connection_type,
+                    file.size,
+                    workflow_log,
                 )
                 file_hashes_objects.update({file_name: file_hash_object})
                 continue
 
-            # Skip duplicate files
-            if file_hash in unique_file_hashes:
-                log_message = f"Skipping file '{file_name}' — duplicate detected within the current request. Already staged for processing."
-                workflow_log.log_info(logger=logger, message=log_message)
+            # Check for duplicates
+            if cls._check_duplicate_file(
+                file_hash, unique_file_hashes, file_name, workflow_log
+            ):
                 continue
-            unique_file_hashes.add(file_hash)
 
-            file_history = None
-            if use_file_history:
-                file_history = FileHistoryHelper.get_file_history(
-                    workflow=workflow, cache_key=file_hash
-                )
-            is_executed = True if file_history and file_history.is_completed() else False
-            file_hash_object = FileHash(
-                file_path=destination_path,
-                source_connection_type=connection_type,
-                file_name=file_name,
-                file_hash=file_hash,
-                is_executed=is_executed,
-                file_size=file.size,
-                mime_type=mime_type,
+            # Get execution status
+            is_executed = cls._get_execution_status(use_file_history, workflow, file_hash)
+
+            # Create file hash object
+            file_hash_object = cls._create_file_hash_object(
+                destination_path,
+                connection_type,
+                file_name,
+                file_hash,
+                is_executed,
+                file.size,
+                mime_type,
             )
             file_hashes_objects.update({file_name: file_hash_object})
+
         return file_hashes_objects
 
     @classmethod
