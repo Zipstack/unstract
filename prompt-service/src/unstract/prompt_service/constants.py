@@ -94,7 +94,8 @@ class PromptServiceConstants:
     COMBINED_PROMPT = "combined_prompt"
     TOOL = "tool"
     JSON_POSTAMBLE = "JSON_POSTAMBLE"
-    DEFAULT_JSON_POSTAMBLE = "Wrap the final JSON result inbetween ### like below example:\n###\n<FINAL_JSON_RESULT>\n###"
+    DEFAULT_JSON_POSTAMBLE = "Wrap the final JSON result inbetween §§§ like below example:\n§§§\n<FINAL_JSON_RESULT>\n§§§"
+    DOCUMENT_TYPE = "document_type"
 
 
 class RunLevel(Enum):
