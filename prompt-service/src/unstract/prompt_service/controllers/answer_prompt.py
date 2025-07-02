@@ -14,12 +14,16 @@ from unstract.prompt_service.helpers.plugin import PluginManager
 from unstract.prompt_service.helpers.prompt_ide_base_tool import PromptServiceBaseTool
 from unstract.prompt_service.helpers.usage import UsageHelper
 from unstract.prompt_service.services.answer_prompt import AnswerPromptService
+from unstract.prompt_service.services.rentrolls_extractor.interface import (
+    RentRollExtractor,
+)
 from unstract.prompt_service.services.retrieval import RetrievalService
-from unstract.prompt_service.services.rentrolls_extractor.interface import RentRollExtractor
 from unstract.prompt_service.services.variable_replacement import (
     VariableReplacementService,
 )
+from unstract.prompt_service.utils.file_utils import FileUtils
 from unstract.prompt_service.utils.log import publish_log
+from unstract.sdk.adapter import ToolAdapter
 from unstract.sdk.adapters.llm.no_op.src.no_op_custom_llm import NoOpCustomLLM
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.embedding import Embedding
@@ -27,11 +31,7 @@ from unstract.sdk.exceptions import SdkError
 from unstract.sdk.index import Index
 from unstract.sdk.llm import LLM
 from unstract.sdk.vector_db import VectorDB
-from unstract.sdk.adapter import ToolAdapter
-from typing import Any
 
-from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
-from unstract.prompt_service.utils.file_utils import FileUtils
 answer_prompt_bp = Blueprint("answer-prompt", __name__)
 
 
@@ -177,9 +177,28 @@ def prompt_processor() -> Any:
             raise APIError(message=msg)
 
         if output[PSKeys.TYPE] == PSKeys.TABLE:
-            llm_config = ToolAdapter.get_adapter_config(
-                util, output[PSKeys.LLM]
-            ).get("adapter_metadata").to_dict()
+            adapter_parent_data = ToolAdapter.get_adapter_config(util, output[PSKeys.LLM])
+            llm_config = adapter_parent_data.get("adapter_metadata")
+            adapter_id = adapter_parent_data.get("adapter_id")
+            adapter_prefix = adapter_id.split('|')[0]
+            llm_adapter_config = {"adapter_id": adapter_prefix}
+            if adapter_prefix == "azureopenai":
+                llm_adapter_config["model"] = llm_config.get("model")
+                llm_adapter_config["api_key"] = llm_config.get("api_key")
+                llm_adapter_config["api_base"] = llm_config.get("azure_endpoint")
+                llm_adapter_config["max_retries"] = llm_config.get("max_retries")
+                llm_adapter_config["timeout"] = llm_config.get("timeout")
+            if adapter_prefix == "openai":
+                llm_adapter_config["model"] = llm_config.get("model")
+                llm_adapter_config["api_key"] = llm_config.get("api_key")
+                llm_adapter_config["api_base"] = llm_config.get("api_base")
+                llm_adapter_config["max_retries"] = llm_config.get("max_retries")
+                llm_adapter_config["timeout"] = llm_config.get("timeout")
+            if adapter_prefix == "anthropic":
+                llm_adapter_config["model"] = llm_config.get("model")
+                llm_adapter_config["api_key"] = llm_config.get("api_key")
+                llm_adapter_config["max_retries"] = llm_config.get("max_retries")
+                llm_adapter_config["timeout"] = llm_config.get("timeout")
             table_settings = output[PSKeys.TABLE_SETTINGS]
             document_type: str = table_settings.get(PSKeys.DOCUMENT_TYPE)
             app.logger.info("Document type: %s", document_type)
@@ -192,17 +211,20 @@ def prompt_processor() -> Any:
                 # Call the process method asynchronously
                 try:
                     import asyncio
+
                     # Get the extraction result
-                    extraction_result = asyncio.run(extractor.process(
-                        extractor_settings=output,
-                        extracted_data=extracted_data,
-                        llm_config=llm_config,
-                        schema=prompt_text,
-                    ))
-                    
+                    extraction_result = asyncio.run(
+                        extractor.process(
+                            extractor_settings=output,
+                            extracted_data=extracted_data,
+                            llm_config=llm_adapter_config,
+                            schema=prompt_text,
+                        )
+                    )
+
                     # Update structured output with the extraction result
-                    #TODO: Add metrics
-                    #TODO: Add metadata
+                    # TODO: Add metrics
+                    # TODO: Add metadata
                     response = {
                         PSKeys.OUTPUT: extraction_result,
                     }
