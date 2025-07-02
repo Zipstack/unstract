@@ -165,6 +165,9 @@ NOTIFICATION_TIMEOUT = int(get_required_setting("NOTIFICATION_TIMEOUT", "5"))
 ATOMIC_REQUESTS = CommonUtils.str_to_bool(
     os.environ.get("DJANGO_ATOMIC_REQUESTS", "False")
 )
+MAX_FILE_SIZE_LIMIT_TO_READ = int(
+    os.environ.get("MAX_FILE_SIZE_LIMIT_TO_READ", 100 * 1024 * 1024)
+)  # 100MB limit for full file analysis
 # Flag to Enable django admin
 ADMIN_ENABLED = False
 

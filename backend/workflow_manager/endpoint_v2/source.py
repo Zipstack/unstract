@@ -12,6 +12,7 @@ import fsspec
 import magic
 from connector_processor.constants import ConnectorKeys
 from connector_v2.models import ConnectorInstance
+from django.conf import settings
 from django.core.files.uploadedfile import UploadedFile
 from django.db.models import Q
 from utils.user_context import UserContext
@@ -24,7 +25,7 @@ from workflow_manager.endpoint_v2.constants import (
     SourceKey,
 )
 from workflow_manager.endpoint_v2.dto import FileHash, SourceConfig
-from workflow_manager.endpoint_v2.enums import AllowedFileTypes
+from workflow_manager.endpoint_v2.enums import AllowedFileTypes, UncertainMimeTypes
 from workflow_manager.endpoint_v2.exceptions import (
     InvalidInputDirectory,
     InvalidSourceConnectionType,
@@ -64,26 +65,10 @@ class SourceConnector(BaseConnector):
         workflow (Workflow): The workflow associated with the source connector.
     """
 
-    READ_CHUNK_SIZE = 4194304  # Chunk size for reading files
-
-    @classmethod
-    def _detect_mime_type(cls, chunk: bytes, file_name: str) -> str:
-        """Detect MIME type from file chunk using Python Magic.
-
-        Args:
-            chunk (bytes): File chunk to analyze
-            file_name (str): Name of the file being processed
-
-        Returns:
-            str: Detected MIME type (may be unsupported)
-        """
-        # Primary MIME type detection using Python Magic
-        mime_type = magic.from_buffer(chunk, mime=True)
-        logger.info(
-            f"Detected MIME type using Python Magic: {mime_type} for file {file_name}"
-        )
-
-        return mime_type
+    READ_CHUNK_SIZE = 4194304  # 4MB chunk size for reading files
+    MAX_FILE_SIZE_LIMIT_TO_READ = (
+        settings.MAX_FILE_SIZE_LIMIT_TO_READ
+    )  # limit for full file analysis
 
     def __init__(
         self,
@@ -905,10 +890,64 @@ class SourceConnector(BaseConnector):
         return os.path.basename(input_file_path), file_stream
 
     @classmethod
-    def _process_file_chunks(
+    def _detect_mime_type(
+        cls, file: UploadedFile, first_chunk: bytes
+    ) -> tuple[str, bool]:
+        """Enhanced MIME type detection with smart fallback for uncertain types.
+
+        Args:
+            file: The uploaded file
+            first_chunk: First chunk of file data
+
+        Returns:
+            tuple: (mime_type, is_supported) where is_supported indicates if type is allowed
+        """
+        mime_type = file.content_type
+        logger.info(f"Content-Type header: {mime_type} for file {file.name}")
+
+        # Primary detection using python-magic with first chunk
+        mime_type = magic.from_buffer(first_chunk, mime=True)
+        logger.info(
+            f"Detected MIME type using Python Magic: {mime_type} for file {file.name}"
+        )
+
+        # Smart fallback: if uncertain type and file is small enough, analyze full file
+        if (
+            UncertainMimeTypes.is_uncertain(mime_type)
+            and cls.READ_CHUNK_SIZE < file.size <= cls.MAX_FILE_SIZE_LIMIT_TO_READ
+        ):
+            logger.info(
+                f"Uncertain MIME type '{mime_type}', trying full file analysis for {file.name}"
+            )
+
+            # Read full file content
+            file.seek(0)
+            full_content = file.read()
+            file.seek(0)  # Reset for subsequent processing
+
+            # Analyze full file content
+            fallback_mime_type = magic.from_buffer(full_content, mime=True)
+
+            # Only use fallback result if it's more specific than chunk result
+            if fallback_mime_type not in UncertainMimeTypes:
+                mime_type = fallback_mime_type
+                logger.info(
+                    f"Full file analysis detected: {mime_type} for file {file.name}"
+                )
+            else:
+                logger.info(
+                    f"Full file analysis still uncertain, keeping: {mime_type} for file {file.name}"
+                )
+
+        # Check if detected type is supported
+        is_supported = AllowedFileTypes.is_allowed(mime_type)
+        return mime_type, is_supported
+
+    @classmethod
+    def _validate_and_store_file(
         cls, file: UploadedFile, file_storage, destination_path: str
     ) -> tuple[str, str, bool]:
-        """Process file chunks and detect MIME type.
+        """Validate file MIME type and store file content.
 
         Args:
             file: The uploaded file to process
@@ -916,31 +955,29 @@ class SourceConnector(BaseConnector):
             destination_path: Path where file should be stored
 
         Returns:
-            tuple: (file_hash, mime_type, success) where success indicates if processing completed
+            tuple: (file_hash, mime_type, mime_type_detected) where mime_type_detected indicates if type is supported
         """
         file_hash = sha256()
         first_iteration = True
-        mime_type = file.content_type
 
         file.seek(0)
 
-        try:
-            for chunk in file.chunks(chunk_size=cls.READ_CHUNK_SIZE):
-                if first_iteration:
-                    mime_type = cls._detect_mime_type(chunk, file.name)
-                    if not AllowedFileTypes.is_allowed(mime_type):
-                        raise UnsupportedMimeTypeError(
-                            f"Unsupported MIME type '{mime_type}' for file '{file.name}'"
-                        )
-                    first_iteration = False
+        for chunk in file.chunks(chunk_size=cls.READ_CHUNK_SIZE):
+            if first_iteration:
+                # Enhanced MIME type detection
+                mime_type, is_supported = cls._detect_mime_type(file, chunk)
 
-                file_hash.update(chunk)
-                file_storage.write(path=destination_path, mode="ab", data=chunk)
+                # If unsupported, return early without processing further chunks
+                if not is_supported:
+                    return "", mime_type, False
 
-            return file_hash.hexdigest(), mime_type, True
+                first_iteration = False
 
-        except UnsupportedMimeTypeError:
-            return "", mime_type, False
+            # Process chunk - hash and store
+            file_hash.update(chunk)
+            file_storage.write(path=destination_path, mode="ab", data=chunk)
+
+        return file_hash.hexdigest(), mime_type, True
 
     @classmethod
     def _create_file_hash_object(
@@ -1003,10 +1040,10 @@ class SourceConnector(BaseConnector):
         return False
 
     @classmethod
-    def _get_execution_status(
+    def _is_execution_completed(
         cls, use_file_history: bool, workflow, file_hash: str
     ) -> bool:
-        """Get execution status for file based on history."""
+        """Check if file execution is completed based on history."""
         if not use_file_history:
             return False
 
@@ -1057,20 +1094,16 @@ class SourceConnector(BaseConnector):
             file_name = file.name
             destination_path = os.path.join(api_storage_dir, file_name)
 
-            logger.info(
-                f"Detected MIME type from content type header: {file.content_type} for file {file_name}"
-            )
-
             file_system = FileSystem(FileStorageType.API_EXECUTION)
             file_storage = file_system.get_file_storage()
 
             # Process file chunks and detect MIME type
-            file_hash, mime_type, success = cls._process_file_chunks(
+            file_hash, mime_type, mime_type_detected = cls._validate_and_store_file(
                 file, file_storage, destination_path
             )
 
             # Handle unsupported files
-            if not success:
+            if not mime_type_detected:
                 file_hash_object = cls._handle_unsupported_file(
                     file_name,
                     mime_type,
@@ -1089,7 +1122,9 @@ class SourceConnector(BaseConnector):
                 continue
 
             # Get execution status
-            is_executed = cls._get_execution_status(use_file_history, workflow, file_hash)
+            is_executed = cls._is_execution_completed(
+                use_file_history, workflow, file_hash
+            )
 
             # Create file hash object
             file_hash_object = cls._create_file_hash_object(
