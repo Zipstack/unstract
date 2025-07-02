@@ -22,6 +22,7 @@ class AllowedFileTypes(Enum):
     CDFV2 = "application/CDFV2"
     JSON = "application/json"
     CSV = "text/csv"
+    OCTET_STREAM = "application/octet-stream"
 
     @classmethod
     def is_allowed(cls, mime_type: str) -> bool:
