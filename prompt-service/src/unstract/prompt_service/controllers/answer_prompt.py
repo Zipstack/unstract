@@ -188,6 +188,8 @@ def prompt_processor() -> Any:
                 llm_adapter_config["api_base"] = llm_config.get("azure_endpoint")
                 llm_adapter_config["max_retries"] = llm_config.get("max_retries")
                 llm_adapter_config["timeout"] = llm_config.get("timeout")
+                llm_adapter_config["deployment"] = llm_config.get("deployment_name")
+                llm_adapter_config["api_version"] = llm_config.get("api_version")
             if adapter_prefix == "openai":
                 llm_adapter_config["model"] = llm_config.get("model")
                 llm_adapter_config["api_key"] = llm_config.get("api_key")
