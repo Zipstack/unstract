@@ -1,9 +1,10 @@
 # Use a specific version of Python slim image
-FROM python:3.12.9-slim
+FROM python:3.12.9-slim AS base
 
+ARG VERSION=dev
 LABEL maintainer="Zipstack Inc." \
     description="X2Text Service Container" \
-    version="1.0"
+    version="${VERSION}"
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -19,8 +20,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 # Install system dependencies and create user in a single layer
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
-    && rm -rf /var/lib/apt/lists/* \
+    && apt-get install -y --no-install-recommends \
+       build-essential \
+       libmagic-dev \
+       pkg-config \
+       git \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* \
     && adduser --uid 5678 --disabled-password --gecos "" ${APP_USER} \
     && mkdir -p ${APP_HOME} \
     && chown -R ${APP_USER}:${APP_USER} ${APP_HOME}
@@ -30,23 +36,33 @@ COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /uvx /bin/
 
 WORKDIR ${APP_HOME}
 
-# Copy only requirements files first to leverage Docker cache
-COPY --chmod=755 ${BUILD_CONTEXT_PATH}/pyproject.toml ${BUILD_CONTEXT_PATH}/uv.lock ./
+# -----------------------------------------------
+# EXTERNAL DEPENDENCIES STAGE
+# -----------------------------------------------
+FROM base AS ext-dependencies
+
+# Copy dependency-related files
+COPY ${BUILD_CONTEXT_PATH}/pyproject.toml ${BUILD_CONTEXT_PATH}/uv.lock ${BUILD_CONTEXT_PATH}/README.md ./
+
+# Install external dependencies from pyproject.toml
+RUN uv sync --group deploy --locked --no-install-project --no-dev && \
+    uv run opentelemetry-bootstrap -a install
+
+# -----------------------------------------------
+# FINAL STAGE - Minimal image for production
+# -----------------------------------------------
+FROM ext-dependencies AS production
+
+# Copy application code (this layer changes most frequently)
+COPY --chown=${APP_USER}:${APP_USER} ${BUILD_CONTEXT_PATH} ./
+
+# Install just the application
+RUN uv sync --group deploy --locked
 
 # Switch to non-root user
 USER ${APP_USER}
 
-# Install dependencies
-RUN uv sync --frozen \
-    && uv sync --group deploy \
-    && .venv/bin/python3 -m ensurepip --upgrade \
-    && uv run opentelemetry-bootstrap -a install
-
-# Copy application code
-COPY --chmod=755 --chown=${APP_USER}:${APP_USER} ${BUILD_CONTEXT_PATH} .
-
 EXPOSE 3004
 
 # During debugging, this entry point will be overridden.
-# For more information, please refer to https://aka.ms/vscode-docker-python-debug
 CMD [".venv/bin/gunicorn", "--bind", "0.0.0.0:3004", "--timeout", "300", "run:app"]

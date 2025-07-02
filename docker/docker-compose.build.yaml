@@ -4,6 +4,7 @@ services:
     build:
       dockerfile: docker/dockerfiles/frontend.Dockerfile
       context: ..
+      target: production
   backend:
     image: unstract/backend:${VERSION}
     build:
