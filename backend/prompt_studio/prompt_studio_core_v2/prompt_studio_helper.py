@@ -74,6 +74,7 @@ logger = logging.getLogger(__name__)
 
 CHOICES_JSON = "/static/select_choices.json"
 ERROR_MSG = "User %s doesn't have access to adapter %s"
+DEFAULT_PROFILE_NAME = "Default Profile"
 
 logger = logging.getLogger(__name__)
 
@@ -1434,7 +1435,7 @@ class PromptStudioHelper:
             ),
             "section": default_profile.section if default_profile else "Default",
             "profile_name": (
-                default_profile.profile_name if default_profile else "Default Profile"
+                default_profile.profile_name if default_profile else DEFAULT_PROFILE_NAME
             ),
         }
 
@@ -1658,7 +1659,7 @@ class PromptStudioHelper:
             )
 
             ProfileManager.objects.create(
-                profile_name=profile_settings.get("profile_name", "Default Profile"),
+                profile_name=profile_settings.get("profile_name", DEFAULT_PROFILE_NAME),
                 vector_store=vector_db_adapter,
                 embedding_model=embedding_adapter,
                 llm=llm_adapter,
@@ -1704,7 +1705,7 @@ class PromptStudioHelper:
                     )
                     default_profile.section = profile_settings.get("section", "Default")
                     default_profile.profile_name = profile_settings.get(
-                        "profile_name", "Default Profile"
+                        "profile_name", DEFAULT_PROFILE_NAME
                     )
                     default_profile.save()
             except Exception as e:
