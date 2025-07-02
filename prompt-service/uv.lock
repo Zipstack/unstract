@@ -3143,7 +3143,7 @@ requires-dist = [
     { name = "s3fs", specifier = "==2024.10.0" },
     { name = "unstract-core", editable = "../unstract/core" },
     { name = "unstract-flags", editable = "../unstract/flags" },
-    { name = "unstract-sdk", extras = ["azure"], specifier = "~=0.73.1" },
+    { name = "unstract-sdk", extras = ["azure"], specifier = "~=0.73.2" },
 ]
 
 [package.metadata.requires-dev]
@@ -3166,7 +3166,7 @@ test = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.73.1"
+version = "0.73.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filetype" },
@@ -3205,9 +3205,9 @@ dependencies = [
     { name = "tiktoken" },
     { name = "transformers" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/88/bb/60a8cc6d352ca204e04bf33a85d9b9961415833e0f314b2cbbcd42c5a631/unstract_sdk-0.73.1.tar.gz", hash = "sha256:294d0206bc43c09bc8c884a77ab78794301de0dab3ff6a1fe68f9c5235f72251", size = 2376089 }
+sdist = { url = "https://files.pythonhosted.org/packages/ad/07/8bdc82327d6d30ed5c120aa607b044fad88dd50a0e0ac340a0214834d254/unstract_sdk-0.73.2.tar.gz", hash = "sha256:8285e44997b2145ec5920e0cd651312fd0cebf1742bb314f516f59f87f7846f4", size = 2376138 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d8/38/4696fe06d95fd62153dd7a270332e3bfc76a4ffc7e57c0b9135459666317/unstract_sdk-0.73.1-py3-none-any.whl", hash = "sha256:527c4904a8a4500db5ebba0ee3db216069d8093d064187c1e09eecde42402ef9", size = 266247 },
+    { url = "https://files.pythonhosted.org/packages/e5/45/c90c9d922e62bd3935e3fbb045b3083ae56148aa7bc56ba5ee8c3549ade1/unstract_sdk-0.73.2-py3-none-any.whl", hash = "sha256:7faf204411e5c8b7037fbaae4697e772b22cb4b045e0ec3d961dd1469952e330", size = 266302 },
 ]
 
 [package.optional-dependencies]
