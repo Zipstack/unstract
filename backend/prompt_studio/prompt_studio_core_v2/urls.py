@@ -48,8 +48,9 @@ prompt_studio_export = PromptStudioCoreView.as_view(
     {"post": "export_tool", "get": "export_tool_info"}
 )
 
-prompt_studio_export_project = PromptStudioCoreView.as_view({"get": "export_project"})
-prompt_studio_import_project = PromptStudioCoreView.as_view({"post": "import_project"})
+prompt_studio_project_transfer = PromptStudioCoreView.as_view(
+    {"get": "export_project", "post": "import_project"}
+)
 
 
 urlpatterns = format_suffix_patterns(
@@ -116,14 +117,14 @@ urlpatterns = format_suffix_patterns(
             name="prompt_studio_export",
         ),
         path(
-            "prompt-studio/export-project/<uuid:pk>",
-            prompt_studio_export_project,
-            name="prompt_studio_export_project",
+            "prompt-studio/project-transfer/<uuid:pk>",
+            prompt_studio_project_transfer,
+            name="prompt_studio_project_transfer",
         ),
         path(
-            "prompt-studio/import-project/",
-            prompt_studio_import_project,
-            name="prompt_studio_import_project",
+            "prompt-studio/project-transfer/",
+            prompt_studio_project_transfer,
+            name="prompt_studio_project_transfer_import",
         ),
     ]
 )

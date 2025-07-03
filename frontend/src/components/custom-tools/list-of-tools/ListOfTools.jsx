@@ -210,7 +210,7 @@ function ListOfTools() {
 
     const requestOptions = {
       method: "POST",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/import-project/`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/project-transfer/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },

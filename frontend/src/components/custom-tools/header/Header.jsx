@@ -188,7 +188,7 @@ function Header({
 
     setIsExportLoading(true);
     // Create a download link
-    const downloadUrl = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/export-project/${details?.tool_id}`;
+    const downloadUrl = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/project-transfer/${details?.tool_id}`;
 
     // Create a temporary link element and trigger download
     const link = document.createElement("a");
