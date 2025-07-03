@@ -14,9 +14,9 @@ const runtimeConfig =
 const config = {
   favicon:
     runtimeConfig.faviconPath ||
-    process.env.REACT_APP_FAVICON_PATH ||
+    import.meta.env.VITE_FAVICON_PATH ||
     "../public/favicon.ico",
-  logoUrl: runtimeConfig.logoUrl || process.env.REACT_APP_CUSTOM_LOGO_URL,
+  logoUrl: runtimeConfig.logoUrl || import.meta.env.VITE_CUSTOM_LOGO_URL,
   // Add more values as OR case, if needed for fallback.
 };
 

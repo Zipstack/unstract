@@ -3,11 +3,11 @@ import { Button, Card, Col, Layout, Row, Space, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import logo from "../../assets/UnstractLogoBlack.svg";
-import ConnectLLM from "../../assets/connect_llm.svg";
-import ConnectVectorDb from "../../assets/connect_vector_db.svg";
-import ConnectEmbedding from "../../assets/connect_embedding.svg";
-import ConnectTextExtractor from "../../assets/connect_x2text.svg";
+import logo from "../../assets/UnstractLogoBlack.svg?url";
+import ConnectLLM from "../../assets/connect_llm.svg?url";
+import ConnectVectorDb from "../../assets/connect_vector_db.svg?url";
+import ConnectEmbedding from "../../assets/connect_embedding.svg?url";
+import ConnectTextExtractor from "../../assets/connect_x2text.svg?url";
 import { homePagePath, onboardCompleted } from "../../helpers/GetStaticData.js";
 import { useSessionStore } from "../../store/session-store.js";
 import { AddSourceModal } from "../input-output/add-source-modal/AddSourceModal.jsx";

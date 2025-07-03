@@ -15,12 +15,32 @@ const SocketProvider = ({ children }) => {
       transports: ["websocket"],
       path: "/api/v1/socket",
     };
-    if (!process.env.NODE_ENV || process.env.NODE_ENV === "development") {
-      baseUrl = process.env.REACT_APP_BACKEND_URL;
+    if (!import.meta.env.PROD) {
+      baseUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
     } else {
       baseUrl = getBaseUrl();
     }
-    const newSocket = io(baseUrl, body);
+
+    const newSocket = io(baseUrl, {
+      ...body,
+      // Add error handling and timeouts
+      timeout: 5000,
+      autoConnect: false, // Don't auto-connect, we'll handle it manually
+    });
+
+    // Try to connect with error handling
+    newSocket.on('connect_error', (error) => {
+      console.log('Socket.IO connection failed, backend not available:', error.message);
+    });
+
+    newSocket.on('disconnect', (reason) => {
+      console.log('Socket.IO disconnected:', reason);
+    });
+
+    // Only try to connect if we're in development and backend URL is set
+    if (!import.meta.env.PROD && import.meta.env.VITE_BACKEND_URL) {
+      newSocket.connect();
+    }
     setSocket(newSocket);
     // Clean up the socket connection on browser unload
     window.onbeforeunload = () => {

@@ -1,6 +1,6 @@
 import PropTypes from "prop-types";
 
-import loginRightBanner from "../../assets/login-right-panel.svg";
+import loginRightBanner from "../../assets/login-right-panel.svg?url";
 import { Typography } from "antd";
 
 const defaultUnstractContent = {

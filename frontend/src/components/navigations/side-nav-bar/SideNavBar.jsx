@@ -5,17 +5,17 @@ import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
 
 import { useSessionStore } from "../../../store/session-store";
-import Workflows from "../../../assets/Workflows.svg";
-import apiDeploy from "../../../assets/api-deployments.svg";
-import CustomTools from "../../../assets/custom-tools-icon.svg";
-import EmbeddingIcon from "../../../assets/embedding.svg";
-import etl from "../../../assets/etl.svg";
-import LlmIcon from "../../../assets/llm.svg";
-import PlatformSettingsIcon from "../../../assets/platform-settings.svg";
-import task from "../../../assets/task.svg";
-import VectorDbIcon from "../../../assets/vector-db.svg";
-import TextExtractorIcon from "../../../assets/text-extractor.svg";
-import TerminalIcon from "../../../assets/terminal.svg";
+import Workflows from "../../../assets/Workflows.svg?url";
+import apiDeploy from "../../../assets/api-deployments.svg?url";
+import CustomTools from "../../../assets/custom-tools-icon.svg?url";
+import EmbeddingIcon from "../../../assets/embedding.svg?url";
+import etl from "../../../assets/etl.svg?url";
+import LlmIcon from "../../../assets/llm.svg?url";
+import PlatformSettingsIcon from "../../../assets/platform-settings.svg?url";
+import task from "../../../assets/task.svg?url";
+import VectorDbIcon from "../../../assets/vector-db.svg?url";
+import TextExtractorIcon from "../../../assets/text-extractor.svg?url";
+import TerminalIcon from "../../../assets/terminal.svg?url";
 
 import "./SideNavBar.css";
 
