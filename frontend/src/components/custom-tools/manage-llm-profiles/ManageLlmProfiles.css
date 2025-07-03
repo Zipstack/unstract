@@ -9,3 +9,24 @@
     align-items: center;
     gap: 8px;
 }
+
+.profile-id-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.profile-id-text {
+    font-size: 12px;
+}
+
+.profile-copy-button {
+    padding: 0;
+    min-width: auto;
+    height: auto;
+}
+
+.profile-copy-icon {
+    font-size: 12px;
+}
