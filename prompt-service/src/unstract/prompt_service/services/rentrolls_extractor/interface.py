@@ -49,10 +49,9 @@ class RentRollExtractor:
             }
 
             # Make HTTP call to rent roll service
-            timeout = aiohttp.ClientTimeout(total=1800) 
+            timeout = aiohttp.ClientTimeout(total=1800)
             logger.info(f"Calling rent roll service at: {rentroll_url}")
             async with aiohttp.ClientSession(timeout=timeout) as session:
-
                 async with session.post(rentroll_url, json=payload) as response:
                     if response.status == 200:
                         result = await response.json()
