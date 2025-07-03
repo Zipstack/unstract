@@ -543,6 +543,8 @@ def llm_profile_instance() -> Any:
     if not organization_id:
         return Env.INVALID_ORGANIZATOIN, 403
     llm_profile_id = request.args.get("llm_profile_id")
+    if not llm_profile_id:
+        raise APIError(message="llm_profile_id is required", code=400)
     try:
         data_dict = PromptStudioRequestHelper.get_llm_profile_instance_from_db(
             organization_id=organization_id,
@@ -552,5 +554,5 @@ def llm_profile_instance() -> Any:
     except Exception as e:
         if isinstance(e, APIError):
             raise e
-        msg = f"Error while getting data for LLM profile " f"{llm_profile_id}: {e}"
+        msg = f"Error while getting data for LLM profile {llm_profile_id}: {e}"
         raise APIError(message=msg) from e

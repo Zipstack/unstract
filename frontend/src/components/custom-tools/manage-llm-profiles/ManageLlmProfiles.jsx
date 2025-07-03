@@ -208,13 +208,6 @@ function ManageLlmProfiles() {
       type: "success",
       content: "Profile ID copied to clipboard",
     });
-    try {
-      setPostHogCustomEvent("ps_profile_id_copied", {
-        info: "Copied LLM profile ID",
-      });
-    } catch (err) {
-      // If an error occurs while setting custom posthog event, ignore it and continue
-    }
   };
 
   const handleDelete = (profileId) => {
