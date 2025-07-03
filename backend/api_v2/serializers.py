@@ -4,6 +4,7 @@ from typing import Any
 
 from django.core.validators import RegexValidator
 from pipeline_v2.models import Pipeline
+from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from rest_framework.serializers import (
     BooleanField,
     CharField,
@@ -143,6 +144,36 @@ class ExecutionRequestSerializer(TagParamsSerializer):
             raise ValidationError("The file list cannot be empty.")
         if len(value) > self.MAX_FILES_ALLOWED:
             raise ValidationError(f"Maximum '{self.MAX_FILES_ALLOWED}' files allowed.")
+        return value
+
+    def validate_llm_profile_id(self, value):
+        """Validate that the llm_profile_id belongs to the API key owner."""
+        if not value:
+            return value
+
+        # Get context from serializer
+        api = self.context.get("api")
+        api_key = self.context.get("api_key")
+
+        if not api or not api_key:
+            raise ValidationError("Unable to validate LLM profile ownership")
+
+        # Check if profile exists
+        try:
+            profile = ProfileManager.objects.get(profile_id=value)
+        except ProfileManager.DoesNotExist:
+            raise ValidationError("Profile not found")
+
+        # Get the specific API key being used
+        try:
+            active_api_key = api.api_keys.get(api_key=api_key, is_active=True)
+        except api.api_keys.model.DoesNotExist:
+            raise ValidationError("API key not found or not active for this deployment")
+
+        # Check if the profile owner matches the API key owner
+        if profile.created_by != active_api_key.created_by:
+            raise ValidationError("You can only use profiles that you own")
+
         return value
 
 
