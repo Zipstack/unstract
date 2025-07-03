@@ -229,6 +229,8 @@ def prompt_processor() -> Any:
                     # TODO: Add metadata
                     response = {
                         PSKeys.OUTPUT: extraction_result,
+                        PSKeys.METADATA: {},
+                        PSKeys.METRICS: {},
                     }
                     app.logger.info("Rent roll extraction completed successfully")
                     return response
