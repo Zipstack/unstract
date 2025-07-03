@@ -51,8 +51,12 @@ COPY --chown=${APP_USER}:${APP_USER} ${BUILD_CONTEXT_PATH}/pyproject.toml ${BUIL
 COPY --chown=${APP_USER}:${APP_USER} ${BUILD_PACKAGES_PATH}/core /unstract/core
 COPY --chown=${APP_USER}:${APP_USER} ${BUILD_PACKAGES_PATH}/flags /unstract/flags
 
+# Switch to non-root user
+USER ${APP_USER}
+
 # Install external dependencies from pyproject.toml
 RUN uv sync --group deploy --locked --no-install-project --no-dev && \
+    .venv/bin/python3 -m ensurepip --upgrade && \
     uv run opentelemetry-bootstrap -a install
 
 # -----------------------------------------------
@@ -62,6 +66,9 @@ FROM ext-dependencies AS production
 
 # Copy application code (this layer changes most frequently)
 COPY --chown=${APP_USER}:${APP_USER} ${BUILD_CONTEXT_PATH} ./
+
+# Switch to non-root user
+USER ${APP_USER}
 
 # Install just the application in editable mode
 RUN uv sync --group deploy --locked
@@ -76,9 +83,6 @@ RUN for dir in "${TARGET_PLUGINS_PATH}"/*/; do \
     fi; \
     done && \
     mkdir -p prompt-studio-data
-
-# Switch to non-root user
-USER ${APP_USER}
 
 EXPOSE 3003
 

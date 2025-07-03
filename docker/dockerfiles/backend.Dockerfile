@@ -50,6 +50,7 @@ COPY ${BUILD_PACKAGES_PATH}/ /unstract/
 
 # Install external dependencies from pyproject.toml
 RUN uv sync --group deploy --locked --no-install-project --no-dev && \
+    .venv/bin/python3 -m ensurepip --upgrade && \
     uv run opentelemetry-bootstrap -a install
 
 # -----------------------------------------------
