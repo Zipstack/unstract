@@ -48,8 +48,12 @@ COPY --chown=${APP_USER}:${APP_USER} ${BUILD_CONTEXT_PATH}/pyproject.toml ${BUIL
 # Copy local package dependencies
 COPY --chown=${APP_USER}:${APP_USER} ${BUILD_PACKAGES_PATH}/core /unstract/core
 
+# Switch to non-root user
+USER ${APP_USER}
+
 # Install external dependencies from pyproject.toml
 RUN uv sync --group deploy --locked --no-install-project --no-dev && \
+    .venv/bin/python3 -m ensurepip --upgrade && \
     uv run opentelemetry-bootstrap -a install
 
 # -----------------------------------------------
@@ -60,14 +64,14 @@ FROM ext-dependencies AS production
 # Copy application code (this layer changes most frequently)
 COPY --chown=${APP_USER}:${APP_USER} ${BUILD_CONTEXT_PATH} ./
 
+# Switch to non-root user
+USER ${APP_USER}
+
 # Install just the application
 RUN uv sync --group deploy --locked && \
     chmod +x ./entrypoint.sh
 
 # # Make entrypoint executable
 # RUN chmod +x ./entrypoint.sh
-
-# Switch to non-root user
-USER ${APP_USER}
 
 CMD ["./entrypoint.sh"]
