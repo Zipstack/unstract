@@ -53,6 +53,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         api_deployment = DeploymentHelper.get_deployment_by_api_name(api_name=api_name)
         DeploymentHelper.validate_api(api_deployment=api_deployment, api_key=api_key)
         kwargs["api"] = api_deployment
+        kwargs["api_key"] = api_key
         return func(self, request, *args, **kwargs)
 
     @staticmethod

@@ -25,9 +25,6 @@ PAID_FEATURE_MSG = (
 
 
 class StructureTool(BaseTool):
-    def __init__(self, log_level: int = logging.INFO) -> None:
-        super().__init__(log_level)
-
     def _apply_profile_overrides(
         self, tool_metadata: dict, profile_data: dict
     ) -> list[str]:
@@ -107,7 +104,7 @@ class StructureTool(BaseTool):
                         f"{section_name}.{section_key}: {old_value} -> {new_value}"
                     )
                     changes.append(change_desc)
-                    self.stream_log(f"Override {change_desc}")
+                    self.stream_log(f"Overrode {change_desc}")
         return changes
 
     def validate(self, input_file: str, settings: dict[str, Any]) -> None:
@@ -160,23 +157,13 @@ class StructureTool(BaseTool):
             tool_metadata = exported_tool[SettingsKeys.TOOL_METADATA]
 
             # Apply profile overrides if available
-            if llm_profile_to_override:
-                self.stream_log(
-                    f"Applying profile overrides from profile: {llm_profile_to_override.get('profile_name', llm_profile_id)}"
-                )
-                changes = self._apply_profile_overrides(
-                    tool_metadata, llm_profile_to_override
-                )
-                if changes:
-                    self.stream_log(
-                        "Profile overrides applied successfully. Changes made:"
-                    )
-                    for change in changes:
-                        self.stream_log(f"  - {change}")
-                else:
-                    self.stream_log(
-                        "Profile overrides applied - no changes needed (values already matched)"
-                    )
+            STHelper.handle_profile_overrides(
+                self,
+                llm_profile_to_override,
+                llm_profile_id,
+                tool_metadata,
+                self._apply_profile_overrides,
+            )
             ps_project_name = tool_metadata.get("name", prompt_registry_id)
             # Count only the active (enabled) prompts
             total_prompt_count = len(tool_metadata[SettingsKeys.OUTPUTS])

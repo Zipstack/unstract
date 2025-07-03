@@ -46,7 +46,12 @@ class DeploymentExecution(views.APIView):
 
     @DeploymentHelper.validate_api_key
     def post(
-        self, request: Request, org_name: str, api_name: str, api: APIDeployment
+        self,
+        request: Request,
+        org_name: str,
+        api_name: str,
+        api: APIDeployment,
+        api_key: str,
     ) -> Response:
         serializer = ExecutionRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -57,10 +62,9 @@ class DeploymentExecution(views.APIView):
         use_file_history = serializer.validated_data.get(ApiExecution.USE_FILE_HISTORY)
         tag_names = serializer.validated_data.get(ApiExecution.TAGS)
         llm_profile_id = serializer.validated_data.get(ApiExecution.LLM_PROFILE_ID)
-
         # Validate llm_profile_id ownership if provided
         if llm_profile_id:
-            self._validate_llm_profile_ownership(llm_profile_id, api)
+            self._validate_llm_profile_ownership(llm_profile_id, api, api_key)
 
         response = DeploymentHelper.execute_workflow(
             organization_name=org_name,
@@ -81,13 +85,14 @@ class DeploymentExecution(views.APIView):
         return Response({"message": response}, status=status.HTTP_200_OK)
 
     def _validate_llm_profile_ownership(
-        self, llm_profile_id: str, api: APIDeployment
+        self, llm_profile_id: str, api: APIDeployment, api_key: str
     ) -> None:
         """Validate that the llm_profile_id belongs to the API key owner.
 
         Args:
             llm_profile_id (str): The profile ID to validate
             api (APIDeployment): The API deployment instance
+            api_key (str): The specific API key being used
 
         Raises:
             ValidationError: If profile doesn't exist or user doesn't own it
@@ -97,11 +102,12 @@ class DeploymentExecution(views.APIView):
         except ProfileManager.DoesNotExist:
             raise serializers.ValidationError({"llm_profile_id": "Profile not found"})
 
-        # Get the API key owner from the active API key
-        active_api_key = api.api_keys.filter(is_active=True).first()
-        if not active_api_key:
+        # Get the specific API key being used
+        try:
+            active_api_key = api.api_keys.get(api_key=api_key, is_active=True)
+        except api.api_keys.model.DoesNotExist:
             raise serializers.ValidationError(
-                {"api": "No active API key found for this deployment"}
+                {"api": "API key not found or not active for this deployment"}
             )
 
         # Check if the profile owner matches the API key owner
