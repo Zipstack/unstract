@@ -180,7 +180,7 @@ def prompt_processor() -> Any:
             adapter_parent_data = ToolAdapter.get_adapter_config(util, output[PSKeys.LLM])
             llm_config = adapter_parent_data.get("adapter_metadata")
             adapter_id = adapter_parent_data.get("adapter_id")
-            adapter_prefix = adapter_id.split('|')[0]
+            adapter_prefix = adapter_id.split("|")[0]
             llm_adapter_config = {"adapter_id": adapter_prefix}
             if adapter_prefix == "azureopenai":
                 llm_adapter_config["model"] = llm_config.get("model")
