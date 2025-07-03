@@ -26,6 +26,7 @@ from prompt_studio.prompt_profile_manager_v2.profile_manager_helper import (
     ProfileManagerHelper,
 )
 from prompt_studio.prompt_studio_core_v2.constants import (
+    DefaultValues,
     ExecutionSource,
     IndexingStatus,
     LogLevels,
@@ -74,7 +75,6 @@ logger = logging.getLogger(__name__)
 
 CHOICES_JSON = "/static/select_choices.json"
 ERROR_MSG = "User %s doesn't have access to adapter %s"
-DEFAULT_PROFILE_NAME = "Default Profile"
 
 logger = logging.getLogger(__name__)
 
@@ -1386,7 +1386,6 @@ class PromptStudioHelper:
             "description": tool.description,
             "author": tool.author,
             "icon": tool.icon,
-            "output": tool.output,
         }
 
     @staticmethod
@@ -1425,17 +1424,29 @@ class PromptStudioHelper:
         default_profile = PromptStudioHelper._get_default_profile(tool)
 
         return {
-            "chunk_size": default_profile.chunk_size if default_profile else 0,
-            "chunk_overlap": default_profile.chunk_overlap if default_profile else 0,
+            "chunk_size": default_profile.chunk_size
+            if default_profile
+            else DefaultValues.DEFAULT_CHUNK_SIZE,
+            "chunk_overlap": default_profile.chunk_overlap
+            if default_profile
+            else DefaultValues.DEFAULT_CHUNK_OVERLAP,
             "retrieval_strategy": (
-                default_profile.retrieval_strategy if default_profile else "simple"
+                default_profile.retrieval_strategy
+                if default_profile
+                else DefaultValues.DEFAULT_RETRIEVAL_STRATEGY
             ),
             "similarity_top_k": (
-                default_profile.similarity_top_k if default_profile else 3
+                default_profile.similarity_top_k
+                if default_profile
+                else DefaultValues.DEFAULT_SIMILARITY_TOP_K
             ),
-            "section": default_profile.section if default_profile else "Default",
+            "section": default_profile.section
+            if default_profile
+            else DefaultValues.DEFAULT_SECTION,
             "profile_name": (
-                default_profile.profile_name if default_profile else DEFAULT_PROFILE_NAME
+                default_profile.profile_name
+                if default_profile
+                else DefaultValues.DEFAULT_PROFILE_NAME
             ),
         }
 
@@ -1490,11 +1501,9 @@ class PromptStudioHelper:
             "enforce_type": prompt.enforce_type,
             "sequence_number": prompt.sequence_number,
             "prompt_type": prompt.prompt_type,
-            "output": prompt.output,
             "assert_prompt": prompt.assert_prompt,
             "assertion_failure_prompt": prompt.assertion_failure_prompt,
             "is_assert": prompt.is_assert,
-            "output_metadata": prompt.output_metadata,
             "evaluate": prompt.evaluate,
             "eval_quality_faithfulness": prompt.eval_quality_faithfulness,
             "eval_quality_correctness": prompt.eval_quality_correctness,
@@ -1597,18 +1606,30 @@ class PromptStudioHelper:
             tool_name=tool_name,
             description=tool_metadata["description"],
             author=tool_metadata["author"],
-            icon=tool_metadata.get("icon", ""),
-            output=tool_metadata.get("output", ""),
-            preamble=tool_settings.get("preamble", ""),
-            postamble=tool_settings.get("postamble", ""),
-            summarize_prompt=tool_settings.get("summarize_prompt", ""),
-            summarize_context=tool_settings.get("summarize_context", False),
-            summarize_as_source=tool_settings.get("summarize_as_source", False),
-            enable_challenge=tool_settings.get("enable_challenge", False),
-            enable_highlight=tool_settings.get("enable_highlight", False),
-            exclude_failed=tool_settings.get("exclude_failed", True),
+            icon=tool_metadata.get("icon", DefaultValues.DEFAULT_ICON),
+            preamble=tool_settings.get("preamble", DefaultValues.DEFAULT_PREAMBLE),
+            postamble=tool_settings.get("postamble", DefaultValues.DEFAULT_POSTAMBLE),
+            summarize_prompt=tool_settings.get(
+                "summarize_prompt", DefaultValues.DEFAULT_SUMMARIZE_PROMPT
+            ),
+            summarize_context=tool_settings.get(
+                "summarize_context", DefaultValues.DEFAULT_SUMMARIZE_CONTEXT
+            ),
+            summarize_as_source=tool_settings.get(
+                "summarize_as_source", DefaultValues.DEFAULT_SUMMARIZE_AS_SOURCE
+            ),
+            enable_challenge=tool_settings.get(
+                "enable_challenge", DefaultValues.DEFAULT_ENABLE_CHALLENGE
+            ),
+            enable_highlight=tool_settings.get(
+                "enable_highlight", DefaultValues.DEFAULT_ENABLE_HIGHLIGHT
+            ),
+            exclude_failed=tool_settings.get(
+                "exclude_failed", DefaultValues.DEFAULT_EXCLUDE_FAILED
+            ),
             single_pass_extraction_mode=tool_settings.get(
-                "single_pass_extraction_mode", False
+                "single_pass_extraction_mode",
+                DefaultValues.DEFAULT_SINGLE_PASS_EXTRACTION_MODE,
             ),
             prompt_grammer=tool_settings.get("prompt_grammer"),
             created_by=user,
@@ -1659,16 +1680,26 @@ class PromptStudioHelper:
             )
 
             ProfileManager.objects.create(
-                profile_name=profile_settings.get("profile_name", DEFAULT_PROFILE_NAME),
+                profile_name=profile_settings.get(
+                    "profile_name", DefaultValues.DEFAULT_PROFILE_NAME
+                ),
                 vector_store=vector_db_adapter,
                 embedding_model=embedding_adapter,
                 llm=llm_adapter,
                 x2text=x2text_adapter,
-                chunk_size=profile_settings.get("chunk_size", 0),
-                chunk_overlap=profile_settings.get("chunk_overlap", 0),
-                retrieval_strategy=profile_settings.get("retrieval_strategy", "simple"),
-                similarity_top_k=profile_settings.get("similarity_top_k", 3),
-                section=profile_settings.get("section", "Default"),
+                chunk_size=profile_settings.get(
+                    "chunk_size", DefaultValues.DEFAULT_CHUNK_SIZE
+                ),
+                chunk_overlap=profile_settings.get(
+                    "chunk_overlap", DefaultValues.DEFAULT_CHUNK_OVERLAP
+                ),
+                retrieval_strategy=profile_settings.get(
+                    "retrieval_strategy", DefaultValues.DEFAULT_RETRIEVAL_STRATEGY
+                ),
+                similarity_top_k=profile_settings.get(
+                    "similarity_top_k", DefaultValues.DEFAULT_SIMILARITY_TOP_K
+                ),
+                section=profile_settings.get("section", DefaultValues.DEFAULT_SECTION),
                 prompt_studio_tool=new_tool,
                 is_default=True,
                 created_by=user,
@@ -1693,19 +1724,23 @@ class PromptStudioHelper:
                 ).first()
 
                 if default_profile:
-                    default_profile.chunk_size = profile_settings.get("chunk_size", 0)
+                    default_profile.chunk_size = profile_settings.get(
+                        "chunk_size", DefaultValues.DEFAULT_CHUNK_SIZE
+                    )
                     default_profile.chunk_overlap = profile_settings.get(
-                        "chunk_overlap", 0
+                        "chunk_overlap", DefaultValues.DEFAULT_CHUNK_OVERLAP
                     )
                     default_profile.retrieval_strategy = profile_settings.get(
-                        "retrieval_strategy", "simple"
+                        "retrieval_strategy", DefaultValues.DEFAULT_RETRIEVAL_STRATEGY
                     )
                     default_profile.similarity_top_k = profile_settings.get(
-                        "similarity_top_k", 3
+                        "similarity_top_k", DefaultValues.DEFAULT_SIMILARITY_TOP_K
                     )
-                    default_profile.section = profile_settings.get("section", "Default")
+                    default_profile.section = profile_settings.get(
+                        "section", DefaultValues.DEFAULT_SECTION
+                    )
                     default_profile.profile_name = profile_settings.get(
-                        "profile_name", DEFAULT_PROFILE_NAME
+                        "profile_name", DefaultValues.DEFAULT_PROFILE_NAME
                     )
                     default_profile.save()
             except Exception as e:
@@ -1728,28 +1763,37 @@ class PromptStudioHelper:
             ToolStudioPrompt.objects.create(
                 prompt_key=prompt_data["prompt_key"],
                 prompt=prompt_data["prompt"],
-                active=prompt_data.get("active", True),
-                required=prompt_data.get("required"),
-                enforce_type=prompt_data.get("enforce_type", "text"),
+                active=prompt_data.get("active", DefaultValues.DEFAULT_ACTIVE),
+                required=prompt_data.get("required", DefaultValues.DEFAULT_REQUIRED),
+                enforce_type=prompt_data.get(
+                    "enforce_type", DefaultValues.DEFAULT_ENFORCE_TYPE
+                ),
                 sequence_number=prompt_data.get("sequence_number"),
                 prompt_type=prompt_data.get("prompt_type"),
-                output=prompt_data.get("output", ""),
                 assert_prompt=prompt_data.get("assert_prompt"),
                 assertion_failure_prompt=prompt_data.get("assertion_failure_prompt"),
-                is_assert=prompt_data.get("is_assert", False),
-                output_metadata=prompt_data.get("output_metadata", {}),
-                evaluate=prompt_data.get("evaluate", True),
+                is_assert=prompt_data.get("is_assert", DefaultValues.DEFAULT_IS_ASSERT),
+                evaluate=prompt_data.get("evaluate", DefaultValues.DEFAULT_EVALUATE),
                 eval_quality_faithfulness=prompt_data.get(
-                    "eval_quality_faithfulness", True
+                    "eval_quality_faithfulness",
+                    DefaultValues.DEFAULT_EVAL_QUALITY_FAITHFULNESS,
                 ),
                 eval_quality_correctness=prompt_data.get(
-                    "eval_quality_correctness", True
+                    "eval_quality_correctness",
+                    DefaultValues.DEFAULT_EVAL_QUALITY_CORRECTNESS,
                 ),
-                eval_quality_relevance=prompt_data.get("eval_quality_relevance", True),
-                eval_security_pii=prompt_data.get("eval_security_pii", True),
-                eval_guidance_toxicity=prompt_data.get("eval_guidance_toxicity", True),
+                eval_quality_relevance=prompt_data.get(
+                    "eval_quality_relevance", DefaultValues.DEFAULT_EVAL_QUALITY_RELEVANCE
+                ),
+                eval_security_pii=prompt_data.get(
+                    "eval_security_pii", DefaultValues.DEFAULT_EVAL_SECURITY_PII
+                ),
+                eval_guidance_toxicity=prompt_data.get(
+                    "eval_guidance_toxicity", DefaultValues.DEFAULT_EVAL_GUIDANCE_TOXICITY
+                ),
                 eval_guidance_completeness=prompt_data.get(
-                    "eval_guidance_completeness", True
+                    "eval_guidance_completeness",
+                    DefaultValues.DEFAULT_EVAL_GUIDANCE_COMPLETENESS,
                 ),
                 tool_id=new_tool,
                 profile_manager=default_profile,
