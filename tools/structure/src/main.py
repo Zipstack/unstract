@@ -2,7 +2,9 @@ import datetime
 import json
 import logging
 import os
+import signal
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +19,19 @@ from unstract.sdk.tool.base import BaseTool
 from unstract.sdk.tool.entrypoint import ToolEntrypoint
 
 logger = logging.getLogger(__name__)
+
+# Global shutdown flag for graceful shutdown
+shutdown_requested = threading.Event()
+
+
+def signal_handler(signum: int, frame) -> None:
+    """Handle SIGTERM signal for graceful shutdown."""
+    logger.info(f"Received signal {signum}, initiating graceful shutdown...")
+    shutdown_requested.set()
+
+
+# Register SIGTERM handler
+signal.signal(signal.SIGTERM, signal_handler)
 
 PAID_FEATURE_MSG = (
     "It is a cloud / enterprise feature. If you have purchased a plan and still "
@@ -122,6 +137,11 @@ class StructureTool(BaseTool):
             SettingsKeys.FILE_PATH: extracted_input_file,
             SettingsKeys.EXECUTION_SOURCE: SettingsKeys.TOOL,
         }
+        # Check for shutdown before text extraction
+        if shutdown_requested.is_set():
+            self.stream_log("Shutdown requested, stopping before text extraction")
+            return
+
         self.stream_log(f"Extracting document '{self.source_file_name}'")
         usage_kwargs: dict[Any, Any] = dict()
         usage_kwargs[UsageKwargs.RUN_ID] = self.file_execution_id
@@ -140,6 +160,11 @@ class StructureTool(BaseTool):
 
         index_metrics = {}
         if is_summarization_enabled:
+            # Check for shutdown before summarization
+            if shutdown_requested.is_set():
+                self.stream_log("Shutdown requested, stopping before summarization")
+                return
+
             summarize_file_path, summarize_file_hash = self._summarize(
                 tool_settings=tool_settings,
                 tool_data_dir=tool_data_dir,
@@ -172,6 +197,11 @@ class StructureTool(BaseTool):
 
                 # Only process if we haven't seen this combination yet and chunk_size is not zero
                 if chunk_size != 0 and param_key not in seen_params:
+                    # Check for shutdown before indexing
+                    if shutdown_requested.is_set():
+                        self.stream_log("Shutdown requested, stopping before indexing")
+                        return
+
                     seen_params.add(param_key)
 
                     indexing_start_time = datetime.datetime.now()
@@ -206,11 +236,23 @@ class StructureTool(BaseTool):
                     }
 
         if is_single_pass_enabled:
+            # Check for shutdown before single-pass LLM processing
+            if shutdown_requested.is_set():
+                self.stream_log(
+                    "Shutdown requested, stopping before single-pass extraction"
+                )
+                return
+
             self.stream_log("Fetching response for single pass extraction...")
             structured_output = responder.single_pass_extraction(
                 payload=payload,
             )
         else:
+            # Check for shutdown before prompt processing
+            if shutdown_requested.is_set():
+                self.stream_log("Shutdown requested, stopping before prompt processing")
+                return
+
             for output in outputs:
                 if SettingsKeys.TABLE_SETTINGS in output:
                     table_settings = output[SettingsKeys.TABLE_SETTINGS]
@@ -344,6 +386,14 @@ class StructureTool(BaseTool):
                 output[SettingsKeys.CHUNK_SIZE] = 0
                 output[SettingsKeys.CHUNK_OVERLAP] = 0
             self.stream_log("Summarized context not found, summarizing...")
+
+            # Check for shutdown before summarization LLM call
+            if shutdown_requested.is_set():
+                self.stream_log(
+                    "Shutdown requested, stopping before summarization LLM call"
+                )
+                return str(summarize_file_path), ""
+
             payload = {
                 SettingsKeys.RUN_ID: run_id,
                 SettingsKeys.LLM_ADAPTER_INSTANCE_ID: llm_adapter_instance_id,
