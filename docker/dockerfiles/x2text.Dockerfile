@@ -44,8 +44,12 @@ FROM base AS ext-dependencies
 # Copy dependency-related files
 COPY ${BUILD_CONTEXT_PATH}/pyproject.toml ${BUILD_CONTEXT_PATH}/uv.lock ${BUILD_CONTEXT_PATH}/README.md ./
 
+# Switch to non-root user
+USER ${APP_USER}
+
 # Install external dependencies from pyproject.toml
 RUN uv sync --group deploy --locked --no-install-project --no-dev && \
+    .venv/bin/python3 -m ensurepip --upgrade && \
     uv run opentelemetry-bootstrap -a install
 
 # -----------------------------------------------
@@ -56,11 +60,11 @@ FROM ext-dependencies AS production
 # Copy application code (this layer changes most frequently)
 COPY --chown=${APP_USER}:${APP_USER} ${BUILD_CONTEXT_PATH} ./
 
-# Install just the application
-RUN uv sync --group deploy --locked
-
 # Switch to non-root user
 USER ${APP_USER}
+
+# Install just the application
+RUN uv sync --group deploy --locked
 
 EXPOSE 3004
 
