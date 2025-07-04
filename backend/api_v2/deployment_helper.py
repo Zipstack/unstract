@@ -54,7 +54,6 @@ class DeploymentHelper(BaseAPIKeyValidator):
         api_deployment = DeploymentHelper.get_deployment_by_api_name(api_name=api_name)
         DeploymentHelper.validate_api(api_deployment=api_deployment, api_key=api_key)
 
-        # Create DTO object and pass it instead of individual kwargs
         deployment_execution_dto = DeploymentExecutionDTO(
             api=api_deployment, api_key=api_key
         )
