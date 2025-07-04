@@ -3,10 +3,10 @@ import {
   Button,
   Col,
   Dropdown,
-  Image,
   Row,
   Space,
   Typography,
+  Image,
 } from "antd";
 import {
   UserOutlined,
@@ -15,6 +15,7 @@ import {
   DownloadOutlined,
   FileProtectOutlined,
   LikeOutlined,
+  LoginOutlined,
 } from "@ant-design/icons";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -35,6 +36,7 @@ import "./TopNavBar.css";
 import { useAlertStore } from "../../../store/alert-store.js";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal.jsx";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import config from "../../../config";
 
 let TrialDaysInfo;
 try {
@@ -48,7 +50,7 @@ let selectedProductStore;
 let selectedProduct;
 
 try {
-  selectedProductStore = require("../../../plugins/llm-whisperer/store/select-product-store.js");
+  selectedProductStore = require("../../../plugins/store/select-product-store.js");
 } catch {
   // Ignore if hook not available
 }
@@ -65,6 +67,41 @@ let WhispererLogo;
 try {
   WhispererLogo =
     require("../../../plugins/assets/llmWhisperer/index.js").WhispererLogo;
+} catch {
+  // Ignore if hook not available
+}
+
+const CustomLogo = ({ onClick, className }) => {
+  // Use Ant Design Image and config.logoUrl
+  if (config.logoUrl) {
+    return (
+      <Image
+        src={config.logoUrl}
+        preview={false}
+        className={className}
+        onClick={onClick}
+        alt="logo"
+        width={120}
+        style={{
+          cursor: onClick ? "pointer" : undefined,
+          background: "transparent",
+        }}
+        onError={() => {
+          // If image fails to load, component will re-render and use UnstractLogo
+          // since we'll set config.logoUrl to null
+          if (config.logoUrl) {
+            // Only modify if it's not already null to avoid infinite re-renders
+            config.logoUrl = null;
+          }
+        }}
+      />
+    );
+  }
+  return <UnstractLogo className={className} onClick={onClick} />;
+};
+let APIHubLogo;
+try {
+  APIHubLogo = require("../../../plugins/assets/verticals/index.js").APIHubLogo;
 } catch {
   // Ignore if hook not available
 }
@@ -86,7 +123,7 @@ try {
 function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
-  const { orgName, allOrganization, orgId } = sessionDetails;
+  const { orgName, allOrganization, orgId, isLoggedIn } = sessionDetails;
   const baseUrl = getBaseUrl();
   const onBoardUrl = `${baseUrl}/${orgName}/onboard`;
   const logout = useLogout();
@@ -124,6 +161,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   }, [unstractSubscriptionPlan]);
 
   const isUnstract = !(selectedProduct && selectedProduct !== "unstract");
+  const isAPIHub = selectedProduct && selectedProduct === "verticals";
 
   // Check user role and whether the onboarding is incomplete
   useEffect(() => {
@@ -295,19 +333,35 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
       });
     }
 
-    if (isUnstract && UnstractPricingMenuLink && sessionDetails?.isAdmin) {
+    if (
+      isUnstract &&
+      UnstractPricingMenuLink &&
+      sessionDetails?.isAdmin &&
+      !sessionDetails?.provider
+    ) {
       menuItems.push({
         key: "7",
         label: <UnstractPricingMenuLink orgName={orgName} />,
       });
     }
 
+    const handleLogin = () => {
+      const baseUrl = getBaseUrl();
+      const newURL = baseUrl + "/api/v1/login";
+      window.location.href = newURL;
+    };
+
     // Logout
+
+    const handleClick = isLoggedIn ? logout : handleLogin;
+    const icon = isLoggedIn ? <LogoutOutlined /> : <LoginOutlined />;
+    const label = isLoggedIn ? "Logout" : "Login";
+
     menuItems.push({
       key: "2",
       label: (
-        <Button onClick={logout} className="logout-button">
-          <LogoutOutlined /> Logout
+        <Button onClick={handleClick} icon={icon} className="logout-button">
+          {label}
         </Button>
       ),
     });
@@ -338,12 +392,14 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
     <Row align="middle" className="topNav">
       <Col span={6} className="platform-switch-container">
         {isUnstract ? (
-          <UnstractLogo
+          <CustomLogo
             className="topbar-logo cursor-pointer"
             onClick={() =>
               navigate(`/${sessionDetails?.orgName}/${homePagePath}`)
             }
           />
+        ) : isAPIHub ? (
+          APIHubLogo && <APIHubLogo className="topbar-logo" />
         ) : (
           WhispererLogo && <WhispererLogo className="topbar-logo" />
         )}
@@ -411,6 +467,11 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
 TopNavBar.propTypes = {
   isSimpleLayout: PropTypes.bool,
   topNavBarOptions: PropTypes.node,
+};
+
+CustomLogo.propTypes = {
+  onClick: PropTypes.func.isRequired,
+  className: PropTypes.string.isRequired,
 };
 
 export { TopNavBar };

@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
-from typing import Any, Optional
+from typing import Any
 
 
 class ContainerInterface(ABC):
@@ -24,13 +26,12 @@ class ContainerInterface(ABC):
         pass
 
     @abstractmethod
-    def cleanup(self, client: Optional["ContainerClientInterface"] = None) -> None:
+    def cleanup(self, client: ContainerClientInterface | None = None) -> None:
         """Stops and removes the running container."""
         pass
 
 
 class ContainerClientInterface(ABC):
-
     @abstractmethod
     def __init__(
         self,
@@ -57,7 +58,7 @@ class ContainerClientInterface(ABC):
     @abstractmethod
     def run_container_with_sidecar(
         self, container_config: dict[Any, Any], sidecar_config: dict[Any, Any]
-    ) -> tuple[ContainerInterface, Optional[ContainerInterface]]:
+    ) -> tuple[ContainerInterface, ContainerInterface | None]:
         """Method to run a container with provided config. This method will run
         the container.
 
@@ -84,9 +85,9 @@ class ContainerClientInterface(ABC):
     @abstractmethod
     def wait_for_container_stop(
         self,
-        container: Optional[ContainerInterface],
-        main_container_status: Optional[dict] = None,
-    ) -> Optional[dict]:
+        container: ContainerInterface | None,
+        main_container_status: dict | None = None,
+    ) -> dict | None:
         """Wait for the container to stop and return the exit code.
 
         Args:
@@ -104,8 +105,8 @@ class ContainerClientInterface(ABC):
         command: list[str],
         file_execution_id: str,
         shared_log_dir: str,
-        container_name: Optional[str] = None,
-        envs: Optional[dict[str, Any]] = None,
+        container_name: str | None = None,
+        envs: dict[str, Any] | None = None,
         auto_remove: bool = False,
         sidecar: bool = False,
         **kwargs,
@@ -120,4 +121,25 @@ class ContainerClientInterface(ABC):
     @abstractmethod
     def cleanup_volume(self) -> None:
         """Cleans up the shared volume"""
+        pass
+
+    @abstractmethod
+    def get_container_status(self, container_name: str) -> str:
+        """Get the status of the container."""
+        pass
+
+    @abstractmethod
+    def remove_container_by_name(
+        self, container_name: str, with_sidecar: bool = False, force: bool = True
+    ) -> bool:
+        """Remove a container by its name.
+
+        Args:
+            container_name (str): Name of the container to remove.
+            with_sidecar (bool, optional): Remove sidecar container if running. Defaults to False.
+            force (bool, optional): Force removal if running. Defaults to True.
+
+        Returns:
+            bool: True if container was removed or not found, False if error.
+        """
         pass

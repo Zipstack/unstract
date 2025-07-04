@@ -1,5 +1,3 @@
-from typing import Optional
-
 from rest_framework.exceptions import APIException
 
 
@@ -19,8 +17,8 @@ class MissingParamException(APIException):
 
     def __init__(
         self,
-        code: Optional[str] = None,
-        param: Optional[str] = None,
+        code: str | None = None,
+        param: str | None = None,
     ) -> None:
         detail = f"Bad request, missing parameter: {param}"
         super().__init__(detail, code)

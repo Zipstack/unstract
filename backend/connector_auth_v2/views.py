@@ -1,14 +1,15 @@
 import logging
 import uuid
 
-from connector_auth_v2.constants import SocialAuthConstants
-from connector_auth_v2.exceptions import KeyNotConfigured
 from django.conf import settings
 from rest_framework import status, viewsets
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from utils.user_session import UserSessionUtils
+
+from connector_auth_v2.constants import SocialAuthConstants
+from connector_auth_v2.exceptions import KeyNotConfigured
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ class ConnectorAuthViewSet(viewsets.ViewSet):
                 f"Keys not configured for {backend}, add env vars "
                 f"`GOOGLE_OAUTH2_KEY` and `GOOGLE_OAUTH2_SECRET`."
             )
-            logger.warn(msg)
+            logger.warning(msg)
             raise KeyNotConfigured(
                 f"{msg}\nRefer to: "
                 "https://developers.google.com/identity/protocols/oauth2#1.-"

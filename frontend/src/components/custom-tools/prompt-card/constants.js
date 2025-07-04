@@ -1,5 +1,5 @@
-const TABLE_ENFORCE_TYPE = "table";
-const RECORD_ENFORCE_TYPE = "record";
+const LINE_ITEM_ENFORCE_TYPE = "line-item";
+const TABLE = "table";
 
 const handleUpdateStatus = (isUpdate, promptId, value, setUpdateStatus) => {
   if (!isUpdate) {
@@ -11,4 +11,4 @@ const handleUpdateStatus = (isUpdate, promptId, value, setUpdateStatus) => {
   });
 };
 
-export { TABLE_ENFORCE_TYPE, handleUpdateStatus, RECORD_ENFORCE_TYPE };
+export { handleUpdateStatus, TABLE, LINE_ITEM_ENFORCE_TYPE };

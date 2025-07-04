@@ -1,4 +1,5 @@
 **/__pycache__
+**/.mypy_cache
 **/.pytest_cache
 **/.python-version
 **/.pyc
@@ -42,9 +43,6 @@
 *.idea
 *.vscode
 *.git
-**/.pdm.toml
-**/.pdm-build
-**/.pdm-python
 !LICENSE
 *.md
 !README.md

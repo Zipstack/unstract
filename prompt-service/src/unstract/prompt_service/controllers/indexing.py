@@ -1,7 +1,8 @@
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from flask import Blueprint, request
+
 from unstract.prompt_service.constants import IndexingConstants as IKeys
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.dto import (
@@ -34,8 +35,7 @@ REQUIRED_FIELDS = [
 @AuthHelper.auth_required
 @indexing_bp.route("/index", methods=["POST"])
 def index() -> Any:
-    """
-    Endpoint for indexing documents into the vector database.
+    """Endpoint for indexing documents into the vector database.
 
     This API accepts a JSON payload containing document details, processes the
     document, and stores it in the vector database for retrieval.
@@ -55,7 +55,7 @@ def index() -> Any:
     vector_db_instance_id: str = payload.get(IKeys.VECTOR_DB_INSTANCE_ID, "")
     x2text_instance_id: str = payload.get(IKeys.X2TEXT_INSTANCE_ID, "")
     file_path: str = payload.get(IKeys.FILE_PATH, "")
-    file_hash: Optional[str] = payload.get(IKeys.FILE_HASH)
+    file_hash: str | None = payload.get(IKeys.FILE_HASH)
     chunk_size: int = payload.get(IKeys.CHUNK_SIZE, 512)  # Default chunk size
     chunk_overlap: int = payload.get(IKeys.CHUNK_OVERLAP, 128)  # Default chunk overlap
     reindex: bool = payload.get(IKeys.REINDEX, False)

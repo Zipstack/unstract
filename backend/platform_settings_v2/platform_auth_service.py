@@ -1,18 +1,19 @@
 import logging
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 from account_v2.models import Organization, PlatformKey, User
 from account_v2.organization import OrganizationService
 from django.db import IntegrityError
+from tenant_account_v2.constants import ErrorMessage, PlatformServiceConstants
+from utils.user_context import UserContext
+
 from platform_settings_v2.exceptions import (
     ActiveKeyNotFound,
     DuplicateData,
     InternalServiceError,
     InvalidRequest,
 )
-from tenant_account_v2.constants import ErrorMessage, PlatformServiceConstants
-from utils.user_context import UserContext
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ class PlatformAuthenticationService:
         is_active: bool,
         key_name: str,
         user: User,
-        organization: Optional[Organization] = None,
+        organization: Organization | None = None,
     ) -> dict[str, Any]:
         """Method to support generation of new platform key. Throws error when
         maximum count is exceeded. Forbids for user other than admin
@@ -45,6 +46,7 @@ class PlatformAuthenticationService:
             dict[str, Any]:
                 A dictionary containing the generated platform key details,
                     including the id, key name, and key value.
+
         Raises:
             DuplicateData: If a platform key with the same key name
                 already exists for the organization.
@@ -185,9 +187,7 @@ class PlatformAuthenticationService:
                 f"IntegrityError - Failed to {action} platform key {platform_key.id}"
                 f": {error}"
             )
-            raise DuplicateData(
-                f"{ErrorMessage.KEY_EXIST}, {ErrorMessage.DUPLICATE_API}"
-            )
+            raise DuplicateData(f"{ErrorMessage.KEY_EXIST}, {ErrorMessage.DUPLICATE_API}")
 
     @staticmethod
     def list_platform_key_ids() -> list[PlatformKey]:
@@ -219,7 +219,7 @@ class PlatformAuthenticationService:
 
     @staticmethod
     def get_active_platform_key(
-        organization_id: Optional[str] = None,
+        organization_id: str | None = None,
     ) -> PlatformKey:
         """Method to fetch active key.
 
@@ -228,9 +228,7 @@ class PlatformAuthenticationService:
             Any: platformKey.
         """
         try:
-            organization_id = (
-                organization_id or UserContext.get_organization_identifier()
-            )
+            organization_id = organization_id or UserContext.get_organization_identifier()
             organization: Organization = OrganizationService.get_organization_by_org_id(
                 org_id=organization_id
             )

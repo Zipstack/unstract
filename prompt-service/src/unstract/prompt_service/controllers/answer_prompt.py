@@ -1,14 +1,11 @@
-"""
-Published API Controller
-"""
+"""Published API Controller"""
 
-import json
-from json import JSONDecodeError
 from typing import Any
 
-from flask import Blueprint
+from flask import Blueprint, request
 from flask import current_app as app
-from flask import request
+
+from unstract.core.flask.exceptions import APIError
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.constants import RunLevel
 from unstract.prompt_service.exceptions import BadRequest
@@ -17,11 +14,16 @@ from unstract.prompt_service.helpers.plugin import PluginManager
 from unstract.prompt_service.helpers.prompt_ide_base_tool import PromptServiceBaseTool
 from unstract.prompt_service.helpers.usage import UsageHelper
 from unstract.prompt_service.services.answer_prompt import AnswerPromptService
+from unstract.prompt_service.services.rentrolls_extractor.interface import (
+    RentRollExtractor,
+)
 from unstract.prompt_service.services.retrieval import RetrievalService
 from unstract.prompt_service.services.variable_replacement import (
     VariableReplacementService,
 )
+from unstract.prompt_service.utils.file_utils import FileUtils
 from unstract.prompt_service.utils.log import publish_log
+from unstract.sdk.adapter import ToolAdapter
 from unstract.sdk.adapters.llm.no_op.src.no_op_custom_llm import NoOpCustomLLM
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.embedding import Embedding
@@ -29,8 +31,6 @@ from unstract.sdk.exceptions import SdkError
 from unstract.sdk.index import Index
 from unstract.sdk.llm import LLM
 from unstract.sdk.vector_db import VectorDB
-
-from unstract.core.flask.exceptions import APIError
 
 answer_prompt_bp = Blueprint("answer-prompt", __name__)
 
@@ -70,7 +70,7 @@ def prompt_processor() -> Any:
         {"tool_id": tool_id, "run_id": run_id, "doc_name": doc_name},
         LogLevel.DEBUG,
         RunLevel.RUN,
-        f"Preparing to execute {len(prompts)} prompt(s)",
+        f"Preparing to execute '{len(prompts)}' prompt(s)",
     )
     # Rename "output" to "prompt"
     for output in prompts:  # type:ignore
@@ -96,7 +96,7 @@ def prompt_processor() -> Any:
                 doc_name=doc_name,
             )
 
-        app.logger.info(f"[{tool_id}] Executing prompt: {prompt_name}")
+        app.logger.info(f"[{tool_id}] Executing prompt: '{prompt_name}'")
         publish_log(
             log_events_id,
             {
@@ -174,16 +174,76 @@ def prompt_processor() -> Any:
                 RunLevel.RUN,
                 "Unable to obtain LLM / embedding / vectorDB",
             )
-            return APIError(message=msg)
+            raise APIError(message=msg)
 
-        if output[PSKeys.TYPE] == PSKeys.TABLE or output[PSKeys.TYPE] == PSKeys.RECORD:
+        if output[PSKeys.TYPE] == PSKeys.TABLE:
+            adapter_parent_data = ToolAdapter.get_adapter_config(util, output[PSKeys.LLM])
+            llm_config = adapter_parent_data.get("adapter_metadata")
+            adapter_id = adapter_parent_data.get("adapter_id")
+            adapter_prefix = adapter_id.split("|")[0]
+            llm_adapter_config = {"adapter_id": adapter_prefix}
+            if adapter_prefix == "azureopenai":
+                llm_adapter_config["model"] = llm_config.get("model")
+                llm_adapter_config["api_key"] = llm_config.get("api_key")
+                llm_adapter_config["api_base"] = llm_config.get("azure_endpoint")
+                llm_adapter_config["max_retries"] = llm_config.get("max_retries")
+                llm_adapter_config["timeout"] = llm_config.get("timeout")
+                llm_adapter_config["deployment"] = llm_config.get("deployment_name")
+                llm_adapter_config["api_version"] = llm_config.get("api_version")
+            if adapter_prefix == "openai":
+                llm_adapter_config["model"] = llm_config.get("model")
+                llm_adapter_config["api_key"] = llm_config.get("api_key")
+                llm_adapter_config["api_base"] = llm_config.get("api_base")
+                llm_adapter_config["max_retries"] = llm_config.get("max_retries")
+                llm_adapter_config["timeout"] = llm_config.get("timeout")
+            if adapter_prefix == "anthropic":
+                llm_adapter_config["model"] = llm_config.get("model")
+                llm_adapter_config["api_key"] = llm_config.get("api_key")
+                llm_adapter_config["max_retries"] = llm_config.get("max_retries")
+                llm_adapter_config["timeout"] = llm_config.get("timeout")
+            table_settings = output[PSKeys.TABLE_SETTINGS]
+            document_type: str = table_settings.get(PSKeys.DOCUMENT_TYPE)
+            app.logger.info("Document type: %s", document_type)
+            if document_type == "rent_rolls":
+                # Create RentRollExtractor instance and process the extraction
+                extractor = RentRollExtractor()
+                fs_instance = FileUtils.get_fs_instance(execution_source=execution_source)
+                extracted_data = fs_instance.read(path=file_path, mode="r")
+                app.logger.info("Starting asyncio.run...")
+                # Call the process method asynchronously
+                try:
+                    import asyncio
+
+                    # Get the extraction result
+                    extraction_result = asyncio.run(
+                        extractor.process(
+                            extractor_settings=output,
+                            extracted_data=extracted_data,
+                            llm_config=llm_adapter_config,
+                            schema=prompt_text,
+                        )
+                    )
+
+                    # Update structured output with the extraction result
+                    # TODO: Add metrics
+                    # TODO: Add metadata
+                    response = {
+                        PSKeys.OUTPUT: extraction_result,
+                        PSKeys.METADATA: {},
+                        PSKeys.METRICS: {},
+                    }
+                    app.logger.info("Rent roll extraction completed successfully")
+                    return response
+                except Exception as e:
+                    app.logger.error(f"Failed to process rent roll: {str(e)}")
+                    # Continue with regular table extraction as fallback
             try:
                 structured_output = AnswerPromptService.extract_table(
                     output=output,
                     structured_output=structured_output,
                     llm=llm,
-                    enforce_type=output[PSKeys.TYPE],
                     execution_source=execution_source,
+                    prompt=prompt_text,
                 )
                 metadata = UsageHelper.query_usage_metadata(
                     token=platform_key, metadata=metadata
@@ -244,7 +304,6 @@ def prompt_processor() -> Any:
                 raise e
 
         try:
-
             answer = "NA"
             publish_log(
                 log_events_id,
@@ -387,46 +446,19 @@ def prompt_processor() -> Any:
                     else:
                         structured_output[output[PSKeys.NAME]] = False
             elif output[PSKeys.TYPE] == PSKeys.JSON:
-                if answer.lower() == "[]" or answer.lower() == "na":
-                    structured_output[output[PSKeys.NAME]] = None
-                else:
-                    try:
-                        structured_output[output[PSKeys.NAME]] = json.loads(answer)
-                    except JSONDecodeError:
-                        prompt = f"Convert the following text into valid JSON string: \
-                            \n{answer}\n\n The JSON string should be able to be parsed \
-                            into a Python dictionary. \
-                            Output just the JSON string. No explanation is required. \
-                            If you cannot extract the JSON string, output {{}}"
-                        try:
-                            answer = AnswerPromptService.run_completion(
-                                llm=llm,
-                                prompt=prompt,
-                                prompt_type=PSKeys.JSON,
-                            )
-                            structured_output[output[PSKeys.NAME]] = json.loads(answer)
-                        except JSONDecodeError as e:
-                            err_msg = (
-                                f"Error parsing response (to json): {e}\n"
-                                f"Candidate JSON: {answer}"
-                            )
-                            app.logger.info(err_msg, LogLevel.ERROR)
-                            # Format log message after unifying these types
-                            publish_log(
-                                log_events_id,
-                                {
-                                    "tool_id": tool_id,
-                                    "prompt_key": prompt_name,
-                                    "doc_name": doc_name,
-                                },
-                                LogLevel.INFO,
-                                RunLevel.RUN,
-                                "Unable to parse JSON response from LLM, try using our"
-                                " cloud / enterprise feature of 'line-item', "
-                                "'record' or 'table' type",
-                            )
-                            structured_output[output[PSKeys.NAME]] = {}
-
+                AnswerPromptService.handle_json(
+                    answer=answer,
+                    structured_output=structured_output,
+                    output=output,
+                    log_events_id=log_events_id,
+                    tool_id=tool_id,
+                    doc_name=doc_name,
+                    llm=llm,
+                    enable_highlight=tool_settings.get(PSKeys.ENABLE_HIGHLIGHT, False),
+                    execution_source=execution_source,
+                    metadata=metadata,
+                    file_path=file_path,
+                )
             else:
                 structured_output[output[PSKeys.NAME]] = answer
 

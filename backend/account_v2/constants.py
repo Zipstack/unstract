@@ -77,6 +77,7 @@ class AuthorizationErrorCode:
     INE001: INVALID EMAIL Exception code when an invalid email address is used
     like disposable.
     INE002: INVALID EMAIL Exception code when an invalid email address format.
+    INS: Insufficient Access
 
     Error code reference :
         frontend/src/components/error/GenericError/GenericError.jsx.
@@ -89,3 +90,4 @@ class AuthorizationErrorCode:
     USR = "USR"
     INE001 = "INE001"
     INE002 = "INE002"
+    INS = "INS"

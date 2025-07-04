@@ -6,6 +6,7 @@ Contains the backend services for Unstract written with Django and DRF.
 
 1. Postgres
 1. Redis
+1. RabbitMQ
 
 ## Getting started
 
@@ -15,13 +16,13 @@ Contains the backend services for Unstract written with Django and DRF.
 
 All commands assumes that you have activated your `venv`.
 
-```bash
-# Create venv
-pdm venv create -w virtualenv --with-pip
-eval "$(pdm venv activate in-project)"
+Install UV: https://docs.astral.sh/uv/getting-started/installation/
 
-# Remove venv
-pdm venv remove in-project
+```bash
+# Create venv and install dependencies
+uv venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+uv sync
 ```
 
 #### Installing dependencies
@@ -30,28 +31,20 @@ Go to service dir and install dependencies listed in corresponding `pyproject.to
 
 ```bash
 # Install dependencies
-pdm install
+uv sync
 
 # Install specific dev dependency group
-pdm install --dev -G lint
-
+uv sync --group dev
 # Install production dependencies only
-pdm install --prod --no-editable
+uv sync --group deploy
 ```
 
 #### Running scripts
 
-PDM allows you to run scripts applicable within the service dir.
+UV allows you to run python scripts applicable within the service dir.
 
 ```bash
-# List the possible scripts that can be executed
-pdm run -l
-```
-
-For example to run the backend (dev mode is recommended to take advantage of gunicorn's `reload` feature)
-
-```bash
-pdm run backend --dev
+uv run sample_script.py
 ```
 
 #### Running commands
@@ -59,7 +52,7 @@ pdm run backend --dev
 - If you plan to run the django server locally, make sure the dependent services are up (either locally or through docker compose)
 - Copy `sample.env` into `.env` and update the necessary variables. For eg:
 
-```
+```bash
 DJANGO_SETTINGS_MODULE='backend.settings.dev'
 DB_HOST='localhost'
 DB_USER='unstract_dev'
@@ -68,16 +61,16 @@ DB_NAME='unstract_db'
 DB_PORT=5432
 ```
 
-- If you've made changes to the model, run `python manage.py makemigrations`, else ignore this step
+- If you've made changes to the model, run `uv run manage.py makemigrations`, else ignore this step
 - Run the following to apply any migrations to the DB and start the server
 
 ```bash
-python manage.py migrate
-python manage.py runserver localhost:8000
+uv run manage.py migrate
+uv run manage.py runserver localhost:8000
 ```
 
 - Server will start and run at port 8000. (<http://localhost:8000>)
-  
+
 ## Authentication
 
 The default username is `unstract` and the default password is `unstract`.
@@ -131,6 +124,7 @@ celery -A backend worker --loglevel=info -Q <queue_name>
 ```
 
 ### Autoscaling Workers
+
 ```bash
   celery -A backend worker --loglevel=info -Q <queue_name> --autoscale=<max_workers>,<min_workers>
 ```
@@ -143,7 +137,6 @@ Celery supports autoscaling of worker processes, allowing you to dynamically adj
 
 - **Min Workers (`min_workers`)**: This is the minimum number of worker processes that will always be running.
 
-
 ### Worker Dashboard
 
 - We have to ensure the package flower is installed in the current environment
@@ -152,8 +145,15 @@ Celery supports autoscaling of worker processes, allowing you to dynamically adj
 ```bash
 celery -A backend flower
 ```
+
 This command will start Flower on the default port (5555) and can be accessed via a web browser. Flower provides a user-friendly interface for monitoring and managing Celery tasks
 
+### Broker Dashboard
+
+- RabbitMQ provides a web interface for monitoring and managing the broker
+- Access the dashboard at `http://localhost:15672`
+- Default credentials: `admin` / `password`
+- These can be configured with `RABBITMQ_DEFAULT_USER` and `RABBITMQ_DEFAULT_PASS` envs in [essentials.env](../docker/essentials.env)
 
 ## Connecting to Postgres
 
@@ -161,17 +161,17 @@ Follow the below steps to connect to the postgres DB running with `docker compos
 
 1. Exec into a shell within the postgres container
 
-```
+```bash
 docker compose exec -it db bash
 ```
 
-2. Connect to the db as the specified user
+1. Connect to the db as the specified user
 
-```
+```bash
 psql -d unstract_db -U unstract_dev
 ```
 
-3. Execute PSQL commands within the shell.
+1. Execute PSQL commands within the shell.
 
 ## API Docs
 
@@ -187,10 +187,12 @@ a container)
 ## Connectors
 
 ### Google Drive
+
 The Google Drive connector makes use of [PyDrive2](https://pypi.org/project/PyDrive2/) library and supports only OAuth 2.0 authentication.
 To set it up, follow the first step higlighted in [Google's docs](https://developers.google.com/identity/protocols/oauth2#1.-obtain-oauth-2.0-credentials-from-the-dynamic_data.setvar.console_name-.) and set the client ID and client secret
 as envs in `backend/.env`
-```
+
+```bash
 GOOGLE_OAUTH2_KEY="<client-id>"
 GOOGLE_OAUTH2_SECRET="<client-secret>"
 ```
@@ -206,13 +208,13 @@ Information regarding how tools are added and maintained can be found [here](/un
 
 - If its the first time, create a super user and follow the on-screen instructions
 
-```
+```bash
 python manage.py createsuperuser
 ```
 
 - Register your models in `<app>/admin.py`, for example
 
-```
+```bash
 from django.contrib import admin
 from .models import Prompt
 
@@ -225,7 +227,7 @@ admin.site.register(Prompt)
 
 Units tests are run with [pytest](https://docs.pytest.org/en/7.3.x/) and [pytest-django](https://pytest-django.readthedocs.io/en/latest/index.html)
 
-```
+```bash
 pytest
 pytest prompt # To run for an app named prompt
 ```

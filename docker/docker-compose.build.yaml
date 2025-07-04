@@ -4,6 +4,7 @@ services:
     build:
       dockerfile: docker/dockerfiles/frontend.Dockerfile
       context: ..
+      target: production
   backend:
     image: unstract/backend:${VERSION}
     build:
@@ -19,6 +20,11 @@ services:
     build:
       dockerfile: docker/dockerfiles/tool-sidecar.Dockerfile
       context: ..
+  tool-structure:
+    image: unstract/tool-structure:${VERSION}
+    build:
+      dockerfile: ./Dockerfile
+      context: ../tools/structure/
   platform-service:
     image: unstract/platform-service:${VERSION}
     build:

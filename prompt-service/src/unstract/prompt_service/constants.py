@@ -66,7 +66,6 @@ class PromptServiceConstants:
     EPILOGUE = "epilogue"
     PLATFORM_POSTAMBLE = "platform_postamble"
     HIGHLIGHT_DATA_PLUGIN = "highlight-data"
-    CLEAN_CONTEXT = "clean-context"
     SUMMARIZE_AS_SOURCE = "summarize_as_source"
     VARIABLE_MAP = "variable_map"
     RECORD = "record"
@@ -92,6 +91,11 @@ class PromptServiceConstants:
         "provider to confirm writes to DB. "
         "Please try again after some time"
     )
+    COMBINED_PROMPT = "combined_prompt"
+    TOOL = "tool"
+    JSON_POSTAMBLE = "JSON_POSTAMBLE"
+    DEFAULT_JSON_POSTAMBLE = "Wrap the final JSON result inbetween §§§ like below example:\n§§§\n<FINAL_JSON_RESULT>\n§§§"
+    DOCUMENT_TYPE = "document_type"
 
 
 class RunLevel(Enum):

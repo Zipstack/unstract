@@ -1,11 +1,14 @@
 import datetime
-import json
-from typing import Any, Optional
+import logging
+from typing import Any
 
 from constants import IndexingConstants as IKeys
 from constants import SettingsKeys  # type: ignore [attr-defined]
+
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.tool.base import BaseTool
+
+logger = logging.getLogger(__name__)
 
 
 class StructureToolHelper:
@@ -20,9 +23,7 @@ class StructureToolHelper:
         tool: BaseTool,
         execution_run_data_folder: str,
     ) -> str:
-
         x2text = tool_settings[SettingsKeys.X2TEXT_ADAPTER]
-        tool.stream_log(f"Extracting text from {file_path} into {extract_file_path}")
         payload = {
             IKeys.X2TEXT_INSTANCE_ID: x2text,
             IKeys.FILE_PATH: file_path,
@@ -36,18 +37,15 @@ class StructureToolHelper:
             IKeys.EXECUTION_DATA_DIR: str(execution_run_data_folder),
         }
 
-        tool.stream_log(f"Payload constructed : {payload}")
-        responder = PromptTool(
+        logger.info(f"Prompt service payload for text extraction:\n{payload}")
+
+        prompt_tool = PromptTool(
             tool=tool,
             prompt_host=tool.get_env_or_die(SettingsKeys.PROMPT_HOST),
             prompt_port=tool.get_env_or_die(SettingsKeys.PROMPT_PORT),
+            request_id=run_id,
         )
-        tool.stream_log(f"responder : {responder}")
-        response = responder.extract(payload=payload)
-        response_data = response.get("structure_output")
-        structure_output = json.loads(response_data)
-        extracted_text = structure_output.get("extracted_text")
-        return extracted_text
+        return prompt_tool.extract(payload=payload)
 
     @staticmethod
     def dynamic_indexing(
@@ -61,11 +59,10 @@ class StructureToolHelper:
         enable_highlight: bool,
         chunk_size: int,
         chunk_overlap: int,
-        file_hash: Optional[str] = None,
-        tool_id: Optional[str] = None,
-        extracted_text: Optional[str] = None,
+        file_hash: str | None = None,
+        tool_id: str = None,
+        extracted_text: str = None,
     ) -> str:
-
         x2text = tool_settings[SettingsKeys.X2TEXT_ADAPTER]
 
         payload = {
@@ -88,13 +85,16 @@ class StructureToolHelper:
             IKeys.EXTRACTED_TEXT: extracted_text,
         }
 
+        sensitive_keys = [IKeys.EXTRACTED_TEXT]
+        payload_to_log = {k: v for k, v in payload.items() if k not in sensitive_keys}
+        logger.info(f"Prompt service payload for indexing:\n{payload_to_log}")
         responder = PromptTool(
             tool=tool,
             prompt_host=tool.get_env_or_die(SettingsKeys.PROMPT_HOST),
             prompt_port=tool.get_env_or_die(SettingsKeys.PROMPT_PORT),
+            request_id=run_id,
         )
-        doc_id = responder.index(payload=payload)
-        return doc_id
+        return responder.index(payload=payload)
 
     @staticmethod
     def elapsed_time(start_time) -> float:

@@ -1,8 +1,8 @@
 import re
-from typing import Optional
+
+from rest_framework import serializers
 
 from account_v2.models import Organization, User
-from rest_framework import serializers
 
 
 class OrganizationSignupSerializer(serializers.Serializer):
@@ -92,18 +92,20 @@ class LoginRequestSerializer(serializers.Serializer):
     username = serializers.CharField(required=True)
     password = serializers.CharField(required=True)
 
-    def validate_username(self, value: Optional[str]) -> str:
+    def validate_username(self, value: str | None) -> str:
         """Check that the username is not empty and has at least 3
-        characters."""
+        characters.
+        """
         if not value or len(value) < 3:
             raise serializers.ValidationError(
                 "Username must be at least 3 characters long."
             )
         return value
 
-    def validate_password(self, value: Optional[str]) -> str:
+    def validate_password(self, value: str | None) -> str:
         """Check that the password is not empty and has at least 3
-        characters."""
+        characters.
+        """
         if not value or len(value) < 3:
             raise serializers.ValidationError(
                 "Password must be at least 3 characters long."
@@ -117,3 +119,4 @@ class UserSessionResponseSerializer(serializers.Serializer):
     email = serializers.CharField()
     organization_id = serializers.CharField()
     role = serializers.CharField()
+    provider = serializers.CharField()

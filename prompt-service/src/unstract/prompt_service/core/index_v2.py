@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from llama_index.core import Document
 from llama_index.core.vector_stores import (
@@ -10,6 +10,7 @@ from llama_index.core.vector_stores import (
     VectorStoreQuery,
     VectorStoreQueryResult,
 )
+
 from unstract.prompt_service.dto import (
     ChunkingConfig,
     FileInfo,
@@ -40,7 +41,7 @@ class Index:
         instance_identifiers: InstanceIdentifiers,
         chunking_config: ChunkingConfig,
         processing_options: ProcessingOptions,
-        run_id: Optional[str] = None,
+        run_id: str | None = None,
         capture_metrics: bool = False,
     ):
         self.tool = tool

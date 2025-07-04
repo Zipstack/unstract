@@ -1,20 +1,23 @@
-[build-system]
-requires = ["pdm-backend"]
-build-backend = "pdm.backend"
-
 [project]
 name = "unstract-backend"
 version = "0.0.1"
 description = "Unstract backend built with Django to build and schedule ETL pipelines around unstructured data."
-authors = [
-	{name = "Zipstack Inc.", email = "devsupport@zipstack.com"}
+authors = [{ name = "Zipstack Inc.", email = "devsupport@zipstack.com" }]
+
+requires-python = ">=3.12,<3.13"
+readme = "README.md"
+classifiers = [
+    "Private :: Do Not Upload",
+    "Framework :: Django",
+    "Programming Language :: Python",
 ]
+
 dependencies = [
-    "Authlib==1.2.1", # For Auth plugins
-    "boto3~=1.34.0", # For Unstract-cloud-storage
-    "celery>=5.3.4", # For Celery
-    "flower>=2.0.1", # Celery Monitoring
-    "cron-descriptor==1.4.0", # For cron string description
+    "Authlib==1.2.1",              # For Auth plugins
+    "boto3~=1.34.0",               # For Unstract-cloud-storage
+    "celery[amqp]>=5.3.4",         # For Celery
+    "flower>=2.0.1",               # Celery Monitoring
+    "cron-descriptor==1.4.0",      # For cron string description
     "cryptography>=41.0.7",
     "django==4.2.1",
     "djangorestframework==3.14.0",
@@ -25,110 +28,126 @@ dependencies = [
     "django-redis==5.4.0",
     "django-tenants==3.5.0",
     "drf-standardized-errors>=0.12.6",
-    "drf-yasg==1.21.7", # For API docs
+    "drf-yasg==1.21.7",                # For API docs
     "psycopg2-binary==2.9.9",
     "python-dotenv==1.0.0",
-    "python-magic==0.4.27", # For file upload/download
-    "python-socketio==5.9.0", # For log_events
-    "social-auth-app-django==5.3.0", # For OAuth
-    "social-auth-core==4.4.2", # For OAuth
-    #ToDo: Temporarily removing the extra dependencies of aws and gcs from unstract-sdk
-    #to resolve lock file. Will have to be re-looked into
-    "unstract-sdk[azure]~=0.62.1",
+    "python-magic==0.4.27",            # For file upload/download
+    "python-socketio==5.9.0",          # For log_events
+    "social-auth-app-django==5.3.0",   # For OAuth
+    "social-auth-core==4.4.2",         # For OAuth
+    # TODO: Temporarily removing the extra dependencies of aws and gcs from unstract-sdk
+    # to resolve lock file. Will have to be re-looked into
+    "unstract-sdk[azure]~=0.73.1",
     "gcsfs==2024.10.0",
     "s3fs==2024.10.0",
-    # ! IMPORTANT!
-    # Indirect local dependencies usually need to be added in their own projects
-    # as: https://pdm-project.org/latest/usage/dependency/#local-dependencies.
-    #
-    # However, such indirect local dependencies which are not direct dependency of
-    # main project appear as absolute paths in pdm.lock of main project, making it
-    # impossible to check in the lock file.
-    #
-    # Hence required to add all indirect local dependencies too here.
-    "unstract-connectors @ file:///${PROJECT_ROOT}/../unstract/connectors",
-    "unstract-core @ file:///${PROJECT_ROOT}/../unstract/core",
-    "unstract-flags @ file:///${PROJECT_ROOT}/../unstract/flags",
-    "unstract-tool-registry @ file:///${PROJECT_ROOT}/../unstract/tool-registry",
-    "unstract-tool-sandbox @ file:///${PROJECT_ROOT}/../unstract/tool-sandbox",
-    "unstract-workflow-execution @ file:///${PROJECT_ROOT}/../unstract/workflow-execution",
-    "unstract-filesystem @ file:///${PROJECT_ROOT}/../unstract/filesystem",
     "azure-identity==1.16.0",
     "azure-mgmt-apimanagement==3.0.0",
     "croniter>=3.0.3",
     "django-filter>=24.3",
-]
-# <3.11.1 due to resolution error from Unstract SDK
-requires-python = ">=3.9,<3.11.1"
-readme = "README.md"
-classifiers = [
-	"Private :: Do Not Upload",
-	"Framework :: Django",
-	"Programming Language :: Python"
+    "httpx>=0.27.0",
+    # Hence required to add all indirect local dependencies too here.
+    "unstract-connectors",
+    "unstract-core",
+    "unstract-flags",
+    "unstract-tool-registry",
+    "unstract-tool-sandbox",
+    "unstract-workflow-execution",
+    "unstract-filesystem",
 ]
 
-[tool.pdm.dev-dependencies]
-test = [
-    "pytest>=8.0.1",
-    "pytest-dotenv==0.5.2",
-]
+[dependency-groups]
 dev = [
-    "-e unstract-connectors @ file:///${PROJECT_ROOT}/../unstract/connectors",
-    "-e unstract-core @ file:///${PROJECT_ROOT}/../unstract/core",
-    "-e unstract-flags @ file:///${PROJECT_ROOT}/../unstract/flags",
-    "-e unstract-tool-registry @ file:///${PROJECT_ROOT}/../unstract/tool-registry",
-    "-e unstract-tool-sandbox @ file:///${PROJECT_ROOT}/../unstract/tool-sandbox",
-    "-e unstract-workflow-execution @ file:///${PROJECT_ROOT}/../unstract/workflow-execution",
-    "-e unstract-filesystem @ file:///${PROJECT_ROOT}/../unstract/filesystem",
+    "unstract-connectors",
+    "unstract-core",
+    "unstract-flags",
+    "unstract-tool-registry",
+    "unstract-tool-sandbox",
+    "unstract-workflow-execution",
+    "unstract-filesystem",
     # For file watching
     "inotify>=0.2.10",
+    "poethepoet>=0.33.1",
+    "debugpy>=1.8.14"
 ]
-
-[project.optional-dependencies]
+test = ["pytest>=8.0.1", "pytest-dotenv==0.5.2"]
 deploy = [
     "gunicorn~=23.0", # For serving the application
-    # Keep versions empty and let pdm decide version
+    # Keep versions empty and let uv decide version
     # since we use no code instrumentation and don't use in code
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",
+]
+
+[tool.uv.sources]
+unstract-filesystem = { path = "../unstract/filesystem", editable = true }
+unstract-workflow-execution = { path = "../unstract/workflow-execution", editable = true }
+unstract-tool-sandbox = { path = "../unstract/tool-sandbox", editable = true }
+unstract-tool-registry = { path = "../unstract/tool-registry", editable = true }
+unstract-flags = { path = "../unstract/flags", editable = true }
+unstract-core = { path = "../unstract/core", editable = true }
+unstract-connectors = { path = "../unstract/connectors", editable = true }
+
+[tool.uv]
+constraint-dependencies = [
+    # (unstract-connectors) To address issue with Python 3.12 and Numpy 2.0
+    # https://github.com/numpy/numpy/issues/26710
+    "numpy<2.0.0", "pandas<2.2.0"
 ]
 
 [tool.pytest.ini_options]
 env_files = "test.env" # Load env from particular env file
 addopts = "-s"
 
-[tool.pdm.resolution.overrides]
-aioboto3 = "13.1.1"
-aiobotocore = "2.13.1"
-boto3 = "1.34.131"
+[tool.poe]
+envfile = ".env"
 
-[tool.pdm.scripts]
-# Commands for backend
-backend.cmd = "./entrypoint.sh"
-backend.env_file = ".env"
-backend.help = "Runs the Unstract backend"
-# Commands for backend db migration
-migrate_db.cmd = "python manage.py migrate"
-migrate_db.env_file = ".env"
-migrate_db.help = "Performs DB migrations for Unstract backend"
-# Commands for execution consumer
-worker.cmd = "celery -A backend worker --loglevel=info -Q celery --autoscale 4,1"
-worker.env_file = ".env"
-worker.help = "Runs the Unstract default worker"
-# Commands for log-manager
-worker-logging.cmd = "celery -A backend worker --loglevel=info -Q celery_periodic_logs,celery_log_task_queue --autoscale 4,1"
-worker-logging.env_file = ".env"
-worker-logging.help = "Runs the Unstract log management worker."
-# Commands for api deployment executor
-worker-api-deployment.cmd = "celery -A backend worker --loglevel=info -Q celery_api_deployments --autoscale 4,1"
-worker-api-deployment.env_file = ".env"
-worker-api-deployment.help = "Runs the Unstract API deployment worker."
+[tool.poe.tasks.backend]
+cmd = "./entrypoint.sh"
+help = "Runs the Unstract backend (Gunicorn)"
 
-# Celery Flower
-flower.cmd = "celery -A backend flower --port=5555"
-flower.env_file = ".env"
-flower.help = "Runs the Unstract Celery Monitoring Tool"
-# Celery Beat
-beat.cmd = "celery -A backend beat --loglevel=info"
-beat.env_file = ".env"
-beat.help = "Runs the Unstract Celery Beat service"
+[tool.poe.tasks.migrate-db]
+cmd = "uv run manage.py migrate"
+help = "Performs DB migrations for Unstract backend"
+
+[tool.poe.tasks.worker]
+cmd = "celery -A backend worker --loglevel=info -Q celery --autoscale 4,1"
+help = "Runs the Unstract default worker"
+
+[tool.poe.tasks.worker-logging]
+cmd = "celery -A backend worker --loglevel=info -Q celery_periodic_logs,celery_log_task_queue --autoscale 4,1"
+help = "Runs the Unstract log management worker"
+
+[tool.poe.tasks.worker-api-deployment]
+cmd = "celery -A backend worker --loglevel=info -Q celery_api_deployments --autoscale 4,1"
+help = "Runs the Unstract API deployment worker"
+
+[tool.poe.tasks.worker-file-processing]
+cmd = "celery -A backend.workers.file_processing worker --loglevel=info -Q file_processing --autoscale 4,1"
+help = "Runs the Unstract file processing worker"
+
+[tool.poe.tasks.worker-api-file-processing]
+cmd = "celery -A backend.workers.file_processing worker --loglevel=info -Q api_file_processing --autoscale 4,1"
+help = "Runs the Unstract file processing api worker"
+
+[tool.poe.tasks.worker-file-processing-callback]
+cmd = "celery -A backend.workers.file_processing_callback worker --loglevel=info -Q file_processing_callback --autoscale 4,1"
+help = "Runs the Unstract file processing callback worker"
+
+[tool.poe.tasks.worker-api-file-processing-callback]
+cmd = "celery -A backend.workers.file_processing_callback worker --loglevel=info -Q api_file_processing_callback --autoscale 4,1"
+help = "Runs the Unstract api file processing callback worker"
+
+[tool.poe.tasks.flower]
+cmd = "celery -A backend flower --port=5555"
+help = "Runs the Unstract Celery Monitoring Tool"
+
+[tool.poe.tasks.beat]
+cmd = "celery -A backend beat --loglevel=info"
+help = "Runs the Unstract Celery Beat service"
+
+# [build-system]
+# requires = ["hatchling"]
+# build-backend = "hatchling.build"
+
+# [tool.hatch.build.targets.wheel]
+# packages = ["unstract"]

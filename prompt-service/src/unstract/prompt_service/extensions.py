@@ -4,6 +4,7 @@ from os import environ as env
 from typing import Any
 
 from playhouse.postgres_ext import PostgresqlExtDatabase
+
 from unstract.prompt_service.utils.env_loader import get_env_or_die
 
 # Load required environment variables

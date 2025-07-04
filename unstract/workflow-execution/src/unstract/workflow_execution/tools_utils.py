@@ -1,10 +1,13 @@
 import logging
 import os
-from typing import Any, Optional
+from typing import Any
 
 from redis import Redis
+
+from unstract.core.pubsub_helper import LogPublisher
 from unstract.tool_registry import ToolRegistry
 from unstract.tool_sandbox import ToolSandbox
+from unstract.tool_sandbox.dto import RunnerContainerRunResponse
 from unstract.workflow_execution.constants import ToolExecution
 from unstract.workflow_execution.constants import ToolRuntimeVariable as ToolRV
 from unstract.workflow_execution.dto import ToolInstance, WorkflowDto
@@ -14,8 +17,6 @@ from unstract.workflow_execution.exceptions import (
     ToolExecutionException,
     ToolNotFoundException,
 )
-
-from unstract.core.pubsub_helper import LogPublisher
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,7 @@ class ToolsUtils:
         self.platform_service_api_key = platform_service_api_key
         self.workflow_id = workflow.id
         self.ignore_processed_entities = ignore_processed_entities
-        self.messaging_channel: Optional[str] = None
+        self.messaging_channel: str | None = None
         self.platform_service_host = ToolsUtils.get_env(
             ToolRV.PLATFORM_HOST, raise_exception=True
         )
@@ -65,9 +66,7 @@ class ToolsUtils:
     def set_messaging_channel(self, messaging_channel: str) -> None:
         self.messaging_channel = messaging_channel
 
-    def load_tools(
-        self, tool_instances: list[ToolInstance]
-    ) -> dict[str, dict[str, Any]]:
+    def load_tools(self, tool_instances: list[ToolInstance]) -> dict[str, dict[str, Any]]:
         """Load and check all required tools.
 
         Args:
@@ -179,7 +178,7 @@ class ToolsUtils:
         self,
         file_execution_id: str,
         tool_sandbox: ToolSandbox,
-    ) -> Any:
+    ) -> RunnerContainerRunResponse | None:
         return self.run_tool_with_retry(file_execution_id, tool_sandbox)
 
     def run_tool_with_retry(
@@ -187,26 +186,25 @@ class ToolsUtils:
         file_execution_id: str,
         tool_sandbox: ToolSandbox,
         max_retries: int = ToolExecution.MAXIMUM_RETRY,
-    ) -> Any:
-        error: Optional[dict[str, Any]] = None
+    ) -> RunnerContainerRunResponse | None:
         for retry_count in range(max_retries):
             try:
                 response = tool_sandbox.run_tool(file_execution_id, retry_count)
                 if response:
                     return response
                 logger.warning(
-                    f"ToolExecutionException - Retrying "
-                    f"({retry_count + 1}/{max_retries})"
+                    f"ToolExecutionException - Retrying ({retry_count + 1}/{max_retries})"
                 )
             except Exception as e:
-                logger.warning(
-                    f"Exception - Retrying ({retry_count + 1}/{max_retries}): "
-                    f"{str(e)}"
-                )
-
-        logger.warning(
-            f"Operation failed after {max_retries} " f"retries, error: {error}"
-        )
+                if retry_count < max_retries - 1:
+                    logger.warning(
+                        f"Exception - Retrying ({retry_count + 1}/{max_retries}): {str(e)}"
+                    )
+                else:
+                    logger.warning(
+                        f"Operation failed after '{max_retries}' retries, error: {e}"
+                    )
+                    raise e
         return None
 
     def get_tool_environment_variables(self) -> dict[str, Any]:
@@ -243,7 +241,7 @@ class ToolsUtils:
         return platform_vars
 
     @staticmethod
-    def get_env(env_key: str, raise_exception: bool = False) -> Optional[str]:
+    def get_env(env_key: str, raise_exception: bool = False) -> str | None:
         """Gets the value against an environment variable.
 
         Args:

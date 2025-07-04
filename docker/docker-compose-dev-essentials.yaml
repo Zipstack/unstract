@@ -1,6 +1,6 @@
 services:
   db:
-    image: 'pgvector/pgvector:pg15'
+    image: "pgvector/pgvector:pg15"
     container_name: unstract-db
     restart: unless-stopped
     # set shared memory limit when using docker-compose
@@ -29,13 +29,13 @@ services:
       - traefik.enable=false
 
   minio:
-    image: 'minio/minio:latest'
+    image: "minio/minio:latest"
     container_name: unstract-minio
     hostname: minio
     restart: unless-stopped
     ports:
-      - '9000:9000'
-      - '9001:9001'
+      - "9000:9000"
+      - "9001:9001"
     volumes:
       - minio_data:/data
     env_file:
@@ -72,8 +72,7 @@ services:
     #   This is required because Traefik by default tries available networks in a
     #   round-robin fashion. With multiple providers, services can be on multiple
     #   networks causing 504 Gateway Timeout.
-    command:
-      --api.insecure=true
+    command: --api.insecure=true
       --accesslog=true --log.level=INFO
       --providers.docker=true --providers.docker.network=unstract-network
       --providers.file.filename=/proxy_overrides.yaml --providers.file.watch=true
@@ -97,8 +96,8 @@ services:
     container_name: unstract-flipt
     restart: unless-stopped
     ports: # Forwarded to available host ports
-      - "8082:8080"  # REST API port
-      - "9005:9000"  # gRPC port
+      - "8082:8080" # REST API port
+      - "9005:9000" # gRPC port
     # https://www.flipt.io/docs/configuration/overview#environment-variables)
     # https://www.flipt.io/docs/configuration/overview#configuration-parameters
     env_file:
@@ -123,7 +122,7 @@ services:
 
   qdrant:
     # Vector DB for doc indexer
-    image: 'qdrant/qdrant:v1.8.3'
+    image: "qdrant/qdrant:v1.8.3"
     container_name: unstract-vector-db
     restart: unless-stopped
     ports:
@@ -135,9 +134,24 @@ services:
     env_file:
       - ./essentials.env
 
+  rabbitmq:
+    image: rabbitmq:4.1.0-management
+    container_name: unstract-rabbitmq
+    hostname: unstract-rabbit
+    restart: unless-stopped
+    env_file:
+      - ./essentials.env
+    ports:
+      - "5672:5672"  # AMQP port
+      - "15672:15672"  # Management UI port
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
 volumes:
   flipt_data:
   minio_data:
   postgres_data:
   qdrant_data:
   redis_data:
+  prompt_studio_data:
+  rabbitmq_data:

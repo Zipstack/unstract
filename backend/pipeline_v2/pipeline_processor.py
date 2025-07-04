@@ -1,7 +1,7 @@
 import logging
-from typing import Optional
 
 from django.utils import timezone
+
 from pipeline_v2.exceptions import InactivePipelineError
 from pipeline_v2.models import Pipeline
 from pipeline_v2.notification import PipelineNotification
@@ -28,6 +28,7 @@ class PipelineProcessor:
     @staticmethod
     def fetch_pipeline(pipeline_id: str, check_active: bool = True) -> Pipeline:
         """Retrieves and checks for an active pipeline.
+
         Args:
             pipeline_id (str): UUID of the pipeline
             check_active (bool): Whether to check if the pipeline is active
@@ -42,7 +43,7 @@ class PipelineProcessor:
         return pipeline
 
     @classmethod
-    def get_active_pipeline(cls, pipeline_id: str) -> Optional[Pipeline]:
+    def get_active_pipeline(cls, pipeline_id: str) -> Pipeline | None:
         """Retrieves a list of active pipelines."""
         try:
             return cls.fetch_pipeline(pipeline_id, check_active=True)
@@ -54,7 +55,7 @@ class PipelineProcessor:
         pipeline: Pipeline,
         status: tuple[str, str],
         is_end: bool,
-        is_active: Optional[bool] = None,
+        is_active: bool | None = None,
     ) -> Pipeline:
         """Updates pipeline status during execution.
 
@@ -77,10 +78,11 @@ class PipelineProcessor:
     @staticmethod
     def _send_notification(
         pipeline: Pipeline,
-        execution_id: Optional[str] = None,
-        error_message: Optional[str] = None,
+        execution_id: str | None = None,
+        error_message: str | None = None,
     ) -> None:
         """Sends a notification for the pipeline.
+
         Args:
             pipeline (Pipeline): Pipeline to send notification for
 
@@ -94,11 +96,11 @@ class PipelineProcessor:
 
     @staticmethod
     def update_pipeline(
-        pipeline_guid: Optional[str],
+        pipeline_guid: str | None,
         status: tuple[str, str],
-        is_active: Optional[bool] = None,
-        execution_id: Optional[str] = None,
-        error_message: Optional[str] = None,
+        is_active: bool | None = None,
+        execution_id: str | None = None,
+        error_message: str | None = None,
         is_end: bool = False,
     ) -> None:
         if not pipeline_guid:

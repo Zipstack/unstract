@@ -12,9 +12,12 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { PromptCardWrapper } from "../prompt-card/PromptCardWrapper";
 import { usePromptOutputStore } from "../../../store/prompt-output-store";
 
+let promptCardService;
 let promptPatchApiSps;
 let SpsPromptsEmptyState;
 try {
+  promptCardService =
+    require("../../../plugins/prompt-card/prompt-card-service").promptCardService;
   promptPatchApiSps =
     require("../../../plugins/simple-prompt-studio/helper").promptPatchApiSps;
   SpsPromptsEmptyState =
@@ -31,6 +34,7 @@ function DocumentParser({
   const [enforceTypeList, setEnforceTypeList] = useState([]);
   const [updatedPromptsCopy, setUpdatedPromptsCopy] = useState({});
   const [isChallenge, setIsChallenge] = useState(false);
+  const [allTableSettings, setAllTableSettings] = useState([]);
   const bottomRef = useRef(null);
   const {
     details,
@@ -38,12 +42,18 @@ function DocumentParser({
     updateCustomTool,
     getDropdownItems,
     isChallengeEnabled,
+    isPublicSource,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
   const { promptOutputs } = usePromptOutputStore();
+  let promptCardApiService;
+
+  if (promptCardService && !isPublicSource) {
+    promptCardApiService = promptCardService();
+  }
 
   useEffect(() => {
     const outputTypeData = getDropdownItems("output_type") || {};
@@ -52,7 +62,17 @@ function DocumentParser({
     });
     setEnforceTypeList(dropdownList1);
     setIsChallenge(isChallengeEnabled);
-
+    if (promptCardApiService) {
+      promptCardApiService
+        .getAllTableSettings()
+        .then((res) => {
+          const data = res?.data;
+          setAllTableSettings(data || []);
+        })
+        .catch((err) => {
+          setAlertDetails(handleException(err));
+        });
+    }
     return () => {
       // Set the prompts with updated changes when the component is unmounted
       const modifiedDetails = { ...useCustomToolStore.getState()?.details };
@@ -206,6 +226,8 @@ function DocumentParser({
               handleDelete={handleDelete}
               outputs={getPromptOutputs(item?.prompt_id)}
               enforceTypeList={enforceTypeList}
+              allTableSettings={allTableSettings}
+              setAllTableSettings={setAllTableSettings}
               setUpdatedPromptsCopy={setUpdatedPromptsCopy}
               coverageCountData={item?.coverage}
               isChallenge={isChallenge}

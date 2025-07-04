@@ -5,12 +5,13 @@ from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from tags.helper import TagHelper
-from tags.models import Tag
-from tags.serializers import TagSerializer
 from utils.pagination import CustomPagination
 from workflow_manager.file_execution.serializers import WorkflowFileExecutionSerializer
 from workflow_manager.workflow_v2.serializers import WorkflowExecutionSerializer
+
+from tags.helper import TagHelper
+from tags.models import Tag
+from tags.serializers import TagSerializer
 
 
 class TagViewSet(viewsets.ModelViewSet):
@@ -21,8 +22,7 @@ class TagViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, OrderingFilter]
 
     def get_queryset(self):
-        """
-        Retrieve the base queryset for the Tag model, allowing additional
+        """Retrieve the base queryset for the Tag model, allowing additional
         filtering or customization if needed. Defaults to using the manager's
         get_queryset method.
 
@@ -31,8 +31,7 @@ class TagViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"], url_path="workflow-executions")
     def workflow_executions(self, request, pk=None):
-        """
-        Custom action to list all WorkflowExecution instances associated
+        """Custom action to list all WorkflowExecution instances associated
         with a specific Tag.
         """
         try:
@@ -54,8 +53,7 @@ class TagViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"], url_path="workflow-file-executions")
     def workflow_file_executions(self, request, pk=None):
-        """
-        Custom action to list all WorkflowFileExecution instances associated
+        """Custom action to list all WorkflowFileExecution instances associated
         with a specific Tag.
         """
         try:

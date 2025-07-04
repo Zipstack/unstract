@@ -1,10 +1,12 @@
 [project]
 name = "unstract-x2text-service"
 version = "0.1.0"
-description = "Default template for PDM package"
-authors = [
-    {name = "Zipstack inc", email = "devsupport@zipstack.com"},
-]
+description = "X2TEXT Service"
+authors = [{ name = "Zipstack inc", email = "devsupport@zipstack.com" }]
+requires-python = ">=3.12,<3.13"
+readme = "README.md"
+license = { text = "MIT" }
+
 dependencies = [
     "Flask>=3.0.1",
     "flask-sqlalchemy>=3.1.1",
@@ -13,14 +15,12 @@ dependencies = [
     "peewee>=3.17.0",
     "psycopg2-binary~=2.9",
 ]
-requires-python = ">=3.9,<3.11.1"
-readme = "README.md"
-license = {text = "MIT"}
 
-[project.optional-dependencies]
+[dependency-groups]
 deploy = [
     "gunicorn[gevent]~=23.0",
     # OpenTelemetry for tracing and profiling
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",
 ]
+dev = ["debugpy>=1.8.14"]

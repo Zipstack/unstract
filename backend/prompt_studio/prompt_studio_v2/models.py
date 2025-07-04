@@ -2,9 +2,10 @@ import uuid
 
 from account_v2.models import User
 from django.db import models
+from utils.models.base_model import BaseModel
+
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
-from utils.models.base_model import BaseModel
 
 
 class ToolStudioPrompt(BaseModel):
@@ -14,25 +15,22 @@ class ToolStudioPrompt(BaseModel):
     """
 
     class EnforceType(models.TextChoices):
-        TEXT = "Text", "Response sent as Text"
+        TEXT = "text", "Response sent as Text"
         NUMBER = "number", "Response sent as number"
         EMAIL = "email", "Response sent as email"
         DATE = "date", "Response sent as date"
         BOOLEAN = "boolean", "Response sent as boolean"
         JSON = "json", "Response sent as json"
-        TABLE = "table", "Response sent as table"
-        RECORD = "record", (
-            "Response sent for records. "
-            "Entries of records are list of "
-            "logical and organized individual "
-            "entities with distint values"
+        LINE_ITEM = (
+            "line-item",
+            (
+                "Response sent as line-item "
+                "which is large a JSON output. "
+                "If extraction stopped due to token limitation, "
+                "we try to continue extraction from where it stopped"
+            ),
         )
-        LINE_ITEM = "line-item", (
-            "Response sent as line-item "
-            "which is large a JSON output. "
-            "If extraction stopped due to token limitation, "
-            "we try to continue extraction from where it stopped"
-        )
+        TABLE = "table", "Response sent as json"
 
     class PromptType(models.TextChoices):
         PROMPT = "PROMPT", "Response sent as Text"
@@ -61,6 +59,8 @@ class ToolStudioPrompt(BaseModel):
         choices=EnforceType.choices,
         default=EnforceType.TEXT,
     )
+    # New field to track if it was line-item
+    has_line_item_history = models.BooleanField(default=False)
     prompt = models.TextField(
         blank=True, db_comment="Field to store the prompt", unique=False
     )

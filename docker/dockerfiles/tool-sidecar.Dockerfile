@@ -1,16 +1,19 @@
-# Use Python 3.9 alpine for minimal size
-FROM python:3.9-slim
-LABEL maintainer="Zipstack Inc."
+# Use Python 3.12.9-slim for minimal size
+FROM python:3.12.9-slim AS base
 
-ENV \
-    PYTHONDONTWRITEBYTECODE=1 \
+ARG VERSION=dev
+LABEL maintainer="Zipstack Inc." \
+    description="Tool Sidecar Container" \
+    version="${VERSION}"
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     LOG_PATH=/shared/logs/logs.txt \
     LOG_LEVEL=INFO \
-    PYTHONPATH=/unstract \
-    BUILD_CONTEXT_PATH=tool-sidecar \
     BUILD_PACKAGES_PATH=unstract \
-    PDM_VERSION=2.16.1 \
+    BUILD_CONTEXT_PATH=tool-sidecar \
+    APP_USER=unstract \
+    APP_HOME=/app \
     # OpenTelemetry configuration (disabled by default, enable in docker-compose)
     OTEL_TRACES_EXPORTER=none \
     OTEL_METRICS_EXPORTER=none \
@@ -18,33 +21,57 @@ ENV \
     OTEL_SERVICE_NAME=unstract_tool_sidecar \
     PATH="/app/.venv/bin:$PATH"
 
+# Install system dependencies in a single layer
 RUN apt-get update \
-    && apt-get --no-install-recommends install -y docker \
-    && apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* \
-    \
-    && pip install --no-cache-dir -U pip pdm~=${PDM_VERSION}
+    && apt-get --no-install-recommends install -y \
+       docker \
+       build-essential \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* \
+    && adduser --uid 5678 --disabled-password --gecos "" ${APP_USER} \
+    && mkdir -p ${APP_HOME} \
+    && chown -R ${APP_USER}:${APP_USER} ${APP_HOME}
 
-WORKDIR /app
+# Install uv package manager
+COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /uvx /bin/
 
-# Create venv and install gunicorn and other deps in it
-RUN pdm venv create -w virtualenv --with-pip && \
-    . .venv/bin/activate
+WORKDIR ${APP_HOME}
 
-# Copy local dependency packages first
-COPY ${BUILD_PACKAGES_PATH}/core /unstract/core
+# -----------------------------------------------
+# EXTERNAL DEPENDENCIES STAGE
+# -----------------------------------------------
+FROM base AS ext-dependencies
 
-# Copy application files
-COPY ${BUILD_CONTEXT_PATH} /app/
+# Copy dependency-related files
+COPY --chown=${APP_USER}:${APP_USER} ${BUILD_CONTEXT_PATH}/pyproject.toml ${BUILD_CONTEXT_PATH}/uv.lock ${BUILD_CONTEXT_PATH}/README.md ./
 
-# Ensure correct package structure
-RUN touch /app/src/unstract/__init__.py && \
-    cd /unstract/core && pip install --no-cache-dir -e . && cd /app && \
-    pip install --no-cache-dir -e . && \
-    . .venv/bin/activate && \
-    pdm sync --prod --no-editable --with deploy && \
-    opentelemetry-bootstrap -a install
+# Copy local package dependencies
+COPY --chown=${APP_USER}:${APP_USER} ${BUILD_PACKAGES_PATH}/core /unstract/core
 
-COPY ${BUILD_CONTEXT_PATH}/entrypoint.sh /app/
-RUN chmod +x /app/entrypoint.sh
+# Switch to non-root user
+USER ${APP_USER}
+
+# Install external dependencies from pyproject.toml
+RUN uv sync --group deploy --locked --no-install-project --no-dev && \
+    .venv/bin/python3 -m ensurepip --upgrade && \
+    uv run opentelemetry-bootstrap -a install
+
+# -----------------------------------------------
+# FINAL STAGE - Minimal image for production
+# -----------------------------------------------
+FROM ext-dependencies AS production
+
+# Copy application code (this layer changes most frequently)
+COPY --chown=${APP_USER}:${APP_USER} ${BUILD_CONTEXT_PATH} ./
+
+# Switch to non-root user
+USER ${APP_USER}
+
+# Install just the application
+RUN uv sync --group deploy --locked && \
+    chmod +x ./entrypoint.sh
+
+# # Make entrypoint executable
+# RUN chmod +x ./entrypoint.sh
 
 CMD ["./entrypoint.sh"]

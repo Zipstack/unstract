@@ -1,8 +1,8 @@
 import logging
 import os
-from typing import Optional
 
 from dotenv import load_dotenv
+
 from unstract.runner.constants import Env
 from unstract.runner.enum import LogLevel
 
@@ -31,9 +31,8 @@ class Utils:
             raise ValueError("Invalid boolean string")
 
     @staticmethod
-    def str_to_int(value: Optional[str], default: int) -> int:
-        """
-        Safely convert a string to an integer, returning a default if conversion fails.
+    def str_to_int(value: str | None, default: int) -> int:
+        """Safely convert a string to an integer, returning a default if conversion fails.
 
         Args:
             value (Optional[str]): The string to convert.
@@ -97,11 +96,22 @@ class Utils:
 
     @staticmethod
     def get_sidecar_wait_timeout() -> int:
-        """
-        Retrieve the timeout value from environment variables.
+        """Retrieve the timeout value from environment variables.
 
         Returns:
             int: Timeout in seconds, defaulting to 5 if not set or invalid.
         """
         raw_timeout = os.getenv(Env.TOOL_SIDECAR_CONTAINER_WAIT_TIMEOUT)
         return Utils.str_to_int(raw_timeout, default=5)
+
+    @staticmethod
+    def get_sidecar_container_name(container_name: str) -> str:
+        """Get sidecar container name from tool container name.
+
+        Args:
+            container_name (str): Container name
+
+        Returns:
+            str: Sidecar container name
+        """
+        return f"{container_name}-sidecar"
