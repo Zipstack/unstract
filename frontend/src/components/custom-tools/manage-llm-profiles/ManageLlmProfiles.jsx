@@ -1,4 +1,4 @@
-import { DeleteOutlined, EditOutlined } from "@ant-design/icons";
+import { DeleteOutlined, EditOutlined, CopyOutlined } from "@ant-design/icons";
 import { Button, Radio, Table, Tooltip, Typography } from "antd";
 import { useEffect, useState } from "react";
 
@@ -41,16 +41,10 @@ const columns = [
     key: "text_extractor",
   },
   {
-    title: "",
-    dataIndex: "delete",
-    key: "delete",
-    width: 30,
-  },
-  {
-    title: "",
-    dataIndex: "edit",
-    key: "edit",
-    width: 30,
+    title: "Actions",
+    dataIndex: "actions",
+    key: "actions",
+    width: 120,
   },
   {
     title: "Select Default",
@@ -122,43 +116,62 @@ function ManageLlmProfiles() {
     const modifiedRows = llmProfiles.map((item) => {
       return {
         key: item?.profile_id,
-        name: item?.profile_name || "",
+        name: (
+          <div>
+            <div>{item?.profile_name || ""}</div>
+            <div className="profile-id-container">
+              <Typography.Text type="secondary" className="profile-id-text">
+                {item?.profile_id}
+              </Typography.Text>
+              <Tooltip title="Copy Profile ID">
+                <Button
+                  size="small"
+                  type="text"
+                  className="profile-copy-button"
+                  onClick={() => copyProfileId(item?.profile_id)}
+                >
+                  <CopyOutlined className="profile-copy-icon" />
+                </Button>
+              </Tooltip>
+            </div>
+          </div>
+        ),
         llm: item?.llm || "",
         embedding_model: item?.embedding_model || "",
         vector_db: item?.vector_store || "",
         text_extractor: item?.x2text || "",
-        delete: (
-          <ConfirmModal
-            handleConfirm={() => handleDelete(item?.profile_id)}
-            content="The LLM profile will be permanently deleted."
-          >
-            <Tooltip
-              title={
-                defaultLlmProfile === item?.profile_id &&
-                "Default profile cannot be deleted"
-              }
+        actions: (
+          <div className="action-buttons-container">
+            <Button
+              size="small"
+              className="display-flex-align-center"
+              disabled={isPublicSource}
+              onClick={() => handleEdit(item?.profile_id)}
             >
-              <Button
-                size="small"
-                className="display-flex-align-center"
-                disabled={
-                  isPublicSource || defaultLlmProfile === item?.profile_id
+              <EditOutlined classID="manage-llm-pro-icon" />
+            </Button>
+            <ConfirmModal
+              handleConfirm={() => handleDelete(item?.profile_id)}
+              content="The LLM profile will be permanently deleted."
+            >
+              <Tooltip
+                title={
+                  defaultLlmProfile === item?.profile_id &&
+                  "Default profile cannot be deleted"
                 }
               >
-                <DeleteOutlined classID="manage-llm-pro-icon" />
-              </Button>
-            </Tooltip>
-          </ConfirmModal>
-        ),
-        edit: (
-          <Button
-            size="small"
-            className="display-flex-align-center"
-            disabled={isPublicSource}
-            onClick={() => handleEdit(item?.profile_id)}
-          >
-            <EditOutlined classID="manage-llm-pro-icon" />
-          </Button>
+                <Button
+                  size="small"
+                  className="display-flex-align-center"
+                  disabled={
+                    isPublicSource || defaultLlmProfile === item?.profile_id
+                  }
+                >
+                  <DeleteOutlined classID="manage-llm-pro-icon" />
+                </Button>
+              </Tooltip>
+            </ConfirmModal>
+          </div>
         ),
         select: (
           <Radio
@@ -184,15 +197,23 @@ function ManageLlmProfiles() {
     }
   };
 
-  const handleEdit = (id) => {
-    setEditLlmProfileId(id);
+  const handleEdit = (profileId) => {
+    setEditLlmProfileId(profileId);
     setIsAddLlm(true);
   };
 
-  const handleDelete = (id) => {
+  const copyProfileId = (profileId) => {
+    navigator.clipboard.writeText(profileId);
+    setAlertDetails({
+      type: "success",
+      content: "Profile ID copied to clipboard",
+    });
+  };
+
+  const handleDelete = (profileId) => {
     const requestOptions = {
       method: "DELETE",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/profile-manager/${id}/`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/profile-manager/${profileId}/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
@@ -201,14 +222,14 @@ function ManageLlmProfiles() {
     axiosPrivate(requestOptions)
       .then(() => {
         const modifiedLlmProfiles = [...llmProfiles].filter(
-          (item) => item?.profile_id !== id
+          (item) => item?.profile_id !== profileId
         );
         const body = {
           llmProfiles: modifiedLlmProfiles,
         };
 
         // Reset the default LLM profile if it got deleted.
-        if (id === defaultLlmProfile) {
+        if (profileId === defaultLlmProfile) {
           body["defaultLlmProfile"] = "";
         }
 
