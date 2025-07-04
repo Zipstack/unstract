@@ -23,7 +23,15 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service_name: [backend, frontend, platform-service, prompt-service, runner, x2text-service]
+        service_name:
+          [
+            backend,
+            frontend,
+            platform-service,
+            prompt-service,
+            runner,
+            x2text-service,
+          ]
 
     steps:
       - name: Checkout code for release
@@ -36,9 +44,11 @@ jobs:
         if: github.event_name != 'release'
         uses: actions/checkout@v4
 
-      # Set up Docker Buildx for better caching
+      # Set up Docker Buildx for better caching and multi-arch builds
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64/v8
 
       # Log in to Docker Hub
       - name: Login to Docker Hub
@@ -86,6 +96,7 @@ jobs:
             ${{ env.LATEST_IMAGE_TAG && format('*.tags={0}', env.LATEST_IMAGE_TAG) || '' }}
             *.context=.
             *.args.VERSION=${{ env.DOCKER_VERSION_TAG }}
+            *.platform=linux/amd64,linux/arm64/v8
             *.cache-from=type=gha,scope=${{ matrix.service_name }}
             *.cache-to=type=gha,mode=max,scope=${{ matrix.service_name }}
 
