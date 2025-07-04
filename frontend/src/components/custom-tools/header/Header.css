@@ -34,3 +34,8 @@
 .select-llm-pro-header {
   padding-top: 12px;
 }
+
+.export-text{
+  display: flex;
+  align-items: center;
+}
