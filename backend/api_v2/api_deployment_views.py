@@ -17,6 +17,7 @@ from workflow_manager.workflow_v2.dto import ExecutionResponse
 from api_v2.api_deployment_dto_registry import ApiDeploymentDTORegistry
 from api_v2.constants import ApiExecution
 from api_v2.deployment_helper import DeploymentHelper
+from api_v2.dto import DeploymentExecutionDTO
 from api_v2.exceptions import NoActiveAPIKeyError
 from api_v2.models import APIDeployment
 from api_v2.serializers import (
@@ -49,9 +50,10 @@ class DeploymentExecution(views.APIView):
         request: Request,
         org_name: str,
         api_name: str,
-        api: APIDeployment,
-        api_key: str,
+        deployment_execution_dto: DeploymentExecutionDTO,
     ) -> Response:
+        api: APIDeployment = deployment_execution_dto.api
+        api_key: str = deployment_execution_dto.api_key
         serializer = ExecutionRequestSerializer(
             data=request.data, context={"api": api, "api_key": api_key}
         )
@@ -84,7 +86,11 @@ class DeploymentExecution(views.APIView):
 
     @DeploymentHelper.validate_api_key
     def get(
-        self, request: Request, org_name: str, api_name: str, api: APIDeployment
+        self,
+        request: Request,
+        org_name: str,
+        api_name: str,
+        deployment_execution_dto: DeploymentExecutionDTO,
     ) -> Response:
         serializer = ExecutionQuerySerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
