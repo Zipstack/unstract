@@ -12,6 +12,12 @@ services:
 # Watch configuration
 # Refer https://docs.docker.com/compose/how-tos/file-watch/
   frontend:
+    build:
+      dockerfile: docker/dockerfiles/frontend.Dockerfile
+      context: ..
+      target: development
+    env_file:
+      - ../frontend/.env
     develop:
       watch:
       # Sync the frontend directory with the container
@@ -26,6 +32,9 @@ services:
         path: ../frontend/package.json
 
   backend:
+    build:
+      dockerfile: docker/dockerfiles/backend.Dockerfile
+      context: ..
     entrypoint: ["bash", "-c"]
     command: [
       "source .venv/bin/activate && \
@@ -58,6 +67,9 @@ services:
     #   - <path_to_unstract_sdk>/unstract-sdk:/unstract-sdk
 
   runner:
+    build:
+      dockerfile: docker/dockerfiles/runner.Dockerfile
+      context: ..
     entrypoint: ["bash", "-c"]
     command: [
       "source .venv/bin/activate && \
@@ -84,6 +96,9 @@ services:
         path: ../runner/uv.lock
 
   platform-service:
+    build:
+      dockerfile: docker/dockerfiles/platform.Dockerfile
+      context: ..
     entrypoint: ["bash", "-c"]
     command: [
       "source .venv/bin/activate && \
@@ -110,6 +125,9 @@ services:
         path: ../platform-service/uv.lock
 
   prompt-service:
+    build:
+      dockerfile: docker/dockerfiles/prompt.Dockerfile
+      context: ..
     entrypoint: ["bash", "-c"]
     command: [
       "source .venv/bin/activate && \
@@ -136,6 +154,9 @@ services:
         path: ../prompt-service/uv.lock
 
   x2text-service:
+    build:
+      dockerfile: docker/dockerfiles/x2text.Dockerfile
+      context: ..
     entrypoint: ["bash", "-c"]
     command: [
       "source .venv/bin/activate && \
