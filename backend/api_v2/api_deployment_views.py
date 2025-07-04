@@ -45,9 +45,16 @@ class DeploymentExecution(views.APIView):
 
     @DeploymentHelper.validate_api_key
     def post(
-        self, request: Request, org_name: str, api_name: str, api: APIDeployment
+        self,
+        request: Request,
+        org_name: str,
+        api_name: str,
+        api: APIDeployment,
+        api_key: str,
     ) -> Response:
-        serializer = ExecutionRequestSerializer(data=request.data)
+        serializer = ExecutionRequestSerializer(
+            data=request.data, context={"api": api, "api_key": api_key}
+        )
         serializer.is_valid(raise_exception=True)
         file_objs = serializer.validated_data.get(ApiExecution.FILES_FORM_DATA)
         timeout = serializer.validated_data.get(ApiExecution.TIMEOUT_FORM_DATA)
@@ -55,6 +62,8 @@ class DeploymentExecution(views.APIView):
         include_metrics = serializer.validated_data.get(ApiExecution.INCLUDE_METRICS)
         use_file_history = serializer.validated_data.get(ApiExecution.USE_FILE_HISTORY)
         tag_names = serializer.validated_data.get(ApiExecution.TAGS)
+        llm_profile_id = serializer.validated_data.get(ApiExecution.LLM_PROFILE_ID)
+
         response = DeploymentHelper.execute_workflow(
             organization_name=org_name,
             api=api,
@@ -64,6 +73,7 @@ class DeploymentExecution(views.APIView):
             include_metrics=include_metrics,
             use_file_history=use_file_history,
             tag_names=tag_names,
+            llm_profile_id=llm_profile_id,
         )
         if "error" in response and response["error"]:
             return Response(
