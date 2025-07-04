@@ -44,6 +44,12 @@ jobs:
         if: github.event_name != 'release'
         uses: actions/checkout@v4
 
+      # Set up QEMU for ARM64 emulation
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64/v8
+
       # Set up Docker Buildx for better caching and multi-arch builds
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
