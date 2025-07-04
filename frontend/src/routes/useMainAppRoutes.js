@@ -186,14 +186,18 @@ function useMainAppRoutes() {
             path="review"
             element={<ManualReviewPage type="review" />}
           ></Route>
-          <Route
-            path="simple_review/review"
-            element={<SimpleManualReviewPage type="simple_review" />}
-          ></Route>
-          <Route
-            path="simple_review/approve"
-            element={<SimpleManualReviewPage type="simple_approve" />}
-          ></Route>
+          {SimpleManualReviewPage && (
+            <>
+              <Route
+                path="simple_review/review"
+                element={<SimpleManualReviewPage type="simple_review" />}
+              ></Route>
+              <Route
+                path="simple_review/approve"
+                element={<SimpleManualReviewPage type="simple_approve" />}
+              ></Route>
+            </>
+          )}
           <Route
             path="review/download_and_sync"
             element={<ManualReviewPage type="download" />}
@@ -202,7 +206,7 @@ function useMainAppRoutes() {
             path="review/approve"
             element={<ManualReviewPage type="approve" />}
           />
-          <Route path="review/manage" element={<Manage />} />
+          {Manage && <Route path="review/manage" element={<Manage />} />}
         </Route>
       )}
     </>
