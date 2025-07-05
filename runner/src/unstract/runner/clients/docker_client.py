@@ -48,6 +48,29 @@ class DockerContainer(ContainerInterface):
 
         return self.container.wait()
 
+    def graceful_stop(self, timeout: int = 300) -> None:
+        """Gracefully stop the container with SIGTERM and timeout.
+
+        Args:
+            timeout (int): Grace period in seconds before force kill (default: 300)
+        """
+        if not self.container:
+            return
+
+        try:
+            self.logger.info(f"Sending SIGTERM to container {self.container.id[:12]}")
+            # Send SIGTERM signal to allow graceful shutdown
+            self.container.stop(timeout=timeout)
+            self.logger.info(f"Container {self.container.id[:12]} stopped gracefully")
+        except Exception as stop_error:
+            self.logger.error(f"Failed to gracefully stop container: {stop_error}")
+            # Force kill as fallback
+            try:
+                self.container.kill()
+                self.logger.warning(f"Force killed container {self.container.id[:12]}")
+            except Exception as kill_error:
+                self.logger.error(f"Failed to force kill container: {kill_error}")
+
     def cleanup(self, client: ContainerClientInterface | None = None) -> None:
         if not self.container or not Utils.remove_container_on_exit():
             return
@@ -329,6 +352,28 @@ class Client(ContainerClientInterface):
         if not container:
             return None
         return container.wait_until_stop(main_container_status)
+
+    def graceful_stop_container(
+        self, container: DockerContainer | None, timeout: int | None = None
+    ) -> None:
+        """Gracefully stop a container with configurable timeout.
+
+        Args:
+            container (DockerContainer): Container to stop gracefully
+            timeout (int, optional): Grace period in seconds.
+                                   Defaults to GRACEFUL_SHUTDOWN_PERIOD env var or 300.
+        """
+        if not container:
+            return
+
+        # Get timeout from environment or use default
+        if timeout is None:
+            timeout = int(os.getenv(Env.GRACEFUL_SHUTDOWN_PERIOD, "300"))
+            # Validate timeout bounds (max 7200 seconds = 2 hours)
+            timeout = min(max(timeout, 30), 7200)
+
+        self.logger.info(f"Gracefully stopping container with {timeout}s timeout")
+        container.graceful_stop(timeout=timeout)
 
     def get_container_status(self, container_name: str) -> str:
         """Get status of a Docker container by name.
