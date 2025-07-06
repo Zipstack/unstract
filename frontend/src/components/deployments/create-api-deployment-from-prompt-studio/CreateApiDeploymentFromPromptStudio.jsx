@@ -388,6 +388,40 @@ const CreateApiDeploymentFromPromptStudio = ({
     handleCancel();
   };
 
+  const getCancelHandler = () => {
+    if (isCreationComplete) {
+      return handleCancel;
+    }
+    return currentStep === 0 ? handleCancel : handlePrevious;
+  };
+
+  const getCancelText = () => {
+    if (isCreationComplete) {
+      return null;
+    }
+    return currentStep === 0 ? "Cancel" : "Previous";
+  };
+
+  const renderToolSettings = () => {
+    if (toolSchema) {
+      return (
+        <RjsfFormLayout
+          schema={toolSchema}
+          formData={toolSettings}
+          setFormData={handleToolSettingsChange}
+          isLoading={false}
+          validateAndSubmit={() => {}}
+          isStateUpdateRequired={true}
+        />
+      );
+    }
+    return (
+      <p className="no-settings-message">
+        No additional settings available for this tool.
+      </p>
+    );
+  };
+
   return (
     <Modal
       title={getModalTitle()}
@@ -395,17 +429,9 @@ const CreateApiDeploymentFromPromptStudio = ({
       maskClosable={false}
       open={open}
       onOk={handleOk}
-      onCancel={
-        isCreationComplete
-          ? handleCancel
-          : currentStep === 0
-          ? handleCancel
-          : handlePrevious
-      }
+      onCancel={getCancelHandler()}
       okText={getOkText()}
-      cancelText={
-        isCreationComplete ? null : currentStep === 0 ? "Cancel" : "Previous"
-      }
+      cancelText={getCancelText()}
       okButtonProps={{
         loading: isLoading,
       }}
@@ -560,19 +586,8 @@ const CreateApiDeploymentFromPromptStudio = ({
               <Spin size="large" />
               <p>Loading tool settings...</p>
             </div>
-          ) : toolSchema ? (
-            <RjsfFormLayout
-              schema={toolSchema}
-              formData={toolSettings}
-              setFormData={handleToolSettingsChange}
-              isLoading={false}
-              validateAndSubmit={() => {}}
-              isStateUpdateRequired={true}
-            />
           ) : (
-            <p className="no-settings-message">
-              No additional settings available for this tool.
-            </p>
+            renderToolSettings()
           )}
         </div>
       )}
