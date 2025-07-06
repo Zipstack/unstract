@@ -19,6 +19,7 @@ from workflow_manager.workflow_v2.models import Workflow, WorkflowExecution
 from workflow_manager.workflow_v2.workflow_helper import WorkflowHelper
 
 from api_v2.api_key_validator import BaseAPIKeyValidator
+from api_v2.dto import DeploymentExecutionDTO
 from api_v2.exceptions import (
     ApiKeyCreateException,
     APINotFound,
@@ -52,7 +53,11 @@ class DeploymentHelper(BaseAPIKeyValidator):
         api_name = kwargs.get("api_name") or request.data.get("api_name")
         api_deployment = DeploymentHelper.get_deployment_by_api_name(api_name=api_name)
         DeploymentHelper.validate_api(api_deployment=api_deployment, api_key=api_key)
-        kwargs["api"] = api_deployment
+
+        deployment_execution_dto = DeploymentExecutionDTO(
+            api=api_deployment, api_key=api_key
+        )
+        kwargs["deployment_execution_dto"] = deployment_execution_dto
         return func(self, request, *args, **kwargs)
 
     @staticmethod
@@ -143,6 +148,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         include_metrics: bool = False,
         use_file_history: bool = False,
         tag_names: list[str] = [],
+        llm_profile_id: str | None = None,
     ) -> ReturnDict:
         """Execute workflow by api.
 
@@ -153,6 +159,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
             use_file_history (bool): Use FileHistory table to return results on already
                 processed files. Defaults to False
             tag_names (list(str)): list of tag names
+            llm_profile_id (str, optional): LLM profile ID for overriding tool settings
 
         Returns:
             ReturnDict: execution status/ result
@@ -185,6 +192,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 execution_id=execution_id,
                 queue=CeleryQueue.CELERY_API_DEPLOYMENTS,
                 use_file_history=use_file_history,
+                llm_profile_id=llm_profile_id,
             )
             result.status_api = DeploymentHelper.construct_status_endpoint(
                 api_endpoint=api.api_endpoint, execution_id=execution_id
