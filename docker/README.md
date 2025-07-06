@@ -70,7 +70,7 @@ This can be useful during development to:
 3. Start services with watch mode enabled
 
    ```bash
-   VERSION=dev docker compose -f docker-compose.yaml -f compose.override.yaml -f docker-compose.build.yaml watch
+   VERSION=dev docker compose -f docker-compose.yaml -f compose.override.yaml watch
    ```
 
 > **NOTE**: Make sure to specify the build definitions also in your `compose.override.yaml` file or specify [docker-compose.build.yaml](/docker/docker-compose.build.yaml) while running the above command.
