@@ -12,6 +12,7 @@ import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { ExportTool } from "../export-tool/ExportTool";
+import { CreateApiDeploymentFromPromptStudio } from "../../deployments/create-api-deployment-from-prompt-studio/CreateApiDeploymentFromPromptStudio.jsx";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import "./Header.css";
 
@@ -55,6 +56,8 @@ function Header({
   const [toolDetails, setToolDetails] = useState(null);
   const [confirmModalVisible, setConfirmModalVisible] = useState(false);
   const [lastExportParams, setLastExportParams] = useState(null);
+  const [openCreateApiDeploymentModal, setOpenCreateApiDeploymentModal] =
+    useState(false);
 
   const handleExport = (
     selectedUsers,
@@ -242,6 +245,20 @@ function Header({
       });
   };
 
+  const handleCreateApiDeployment = () => {
+    try {
+      setPostHogCustomEvent("intent_create_api_deployment_from_prompt_studio", {
+        info: "Clicked Create API Deployment in tool IDE",
+        tool_id: details?.tool_id,
+        tool_name: details?.tool_name,
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+
+    setOpenCreateApiDeploymentModal(true);
+  };
+
   return (
     <div className="custom-tools-header-layout">
       {isPublicSource ? (
@@ -283,6 +300,11 @@ function Header({
                 label: "Export as JSON",
                 onClick: handleExportProject,
               },
+              {
+                key: "create-api-deployment",
+                label: "Create API Deployment",
+                onClick: handleCreateApiDeployment,
+              },
             ],
           }}
           trigger={["click"]}
@@ -305,6 +327,11 @@ function Header({
           onApply={handleExport}
           loading={isExportLoading}
           toolDetails={toolDetails}
+        />
+        <CreateApiDeploymentFromPromptStudio
+          open={openCreateApiDeploymentModal}
+          setOpen={setOpenCreateApiDeploymentModal}
+          toolDetails={details}
         />
       </div>
       <Modal
