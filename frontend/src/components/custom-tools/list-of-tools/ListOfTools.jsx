@@ -244,25 +244,23 @@ function ListOfTools() {
 
   const CustomButtons = () => {
     return (
-      <>
-        <Space gap={16}>
-          <CustomButton
-            type="default"
-            icon={<ArrowDownOutlined />}
-            onClick={() => setOpenImportTool(true)}
-            loading={isImportLoading}
-          >
-            Import Project
-          </CustomButton>
-          <CustomButton
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={handleNewProjectBtnClick}
-          >
-            New Project
-          </CustomButton>
-        </Space>
-      </>
+      <Space gap={16}>
+        <CustomButton
+          type="default"
+          icon={<ArrowDownOutlined />}
+          onClick={() => setOpenImportTool(true)}
+          loading={isImportLoading}
+        >
+          Import Project
+        </CustomButton>
+        <CustomButton
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={handleNewProjectBtnClick}
+        >
+          New Project
+        </CustomButton>
+      </Space>
     );
   };
 

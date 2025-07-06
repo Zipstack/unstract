@@ -2,6 +2,8 @@ import { Modal, Form, Select, Typography, Space, Divider } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
+import "./AdapterSelectionModal.css";
+
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useSessionStore } from "../../../store/session-store";
 import { useAlertStore } from "../../../store/alert-store";
@@ -106,7 +108,7 @@ function AdapterSelectionModal({
       width={700}
       maskClosable={false}
     >
-      <div style={{ marginBottom: 24 }}>
+      <div className="adapter-selection-modal__description">
         <Text type="secondary">
           This project requires the following adapters to function properly.
           Please select the appropriate adapters from your available options.
@@ -134,7 +136,10 @@ function AdapterSelectionModal({
               <Option key={adapter?.id} value={adapter?.id}>
                 <Space>
                   <span>{adapter?.adapter_name}</span>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
+                  <Text
+                    type="secondary"
+                    className="adapter-selection-modal__adapter-id"
+                  >
                     ({adapter?.adapter_id})
                   </Text>
                 </Space>
@@ -161,7 +166,10 @@ function AdapterSelectionModal({
               <Option key={adapter?.id} value={adapter?.id}>
                 <Space>
                   <span>{adapter?.adapter_name}</span>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
+                  <Text
+                    type="secondary"
+                    className="adapter-selection-modal__adapter-id"
+                  >
                     ({adapter?.adapter_id})
                   </Text>
                 </Space>
@@ -188,7 +196,10 @@ function AdapterSelectionModal({
               <Option key={adapter?.id} value={adapter?.id}>
                 <Space>
                   <span>{adapter?.adapter_name}</span>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
+                  <Text
+                    type="secondary"
+                    className="adapter-selection-modal__adapter-id"
+                  >
                     ({adapter?.adapter_id})
                   </Text>
                 </Space>
@@ -215,7 +226,10 @@ function AdapterSelectionModal({
               <Option key={adapter?.id} value={adapter?.id}>
                 <Space>
                   <span>{adapter?.adapter_name}</span>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
+                  <Text
+                    type="secondary"
+                    className="adapter-selection-modal__adapter-id"
+                  >
                     ({adapter?.adapter_id})
                   </Text>
                 </Space>
@@ -226,7 +240,7 @@ function AdapterSelectionModal({
 
         <Divider />
 
-        <Text type="secondary" style={{ fontSize: 12 }}>
+        <Text type="secondary" className="adapter-selection-modal__note">
           Note: These adapters will be used to create the LLM Profile for the
           imported project. You can modify these settings later in the
           project&apos;s profile configuration.
