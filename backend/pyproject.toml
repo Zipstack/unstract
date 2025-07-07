@@ -48,11 +48,12 @@ dependencies = [
     # Hence required to add all indirect local dependencies too here.
     "unstract-connectors",
     "unstract-core",
+    "unstract-filesystem",
     "unstract-flags",
+    "unstract-sdk1",
     "unstract-tool-registry",
     "unstract-tool-sandbox",
     "unstract-workflow-execution",
-    "unstract-filesystem",
 ]
 
 [dependency-groups]
@@ -79,13 +80,14 @@ deploy = [
 ]
 
 [tool.uv.sources]
-unstract-filesystem = { path = "../unstract/filesystem", editable = true }
-unstract-workflow-execution = { path = "../unstract/workflow-execution", editable = true }
-unstract-tool-sandbox = { path = "../unstract/tool-sandbox", editable = true }
-unstract-tool-registry = { path = "../unstract/tool-registry", editable = true }
-unstract-flags = { path = "../unstract/flags", editable = true }
-unstract-core = { path = "../unstract/core", editable = true }
 unstract-connectors = { path = "../unstract/connectors", editable = true }
+unstract-core = { path = "../unstract/core", editable = true }
+unstract-filesystem = { path = "../unstract/filesystem", editable = true }
+unstract-flags = { path = "../unstract/flags", editable = true }
+unstract-sdk1 = { path = "../unstract/sdk1", editable = true }
+unstract-tool-registry = { path = "../unstract/tool-registry", editable = true }
+unstract-tool-sandbox = { path = "../unstract/tool-sandbox", editable = true }
+unstract-workflow-execution = { path = "../unstract/workflow-execution", editable = true }
 
 [tool.uv]
 constraint-dependencies = [
