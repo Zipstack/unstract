@@ -255,13 +255,10 @@ class AnswerPromptService:
 
             # Heuristic: if wrapping only added '[' and ']', len(b) - len(a) == 2 → original was valid, use 'a'
             # Otherwise, fallback to 'b' which likely fixed multiple items or invalid top-level structure
-            parsed_data = (
-                a
-                if len(json.dumps(b, ensure_ascii=False))
-                - len(json.dumps(a, ensure_ascii=False))
-                == 2
-                else b
-            )
+            dump_a = json.dumps(a, ensure_ascii=False)
+            dump_b = json.dumps(b, ensure_ascii=False)
+            ARRAY_WRAP_DELTA = 2  # '[' and ']'
+            parsed_data = a if len(dump_b) - len(dump_a) == ARRAY_WRAP_DELTA else b
 
             if isinstance(parsed_data, str):
                 err_msg = "Error parsing response (to json)\n" f"Candidate JSON: {answer}"
