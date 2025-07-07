@@ -22,6 +22,7 @@ import { RjsfFormLayout } from "../../../layouts/rjsf-form-layout/RjsfFormLayout
 import { workflowService } from "../../workflows/workflow/workflow-service";
 import { apiDeploymentsService } from "../api-deployment/api-deployments-service";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import useRequestUrl from "../../../hooks/useRequestUrl";
 import "./CreateApiDeploymentFromPromptStudio.css";
 
 const { Step } = Steps;
@@ -39,6 +40,7 @@ const CreateApiDeploymentFromPromptStudio = ({
   const workflowApiService = workflowService();
   const apiDeploymentsApiService = apiDeploymentsService();
   const { setPostHogCustomEvent } = usePostHogEvents();
+  const { getUrl } = useRequestUrl();
   const navigate = useNavigate();
 
   const [form] = Form.useForm();
@@ -100,7 +102,7 @@ const CreateApiDeploymentFromPromptStudio = ({
       // Fetch tool list to find the function name for this tool_id
       const response = await axiosPrivate({
         method: "GET",
-        url: `/api/v1/unstract/${sessionDetails?.orgId}/tool/`,
+        url: getUrl("tool/"),
       });
 
       const tools = response.data || [];
@@ -141,7 +143,7 @@ const CreateApiDeploymentFromPromptStudio = ({
     try {
       const response = await axiosPrivate({
         method: "GET",
-        url: `/api/v1/unstract/${sessionDetails?.orgId}/tool_settings_schema/?function_name=${functionName}`,
+        url: getUrl(`tool_settings_schema/?function_name=${functionName}`),
       });
       setToolSchema(response.data);
     } catch (err) {
@@ -225,7 +227,7 @@ const CreateApiDeploymentFromPromptStudio = ({
       // Step 1: Export tool
       await axiosPrivate({
         method: "POST",
-        url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/export/${toolDetails?.tool_id}`,
+        url: getUrl(`prompt-studio/export/${toolDetails?.tool_id}`),
         headers: {
           "X-CSRFToken": sessionDetails?.csrfToken,
           "Content-Type": "application/json",
@@ -254,7 +256,7 @@ const CreateApiDeploymentFromPromptStudio = ({
       // Step 4: Add tool instance to workflow
       const toolInstanceResponse = await axiosPrivate({
         method: "POST",
-        url: `/api/v1/unstract/${sessionDetails?.orgId}/tool_instance/`,
+        url: getUrl("tool_instance/"),
         headers: {
           "X-CSRFToken": sessionDetails?.csrfToken,
           "Content-Type": "application/json",
@@ -269,7 +271,7 @@ const CreateApiDeploymentFromPromptStudio = ({
       if (toolSettings && Object.keys(toolSettings).length > 0) {
         await axiosPrivate({
           method: "PATCH",
-          url: `/api/v1/unstract/${sessionDetails?.orgId}/tool_instance/${toolInstanceResponse.data.id}/`,
+          url: getUrl(`tool_instance/${toolInstanceResponse.data.id}/`),
           headers: {
             "X-CSRFToken": sessionDetails?.csrfToken,
             "Content-Type": "application/json",
@@ -339,7 +341,7 @@ const CreateApiDeploymentFromPromptStudio = ({
     // Get existing endpoints for the workflow (they are auto-created)
     const endpointsResponse = await axiosPrivate({
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/${workflowId}/endpoint/`,
+      url: getUrl(`workflow/${workflowId}/endpoint/`),
     });
 
     const endpoints = endpointsResponse.data || [];
@@ -348,7 +350,7 @@ const CreateApiDeploymentFromPromptStudio = ({
     for (const endpoint of endpoints) {
       await axiosPrivate({
         method: "PUT",
-        url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/endpoint/${endpoint.id}/`,
+        url: getUrl(`workflow/endpoint/${endpoint.id}/`),
         headers: {
           "X-CSRFToken": sessionDetails?.csrfToken,
           "Content-Type": "application/json",
