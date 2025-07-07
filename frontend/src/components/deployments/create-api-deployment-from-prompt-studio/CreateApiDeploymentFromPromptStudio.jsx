@@ -73,16 +73,13 @@ const CreateApiDeploymentFromPromptStudio = ({
       const uniqueApiName = `${baseApiName}_${timestamp}`;
 
       // Set default deployment details based on tool details
-      setDeploymentDetails({
+      const defaultValues = {
         display_name: `${toolDetails.tool_name} API`,
         description: `API deployment for ${toolDetails.tool_name}`,
         api_name: uniqueApiName,
-      });
-      form.setFieldsValue({
-        display_name: `${toolDetails.tool_name} API`,
-        description: `API deployment for ${toolDetails.tool_name}`,
-        api_name: uniqueApiName,
-      });
+      };
+      setDeploymentDetails(defaultValues);
+      form.setFieldsValue(defaultValues);
       setCurrentStep(0);
       setBackendErrors(null);
       setToolSettings({});
@@ -117,24 +114,29 @@ const CreateApiDeploymentFromPromptStudio = ({
         // Now fetch schema using the function name
         fetchToolSchema(matchingTool.function_name);
       } else {
-        console.warn(
-          "Tool function name not found in registry for tool:",
-          toolDetails.tool_id
-        );
+        setAlertDetails({
+          type: "error",
+          content: `Tool function name not found in registry for tool: ${toolDetails.tool_id}`,
+        });
         setToolSchema(null);
       }
     } catch (err) {
-      console.warn(
-        "Failed to fetch tool list:",
-        err.response?.data?.message || err.message
-      );
+      setAlertDetails({
+        type: "error",
+        content: `Failed to fetch tool list: ${
+          err.response?.data?.message || err.message
+        }`,
+      });
       setToolSchema(null);
     }
   };
 
   const fetchToolSchema = async (functionName = toolFunctionName) => {
     if (!functionName) {
-      console.warn("No function name available for schema fetch");
+      setAlertDetails({
+        type: "error",
+        content: "No function name available for schema fetch",
+      });
       setToolSchema(null);
       return;
     }
@@ -149,10 +151,12 @@ const CreateApiDeploymentFromPromptStudio = ({
     } catch (err) {
       // If tool schema fetch fails, it means the tool doesn't have configurable settings
       // This is common for prompt studio tools that may not be in the tool registry
-      console.warn(
-        "Tool schema not available:",
-        err.response?.data?.message || err.message
-      );
+      setAlertDetails({
+        type: "error",
+        content: `Tool schema not available: ${
+          err.response?.data?.message || err.message
+        }`,
+      });
       setToolSchema(null);
     } finally {
       setIsSchemaLoading(false);
@@ -209,6 +213,54 @@ const CreateApiDeploymentFromPromptStudio = ({
     }
   };
 
+  const cleanupCreatedResources = async (createdResources) => {
+    const cleanupPromises = [];
+
+    // Clean up API deployment if created
+    if (createdResources.apiDeploymentId) {
+      cleanupPromises.push(
+        axiosPrivate({
+          method: "DELETE",
+          url: getUrl(`api_deployment/${createdResources.apiDeploymentId}/`),
+          headers: {
+            "X-CSRFToken": sessionDetails?.csrfToken,
+          },
+        }).catch(() => {
+          // Silently handle cleanup failures to avoid additional errors
+        })
+      );
+    }
+
+    // Clean up tool instance if created
+    if (createdResources.toolInstanceId) {
+      cleanupPromises.push(
+        axiosPrivate({
+          method: "DELETE",
+          url: getUrl(`tool_instance/${createdResources.toolInstanceId}/`),
+          headers: {
+            "X-CSRFToken": sessionDetails?.csrfToken,
+          },
+        }).catch(() => {
+          // Silently handle cleanup failures to avoid additional errors
+        })
+      );
+    }
+
+    // Clean up workflow if created
+    if (createdResources.workflowId) {
+      cleanupPromises.push(
+        workflowApiService
+          .deleteProject(createdResources.workflowId)
+          .catch(() => {
+            // Silently handle cleanup failures to avoid additional errors
+          })
+      );
+    }
+
+    // Wait for all cleanup operations to complete
+    await Promise.allSettled(cleanupPromises);
+  };
+
   const createApiDeployment = async () => {
     try {
       setPostHogCustomEvent("intent_create_api_deployment_from_prompt_studio", {
@@ -222,6 +274,13 @@ const CreateApiDeploymentFromPromptStudio = ({
     }
 
     setIsLoading(true);
+
+    // Track created resources for cleanup
+    const createdResources = {
+      workflowId: null,
+      toolInstanceId: null,
+      apiDeploymentId: null,
+    };
 
     try {
       // Step 1: Export tool
@@ -248,6 +307,7 @@ const CreateApiDeploymentFromPromptStudio = ({
       );
 
       const workflowId = workflowResponse.data.id;
+      createdResources.workflowId = workflowId;
       setCreatedWorkflowId(workflowId);
 
       // Step 3: Configure endpoints with API connection type
@@ -266,6 +326,8 @@ const CreateApiDeploymentFromPromptStudio = ({
           workflow_id: workflowId,
         },
       });
+
+      createdResources.toolInstanceId = toolInstanceResponse.data.id;
 
       // Step 5: Update tool instance with settings if provided
       if (toolSettings && Object.keys(toolSettings).length > 0) {
@@ -289,6 +351,7 @@ const CreateApiDeploymentFromPromptStudio = ({
           workflow: workflowId,
         });
 
+      createdResources.apiDeploymentId = apiDeploymentResponse.data.id;
       setCreatedApiDeployment(apiDeploymentResponse.data);
       setIsCreationComplete(true);
 
@@ -297,6 +360,9 @@ const CreateApiDeploymentFromPromptStudio = ({
         content: "API deployment created successfully",
       });
     } catch (err) {
+      // Cleanup created resources on failure
+      await cleanupCreatedResources(createdResources);
+
       if (err.response?.data?.errors) {
         setBackendErrors(err.response.data);
       } else {
