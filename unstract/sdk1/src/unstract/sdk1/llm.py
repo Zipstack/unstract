@@ -1,36 +1,15 @@
-"""LiteLLM-backed implementation of :class:`~unstract.sdk.llm.LLM`.
-
-Only a subset of the v0 behaviours is supported for now: synchronous
-``complete`` and streaming ``stream_complete``.  All other calls will raise
-:class:`NotImplementedError` so that test-suites can xfail accordingly.
-
-To get supported OpenAI params for any model + provider see:
-https://docs.litellm.ai/docs/completion/input#translated-openai-params
+"""LiteLLM powered unified LLM interface.
 """
-from __future__ import annotations
-
 import logging
 import re
 from collections.abc import Generator
 from typing import Any, Dict, List, Optional, Union
 
+import litellm
+from litellm import get_supported_openai_params
 from pydantic import BaseModel, Field, ValidationError
 
 from unstract.sdk1.utils.exceptions import *
-from unstract.sdk1.utils.tokens import num_tokens
-
-try:
-    import litellm
-except ModuleNotFoundError as exc:  # pragma: no cover – handled by extras
-    raise ImportError(
-        "`litellm` is required for SDK v1; install the `[v1]` extra\n"
-        "    pip install unstract-sdk[v1]"
-    ) from exc
-
-__all__ = [
-    "LLM", 
-    # "ToolLLM",
-]
 
 logger = logging.getLogger(__name__)
 
@@ -64,13 +43,14 @@ class LLM:
             # if hasattr(self, "thinking_dict") and self.thinking_dict is not None:
             #     completion_kwargs["temperature"] = 1
 
-            response = self.complete("The capital of Tamilnadu is ")
+            response = self.complete("What is the capital of Tamilnadu?")
             text = response["choices"][0]["message"]["content"]
 
             find_match = re.search("chennai", text.lower())
             if find_match:
                 return True
 
+            logger.error("LLM test response: %s", text)
             msg = (
                 "LLM based test failed. The credentials was valid however a sane "
                 "response was not obtained from the LLM provider, please recheck "
@@ -87,10 +67,10 @@ class LLM:
             {"role": "system", "content": self._default_system_prompt},
             {"role": "user", "content": prompt},
         ]
-        logger.info("[sdk1.LLM] calling litellm with %s", messages)
+        logger.info("[sdk1.LLM] Invoking %s with %s", self.provider, messages)
         
         combined_kwargs = {**self.kwargs, **kwargs}
-        
+
         response: dict[str, Any] = litellm.completion(
             messages=messages,
             **combined_kwargs,
@@ -157,32 +137,95 @@ class LLM:
         """
         Extract and validate LLM parameters from adapter metadata.
         """
-        # Extract provider from adapter ID
+        # Extract provider from adapter ID.
         # Format: <llm_provider_name>|<uuid>
         self.provider = self._adapter_id.split("|")[0]
         
-        # Process adapter metadata
-        # NOTE: Apply transformations before model validation.
+        # Process adapter metadata.
+        # NOTE: Apply metadata transformations before provider args validation.
         try:
-            if self.provider == "azureopenai":
-                self._adapter_metadata["api_base"] = self._adapter_metadata.get('azure_endpoint', '').split("?")[0]
-                self._adapter_metadata["model"] = f"azure/{self._adapter_metadata.get('deployment_name', '')}"
+            getattr(self, f"_extract_{self.provider}_kwargs")()
 
-                self.kwargs = AzureOpenAIParams(**self._adapter_metadata).model_dump()
-            elif self.provider == "openai":
-                self._adapter_metadata["model"] = f"openai/{self._adapter_metadata.get('model', '')}"
-
-                self.kwargs = OpenAIParams(**self._adapter_metadata).model_dump()
-            elif self.provider == "vertexai":
-                self._adapter_metadata["model"] = f"vertex_ai/{self._adapter_metadata.get('model', '')}"
-                self._adapter_metadata["vertex_credentials"] = self._adapter_metadata.get('json_credentials', '')
-
-                self.kwargs = VertexAIParams(**self._adapter_metadata).model_dump()
+            # REF: https://docs.litellm.ai/docs/completion/input#translated-openai-params
+            # supported = get_supported_openai_params(model=self.kwargs["model"], custom_llm_provider=self.provider)
+            # for s in supported:
+            #     if s not in self.kwargs:
+            #         logger.warning("Missing supported parameter for '%s': %s", self.provider, s)
+        except AttributeError as e:
+            raise SdkError("Adapter not supported: " + self.provider)
         except ValidationError as e:
             raise SdkError("Invalid adapter metadata: " + str(e))
 
-        if not self.kwargs:
-            raise SdkError("Unsupported provider: " + self.provider)
+    def _extract_azureopenai_kwargs(self):
+        self.provider = "azure"
+        self._adapter_metadata["model"] = f"{self.provider}/{self._adapter_metadata.get('deployment_name', '')}"
+        self._adapter_metadata["api_base"] = self._adapter_metadata.get('azure_endpoint', '').split("?")[0]
+
+        self.kwargs = AzureOpenAIParams(**self._adapter_metadata).model_dump()
+
+    def _extract_openai_kwargs(self):
+        self._adapter_metadata["model"] = f"{self.provider}/{self._adapter_metadata.get('model', '')}"
+
+        self.kwargs = OpenAIParams(**self._adapter_metadata).model_dump()
+
+    def _extract_vertexai_kwargs(self):
+        self.provider = "vertex_ai"
+        self._adapter_metadata["model"] = f"{self.provider}/{self._adapter_metadata.get('model', '')}"
+        self._adapter_metadata["vertex_credentials"] = self._adapter_metadata.get('json_credentials', '')
+        self._adapter_metadata["vertex_project"] = self._adapter_metadata.get('project', '')
+
+        ss_dict = self._adapter_metadata.get('safety_settings', {})
+        self._adapter_metadata["safety_settings"] = [
+            {
+                "category": "HARM_CATEGORY_HARASSMENT",
+                "threshold": ss_dict.get('harassment', 'BLOCK_ONLY_HIGH')
+            },
+            {
+                "category": "HARM_CATEGORY_HATE_SPEECH",
+                "threshold": ss_dict.get('hate_speech', 'BLOCK_ONLY_HIGH')
+            },
+            {
+                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                "threshold": ss_dict.get('sexual_content', 'BLOCK_ONLY_HIGH')
+            },
+            {
+                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                "threshold": ss_dict.get('dangerous_content', 'BLOCK_ONLY_HIGH')
+            },
+            {
+                "category": "HARM_CATEGORY_CIVIC_INTEGRITY",
+                "threshold": ss_dict.get('civic_integrity', 'BLOCK_ONLY_HIGH')
+            },
+        ]
+
+        self.kwargs = VertexAIParams(**self._adapter_metadata).model_dump()
+
+    def _extract_bedrock_kwargs(self):
+        self._adapter_metadata["model"] = f"{self.provider}/{self._adapter_metadata.get('model', '')}"
+        self._adapter_metadata["aws_region_name"] = self._adapter_metadata.get('region_name', '')
+
+        self.kwargs = AWSBedrockParams(**self._adapter_metadata).model_dump()
+
+    def _extract_anthropic_kwargs(self):
+        self._adapter_metadata["model"] = f"{self.provider}/{self._adapter_metadata.get('model', '')}"
+
+        self.kwargs = AnthropicParams(**self._adapter_metadata).model_dump()
+
+    def _extract_anyscale_kwargs(self):
+        self._adapter_metadata["model"] = f"{self.provider}/{self._adapter_metadata.get('model', '')}"
+
+        self.kwargs = AnyscaleParams(**self._adapter_metadata).model_dump()
+
+    def _extract_mistral_kwargs(self):
+        self._adapter_metadata["model"] = f"{self.provider}/{self._adapter_metadata.get('model', '')}"
+
+        self.kwargs = MistralParams(**self._adapter_metadata).model_dump()
+
+    def _extract_ollama_kwargs(self):
+        self.provider = "ollama_chat"
+        self._adapter_metadata["model"] = f"{self.provider}/{self._adapter_metadata.get('model', '')}"
+
+        self.kwargs = OllamaParams(**self._adapter_metadata).model_dump()
 
 class LLMParameters(BaseModel):
     """ Base parameters for all LLM providers.
@@ -195,7 +238,6 @@ class LLMParameters(BaseModel):
     n: Optional[int] = 1
     timeout: Optional[Union[float, int]] = 600
     stream: Optional[bool] = False
-    max_completion_tokens: Optional[int] = None
     max_tokens: Optional[int] = None
     num_retries: Optional[int] = None
 
@@ -214,7 +256,22 @@ class AzureOpenAIParams(LLMParameters):
 
 class VertexAIParams(LLMParameters):
     vertex_credentials: str
-    safety_settings: Dict[str, str] = None
+    vertex_project: str
+    safety_settings: List[Dict[str, str]]
 
-# FIXME: Backward-compat alias expected by tests
-# ToolLLM = LLM
+class AWSBedrockParams(LLMParameters):
+    aws_access_key_id: Optional[str]
+    aws_secret_access_key: Optional[str]
+    aws_region_name: Optional[str]
+
+class AnthropicParams(LLMParameters):
+    api_key: str
+
+class AnyscaleParams(LLMParameters):
+    api_key: str
+
+class MistralParams(LLMParameters):
+    api_key: str
+
+class OllamaParams(LLMParameters):
+    api_base: str
