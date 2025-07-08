@@ -32,7 +32,7 @@ jobs:
                     },
                     {
                       "title": "Release Notes",
-                      "value": "${{ github.event.release.body || 'No release notes provided.' }}",
+                      "value": ${{ toJSON(github.event.release.body || 'No release notes provided.') }},
                       "short": false
                     },
                     {

@@ -40,6 +40,88 @@ PAID_FEATURE_MSG = (
 
 
 class StructureTool(BaseTool):
+    def _apply_profile_overrides(
+        self, tool_metadata: dict, profile_data: dict
+    ) -> list[str]:
+        """Apply profile overrides to tool metadata.
+
+        Args:
+            tool_metadata: The tool metadata dictionary to modify
+            profile_data: The profile data containing override values
+
+        Returns:
+            List of change descriptions
+        """
+        changes = []
+
+        # Mapping between profile keys and tool metadata keys
+        profile_to_tool_mapping = {
+            "chunk_overlap": "chunk-overlap",
+            "chunk_size": "chunk-size",
+            "embedding_model_id": "embedding",
+            "llm_id": "llm",
+            "similarity_top_k": "similarity-top-k",
+            "vector_store_id": "vector-db",
+            "x2text_id": "x2text_adapter",
+            "retrieval_strategy": "retrieval-strategy",
+        }
+
+        # Override tool_settings section
+        if "tool_settings" in tool_metadata:
+            tool_changes = self._override_section(
+                tool_metadata["tool_settings"],
+                profile_data,
+                profile_to_tool_mapping,
+                section_name="tool_settings",
+            )
+            changes.extend(tool_changes)
+
+        # Override each output in outputs section
+        if "outputs" in tool_metadata:
+            for i, output in enumerate(tool_metadata["outputs"]):
+                output_name = output.get("name", f"output_{i}")
+                output_changes = self._override_section(
+                    output,
+                    profile_data,
+                    profile_to_tool_mapping,
+                    section_name=f"output[{output_name}]",
+                )
+                changes.extend(output_changes)
+
+        return changes
+
+    def _override_section(
+        self,
+        section: dict,
+        profile_data: dict,
+        mapping: dict,
+        section_name: str = "section",
+    ) -> list[str]:
+        """Override values in a section using profile data.
+
+        Args:
+            section: The section dictionary to modify
+            profile_data: The profile data containing override values
+            mapping: Mapping between profile keys and section keys
+            section_name: Name of the section for logging purposes
+
+        Returns:
+            List of change descriptions
+        """
+        changes = []
+        for profile_key, section_key in mapping.items():
+            if profile_key in profile_data and section_key in section:
+                old_value = section[section_key]
+                new_value = profile_data[profile_key]
+                if old_value != new_value:  # Only track actual changes
+                    section[section_key] = new_value
+                    change_desc = (
+                        f"{section_name}.{section_key}: {old_value} -> {new_value}"
+                    )
+                    changes.append(change_desc)
+                    self.stream_log(f"Overrode {change_desc}")
+        return changes
+
     def validate(self, input_file: str, settings: dict[str, Any]) -> None:
         enable_challenge: bool = settings.get(SettingsKeys.ENABLE_CHALLENGE, False)
         challenge_llm: str = settings.get(SettingsKeys.CHALLENGE_LLM_ADAPTER_ID, "")
@@ -81,7 +163,22 @@ class StructureTool(BaseTool):
             exported_tool = platform_helper.get_prompt_studio_tool(
                 prompt_registry_id=prompt_registry_id
             )
+            llm_profile_id = self.get_exec_metadata.get(SettingsKeys.LLM_PROFILE_ID)
+            llm_profile_to_override = None
+            if llm_profile_id:
+                llm_profile = platform_helper.get_llm_profile(llm_profile_id)
+                llm_profile_to_override = llm_profile  # Use the entire profile data
+
             tool_metadata = exported_tool[SettingsKeys.TOOL_METADATA]
+
+            # Apply profile overrides if available
+            STHelper.handle_profile_overrides(
+                self,
+                llm_profile_to_override,
+                llm_profile_id,
+                tool_metadata,
+                self._apply_profile_overrides,
+            )
             ps_project_name = tool_metadata.get("name", prompt_registry_id)
             # Count only the active (enabled) prompts
             total_prompt_count = len(tool_metadata[SettingsKeys.OUTPUTS])
