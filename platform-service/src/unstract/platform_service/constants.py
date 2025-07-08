@@ -9,6 +9,7 @@ class DBTable:
     PAGE_USAGE = "page_usage"
     SUBSCRIPTION_USAGE = "subscription_usage"
     SUBSCRIPTION = "subscription"
+    LLM_PROFILE_MANAGER = "profile_manager"
 
 
 class LogLevel:
