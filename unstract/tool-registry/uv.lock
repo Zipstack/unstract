@@ -2752,7 +2752,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "docker", specifier = "~=6.1.3" },
-    { name = "jsonschema", specifier = ">=4.18.6" },
+    { name = "jsonschema", specifier = ">=4.18.6,<5.0" },
     { name = "pyyaml", specifier = "~=6.0.1" },
     { name = "unstract-flags", editable = "../flags" },
     { name = "unstract-sdk", specifier = "~=0.74.0" },
