@@ -264,6 +264,7 @@ SHARED_APPS = (
     "docs",
     # Plugins
     "plugins",
+    "plugins.authentication.auth0",
     "feature_flag",
     "django_celery_beat",
     # For additional helper commands
