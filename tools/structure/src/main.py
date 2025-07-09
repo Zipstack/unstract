@@ -20,18 +20,43 @@ from unstract.sdk.tool.entrypoint import ToolEntrypoint
 
 logger = logging.getLogger(__name__)
 
-# Global shutdown flag for graceful shutdown
-shutdown_requested = threading.Event()
+# Global shutdown acknowledgment flag
+shutdown_acknowledged = threading.Event()
+
+# Global flag to track if tool is actively doing LLM processing
+is_llm_processing = threading.Event()
 
 
-def signal_handler(signum: int, frame) -> None:
-    """Handle SIGTERM signal for graceful shutdown."""
-    logger.info(f"Received signal {signum}, initiating graceful shutdown...")
-    shutdown_requested.set()
+def signal_handler(signum: int, _frame: Any) -> None:
+    """Handle SIGTERM/SIGINT signal - acknowledge but complete current LLM processing.
+
+    Args:
+        signum: The signal number received
+        _frame: Current stack frame (unused)
+    """
+    signal_name = "SIGTERM" if signum == signal.SIGTERM else "SIGINT"
+    logger.info(
+        "Received signal %s (%s). Graceful shutdown initiated...", signum, signal_name
+    )
+    shutdown_acknowledged.set()
+
+    # Check if we're currently doing LLM processing
+    if is_llm_processing.is_set():
+        logger.info(
+            "%s acknowledged. Will complete current LLM processing and exit.",
+            signal_name,
+        )
+    else:
+        logger.info(
+            "%s acknowledged. Tool not doing LLM processing. Exiting immediately.",
+            signal_name,
+        )
+        sys.exit(0)
 
 
-# Register SIGTERM handler
+# Register SIGTERM and SIGINT handlers for graceful shutdown
 signal.signal(signal.SIGTERM, signal_handler)
+signal.signal(signal.SIGINT, signal_handler)
 
 PAID_FEATURE_MSG = (
     "It is a cloud / enterprise feature. If you have purchased a plan and still "
@@ -134,6 +159,18 @@ class StructureTool(BaseTool):
         input_file: str,
         output_dir: str,
     ) -> None:
+        # Log process ID for debugging and testing SIGTERM handling
+        process_id = os.getpid()
+        logger.info(f"Structure tool started with Process ID: {process_id}")
+        logger.info(f"To send SIGTERM: kill -TERM {process_id}")
+        logger.info(f"To send SIGINT: kill -INT {process_id} (or use Ctrl+C)")
+
+        # Check for shutdown before starting text extraction
+        if shutdown_acknowledged.is_set():
+            self.stream_log(
+                "SIGTERM received - completing current processing and will exit after."
+            )
+
         prompt_registry_id: str = settings[SettingsKeys.PROMPT_REGISTRY_ID]
         is_challenge_enabled: bool = settings.get(SettingsKeys.ENABLE_CHALLENGE, False)
         is_summarization_enabled: bool = settings.get(
@@ -234,34 +271,34 @@ class StructureTool(BaseTool):
             SettingsKeys.FILE_PATH: extracted_input_file,
             SettingsKeys.EXECUTION_SOURCE: SettingsKeys.TOOL,
         }
-        # Check for shutdown before text extraction
-        if shutdown_requested.is_set():
-            self.stream_log("Shutdown requested, stopping before text extraction")
-            return
 
         self.stream_log(f"Extracting document '{self.source_file_name}'")
         usage_kwargs: dict[Any, Any] = dict()
         usage_kwargs[UsageKwargs.RUN_ID] = self.file_execution_id
         usage_kwargs[UsageKwargs.FILE_NAME] = self.source_file_name
         usage_kwargs[UsageKwargs.EXECUTION_ID] = self.execution_id
-        extracted_text = STHelper.dynamic_extraction(
-            file_path=input_file,
-            enable_highlight=is_highlight_enabled,
-            usage_kwargs=usage_kwargs,
-            run_id=self.file_execution_id,
-            tool_settings=tool_settings,
-            extract_file_path=tool_data_dir / SettingsKeys.EXTRACT,
-            tool=self,
-            execution_run_data_folder=str(execution_run_data_folder),
-        )
+
+        logger.info("DEBUG: Setting is_llm_processing = True (dynamic_extraction)")
+        is_llm_processing.set()
+        try:
+            extracted_text = STHelper.dynamic_extraction(
+                file_path=input_file,
+                enable_highlight=is_highlight_enabled,
+                usage_kwargs=usage_kwargs,
+                run_id=self.file_execution_id,
+                tool_settings=tool_settings,
+                extract_file_path=tool_data_dir / SettingsKeys.EXTRACT,
+                tool=self,
+                execution_run_data_folder=str(execution_run_data_folder),
+            )
+        finally:
+            logger.info(
+                "DEBUG: Clearing is_llm_processing = False (dynamic_extraction done)"
+            )
+            is_llm_processing.clear()
 
         index_metrics = {}
         if is_summarization_enabled:
-            # Check for shutdown before summarization
-            if shutdown_requested.is_set():
-                self.stream_log("Shutdown requested, stopping before summarization")
-                return
-
             summarize_file_path, summarize_file_hash = self._summarize(
                 tool_settings=tool_settings,
                 tool_data_dir=tool_data_dir,
@@ -294,11 +331,6 @@ class StructureTool(BaseTool):
 
                 # Only process if we haven't seen this combination yet and chunk_size is not zero
                 if chunk_size != 0 and param_key not in seen_params:
-                    # Check for shutdown before indexing
-                    if shutdown_requested.is_set():
-                        self.stream_log("Shutdown requested, stopping before indexing")
-                        return
-
                     seen_params.add(param_key)
 
                     indexing_start_time = datetime.datetime.now()
@@ -308,21 +340,31 @@ class StructureTool(BaseTool):
                         f"embedding={embedding}, x2text={x2text}"
                     )
 
-                    STHelper.dynamic_indexing(
-                        tool_settings=tool_settings,
-                        run_id=self.file_execution_id,
-                        file_path=tool_data_dir / SettingsKeys.EXTRACT,
-                        tool=self,
-                        execution_run_data_folder=str(execution_run_data_folder),
-                        chunk_overlap=chunk_overlap,
-                        reindex=True,
-                        usage_kwargs=usage_kwargs,
-                        enable_highlight=is_highlight_enabled,
-                        chunk_size=chunk_size,
-                        tool_id=tool_metadata[SettingsKeys.TOOL_ID],
-                        file_hash=file_hash,
-                        extracted_text=extracted_text,
+                    logger.info(
+                        "DEBUG: Setting is_llm_processing = True (dynamic_indexing)"
                     )
+                    is_llm_processing.set()
+                    try:
+                        STHelper.dynamic_indexing(
+                            tool_settings=tool_settings,
+                            run_id=self.file_execution_id,
+                            file_path=tool_data_dir / SettingsKeys.EXTRACT,
+                            tool=self,
+                            execution_run_data_folder=str(execution_run_data_folder),
+                            chunk_overlap=chunk_overlap,
+                            reindex=True,
+                            usage_kwargs=usage_kwargs,
+                            enable_highlight=is_highlight_enabled,
+                            chunk_size=chunk_size,
+                            tool_id=tool_metadata[SettingsKeys.TOOL_ID],
+                            file_hash=file_hash,
+                            extracted_text=extracted_text,
+                        )
+                    finally:
+                        logger.info(
+                            "DEBUG: Clearing is_llm_processing = False (dynamic_indexing done)"
+                        )
+                        is_llm_processing.clear()
 
                     index_metrics[output[SettingsKeys.NAME]] = {
                         SettingsKeys.INDEXING: {
@@ -333,23 +375,15 @@ class StructureTool(BaseTool):
                     }
 
         if is_single_pass_enabled:
-            # Check for shutdown before single-pass LLM processing
-            if shutdown_requested.is_set():
-                self.stream_log(
-                    "Shutdown requested, stopping before single-pass extraction"
-                )
-                return
-
             self.stream_log("Fetching response for single pass extraction...")
-            structured_output = responder.single_pass_extraction(
-                payload=payload,
-            )
+            is_llm_processing.set()
+            try:
+                structured_output = responder.single_pass_extraction(
+                    payload=payload,
+                )
+            finally:
+                is_llm_processing.clear()
         else:
-            # Check for shutdown before prompt processing
-            if shutdown_requested.is_set():
-                self.stream_log("Shutdown requested, stopping before prompt processing")
-                return
-
             for output in outputs:
                 if SettingsKeys.TABLE_SETTINGS in output:
                     table_settings = output[SettingsKeys.TABLE_SETTINGS]
@@ -362,9 +396,13 @@ class StructureTool(BaseTool):
                     output.update({SettingsKeys.TABLE_SETTINGS: table_settings})
 
             self.stream_log(f"Fetching responses for '{len(outputs)}' prompt(s)...")
-            structured_output = responder.answer_prompt(
-                payload=payload,
-            )
+            is_llm_processing.set()
+            try:
+                structured_output = responder.answer_prompt(
+                    payload=payload,
+                )
+            finally:
+                is_llm_processing.clear()
 
         # HACK: Replacing actual file's name instead of INFILE
         if SettingsKeys.METADATA in structured_output:
@@ -398,6 +436,9 @@ class StructureTool(BaseTool):
         except json.JSONDecodeError as e:
             self.stream_error_and_exit(f"Error encoding JSON: {e}")
         self.write_tool_result(data=structured_output)
+
+        # Clear processing flag as we're done
+        is_llm_processing.clear()
 
     def _merge_metrics(self, metrics1: dict, metrics2: dict) -> dict:
         """Intelligently merge two metrics dictionaries.
@@ -484,13 +525,6 @@ class StructureTool(BaseTool):
                 output[SettingsKeys.CHUNK_OVERLAP] = 0
             self.stream_log("Summarized context not found, summarizing...")
 
-            # Check for shutdown before summarization LLM call
-            if shutdown_requested.is_set():
-                self.stream_log(
-                    "Shutdown requested, stopping before summarization LLM call"
-                )
-                return str(summarize_file_path), ""
-
             payload = {
                 SettingsKeys.RUN_ID: run_id,
                 SettingsKeys.LLM_ADAPTER_INSTANCE_ID: llm_adapter_instance_id,
@@ -498,7 +532,11 @@ class StructureTool(BaseTool):
                 SettingsKeys.CONTEXT: context,
                 SettingsKeys.PROMPT_KEYS: prompt_keys,
             }
-            structure_output = responder.summarize(payload=payload)
+            is_llm_processing.set()
+            try:
+                structure_output = responder.summarize(payload=payload)
+            finally:
+                is_llm_processing.clear()
             summarized_context = structure_output.get(SettingsKeys.DATA, "")
             self.stream_log(f"Writing summarized context to '{summarize_file_path}'")
             self.workflow_filestorage.write(

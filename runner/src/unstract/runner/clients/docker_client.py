@@ -368,10 +368,7 @@ class Client(ContainerClientInterface):
 
         # Get timeout from environment or use default
         if timeout is None:
-            timeout = int(os.getenv(Env.GRACEFUL_SHUTDOWN_PERIOD, "300"))
-            # Validate timeout bounds (max 7200 seconds = 2 hours)
-            timeout = min(max(timeout, 30), 7200)
-
+            timeout = int(os.getenv(Env.GRACEFUL_SHUTDOWN_PERIOD, "7200"))
         self.logger.info(f"Gracefully stopping container with {timeout}s timeout")
         container.graceful_stop(timeout=timeout)
 
@@ -403,6 +400,10 @@ class Client(ContainerClientInterface):
         """Remove a container by its name."""
         try:
             container = self.client.containers.get(container_name)
+            # Try graceful shutdown first if container is running
+            if container.status == "running":
+                docker_container = DockerContainer(container, self.logger)
+                self.graceful_stop_container(docker_container)
             container.remove(force=force)
             self.logger.info(f"Container '{container_name}' removed successfully.")
         except NotFound:
@@ -420,6 +421,10 @@ class Client(ContainerClientInterface):
             sidecar_name = Utils.get_sidecar_container_name(container_name)
             try:
                 sidecar = self.client.containers.get(sidecar_name)
+                # Try graceful shutdown first if sidecar is running
+                if sidecar.status == "running":
+                    docker_sidecar = DockerContainer(sidecar, self.logger)
+                    self.graceful_stop_container(docker_sidecar)
                 sidecar.remove(force=force)
                 self.logger.info(f"Sidecar '{sidecar_name}' removed successfully.")
             except NotFound:

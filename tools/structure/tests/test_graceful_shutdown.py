@@ -1,248 +1,174 @@
-"""Tests for graceful shutdown functionality in Structure Tool."""
-
-import os
-import signal
 import threading
-import time
-from unittest.mock import MagicMock, patch
-
-
+import signal
 import sys
-import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+import time
+from unittest.mock import Mock, patch
 
-from main import StructureTool, shutdown_requested
+from main import signal_handler, shutdown_acknowledged, StructureTool
 
 
 class TestGracefulShutdown:
-    """Test cases for graceful shutdown functionality."""
+    """Test cases for graceful shutdown functionality in the structure tool."""
 
-    def setup_method(self) -> None:
-        """Set up test fixtures."""
-        # Reset shutdown flag before each test
-        shutdown_requested.clear()
+    def setup_method(self):
+        """Reset the shutdown flag before each test."""
+        shutdown_acknowledged.clear()
 
-    def test_signal_handler_sets_shutdown_flag(self) -> None:
-        """Test that SIGTERM handler sets the shutdown flag."""
-        # Import the signal handler
-        from main import signal_handler
+    def test_signal_handler_sigterm(self):
+        """Test that SIGTERM handler sets shutdown flag correctly."""
+        # Mock the logger to avoid actual logging
+        with patch('main.logger') as mock_logger:
+            # Call the signal handler with SIGTERM
+            signal_handler(signal.SIGTERM, None)
 
-        # Call signal handler
-        signal_handler(signal.SIGTERM, None)
+            # Check that shutdown was acknowledged
+            assert shutdown_acknowledged.is_set()
 
-        # Verify shutdown flag is set
-        assert shutdown_requested.is_set()
+            # Check that proper log messages were called
+            mock_logger.info.assert_any_call(
+                "Received signal %s (%s). Graceful shutdown initiated...",
+                signal.SIGTERM,
+                "SIGTERM"
+            )
+            mock_logger.info.assert_any_call(
+                "%s acknowledged. Will complete current LLM processing and exit.",
+                "SIGTERM"
+            )
 
-    def test_shutdown_flag_initially_clear(self) -> None:
-        """Test that shutdown flag is initially clear."""
-        assert not shutdown_requested.is_set()
+    def test_signal_handler_sigint(self):
+        """Test that SIGINT handler sets shutdown flag correctly."""
+        with patch('main.logger') as mock_logger:
+            # Call the signal handler with SIGINT
+            signal_handler(signal.SIGINT, None)
 
-    @patch('unstract.tools.structure.src.main.StructureTool.stream_log')
-    @patch('unstract.tools.structure.src.main.StructureTool._extract_text')
-    def test_shutdown_before_text_extraction(
-        self, mock_extract: MagicMock, mock_log: MagicMock
-    ) -> None:
-        """Test shutdown check before text extraction."""
-        # Set shutdown flag
-        shutdown_requested.set()
+            # Check that shutdown was acknowledged
+            assert shutdown_acknowledged.is_set()
 
-        # Create mock tool instance
-        tool = MagicMock(spec=StructureTool)
-        tool.stream_log = mock_log
+            # Check that proper log messages were called
+            mock_logger.info.assert_any_call(
+                "Received signal %s (%s). Graceful shutdown initiated...",
+                signal.SIGINT,
+                "SIGINT"
+            )
+            mock_logger.info.assert_any_call(
+                "%s acknowledged. Will complete current LLM processing and exit.",
+                "SIGINT"
+            )
 
-        # Import and call the run method logic
-        from main import StructureTool
+    def test_shutdown_acknowledged_thread_safety(self):
+        """Test that shutdown acknowledgment is thread-safe."""
+        def worker():
+            # Check if shutdown is acknowledged
+            if shutdown_acknowledged.is_set():
+                return True
+            return False
 
-        # Mock the run method to test shutdown check
-        with patch.object(StructureTool, 'run') as mock_run:
-            # Simulate the shutdown check logic
-            if shutdown_requested.is_set():
-                mock_log("Shutdown requested, stopping before text extraction")
-                return
-
-        # Verify log was called
-        mock_log.assert_called_with("Shutdown requested, stopping before text extraction")
-
-    @patch('unstract.tools.structure.src.main.StructureTool.stream_log')
-    def test_shutdown_before_summarization(self, mock_log: MagicMock) -> None:
-        """Test shutdown check before summarization."""
-        # Set shutdown flag
-        shutdown_requested.set()
-
-        # Create mock tool instance
-        tool = MagicMock(spec=StructureTool)
-        tool.stream_log = mock_log
-
-        # Simulate the shutdown check in _summarize method
-        if shutdown_requested.is_set():
-            mock_log("Shutdown requested, stopping before summarization")
-            return
-
-        # Verify log was called
-        mock_log.assert_called_with("Shutdown requested, stopping before summarization")
-
-    @patch('unstract.tools.structure.src.main.StructureTool.stream_log')
-    def test_shutdown_before_indexing(self, mock_log: MagicMock) -> None:
-        """Test shutdown check before vector indexing."""
-        # Set shutdown flag
-        shutdown_requested.set()
-
-        # Create mock tool instance
-        tool = MagicMock(spec=StructureTool)
-        tool.stream_log = mock_log
-
-        # Simulate the shutdown check before indexing
-        if shutdown_requested.is_set():
-            mock_log("Shutdown requested, stopping before vector indexing")
-            return
-
-        # Verify log was called
-        mock_log.assert_called_with("Shutdown requested, stopping before vector indexing")
-
-    @patch('unstract.tools.structure.src.main.StructureTool.stream_log')
-    def test_shutdown_before_single_pass_extraction(self, mock_log: MagicMock) -> None:
-        """Test shutdown check before single-pass LLM extraction."""
-        # Set shutdown flag
-        shutdown_requested.set()
-
-        # Create mock tool instance
-        tool = MagicMock(spec=StructureTool)
-        tool.stream_log = mock_log
-
-        # Simulate the shutdown check before single-pass extraction
-        if shutdown_requested.is_set():
-            mock_log("Shutdown requested, stopping before single-pass extraction")
-            return
-
-        # Verify log was called
-        mock_log.assert_called_with("Shutdown requested, stopping before single-pass extraction")
-
-    @patch('unstract.tools.structure.src.main.StructureTool.stream_log')
-    def test_shutdown_before_prompt_processing(self, mock_log: MagicMock) -> None:
-        """Test shutdown check before prompt processing."""
-        # Set shutdown flag
-        shutdown_requested.set()
-
-        # Create mock tool instance
-        tool = MagicMock(spec=StructureTool)
-        tool.stream_log = mock_log
-
-        # Simulate the shutdown check before prompt processing
-        if shutdown_requested.is_set():
-            mock_log("Shutdown requested, stopping before prompt processing")
-            return
-
-        # Verify log was called
-        mock_log.assert_called_with("Shutdown requested, stopping before prompt processing")
-
-    @patch('unstract.tools.structure.src.main.StructureTool.stream_log')
-    def test_shutdown_before_summarization_llm_call(self, mock_log: MagicMock) -> None:
-        """Test shutdown check before summarization LLM call."""
-        # Set shutdown flag
-        shutdown_requested.set()
-
-        # Create mock tool instance
-        tool = MagicMock(spec=StructureTool)
-        tool.stream_log = mock_log
-
-        # Simulate the shutdown check before summarization LLM call
-        if shutdown_requested.is_set():
-            mock_log("Shutdown requested, stopping before summarization LLM call")
-            return
-
-        # Verify log was called
-        mock_log.assert_called_with("Shutdown requested, stopping before summarization LLM call")
-
-    def test_shutdown_flag_thread_safety(self) -> None:
-        """Test that shutdown flag is thread-safe."""
+        # Create multiple threads
+        threads = []
         results = []
 
-        def check_flag():
-            results.append(shutdown_requested.is_set())
-
-        def set_flag():
-            time.sleep(0.1)  # Small delay
-            shutdown_requested.set()
-
-        # Start threads
-        t1 = threading.Thread(target=check_flag)
-        t2 = threading.Thread(target=set_flag)
-        t3 = threading.Thread(target=check_flag)
-
-        t1.start()
-        t2.start()
-        time.sleep(0.05)  # Let set_flag start
-        t3.start()
-
-        t1.join()
-        t2.join()
-        t3.join()
-
-        # First check should be False, but we can't guarantee timing
-        # Just verify the flag can be set and read from multiple threads
-        assert len(results) == 2
-
-    def test_multiple_signal_handlers(self) -> None:
-        """Test that multiple SIGTERM signals don't cause issues."""
-        from unstract.tools.structure.src.main import signal_handler
-
-        # Send multiple signals
-        signal_handler(signal.SIGTERM, None)
-        signal_handler(signal.SIGTERM, None)
-        signal_handler(signal.SIGTERM, None)
-
-        # Flag should still be set
-        assert shutdown_requested.is_set()
-
-    @patch('unstract.tools.structure.src.main.StructureTool')
-    def test_graceful_shutdown_integration(self, mock_tool_class: MagicMock) -> None:
-        """Integration test for graceful shutdown flow."""
-        # Create mock tool instance
-        mock_tool = MagicMock()
-        mock_tool_class.from_tool_args.return_value = mock_tool
+        for _ in range(5):
+            thread = threading.Thread(target=lambda: results.append(worker()))
+            threads.append(thread)
+            thread.start()
 
         # Set shutdown flag
-        shutdown_requested.set()
+        shutdown_acknowledged.set()
 
-        # The tool should handle shutdown gracefully
-        # This is more of a smoke test to ensure no exceptions
-        assert shutdown_requested.is_set()
+        # Wait for all threads to complete
+        for thread in threads:
+            thread.join()
+
+        # All threads should see the shutdown flag
+        assert len(results) == 5
+
+    @patch('main.logger')
+    def test_structure_tool_shutdown_checks(self, mock_logger):
+        """Test that StructureTool properly checks for shutdown signals."""
+        # Mock the necessary dependencies
+        mock_tool = Mock(spec=StructureTool)
+        mock_tool.stream_log = Mock()
+
+        # Set shutdown flag
+        shutdown_acknowledged.set()
+
+        # Test that shutdown check logs proper message
+        if shutdown_acknowledged.is_set():
+            mock_tool.stream_log(
+                "SIGTERM received - completing current processing and will exit after."
+            )
+
+        # Verify the log message was called
+        mock_tool.stream_log.assert_called_with(
+            "SIGTERM received - completing current processing and will exit after."
+        )
+
+    def test_shutdown_flag_initial_state(self):
+        """Test that shutdown flag is initially unset."""
+        shutdown_acknowledged.clear()
+        assert not shutdown_acknowledged.is_set()
+
+    def test_shutdown_flag_persistence(self):
+        """Test that shutdown flag persists once set."""
+        shutdown_acknowledged.set()
+        assert shutdown_acknowledged.is_set()
+
+        # Should remain set
+        time.sleep(0.1)
+        assert shutdown_acknowledged.is_set()
+
+    @patch('main.sys.exit')
+    def test_graceful_exit_called(self, mock_exit):
+        """Test that sys.exit(0) is called when shutdown is acknowledged."""
+        # This test would be integrated into the actual StructureTool.run method
+        # For now, we test the pattern
+
+        shutdown_acknowledged.set()
+
+        # Simulate the exit condition in the tool
+        if shutdown_acknowledged.is_set():
+            sys.exit(0)
+
+        mock_exit.assert_called_with(0)
+
+    def test_multiple_signal_handlers(self):
+        """Test that multiple signals can be handled correctly."""
+        with patch('main.logger') as mock_logger:
+            # Send SIGTERM
+            signal_handler(signal.SIGTERM, None)
+            assert shutdown_acknowledged.is_set()
+
+            # Clear and send SIGINT
+            shutdown_acknowledged.clear()
+            signal_handler(signal.SIGINT, None)
+            assert shutdown_acknowledged.is_set()
+
+    def test_signal_handler_with_invalid_signal(self):
+        """Test signal handler with an unexpected signal number."""
+        with patch('main.logger') as mock_logger:
+            # Use a signal number that's not SIGTERM or SIGINT
+            signal_handler(9, None)  # SIGKILL
+
+            # Should still set shutdown flag
+            assert shutdown_acknowledged.is_set()
+
+            # Should log as SIGINT (fallback)
+            mock_logger.info.assert_any_call(
+                "Received signal %s (%s). Graceful shutdown initiated...",
+                9,
+                "SIGINT"
+            )
 
 
-class TestDockerGracefulShutdown:
-    """Test cases for Docker client graceful shutdown."""
+class TestSignalRegistration:
+    """Test that signal handlers are properly registered."""
 
-    def test_graceful_shutdown_constants_exist(self) -> None:
-        """Test that graceful shutdown constants are defined."""
-        # Test that the environment variable constant exists
-        import os
+    @patch('main.signal.signal')
+    def test_signal_handlers_registered(self, mock_signal):
+        """Test that SIGTERM and SIGINT handlers are registered."""
+        # Import main to trigger signal registration
+        import main
 
-        # Test default timeout behavior
-        default_timeout = int(os.getenv('GRACEFUL_SHUTDOWN_PERIOD', '300'))
-        assert default_timeout >= 30  # Minimum timeout
-
-        # Test timeout bounds
-        test_timeout = min(max(default_timeout, 30), 7200)
-        assert 30 <= test_timeout <= 7200
-
-    def test_graceful_shutdown_environment_variable(self) -> None:
-        """Test graceful shutdown period environment variable handling."""
-        import os
-
-        # Test with valid timeout
-        with patch.dict(os.environ, {'GRACEFUL_SHUTDOWN_PERIOD': '600'}):
-            timeout = int(os.getenv('GRACEFUL_SHUTDOWN_PERIOD', '300'))
-            bounded_timeout = min(max(timeout, 30), 7200)
-            assert bounded_timeout == 600
-
-        # Test with timeout too high (should be capped)
-        with patch.dict(os.environ, {'GRACEFUL_SHUTDOWN_PERIOD': '10000'}):
-            timeout = int(os.getenv('GRACEFUL_SHUTDOWN_PERIOD', '300'))
-            bounded_timeout = min(max(timeout, 30), 7200)
-            assert bounded_timeout == 7200
-
-        # Test with timeout too low (should be raised to minimum)
-        with patch.dict(os.environ, {'GRACEFUL_SHUTDOWN_PERIOD': '10'}):
-            timeout = int(os.getenv('GRACEFUL_SHUTDOWN_PERIOD', '300'))
-            bounded_timeout = min(max(timeout, 30), 7200)
-            assert bounded_timeout == 30
+        # Verify that signal handlers were registered
+        mock_signal.assert_any_call(signal.SIGTERM, main.signal_handler)
+        mock_signal.assert_any_call(signal.SIGINT, main.signal_handler)

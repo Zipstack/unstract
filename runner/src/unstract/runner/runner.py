@@ -286,6 +286,8 @@ class UnstractRunner:
                 f"Failed to run docker container: {e}", stack_info=True, exc_info=True
             )
         if container:
+            # Gracefully stop container before cleanup
+            self.client.graceful_stop_container(container)
             container.cleanup()
         return None
 
@@ -545,7 +547,11 @@ class UnstractRunner:
                 "status": "ERROR",
             }
         if container:
+            # Gracefully stop container before cleanup
+            self.client.graceful_stop_container(container)
             container.cleanup(client=self.client)
         if sidecar:
+            # Gracefully stop sidecar before cleanup
+            self.client.graceful_stop_container(sidecar)
             sidecar.cleanup(client=self.client)
         return result

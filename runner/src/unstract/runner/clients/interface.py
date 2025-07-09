@@ -30,6 +30,15 @@ class ContainerInterface(ABC):
         """Stops and removes the running container."""
         pass
 
+    @abstractmethod
+    def graceful_stop(self, timeout: int = 300) -> None:
+        """Gracefully stop the container with SIGTERM and timeout.
+
+        Args:
+            timeout (int): Grace period in seconds before force kill (default: 300)
+        """
+        pass
+
 
 class ContainerClientInterface(ABC):
     @abstractmethod
@@ -141,5 +150,21 @@ class ContainerClientInterface(ABC):
 
         Returns:
             bool: True if container was removed or not found, False if error.
+        """
+        pass
+
+    @abstractmethod
+    def graceful_stop_container(
+        self, container: ContainerInterface | None, timeout: int | None = None
+    ) -> None:
+        """Gracefully stop a container with configurable timeout.
+
+        Sends SIGTERM signal to container and waits for graceful shutdown.
+        Falls back to force kill if timeout is exceeded.
+
+        Args:
+            container (ContainerInterface): Container to stop gracefully
+            timeout (int, optional): Grace period in seconds.
+                                   Defaults to GRACEFUL_SHUTDOWN_PERIOD env var or 300.
         """
         pass
