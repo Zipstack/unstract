@@ -115,13 +115,13 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         self,
         workflow_id: str | None = None,
     ) -> Workflow:
-        """Retrieve workflow  by workflow id or project Id.
+        """Retrieve workflow by workflow id.
 
         Args:
             workflow_id (Optional[str], optional): workflow Id.
 
         Raises:
-            WorkflowDoesNotExistError: _description_
+            WorkflowDoesNotExistError: Raised when workflow_id is not provided or workflow doesn't exist.
 
         Returns:
             Workflow: workflow
