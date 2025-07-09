@@ -16,8 +16,9 @@ class TestGracefulShutdown:
 
     def test_signal_handler_sigterm(self):
         """Test that SIGTERM handler sets shutdown flag correctly."""
-        # Mock the logger to avoid actual logging
-        with patch('main.logger') as mock_logger:
+        # Mock the logger and print to avoid actual logging
+        with patch('main.logger') as mock_logger, \
+             patch('builtins.print') as mock_print:
             # Call the signal handler with SIGTERM
             signal_handler(signal.SIGTERM, None)
 
@@ -26,18 +27,33 @@ class TestGracefulShutdown:
 
             # Check that proper log messages were called
             mock_logger.info.assert_any_call(
-                "Received signal %s (%s). Graceful shutdown initiated...",
-                signal.SIGTERM,
-                "SIGTERM"
+                "Received signal 15 (SIGTERM). Graceful shutdown initiated..."
             )
             mock_logger.info.assert_any_call(
-                "%s acknowledged. Will complete current LLM processing and exit.",
-                "SIGTERM"
+                "Shutdown acknowledged for SIGTERM"
+            )
+            mock_logger.info.assert_any_call(
+                "SIGTERM acknowledged. Will complete current LLM processing and exit."
+            )
+
+            # Check that print statements were called for visibility
+            mock_print.assert_any_call(
+                "SIGNAL_HANDLER: Received signal 15 (SIGTERM). Graceful shutdown initiated...",
+                flush=True
+            )
+            mock_print.assert_any_call(
+                "SIGNAL_HANDLER: Shutdown acknowledged for SIGTERM",
+                flush=True
+            )
+            mock_print.assert_any_call(
+                "SIGNAL_HANDLER: SIGTERM acknowledged. Will complete current LLM processing and exit.",
+                flush=True
             )
 
     def test_signal_handler_sigint(self):
         """Test that SIGINT handler sets shutdown flag correctly."""
-        with patch('main.logger') as mock_logger:
+        with patch('main.logger') as mock_logger, \
+             patch('builtins.print') as mock_print:
             # Call the signal handler with SIGINT
             signal_handler(signal.SIGINT, None)
 
@@ -46,13 +62,27 @@ class TestGracefulShutdown:
 
             # Check that proper log messages were called
             mock_logger.info.assert_any_call(
-                "Received signal %s (%s). Graceful shutdown initiated...",
-                signal.SIGINT,
-                "SIGINT"
+                "Received signal 2 (SIGINT). Graceful shutdown initiated..."
             )
             mock_logger.info.assert_any_call(
-                "%s acknowledged. Will complete current LLM processing and exit.",
-                "SIGINT"
+                "Shutdown acknowledged for SIGINT"
+            )
+            mock_logger.info.assert_any_call(
+                "SIGINT acknowledged. Will complete current LLM processing and exit."
+            )
+
+            # Check that print statements were called for visibility
+            mock_print.assert_any_call(
+                "SIGNAL_HANDLER: Received signal 2 (SIGINT). Graceful shutdown initiated...",
+                flush=True
+            )
+            mock_print.assert_any_call(
+                "SIGNAL_HANDLER: Shutdown acknowledged for SIGINT",
+                flush=True
+            )
+            mock_print.assert_any_call(
+                "SIGNAL_HANDLER: SIGINT acknowledged. Will complete current LLM processing and exit.",
+                flush=True
             )
 
     def test_shutdown_acknowledged_thread_safety(self):
@@ -145,7 +175,8 @@ class TestGracefulShutdown:
 
     def test_signal_handler_with_invalid_signal(self):
         """Test signal handler with an unexpected signal number."""
-        with patch('main.logger') as mock_logger:
+        with patch('main.logger') as mock_logger, \
+             patch('builtins.print') as mock_print:
             # Use a signal number that's not SIGTERM or SIGINT
             signal_handler(9, None)  # SIGKILL
 
@@ -154,9 +185,34 @@ class TestGracefulShutdown:
 
             # Should log as SIGINT (fallback)
             mock_logger.info.assert_any_call(
-                "Received signal %s (%s). Graceful shutdown initiated...",
-                9,
-                "SIGINT"
+                "Received signal 9 (SIGINT). Graceful shutdown initiated..."
+            )
+            mock_print.assert_any_call(
+                "SIGNAL_HANDLER: Received signal 9 (SIGINT). Graceful shutdown initiated...",
+                flush=True
+            )
+
+    def test_signal_setup_logging(self):
+        """Test that signal setup logging works correctly."""
+        with patch('main.logger') as mock_logger, \
+             patch('builtins.print') as mock_print, \
+             patch('main.os.getpid') as mock_getpid:
+
+            mock_getpid.return_value = 12345
+
+            # Import the test_signal_delivery function
+            from main import test_signal_delivery
+
+            # Call the function
+            test_signal_delivery()
+
+            # Check that proper log messages were called
+            mock_logger.info.assert_any_call(
+                "Signal delivery test - Current PID: 12345"
+            )
+            mock_print.assert_any_call(
+                "SIGNAL_SETUP: Signal delivery test - Current PID: 12345",
+                flush=True
             )
 
 

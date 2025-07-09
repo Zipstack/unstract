@@ -1,6 +1,5 @@
 import datetime
 import json
-import logging
 import os
 import signal
 import sys
@@ -18,13 +17,8 @@ from unstract.sdk.prompt import PromptTool
 from unstract.sdk.tool.base import BaseTool
 from unstract.sdk.tool.entrypoint import ToolEntrypoint
 
-logger = logging.getLogger(__name__)
-
 # Global shutdown acknowledgment flag
 shutdown_acknowledged = threading.Event()
-
-# Global flag to track if tool is actively doing LLM processing
-is_llm_processing = threading.Event()
 
 
 def signal_handler(signum: int, _frame: Any) -> None:
@@ -34,21 +28,18 @@ def signal_handler(signum: int, _frame: Any) -> None:
         signum: The signal number received
         _frame: Current stack frame (unused)
     """
-    signal_name = "SIGTERM" if signum == signal.SIGTERM else "SIGINT"
-    logger.info(
-        "Received signal %s (%s). Graceful shutdown initiated...", signum, signal_name
-    )
-    shutdown_acknowledged.set()
+    signal_name = "SIGTERM"
+    print("Received signal %s (%s). Graceful shutdown initiated...", signum, signal_name)
 
     # Check if we're currently doing LLM processing
-    if is_llm_processing.is_set():
-        logger.info(
-            "%s acknowledged. Will complete current LLM processing and exit.",
+    if shutdown_acknowledged.is_set():
+        print(
+            "SIGNAL_HANDLER: %s acknowledged. Will complete current LLM processing and exit.",
             signal_name,
         )
     else:
-        logger.info(
-            "%s acknowledged. Tool not doing LLM processing. Exiting immediately.",
+        print(
+            "SIGNAL_HANDLER: %s acknowledged. Tool not doing LLM processing. Exiting immediately.",
             signal_name,
         )
         sys.exit(0)
@@ -57,6 +48,10 @@ def signal_handler(signum: int, _frame: Any) -> None:
 # Register SIGTERM and SIGINT handlers for graceful shutdown
 signal.signal(signal.SIGTERM, signal_handler)
 signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGABRT, signal_handler)
+signal.signal(signal.SIGFPE, signal_handler)
+signal.signal(signal.SIGILL, signal_handler)
+signal.signal(signal.SIGSEGV, signal_handler)
 
 PAID_FEATURE_MSG = (
     "It is a cloud / enterprise feature. If you have purchased a plan and still "
@@ -159,17 +154,13 @@ class StructureTool(BaseTool):
         input_file: str,
         output_dir: str,
     ) -> None:
-        # Log process ID for debugging and testing SIGTERM handling
-        process_id = os.getpid()
-        logger.info(f"Structure tool started with Process ID: {process_id}")
-        logger.info(f"To send SIGTERM: kill -TERM {process_id}")
-        logger.info(f"To send SIGINT: kill -INT {process_id} (or use Ctrl+C)")
-
-        # Check for shutdown before starting text extraction
-        if shutdown_acknowledged.is_set():
-            self.stream_log(
-                "SIGTERM received - completing current processing and will exit after."
-            )
+        # Verify signal handlers are active
+        current_sigterm = signal.signal(signal.SIGTERM, signal.getsignal(signal.SIGTERM))
+        self.stream_log(f"Active SIGTERM handler: {current_sigterm}")
+        self.stream_log(
+            f"SIGNAL_VERIFICATION: SIGTERM handler active: {current_sigterm == signal_handler}",
+            flush=True,
+        )
 
         prompt_registry_id: str = settings[SettingsKeys.PROMPT_REGISTRY_ID]
         is_challenge_enabled: bool = settings.get(SettingsKeys.ENABLE_CHALLENGE, False)
@@ -277,9 +268,12 @@ class StructureTool(BaseTool):
         usage_kwargs[UsageKwargs.RUN_ID] = self.file_execution_id
         usage_kwargs[UsageKwargs.FILE_NAME] = self.source_file_name
         usage_kwargs[UsageKwargs.EXECUTION_ID] = self.execution_id
-
-        logger.info("DEBUG: Setting is_llm_processing = True (dynamic_extraction)")
-        is_llm_processing.set()
+        shutdown_acknowledged.set()
+        if shutdown_acknowledged.is_set():
+            self.stream_log(
+                "SHUTDOWN_FLOW: Waiting for STHelper.dynamic_extraction to complete before exiting",
+                flush=True,
+            )
         try:
             extracted_text = STHelper.dynamic_extraction(
                 file_path=input_file,
@@ -292,10 +286,7 @@ class StructureTool(BaseTool):
                 execution_run_data_folder=str(execution_run_data_folder),
             )
         finally:
-            logger.info(
-                "DEBUG: Clearing is_llm_processing = False (dynamic_extraction done)"
-            )
-            is_llm_processing.clear()
+            shutdown_acknowledged.clear()
 
         index_metrics = {}
         if is_summarization_enabled:
@@ -339,11 +330,12 @@ class StructureTool(BaseTool):
                         f"chunk_overlap={chunk_overlap}, vector_db={vector_db}, "
                         f"embedding={embedding}, x2text={x2text}"
                     )
-
-                    logger.info(
-                        "DEBUG: Setting is_llm_processing = True (dynamic_indexing)"
-                    )
-                    is_llm_processing.set()
+                    shutdown_acknowledged.set()
+                    if shutdown_acknowledged.is_set():
+                        self.stream_log(
+                            "SHUTDOWN_FLOW: Shutdown acknowledged - proceeding with STHelper.indexing to complete gracefully",
+                            flush=True,
+                        )
                     try:
                         STHelper.dynamic_indexing(
                             tool_settings=tool_settings,
@@ -361,10 +353,7 @@ class StructureTool(BaseTool):
                             extracted_text=extracted_text,
                         )
                     finally:
-                        logger.info(
-                            "DEBUG: Clearing is_llm_processing = False (dynamic_indexing done)"
-                        )
-                        is_llm_processing.clear()
+                        shutdown_acknowledged.clear()
 
                     index_metrics[output[SettingsKeys.NAME]] = {
                         SettingsKeys.INDEXING: {
@@ -376,13 +365,18 @@ class StructureTool(BaseTool):
 
         if is_single_pass_enabled:
             self.stream_log("Fetching response for single pass extraction...")
-            is_llm_processing.set()
+            shutdown_acknowledged.set()
+            if shutdown_acknowledged.is_set():
+                self.stream_log(
+                    "SHUTDOWN_FLOW: Shutdown acknowledged - proceeding with STHelper.single_pass_extraction to complete gracefully",
+                    flush=True,
+                )
             try:
                 structured_output = responder.single_pass_extraction(
                     payload=payload,
                 )
             finally:
-                is_llm_processing.clear()
+                shutdown_acknowledged.clear()
         else:
             for output in outputs:
                 if SettingsKeys.TABLE_SETTINGS in output:
@@ -396,13 +390,18 @@ class StructureTool(BaseTool):
                     output.update({SettingsKeys.TABLE_SETTINGS: table_settings})
 
             self.stream_log(f"Fetching responses for '{len(outputs)}' prompt(s)...")
-            is_llm_processing.set()
+            shutdown_acknowledged.set()
+            if shutdown_acknowledged.is_set():
+                self.stream_log(
+                    "SHUTDOWN_FLOW: Shutdown acknowledged - proceeding with STHelper.answer_prompt to complete gracefully",
+                    flush=True,
+                )
             try:
                 structured_output = responder.answer_prompt(
                     payload=payload,
                 )
             finally:
-                is_llm_processing.clear()
+                shutdown_acknowledged.clear()
 
         # HACK: Replacing actual file's name instead of INFILE
         if SettingsKeys.METADATA in structured_output:
@@ -437,8 +436,7 @@ class StructureTool(BaseTool):
             self.stream_error_and_exit(f"Error encoding JSON: {e}")
         self.write_tool_result(data=structured_output)
 
-        # Clear processing flag as we're done
-        is_llm_processing.clear()
+        shutdown_acknowledged.clear()
 
     def _merge_metrics(self, metrics1: dict, metrics2: dict) -> dict:
         """Intelligently merge two metrics dictionaries.
@@ -532,11 +530,16 @@ class StructureTool(BaseTool):
                 SettingsKeys.CONTEXT: context,
                 SettingsKeys.PROMPT_KEYS: prompt_keys,
             }
-            is_llm_processing.set()
+            shutdown_acknowledged.set()
+            if shutdown_acknowledged.is_set():
+                self.stream_log(
+                    "SHUTDOWN_FLOW: Shutdown acknowledged - proceeding with STHelper.summarize to complete gracefully",
+                    flush=True,
+                )
             try:
                 structure_output = responder.summarize(payload=payload)
             finally:
-                is_llm_processing.clear()
+                shutdown_acknowledged.clear()
             summarized_context = structure_output.get(SettingsKeys.DATA, "")
             self.stream_log(f"Writing summarized context to '{summarize_file_path}'")
             self.workflow_filestorage.write(
