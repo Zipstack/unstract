@@ -367,9 +367,10 @@ const CreateApiDeploymentFromPromptStudio = ({
       // Step 5: Update tool instance with proper metadata
       const toolInstanceMetadata = {
         ...toolSettings,
-        tool_instance_id: toolInstanceResponse.data.metadata.tool_instance_id,
+        tool_instance_id:
+          toolInstanceResponse?.data?.metadata?.tool_instance_id,
         prompt_registry_id:
-          toolInstanceResponse.data.metadata.prompt_registry_id,
+          toolInstanceResponse?.data?.metadata?.prompt_registry_id,
         // Use default_llm instead of specific adapter ID for consistency with manual creation
         challenge_llm:
           toolSettings.challenge_llm ||
