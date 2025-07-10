@@ -39,16 +39,16 @@ TARGET_VERSION=""
 bump_version() {
     local version="$1"
     local bump_type="$2"
-    
+
     # If the bump_type is not a special keyword, return it as is
     if [[ "$bump_type" != "patch" && "$bump_type" != "minor" && "$bump_type" != "major" ]]; then
         echo "$bump_type"
         return
     fi
-    
+
     # Split version into major, minor, patch
     IFS='.' read -r major minor patch <<< "$version"
-    
+
     # Handle special bump types
     case "$bump_type" in
         patch)
@@ -64,7 +64,7 @@ bump_version() {
             patch=0
             ;;
     esac
-    
+
     echo "$major.$minor.$patch"
 }
 
@@ -337,7 +337,7 @@ update_sdk_version() {
     fi
 
     log "Found SDK version: $old_version"
-    
+
     # Handle special version keywords
     if [[ "$version_arg" == "patch" || "$version_arg" == "minor" || "$version_arg" == "major" ]]; then
         new_version=$(bump_version "$old_version" "$version_arg")
@@ -345,19 +345,19 @@ update_sdk_version() {
     else
         new_version="$version_arg"
     fi
-    
+
     if [[ "$old_version" == "$new_version" ]]; then
         echo "SDK version already at $new_version, skipping update in $file"
         return
     fi
-    
+
     if [[ "$DRY_RUN" == true ]]; then
         echo "Would update SDK version from $old_version to $new_version in $file"
     else
         echo "Updating SDK version from $old_version to $new_version in $file"
         # Use the detected pattern to update the version
         sed -i "s/${pattern}${old_version}/${pattern}${new_version}/g" "$file"
-        
+
         # Also update any other references to the SDK version in the file
         sed -i "s/unstract-sdk\", specifier = \"~=$old_version/unstract-sdk\", specifier = \"~=$new_version/g" "$file"
     fi
@@ -367,7 +367,7 @@ update_sdk_version() {
 generate_uvlock() {
     local dir="$1"
     local uvlock_file="$dir/uv.lock"
-    
+
     log "Processing uv lock for $dir..."
 
     # Check if pyproject.toml exists
@@ -386,7 +386,7 @@ generate_uvlock() {
             return 1
         }
     fi
-    
+
     return 0
 }
 
@@ -394,7 +394,7 @@ generate_uvlock() {
 reset_file() {
     local file="$1"
     local rel_path="${file#$UNSTRACT_ROOT/}"
-    
+
     if [[ "$DRY_RUN" == true ]]; then
         echo "[DRY RUN] Would reset $file to its original state"
     elif [[ -f "$file" ]]; then
@@ -441,18 +441,18 @@ process_directories() {
     # If in reset mode, handle resets and exit
     if [[ "$RESET_MODE" == true ]]; then
         echo "[-] Reset mode: Restoring files to their original state..."
-        
+
         # Prompt user for confirmation
         echo "This will reset ALL UNRELATED changes too in each modified file. Do you want to continue?"
         read -p "Enter 'yes' to proceed: " confirm
-        
+
         if [[ "$confirm" != "yes" ]]; then
             echo "[!] Operation cancelled."
         else
             reset_directory_changes
             echo "[*] All changes have been reset"
         fi
-        
+
         return
     fi
 
@@ -460,18 +460,18 @@ process_directories() {
     if [[ "$BUMP_MODE" == false ]]; then
         return
     fi
-    
+
     echo "[-] Processing all directories and files for version bump..."
-    
+
     # 1. Process structure tool
     update_structure_tool_version "$SAMPLE_ENV_FILE" "$TARGET_VERSION"
-    
+
     # 2. Process custom tools
     echo "[-] Processing custom tools..."
     for dir in "${CUSTOM_TOOL_DIRS[@]}"; do
         update_custom_tool_version "$dir" "$TARGET_VERSION" "$TOOL_REGISTRY_JSON_FILE"
     done
-    
+
     # 3. Process packages (similar to services)
     echo "[-] Processing packages..."
     for dir in "${PACKAGE_DIRS[@]}"; do
@@ -511,7 +511,7 @@ main() {
         usage
         exit 1
     fi
-    
+
     if [[ "$VERBOSE" == true ]]; then
         echo "[*] Running with options:"
         echo "      Reset Mode: $RESET_MODE"
