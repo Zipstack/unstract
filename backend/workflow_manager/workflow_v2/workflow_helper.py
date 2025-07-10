@@ -646,7 +646,12 @@ class WorkflowHelper:
         # TODO: Make use of WorkflowExecution.get_or_create()
         try:
             # Filter out parameters that create_workflow_execution doesn't accept
-            filtered_kwargs = {k: v for k, v in kwargs.items() if k not in ["llm_profile_id", "push_to_hitl", "hitl_queue_name", "api_name"]}
+            filtered_kwargs = {
+                k: v
+                for k, v in kwargs.items()
+                if k
+                not in ["llm_profile_id", "push_to_hitl", "hitl_queue_name", "api_name"]
+            }
             workflow_execution = WorkflowExecutionServiceHelper.create_workflow_execution(
                 workflow_id=workflow_id,
                 single_step=False,
@@ -663,7 +668,9 @@ class WorkflowHelper:
             execution_id=execution_id, task_id=task_id
         )
         try:
-            logger.info(f"Starting workflow execution: workflow_id={workflow_id}, execution_id={execution_id}, push_to_hitl={kwargs.get('push_to_hitl', False)}, hitl_queue_name={kwargs.get('hitl_queue_name')}, api_name={kwargs.get('api_name')}")
+            logger.info(
+                f"Starting workflow execution: workflow_id={workflow_id}, execution_id={execution_id}, push_to_hitl={kwargs.get('push_to_hitl', False)}, hitl_queue_name={kwargs.get('hitl_queue_name')}, api_name={kwargs.get('api_name')}"
+            )
             execution_response = WorkflowHelper.run_workflow(
                 workflow=workflow,
                 organization_id=organization_id,
