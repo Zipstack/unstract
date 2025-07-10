@@ -1,4 +1,3 @@
-import json
 import logging
 import uuid
 from typing import Any
@@ -63,7 +62,7 @@ class Configuration(BaseModel):
         try:
             spec = ConfigKey[self.key].cast_value(self.value)
             return spec
-        except ValueError:
+        except (ValueError, KeyError, TypeError):
             return None
 
     @classmethod
@@ -109,7 +108,7 @@ class Configuration(BaseModel):
 
         except cls.DoesNotExist:
             return config_key.value.default
-        except (ValueError, json.JSONDecodeError) as e:
+        except Exception as e:
             logger.warning(
                 f"Configuration {config_key.name} for organization {organization.id if organization else 'None'} "
                 f"has invalid value, using default {config_key.value.default}. Error: {e}"
