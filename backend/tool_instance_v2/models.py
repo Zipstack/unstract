@@ -1,7 +1,6 @@
 import uuid
 
 from account_v2.models import User
-from connector_v2.models import ConnectorInstance
 from django.db import models
 from django.db.models import QuerySet
 from utils.models.base_model import BaseModel
@@ -58,37 +57,6 @@ class ToolInstance(BaseModel):
         null=True,
         blank=True,
     )
-    # Added these connectors separately
-    # for file and db for scalability
-    input_file_connector = models.ForeignKey(
-        ConnectorInstance,
-        on_delete=models.SET_NULL,
-        related_name="input_file_connectors",
-        null=True,
-        blank=True,
-    )
-    output_file_connector = models.ForeignKey(
-        ConnectorInstance,
-        on_delete=models.SET_NULL,
-        related_name="output_file_connectors",
-        null=True,
-        blank=True,
-    )
-    input_db_connector = models.ForeignKey(
-        ConnectorInstance,
-        on_delete=models.SET_NULL,
-        related_name="input_db_connectors",
-        null=True,
-        blank=True,
-    )
-    output_db_connector = models.ForeignKey(
-        ConnectorInstance,
-        on_delete=models.SET_NULL,
-        related_name="output_db_connectors",
-        null=True,
-        blank=True,
-    )
-
     objects = ToolInstanceManager()
 
     class Meta:
