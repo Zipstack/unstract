@@ -113,8 +113,7 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
 
     def __str__(self) -> str:
         return (
-            f"Connector({self.id}, type{self.connector_type},"
-            f" workflow: {self.workflow})"
+            f"Connector({self.id}, type{self.connector_type}, workflow: {self.workflow})"
         )
 
     def get_connector_metadata_bytes(self):

@@ -37,7 +37,7 @@ class RentRollExtractor:
         try:
             # Load environment variables for rent roll service
             rentroll_host = os.environ.get("RENTROLL_SERVICE_HOST", "http://localhost")
-            rentroll_port = os.environ.get("RENTROLL_SERVICE_PORT", "5001")
+            rentroll_port = os.environ.get("RENTROLL_SERVICE_PORT", "5003")
             rentroll_url = f"{rentroll_host}:{rentroll_port}/api/extract-rentrolls"
 
             # Prepare the request payload
@@ -49,8 +49,9 @@ class RentRollExtractor:
             }
 
             # Make HTTP call to rent roll service
+            timeout = aiohttp.ClientTimeout(total=3600)
             logger.info(f"Calling rent roll service at: {rentroll_url}")
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.post(rentroll_url, json=payload) as response:
                     if response.status == 200:
                         result = await response.json()

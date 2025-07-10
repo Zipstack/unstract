@@ -17,10 +17,6 @@ class PipelineConstants:
     DESTINATION_ICON = "destination_icon"
     SOURCE_NAME = "source_name"
     DESTINATION_NAME = "destination_name"
-    INPUT_FILE = "input_file_connector"
-    INPUT_DB = "input_db_connector"
-    OUTPUT_FILE = "output_file_connector"
-    OUTPUT_DB = "output_db_connector"
     SOURCE = "source"
     DEST = "dest"
 
