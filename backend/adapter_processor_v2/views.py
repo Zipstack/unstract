@@ -297,58 +297,75 @@ class AdapterInstanceViewSet(ModelViewSet):
             AdapterKeys.PLATFORM_PROVIDED_UNSTRACT_KEY, False
         ):
             use_platform_unstract_key = True
-
-        # Get the adapter instance and check if it's an X2TEXT adapter
+        # Get the adapter instance for update
         adapter = self.get_object()
-        if adapter.adapter_type == AdapterKeys.X2TEXT and use_platform_unstract_key:
-            # If adapter_metadata_b is in the request data, update it with the Unstract key
-            if AdapterKeys.ADAPTER_METADATA_B in request.data:
-                adapter_metadata_b = request.data.get(AdapterKeys.ADAPTER_METADATA_B)
-                updated_metadata_b = AdapterProcessor.update_adapter_metadata(
+        if use_platform_unstract_key:
+            serializer = self.get_serializer(adapter, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+
+            # Get adapter_type from validated data (consistent with create method)
+            adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
+
+            if adapter_type == AdapterKeys.X2TEXT:
+                adapter_metadata_b = serializer.validated_data.get(
+                    AdapterKeys.ADAPTER_METADATA_B
+                )
+                adapter_metadata_b = AdapterProcessor.update_adapter_metadata(
                     adapter_metadata_b, is_paid_subscription=True
                 )
-                request.data[AdapterKeys.ADAPTER_METADATA_B] = updated_metadata_b
+                # Update the validated data with the new adapter_metadata
+                serializer.validated_data[AdapterKeys.ADAPTER_METADATA_B] = (
+                    adapter_metadata_b
+                )
 
+                # Save the instance with updated metadata
+                serializer.save()
+
+                # Handle shared users if needed
+                if AdapterKeys.SHARED_USERS in request.data:
+                    self._handle_shared_users_update(request, adapter)
+
+                return Response(serializer.data)
+
+        # For non-platform-key cases, handle shared users separately if needed
         if AdapterKeys.SHARED_USERS in request.data:
-            # find the deleted users
-            adapter = self.get_object()
-            shared_users = {
-                int(user_id) for user_id in request.data.get("shared_users", {})
-            }
-            current_users = {user.id for user in adapter.shared_users.all()}
-            removed_users = current_users.difference(shared_users)
-
-            # if removed user use this adapter as default
-            # Remove the same from his default
-            for user_id in removed_users:
-                try:
-                    organization_member = OrganizationMemberService.get_user_by_id(
-                        id=user_id
-                    )
-                    user_default_adapter: UserDefaultAdapter = (
-                        UserDefaultAdapter.objects.get(
-                            organization_member=organization_member
-                        )
-                    )
-
-                    if user_default_adapter.default_llm_adapter == adapter:
-                        user_default_adapter.default_llm_adapter = None
-                    elif user_default_adapter.default_embedding_adapter == adapter:
-                        user_default_adapter.default_embedding_adapter = None
-                    elif user_default_adapter.default_vector_db_adapter == adapter:
-                        user_default_adapter.default_vector_db_adapter = None
-                    elif user_default_adapter.default_x2text_adapter == adapter:
-                        user_default_adapter.default_x2text_adapter = None
-
-                    user_default_adapter.save()
-                except UserDefaultAdapter.DoesNotExist:
-                    logger.debug(
-                        "User id : %s doesnt have default adapters configured",
-                        user_id,
-                    )
-                    continue
+            self._handle_shared_users_update(request, adapter)
 
         return super().partial_update(request, *args, **kwargs)
+
+    def _handle_shared_users_update(
+        self, request: Request, adapter: AdapterInstance
+    ) -> None:
+        """Handle shared users update logic for adapters."""
+        shared_users = {int(user_id) for user_id in request.data.get("shared_users", {})}
+        current_users = {user.id for user in adapter.shared_users.all()}
+        removed_users = current_users.difference(shared_users)
+
+        # if removed user use this adapter as default
+        # Remove the same from his default
+        for user_id in removed_users:
+            try:
+                organization_member = OrganizationMemberService.get_user_by_id(id=user_id)
+                user_default_adapter: UserDefaultAdapter = UserDefaultAdapter.objects.get(
+                    organization_member=organization_member
+                )
+
+                if user_default_adapter.default_llm_adapter == adapter:
+                    user_default_adapter.default_llm_adapter = None
+                elif user_default_adapter.default_embedding_adapter == adapter:
+                    user_default_adapter.default_embedding_adapter = None
+                elif user_default_adapter.default_vector_db_adapter == adapter:
+                    user_default_adapter.default_vector_db_adapter = None
+                elif user_default_adapter.default_x2text_adapter == adapter:
+                    user_default_adapter.default_x2text_adapter = None
+
+                user_default_adapter.save()
+            except UserDefaultAdapter.DoesNotExist:
+                logger.debug(
+                    "User id : %s doesnt have default adapters configured",
+                    user_id,
+                )
+                continue
 
     @action(detail=True, methods=["get"])
     def list_of_shared_users(self, request: HttpRequest, pk: Any = None) -> Response:
