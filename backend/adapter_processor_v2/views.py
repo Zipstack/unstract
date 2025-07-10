@@ -338,8 +338,11 @@ class AdapterInstanceViewSet(ModelViewSet):
 
         return Response(serialized_instances)
 
-    def update(self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]) -> Response:
+    def update(
+        self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
+    ) -> Response:
         import logging
+
         logger = logging.getLogger(__name__)
 
         logger.info("ADAPTER UPDATE CALLED")
@@ -358,7 +361,7 @@ class AdapterInstanceViewSet(ModelViewSet):
         adapter = self.get_object()
 
         if use_platform_unstract_key:
-            logger.error(f"Processing adapter with platform key")
+            logger.error("Processing adapter with platform key")
             serializer = self.get_serializer(adapter, data=request.data)
             serializer.is_valid(raise_exception=True)
 
@@ -367,7 +370,7 @@ class AdapterInstanceViewSet(ModelViewSet):
             logger.error(f"Adapter type from validated data: {adapter_type}")
 
             if adapter_type == AdapterKeys.X2TEXT:
-                logger.error(f"Processing X2TEXT adapter with platform key")
+                logger.error("Processing X2TEXT adapter with platform key")
                 adapter_metadata_b = serializer.validated_data.get(
                     AdapterKeys.ADAPTER_METADATA_B
                 )
