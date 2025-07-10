@@ -111,27 +111,23 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         execution = WorkflowHelper.get_current_execution(pk)
         return Response(make_execution_response(execution), status=status.HTTP_200_OK)
 
-    def get_workflow_by_id_or_project_id(
+    def get_workflow_by_id(
         self,
         workflow_id: str | None = None,
-        project_id: str | None = None,
     ) -> Workflow:
-        """Retrieve workflow  by workflow id or project Id.
+        """Retrieve workflow by workflow id.
 
         Args:
             workflow_id (Optional[str], optional): workflow Id.
-            project_id (Optional[str], optional): Project Id.
 
         Raises:
-            WorkflowDoesNotExistError: _description_
+            WorkflowDoesNotExistError: Raised when workflow_id is not provided or workflow doesn't exist.
 
         Returns:
             Workflow: workflow
         """
         if workflow_id:
             workflow = WorkflowHelper.get_workflow_by_id(workflow_id)
-        elif project_id:
-            workflow = WorkflowHelper.get_active_workflow_by_project_id(project_id)
         else:
             raise WorkflowDoesNotExistError()
         return workflow
@@ -145,7 +141,6 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         serializer = ExecuteWorkflowSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         workflow_id = serializer.get_workflow_id(serializer.validated_data)
-        project_id = serializer.get_project_id(serializer.validated_data)
         execution_id = serializer.get_execution_id(serializer.validated_data)
         execution_action = serializer.get_execution_action(serializer.validated_data)
         file_objs = request.FILES.getlist("files")
@@ -163,9 +158,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             )
 
         try:
-            workflow = self.get_workflow_by_id_or_project_id(
-                workflow_id=workflow_id, project_id=project_id
-            )
+            workflow = self.get_workflow_by_id(workflow_id=workflow_id)
             execution_response = self.execute_workflow(
                 workflow=workflow,
                 execution_action=execution_action,
