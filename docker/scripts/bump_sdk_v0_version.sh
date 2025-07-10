@@ -268,14 +268,14 @@ update_custom_tool_version() {
     if [[ "$tool_name" == "classifier" ]]; then
         adjusted_tool_name="classify"
     fi
-    adjusted_tool_name=${tool_name//_/-} # Replace "_" with "-"
-
     # Modify the line after `"functionName": "$adjusted_tool_name"`
     sed -i "/\"functionName\": \"$adjusted_tool_name\"/{ n; s/\"toolVersion\": \"$tool_old_version\"/\"toolVersion\": \"$tool_new_version\"/; }" "$registry_json_file"
+
+    adjusted_tool_name=${tool_name//_/-} # Replace "_" with "-"
     # Modify the line `"image_url": "docker:unstract/tool-$tool_name:$old_version"`
-    sed -i "s|\"image_url\": \"docker:unstract/tool-$tool_name:$tool_old_version\"|\"image_url\": \"docker:unstract/tool-$tool_name:$tool_new_version\"|" "$registry_json_file"
+    sed -i "s|\"image_url\": \"docker:unstract/tool-$adjusted_tool_name:$tool_old_version\"|\"image_url\": \"docker:unstract/tool-$adjusted_tool_name:$tool_new_version\"|" "$registry_json_file"
     # Modify the line after `"image_name": "unstract/tool-$tool_name"`
-    sed -i "/\"image_name\": \"unstract\\/tool-$tool_name\"/{ n; s/\"image_tag\": \"$tool_old_version\"/\"image_tag\": \"$tool_new_version\"/; }" "$registry_json_file"
+    sed -i "/\"image_name\": \"unstract\\/tool-$adjusted_tool_name\"/{ n; s/\"image_tag\": \"$tool_old_version\"/\"image_tag\": \"$tool_new_version\"/; }" "$registry_json_file"
 
     # 3. Update the unstract-sdk version in the tool's requirements.txt
     if [[ -f "$requirements_file" ]]; then
