@@ -383,7 +383,7 @@ class AdapterInstanceViewSet(ModelViewSet):
                 )
 
             # Save the instance with updated metadata
-            instance = serializer.save()
+            serializer.save()
             return Response(serializer.data)
 
         # For non-platform-key cases, use the default update behavior
