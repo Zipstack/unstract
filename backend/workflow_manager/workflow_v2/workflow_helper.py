@@ -79,18 +79,6 @@ class WorkflowHelper:
             raise WorkflowDoesNotExistError()
 
     @staticmethod
-    def get_active_workflow_by_project_id(project_id: str) -> Workflow:
-        try:
-            workflow: Workflow = Workflow.objects.filter(
-                project_id=project_id, is_active=True
-            ).first()
-            if not workflow or workflow is None:
-                raise WorkflowDoesNotExistError()
-            return workflow
-        except Workflow.DoesNotExist:
-            raise WorkflowDoesNotExistError()
-
-    @staticmethod
     def active_project_workflow(workflow_id: str) -> Workflow:
         workflow: Workflow = WorkflowHelper.get_workflow_by_id(workflow_id)
         workflow.is_active = True
