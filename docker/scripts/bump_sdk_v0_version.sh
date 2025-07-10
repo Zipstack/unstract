@@ -288,7 +288,7 @@ update_custom_tool_version() {
 update_sdk_version() {
     local file="$1"
     local version_arg="$2"
-    local dir_name=$(dirname "$dir")
+    local dir_name=$(dirname "$file")
     local old_version
     local new_version
     local pattern
