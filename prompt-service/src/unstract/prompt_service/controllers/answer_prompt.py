@@ -227,8 +227,9 @@ def prompt_processor() -> Any:
                     # Update structured output with the extraction result
                     # TODO: Add metrics
                     # TODO: Add metadata
+                    structured_output[output[PSKeys.NAME]] = extraction_result
                     response = {
-                        PSKeys.OUTPUT: extraction_result,
+                        PSKeys.OUTPUT: structured_output,
                         PSKeys.METADATA: {},
                         PSKeys.METRICS: {},
                     }
