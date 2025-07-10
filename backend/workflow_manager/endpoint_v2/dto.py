@@ -123,6 +123,8 @@ class DestinationConfig:
             data["push_to_hitl"] = False
         if "hitl_queue_name" not in data:
             data["hitl_queue_name"] = None
+        if "api_name" not in data:
+            data["api_name"] = None
 
         return DestinationConfig(**data)
 
