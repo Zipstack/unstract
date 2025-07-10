@@ -386,6 +386,7 @@ class AdapterInstanceViewSet(ModelViewSet):
         # For non-platform-key cases, use the default update behavior
         return super().update(request, *args, **kwargs)
 
+    @action(detail=True, methods=["get"])
     def adapter_info(self, request: HttpRequest, pk: uuid) -> Response:
         adapter = self.get_object()
 
