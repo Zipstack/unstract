@@ -326,18 +326,18 @@ class AdapterInstanceViewSet(ModelViewSet):
                     self._handle_shared_users_update(request, adapter)
 
                 return Response(serializer.data)
-        
+
         # For non-platform-key cases, handle shared users separately if needed
         if AdapterKeys.SHARED_USERS in request.data:
             self._handle_shared_users_update(request, adapter)
 
         return super().partial_update(request, *args, **kwargs)
 
-    def _handle_shared_users_update(self, request: Request, adapter: AdapterInstance) -> None:
+    def _handle_shared_users_update(
+        self, request: Request, adapter: AdapterInstance
+    ) -> None:
         """Handle shared users update logic for adapters."""
-        shared_users = {
-            int(user_id) for user_id in request.data.get("shared_users", {})
-        }
+        shared_users = {int(user_id) for user_id in request.data.get("shared_users", {})}
         current_users = {user.id for user in adapter.shared_users.all()}
         removed_users = current_users.difference(shared_users)
 
@@ -345,13 +345,9 @@ class AdapterInstanceViewSet(ModelViewSet):
         # Remove the same from his default
         for user_id in removed_users:
             try:
-                organization_member = OrganizationMemberService.get_user_by_id(
-                    id=user_id
-                )
-                user_default_adapter: UserDefaultAdapter = (
-                    UserDefaultAdapter.objects.get(
-                        organization_member=organization_member
-                    )
+                organization_member = OrganizationMemberService.get_user_by_id(id=user_id)
+                user_default_adapter: UserDefaultAdapter = UserDefaultAdapter.objects.get(
+                    organization_member=organization_member
                 )
 
                 if user_default_adapter.default_llm_adapter == adapter:
