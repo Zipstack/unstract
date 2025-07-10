@@ -116,11 +116,8 @@ class WorkflowHelper:
 
         # Prepare batches of files for parallel processing
         organization = UserContext.get_organization()
-        BATCH_SIZE = (
-            Configuration.get_value_by_organization(
-                config_key=ConfigKey.MAX_PARALLEL_FILE_BATCHES, organization=organization
-            )
-            or 1
+        BATCH_SIZE = Configuration.get_value_by_organization(
+            config_key=ConfigKey.MAX_PARALLEL_FILE_BATCHES, organization=organization
         )  # Max number of batches
 
         file_items = list(json_serializable_files.items())
