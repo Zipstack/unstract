@@ -289,6 +289,61 @@ class AdapterInstanceViewSet(ModelViewSet):
     def partial_update(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
+        if AdapterKeys.SHARED_USERS in request.data:
+            # find the deleted users
+            adapter = self.get_object()
+            shared_users = {
+                int(user_id) for user_id in request.data.get("shared_users", {})
+            }
+            current_users = {user.id for user in adapter.shared_users.all()}
+            removed_users = current_users.difference(shared_users)
+
+            # if removed user use this adapter as default
+            # Remove the same from his default
+            for user_id in removed_users:
+                try:
+                    organization_member = OrganizationMemberService.get_user_by_id(
+                        id=user_id
+                    )
+                    user_default_adapter: UserDefaultAdapter = (
+                        UserDefaultAdapter.objects.get(
+                            organization_member=organization_member
+                        )
+                    )
+
+                    if user_default_adapter.default_llm_adapter == adapter:
+                        user_default_adapter.default_llm_adapter = None
+                    elif user_default_adapter.default_embedding_adapter == adapter:
+                        user_default_adapter.default_embedding_adapter = None
+                    elif user_default_adapter.default_vector_db_adapter == adapter:
+                        user_default_adapter.default_vector_db_adapter = None
+                    elif user_default_adapter.default_x2text_adapter == adapter:
+                        user_default_adapter.default_x2text_adapter = None
+
+                    user_default_adapter.save()
+                except UserDefaultAdapter.DoesNotExist:
+                    logger.debug(
+                        "User id : %s doesnt have default adapters configured",
+                        user_id,
+                    )
+                    continue
+
+        return super().partial_update(request, *args, **kwargs)
+
+    @action(detail=True, methods=["get"])
+    def list_of_shared_users(self, request: HttpRequest, pk: Any = None) -> Response:
+        adapter = self.get_object()
+
+        serialized_instances = SharedUserListSerializer(adapter).data
+
+        return Response(serialized_instances)
+
+    def update(self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]) -> Response:
+        import logging
+        logger = logging.getLogger(__name__)
+
+        logger.info("ADAPTER UPDATE CALLED")
+
         # Check if adapter metadata is being updated and contains the platform key flag
         use_platform_unstract_key = False
         adapter_metadata = request.data.get(AdapterKeys.ADAPTER_METADATA)
@@ -297,16 +352,22 @@ class AdapterInstanceViewSet(ModelViewSet):
             AdapterKeys.PLATFORM_PROVIDED_UNSTRACT_KEY, False
         ):
             use_platform_unstract_key = True
+            logger.error(f"Platform key flag detected: {use_platform_unstract_key}")
+
         # Get the adapter instance for update
         adapter = self.get_object()
+
         if use_platform_unstract_key:
-            serializer = self.get_serializer(adapter, data=request.data, partial=True)
+            logger.error(f"Processing adapter with platform key")
+            serializer = self.get_serializer(adapter, data=request.data)
             serializer.is_valid(raise_exception=True)
 
             # Get adapter_type from validated data (consistent with create method)
             adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
+            logger.error(f"Adapter type from validated data: {adapter_type}")
 
             if adapter_type == AdapterKeys.X2TEXT:
+                logger.error(f"Processing X2TEXT adapter with platform key")
                 adapter_metadata_b = serializer.validated_data.get(
                     AdapterKeys.ADAPTER_METADATA_B
                 )
@@ -318,68 +379,13 @@ class AdapterInstanceViewSet(ModelViewSet):
                     adapter_metadata_b
                 )
 
-                # Save the instance with updated metadata
-                serializer.save()
+            # Save the instance with updated metadata
+            instance = serializer.save()
+            return Response(serializer.data)
 
-                # Handle shared users if needed
-                if AdapterKeys.SHARED_USERS in request.data:
-                    self._handle_shared_users_update(request, adapter)
+        # For non-platform-key cases, use the default update behavior
+        return super().update(request, *args, **kwargs)
 
-                return Response(serializer.data)
-        
-        # For non-platform-key cases, handle shared users separately if needed
-        if AdapterKeys.SHARED_USERS in request.data:
-            self._handle_shared_users_update(request, adapter)
-
-        return super().partial_update(request, *args, **kwargs)
-
-    def _handle_shared_users_update(self, request: Request, adapter: AdapterInstance) -> None:
-        """Handle shared users update logic for adapters."""
-        shared_users = {
-            int(user_id) for user_id in request.data.get("shared_users", {})
-        }
-        current_users = {user.id for user in adapter.shared_users.all()}
-        removed_users = current_users.difference(shared_users)
-
-        # if removed user use this adapter as default
-        # Remove the same from his default
-        for user_id in removed_users:
-            try:
-                organization_member = OrganizationMemberService.get_user_by_id(
-                    id=user_id
-                )
-                user_default_adapter: UserDefaultAdapter = (
-                    UserDefaultAdapter.objects.get(
-                        organization_member=organization_member
-                    )
-                )
-
-                if user_default_adapter.default_llm_adapter == adapter:
-                    user_default_adapter.default_llm_adapter = None
-                elif user_default_adapter.default_embedding_adapter == adapter:
-                    user_default_adapter.default_embedding_adapter = None
-                elif user_default_adapter.default_vector_db_adapter == adapter:
-                    user_default_adapter.default_vector_db_adapter = None
-                elif user_default_adapter.default_x2text_adapter == adapter:
-                    user_default_adapter.default_x2text_adapter = None
-
-                user_default_adapter.save()
-            except UserDefaultAdapter.DoesNotExist:
-                logger.debug(
-                    "User id : %s doesnt have default adapters configured",
-                    user_id,
-                )
-                continue
-
-    @action(detail=True, methods=["get"])
-    def list_of_shared_users(self, request: HttpRequest, pk: Any = None) -> Response:
-        adapter = self.get_object()
-
-        serialized_instances = SharedUserListSerializer(adapter).data
-
-        return Response(serialized_instances)
-
-    @action(detail=True, methods=["get"])
     def adapter_info(self, request: HttpRequest, pk: uuid) -> Response:
         adapter = self.get_object()
 
