@@ -362,7 +362,7 @@ class AdapterInstanceViewSet(ModelViewSet):
 
         if use_platform_unstract_key:
             logger.error("Processing adapter with platform key")
-            serializer = self.get_serializer(adapter, data=request.data)
+            serializer = self.get_serializer(adapter, data=request.data, partial=True)
             serializer.is_valid(raise_exception=True)
 
             # Get adapter_type from validated data (consistent with create method)
