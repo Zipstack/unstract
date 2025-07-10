@@ -53,6 +53,7 @@ const CreateApiDeploymentFromPromptStudio = ({
   const [createdWorkflowId, setCreatedWorkflowId] = useState(null);
   const [createdApiDeployment, setCreatedApiDeployment] = useState(null);
   const [isCreationComplete, setIsCreationComplete] = useState(false);
+  const [exportRetryCount, setExportRetryCount] = useState(0);
 
   // Form data states
   const [deploymentDetails, setDeploymentDetails] = useState({
@@ -86,6 +87,7 @@ const CreateApiDeploymentFromPromptStudio = ({
       setCreatedWorkflowId(null);
       setCreatedApiDeployment(null);
       setIsCreationComplete(false);
+      setExportRetryCount(0);
 
       // Fetch tool function name first, then schema
       fetchToolFunctionName();
@@ -113,10 +115,42 @@ const CreateApiDeploymentFromPromptStudio = ({
         setToolFunctionName(matchingTool.function_name);
         // Now fetch schema using the function name
         fetchToolSchema(matchingTool.function_name);
+      } else if (exportRetryCount < 2) {
+        // Tool not found in registry, automatically export it to the organization
+        try {
+          await axiosPrivate({
+            method: "POST",
+            url: getUrl(`prompt-studio/export/${toolDetails.tool_id}`),
+            headers: {
+              "X-CSRFToken": sessionDetails?.csrfToken,
+              "Content-Type": "application/json",
+            },
+            data: {
+              is_shared_with_org: true,
+              user_id: [], // Export to everyone in the org
+              force_export: true,
+            },
+          });
+
+          setExportRetryCount((prev) => prev + 1);
+
+          // Retry fetching tool function name after export
+          setTimeout(() => {
+            fetchToolFunctionName();
+          }, 1000); // Wait 1 second for export to complete
+        } catch (exportErr) {
+          setAlertDetails({
+            type: "error",
+            content: `Failed to export tool to organization: ${
+              exportErr.response?.data?.message || exportErr.message
+            }`,
+          });
+          setToolSchema(null);
+        }
       } else {
         setAlertDetails({
           type: "error",
-          content: `Tool function name not found in registry for tool: ${toolDetails.tool_id}`,
+          content: `Tool function name not found in registry for tool: ${toolDetails.tool_id}. Please manually export the tool first.`,
         });
         setToolSchema(null);
       }
@@ -190,6 +224,7 @@ const CreateApiDeploymentFromPromptStudio = ({
     setCreatedWorkflowId(null);
     setCreatedApiDeployment(null);
     setIsCreationComplete(false);
+    setExportRetryCount(0);
     form.resetFields();
   };
 
@@ -329,20 +364,28 @@ const CreateApiDeploymentFromPromptStudio = ({
 
       createdResources.toolInstanceId = toolInstanceResponse.data.id;
 
-      // Step 5: Update tool instance with settings if provided
-      if (toolSettings && Object.keys(toolSettings).length > 0) {
-        await axiosPrivate({
-          method: "PATCH",
-          url: getUrl(`tool_instance/${toolInstanceResponse.data.id}/`),
-          headers: {
-            "X-CSRFToken": sessionDetails?.csrfToken,
-            "Content-Type": "application/json",
-          },
-          data: {
-            metadata: toolSettings,
-          },
-        });
-      }
+      // Step 5: Update tool instance with proper metadata
+      const toolInstanceMetadata = {
+        ...toolSettings,
+        tool_instance_id: toolInstanceResponse.data.id,
+        prompt_registry_id: toolDetails.tool_id,
+        // Use default_llm instead of specific adapter ID for consistency with manual creation
+        challenge_llm:
+          toolSettings.challenge_llm ||
+          toolInstanceResponse.data.metadata.challenge_llm,
+      };
+
+      await axiosPrivate({
+        method: "PATCH",
+        url: getUrl(`tool_instance/${toolInstanceResponse.data.id}/`),
+        headers: {
+          "X-CSRFToken": sessionDetails?.csrfToken,
+          "Content-Type": "application/json",
+        },
+        data: {
+          metadata: toolInstanceMetadata,
+        },
+      });
 
       // Step 6: Create API deployment
       const apiDeploymentResponse =
