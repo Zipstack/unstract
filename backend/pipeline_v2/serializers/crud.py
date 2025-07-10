@@ -78,14 +78,56 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
             logger.error(f"Invalid cron string '{cron_string}': {error}")
             raise serializers.ValidationError("Invalid cron string format.")
 
-        # Check if the frequency is less than 1 hour
+        # Check if the frequency is less than 30 minutes
         cron_parts = cron_string.split()
         minute_field = cron_parts[0]
-        if minute_field == "*" or any(char in minute_field for char in [",", "-", "/"]):
+
+        # Allow specific minute values but restrict patterns that would run more frequently than every 30 minutes
+        if minute_field == "*":
             raise serializers.ValidationError(
-                "Cron schedule can not be more than once per hour. Please provide a "
-                "cron schedule to run at an hourly or less frequent interval."
+                "Cron schedule cannot run every minute. Please provide a "
+                "cron schedule to run at 30-minute or less frequent intervals."
             )
+
+        # Check for patterns that would run more frequently than every 30 minutes
+        if any(char in minute_field for char in [",", "-", "/"]):
+            # Parse and validate the minute field doesn't create intervals < 30 minutes
+            if "/" in minute_field:
+                # Handle step values like "*/15" (every 15 minutes) - reject if < 30
+                parts = minute_field.split("/")
+                if len(parts) == 2 and parts[1].isdigit():
+                    step = int(parts[1])
+                    if step < 30:
+                        raise serializers.ValidationError(
+                            "Cron schedule cannot run more frequently than every 30 minutes. "
+                            "Please provide a cron schedule to run at 30-minute or less frequent intervals."
+                        )
+            elif "," in minute_field:
+                # Allow specific patterns like "0,30" (every 30 minutes)
+                # Check if it's a valid 30-minute pattern
+                parts = [p.strip() for p in minute_field.split(",")]
+                if len(parts) == 2 and all(p.isdigit() for p in parts):
+                    minutes = [int(p) for p in parts]
+                    if sorted(minutes) == [0, 30]:
+                        # This is "0,30" - every 30 minutes, which is acceptable
+                        pass
+                    else:
+                        # Other comma patterns - be conservative
+                        raise serializers.ValidationError(
+                            "Complex minute patterns are not supported for intervals shorter than 1 hour. "
+                            "For 30-minute intervals, use '0,30' format."
+                        )
+                else:
+                    raise serializers.ValidationError(
+                        "Complex minute patterns are not supported for intervals shorter than 1 hour. "
+                        "For 30-minute intervals, use '0,30' format."
+                    )
+            elif "-" in minute_field:
+                # Range values are complex to validate properly, reject for V1
+                raise serializers.ValidationError(
+                    "Range minute patterns are not supported for intervals shorter than 1 hour. "
+                    "Please use simple minute values (0-59) for 30-minute or less frequent intervals."
+                )
 
         return cron_string
 
