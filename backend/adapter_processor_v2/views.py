@@ -306,7 +306,7 @@ class AdapterInstanceViewSet(ModelViewSet):
             # Get adapter_type from validated data (consistent with create method)
             adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
 
-            if adapter_type == AdapterKeys.X2TEXT and use_platform_unstract_key:
+            if adapter_type == AdapterKeys.X2TEXT:
                 adapter_metadata_b = serializer.validated_data.get(
                     AdapterKeys.ADAPTER_METADATA_B
                 )
