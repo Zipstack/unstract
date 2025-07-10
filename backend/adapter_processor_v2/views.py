@@ -292,12 +292,12 @@ class AdapterInstanceViewSet(ModelViewSet):
         # Check if adapter metadata is being updated and contains the platform key flag
         use_platform_unstract_key = False
         adapter_metadata = request.data.get(AdapterKeys.ADAPTER_METADATA)
-        
+
         if adapter_metadata and adapter_metadata.get(
             AdapterKeys.PLATFORM_PROVIDED_UNSTRACT_KEY, False
         ):
             use_platform_unstract_key = True
-        
+
         # Get the adapter instance and check if it's an X2TEXT adapter
         adapter = self.get_object()
         if adapter.adapter_type == AdapterKeys.X2TEXT and use_platform_unstract_key:
@@ -308,7 +308,7 @@ class AdapterInstanceViewSet(ModelViewSet):
                     adapter_metadata_b, is_paid_subscription=True
                 )
                 request.data[AdapterKeys.ADAPTER_METADATA_B] = updated_metadata_b
-        
+
         if AdapterKeys.SHARED_USERS in request.data:
             # find the deleted users
             adapter = self.get_object()
