@@ -23,6 +23,36 @@ class ConfigSpec:
 
 
 class ConfigKey(Enum):
+    """Enum defining available configuration keys for organization-level overrides.
+
+    This enum serves as the central registry for all configurable system settings
+    that can be overridden on a per-organization basis. Each enum value contains
+    a ConfigSpec that defines:
+
+    - default: The default value (usually from Django settings)
+    - value_type: The expected data type (INT, STRING, BOOL, JSON)
+    - help_text: Human-readable description of the setting
+    - min_value/max_value: Optional validation constraints
+
+    Usage:
+        # Get organization-specific config value
+        batch_size = Configuration.get_value_by_organization(
+            config_key=ConfigKey.MAX_PARALLEL_FILE_BATCHES,
+            organization=organization
+        )
+
+        # The method automatically handles:
+        # - Fallback to default if no override exists
+        # - Type conversion and validation
+        # - Min/max constraint checking
+        # - Error handling with safe defaults
+
+    Adding New Configuration Keys:
+        1. Add a new enum value with appropriate ConfigSpec
+        2. No database migration required - validation is application-level
+        3. Organizations can immediately override the new setting
+    """
+
     MAX_PARALLEL_FILE_BATCHES = ConfigSpec(
         default=settings.MAX_PARALLEL_FILE_BATCHES,
         value_type=ConfigType.INT,
