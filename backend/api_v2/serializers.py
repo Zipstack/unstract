@@ -117,6 +117,10 @@ class ExecutionRequestSerializer(TagParamsSerializer):
             e.g:'tag1,tag2-name,tag3_name'
         llm_profile_id (str): UUID of the LLM profile to override the default profile.
             If not provided, the default profile will be used.
+nwhatok        push_to_hitl (bool): Flag to push files to manual review queue (HITL).
+            Defaults to False.
+        hitl_queue_name (str, optional): Document class name for manual review queue.
+            If not provided, uses API name as document class.
     """
 
     MAX_FILES_ALLOWED = 32
@@ -128,6 +132,8 @@ class ExecutionRequestSerializer(TagParamsSerializer):
     include_metrics = BooleanField(default=False)
     use_file_history = BooleanField(default=False)
     llm_profile_id = CharField(required=False, allow_null=True, allow_blank=True)
+    push_to_hitl = BooleanField(default=False)
+    hitl_queue_name = CharField(required=False, allow_null=True, allow_blank=True)
     files = ListField(
         child=FileField(),
         required=True,
@@ -175,6 +181,7 @@ class ExecutionRequestSerializer(TagParamsSerializer):
             raise ValidationError("You can only use profiles that you own")
 
         return value
+
 
 
 class ExecutionQuerySerializer(Serializer):

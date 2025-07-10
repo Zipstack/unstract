@@ -59,6 +59,9 @@ class DestinationConnector(BaseConnector):
         workflow_log: WorkflowLog,
         use_file_history: bool,
         file_execution_id: str | None = None,
+        push_to_hitl: bool = False,
+        hitl_queue_name: str | None = None,
+        api_name: str | None = None,
     ) -> None:
         """Initialize a DestinationConnector object.
 
@@ -76,6 +79,9 @@ class DestinationConnector(BaseConnector):
         )
         self.workflow_log = workflow_log
         self.use_file_history = use_file_history
+        self.push_to_hitl = push_to_hitl
+        self.hitl_queue_name = hitl_queue_name
+        self.api_name = api_name
         self.workflow = workflow
 
     def _get_endpoint_for_workflow(
@@ -162,6 +168,20 @@ class DestinationConnector(BaseConnector):
         file_execution_id: str,
     ) -> bool:
         """Handles HITL processing, returning True if data was pushed to the queue."""
+        logger.info(f"_handle_hitl called: push_to_hitl={self.push_to_hitl}, hitl_queue_name={self.hitl_queue_name}, api_name={self.api_name}")
+        # Check if API deployment requested HITL override
+        if self.push_to_hitl:
+            logger.info(f"API HITL override: pushing to queue for file {file_name}")
+            self._push_data_to_queue(
+                file_name=file_name,
+                workflow=workflow,
+                input_file_path=input_file_path,
+                file_execution_id=file_execution_id,
+            )
+            logger.info(f"Successfully pushed {file_name} to queue")
+            return True
+
+        # Otherwise use existing workflow-based HITL logic
         execution_result = self.get_tool_execution_result()
         if WorkflowUtil.validate_db_rule(
             execution_result, workflow, file_hash.file_destination
@@ -218,7 +238,17 @@ class DestinationConnector(BaseConnector):
             ):
                 self.insert_into_db(input_file_path=input_file_path)
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
-            tool_execution_result = self.get_tool_execution_result(file_history)
+            logger.info(f"API connection type detected for file {file_name}")
+            # Check for HITL (Manual Review Queue) override for API deployments
+            if not self._handle_hitl(
+                file_name=file_name,
+                file_hash=file_hash,
+                workflow=workflow,
+                input_file_path=input_file_path,
+                file_execution_id=file_execution_id,
+            ):
+                logger.info(f"No HITL override, getting tool execution result for {file_name}")
+                tool_execution_result = self.get_tool_execution_result(file_history)
         elif connection_type == WorkflowEndpoint.ConnectionType.MANUALREVIEW:
             self._push_data_to_queue(
                 file_name,
@@ -647,6 +677,9 @@ class DestinationConnector(BaseConnector):
             workflow_id=self.workflow.id,
             execution_id=self.execution_id,
             use_file_history=self.use_file_history,
+            push_to_hitl=self.push_to_hitl,
+            hitl_queue_name=self.hitl_queue_name,
+            api_name=self.api_name,
         )
 
     @classmethod
@@ -661,6 +694,7 @@ class DestinationConnector(BaseConnector):
         Returns:
             DestinationConnector: New instance
         """
+        logger.info(f"Creating DestinationConnector from config: push_to_hitl={config.push_to_hitl}, hitl_queue_name={config.hitl_queue_name}, api_name={config.api_name}")
         # Reconstruct workflow
         workflow = Workflow.objects.get(id=config.workflow_id)
 
@@ -671,6 +705,9 @@ class DestinationConnector(BaseConnector):
             workflow_log=workflow_log,
             use_file_history=config.use_file_history,
             file_execution_id=config.file_execution_id,
+            push_to_hitl=config.push_to_hitl,
+            hitl_queue_name=config.hitl_queue_name,
+            api_name=config.api_name,
         )
 
         return destination
@@ -708,6 +745,22 @@ class DestinationConnector(BaseConnector):
         if not result:
             return
         connector: ConnectorInstance = self.source_endpoint.connector_instance
+
+        # For API deployments, connector might be None - handle this case
+        if connector is None:
+            logger.warning(f"No connector instance found for {file_name}, skipping file read from source")
+            # For API deployments, we might need to handle this differently
+            # For now, create a simplified queue entry without file content
+            self._push_to_queue_without_file_content(
+                file_name=file_name,
+                workflow=workflow,
+                result=result,
+                meta_data=meta_data,
+                file_execution_id=file_execution_id,
+                input_file_path=input_file_path,
+            )
+            return
+
         connector_settings: dict[str, Any] = connector.connector_metadata
 
         source_fs = self.get_fsspec(
@@ -718,7 +771,17 @@ class DestinationConnector(BaseConnector):
             file_content = remote_file.read()
             # Convert file content to a base64 encoded string
             file_content_base64 = base64.b64encode(file_content).decode("utf-8")
-            q_name = f"review_queue_{self.organization_id}_{workflow.id}"
+            # Use self-describing queue names to distinguish ETL vs API deployments
+            logger.info(f"DEBUG: Queue naming - api_name={self.api_name}, hitl_queue_name={self.hitl_queue_name}")
+            if self.api_name:
+                # API deployment: API::review_queue_{org}_{workflow_id}::{api_name}::{queue_name}
+                queue_name = self.hitl_queue_name or "default"
+                q_name = f"API::review_queue_{self.organization_id}_{str(self.workflow_id)}::{self.api_name}::{queue_name}"
+                logger.info(f"DEBUG: Using API queue name: {q_name}")
+            else:
+                # ETL workflow: review_queue_{org}_{workflow_id}
+                q_name = f"review_queue_{self.organization_id}_{str(self.workflow_id)}"
+                logger.info(f"DEBUG: Using ETL queue name: {q_name}")
             if meta_data:
                 whisper_hash = meta_data.get("whisper-hash")
             else:
@@ -737,3 +800,92 @@ class DestinationConnector(BaseConnector):
             conn = QueueUtils.get_queue_inst()
             # Enqueue the JSON string
             conn.enqueue(queue_name=q_name, message=queue_result_json)
+            logger.info(f"Pushed {file_name} to queue {q_name} with file content")
+
+    def _push_to_queue_without_file_content(
+        self,
+        file_name: str,
+        workflow: Workflow,
+        result: str | None = None,
+        meta_data: dict[str, Any] | None = None,
+        file_execution_id: str = None,
+        input_file_path: str | None = None,
+    ) -> None:
+        """Push to queue for API deployments with file content if available.
+
+        This is used when the source connector is None (API deployments).
+        We try to read file content from input_file_path if available.
+        """
+        # Use self-describing queue names to distinguish ETL vs API deployments
+        logger.info(f"DEBUG: Queue naming (API) - api_name={self.api_name}, hitl_queue_name={self.hitl_queue_name}")
+        if self.api_name:
+            # API deployment: API::review_queue_{org}_{workflow_id}::{api_name}::{queue_name}
+            queue_name = self.hitl_queue_name or "default"
+            q_name = f"API::review_queue_{self.organization_id}_{str(self.workflow_id)}::{self.api_name}::{queue_name}"
+            logger.info(f"DEBUG: Using API queue name: {q_name}")
+        else:
+            # ETL workflow: review_queue_{org}_{workflow_id}
+            q_name = f"review_queue_{self.organization_id}_{str(self.workflow_id)}"
+            logger.info(f"DEBUG: Using ETL queue name: {q_name}")
+
+        whisper_hash = None
+        if meta_data:
+            whisper_hash = meta_data.get("whisper-hash")
+
+        # Try to read file content for API deployments
+        file_content = None
+        logger.info(f"DEBUG: Attempting to read file content for API deployment - input_file_path: {input_file_path}")
+        if input_file_path:
+            try:
+                import base64
+                import os
+                from unstract.filesystem import FileStorageType, FileSystem
+                
+                # First try using the filesystem abstraction (like ETL does)
+                try:
+                    file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+                    file_storage = file_system.get_file_storage()
+                    if file_storage.exists(input_file_path):
+                        file_bytes = file_storage.read(input_file_path, mode="rb")
+                        file_content = base64.b64encode(file_bytes).decode("utf-8")
+                        logger.info(f"Successfully read file content using filesystem abstraction for API deployment: {file_name}, content length: {len(file_content)}")
+                    else:
+                        logger.warning(f"File does not exist in filesystem storage: {input_file_path}")
+                except Exception as fs_e:
+                    logger.warning(f"Filesystem abstraction failed: {fs_e}, trying direct file access")
+                    
+                    # Fallback to direct file access
+                    if os.path.exists(input_file_path):
+                        file_size = os.path.getsize(input_file_path)
+                        logger.info(f"File exists on disk, size: {file_size} bytes")
+                        
+                        with open(input_file_path, "rb") as file:
+                            file_bytes = file.read()
+                            file_content = base64.b64encode(file_bytes).decode("utf-8")
+                            logger.info(f"Successfully read file content using direct access for API deployment: {file_name}, content length: {len(file_content)}")
+                    else:
+                        logger.warning(f"File does not exist on disk: {input_file_path}")
+                        
+            except Exception as e:
+                logger.error(f"Failed to read file content for API deployment {file_name}: {e}")
+                file_content = None
+        else:
+            logger.warning(f"No input_file_path provided for API deployment: {file_name}")
+
+        queue_result = QueueResult(
+            file=file_name,
+            status=QueueResultStatus.SUCCESS,
+            result=result,
+            workflow_id=str(self.workflow_id),
+            file_content=file_content,  # Include file content if available
+            whisper_hash=whisper_hash,
+            file_execution_id=file_execution_id,
+        ).to_dict()
+
+        # Convert the result dictionary to a JSON string
+        queue_result_json = json.dumps(queue_result)
+        conn = QueueUtils.get_queue_inst()
+        # Enqueue the JSON string
+        conn.enqueue(queue_name=q_name, message=queue_result_json)
+        content_status = "with file content" if file_content else "without file content"
+        logger.info(f"Pushed {file_name} to queue {q_name} {content_status}")
