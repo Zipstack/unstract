@@ -16,17 +16,7 @@ class ToolInstanceKey:
 class JsonSchemaKey:
     """Dict Keys for Tool's Json schema."""
 
-    PROPERTIES = "properties"
-    THEN = "then"
-    INPUT_FILE_CONNECTOR = "inputFileConnector"
-    OUTPUT_FILE_CONNECTOR = "outputFileConnector"
-    OUTPUT_FOLDER = "outputFolder"
-    ROOT_FOLDER = "rootFolder"
     TENANT_ID = "tenant_id"
-    INPUT_DB_CONNECTOR = "inputDBConnector"
-    OUTPUT_DB_CONNECTOR = "outputDBConnector"
-    ENUM = "enum"
-    PROJECT_DEFAULT = "Project Default"
 
 
 class ToolInstanceErrors:
