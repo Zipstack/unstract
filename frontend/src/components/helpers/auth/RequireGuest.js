@@ -41,7 +41,7 @@ const RequireGuest = () => {
   if (isLlmWhisperer) {
     navigateTo = `/llm-whisperer/${orgName}/playground`;
   } else if (isVerticals) {
-    navigateTo = `/verticals/`;
+    navigateTo = `/apihub/`;
   } else if (onboardCompleted(adapters)) {
     navigateTo = `/${orgName}/${homePagePath}`;
   }
