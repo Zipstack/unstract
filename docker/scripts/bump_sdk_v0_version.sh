@@ -215,74 +215,72 @@ update_structure_tool_version() {
 # Update custom tool version and its SDK dependency
 update_custom_tool_version() {
     local dir="$1"
-    local version_arg="$2"
+    local sdk_version_arg="$2"
     local registry_json_file="$3"
     local tool_name=$(basename "$dir")
     local properties_json_file="${dir}/src/config/properties.json"
     local requirements_file="${dir}/requirements.txt"
-    local old_version
-    local new_version
+    # NOTE: Currently we bump only patch version for tools
+    local tool_version_arg="patch"
+    local tool_old_version
+    local tool_new_version
 
     echo "Processing custom tool: $tool_name"
 
     log "Checking $tool_name version in $properties_json_file"
     check_file "$properties_json_file"
 
-    # NOTE: Currently we bump only patch version for tools
-    if [[ "$version_arg" != *"."* ]]; then
-        version_arg="patch"
-        echo "Set target version for custom tool $tool_name as $version_arg"
-    fi
+    # tool_version_arg="$version_arg"
+    # if [[ "$version_arg" != *"."* ]]; then
+    #     tool_version_arg="patch"
+    #     echo "Set target version for custom tool $tool_name as $version_arg"
+    # fi
 
     # Fetch tool's version from properties.json
-    old_version=$(grep -o '"toolVersion": "[0-9.]\+"' "$properties_json_file" | grep -o '[0-9.]\+')
-    if [[ -z "$old_version" ]]; then
+    tool_old_version=$(grep -o '"toolVersion": "[0-9.]\+"' "$properties_json_file" | grep -o '[0-9.]\+')
+    if [[ -z "$tool_old_version" ]]; then
         echo "Error: Could not find $tool_name version in $properties_json_file"
         exit 1
     fi
 
-    log "Found $tool_name version: $old_version"
+    log "Found $tool_name version: $tool_old_version"
 
-    if [[ "$version_arg" == "patch" || "$version_arg" == "minor" || "$version_arg" == "major" ]]; then
-        new_version=$(bump_version "$old_version" "$version_arg")
-        log "Auto-bumped $tool_name version: $old_version -> $new_version ($version_arg)"
-    else
-        new_version="$version_arg"
-    fi
+    tool_new_version=$(bump_version "$tool_old_version" "$tool_version_arg")
 
-    if [[ "$old_version" == "$new_version" ]]; then
-        echo "$tool_name version already at $new_version, skipping update."
+    if [[ "$tool_new_version" == "$tool_old_version" ]]; then
+        echo "$tool_name version already at $tool_new_version, skipping update."
         return
     fi
 
     if [[ "$DRY_RUN" == true ]]; then
-        echo "Would update $tool_name version from $old_version to $new_version in $properties_json_file"
+        echo "Would update $tool_name version from $tool_old_version to $tool_new_version in $properties_json_file"
         return
     fi
 
     # 1. Update the tool's own version in properties json
-    echo "Updating $tool_name version from $old_version to $new_version in $properties_json_file"
-    sed -i "s/\"toolVersion\": \"$old_version\"/\"toolVersion\": \"$new_version\"/g" "$properties_json_file"
+    echo "Updating $tool_name version from $tool_old_version to $tool_new_version in $properties_json_file"
+    sed -i "s/\"toolVersion\": \"$tool_old_version\"/\"toolVersion\": \"$tool_new_version\"/g" "$properties_json_file"
 
     # 2. Update the tool's own version in registry json
-    echo "Updating $tool_name version from $old_version to $new_version in $registry_json_file"
+    echo "Updating $tool_name version from $tool_old_version to $tool_new_version in $registry_json_file"
 
     adjusted_tool_name=$tool_name
     if [[ "$tool_name" == "classifier" ]]; then
         adjusted_tool_name="classify"
     fi
+    adjusted_tool_name=${tool_name//_/-} # Replace "_" with "-"
 
     # Modify the line after `"functionName": "$adjusted_tool_name"`
-    sed -i "/\"functionName\": \"$adjusted_tool_name\"/{ n; s/\"toolVersion\": \"$old_version\"/\"toolVersion\": \"$new_version\"/; }" "$registry_json_file"
+    sed -i "/\"functionName\": \"$adjusted_tool_name\"/{ n; s/\"toolVersion\": \"$tool_old_version\"/\"toolVersion\": \"$tool_new_version\"/; }" "$registry_json_file"
     # Modify the line `"image_url": "docker:unstract/tool-$tool_name:$old_version"`
-    sed -i "s|\"image_url\": \"docker:unstract/tool-$tool_name:$old_version\"|\"image_url\": \"docker:unstract/tool-$tool_name:$new_version\"|" "$registry_json_file"
+    sed -i "s|\"image_url\": \"docker:unstract/tool-$tool_name:$tool_old_version\"|\"image_url\": \"docker:unstract/tool-$tool_name:$tool_new_version\"|" "$registry_json_file"
     # Modify the line after `"image_name": "unstract/tool-$tool_name"`
-    sed -i "/\"image_name\": \"unstract\\/tool-$tool_name\"/{ n; s/\"image_tag\": \"$old_version\"/\"image_tag\": \"$new_version\"/; }" "$registry_json_file"
+    sed -i "/\"image_name\": \"unstract\\/tool-$tool_name\"/{ n; s/\"image_tag\": \"$tool_old_version\"/\"image_tag\": \"$tool_new_version\"/; }" "$registry_json_file"
 
     # 3. Update the unstract-sdk version in the tool's requirements.txt
     if [[ -f "$requirements_file" ]]; then
         echo "Updating SDK version in $tool_name requirements.txt"
-        update_sdk_version "$requirements_file" "$version_arg"
+        update_sdk_version "$requirements_file" "$sdk_version_arg"
     fi
 }
 
