@@ -8,3 +8,4 @@ class ApiExecution:
     USE_FILE_HISTORY: str = "use_file_history"  # Undocumented parameter
     EXECUTION_ID: str = "execution_id"
     TAGS: str = "tags"
+    LLM_PROFILE_ID: str = "llm_profile_id"

@@ -38,6 +38,10 @@ class FileHash:
             "file_number": self.file_number,
         }
 
+    def to_serialized_json(self) -> str:
+        """Serialize the FileHash instance to a JSON string."""
+        return json.dumps(self.to_json())
+
     @staticmethod
     def from_json(json_str_or_dict: Any) -> "FileHash":
         """Deserialize a JSON string or dictionary to a FileHash instance."""
@@ -113,7 +117,7 @@ class DestinationConfig:
 @dataclass
 class FileExecutionResult:
     file: str
-    file_execution_id: str
+    file_execution_id: str | None = None
     status: str | None = None
     result: str | None = None
     error: str | None = None

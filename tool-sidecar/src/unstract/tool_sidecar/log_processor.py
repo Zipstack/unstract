@@ -13,14 +13,16 @@ from typing import Any
 
 from unstract.core.constants import LogFieldName
 from unstract.core.pubsub_helper import LogPublisher
+from unstract.core.tool_execution_status import (
+    ToolExecutionData,
+    ToolExecutionStatus,
+    ToolExecutionTracker,
+)
+from unstract.core.utilities import redact_sensitive_string
 
 from .constants import Env, LogLevel, LogType
 from .dto import LogLineDTO
 
-logging.basicConfig(
-    level=getattr(logging, os.getenv(Env.LOG_LEVEL, "INFO")),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
 logger = logging.getLogger(__name__)
 
 
@@ -60,6 +62,26 @@ class LogProcessor:
         self.file_execution_id = file_execution_id
         self.messaging_channel = messaging_channel
         self.container_name = container_name
+        self.tool_execution_tracker = ToolExecutionTracker()
+        self._update_tool_execution_status(status=ToolExecutionStatus.RUNNING)
+
+    def _update_tool_execution_status(
+        self, status: ToolExecutionStatus, error: str | None = None
+    ) -> None:
+        try:
+            tool_execution_data = ToolExecutionData(
+                execution_id=self.execution_id,
+                tool_instance_id=self.tool_instance_id,
+                file_execution_id=self.file_execution_id,
+                organization_id=self.organization_id,
+                status=status,
+                error=error,
+            )
+            self.tool_execution_tracker.update_status(
+                tool_execution_data=tool_execution_data
+            )
+        except Exception as e:
+            logger.error(f"Failed to update tool execution status: {e}", exc_info=True)
 
     def wait_for_log_file(self, timeout: int = 300) -> bool:
         """Wait for the log file to be created by the tool container.
@@ -96,7 +118,7 @@ class LogProcessor:
 
         log_dict = self.get_valid_log_message(line)
         if not log_dict:
-            logger.info(f"[Tool: {self.container_name}] {line}")
+            logger.info(f"{line}")
             return LogLineDTO()
 
         log_type = log_dict.get("type")
@@ -110,15 +132,19 @@ class LogProcessor:
         log_process_status = LogLineDTO()
         if log_type == LogType.LOG:
             if log_level == LogLevel.ERROR:
-                logger.error(f"[Tool: {self.container_name}] {log_dict.get('log')}")
+                logger.error(f"{log_dict.get('log')}")
                 log_process_status.error = log_dict.get("log")
+                self._update_tool_execution_status(
+                    status=ToolExecutionStatus.FAILED, error=log_dict.get("log")
+                )
             else:
-                logger.info(f"[Tool: {self.container_name}] {log_dict.get('log')}")
+                logger.info(f"{log_dict.get('log')}")
         elif log_type == LogType.RESULT:
-            logger.info(f"[Tool {self.container_name}] Completed running")
+            logger.info(f"Tool '{self.container_name}' completed running")
+            self._update_tool_execution_status(status=ToolExecutionStatus.SUCCESS)
             return LogLineDTO(with_result=True)
         elif log_type == LogType.UPDATE:
-            logger.info(f"[Tool: {self.container_name}] Pushing UI updates")
+            logger.info("Pushing UI updates")
             log_dict["component"] = self.tool_instance_id
 
         log_dict[LogFieldName.EXECUTION_ID] = self.execution_id
@@ -226,7 +252,10 @@ def main():
     redis_port = os.getenv(Env.REDIS_PORT)
     redis_user = os.getenv(Env.REDIS_USER)
     redis_password = os.getenv(Env.REDIS_PASSWORD)
-    celery_broker_url = os.getenv(Env.CELERY_BROKER_URL)
+    # Needed for Kombu (used from unstract-core)
+    celery_broker_base_url = os.getenv(Env.CELERY_BROKER_BASE_URL)
+    celery_broker_user = os.getenv(Env.CELERY_BROKER_USER)
+    celery_broker_pass = os.getenv(Env.CELERY_BROKER_PASS, "")
 
     # Get execution parameters from environment
     tool_instance_id = os.getenv(Env.TOOL_INSTANCE_ID)
@@ -246,7 +275,9 @@ def main():
         Env.LOG_PATH: log_path,
         Env.REDIS_HOST: redis_host,
         Env.REDIS_PORT: redis_port,
-        Env.CELERY_BROKER_URL: celery_broker_url,
+        Env.CELERY_BROKER_BASE_URL: celery_broker_base_url,
+        Env.CELERY_BROKER_USER: celery_broker_user,
+        Env.CELERY_BROKER_PASS: redact_sensitive_string(celery_broker_pass),
     }
 
     logger.info(f"Log processor started with params: {required_params}")
