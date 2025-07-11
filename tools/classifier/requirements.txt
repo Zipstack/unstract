@@ -4,4 +4,4 @@
 # aws alone is needed here
 # because tools use transient temporary storage.
 
-unstract-sdk[aws]~=0.74.0
+unstract-sdk[aws]~=0.75.0
