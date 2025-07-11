@@ -65,7 +65,7 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
         """Validate basic cron format and handle None/empty cases."""
         if value is None:
             return None
-        
+
         cron_string = value.strip()
         if not cron_string:
             return None
@@ -75,7 +75,7 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
         except Exception as error:
             logger.error(f"Invalid cron string '{cron_string}': {error}")
             raise serializers.ValidationError("Invalid cron string format.")
-        
+
         return cron_string
 
     def _validate_step_pattern(self, minute_field: str) -> None:
@@ -139,9 +139,9 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
 
         cron_parts = cron_string.split()
         minute_field = cron_parts[0]
-        
+
         self._validate_minute_field(minute_field)
-        
+
         return cron_string
 
     def get_api_endpoint(self, instance: Pipeline):
