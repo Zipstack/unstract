@@ -8,6 +8,7 @@ from croniter import croniter
 from django.conf import settings
 from pipeline_v2.constants import PipelineConstants as PC
 from pipeline_v2.constants import PipelineKey as PK
+from pipeline_v2.constants import PipelineScheduling
 from pipeline_v2.models import Pipeline
 from rest_framework import serializers
 from rest_framework.serializers import SerializerMethodField
@@ -43,23 +44,38 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
         },
     }
 
-    # Error message constants for cron validation
-    _CRON_ERROR_EVERY_MINUTE = (
-        "Cron schedule cannot run every minute. Please provide a "
-        "cron schedule to run at 30-minute or less frequent intervals."
-    )
-    _CRON_ERROR_TOO_FREQUENT = (
-        "Cron schedule cannot run more frequently than every 30 minutes. "
-        "Please provide a cron schedule to run at 30-minute or less frequent intervals."
-    )
-    _CRON_ERROR_COMPLEX_PATTERN = (
-        "Complex minute patterns are not supported for intervals shorter than 1 hour. "
-        "For 30-minute intervals, use '0,30' format."
-    )
-    _CRON_ERROR_RANGE_PATTERN = (
-        "Range minute patterns are not supported for intervals shorter than 1 hour. "
-        "Please use simple minute values (0-59) for 30-minute or less frequent intervals."
-    )
+    # Dynamic error message methods for cron validation
+    def _get_cron_error_every_minute(self) -> str:
+        """Get error message for every minute pattern."""
+        min_interval_minutes = PipelineScheduling.get_min_interval_minutes()
+        return (
+            f"Cron schedule cannot run every minute. Please provide a "
+            f"cron schedule to run at {min_interval_minutes}-minute or less frequent intervals."
+        )
+
+    def _get_cron_error_too_frequent(self) -> str:
+        """Get error message for too frequent patterns."""
+        min_interval_minutes = PipelineScheduling.get_min_interval_minutes()
+        return (
+            f"Cron schedule cannot run more frequently than every {min_interval_minutes} minutes. "
+            f"Please provide a cron schedule to run at {min_interval_minutes}-minute or less frequent intervals."
+        )
+
+    def _get_cron_error_complex_pattern(self) -> str:
+        """Get error message for complex minute patterns."""
+        min_interval_minutes = PipelineScheduling.get_min_interval_minutes()
+        return (
+            f"Complex minute patterns are not supported for intervals shorter than 1 hour. "
+            f"For {min_interval_minutes}-minute intervals, use '0,{min_interval_minutes}' format."
+        )
+
+    def _get_cron_error_range_pattern(self) -> str:
+        """Get error message for range minute patterns."""
+        min_interval_minutes = PipelineScheduling.get_min_interval_minutes()
+        return (
+            f"Range minute patterns are not supported for intervals shorter than 1 hour. "
+            f"Please use simple minute values (0-59) for {min_interval_minutes}-minute or less frequent intervals."
+        )
 
     def _validate_basic_cron_format(self, value: str | None) -> str | None:
         """Validate basic cron format and handle None/empty cases."""
@@ -83,27 +99,33 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
         parts = minute_field.split("/")
         if len(parts) == 2 and parts[1].isdigit():
             step = int(parts[1])
-            if step < 30:
-                raise serializers.ValidationError(self._CRON_ERROR_TOO_FREQUENT)
+            min_interval_minutes = PipelineScheduling.get_min_interval_minutes()
+            if step < min_interval_minutes:
+                raise serializers.ValidationError(self._get_cron_error_too_frequent())
 
     def _validate_comma_pattern(self, minute_field: str) -> None:
-        """Validate comma patterns like 0,30."""
+        """Validate comma patterns like 0,30 or 0,15."""
         parts = [p.strip() for p in minute_field.split(",")]
         if len(parts) == 2 and all(p.isdigit() for p in parts):
-            minutes = [int(p) for p in parts]
-            if sorted(minutes) != [0, 30]:
-                raise serializers.ValidationError(self._CRON_ERROR_COMPLEX_PATTERN)
+            minutes = sorted([int(p) for p in parts])
+            min_interval_minutes = PipelineScheduling.get_min_interval_minutes()
+
+            # Check if it's a valid interval pattern (starts at 0 and has correct interval)
+            if minutes[0] == 0 and minutes[1] == min_interval_minutes:
+                return  # Valid pattern like [0, 15] or [0, 30]
+
+            raise serializers.ValidationError(self._get_cron_error_complex_pattern())
         else:
-            raise serializers.ValidationError(self._CRON_ERROR_COMPLEX_PATTERN)
+            raise serializers.ValidationError(self._get_cron_error_complex_pattern())
 
     def _validate_range_pattern(self, minute_field: str) -> None:
         """Validate range patterns like 0-30."""
-        raise serializers.ValidationError(self._CRON_ERROR_RANGE_PATTERN)
+        raise serializers.ValidationError(self._get_cron_error_range_pattern())
 
     def _validate_minute_field(self, minute_field: str) -> None:
-        """Validate the minute field for 30-minute minimum intervals."""
+        """Validate the minute field for configurable minimum intervals."""
         if minute_field == "*":
-            raise serializers.ValidationError(self._CRON_ERROR_EVERY_MINUTE)
+            raise serializers.ValidationError(self._get_cron_error_every_minute())
 
         if "/" in minute_field:
             self._validate_step_pattern(minute_field)
