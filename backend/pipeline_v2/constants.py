@@ -1,3 +1,6 @@
+from django.conf import settings
+
+
 class PipelineConstants:
     """Constants for Pipelines."""
 
@@ -51,6 +54,20 @@ class PipelineErrors:
     PIPELINE_EXISTS = "Pipeline with this configuration might already exist or some mandatory field is missing."  # noqa: E501
     DUPLICATE_API = "It appears that a duplicate call may have been made."
     INVALID_WF = "The provided workflow does not exist"
+
+
+class PipelineScheduling:
+    """Constants for pipeline scheduling configuration."""
+
+    @classmethod
+    def get_min_interval_seconds(cls) -> int:
+        """Get minimum schedule interval in seconds from settings."""
+        return settings.MIN_SCHEDULE_INTERVAL_SECONDS
+
+    @classmethod
+    def get_min_interval_minutes(cls) -> int:
+        """Get minimum schedule interval in minutes from settings."""
+        return cls.get_min_interval_seconds() // 60
 
 
 class PipelineURL:

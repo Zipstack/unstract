@@ -8,6 +8,7 @@ from croniter import croniter
 from django.conf import settings
 from pipeline_v2.constants import PipelineConstants as PC
 from pipeline_v2.constants import PipelineKey as PK
+from pipeline_v2.constants import PipelineScheduling
 from pipeline_v2.models import Pipeline
 from rest_framework import serializers
 from rest_framework.serializers import SerializerMethodField
@@ -43,6 +44,96 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
         },
     }
 
+    # Dynamic error message methods for cron validation
+    def _get_cron_error_every_minute(self) -> str:
+        """Get error message for every minute pattern."""
+        min_interval_minutes = PipelineScheduling.get_min_interval_minutes()
+        return (
+            f"Cron schedule cannot run every minute. Please provide a "
+            f"cron schedule to run at {min_interval_minutes}-minute or less frequent intervals."
+        )
+
+    def _get_cron_error_too_frequent(self) -> str:
+        """Get error message for too frequent patterns."""
+        min_interval_minutes = PipelineScheduling.get_min_interval_minutes()
+        return (
+            f"Cron schedule cannot run more frequently than every {min_interval_minutes} minutes. "
+            f"Please provide a cron schedule to run at {min_interval_minutes}-minute or less frequent intervals."
+        )
+
+    def _get_cron_error_complex_pattern(self) -> str:
+        """Get error message for complex minute patterns."""
+        min_interval_minutes = PipelineScheduling.get_min_interval_minutes()
+        return (
+            f"Complex minute patterns are not supported for intervals shorter than 1 hour. "
+            f"For {min_interval_minutes}-minute intervals, use '0,{min_interval_minutes}' format."
+        )
+
+    def _get_cron_error_range_pattern(self) -> str:
+        """Get error message for range minute patterns."""
+        min_interval_minutes = PipelineScheduling.get_min_interval_minutes()
+        return (
+            f"Range minute patterns are not supported for intervals shorter than 1 hour. "
+            f"Please use simple minute values (0-59) for {min_interval_minutes}-minute or less frequent intervals."
+        )
+
+    def _validate_basic_cron_format(self, value: str | None) -> str | None:
+        """Validate basic cron format and handle None/empty cases."""
+        if value is None:
+            return None
+
+        cron_string = value.strip()
+        if not cron_string:
+            return None
+
+        try:
+            croniter(cron_string)
+        except Exception as error:
+            logger.error(f"Invalid cron string '{cron_string}': {error}")
+            raise serializers.ValidationError("Invalid cron string format.")
+
+        return cron_string
+
+    def _validate_step_pattern(self, minute_field: str) -> None:
+        """Validate step patterns like */15."""
+        parts = minute_field.split("/")
+        if len(parts) == 2 and parts[1].isdigit():
+            step = int(parts[1])
+            min_interval_minutes = PipelineScheduling.get_min_interval_minutes()
+            if step < min_interval_minutes:
+                raise serializers.ValidationError(self._get_cron_error_too_frequent())
+
+    def _validate_comma_pattern(self, minute_field: str) -> None:
+        """Validate comma patterns like 0,30 or 0,15."""
+        parts = [p.strip() for p in minute_field.split(",")]
+        if len(parts) == 2 and all(p.isdigit() for p in parts):
+            minutes = sorted([int(p) for p in parts])
+            min_interval_minutes = PipelineScheduling.get_min_interval_minutes()
+
+            # Check if it's a valid interval pattern (starts at 0 and has correct interval)
+            if minutes[0] == 0 and minutes[1] == min_interval_minutes:
+                return  # Valid pattern like [0, 15] or [0, 30]
+
+            raise serializers.ValidationError(self._get_cron_error_complex_pattern())
+        else:
+            raise serializers.ValidationError(self._get_cron_error_complex_pattern())
+
+    def _validate_range_pattern(self, minute_field: str) -> None:
+        """Validate range patterns like 0-30."""
+        raise serializers.ValidationError(self._get_cron_error_range_pattern())
+
+    def _validate_minute_field(self, minute_field: str) -> None:
+        """Validate the minute field for configurable minimum intervals."""
+        if minute_field == "*":
+            raise serializers.ValidationError(self._get_cron_error_every_minute())
+
+        if "/" in minute_field:
+            self._validate_step_pattern(minute_field)
+        elif "," in minute_field:
+            self._validate_comma_pattern(minute_field)
+        elif "-" in minute_field:
+            self._validate_range_pattern(minute_field)
+
     def validate_cron_string(self, value: str | None = None) -> str | None:
         """Validate the cron string provided in the serializer data.
 
@@ -64,28 +155,14 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
             Optional[str]: The validated cron string if it is valid,
                            otherwise None.
         """
-        if value is None:
-            return None
-        cron_string = value.strip()
-        # Check if the string is empty
-        if not cron_string:
+        cron_string = self._validate_basic_cron_format(value)
+        if cron_string is None:
             return None
 
-        # Validate the cron string
-        try:
-            croniter(cron_string)
-        except Exception as error:
-            logger.error(f"Invalid cron string '{cron_string}': {error}")
-            raise serializers.ValidationError("Invalid cron string format.")
-
-        # Check if the frequency is less than 1 hour
         cron_parts = cron_string.split()
         minute_field = cron_parts[0]
-        if minute_field == "*" or any(char in minute_field for char in [",", "-", "/"]):
-            raise serializers.ValidationError(
-                "Cron schedule can not be more than once per hour. Please provide a "
-                "cron schedule to run at an hourly or less frequent interval."
-            )
+
+        self._validate_minute_field(minute_field)
 
         return cron_string
 
