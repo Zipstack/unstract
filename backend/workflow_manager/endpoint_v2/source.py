@@ -41,8 +41,10 @@ from workflow_manager.workflow_v2.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow_v2.models.file_history import FileHistory
 from workflow_manager.workflow_v2.models.workflow import Workflow
 from workflow_manager.workflow_v2.enums import ExecutionStatus
+from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
+from unstract.core.file_execution_tracker import FileExecutionStatusTracker, FileExecutionStage
 from unstract.filesystem import FileStorageType, FileSystem
 from unstract.sdk.file_storage import FileStorage
 from unstract.workflow_execution.enums import LogStage, LogState
@@ -384,12 +386,10 @@ class SourceConnector(BaseConnector):
         Returns:
             bool: True if file is being processed, False otherwise
         """
-        from unstract.core.file_execution_tracker import FileExecutionStatusTracker, FileExecutionStage
-        from workflow_manager.workflow_v2.models.execution import WorkflowExecution
-        
-        # Get active executions for this workflow
+        # Get active executions for this workflow with organization filtering for security
         active_executions = WorkflowExecution.objects.filter(
             workflow=self.workflow,
+            workflow__organization_id=self.organization_id,  # Security: Organization isolation
             status__in=[ExecutionStatus.EXECUTING, ExecutionStatus.PENDING]
         )
         
