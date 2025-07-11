@@ -39,12 +39,15 @@ from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.utils.workflow_log import WorkflowLog
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.file_history_helper import FileHistoryHelper
+from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.file_history import FileHistory
 from workflow_manager.workflow_v2.models.workflow import Workflow
-from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
-from unstract.core.file_execution_tracker import FileExecutionStatusTracker, FileExecutionStage
+from unstract.core.file_execution_tracker import (
+    FileExecutionStage,
+    FileExecutionStatusTracker,
+)
 from unstract.filesystem import FileStorageType, FileSystem
 from unstract.sdk.file_storage import FileStorage
 from unstract.workflow_execution.enums import LogStage, LogState
@@ -389,7 +392,7 @@ class SourceConnector(BaseConnector):
         active_executions = WorkflowExecution.objects.filter(
             workflow=self.workflow,
             workflow__organization_id=self.organization_id,  # Security: Organization isolation
-            status__in=[ExecutionStatus.EXECUTING, ExecutionStatus.PENDING]
+            status__in=[ExecutionStatus.EXECUTING, ExecutionStatus.PENDING],
         )
 
         tracker = FileExecutionStatusTracker()
