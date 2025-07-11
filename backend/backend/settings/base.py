@@ -154,7 +154,13 @@ FILE_EXECUTION_TRACKER_COMPLETED_TTL_IN_SECOND = int(
 INSTANT_WF_POLLING_TIMEOUT = int(
     os.environ.get("INSTANT_WF_POLLING_TIMEOUT", "300")
 )  # 5 minutes
+
+# File processing batches
 MAX_PARALLEL_FILE_BATCHES = int(os.environ.get("MAX_PARALLEL_FILE_BATCHES", 1))
+# Upper limit for batch validation
+MAX_PARALLEL_FILE_BATCHES_MAX_VALUE = int(
+    os.environ.get("MAX_PARALLEL_FILE_BATCHES_MAX_VALUE", 100)
+)
 
 CELERY_RESULT_CHORD_RETRY_INTERVAL = int(
     os.environ.get("CELERY_RESULT_CHORD_RETRY_INTERVAL", "3")
@@ -294,6 +300,7 @@ SHARED_APPS = (
     "prompt_studio.prompt_studio_document_manager_v2",
     "prompt_studio.prompt_studio_index_manager_v2",
     "tags",
+    "configuration",
 )
 TENANT_APPS = []
 
