@@ -18,8 +18,7 @@ def get_provider(var_name: str, default: str = "minio") -> FileStorageProvider:
     except KeyError:
         allowed_providers = ", ".join([provider.name for provider in FileStorageProvider])
         logger.error(
-            f"Invalid provider '{provider_name}'. Allowed providers: "
-            f"{allowed_providers}"
+            f"Invalid provider '{provider_name}'. Allowed providers: {allowed_providers}"
         )
         raise ProviderNotFound(f"Provider '{provider_name}' not found")
 
