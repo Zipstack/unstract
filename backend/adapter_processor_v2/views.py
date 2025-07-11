@@ -311,16 +311,21 @@ class AdapterInstanceViewSet(ModelViewSet):
                         )
                     )
 
-                    if user_default_adapter.default_llm_adapter == adapter:
-                        user_default_adapter.default_llm_adapter = None
-                    elif user_default_adapter.default_embedding_adapter == adapter:
-                        user_default_adapter.default_embedding_adapter = None
-                    elif user_default_adapter.default_vector_db_adapter == adapter:
-                        user_default_adapter.default_vector_db_adapter = None
-                    elif user_default_adapter.default_x2text_adapter == adapter:
-                        user_default_adapter.default_x2text_adapter = None
+                    adapter_fields = [
+                        "default_llm_adapter",
+                        "default_embedding_adapter",
+                        "default_vector_db_adapter",
+                        "default_x2text_adapter",
+                    ]
 
-                    user_default_adapter.save()
+                    updated = False
+                    for field in adapter_fields:
+                        if getattr(user_default_adapter, field) == adapter:
+                            setattr(user_default_adapter, field, None)
+                            updated = True
+
+                    if updated:
+                        user_default_adapter.save()
                 except UserDefaultAdapter.DoesNotExist:
                     logger.debug(
                         "User id : %s doesnt have default adapters configured",
