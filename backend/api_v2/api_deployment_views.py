@@ -92,6 +92,23 @@ class DeploymentExecution(views.APIView):
         api_name: str,
         deployment_execution_dto: DeploymentExecutionDTO,
     ) -> Response:
+        """Get workflow execution status and results.
+
+        Returns appropriate HTTP status codes based on execution state:
+        - 200 OK: COMPLETED, EXECUTING, PENDING (valid states)
+        - 406 Not Acceptable: Result already acknowledged
+        - 422 Unprocessable Entity: ERROR, STOPPED (failure states)
+
+        Args:
+            request: HTTP request object
+            org_name: Organization name
+            api_name: API deployment name
+            deployment_execution_dto: Validated deployment context
+
+        Returns:
+            Response with execution status and results
+        """
+        # Validate query parameters
         serializer = ExecutionQuerySerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
 
@@ -99,11 +116,10 @@ class DeploymentExecution(views.APIView):
         include_metadata = serializer.validated_data.get(ApiExecution.INCLUDE_METADATA)
         include_metrics = serializer.validated_data.get(ApiExecution.INCLUDE_METRICS)
 
-        # Fetch execution status
+        # Fetch current execution status
         response: ExecutionResponse = DeploymentHelper.get_execution_status(execution_id)
-        # Determine response status
 
-        # Handle result already acknowledged
+        # Check if result was already acknowledged (one-time access)
         if response.result_acknowledged:
             return Response(
                 data={
@@ -113,21 +129,23 @@ class DeploymentExecution(views.APIView):
                 status=status.HTTP_406_NOT_ACCEPTABLE,
             )
 
+        # Determine HTTP status code based on execution state
         if response.execution_status == ExecutionStatus.COMPLETED:
+            # Successful completion - prepare result data
             response_status = status.HTTP_200_OK
-            if not settings.ENABLE_HIGHLIGHT_API_DEPLOYMENT:
-                response.remove_result_metadata_keys(["highlight_data"])
-            if not include_metadata:
-                response.remove_result_metadata_keys()
-            if not include_metrics:
-                response.remove_result_metrics()
+            self._filter_response_data(response, include_metadata, include_metrics)
+
         elif response.execution_status in (
             ExecutionStatus.EXECUTING,
             ExecutionStatus.PENDING,
         ):
-            response_status = status.HTTP_202_ACCEPTED
-        else:  # STOPPED, ERROR etc..
+            # Valid in-progress states - return 200 OK (not 422 as before)
+            response_status = status.HTTP_200_OK
+
+        else:
+            # Error states (STOPPED, ERROR, etc.) - indicate processing failure
             response_status = status.HTTP_422_UNPROCESSABLE_ENTITY
+
         return Response(
             data={
                 "status": response.execution_status,
@@ -135,6 +153,28 @@ class DeploymentExecution(views.APIView):
             },
             status=response_status,
         )
+
+    def _filter_response_data(
+        self, response: ExecutionResponse, include_metadata: bool, include_metrics: bool
+    ) -> None:
+        """Filter response data based on client preferences and settings.
+
+        Args:
+            response: Execution response to filter
+            include_metadata: Whether to include metadata in response
+            include_metrics: Whether to include metrics in response
+        """
+        # Remove highlight data if not enabled globally
+        if not settings.ENABLE_HIGHLIGHT_API_DEPLOYMENT:
+            response.remove_result_metadata_keys(["highlight_data"])
+
+        # Remove metadata if not requested by client
+        if not include_metadata:
+            response.remove_result_metadata_keys()
+
+        # Remove metrics if not requested by client
+        if not include_metrics:
+            response.remove_result_metrics()
 
 
 class APIDeploymentViewSet(viewsets.ModelViewSet):
