@@ -14,7 +14,6 @@ from connector_processor.constants import ConnectorKeys
 from connector_v2.models import ConnectorInstance
 from django.core.files.uploadedfile import UploadedFile
 from django.db.models import Q
-from feature_flag.helper import FeatureFlagHelper
 from utils.user_context import UserContext
 from workflow_manager.endpoint_v2.base_connector import BaseConnector
 from workflow_manager.endpoint_v2.constants import (
@@ -44,9 +43,13 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 from unstract.filesystem import FileStorageType, FileSystem
-from unstract.sdk1.file_storage import FileStorage as Sdk1FileStorage
-from unstract.sdk.file_storage import FileStorage
+from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.workflow_execution.enums import LogStage, LogState
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.file_storage import FileStorage
+else:
+    from unstract.sdk.file_storage import FileStorage
 
 logger = logging.getLogger(__name__)
 
@@ -761,8 +764,8 @@ class SourceConnector(BaseConnector):
     # TODO: replace it with method from SDK Utils
     def _copy_file_to_destination(
         self,
-        source_storage: Sdk1FileStorage | FileStorage,
-        destination_storage: Sdk1FileStorage | FileStorage,
+        source_storage: FileStorage,
+        destination_storage: FileStorage,
         source_path: str,
         destination_paths: list[str],
     ) -> str:
@@ -774,9 +777,9 @@ class SourceConnector(BaseConnector):
         entire source file is copied.
 
         Args:
-            source_storage (Sdk1FileStorage | FileStorage): The storage object from which
+            source_storage (FileStorage): The storage object from which
                 the file is read.
-            destination_storage (Sdk1FileStorage | FileStorage): The storage object to which
+            destination_storage (FileStorage): The storage object to which
                 the file is written.
             source_path (str): The path of the file in the source storage.
             destination_paths (list[str]): A list of paths where the file will be

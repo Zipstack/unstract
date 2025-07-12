@@ -1,8 +1,12 @@
 from adapter_processor_v2.constants import AdapterKeys
 from rest_framework.exceptions import APIException
 
-from unstract.sdk1.exceptions import SdkError as Sdk1Error
-from unstract.sdk.exceptions import SdkError
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.exceptions import SdkError
+else:
+    from unstract.sdk.exceptions import SdkError
 
 
 class IdIsMandatory(APIException):
@@ -54,7 +58,7 @@ class TestAdapterError(APIException):
 
     def __init__(
         self,
-        sdk_err: Sdk1Error | SdkError,
+        sdk_err: SdkError,
         detail: str | None = None,
         code: str | None = None,
         adapter_name: str | None = None,

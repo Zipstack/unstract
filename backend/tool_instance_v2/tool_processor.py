@@ -4,15 +4,19 @@ from typing import Any
 
 from account_v2.models import User
 from adapter_processor_v2.adapter_processor import AdapterProcessor
-from feature_flag.helper import FeatureFlagHelper
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from prompt_studio.prompt_studio_registry_v2.prompt_studio_registry_helper import (
     PromptStudioRegistryHelper,
 )
 from tool_instance_v2.exceptions import ToolDoesNotExist
 
-from unstract.sdk1.constants import AdapterTypes as Sdk1AdapterTypes
-from unstract.sdk.adapters.enums import AdapterTypes
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.constants import AdapterTypes
+else:
+    from unstract.sdk.adapters.enums import AdapterTypes
+
 from unstract.tool_registry.dto import Spec, Tool
 from unstract.tool_registry.tool_registry import ToolRegistry
 from unstract.tool_registry.tool_utils import ToolUtils
@@ -83,7 +87,7 @@ class ToolProcessor:
 
         if llm_keys:
             adapters = AdapterProcessor.get_adapters_by_type(
-                Sdk1AdapterTypes.LLM if FeatureFlagHelper.check_flag_status('sdk_v1') else AdapterTypes.LLM,
+                AdapterTypes.LLM,
                 user=user
             )
             for key in llm_keys:
@@ -92,7 +96,7 @@ class ToolProcessor:
 
         if embedding_keys:
             adapters = AdapterProcessor.get_adapters_by_type(
-                Sdk1AdapterTypes.EMBEDDING if FeatureFlagHelper.check_flag_status('sdk_v1') else AdapterTypes.EMBEDDING,
+                AdapterTypes.EMBEDDING,
                 user=user
             )
             for key in embedding_keys:
@@ -101,7 +105,7 @@ class ToolProcessor:
 
         if vector_db_keys:
             adapters = AdapterProcessor.get_adapters_by_type(
-                Sdk1AdapterTypes.VECTOR_DB if FeatureFlagHelper.check_flag_status('sdk_v1') else AdapterTypes.VECTOR_DB,
+                AdapterTypes.VECTOR_DB,
                 user=user
             )
             for key in vector_db_keys:
@@ -110,7 +114,7 @@ class ToolProcessor:
 
         if x2text_keys:
             adapters = AdapterProcessor.get_adapters_by_type(
-                Sdk1AdapterTypes.X2TEXT if FeatureFlagHelper.check_flag_status('sdk_v1') else AdapterTypes.X2TEXT,
+                AdapterTypes.X2TEXT,
                 user=user
             )
             for key in x2text_keys:
@@ -119,7 +123,7 @@ class ToolProcessor:
 
         if ocr_keys:
             adapters = AdapterProcessor.get_adapters_by_type(
-                Sdk1AdapterTypes.OCR if FeatureFlagHelper.check_flag_status('sdk_v1') else AdapterTypes.OCR,
+                AdapterTypes.OCR,
                 user=user
             )
             for key in ocr_keys:

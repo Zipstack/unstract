@@ -12,17 +12,21 @@ from adapter_processor_v2.exceptions import (
 from cryptography.fernet import Fernet
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
-from feature_flag.helper import FeatureFlagHelper
 from platform_settings_v2.platform_auth_service import PlatformAuthenticationService
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 
-from unstract.sdk1.exceptions import SdkError as Sdk1Error
-from unstract.sdk1.llm import LLM
-from unstract.sdk.adapters.adapterkit import Adapterkit
-from unstract.sdk.adapters.base import Adapter
-from unstract.sdk.adapters.enums import AdapterTypes
-from unstract.sdk.adapters.x2text.constants import X2TextConstants
-from unstract.sdk.exceptions import SdkError
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.constants import AdapterTypes
+    from unstract.sdk1.exceptions import SdkError
+    from unstract.sdk1.llm import LLM
+else:
+    from unstract.sdk.adapters.adapterkit import Adapterkit
+    from unstract.sdk.adapters.base import Adapter
+    from unstract.sdk.adapters.enums import AdapterTypes
+    from unstract.sdk.adapters.x2text.constants import X2TextConstants
+    from unstract.sdk.exceptions import SdkError
 
 from .models import AdapterInstance, UserDefaultAdapter
 
@@ -94,18 +98,18 @@ class AdapterProcessor:
     def test_adapter(adapter_id: str, adapter_metadata: dict[str, Any]) -> bool:
         logger.info(
             "\n!!! TEST ADAPTER !!!\n"
-            f"`sdk_v1` feature flag: {FeatureFlagHelper.check_flag_status("sdk_v1")}\n"
+            f"`sdk_v1` feature flag: {check_feature_flag_status("sdk_v1")}\n"
             f"Adapter ID: {adapter_id}\n"
             f"Adapter Metadata:\n"
             f"{json.dumps(adapter_metadata, indent=2)}"
             "\n!!! TEST ADAPTER !!!\n"
         )
 
-        if FeatureFlagHelper.check_flag_status("sdk_v1"):
+        if check_feature_flag_status("sdk_v1"):
             try:
                 llm = LLM(adapter_id=adapter_id, adapter_metadata=adapter_metadata)
                 return llm.test_connection()
-            except Sdk1Error as e:
+            except SdkError as e:
                 raise TestAdapterError(
                     e, adapter_name=adapter_metadata[AdapterKeys.ADAPTER_NAME]
                 )

@@ -12,11 +12,14 @@ from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManag
 from utils.models.base_model import BaseModel
 from utils.user_context import UserContext
 
-from unstract.backend.feature_flag.helper import FeatureFlagHelper
-from unstract.sdk1.constants import LogLevel as Sdk1LogLevel
-from unstract.sdk1.vector_db import VectorDB as Sdk1VectorDB
-from unstract.sdk.constants import LogLevel
-from unstract.sdk.vector_db import VectorDB
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.constants import LogLevel
+    from unstract.sdk1.vector_db import VectorDB
+else:
+    from unstract.sdk.constants import LogLevel
+    from unstract.sdk.vector_db import VectorDB
 
 logger = logging.getLogger(__name__)
 
@@ -106,19 +109,13 @@ class IndexManager(BaseModel):
 def delete_from_vector_db(index_ids_history, vector_db_instance_id):
     organization_identifier = UserContext.get_organization_identifier()
     util = PromptIdeBaseTool(
-        log_level=Sdk1LogLevel.INFO if FeatureFlagHelper.check_flag_status("sdk_v1") else LogLevel.INFO,
+        log_level=LogLevel.INFO,
         org_id=organization_identifier
     )
-    if FeatureFlagHelper.check_flag_status("sdk_v1"):
-        vector_db = Sdk1VectorDB(
-            tool=util,
-            adapter_instance_id=vector_db_instance_id,
-        )
-    else:
-        vector_db = VectorDB(
-            tool=util,
-            adapter_instance_id=vector_db_instance_id,
-        )
+    vector_db = VectorDB(
+        tool=util,
+        adapter_instance_id=vector_db_instance_id,
+    )
     for index_id in index_ids_history:
         logger.debug(f"Deleting from VectorDB - index id: {index_id}")
         try:

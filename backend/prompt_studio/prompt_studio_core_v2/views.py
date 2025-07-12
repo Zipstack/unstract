@@ -8,7 +8,7 @@ from account_v2.custom_exceptions import DuplicateData
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
-from feature_flag.helper import FeatureFlagHelper
+from unstract.flags.feature_flag import check_feature_flag_status
 from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
 from permissions.permission import IsOwner, IsOwnerOrSharedUser
@@ -60,8 +60,10 @@ from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFil
 from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
 
-from unstract.sdk1.utils import Utils
-from unstract.sdk.utils.common_utils import CommonUtils
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.utils import Utils as CommonUtils
+else:
+    from unstract.sdk.utils.common_utils import CommonUtils
 
 from .models import CustomTool
 from .serializers import (

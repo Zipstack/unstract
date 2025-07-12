@@ -8,14 +8,17 @@ from backend.constants import FieldLengthConstants as FLC
 from backend.serializers import AuditSerializer
 from cryptography.fernet import Fernet
 from django.conf import settings
-from feature_flag.helper import FeatureFlagHelper
 from rest_framework import serializers
 from rest_framework.serializers import ModelSerializer
 
-from unstract.sdk1.constants import AdapterTypes as Sdk1AdapterTypes
-from unstract.sdk1.constants import Common
-from unstract.sdk.adapters.constants import Common as common
-from unstract.sdk.adapters.enums import AdapterTypes
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.constants import AdapterTypes
+    from unstract.sdk1.constants import Common as common
+else:
+    from unstract.sdk.adapters.constants import Common as common
+    from unstract.sdk.adapters.enums import AdapterTypes
 
 from .models import AdapterInstance, UserDefaultAdapter
 
@@ -63,24 +66,14 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
         # Retrieve context window if adapter is a LLM
         # For other adapter types, context_window is not relevant.
         
-        if FeatureFlagHelper.check_flag_status('sdk_v1'):
-            if instance.adapter_type == Sdk1AdapterTypes.LLM.value:
-                adapter_metadata[AdapterKeys.ADAPTER_CONTEXT_WINDOW_SIZE] = (
-                    instance.get_context_window_size()
-                )
-
-            rep[Common.ICON] = AdapterProcessor.get_adapter_data_with_key(
-                instance.adapter_id, Common.ICON
+        if instance.adapter_type == AdapterTypes.LLM.value:
+            adapter_metadata[AdapterKeys.ADAPTER_CONTEXT_WINDOW_SIZE] = (
+                instance.get_context_window_size()
             )
-        else:
-            if instance.adapter_type == AdapterTypes.LLM.value:
-                adapter_metadata[AdapterKeys.ADAPTER_CONTEXT_WINDOW_SIZE] = (
-                    instance.get_context_window_size()
-                )
 
-            rep[common.ICON] = AdapterProcessor.get_adapter_data_with_key(
-                instance.adapter_id, common.ICON
-            )            
+        rep[common.ICON] = AdapterProcessor.get_adapter_data_with_key(
+            instance.adapter_id, common.ICON
+        )            
         rep[AdapterKeys.ADAPTER_CREATED_BY] = instance.created_by.email
 
         return rep
@@ -123,14 +116,9 @@ class AdapterListSerializer(BaseAdapterSerializer):
 
     def to_representation(self, instance: AdapterInstance) -> dict[str, str]:
         rep: dict[str, str] = super().to_representation(instance)
-        if FeatureFlagHelper.check_flag_status('sdk_v1'):
-            rep[Common.ICON] = AdapterProcessor.get_adapter_data_with_key(
-                instance.adapter_id, Common.ICON
-            )
-        else:
-            rep[common.ICON] = AdapterProcessor.get_adapter_data_with_key(
-                instance.adapter_id, common.ICON
-            )
+        rep[common.ICON] = AdapterProcessor.get_adapter_data_with_key(
+            instance.adapter_id, common.ICON
+        )
         model = instance.metadata.get("model")
         if model:
             rep["model"] = model

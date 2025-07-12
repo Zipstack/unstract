@@ -7,7 +7,6 @@ from typing import Any
 
 from backend.exceptions import UnstractFSException
 from connector_v2.models import ConnectorInstance
-from feature_flag.helper import FeatureFlagHelper
 from plugins.workflow_manager.workflow_v2.utils import WorkflowUtil
 from rest_framework.exceptions import APIException
 from utils.user_context import UserContext
@@ -34,11 +33,15 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from unstract.connectors.exceptions import ConnectorError
 from unstract.filesystem import FileStorageType, FileSystem
-from unstract.sdk1.constants import ToolExecKey as Sdk1ToolExecKey
-from unstract.sdk1.tool.mime_types import EXT_MIME_MAP as SDK1_EXT_MIME_MAP
-from unstract.sdk.constants import ToolExecKey
-from unstract.sdk.tool.mime_types import EXT_MIME_MAP
+from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.workflow_execution.constants import ToolOutputType
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.constants import ToolExecKey
+    from unstract.sdk1.tool.mime_types import EXT_MIME_MAP
+else:
+    from unstract.sdk.constants import ToolExecKey
+    from unstract.sdk.tool.mime_types import EXT_MIME_MAP
 
 logger = logging.getLogger(__name__)
 
@@ -251,14 +254,9 @@ class DestinationConnector(BaseConnector):
             input_dir=output_directory, root_path=root_path
         )
         logger.debug(f"destination output directory {output_directory}")
-        if FeatureFlagHelper.check_flag_status("sdk_v1"):
-            destination_volume_path = os.path.join(
-                self.file_execution_dir, Sdk1ToolExecKey.OUTPUT_DIR
-            )
-        else:
-            destination_volume_path = os.path.join(
-                self.file_execution_dir, ToolExecKey.OUTPUT_DIR
-            )
+        destination_volume_path = os.path.join(
+            self.file_execution_dir, ToolExecKey.OUTPUT_DIR
+        )
 
         try:
             destination_fs.create_dir_if_not_exists(input_dir=output_directory)
@@ -490,20 +488,15 @@ class DestinationConnector(BaseConnector):
         try:
             # TODO: SDK handles validation; consider removing here.
             file_type = file_storage.mime_type(path=output_file)
-            json_ext_mime = (
-                SDK1_EXT_MIME_MAP[ToolOutputType.JSON.lower()]
-                if FeatureFlagHelper.check_flag_status("sdk_v1")
-                else EXT_MIME_MAP[ToolOutputType.JSON.lower()]
-            )
             if output_type == ToolOutputType.JSON:
-                if file_type != json_ext_mime:
+                if file_type != EXT_MIME_MAP[ToolOutputType.JSON.lower()]:
                     msg = f"Expected tool output type: JSON, got: '{file_type}'"
                     logger.error(msg)
                     raise ToolOutputTypeMismatch(detail=msg)
                 file_content = file_storage.read(output_file, mode="r")
                 result = json.loads(file_content)
             elif output_type == ToolOutputType.TXT:
-                if file_type == json_ext_mime:
+                if file_type == EXT_MIME_MAP[ToolOutputType.JSON.lower()]:
                     msg = f"Expected tool output type: TXT, got: '{file_type}'"
                     logger.error(msg)
                     raise ToolOutputTypeMismatch(detail=msg)
