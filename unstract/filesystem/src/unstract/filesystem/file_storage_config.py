@@ -1,10 +1,16 @@
 import logging
 import os
 
-from unstract.sdk.file_storage import FileStorageProvider, StorageType
+from unstract.flags.feature_flag import check_feature_flag_status
 
 from .exceptions import ProviderNotFound
 from .file_storage_types import FileStorageType  # Import the shared enum
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.file_storage import FileStorageProvider, StorageType
+else:
+    from unstract.sdk.file_storage import FileStorageProvider, StorageType
+
 
 logger = logging.getLogger(__name__)
 
