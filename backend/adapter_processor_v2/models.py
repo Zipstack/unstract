@@ -8,6 +8,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from django.conf import settings
 from django.db import models
 from django.db.models import QuerySet
+from feature_flag.helper import FeatureFlagHelper
 from tenant_account_v2.models import OrganizationMember
 from utils.exceptions import InvalidEncryptionKey
 from utils.models.base_model import BaseModel
@@ -16,6 +17,9 @@ from utils.models.organization_mixin import (
     DefaultOrganizationMixin,
 )
 
+from unstract.sdk1.constants import AdapterTypes as Sdk1AdapterTypes
+from unstract.sdk1.exceptions import SdkError
+from unstract.sdk1.llm import LLM
 from unstract.sdk.adapters.adapterkit import Adapterkit
 from unstract.sdk.adapters.enums import AdapterTypes
 from unstract.sdk.adapters.exceptions import AdapterError
@@ -75,7 +79,9 @@ class AdapterInstance(DefaultOrganizationMixin, BaseModel):
     )
     adapter_metadata_b = models.BinaryField(null=True)
     adapter_type = models.CharField(
-        choices=[(tag.value, tag.name) for tag in AdapterTypes],
+        choices=[(tag.value, tag.name) for tag in Sdk1AdapterTypes] \
+            if FeatureFlagHelper.check_flag_status('sdk_v1') \
+            else [(tag.value, tag.name) for tag in AdapterTypes],
         db_comment="Type of adapter LLM/EMBEDDING/VECTOR_DB",
     )
     created_by = models.ForeignKey(
@@ -158,12 +164,19 @@ class AdapterInstance(DefaultOrganizationMixin, BaseModel):
 
     def get_context_window_size(self) -> int:
         # Get the adapter_instance
-        adapter_class = Adapterkit().get_adapter_class_by_adapter_id(self.adapter_id)
-        try:
-            adapter_instance = adapter_class(self.metadata)
-            return adapter_instance.get_context_window_size()
-        except AdapterError as e:
-            logger.warning(f"Unable to retrieve context window size - {e}")
+        if FeatureFlagHelper.check_flag_status('sdk_v1'):
+            try:
+                llm = LLM(adapter_id=self.adapter_id, adapter_metadata=self.adapter_metadata)
+                return llm.get_context_window_size()
+            except SdkError as e:
+                logger.warning(f"Unable to retrieve context window size - {e}")
+        else:
+            try:
+                adapter_class = Adapterkit().get_adapter_class_by_adapter_id(self.adapter_id)
+                adapter_instance = adapter_class(self.metadata)
+                return adapter_instance.get_context_window_size()
+            except AdapterError as e:
+                logger.warning(f"Unable to retrieve context window size - {e}")
         return 0
 
 

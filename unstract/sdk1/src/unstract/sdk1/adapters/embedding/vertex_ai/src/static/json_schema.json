@@ -1,0 +1,57 @@
+{
+    "title": "Vertex AI Embedding",
+    "type": "object",
+    "required": [
+      "adapter_name",
+      "project",
+      "json_credentials",
+      "model"
+    ],
+    "properties": {
+      "adapter_name": {
+        "type": "string",
+        "title": "Name",
+        "default": "",
+        "description": "Provide a unique name for this adapter instance. Example: vertexai-group-1"
+      },
+      "json_credentials": {
+        "type": "string",
+        "title": "Credentials",
+        "default": "",
+        "description": "Refer [GCloud docs](https://developers.google.com/workspace/guides/create-credentials#create_credentials_for_a_service_account) on adding keys for service account."
+      },
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "default": "",
+        "description": "Provide the name of the model you defined for Vertex AI."
+      },
+      "project": {
+        "type": "string",
+        "title": "Project",
+        "default": "",
+        "description": "Provide the name of the deployment or project you defined for Vertex AI"
+      },
+      "embed_batch_size": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Embedding Batch Size",
+      "default": 10
+      },
+      "embed_mode": {
+        "type": "string",
+        "title": "Embed Mode",
+        "description": "Embedding mode for Vertex AI's embedding model. Refer to [Vertext AI's documentation](https://cloud.google.com/vertex-ai/generative-ai/docs/embeddings/task-types) for more details.",
+        "enum": [
+            "default",
+            "classification",
+            "clustering",
+            "similarity",
+            "retrieval"
+          ],
+          "default": "default"
+      }
+    }
+  }
+  

@@ -6,7 +6,8 @@ from collections.abc import Generator
 from typing import Any, Dict, List, Optional, Union
 
 import litellm
-from litellm import get_supported_openai_params
+
+# from litellm import get_supported_openai_params
 from pydantic import BaseModel, Field, ValidationError
 
 from unstract.sdk1.utils.exceptions import *
@@ -132,6 +133,9 @@ class LLM:
     def get_usage(self) -> Optional[dict[str, Any]]:  # noqa: D401
         """Return usage dict if present (provider specific)."""
         return self._last_usage
+
+    def get_context_window_size(self):
+        return self.get_max_tokens(self.kwargs["model"])
 
     def _extract_kwargs(self):
         """

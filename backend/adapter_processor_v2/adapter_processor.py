@@ -16,6 +16,7 @@ from feature_flag.helper import FeatureFlagHelper
 from platform_settings_v2.platform_auth_service import PlatformAuthenticationService
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 
+from unstract.sdk1.exceptions import SdkError as Sdk1Error
 from unstract.sdk1.llm import LLM
 from unstract.sdk.adapters.adapterkit import Adapterkit
 from unstract.sdk.adapters.base import Adapter
@@ -100,11 +101,16 @@ class AdapterProcessor:
             "\n!!! TEST ADAPTER !!!\n"
         )
 
-        try:
-            if FeatureFlagHelper.check_flag_status("sdk_v1"):
+        if FeatureFlagHelper.check_flag_status("sdk_v1"):
+            try:
                 llm = LLM(adapter_id=adapter_id, adapter_metadata=adapter_metadata)
                 return llm.test_connection()
-            else:
+            except Sdk1Error as e:
+                raise TestAdapterError(
+                    e, adapter_name=adapter_metadata[AdapterKeys.ADAPTER_NAME]
+                )
+        else:
+            try:
                 adapter_class = Adapterkit().get_adapter_class_by_adapter_id(adapter_id)
 
                 if adapter_metadata.pop(AdapterKeys.ADAPTER_TYPE) == AdapterKeys.X2TEXT:
@@ -123,10 +129,10 @@ class AdapterProcessor:
                 adapter_instance = adapter_class(adapter_metadata)
                 test_result: bool = adapter_instance.test_connection()
                 return test_result
-        except SdkError as e:
-            raise TestAdapterError(
-                e, adapter_name=adapter_metadata[AdapterKeys.ADAPTER_NAME]
-            )
+            except SdkError as e:
+                raise TestAdapterError(
+                    e, adapter_name=adapter_metadata[AdapterKeys.ADAPTER_NAME]
+                )
 
     @staticmethod
     def update_adapter_metadata(adapter_metadata_b: Any, **kwargs) -> Any:

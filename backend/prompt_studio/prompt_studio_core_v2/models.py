@@ -6,6 +6,8 @@ from account_v2.models import User
 from adapter_processor_v2.models import AdapterInstance
 from django.db import models
 from django.db.models import QuerySet
+from feature_flag.helper import FeatureFlagHelper
+from prompt_studio.prompt_studio_core_v2.constants import DefaultPrompts
 from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.models.base_model import BaseModel
@@ -14,7 +16,8 @@ from utils.models.organization_mixin import (
     DefaultOrganizationMixin,
 )
 
-from prompt_studio.prompt_studio_core_v2.constants import DefaultPrompts
+from unstract.sdk1.file_storage.constants import StorageType as Sdk1StorageType
+from unstract.sdk1.file_storage.env_helper import EnvHelper as Sdk1EnvHelper
 from unstract.sdk.file_storage.constants import StorageType
 from unstract.sdk.file_storage.env_helper import EnvHelper
 
@@ -135,10 +138,16 @@ class CustomTool(DefaultOrganizationMixin, BaseModel):
 
     def delete(self, organization_id=None, *args, **kwargs):
         # Delete the documents associated with the tool
-        fs_instance = EnvHelper.get_storage(
-            storage_type=StorageType.PERMANENT,
-            env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
-        )
+        if FeatureFlagHelper.check_flag_status('sdk_v1'):
+            fs_instance = Sdk1EnvHelper.get_storage(
+                storage_type=Sdk1StorageType.PERMANENT,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+            )
+        else:
+            fs_instance = EnvHelper.get_storage(
+                storage_type=StorageType.PERMANENT,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+            )
         file_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
             organization_id,
             is_create=False,

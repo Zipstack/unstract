@@ -1,0 +1,35 @@
+{
+  "title": "Palm Embedding",
+  "type": "object",
+  "required": [
+    "adapter_name",
+    "model_name",
+    "api_key"
+  ],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this adapter instance. Example: palm-emb-1"
+    },
+    "model_name": {
+      "type": "string",
+      "title": "Model Name",
+      "default": "models/embedding-gecko-001",
+      "description": "Provide the name of the model to use for embedding. Example: `models/embedding-gecko-001`"
+    },
+    "api_key": {
+      "type": "string",
+      "title": "API Key",
+      "format": "password"
+    },
+    "embed_batch_size": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Embed Batch Size",
+      "default": 10
+    }
+  }
+}

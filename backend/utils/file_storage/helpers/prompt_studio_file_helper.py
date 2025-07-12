@@ -4,11 +4,15 @@ import os
 from pathlib import Path
 from typing import Any
 
+from feature_flag.helper import FeatureFlagHelper
 from file_management.exceptions import InvalidFileType
 from file_management.file_management_helper import FileManagerHelper
 from utils.file_storage.constants import FileStorageConstants, FileStorageKeys
 
 from unstract.core.utilities import UnstractUtils
+from unstract.sdk1.file_storage import Sdk1FileStorage
+from unstract.sdk1.file_storage.constants import Sdk1StorageType
+from unstract.sdk1.file_storage.env_helper import Sdk1EnvHelper
 from unstract.sdk.file_storage import FileStorage
 from unstract.sdk.file_storage.constants import StorageType
 from unstract.sdk.file_storage.env_helper import EnvHelper
@@ -39,10 +43,16 @@ class PromptStudioFileHelper:
         extract_file_path = str(Path(file_path) / "extract")
         summarize_file_path = str(Path(file_path) / "summarize")
         if is_create:
-            fs_instance = EnvHelper.get_storage(
-                storage_type=StorageType.PERMANENT,
-                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
-            )
+            if FeatureFlagHelper.check_flag_status('sdk_v1'):
+                fs_instance = Sdk1EnvHelper.get_storage(
+                    storage_type=Sdk1StorageType.PERMANENT,
+                    env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+                )
+            else:
+                fs_instance = EnvHelper.get_storage(
+                    storage_type=StorageType.PERMANENT,
+                    env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+                )
             fs_instance.mkdir(file_path, create_parents=True)
             fs_instance.mkdir(extract_file_path, create_parents=True)
             fs_instance.mkdir(summarize_file_path, create_parents=True)
@@ -61,10 +71,16 @@ class PromptStudioFileHelper:
             file_data (Any) : File data
             file_name (str) : Name of the file to be uploaded
         """
-        fs_instance = EnvHelper.get_storage(
-            storage_type=StorageType.PERMANENT,
-            env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
-        )
+        if FeatureFlagHelper.check_flag_status('sdk_v1'):
+            fs_instance = Sdk1EnvHelper.get_storage(
+                storage_type=Sdk1StorageType.PERMANENT,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+            )
+        else:
+            fs_instance = EnvHelper.get_storage(
+                storage_type=StorageType.PERMANENT,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+            )
         file_system_path = (
             PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
                 org_id=org_id,
@@ -92,10 +108,16 @@ class PromptStudioFileHelper:
         """Method to fetch file contents from the remote location.
         The path is constructed in runtime based on the args
         """
-        fs_instance = EnvHelper.get_storage(
-            storage_type=StorageType.PERMANENT,
-            env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
-        )
+        if FeatureFlagHelper.check_flag_status('sdk_v1'):
+            fs_instance = Sdk1EnvHelper.get_storage(
+                storage_type=Sdk1StorageType.PERMANENT,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+            )
+        else:
+            fs_instance = EnvHelper.get_storage(
+                storage_type=StorageType.PERMANENT,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+            )
         # Fetching legacy file path for lazy copy
         # This has to be removed once the usage of FS APIs
         # are standadized.
@@ -163,10 +185,16 @@ class PromptStudioFileHelper:
         studio project is deleted or the file is removed from the file manager.
         This method handles deleted for related files as well.
         """
-        fs_instance = EnvHelper.get_storage(
-            storage_type=StorageType.PERMANENT,
-            env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
-        )
+        if FeatureFlagHelper.check_flag_status('sdk_v1'):
+            fs_instance = Sdk1EnvHelper.get_storage(
+                storage_type=Sdk1StorageType.PERMANENT,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+            )
+        else:
+            fs_instance = EnvHelper.get_storage(
+                storage_type=StorageType.PERMANENT,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+            )
         file_system_path = (
             PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
                 org_id=org_id,
@@ -193,7 +221,7 @@ class PromptStudioFileHelper:
 
     @staticmethod
     def _find_files(
-        fs: FileStorage, base_file_name: str, base_path: str, directories: list[str]
+        fs: Sdk1FileStorage | FileStorage, base_file_name: str, base_path: str, directories: list[str]
     ) -> list[str]:
         """This method is used to file files with the specific pattern
         determined using the list of directories passed and the base path.

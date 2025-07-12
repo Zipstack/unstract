@@ -1,10 +1,12 @@
 from django.db.models.query import QuerySet
 from django_filters import CharFilter, FilterSet, ModelChoiceFilter
+from feature_flag.helper import FeatureFlagHelper
 from rest_framework.request import Request
-
-from unstract.sdk.constants import LogLevel
 from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.models.execution_log import ExecutionLog
+
+from unstract.sdk1.constants import LogLevel as Sdk1LogLevel
+from unstract.sdk.constants import LogLevel
 
 
 def get_file_executions(request: Request | None) -> QuerySet:
@@ -33,12 +35,20 @@ class ExecutionLogFilter(FilterSet):
         fields = ["file_execution_id", "log_level"]
 
     def filter_logs(self, queryset: QuerySet, name: str, value: str) -> QuerySet:
-        levels = {
-            LogLevel.DEBUG.value: 0,
-            LogLevel.INFO.value: 1,
-            LogLevel.WARN.value: 2,
-            LogLevel.ERROR.value: 3,
-        }
+        if FeatureFlagHelper.check_flag_status('sdk_v1'):
+            levels = {
+                Sdk1LogLevel.DEBUG.value: 0,
+                Sdk1LogLevel.INFO.value: 1,
+                Sdk1LogLevel.WARN.value: 2,
+                Sdk1LogLevel.ERROR.value: 3,
+            }
+        else:
+            levels = {
+                LogLevel.DEBUG.value: 0,
+                LogLevel.INFO.value: 1,
+                LogLevel.WARN.value: 2,
+                LogLevel.ERROR.value: 3,
+            }
         min_level = levels.get(value, 1)  # Default to INFO if not found
         return queryset.filter(
             data__level__in=[

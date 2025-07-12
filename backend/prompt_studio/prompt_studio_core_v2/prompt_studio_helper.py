@@ -12,11 +12,7 @@ from adapter_processor_v2.constants import AdapterKeys
 from adapter_processor_v2.models import AdapterInstance
 from django.conf import settings
 from django.db.models.manager import BaseManager
-from rest_framework.request import Request
-from utils.file_storage.constants import FileStorageKeys
-from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
-from utils.local_context import StateStore
-
+from feature_flag.helper import FeatureFlagHelper
 from prompt_studio.modifier_loader import ModifierConfig
 from prompt_studio.modifier_loader import load_plugins as load_modifier_plugins
 from prompt_studio.processor_loader import get_plugin_class_by_name
@@ -25,14 +21,10 @@ from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_profile_manager_v2.profile_manager_helper import (
     ProfileManagerHelper,
 )
-from prompt_studio.prompt_studio_core_v2.constants import (
-    DefaultValues,
-    ExecutionSource,
-    IndexingStatus,
-    LogLevels,
-    ToolStudioPromptKeys,
-)
+from prompt_studio.prompt_studio_core_v2.constants import DefaultValues, ExecutionSource
 from prompt_studio.prompt_studio_core_v2.constants import IndexingConstants as IKeys
+from prompt_studio.prompt_studio_core_v2.constants import IndexingStatus, LogLevels
+from prompt_studio.prompt_studio_core_v2.constants import ToolStudioPromptKeys
 from prompt_studio.prompt_studio_core_v2.constants import (
     ToolStudioPromptKeys as TSPKeys,
 )
@@ -63,7 +55,20 @@ from prompt_studio.prompt_studio_output_manager_v2.output_manager_helper import 
     OutputManagerHelper,
 )
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
+from rest_framework.request import Request
+from utils.file_storage.constants import FileStorageKeys
+from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
+from utils.local_context import StateStore
+
+from unstract.backend import feature_flag
 from unstract.core.pubsub_helper import LogPublisher
+from unstract.sdk1.constants import LogLevel as Sdk1Loglevel
+from unstract.sdk1.exceptions import IndexingError as Sdk1IndexingError
+from unstract.sdk1.exceptions import SdkError as Sdk1SdkError
+from unstract.sdk1.file_storage.constants import StorageType as Sdk1StorageType
+from unstract.sdk1.file_storage.env_helper import EnvHelper as Sdk1EnvHelper
+from unstract.sdk1.prompt import PromptTool as Sdk1PromptTool
+from unstract.sdk1.utils.indexing import IndexingUtils as Sdk1IndexingUtils
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.exceptions import IndexingError, SdkError
 from unstract.sdk.file_storage.constants import StorageType
@@ -336,7 +341,7 @@ class PromptStudioHelper:
 
         Raises:
             ToolNotValid
-            IndexingError
+            Sdk1IndexingError | IndexingError
         """
         tool: CustomTool = CustomTool.objects.get(pk=tool_id)
         file_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
@@ -366,22 +371,40 @@ class PromptStudioHelper:
         # has access to adapters configured in profile manager
         PromptStudioHelper.validate_profile_manager_owner_access(default_profile)
 
-        fs_instance = EnvHelper.get_storage(
-            storage_type=StorageType.PERMANENT,
-            env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
-        )
-        util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
-        doc_id = IndexingUtils.generate_index_key(
-            vector_db=str(default_profile.vector_store.id),
-            embedding=str(default_profile.embedding_model.id),
-            x2text=str(default_profile.x2text.id),
-            chunk_size=str(default_profile.chunk_size),
-            chunk_overlap=str(default_profile.chunk_overlap),
-            file_path=file_path,
-            file_hash=None,
-            fs=fs_instance,
-            tool=util,
-        )
+        if FeatureFlagHelper.check_flag_status("sdk_v1"):
+            fs_instance = Sdk1EnvHelper.get_storage(
+                storage_type=Sdk1StorageType.PERMANENT,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+            )
+            util = PromptIdeBaseTool(log_level=Sdk1Loglevel.INFO, org_id=org_id)
+            doc_id = Sdk1IndexingUtils.generate_index_key(
+                vector_db=str(default_profile.vector_store.id),
+                embedding=str(default_profile.embedding_model.id),
+                x2text=str(default_profile.x2text.id),
+                chunk_size=str(default_profile.chunk_size),
+                chunk_overlap=str(default_profile.chunk_overlap),
+                file_path=file_path,
+                file_hash=None,
+                fs=fs_instance,
+                tool=util,
+            )
+        else:
+            fs_instance = EnvHelper.get_storage(
+                storage_type=StorageType.PERMANENT,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+            )
+            util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
+            doc_id = IndexingUtils.generate_index_key(
+                vector_db=str(default_profile.vector_store.id),
+                embedding=str(default_profile.embedding_model.id),
+                x2text=str(default_profile.x2text.id),
+                chunk_size=str(default_profile.chunk_size),
+                chunk_overlap=str(default_profile.chunk_overlap),
+                file_path=file_path,
+                file_hash=None,
+                fs=fs_instance,
+                tool=util,
+            )
         extracted_text = PromptStudioHelper.dynamic_extractor(
             profile_manager=default_profile,
             file_path=file_path,
@@ -396,16 +419,28 @@ class PromptStudioHelper:
             summarize_file_path = PromptStudioHelper.summarize(
                 file_name, org_id, document_id, is_summary, run_id, tool, doc_id
             )
-            summarize_doc_id = IndexingUtils.generate_index_key(
-                vector_db=str(default_profile.vector_store.id),
-                embedding=str(default_profile.embedding_model.id),
-                x2text=str(default_profile.x2text.id),
-                chunk_size=str(default_profile.chunk_size),
-                chunk_overlap=str(default_profile.chunk_overlap),
-                file_path=summarize_file_path,
-                fs=fs_instance,
-                tool=util,
-            )
+            if FeatureFlagHelper.check_flag_status("sdk_v1"):
+                summarize_doc_id = Sdk1IndexingUtils.generate_index_key(
+                    vector_db=str(default_profile.vector_store.id),
+                    embedding=str(default_profile.embedding_model.id),
+                    x2text=str(default_profile.x2text.id),
+                    chunk_size=str(default_profile.chunk_size),
+                    chunk_overlap=str(default_profile.chunk_overlap),
+                    file_path=summarize_file_path,
+                    fs=fs_instance,
+                    tool=util,
+                )
+            else:
+                summarize_doc_id = IndexingUtils.generate_index_key(
+                    vector_db=str(default_profile.vector_store.id),
+                    embedding=str(default_profile.embedding_model.id),
+                    x2text=str(default_profile.x2text.id),
+                    chunk_size=str(default_profile.chunk_size),
+                    chunk_overlap=str(default_profile.chunk_overlap),
+                    file_path=summarize_file_path,
+                    fs=fs_instance,
+                    tool=util,
+                )
             PromptStudioIndexHelper.handle_index_manager(
                 document_id=document_id,
                 is_summary=is_summary,
@@ -804,10 +839,18 @@ class PromptStudioHelper:
         x2text = str(profile_manager.x2text.id)
         if not profile_manager:
             raise DefaultProfileError()
-        fs_instance = EnvHelper.get_storage(
-            storage_type=StorageType.PERMANENT,
-            env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
-        )
+        if FeatureFlagHelper.check_flag_status("sdk_v1"):
+            fs_instance = Sdk1EnvHelper.get_storage(
+                storage_type=Sdk1StorageType.PERMANENT,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+            )
+            util = PromptIdeBaseTool(log_level=Sdk1Loglevel.INFO, org_id=org_id)
+        else:
+            fs_instance = EnvHelper.get_storage(
+                storage_type=StorageType.PERMANENT,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+            )
+            util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
         file_path = doc_path
         directory, filename = os.path.split(doc_path)
         doc_path = os.path.join(
@@ -815,22 +858,34 @@ class PromptStudioHelper:
         )
         is_summary = tool.summarize_as_source
         logger.info(f"Summary status : {is_summary}")
-        util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
         logger.info(
             f"Passing file_path for fetching answer "
             f"{file_path} : extraction path {doc_path}"
         )
-        doc_id = IndexingUtils.generate_index_key(
-            vector_db=str(profile_manager.vector_store.id),
-            embedding=str(profile_manager.embedding_model.id),
-            x2text=str(profile_manager.x2text.id),
-            chunk_size=str(profile_manager.chunk_size),
-            chunk_overlap=str(profile_manager.chunk_overlap),
-            file_path=file_path,
-            file_hash=None,
-            fs=fs_instance,
-            tool=util,
-        )
+        if FeatureFlagHelper.check_flag_status("sdk_v1"):
+            doc_id = Sdk1IndexingUtils.generate_index_key(
+                vector_db=str(profile_manager.vector_store.id),
+                embedding=str(profile_manager.embedding_model.id),
+                x2text=str(profile_manager.x2text.id),
+                chunk_size=str(profile_manager.chunk_size),
+                chunk_overlap=str(profile_manager.chunk_overlap),
+                file_path=file_path,
+                file_hash=None,
+                fs=fs_instance,
+                tool=util,
+            )
+        else:
+            doc_id = IndexingUtils.generate_index_key(
+                vector_db=str(profile_manager.vector_store.id),
+                embedding=str(profile_manager.embedding_model.id),
+                x2text=str(profile_manager.x2text.id),
+                chunk_size=str(profile_manager.chunk_size),
+                chunk_overlap=str(profile_manager.chunk_overlap),
+                file_path=file_path,
+                file_hash=None,
+                fs=fs_instance,
+                tool=util,
+            )
         if DocumentIndexingService.is_document_indexing(
             org_id=org_id, user_id=user_id, doc_id_key=doc_id
         ):
@@ -955,15 +1010,23 @@ class PromptStudioHelper:
         }
 
         try:
-            responder = PromptTool(
-                tool=util,
-                prompt_host=settings.PROMPT_HOST,
-                prompt_port=settings.PROMPT_PORT,
-                request_id=StateStore.get(Common.REQUEST_ID),
-            )
+            if FeatureFlagHelper.check_flag_status("sdk_v1"):
+                responder = Sdk1PromptTool(
+                    tool=util,
+                    prompt_host=settings.PROMPT_HOST,
+                    prompt_port=settings.PROMPT_PORT,
+                    request_id=StateStore.get(Common.REQUEST_ID),
+                )
+            else:
+                responder = PromptTool(
+                    tool=util,
+                    prompt_host=settings.PROMPT_HOST,
+                    prompt_port=settings.PROMPT_PORT,
+                    request_id=StateStore.get(Common.REQUEST_ID),
+                )
             params = {TSPKeys.INCLUDE_METADATA: True}
             return responder.answer_prompt(payload=payload, params=params)
-        except SdkError as e:
+        except (Sdk1SdkError if FeatureFlagHelper.check_flag_status("sdk_v1") else SdkError) as e:
             msg = str(e)
             if e.actual_err and hasattr(e.actual_err, "response"):
                 msg = e.actual_err.response.json().get("error", str(e))
@@ -1100,17 +1163,25 @@ class PromptStudioHelper:
                 TSPKeys.EXECUTION_SOURCE: ExecutionSource.IDE.value,
             }
 
-            util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
+            util = PromptIdeBaseTool(log_level=Sdk1Loglevel.INFO if FeatureFlagHelper.check_flag_status('sdk_v1') else LogLevel.INFO, org_id=org_id)
 
             try:
-                responder = PromptTool(
-                    tool=util,
-                    prompt_host=settings.PROMPT_HOST,
-                    prompt_port=settings.PROMPT_PORT,
-                    request_id=StateStore.get(Common.REQUEST_ID),
+                if FeatureFlagHelper.check_flag_status("sdk_v1"):
+                    responder = Sdk1PromptTool(
+                        tool=util,
+                        prompt_host=settings.PROMPT_HOST,
+                        prompt_port=settings.PROMPT_PORT,
+                        request_id=StateStore.get(Common.REQUEST_ID),
+                    )
+                else:
+                    responder = PromptTool(
+                        tool=util,
+                        prompt_host=settings.PROMPT_HOST,
+                        prompt_port=settings.PROMPT_PORT,
+                        request_id=StateStore.get(Common.REQUEST_ID),
                 )
                 doc_id = responder.index(payload=payload)
-            except SdkError as e:
+            except (Sdk1SdkError if FeatureFlagHelper.check_flag_status("sdk_v1") else SdkError) as e:
                 msg = str(e)
                 if e.actual_err and hasattr(e.actual_err, "response"):
                     msg = e.actual_err.response.json().get("error", str(e))
@@ -1128,9 +1199,14 @@ class PromptStudioHelper:
                 org_id=org_id, user_id=user_id, doc_id_key=doc_id_key, doc_id=doc_id
             )
             return {"status": IndexingStatus.COMPLETED_STATUS.value, "output": doc_id}
-        except (IndexingError, IndexingAPIError, SdkError) as e:
+        except (
+            Sdk1IndexingError if FeatureFlagHelper.check_flag_status("sdk_v1") else IndexingError,
+            IndexingAPIError,
+            Sdk1SdkError if FeatureFlagHelper.check_flag_status("sdk_v1") else SdkError
+        ) as e:
             msg = str(e)
-            if isinstance(e, SdkError) and hasattr(e.actual_err, "response"):
+            if isinstance(e, Sdk1SdkError if FeatureFlagHelper.check_flag_status("sdk_v1") else SdkError) and \
+                hasattr(e.actual_err, "response"):
                 msg = e.actual_err.response.json().get("error", str(e))
 
             msg = f"Error while indexing '{filename}'. {msg}"
@@ -1170,7 +1246,6 @@ class PromptStudioHelper:
         # has access to adapters configured in profile manager
         PromptStudioHelper.validate_profile_manager_owner_access(default_profile)
         default_profile.chunk_size = 0  # To retrive full context
-        util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
         if prompt_grammar:
             for word, synonyms in prompt_grammar.items():
                 grammar.append({TSPKeys.WORD: word, TSPKeys.SYNONYMS: synonyms})
@@ -1178,25 +1253,46 @@ class PromptStudioHelper:
         if not default_profile:
             raise DefaultProfileError()
 
-        fs_instance = EnvHelper.get_storage(
-            storage_type=StorageType.PERMANENT,
-            env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
-        )
+        if FeatureFlagHelper.check_flag_status("sdk_v1"):
+            fs_instance = Sdk1EnvHelper.get_storage(
+                storage_type=Sdk1StorageType.PERMANENT,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+            )
+            util = PromptIdeBaseTool(log_level=Sdk1Loglevel.INFO, org_id=org_id)
+        else:
+            fs_instance = EnvHelper.get_storage(
+                storage_type=StorageType.PERMANENT,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+            )
+            util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
         directory, filename = os.path.split(input_file_path)
         file_path = os.path.join(
             directory, "extract", os.path.splitext(filename)[0] + ".txt"
         )
-        doc_id = IndexingUtils.generate_index_key(
-            vector_db=str(default_profile.vector_store.id),
-            embedding=str(default_profile.embedding_model.id),
-            x2text=str(default_profile.x2text.id),
-            chunk_size=str(default_profile.chunk_size),
-            chunk_overlap=str(default_profile.chunk_overlap),
-            file_path=input_file_path,
-            file_hash=None,
-            fs=fs_instance,
-            tool=util,
-        )
+        if FeatureFlagHelper.check_flag_status("sdk_v1"):
+            doc_id = Sdk1IndexingUtils.generate_index_key(
+                vector_db=str(default_profile.vector_store.id),
+                embedding=str(default_profile.embedding_model.id),
+                x2text=str(default_profile.x2text.id),
+                chunk_size=str(default_profile.chunk_size),
+                chunk_overlap=str(default_profile.chunk_overlap),
+                file_path=input_file_path,
+                file_hash=None,
+                fs=fs_instance,
+                tool=util,
+            )
+        else:
+            doc_id = IndexingUtils.generate_index_key(
+                vector_db=str(default_profile.vector_store.id),
+                embedding=str(default_profile.embedding_model.id),
+                x2text=str(default_profile.x2text.id),
+                chunk_size=str(default_profile.chunk_size),
+                chunk_overlap=str(default_profile.chunk_overlap),
+                file_path=input_file_path,
+                file_hash=None,
+                fs=fs_instance,
+                tool=util,
+            )
         PromptStudioHelper.dynamic_extractor(
             profile_manager=default_profile,
             file_path=input_file_path,
@@ -1255,11 +1351,19 @@ class PromptStudioHelper:
             TSPKeys.EXECUTION_SOURCE: ExecutionSource.IDE.value,
         }
 
-        responder = PromptTool(
-            tool=util,
-            prompt_host=settings.PROMPT_HOST,
-            prompt_port=settings.PROMPT_PORT,
-            request_id=StateStore.get(Common.REQUEST_ID),
+        if FeatureFlagHelper.check_flag_status("sdk_v1"):
+            responder = Sdk1PromptTool(
+                tool=util,
+                prompt_host=settings.PROMPT_HOST,
+                prompt_port=settings.PROMPT_PORT,
+                request_id=StateStore.get(Common.REQUEST_ID),
+            )
+        else:
+            responder = PromptTool(
+                tool=util,
+                prompt_host=settings.PROMPT_HOST,
+                prompt_port=settings.PROMPT_PORT,
+                request_id=StateStore.get(Common.REQUEST_ID),
         )
         params = {TSPKeys.INCLUDE_METADATA: True}
         return responder.single_pass_extraction(payload=payload, params=params)
@@ -1300,10 +1404,16 @@ class PromptStudioHelper:
             doc_id=doc_id,
         )
         if is_extracted and not reindex:
-            fs_instance = EnvHelper.get_storage(
-                storage_type=StorageType.PERMANENT,
-                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
-            )
+            if feature_flag.check_flag_status("sdk_v1"):
+                fs_instance = Sdk1EnvHelper.get_storage(
+                    storage_type=Sdk1StorageType.PERMANENT,
+                    env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+                )
+            else:
+                fs_instance = EnvHelper.get_storage(
+                    storage_type=StorageType.PERMANENT,
+                    env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+                )
             try:
                 extracted_text = fs_instance.read(path=extract_file_path, mode="r")
                 logger.info("Extracted text found. Reading from file..")
@@ -1325,14 +1435,22 @@ class PromptStudioHelper:
             IKeys.OUTPUT_FILE_PATH: extract_file_path,
         }
 
-        util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
+        util = PromptIdeBaseTool(log_level=Sdk1Loglevel.INFO if FeatureFlagHelper.check_flag_status('sdk_v1') else LogLevel.INFO, org_id=org_id)
 
         try:
-            responder = PromptTool(
-                tool=util,
-                prompt_host=settings.PROMPT_HOST,
-                prompt_port=settings.PROMPT_PORT,
-                request_id=StateStore.get(Common.REQUEST_ID),
+            if FeatureFlagHelper.check_flag_status("sdk_v1"):
+                responder = Sdk1PromptTool(
+                    tool=util,
+                    prompt_host=settings.PROMPT_HOST,
+                    prompt_port=settings.PROMPT_PORT,
+                    request_id=StateStore.get(Common.REQUEST_ID),
+                )
+            else:
+                responder = PromptTool(
+                    tool=util,
+                    prompt_host=settings.PROMPT_HOST,
+                    prompt_port=settings.PROMPT_PORT,
+                    request_id=StateStore.get(Common.REQUEST_ID),
             )
             extracted_text = responder.extract(payload=payload)
             PromptStudioIndexHelper.mark_extraction_status(
@@ -1340,7 +1458,7 @@ class PromptStudioHelper:
                 profile_manager=profile_manager,
                 doc_id=doc_id,
             )
-        except SdkError as e:
+        except (Sdk1SdkError if FeatureFlagHelper.check_flag_status("sdk_v1") else SdkError) as e:
             msg = str(e)
             if e.actual_err and hasattr(e.actual_err, "response"):
                 msg = e.actual_err.response.json().get("error", str(e))

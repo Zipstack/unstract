@@ -1,0 +1,22 @@
+{
+  "title": "Qdrant FastEmbed Embedding",
+  "type": "object",
+  "required": [
+    "adapter_name",
+    "model_name"
+  ],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this adapter instance. Example: hf-fe-emb-1"
+    },
+    "model_name": {
+      "type": "string",
+      "title": "Model",
+      "default": "BAAI/bge-small-en-v1.5",
+      "description": "The name of the model to use. Example: `BAAI/bge-small-en-v1.5`"
+    }
+  }
+}

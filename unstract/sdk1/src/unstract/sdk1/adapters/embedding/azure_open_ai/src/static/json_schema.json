@@ -1,0 +1,66 @@
+{
+  "title": "Azure OpenAI Embedding",
+  "type": "object",
+  "required": [
+    "adapter_name",
+    "model",
+    "deployment_name",
+    "api_key",
+    "azure_endpoint",
+    "api_version"
+  ],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this adapter instance. Example: azure-emb-1"
+    },
+    "model": {
+      "type": "string",
+      "title": "Model",
+      "default": "",
+      "description": "Provide the name of the model you defined in Azure console. Example text-embedding-ada-002"
+    },
+    "deployment_name": {
+      "type": "string",
+      "title": "Deployment Name",
+      "default": "",
+      "description": "Provide the name of the deployment you defined in Azure console"
+    },
+    "api_key": {
+      "type": "string",
+      "title": "API Key",
+      "format": "password",
+      "description": "Provide the API key"
+    },
+    "api_version": {
+      "type": "string",
+      "title": "API Version",
+      "default": "2023-05-15",
+      "description": "Provide the API version. Refer to the documentation provided by Azure. Example: 2023-05-15"
+    },
+    "azure_endpoint": {
+      "type": "string",
+      "title": "Azure Endpoint",
+      "default": "",
+      "format": "uri",
+      "description": "Provide the Azure endpoint. Example: https://<your-deployment>.openai.azure.com/"
+    },
+    "embed_batch_size": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Embedding Batch Size",
+      "default": 5
+    },
+    "timeout": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Timeout",
+      "default": 240,
+      "description": "Timeout for each request in seconds"
+    }
+  }
+}

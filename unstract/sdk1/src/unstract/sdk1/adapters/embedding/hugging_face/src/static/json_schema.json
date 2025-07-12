@@ -1,0 +1,40 @@
+{
+  "title": "Hugging Face Embedding",
+  "type": "object",
+  "required": [
+    "adapter_name",
+    "model_name"
+  ],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this adapter instance. Example: hf-emb-1"
+    },
+    "model_name": {
+      "type": "string",
+      "title": "Model Name",
+      "default": "BAAI/bge-small-en-v1.5",
+      "description": "Provide the name of the model to use. Example: BAAI/bge-small-en-v1.5"
+    },
+    "tokenizer_name": {
+      "type": "string",
+      "title": "Tokenizer Name",
+      "default": ""
+    },
+    "max_length": {
+      "type": "integer",
+      "title": "Max Length"
+    },
+    "normalize": {
+      "type": "boolean",
+      "title": "Normalize",
+      "default": true
+    },
+    "embed_batch_size": {
+      "type": "integer",
+      "title": "Embed Batch Size"
+    }
+  }
+}

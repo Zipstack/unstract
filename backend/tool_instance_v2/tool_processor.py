@@ -4,12 +4,14 @@ from typing import Any
 
 from account_v2.models import User
 from adapter_processor_v2.adapter_processor import AdapterProcessor
+from feature_flag.helper import FeatureFlagHelper
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from prompt_studio.prompt_studio_registry_v2.prompt_studio_registry_helper import (
     PromptStudioRegistryHelper,
 )
-
 from tool_instance_v2.exceptions import ToolDoesNotExist
+
+from unstract.sdk1.constants import AdapterTypes as Sdk1AdapterTypes
 from unstract.sdk.adapters.enums import AdapterTypes
 from unstract.tool_registry.dto import Spec, Tool
 from unstract.tool_registry.tool_registry import ToolRegistry
@@ -80,14 +82,18 @@ class ToolProcessor:
         ocr_keys = schema.get_ocr_adapter_properties_keys()
 
         if llm_keys:
-            adapters = AdapterProcessor.get_adapters_by_type(AdapterTypes.LLM, user=user)
+            adapters = AdapterProcessor.get_adapters_by_type(
+                Sdk1AdapterTypes.LLM if FeatureFlagHelper.check_flag_status('sdk_v1') else AdapterTypes.LLM,
+                user=user
+            )
             for key in llm_keys:
                 adapter_names = map(lambda adapter: str(adapter.adapter_name), adapters)
                 schema.properties[key]["enum"] = list(adapter_names)
 
         if embedding_keys:
             adapters = AdapterProcessor.get_adapters_by_type(
-                AdapterTypes.EMBEDDING, user=user
+                Sdk1AdapterTypes.EMBEDDING if FeatureFlagHelper.check_flag_status('sdk_v1') else AdapterTypes.EMBEDDING,
+                user=user
             )
             for key in embedding_keys:
                 adapter_names = map(lambda adapter: str(adapter.adapter_name), adapters)
@@ -95,7 +101,8 @@ class ToolProcessor:
 
         if vector_db_keys:
             adapters = AdapterProcessor.get_adapters_by_type(
-                AdapterTypes.VECTOR_DB, user=user
+                Sdk1AdapterTypes.VECTOR_DB if FeatureFlagHelper.check_flag_status('sdk_v1') else AdapterTypes.VECTOR_DB,
+                user=user
             )
             for key in vector_db_keys:
                 adapter_names = map(lambda adapter: str(adapter.adapter_name), adapters)
@@ -103,14 +110,18 @@ class ToolProcessor:
 
         if x2text_keys:
             adapters = AdapterProcessor.get_adapters_by_type(
-                AdapterTypes.X2TEXT, user=user
+                Sdk1AdapterTypes.X2TEXT if FeatureFlagHelper.check_flag_status('sdk_v1') else AdapterTypes.X2TEXT,
+                user=user
             )
             for key in x2text_keys:
                 adapter_names = map(lambda adapter: str(adapter.adapter_name), adapters)
                 schema.properties[key]["enum"] = list(adapter_names)
 
         if ocr_keys:
-            adapters = AdapterProcessor.get_adapters_by_type(AdapterTypes.OCR, user=user)
+            adapters = AdapterProcessor.get_adapters_by_type(
+                Sdk1AdapterTypes.OCR if FeatureFlagHelper.check_flag_status('sdk_v1') else AdapterTypes.OCR,
+                user=user
+            )
             for key in ocr_keys:
                 adapter_names = map(lambda adapter: str(adapter.adapter_name), adapters)
                 schema.properties[key]["enum"] = list(adapter_names)

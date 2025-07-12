@@ -8,19 +8,10 @@ from account_v2.custom_exceptions import DuplicateData
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
+from feature_flag.helper import FeatureFlagHelper
 from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
 from permissions.permission import IsOwner, IsOwnerOrSharedUser
-from rest_framework import status, viewsets
-from rest_framework.decorators import action
-from rest_framework.request import Request
-from rest_framework.response import Response
-from rest_framework.versioning import URLPathVersioning
-from tool_instance_v2.models import ToolInstance
-from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
-from utils.user_context import UserContext
-from utils.user_session import UserSessionUtils
-
 from prompt_studio.processor_loader import get_plugin_class_by_name
 from prompt_studio.processor_loader import load_plugins as load_processor_plugins
 from prompt_studio.prompt_profile_manager_v2.constants import (
@@ -59,6 +50,17 @@ from prompt_studio.prompt_studio_registry_v2.serializers import (
 from prompt_studio.prompt_studio_v2.constants import ToolStudioPromptErrors
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_v2.serializers import ToolStudioPromptSerializer
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from rest_framework.request import Request
+from rest_framework.response import Response
+from rest_framework.versioning import URLPathVersioning
+from tool_instance_v2.models import ToolInstance
+from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
+from utils.user_context import UserContext
+from utils.user_session import UserSessionUtils
+
+from unstract.sdk1.utils import Utils
 from unstract.sdk.utils.common_utils import CommonUtils
 
 from .models import CustomTool
@@ -223,7 +225,10 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
         # Generate a run_id
-        run_id = CommonUtils.generate_uuid()
+        if FeatureFlagHelper.check_flag_status('sdk_v1'):
+            run_id = Utils.generate_uuid()
+        else:
+            run_id = CommonUtils.generate_uuid()
         is_summary = tool.summarize_context
 
         unique_id = PromptStudioHelper.index_document(
@@ -265,7 +270,10 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         profile_manager: str = request.data.get(ToolStudioPromptKeys.PROFILE_MANAGER_ID)
         if not run_id:
             # Generate a run_id
-            run_id = CommonUtils.generate_uuid()
+            if FeatureFlagHelper.check_flag_status('sdk_v1'):
+                run_id = Utils.generate_uuid()
+            else:
+                run_id = CommonUtils.generate_uuid()
         response: dict[str, Any] = PromptStudioHelper.prompt_responder(
             id=id,
             tool_id=tool_id,
@@ -296,7 +304,10 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         run_id: str = request.data.get(ToolStudioPromptKeys.RUN_ID)
         if not run_id:
             # Generate a run_id
-            run_id = CommonUtils.generate_uuid()
+            if FeatureFlagHelper.check_flag_status('sdk_v1'):
+                run_id = Utils.generate_uuid()
+            else:
+                run_id = CommonUtils.generate_uuid()
         response: dict[str, Any] = PromptStudioHelper.prompt_responder(
             tool_id=tool_id,
             org_id=UserSessionUtils.get_organization_id(request),

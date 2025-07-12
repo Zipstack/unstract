@@ -1,6 +1,7 @@
+from adapter_processor_v2.constants import AdapterKeys
 from rest_framework.exceptions import APIException
 
-from adapter_processor_v2.constants import AdapterKeys
+from unstract.sdk1.exceptions import SdkError as Sdk1Error
 from unstract.sdk.exceptions import SdkError
 
 
@@ -53,7 +54,7 @@ class TestAdapterError(APIException):
 
     def __init__(
         self,
-        sdk_err: SdkError,
+        sdk_err: Sdk1Error | SdkError,
         detail: str | None = None,
         code: str | None = None,
         adapter_name: str | None = None,

@@ -1,0 +1,1 @@
+# Unstract Bedrock Embeddings
