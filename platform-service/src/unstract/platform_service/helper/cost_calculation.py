@@ -8,11 +8,13 @@ from flask import current_app as app
 from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.platform_service.env import Env
 from unstract.platform_service.utils import format_float_positional
-from unstract.sdk1.exceptions import Sdk1FileStorageError
-from unstract.sdk1.file_storage import EnvHelper as Sdk1EnvHelper
-from unstract.sdk1.file_storage import StorageType as Sdk1StorageType
-from unstract.sdk.exceptions import FileStorageError
-from unstract.sdk.file_storage import EnvHelper, StorageType
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.exceptions import FileStorageError
+    from unstract.sdk1.file_storage import EnvHelper, StorageType
+else:
+    from unstract.sdk.exceptions import FileStorageError
+    from unstract.sdk.file_storage import EnvHelper, StorageType
 
 
 class CostCalculationHelper:
@@ -27,18 +29,13 @@ class CostCalculationHelper:
         self.file_path = file_path
 
         try:
-            if check_feature_flag_status("sdk1"):
-                self.file_storage = Sdk1EnvHelper.get_storage(
-                    Sdk1StorageType.PERMANENT, "FILE_STORAGE_CREDENTIALS"
-                )
-            else:
-                self.file_storage = EnvHelper.get_storage(
-                    StorageType.PERMANENT, "FILE_STORAGE_CREDENTIALS"
-                )
+            self.file_storage = EnvHelper.get_storage(
+                StorageType.PERMANENT, "FILE_STORAGE_CREDENTIALS"
+            )
         except KeyError as e:
             app.logger.error(f"Required credentials is missing in the env: {str(e)}")
             raise e
-        except (Sdk1FileStorageError if check_feature_flag_status("sdk1") else FileStorageError) as e:
+        except FileStorageError as e:
             app.logger.error(
                 "Error while initialising storage: %s",
                 e,
