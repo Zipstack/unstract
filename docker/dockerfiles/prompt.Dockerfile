@@ -1,68 +1,89 @@
-FROM python:3.9-slim
+# Use a specific version of Python slim image
+FROM python:3.12.9-slim AS base
 
-LABEL maintainer="Zipstack Inc."
+ARG VERSION=dev
+LABEL maintainer="Zipstack Inc." \
+    description="Prompt Service Container" \
+    version="${VERSION}"
 
-ENV \
-    # Keeps Python from generating .pyc files in the container
-    PYTHONDONTWRITEBYTECODE=1 \
-    # Set to immediately flush stdout and stderr streams without first buffering
+ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/unstract \
     BUILD_CONTEXT_PATH=prompt-service \
     BUILD_PACKAGES_PATH=unstract \
     TARGET_PLUGINS_PATH=src/unstract/prompt_service/plugins \
-    PDM_VERSION=2.16.1 \
+    APP_USER=unstract \
+    APP_HOME=/app \
     # OpenTelemetry configuration (disabled by default, enable in docker-compose)
     OTEL_TRACES_EXPORTER=none \
     OTEL_METRICS_EXPORTER=none \
     OTEL_LOGS_EXPORTER=none \
     OTEL_SERVICE_NAME=unstract_prompt
 
-# Install system dependencies
-RUN apt-get update; \
-    apt-get --no-install-recommends install -y \
-    # unstract sdk
-    build-essential libmagic-dev pkg-config \
-    # git url
-    git; \
-    apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
-    \
-    pip install --no-cache-dir -U pip pdm~=${PDM_VERSION}; \
-    \
-    # Creates a non-root user with an explicit UID and adds permission to access the /app folder
-    # For more info, please refer to https://aka.ms/vscode-docker-python-configure-containers
-    adduser -u 5678 --disabled-password --gecos "" unstract;
+# Install system dependencies, create user, and setup directories in one layer
+RUN apt-get update \
+    && apt-get --no-install-recommends install -y \
+       build-essential \
+       libmagic-dev \
+       pkg-config \
+       git \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* \
+    && adduser -u 5678 --disabled-password --gecos "" ${APP_USER} \
+    && mkdir -p ${APP_HOME} \
+    && chown -R ${APP_USER}:${APP_USER} ${APP_HOME}
 
-USER unstract
+# Install uv package manager
+COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /uvx /bin/
 
-WORKDIR /app
+# Create working directory
+WORKDIR ${APP_HOME}
 
-# Create venv and install gunicorn and other deps in it
-RUN pdm venv create -w virtualenv --with-pip && \
-    . .venv/bin/activate
+# -----------------------------------------------
+# EXTERNAL DEPENDENCIES STAGE - This layer gets cached if external dependencies don't change
+# -----------------------------------------------
+FROM base AS ext-dependencies
 
-# TODO: Security issue but ignoring it for nuitka based builds
-COPY --chown=unstract ${BUILD_CONTEXT_PATH} /app/
-# Copy local dependencies
-COPY --chown=unstract ${BUILD_PACKAGES_PATH}/core /unstract/core
-COPY --chown=unstract ${BUILD_PACKAGES_PATH}/flags /unstract/flags
+# Copy dependency-related files
+COPY --chown=${APP_USER}:${APP_USER} ${BUILD_CONTEXT_PATH}/pyproject.toml ${BUILD_CONTEXT_PATH}/uv.lock ${BUILD_CONTEXT_PATH}/README.md ./
 
-# Install dependencies and plugins (if any)
-RUN . .venv/bin/activate && \
-    pdm sync --prod --no-editable --with deploy && \
-    for dir in "${TARGET_PLUGINS_PATH}"/*/; do \
-        dirpath=${dir%*/}; \
-        if [ "${dirpath##*/}" != "*" ]; then \
-            cd "$dirpath" && \
-            echo "Installing plugin: ${dirpath##*/}..." && \
-            pdm sync --prod --no-editable && \
-            cd -; \
-        fi; \
+# Copy local package dependencies
+COPY --chown=${APP_USER}:${APP_USER} ${BUILD_PACKAGES_PATH}/core /unstract/core
+COPY --chown=${APP_USER}:${APP_USER} ${BUILD_PACKAGES_PATH}/flags /unstract/flags
+
+# Switch to non-root user
+USER ${APP_USER}
+
+# Install external dependencies from pyproject.toml
+RUN uv sync --group deploy --locked --no-install-project --no-dev && \
+    .venv/bin/python3 -m ensurepip --upgrade && \
+    uv run opentelemetry-bootstrap -a install
+
+# -----------------------------------------------
+# FINAL STAGE - Minimal image for production
+# -----------------------------------------------
+FROM ext-dependencies AS production
+
+# Copy application code (this layer changes most frequently)
+COPY --chown=${APP_USER}:${APP_USER} ${BUILD_CONTEXT_PATH} ./
+
+# Switch to non-root user
+USER ${APP_USER}
+
+# Install just the application in editable mode
+RUN uv sync --group deploy --locked
+
+# Install plugins after copying source code
+RUN for dir in "${TARGET_PLUGINS_PATH}"/*/; do \
+    dirpath=${dir%*/}; \
+    dirname=${dirpath##*/}; \
+    if [ "${dirname}" != "*" ]; then \
+    echo "Installing plugin: ${dirname}..." && \
+    uv pip install "${TARGET_PLUGINS_PATH}/${dirname}"; \
+    fi; \
     done && \
-    mkdir prompt-studio-data && \
-    opentelemetry-bootstrap -a install
+    mkdir -p prompt-studio-data
 
 EXPOSE 3003
 
-# Default command
 CMD ["./entrypoint.sh"]

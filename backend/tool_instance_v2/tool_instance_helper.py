@@ -1,16 +1,17 @@
 import logging
 import os
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 from account_v2.models import User
 from adapter_processor_v2.adapter_processor import AdapterProcessor
 from adapter_processor_v2.models import AdapterInstance
-from connector_v2.connector_instance_helper import ConnectorInstanceHelper
 from django.core.exceptions import PermissionDenied
 from django.core.exceptions import ValidationError as DjangoValidationError
 from jsonschema.exceptions import ValidationError as JSONValidationError
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
+from workflow_manager.workflow_v2.constants import WorkflowKey
+
 from tool_instance_v2.constants import JsonSchemaKey
 from tool_instance_v2.exceptions import ToolSettingValidationError
 from tool_instance_v2.models import ToolInstance
@@ -20,7 +21,6 @@ from unstract.sdk.tool.validator import DefaultsGeneratingValidator
 from unstract.tool_registry.constants import AdapterPropertyKey
 from unstract.tool_registry.dto import Spec, Tool
 from unstract.tool_registry.tool_utils import ToolUtils
-from workflow_manager.workflow_v2.constants import WorkflowKey
 
 logger = logging.getLogger(__name__)
 
@@ -30,9 +30,9 @@ class ToolInstanceHelper:
     def get_tool_instances_by_workflow(
         workflow_id: str,
         order_by: str,
-        lookup: Optional[dict[str, Any]] = None,
-        offset: Optional[int] = None,
-        limit: Optional[int] = None,
+        lookup: dict[str, Any] | None = None,
+        offset: int | None = None,
+        limit: int | None = None,
     ) -> list[ToolInstance]:
         wf_filter = {}
         if lookup:
@@ -53,33 +53,6 @@ class ToolInstanceHelper:
     def update_instance_metadata(
         org_id: str, tool_instance: ToolInstance, metadata: dict[str, Any]
     ) -> None:
-        if (
-            JsonSchemaKey.OUTPUT_FILE_CONNECTOR in metadata
-            and JsonSchemaKey.OUTPUT_FOLDER in metadata
-        ):
-            output_connector_name = metadata[JsonSchemaKey.OUTPUT_FILE_CONNECTOR]
-            output_connector = ConnectorInstanceHelper.get_output_connector_instance_by_name_for_workflow(  # noqa
-                tool_instance.workflow_id, output_connector_name
-            )
-            if output_connector and "path" in output_connector.metadata:
-                metadata[JsonSchemaKey.OUTPUT_FOLDER] = os.path.join(
-                    output_connector.metadata["path"],
-                    *(metadata[JsonSchemaKey.OUTPUT_FOLDER].split("/")),
-                )
-        if (
-            JsonSchemaKey.INPUT_FILE_CONNECTOR in metadata
-            and JsonSchemaKey.ROOT_FOLDER in metadata
-        ):
-            input_connector_name = metadata[JsonSchemaKey.INPUT_FILE_CONNECTOR]
-            input_connector = ConnectorInstanceHelper.get_input_connector_instance_by_name_for_workflow(  # noqa
-                tool_instance.workflow_id, input_connector_name
-            )
-
-            if input_connector and "path" in input_connector.metadata:
-                metadata[JsonSchemaKey.ROOT_FOLDER] = os.path.join(
-                    input_connector.metadata["path"],
-                    *(metadata[JsonSchemaKey.ROOT_FOLDER].split("/")),
-                )
         ToolInstanceHelper.update_metadata_with_adapter_instances(
             metadata, tool_instance.tool_id
         )
@@ -124,8 +97,7 @@ class ToolInstanceHelper:
     def update_metadata_with_adapter_instances(
         metadata: dict[str, Any], tool_uid: str
     ) -> None:
-        """
-        Update the metadata dictionary with adapter instances.
+        """Update the metadata dictionary with adapter instances.
         Parameters:
             metadata (dict[str, Any]):
                 The metadata dictionary to be updated with adapter instances.
@@ -180,56 +152,6 @@ class ToolInstanceHelper:
                 adapter_property=adapter_property,
                 adapter_type=AdapterTypes.OCR,
             )
-
-    # TODO: Review if adding this metadata is still required
-    @staticmethod
-    def get_altered_metadata(
-        tool_instance: ToolInstance,
-    ) -> Optional[dict[str, Any]]:
-        """Get altered metadata by resolving relative paths.
-
-        This method retrieves the metadata from the given tool instance
-        and checks if there are output and input file connectors.
-        If output and input file connectors exist in the metadata,
-        it resolves the relative paths using connector instances.
-
-        Args:
-            tool_instance (ToolInstance).
-
-        Returns:
-            Optional[dict[str, Any]]: Altered metadata with resolved relative \
-                paths.
-        """
-        metadata: dict[str, Any] = tool_instance.metadata
-        if (
-            JsonSchemaKey.OUTPUT_FILE_CONNECTOR in metadata
-            and JsonSchemaKey.OUTPUT_FOLDER in metadata
-        ):
-            output_connector_name = metadata[JsonSchemaKey.OUTPUT_FILE_CONNECTOR]
-            output_connector = ConnectorInstanceHelper.get_output_connector_instance_by_name_for_workflow(  # noqa
-                tool_instance.workflow_id, output_connector_name
-            )
-            if output_connector and "path" in output_connector.metadata:
-                relative_path = ToolInstanceHelper.get_relative_path(
-                    metadata[JsonSchemaKey.OUTPUT_FOLDER],
-                    output_connector.metadata["path"],
-                )
-                metadata[JsonSchemaKey.OUTPUT_FOLDER] = relative_path
-        if (
-            JsonSchemaKey.INPUT_FILE_CONNECTOR in metadata
-            and JsonSchemaKey.ROOT_FOLDER in metadata
-        ):
-            input_connector_name = metadata[JsonSchemaKey.INPUT_FILE_CONNECTOR]
-            input_connector = ConnectorInstanceHelper.get_input_connector_instance_by_name_for_workflow(  # noqa
-                tool_instance.workflow_id, input_connector_name
-            )
-            if input_connector and "path" in input_connector.metadata:
-                relative_path = ToolInstanceHelper.get_relative_path(
-                    metadata[JsonSchemaKey.ROOT_FOLDER],
-                    input_connector.metadata["path"],
-                )
-                metadata[JsonSchemaKey.ROOT_FOLDER] = relative_path
-        return metadata
 
     @staticmethod
     def update_metadata_with_default_adapter(
@@ -334,7 +256,6 @@ class ToolInstanceHelper:
         user: User, tool_uid: str, tool_meta: dict[str, Any]
     ) -> bool:
         """Function to validate Tools settings."""
-
         # check if exported tool is valid for the user who created workflow
         ToolInstanceHelper.validate_tool_access(user=user, tool_uid=tool_uid)
         ToolInstanceHelper.validate_adapter_permissions(

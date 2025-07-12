@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from unstract.filesystem import FileStorageType, FileSystem
 from unstract.workflow_execution.constants import (
     MetaDataKey,
     ToolMetadataKey,
@@ -11,29 +12,36 @@ from unstract.workflow_execution.constants import (
     ToolRuntimeVariable,
     WorkflowFileType,
 )
-from unstract.workflow_execution.exceptions import ToolMetadataNotFound
+from unstract.workflow_execution.exceptions import (
+    ExecutionDirectoryNotFound,
+    FileExecutionNotFound,
+    FileMetadataJsonNotFound,
+    ToolMetadataNotFound,
+)
 from unstract.workflow_execution.tools_utils import ToolsUtils
-
-from unstract.filesystem import FileStorageType, FileSystem
 
 logger = logging.getLogger(__name__)
 
 
 class ExecutionFileHandler:
     def __init__(
-        self, workflow_id: str, execution_id: str, organization_id: str
+        self,
+        workflow_id: str,
+        execution_id: str,
+        organization_id: str,
+        file_execution_id: str | None = None,
     ) -> None:
         self.organization_id = organization_id
         self.workflow_id = workflow_id
         self.execution_id = execution_id
+        self.file_execution_id = file_execution_id
         self.execution_dir = self.get_execution_dir(
             workflow_id, execution_id, organization_id
         )
-        self.source_file = os.path.join(self.execution_dir, WorkflowFileType.SOURCE)
-        self.infile = os.path.join(self.execution_dir, WorkflowFileType.INFILE)
-        self.metadata_file = os.path.join(
-            self.execution_dir, WorkflowFileType.METADATA_JSON
-        )
+        self.file_execution_dir = self._get_file_execution_dir()
+        self.source_file = self._get_source_file_path()
+        self.infile = self._get_infile_path()
+        self.metadata_file = self._get_metadata_file_path()
 
     def get_workflow_metadata(self) -> dict[str, Any]:
         """Get metadata for the workflow.
@@ -41,15 +49,15 @@ class ExecutionFileHandler:
         Returns:
             dict[str, Any]: Workflow metadata.
         """
+        if not self.metadata_file:
+            raise FileMetadataJsonNotFound()
         file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
         file_storage = file_system.get_file_storage()
         metadata_content = file_storage.read(path=self.metadata_file, mode="r")
         metadata = json.loads(metadata_content)
         return metadata
 
-    def get_list_of_tool_metadata(
-        self, metadata: dict[str, Any]
-    ) -> list[dict[str, Any]]:
+    def get_list_of_tool_metadata(self, metadata: dict[str, Any]) -> list[dict[str, Any]]:
         """Get the list of tool metadata from the workflow metadata.
 
         Args:
@@ -58,9 +66,7 @@ class ExecutionFileHandler:
         Returns:
             list[dict[str, Any]]: The list of tool metadata.
         """
-        tool_metadata: list[dict[str, Any]] = metadata.get(
-            MetaDataKey.TOOL_METADATA, []
-        )
+        tool_metadata: list[dict[str, Any]] = metadata.get(MetaDataKey.TOOL_METADATA, [])
         return tool_metadata
 
     def get_output_type(self, metadata: dict[str, Any]) -> str:
@@ -95,6 +101,7 @@ class ExecutionFileHandler:
         file_execution_id: str,
         source_hash: str,
         tags: list[str],
+        llm_profile_id: str | None = None,
     ) -> None:
         """Creating metadata for workflow. This method is responsible for
         creating metadata for the workflow. It takes the input file path and
@@ -106,6 +113,7 @@ class ExecutionFileHandler:
             file_execution_id (str): Unique execution id for the file.
             source_hash (str): The hash value of the source/input file.
             tags (list[str]): Tag names associated with the workflow execution.
+            llm_profile_id (str, optional): LLM profile ID for overriding tool settings.
 
         Returns:
             None
@@ -113,7 +121,11 @@ class ExecutionFileHandler:
         Raises:
             None
         """
-        metadata_path = os.path.join(self.execution_dir, WorkflowFileType.METADATA_JSON)
+        if not self.file_execution_dir:
+            raise FileExecutionNotFound()
+        metadata_path = self.metadata_file
+        if not metadata_path:
+            raise FileMetadataJsonNotFound()
         filename = os.path.basename(input_file_path)
         content = {
             MetaDataKey.SOURCE_NAME: filename,
@@ -124,6 +136,11 @@ class ExecutionFileHandler:
             MetaDataKey.FILE_EXECUTION_ID: str(file_execution_id),
             MetaDataKey.TAGS: tags,
         }
+
+        # Add llm_profile_id to metadata if provided
+        if llm_profile_id:
+            content[MetaDataKey.LLM_PROFILE_ID] = llm_profile_id
+
         file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
         file_storage = file_system.get_file_storage()
         file_storage.json_dump(path=metadata_path, data=content)
@@ -131,6 +148,18 @@ class ExecutionFileHandler:
         logger.info(
             f"metadata for {input_file_path} is " "added in to execution directory"
         )
+
+    def _get_file_execution_dir(self) -> str | None:
+        """Get the directory path for a specific file execution.
+
+        Returns:
+            str: (Optional) The directory path for the file execution.
+        """
+        if not self.execution_dir:
+            raise ExecutionDirectoryNotFound()
+        if not self.file_execution_id:
+            return None
+        return os.path.join(self.execution_dir, self.file_execution_id)
 
     @classmethod
     def get_execution_dir(
@@ -141,7 +170,7 @@ class ExecutionFileHandler:
         Parameters:
         - workflow_id (str): Identifier for the workflow.
         - execution_id (str): Identifier for the execution.
-        - organization_id (Optional[str]):
+        - organization_id (str | None):
             Identifier for the organization (default: None).
 
         Returns:
@@ -165,7 +194,7 @@ class ExecutionFileHandler:
         Parameters:
         - workflow_id (str): Identifier for the workflow.
         - execution_id (str): Identifier for the execution.
-        - organization_id (Optional[str]):
+        - organization_id (str | None):
             Identifier for the organization (default: None).
 
         Returns:
@@ -176,3 +205,31 @@ class ExecutionFileHandler:
             Path(path_prefix) / organization_id / str(workflow_id) / str(execution_id)
         )
         return str(execution_dir)
+
+    def _get_source_file_path(self) -> str | None:
+        """Returns:
+        str: (Optional) The path to the source file.
+        """
+        if not self.file_execution_dir:
+            return None
+        else:
+            return os.path.join(self.file_execution_dir, WorkflowFileType.SOURCE)
+
+    def _get_infile_path(self) -> str | None:
+        """Returns:
+        str: (Optional) The path to the infile.
+        """
+        if not self.file_execution_dir:
+            return None
+        return os.path.join(self.file_execution_dir, WorkflowFileType.INFILE)
+
+    def _get_metadata_file_path(self) -> str | None:
+        """Get the path to the metadata file.
+
+        Args:
+            None
+        Returns: str: (Optional) The path to the metadata file.
+        """
+        if not self.file_execution_dir:
+            return None
+        return os.path.join(self.file_execution_dir, WorkflowFileType.METADATA_JSON)

@@ -12,7 +12,7 @@ function GenericError() {
       IDM: {
         title: "Sorry, but this invitation is not meant for you.",
         subtitle:
-          "Please contact the organization owner to send you another invite.",
+          "Please make sure to use the same email address that you were invited with. If that doesn't work, contact the organization owner to send you another invite.",
       },
       INF: {
         title: "This invitation is either invalid or has expired.",
@@ -42,6 +42,10 @@ function GenericError() {
       INE002: {
         title: `Invalid Email format`,
         subtitle: "Please give a valid email address",
+      },
+      INS: {
+        title: `Access Denied`,
+        subtitle: "Please contact your administrator to request access.",
       },
 
       // Add more key-value pairs as needed

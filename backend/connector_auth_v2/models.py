@@ -3,14 +3,15 @@ import uuid
 from typing import Any
 
 from account_v2.models import User
-from connector_auth_v2.constants import SocialAuthConstants
-from connector_auth_v2.pipeline.google import GoogleAuthHelper
 from django.db import models
 from django.db.models.query import QuerySet
 from rest_framework.request import Request
 from social_django.fields import JSONField
 from social_django.models import AbstractUserSocialAuth, DjangoStorage
 from social_django.strategy import DjangoStrategy
+
+from connector_auth_v2.constants import SocialAuthConstants
+from connector_auth_v2.pipeline.google import GoogleAuthHelper
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,8 @@ class ConnectorAuth(AbstractUserSocialAuth):
 
     def refresh_token(self, strategy, *args, **kwargs):  # type: ignore
         """Override of Python Social Auth (PSA)'s refresh_token functionality
-        to store uid, provider."""
+        to store uid, provider.
+        """
         token = self.extra_data.get("refresh_token") or self.extra_data.get(
             "access_token"
         )

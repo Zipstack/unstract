@@ -1,0 +1,73 @@
+name: Automate uv.lock
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, review_requested]
+    branches: [main]
+    paths:
+      - "**/pyproject.toml"
+  workflow_dispatch:
+    inputs:
+      directories:
+        description: "Comma-separated list of directories to update"
+        required: false
+        default: "" # Run for all dirs specified in docker/scripts/uv-lock-gen/uv-lock.sh
+
+jobs:
+  update_uv_lock:
+    name: Update UV lock in all directories
+    runs-on: ubuntu-latest
+
+    permissions:
+      # Give the default GITHUB_TOKEN write permission to commit and push the
+      # added or changed files to the repository.
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          # Install a specific version of uv.
+          version: "0.6.14"
+          python-version: 3.12.9
+
+      - run: uv pip install --python=3.12.9 pip
+
+      - name: Generate UV lockfiles
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          chmod +x ./docker/scripts/uv-lock-gen/uv-lock.sh
+
+          # Get the input from the workflow or use the default value
+          dirs="${{ github.event.inputs.directories }}"
+
+          # Check if directories input is empty
+          if [[ -z "$dirs" ]]; then
+            # No directories input given, run the script without arguments (process all directories)
+            echo "No directories specified, running on all dirs listed in docker/scripts/uv-lock-gen/uv-lock.sh"
+
+            ./docker/scripts/uv-lock-gen/uv-lock.sh
+          else
+            # Convert comma-separated list into an array of directories
+            IFS=',' read -r -a dir_array <<< "$dirs"
+
+            # Print directories being processed
+            echo "Processing specified directories: ${dir_array[*]}"
+
+            # Pass directories as command-line arguments to the script
+            ./docker/scripts/uv-lock-gen/uv-lock.sh "${dir_array[@]}"
+          fi
+        shell: bash
+
+      - name: Commit uv.lock changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: Commit uv.lock changes
+          commit_user_name: uv-lock-automation[bot]
+          commit_user_email: uv-lock-automation-bot@unstract.com

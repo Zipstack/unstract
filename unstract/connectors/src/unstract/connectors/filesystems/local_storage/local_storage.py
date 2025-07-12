@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any, Optional
+from typing import Any
 
 from fsspec.implementations.local import LocalFileSystem
 
@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class LocalStorageFS(UnstractFileSystem):
-    def __init__(self, settings: Optional[dict] = None):  # type:ignore
+    def __init__(self, settings: dict | None = None):  # type:ignore
         super().__init__("LocalStorage")
         self.path = settings["path"]  # type:ignore
         self.local = LocalFileSystem()
@@ -59,9 +59,8 @@ class LocalStorageFS(UnstractFileSystem):
     def get_fsspec_fs(self) -> Any:
         return self.local
 
-    def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> Optional[str]:
-        """
-        Extracts a unique file hash from metadata.
+    def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> str | None:
+        """Extracts a unique file hash from metadata.
 
         Args:
             metadata (dict): Metadata dictionary obtained from fsspec.
@@ -71,6 +70,17 @@ class LocalStorageFS(UnstractFileSystem):
         """
         logger.error(f"[LocalStorage] File hash not found for the metadata: {metadata}")
         return None
+
+    def is_dir_by_metadata(self, metadata: dict[str, Any]) -> bool:
+        """Check if the given path is a directory.
+
+        Args:
+            metadata (dict): Metadata dictionary obtained from fsspec or cloud API.
+
+        Returns:
+            bool: True if the path is a directory, False otherwise.
+        """
+        raise NotImplementedError
 
     def test_credentials(self, *args, **kwargs) -> bool:  # type:ignore
         """To test credentials for LocalStorage."""

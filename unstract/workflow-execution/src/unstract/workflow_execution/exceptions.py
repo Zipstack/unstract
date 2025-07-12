@@ -54,3 +54,24 @@ class ToolMetadataNotFound(Exception):
         self, message: str = "Internal server error: Tool metadata not found."
     ) -> None:
         self.message = message
+
+
+class ExecutionDirectoryNotFound(Exception):
+    def __init__(
+        self, message: str = "Internal server error: Execution directory not set."
+    ) -> None:
+        self.message = message
+
+
+class FileExecutionNotFound(Exception):
+    def __init__(
+        self, message: str = "Internal server error: File execution not found."
+    ) -> None:
+        self.message = message
+
+
+class FileMetadataJsonNotFound(Exception):
+    def __init__(
+        self, message: str = "Internal server error: File metadata JSON not found."
+    ) -> None:
+        self.message = message

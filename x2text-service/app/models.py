@@ -2,6 +2,7 @@ import datetime
 import uuid
 
 import peewee
+
 from app.env import Env
 
 be_db = peewee.PostgresqlDatabase(

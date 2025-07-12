@@ -1,7 +1,8 @@
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from jsonschema import exceptions, validate
+
 from unstract.tool_registry.exceptions import InvalidSchemaInput
 
 logger = logging.getLogger(__name__)
@@ -27,7 +28,7 @@ class JsonSchemaValidator:
             logger.error(f"Validation error: {e}")
             raise InvalidSchemaInput
 
-    def validate_and_filter(self, data: dict[str, Any]) -> Optional[dict[str, Any]]:
+    def validate_and_filter(self, data: dict[str, Any]) -> dict[str, Any] | None:
         """Validates the input data against the schema and filters the data
         based on the schema's properties.
 

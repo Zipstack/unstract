@@ -8,7 +8,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
     dependencies = [
@@ -92,9 +91,7 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "is_usable",
-                    models.BooleanField(
-                        db_comment="Is the Adpater Usable", default=True
-                    ),
+                    models.BooleanField(db_comment="Is the Adpater Usable", default=True),
                 ),
                 ("description", models.TextField(blank=True, default=None, null=True)),
                 (

@@ -2,10 +2,11 @@ from typing import Any
 
 from django.db.models import Q, QuerySet
 from django_filters import rest_framework as filters
-from usage_v2.models import Usage, UsageType
 from utils.date import DateTimeProcessor
 from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
+
+from usage_v2.models import Usage, UsageType
 
 
 class UsageFilter(filters.FilterSet):
@@ -28,9 +29,7 @@ class UsageFilter(filters.FilterSet):
         }
 
     def filter_queryset(self, queryset: QuerySet) -> Any:
-        """
-        Apply all filters to the queryset, including smart date handling.
-        """
+        """Apply all filters to the queryset, including smart date handling."""
         # First apply parent's filtering
         queryset = super().filter_queryset(queryset)
 
@@ -44,18 +43,14 @@ class UsageFilter(filters.FilterSet):
         return queryset
 
     def filter_date_range(self, queryset: QuerySet, name: str, value: str) -> QuerySet:
-        """
-        Filters Usages based on the provided date range.
-        """
+        """Filters Usages based on the provided date range."""
         date_span = DateTimeProcessor.filter_date_range(value)
         if date_span:
             queryset = queryset.filter(created_at__gte=date_span.start_date)
         return queryset
 
     def filter_by_tag(self, queryset: QuerySet, name: str, value: str) -> Any:
-        """
-        Filters Usages based on the Tag ID or name.
-        """
+        """Filters Usages based on the Tag ID or name."""
         queryset: QuerySet = queryset.filter(
             Q(
                 run_id__in=WorkflowFileExecution.objects.filter(
@@ -70,9 +65,7 @@ class UsageFilter(filters.FilterSet):
     def filter_by_execution_id(
         self, queryset: QuerySet, name: str, value: Any
     ) -> QuerySet:
-        """
-        Filters Usages based on the execution ID.
-        """
+        """Filters Usages based on the execution ID."""
         return queryset.filter(
             Q(
                 run_id__in=WorkflowFileExecution.objects.filter(

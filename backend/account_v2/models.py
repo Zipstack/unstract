@@ -18,9 +18,7 @@ class Organization(models.Model):
 
     name = models.CharField(max_length=NAME_SIZE)
     display_name = models.CharField(max_length=NAME_SIZE)
-    organization_id = models.CharField(
-        max_length=FieldLength.ORG_NAME_SIZE, unique=True
-    )
+    organization_id = models.CharField(max_length=FieldLength.ORG_NAME_SIZE, unique=True)
     created_by = models.ForeignKey(
         "User",
         on_delete=models.SET_NULL,
@@ -89,6 +87,8 @@ class User(AbstractUser):
         related_query_name="user",
         blank=True,
     )
+
+    auth_provider = models.CharField(max_length=64, default="")
 
     def __str__(self):  # type: ignore
         return f"User({self.id}, email: {self.email}, userId: {self.user_id})"

@@ -1,8 +1,8 @@
-from typing import Any, Optional
+from typing import Any
 
-from flask import Blueprint, abort
+from flask import Blueprint, abort, request
 from flask import current_app as app
-from flask import request
+
 from unstract.runner.runner import UnstractRunner
 
 # Define a Blueprint with a root URL path
@@ -11,7 +11,7 @@ run_bp = Blueprint("run", __name__)
 
 # Run container
 @run_bp.route("container/run", methods=["POST"])
-def run_container() -> Optional[Any]:
+def run_container() -> Any | None:
     data = request.get_json()
     image_name = data["image_name"]
     image_tag = data["image_tag"]
@@ -38,8 +38,28 @@ def run_container() -> Optional[Any]:
     return result
 
 
+@run_bp.route("container/run-status", methods=["GET"])
+def run_status() -> Any | None:
+    data = request.args
+    container_name = data.get("container_name")
+    runner = UnstractRunner(None, None, app)
+    status = runner.get_container_status(
+        container_name=container_name,
+    )
+    return {"status": status}
+
+
+@run_bp.route("container/remove", methods=["DELETE"])
+def remove_container() -> Any | None:
+    data = request.get_json()
+    container_name = data["container_name"]
+    runner = UnstractRunner(None, None, app)
+    result = runner.remove_container_by_name(container_name)
+    return result
+
+
 @run_bp.route("container/<command>", methods=["GET"])
-def run_command(command: str) -> Optional[Any]:
+def run_command(command: str) -> Any | None:
     """Endpoint which will can execute any of the below commands.
 
     Args:

@@ -1,6 +1,7 @@
 import logging
-from typing import Any, Optional
+from typing import Any
 
+from django.conf import settings
 from django.db.models.query import QuerySet
 from permissions.permission import IsOwner
 from pipeline_v2.models import Pipeline
@@ -11,6 +12,8 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from utils.filtering import FilterHelper
+
+from backend.constants import RequestKey
 from workflow_manager.endpoint_v2.destination import DestinationConnector
 from workflow_manager.endpoint_v2.dto import FileHash
 from workflow_manager.endpoint_v2.endpoint_utils import WorkflowEndpointUtils
@@ -35,8 +38,6 @@ from workflow_manager.workflow_v2.workflow_helper import (
     WorkflowHelper,
     WorkflowSchemaHelper,
 )
-
-from backend.constants import RequestKey
 
 logger = logging.getLogger(__name__)
 
@@ -110,27 +111,23 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         execution = WorkflowHelper.get_current_execution(pk)
         return Response(make_execution_response(execution), status=status.HTTP_200_OK)
 
-    def get_workflow_by_id_or_project_id(
+    def get_workflow_by_id(
         self,
-        workflow_id: Optional[str] = None,
-        project_id: Optional[str] = None,
+        workflow_id: str | None = None,
     ) -> Workflow:
-        """Retrieve workflow  by workflow id or project Id.
+        """Retrieve workflow by workflow id.
 
         Args:
             workflow_id (Optional[str], optional): workflow Id.
-            project_id (Optional[str], optional): Project Id.
 
         Raises:
-            WorkflowDoesNotExistError: _description_
+            WorkflowDoesNotExistError: Raised when workflow_id is not provided or workflow doesn't exist.
 
         Returns:
             Workflow: workflow
         """
         if workflow_id:
             workflow = WorkflowHelper.get_workflow_by_id(workflow_id)
-        elif project_id:
-            workflow = WorkflowHelper.get_active_workflow_by_project_id(project_id)
         else:
             raise WorkflowDoesNotExistError()
         return workflow
@@ -138,13 +135,12 @@ class WorkflowViewSet(viewsets.ModelViewSet):
     def execute(
         self,
         request: Request,
-        pipeline_guid: Optional[str] = None,
+        pipeline_guid: str | None = None,
     ) -> Response:
         self.serializer_class = ExecuteWorkflowSerializer
         serializer = ExecuteWorkflowSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         workflow_id = serializer.get_workflow_id(serializer.validated_data)
-        project_id = serializer.get_project_id(serializer.validated_data)
         execution_id = serializer.get_execution_id(serializer.validated_data)
         execution_action = serializer.get_execution_action(serializer.validated_data)
         file_objs = request.FILES.getlist("files")
@@ -154,6 +150,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         if file_objs and execution_id and workflow_id:
             use_file_history = False
             hashes_of_files = SourceConnector.add_input_file_to_api_storage(
+                pipeline_id=pipeline_guid,
                 workflow_id=workflow_id,
                 execution_id=execution_id,
                 file_objs=file_objs,
@@ -161,9 +158,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             )
 
         try:
-            workflow = self.get_workflow_by_id_or_project_id(
-                workflow_id=workflow_id, project_id=project_id
-            )
+            workflow = self.get_workflow_by_id(workflow_id=workflow_id)
             execution_response = self.execute_workflow(
                 workflow=workflow,
                 execution_action=execution_action,
@@ -193,9 +188,9 @@ class WorkflowViewSet(viewsets.ModelViewSet):
     def execute_workflow(
         self,
         workflow: Workflow,
-        execution_action: Optional[str] = None,
-        execution_id: Optional[str] = None,
-        pipeline_guid: Optional[str] = None,
+        execution_action: str | None = None,
+        execution_id: str | None = None,
+        pipeline_guid: str | None = None,
         hash_values_of_files: dict[str, FileHash] = {},
         use_file_history: bool = False,
     ) -> ExecutionResponse:
@@ -227,6 +222,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 execution_mode=WorkflowExecution.Mode.INSTANT,
                 hash_values_of_files=hash_values_of_files,
                 use_file_history=use_file_history,
+                timeout=settings.INSTANT_WF_POLLING_TIMEOUT,
             )
         return execution_response
 
@@ -247,9 +243,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         return Response(response, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["get"])
-    def clear_file_marker(
-        self, request: Request, *args: Any, **kwargs: Any
-    ) -> Response:
+    def clear_file_marker(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         workflow = self.get_object()
         response: dict[str, Any] = WorkflowHelper.clear_file_marker(
             workflow_id=workflow.id

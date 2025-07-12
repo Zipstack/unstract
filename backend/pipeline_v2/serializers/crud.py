@@ -1,9 +1,8 @@
 import logging
 from collections import OrderedDict
-from typing import Any, Optional
+from typing import Any
 
 from connector_processor.connector_processor import ConnectorProcessor
-from connector_v2.connector_instance_helper import ConnectorInstanceHelper
 from connector_v2.models import ConnectorInstance
 from croniter import croniter
 from django.conf import settings
@@ -25,7 +24,6 @@ DEPLOYMENT_ENDPOINT = settings.API_DEPLOYMENT_PATH_PREFIX + "/pipeline"
 
 
 class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
-
     api_endpoint = SerializerMethodField()
 
     class Meta:
@@ -45,7 +43,7 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
         },
     }
 
-    def validate_cron_string(self, value: Optional[str] = None) -> Optional[str]:
+    def validate_cron_string(self, value: str | None = None) -> str | None:
         """Validate the cron string provided in the serializer data.
 
         This method is called internally by the serializer to ensure that
@@ -182,9 +180,9 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
 
         if SerializerUtils.check_context_for_GET_or_POST(context=self.context):
             workflow = instance.workflow
-            connector_instance_list = ConnectorInstanceHelper.get_input_output_connector_instances_by_workflow(  # noqa
-                workflow.id
-            )
+            connector_instance_list = ConnectorInstance.objects.filter(
+                workflow=workflow.id
+            ).all()
             repr[PK.WORKFLOW_ID] = workflow.id
             repr[PK.WORKFLOW_NAME] = workflow.workflow_name
             repr[PK.CRON_STRING] = repr.pop(PK.CRON_STRING)
@@ -197,6 +195,4 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
         return repr
 
     def get_connector_data(self, connector: ConnectorInstance, key: str) -> Any:
-        return ConnectorProcessor.get_connector_data_with_key(
-            connector.connector_id, key
-        )
+        return ConnectorProcessor.get_connector_data_with_key(connector.connector_id, key)

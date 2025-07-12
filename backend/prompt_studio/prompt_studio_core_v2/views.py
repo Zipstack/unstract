@@ -1,14 +1,26 @@
+import json
 import logging
 import uuid
-from typing import Any, Optional
+from datetime import datetime
+from typing import Any
 
 from account_v2.custom_exceptions import DuplicateData
 from django.db import IntegrityError
 from django.db.models import QuerySet
-from django.http import HttpRequest
+from django.http import HttpRequest, HttpResponse
 from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
 from permissions.permission import IsOwner, IsOwnerOrSharedUser
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from rest_framework.request import Request
+from rest_framework.response import Response
+from rest_framework.versioning import URLPathVersioning
+from tool_instance_v2.models import ToolInstance
+from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
+from utils.user_context import UserContext
+from utils.user_session import UserSessionUtils
+
 from prompt_studio.processor_loader import get_plugin_class_by_name
 from prompt_studio.processor_loader import load_plugins as load_processor_plugins
 from prompt_studio.prompt_profile_manager_v2.constants import (
@@ -47,15 +59,7 @@ from prompt_studio.prompt_studio_registry_v2.serializers import (
 from prompt_studio.prompt_studio_v2.constants import ToolStudioPromptErrors
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_v2.serializers import ToolStudioPromptSerializer
-from rest_framework import status, viewsets
-from rest_framework.decorators import action
-from rest_framework.request import Request
-from rest_framework.response import Response
-from rest_framework.versioning import URLPathVersioning
-from tool_instance_v2.models import ToolInstance
 from unstract.sdk.utils.common_utils import CommonUtils
-from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
-from utils.user_session import UserSessionUtils
 
 from .models import CustomTool
 from .serializers import (
@@ -84,7 +88,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
         return [IsOwnerOrSharedUser()]
 
-    def get_queryset(self) -> Optional[QuerySet]:
+    def get_queryset(self) -> QuerySet | None:
         return CustomTool.objects.for_user(self.request.user)
 
     def create(self, request: HttpRequest) -> Response:
@@ -215,9 +219,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         tool = self.get_object()
         serializer = PromptStudioIndexSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        document_id: str = serializer.validated_data.get(
-            ToolStudioPromptKeys.DOCUMENT_ID
-        )
+        document_id: str = serializer.validated_data.get(ToolStudioPromptKeys.DOCUMENT_ID)
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
         # Generate a run_id
@@ -306,7 +308,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"])
     def list_of_shared_users(self, request: HttpRequest, pk: Any = None) -> Response:
-
         custom_tool = (
             self.get_object()
         )  # Assuming you have a get_object method in your viewset
@@ -383,12 +384,11 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         filename_without_extension = file_name.rsplit(".", 1)[0]
         if view_type == FileViewTypes.EXTRACT:
             file_name = (
-                f"{FileViewTypes.EXTRACT.lower()}/" f"{filename_without_extension}.txt"
+                f"{FileViewTypes.EXTRACT.lower()}/{filename_without_extension}.txt"
             )
         if view_type == FileViewTypes.SUMMARIZE:
             file_name = (
-                f"{FileViewTypes.SUMMARIZE.lower()}/"
-                f"{filename_without_extension}.txt"
+                f"{FileViewTypes.SUMMARIZE.lower()}/{filename_without_extension}.txt"
             )
         try:
             contents = PromptStudioFileHelper.fetch_file_contents(
@@ -425,9 +425,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                     uploaded_file, file_name
                 )
 
-            logger.info(
-                f"Uploading file: {file_name}" if file_name else "Uploading file"
-            )
+            logger.info(f"Uploading file: {file_name}" if file_name else "Uploading file")
 
             PromptStudioFileHelper.upload_for_ide(
                 org_id=UserSessionUtils.get_organization_id(request),
@@ -455,9 +453,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         custom_tool = self.get_object()
         serializer = FileInfoIdeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        document_id: str = serializer.validated_data.get(
-            ToolStudioPromptKeys.DOCUMENT_ID
-        )
+        document_id: str = serializer.validated_data.get(ToolStudioPromptKeys.DOCUMENT_ID)
         org_id = UserSessionUtils.get_organization_id(request)
         user_id = custom_tool.created_by.user_id
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
@@ -525,3 +521,98 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             return Response(serialized_instances)
         else:
             return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["get"])
+    def export_project(self, request: Request, pk: Any = None) -> HttpResponse:
+        """API Endpoint for exporting project settings as downloadable JSON."""
+        custom_tool = self.get_object()
+
+        try:
+            # Get the export data using our helper method
+            export_data = PromptStudioHelper.export_project_settings(custom_tool)
+
+            # Create filename with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{custom_tool.tool_name}_{timestamp}.json"
+
+            # Create HTTP response with JSON file
+            response = HttpResponse(
+                json.dumps(export_data, indent=2), content_type="application/json"
+            )
+            response["Content-Disposition"] = f'attachment; filename="{filename}"'
+
+            return response
+
+        except Exception as exc:
+            logger.error(f"Error exporting project: {exc}")
+            return Response(
+                {"error": "Failed to export project"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=False, methods=["post"])
+    def import_project(self, request: Request) -> Response:
+        """API Endpoint for importing project settings from JSON file."""
+        try:
+            import_data, selected_adapters = PromptStudioHelper.validate_import_file(
+                request
+            )
+
+            organization = UserContext.get_organization()
+            if not organization:
+                return Response(
+                    {"error": "Unable to determine organization context"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            tool_name = PromptStudioHelper.generate_unique_tool_name(
+                import_data["tool_metadata"]["tool_name"], organization
+            )
+
+            new_tool = PromptStudioHelper.create_tool_from_import_data(
+                import_data, tool_name, organization, request.user
+            )
+
+            try:
+                PromptStudioHelper.create_profile_manager(
+                    import_data, selected_adapters, new_tool, request.user
+                )
+            except ValueError as e:
+                return Response(
+                    {"error": str(e)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            except Exception as e:
+                logger.error(f"Error creating profile manager: {e}")
+                return Response(
+                    {"error": "Failed to create profile manager"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+            PromptStudioHelper.import_prompts(
+                import_data["prompts"], new_tool, request.user
+            )
+
+            needs_adapter_config, warning_message = (
+                PromptStudioHelper.validate_adapter_configuration(
+                    selected_adapters, new_tool
+                )
+            )
+
+            response_data = {
+                "message": f"Project imported successfully as '{tool_name}'",
+                "tool_id": str(new_tool.tool_id),
+                "needs_adapter_config": needs_adapter_config,
+            }
+
+            if warning_message:
+                response_data["warning"] = warning_message
+
+            return Response(response_data, status=status.HTTP_201_CREATED)
+
+        except Exception as exc:
+            logger.error(f"Error importing project: {exc}")
+            return Response(
+                {"error": "Failed to import project"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )

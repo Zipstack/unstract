@@ -3,6 +3,7 @@ import os
 from unittest.mock import MagicMock
 
 import pytest
+
 from docker.errors import ImageNotFound
 from unstract.runner.constants import Env
 
@@ -19,7 +20,13 @@ def docker_container():
 
 
 @pytest.fixture
-def docker_client():
+def docker_client(mocker):
+    # Mock the DockerClient.from_env to avoid connecting to a real Docker daemon
+    mock_client = MagicMock()
+    mocker.patch(f"{DOCKER_MODULE}.DockerClient.from_env", return_value=mock_client)
+    # Mock the private login method to avoid any actual login attempts
+    mocker.patch(f"{DOCKER_MODULE}.Client._Client__private_login")
+
     image_name = "test-image"
     image_tag = "latest"
     logger = logging.getLogger("test-logger")
@@ -72,12 +79,10 @@ def test_client_init(mocker):
 
 def test_get_image_exists(docker_client, mocker):
     """Test the __image_exists method."""
-    # Mock the client object
-    mock_client = mocker.patch.object(docker_client, "client")
     # Create a mock for the 'images' attribute
     mock_images = mocker.MagicMock()
     # Attach the mock to the client object
-    mock_client.images = mock_images
+    docker_client.client.images = mock_images
     # Patch the 'get' method of the 'images' attribute
     mock_images.get.side_effect = ImageNotFound("Image not found")
 
@@ -87,27 +92,28 @@ def test_get_image_exists(docker_client, mocker):
 
 def test_get_image(docker_client, mocker):
     """Test the get_image method."""
-    # Patch the client object to control its behavior
-    mock_client = mocker.patch.object(docker_client, "client")
-    # Patch the images attribute of the client to control its behavior
+    # Create a mock for the 'images' attribute
     mock_images = mocker.MagicMock()
-    mock_client.images = mock_images
+    # Attach the mock to the client object
+    docker_client.client.images = mock_images
+    # Create a mock for the 'api' attribute
+    mock_api = mocker.MagicMock()
+    # Attach the mock to the client object
+    docker_client.client.api = mock_api
 
     # Case 1: Image exists
-    mock_images.get.side_effect = MagicMock()  # Mock that image exists
+    mock_images.get.side_effect = None  # Mock that image exists
     assert docker_client.get_image() == "test-image:latest"
-    mock_images.get.assert_called_once_with("test-image:latest")  # Ensure get is called
+    mock_images.get.assert_called_with("test-image:latest")  # Ensure get is called
 
     # Case 2: Image does not exist
     mock_images.get.side_effect = ImageNotFound(
         "Image not found"
     )  # Mock that image doesn't exist
-    mock_pull = mocker.patch.object(
-        docker_client.client.api, "pull"
-    )  # Patch pull method
+    mock_pull = mocker.patch.object(docker_client.client.api, "pull")  # Patch pull method
     mock_pull.return_value = iter([{"status": "pulling"}])  # Simulate pull process
     assert docker_client.get_image() == "test-image:latest"
-    mock_pull.assert_called_once_with(
+    mock_api.pull.assert_called_with(
         repository="test-image",
         tag="latest",
         stream=True,
@@ -176,8 +182,9 @@ def test_get_container_run_config_without_mount(docker_client, mocker):
 
 def test_run_container(docker_client, mocker):
     """Test the run_container method."""
-    # Patch the client object to control its behavior
-    mock_client = mocker.patch.object(docker_client, "client")
+    # Create a mock for the containers.run method
+    mock_container = mocker.MagicMock()
+    docker_client.client.containers.run.return_value = mock_container
 
     config = {
         "name": "test-image",
@@ -193,8 +200,9 @@ def test_run_container(docker_client, mocker):
         "mounts": [],
     }
 
-    assert isinstance(docker_client.run_container(config), DockerContainer)
-    mock_client.containers.run.assert_called_once_with(**config)
+    result = docker_client.run_container(config)
+    assert isinstance(result, DockerContainer)
+    docker_client.client.containers.run.assert_called_once_with(**config)
 
 
 def test_get_image_for_sidecar(docker_client_with_sidecar, mocker):
@@ -209,9 +217,7 @@ def test_get_image_for_sidecar(docker_client_with_sidecar, mocker):
     )
 
     # Re-initialize client to pick up mocked env vars
-    docker_client_with_sidecar.sidecar_image_name = os.getenv(
-        Env.TOOL_SIDECAR_IMAGE_NAME
-    )
+    docker_client_with_sidecar.sidecar_image_name = os.getenv(Env.TOOL_SIDECAR_IMAGE_NAME)
     docker_client_with_sidecar.sidecar_image_tag = os.getenv(Env.TOOL_SIDECAR_IMAGE_TAG)
 
     # Patch the client object to control its behavior
@@ -223,8 +229,7 @@ def test_get_image_for_sidecar(docker_client_with_sidecar, mocker):
     # Case 1: Image exists
     mock_images.get.side_effect = MagicMock()
     assert (
-        docker_client_with_sidecar.get_image(sidecar=True)
-        == "test-sidecar-image:latest"
+        docker_client_with_sidecar.get_image(sidecar=True) == "test-sidecar-image:latest"
     )
     mock_images.get.assert_called_once_with("test-sidecar-image:latest")
 
@@ -233,8 +238,7 @@ def test_get_image_for_sidecar(docker_client_with_sidecar, mocker):
     mock_pull = mocker.patch.object(docker_client_with_sidecar.client.api, "pull")
     mock_pull.return_value = iter([{"status": "pulling"}])
     assert (
-        docker_client_with_sidecar.get_image(sidecar=True)
-        == "test-sidecar-image:latest"
+        docker_client_with_sidecar.get_image(sidecar=True) == "test-sidecar-image:latest"
     )
     mock_pull.assert_called_once_with(
         repository="test-sidecar-image",

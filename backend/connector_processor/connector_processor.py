@@ -1,10 +1,13 @@
 # mypy: ignore-errors
 import json
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from connector_auth_v2.constants import ConnectorAuthKey
 from connector_auth_v2.pipeline.common import ConnectorAuthHelper
+from connector_v2.constants import ConnectorInstanceKey as CIKey
+
+from backend.exceptions import UnstractFSException
 from connector_processor.constants import ConnectorKeys
 from connector_processor.exceptions import (
     InValidConnectorId,
@@ -12,9 +15,6 @@ from connector_processor.exceptions import (
     OAuthTimeOut,
     TestConnectorInputError,
 )
-from connector_v2.constants import ConnectorInstanceKey as CIKey
-
-from backend.exceptions import UnstractFSException
 from unstract.connectors.base import UnstractConnector
 from unstract.connectors.connectorkit import Connectorkit
 from unstract.connectors.enums import ConnectorMode
@@ -25,10 +25,11 @@ logger = logging.getLogger(__name__)
 
 
 def fetch_connectors_by_key_value(
-    key: str, value: Any, connector_mode: Optional[ConnectorMode] = None
+    key: str, value: Any, connector_mode: ConnectorMode | None = None
 ) -> list[UnstractConnector]:
     """Fetches a list of connectors that have an attribute matching key and
-    value."""
+    value.
+    """
     logger.info(f"Fetching connector list for {key} with {value}")
     connector_kit = Connectorkit()
     connectors = connector_kit.get_connectors_list(mode=connector_mode)
@@ -42,9 +43,7 @@ class ConnectorProcessor:
         schema_details: dict = {}
         if connector_id == UnstractCloudStorage.get_id():
             return schema_details
-        updated_connectors = fetch_connectors_by_key_value(
-            ConnectorKeys.ID, connector_id
-        )
+        updated_connectors = fetch_connectors_by_key_value(ConnectorKeys.ID, connector_id)
         if len(updated_connectors) == 0:
             logger.error(
                 f"Invalid connector Id : {connector_id} "
@@ -70,7 +69,7 @@ class ConnectorProcessor:
 
     @staticmethod
     def get_all_supported_connectors(
-        type: str, connector_mode: Optional[ConnectorMode] = None
+        type: str, connector_mode: ConnectorMode | None = None
     ) -> list[dict]:
         """Function to return list of all supported connectors except PCS."""
         supported_connectors = []
@@ -119,9 +118,7 @@ class ConnectorProcessor:
                 raise OAuthTimeOut()
 
         try:
-            connector_impl = Connectorkit().get_connector_by_id(
-                connector_id, credentials
-            )
+            connector_impl = Connectorkit().get_connector_by_id(connector_id, credentials)
             test_result = connector_impl.test_credentials()
             logger.info(f"{connector_id} test result: {test_result}")
             return test_result

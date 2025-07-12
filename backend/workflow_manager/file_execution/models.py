@@ -5,8 +5,8 @@ from typing import Any
 from django.db import models
 from utils.common_utils import CommonUtils
 from utils.models.base_model import BaseModel
+
 from workflow_manager.endpoint_v2.dto import FileHash
-from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 
 FILE_NAME_LENGTH = 255
@@ -20,10 +20,9 @@ class WorkflowFileExecutionManager(models.Manager):
         self,
         workflow_execution: Any,
         file_hash: FileHash,
-        connection_type: WorkflowEndpoint.ConnectionType,
+        is_api: bool = False,
     ) -> "WorkflowFileExecution":
-        """
-        Retrieves or creates a new input file record for a workflow execution.
+        """Retrieves or creates a new input file record for a workflow execution.
 
         Args:
             workflow_execution: The `WorkflowExecution` object
@@ -34,7 +33,6 @@ class WorkflowFileExecutionManager(models.Manager):
         Returns:
             The `WorkflowFileExecution` object.
         """
-        is_api = connection_type == WorkflowEndpoint.ConnectionType.API
         # Determine file path based on connection type
         execution_file_path = file_hash.file_path if not is_api else None
 
@@ -83,9 +81,7 @@ class WorkflowFileExecution(BaseModel):
     file_path = models.CharField(
         max_length=FILE_PATH_LENGTH, null=True, db_comment="Full Path of the file"
     )
-    file_size = models.BigIntegerField(
-        null=True, db_comment="Size of the file in bytes"
-    )
+    file_size = models.BigIntegerField(null=True, db_comment="Size of the file in bytes")
     file_hash = models.CharField(
         max_length=HASH_LENGTH, null=True, db_comment="Hash of the file content"
     )
@@ -108,9 +104,7 @@ class WorkflowFileExecution(BaseModel):
         choices=ExecutionStatus.choices,
         db_comment="Current status of the execution",
     )
-    execution_time = models.FloatField(
-        null=True, db_comment="Execution time in seconds"
-    )
+    execution_time = models.FloatField(null=True, db_comment="Execution time in seconds")
     execution_error = models.TextField(
         blank=True, null=True, db_comment="Error message if execution failed"
     )
@@ -129,8 +123,7 @@ class WorkflowFileExecution(BaseModel):
         status: ExecutionStatus,
         execution_error: str = None,
     ) -> None:
-        """
-        Updates the status and execution details of an input file.
+        """Updates the status and execution details of an input file.
 
         Args:
         execution_file: The `WorkflowExecutionFile` object to update
@@ -138,7 +131,7 @@ class WorkflowFileExecution(BaseModel):
         execution_time: The execution time for processing the file
         execution_error: (Optional) Error message if processing failed
 
-        return:
+        Return:
             The updated `WorkflowExecutionInputFile` object
         """
         self.status = status
@@ -220,8 +213,7 @@ class WorkflowFileExecution(BaseModel):
         file_hash: str = None,
         fs_metadata: dict[str, Any] = None,
     ) -> None:
-        """
-        Updates the file execution details.
+        """Updates the file execution details.
 
         Args:
             file_hash: (Optional) Hash of the file content

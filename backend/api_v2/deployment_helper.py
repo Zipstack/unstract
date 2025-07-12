@@ -1,18 +1,7 @@
 import logging
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import urlencode
 
-from api_v2.api_key_validator import BaseAPIKeyValidator
-from api_v2.exceptions import (
-    ApiKeyCreateException,
-    APINotFound,
-    InactiveAPI,
-    InvalidAPIRequest,
-)
-from api_v2.key_helper import KeyHelper
-from api_v2.models import APIDeployment, APIKey
-from api_v2.serializers import APIExecutionResponseSerializer
-from api_v2.utils import APIDeploymentUtils
 from django.conf import settings
 from django.core.files.uploadedfile import UploadedFile
 from rest_framework.request import Request
@@ -28,6 +17,19 @@ from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelper
 from workflow_manager.workflow_v2.models import Workflow, WorkflowExecution
 from workflow_manager.workflow_v2.workflow_helper import WorkflowHelper
+
+from api_v2.api_key_validator import BaseAPIKeyValidator
+from api_v2.dto import DeploymentExecutionDTO
+from api_v2.exceptions import (
+    ApiKeyCreateException,
+    APINotFound,
+    InactiveAPI,
+    InvalidAPIRequest,
+)
+from api_v2.key_helper import KeyHelper
+from api_v2.models import APIDeployment, APIKey
+from api_v2.serializers import APIExecutionResponseSerializer
+from api_v2.utils import APIDeploymentUtils
 
 logger = logging.getLogger(__name__)
 
@@ -51,11 +53,15 @@ class DeploymentHelper(BaseAPIKeyValidator):
         api_name = kwargs.get("api_name") or request.data.get("api_name")
         api_deployment = DeploymentHelper.get_deployment_by_api_name(api_name=api_name)
         DeploymentHelper.validate_api(api_deployment=api_deployment, api_key=api_key)
-        kwargs["api"] = api_deployment
+
+        deployment_execution_dto = DeploymentExecutionDTO(
+            api=api_deployment, api_key=api_key
+        )
+        kwargs["deployment_execution_dto"] = deployment_execution_dto
         return func(self, request, *args, **kwargs)
 
     @staticmethod
-    def validate_api(api_deployment: Optional[APIDeployment], api_key: str) -> None:
+    def validate_api(api_deployment: APIDeployment | None, api_key: str) -> None:
         """Validating API and API key.
 
         Args:
@@ -75,11 +81,12 @@ class DeploymentHelper(BaseAPIKeyValidator):
     @staticmethod
     def validate_and_get_workflow(workflow_id: str) -> Workflow:
         """Validate that the specified workflow_id exists in the Workflow
-        model."""
+        model.
+        """
         return WorkflowHelper.get_workflow_by_id(workflow_id)
 
     @staticmethod
-    def get_api_by_id(api_id: str) -> Optional[APIDeployment]:
+    def get_api_by_id(api_id: str) -> APIDeployment | None:
         return APIDeploymentUtils.get_api_by_id(api_id=api_id)
 
     @staticmethod
@@ -102,7 +109,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
     @staticmethod
     def get_deployment_by_api_name(
         api_name: str,
-    ) -> Optional[APIDeployment]:
+    ) -> APIDeployment | None:
         """Get and return the APIDeployment object by api_name."""
         try:
             api: APIDeployment = APIDeployment.objects.get(api_name=api_name)
@@ -141,6 +148,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         include_metrics: bool = False,
         use_file_history: bool = False,
         tag_names: list[str] = [],
+        llm_profile_id: str | None = None,
     ) -> ReturnDict:
         """Execute workflow by api.
 
@@ -151,6 +159,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
             use_file_history (bool): Use FileHistory table to return results on already
                 processed files. Defaults to False
             tag_names (list(str)): list of tag names
+            llm_profile_id (str, optional): LLM profile ID for overriding tool settings
 
         Returns:
             ReturnDict: execution status/ result
@@ -168,6 +177,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         execution_id = workflow_execution.id
 
         hash_values_of_files = SourceConnector.add_input_file_to_api_storage(
+            pipeline_id=pipeline_id,
             workflow_id=workflow_id,
             execution_id=execution_id,
             file_objs=file_objs,
@@ -182,6 +192,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 execution_id=execution_id,
                 queue=CeleryQueue.CELERY_API_DEPLOYMENTS,
                 use_file_history=use_file_history,
+                llm_profile_id=llm_profile_id,
             )
             result.status_api = DeploymentHelper.construct_status_endpoint(
                 api_endpoint=api.api_endpoint, execution_id=execution_id

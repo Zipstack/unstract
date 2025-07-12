@@ -15,6 +15,7 @@ services:
     depends_on:
       - db
       - redis
+      - rabbitmq
       - reverse-proxy
       - minio
       - createbuckets
@@ -41,11 +42,12 @@ services:
     container_name: unstract-worker
     restart: unless-stopped
     entrypoint: .venv/bin/celery
-    command: "-A backend worker --loglevel=info -Q celery --autoscale=${WORKER_AUTOSCALE}"
+    command: "-A backend worker --loglevel=info -Q celery,celery_api_deployments --autoscale=${WORKER_AUTOSCALE}"
     env_file:
       - ../backend/.env
     depends_on:
-      - redis
+      - rabbitmq
+      - db
     environment:
       - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-worker
@@ -66,27 +68,49 @@ services:
     env_file:
       - ../backend/.env
     depends_on:
-      - redis
+      - rabbitmq
+      - db
     environment:
       - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-worker-logging
     labels:
       - traefik.enable=false
 
-  # Celery worker for handling API deployment tasks
-  worker-api-deployment:
+  # Celery worker for handling file processing tasks
+  worker-file-processing:
     image: unstract/backend:${VERSION}
-    container_name: unstract-worker-api-deployment
+    container_name: unstract-worker-file-processing
     restart: unless-stopped
     entrypoint: .venv/bin/celery
-    command: "-A backend worker --loglevel=info -Q celery_api_deployments --autoscale=${WORKER_API_DEPLOYMENTS_AUTOSCALE}"
+    command: "-A backend.workers.file_processing worker --loglevel=info -Q file_processing,api_file_processing --autoscale=${WORKER_FILE_PROCESSING_AUTOSCALE}"
     env_file:
       - ../backend/.env
     depends_on:
-      - redis
+      - rabbitmq
+      - db
     environment:
       - ENVIRONMENT=development
-      - APPLICATION_NAME=unstract-worker-api-deployment
+      - APPLICATION_NAME=unstract-worker-file-processing
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+
+  worker-file-processing-callback:
+    image: unstract/backend:${VERSION}
+    container_name: unstract-worker-file-processing-callback
+    restart: unless-stopped
+    entrypoint: .venv/bin/celery
+    command: "-A backend.workers.file_processing_callback worker --loglevel=info -Q file_processing_callback,api_file_processing_callback --autoscale=${WORKER_FILE_PROCESSING_CALLBACK_AUTOSCALE}"
+    env_file:
+      - ../backend/.env
+    depends_on:
+      - rabbitmq
+      - db
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-file-processing-callback
     labels:
       - traefik.enable=false
     volumes:
@@ -105,8 +129,7 @@ services:
     depends_on:
       - worker
       - worker-logging
-      - worker-api-deployment
-      - redis
+      - rabbitmq
     labels:
       - traefik.enable=false
     ports:
@@ -131,7 +154,7 @@ services:
       - ./essentials.env
     depends_on:
         - db
-        - redis
+        - rabbitmq
     environment:
       - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-celery-beat
@@ -174,6 +197,7 @@ services:
       - db
       - minio
       - createbuckets
+      - rabbitmq
     ports:
       - "3003:3003"
     env_file:
@@ -211,6 +235,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - redis
+      - rabbitmq
     labels:
       - traefik.enable=false
 

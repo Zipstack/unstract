@@ -1,7 +1,8 @@
-from api_v2.api_deployment_views import APIDeploymentViewSet, DeploymentExecution
-from api_v2.api_key_views import APIKeyViewSet
 from django.urls import path
 from rest_framework.urlpatterns import format_suffix_patterns
+
+from api_v2.api_deployment_views import APIDeploymentViewSet, DeploymentExecution
+from api_v2.api_key_views import APIKeyViewSet
 
 deployment = APIDeploymentViewSet.as_view(
     {

@@ -1,14 +1,15 @@
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
-from typing import Any, Optional, Union
+from typing import Any
 from urllib.parse import urlencode, urljoin
+
+from django.conf import settings
+from pipeline_v2.models import Pipeline
+from utils.request import HTTPMethod
 
 from api_v2.constants import ApiExecution
 from api_v2.models import APIDeployment
 from api_v2.postman_collection.constants import CollectionKey
-from django.conf import settings
-from pipeline_v2.models import Pipeline
-from utils.request import HTTPMethod
 
 
 @dataclass
@@ -21,8 +22,9 @@ class HeaderItem:
 class FormDataItem:
     key: str
     type: str
-    src: Optional[str] = None
-    value: Optional[str] = None
+    src: str | None = None
+    value: str | None = None
+    description: str | None = None
 
     def __post_init__(self) -> None:
         if self.type == "file":
@@ -46,7 +48,7 @@ class RequestItem:
     method: HTTPMethod
     url: str
     header: list[HeaderItem]
-    body: Optional[BodyItem] = None
+    body: BodyItem | None = None
 
 
 @dataclass
@@ -63,7 +65,6 @@ class PostmanInfo:
 
 
 class APIBase(ABC):
-
     @abstractmethod
     def get_form_data_items(self) -> list[FormDataItem]:
         pass
@@ -119,6 +120,12 @@ class APIDeploymentDto(APIBase):
             ),
             FormDataItem(key=ApiExecution.INCLUDE_METADATA, type="text", value="False"),
             FormDataItem(key=ApiExecution.INCLUDE_METRICS, type="text", value="False"),
+            FormDataItem(
+                key=ApiExecution.LLM_PROFILE_ID,
+                type="text",
+                value="",
+                description="Optional: UUID of the LLM profile to override default settings",
+            ),
         ]
 
     def get_api_key(self) -> str:
@@ -189,7 +196,7 @@ class PostmanCollection:
     @classmethod
     def create(
         cls,
-        instance: Union[APIDeployment, Pipeline],
+        instance: APIDeployment | Pipeline,
         api_key: str = CollectionKey.AUTH_QUERY_PARAM_DEFAULT,
     ) -> "PostmanCollection":
         """Creates a PostmanCollection instance.

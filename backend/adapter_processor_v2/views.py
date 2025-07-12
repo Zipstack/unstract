@@ -1,25 +1,7 @@
 import logging
 import uuid
-from typing import Any, Optional
+from typing import Any
 
-from adapter_processor_v2.adapter_processor import AdapterProcessor
-from adapter_processor_v2.constants import AdapterKeys
-from adapter_processor_v2.exceptions import (
-    CannotDeleteDefaultAdapter,
-    DeleteAdapterInUseError,
-    DuplicateAdapterNameError,
-    IdIsMandatory,
-    InValidType,
-)
-from adapter_processor_v2.serializers import (
-    AdapterInfoSerializer,
-    AdapterInstanceSerializer,
-    AdapterListSerializer,
-    DefaultAdapterSerializer,
-    SharedUserListSerializer,
-    TestAdapterSerializer,
-    UserDefaultAdapterSerializer,
-)
 from django.db import IntegrityError
 from django.db.models import ProtectedError, QuerySet
 from django.http import HttpRequest
@@ -39,6 +21,25 @@ from rest_framework.versioning import URLPathVersioning
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.filtering import FilterHelper
+
+from adapter_processor_v2.adapter_processor import AdapterProcessor
+from adapter_processor_v2.constants import AdapterKeys
+from adapter_processor_v2.exceptions import (
+    CannotDeleteDefaultAdapter,
+    DeleteAdapterInUseError,
+    DuplicateAdapterNameError,
+    IdIsMandatory,
+    InValidType,
+)
+from adapter_processor_v2.serializers import (
+    AdapterInfoSerializer,
+    AdapterInstanceSerializer,
+    AdapterListSerializer,
+    DefaultAdapterSerializer,
+    SharedUserListSerializer,
+    TestAdapterSerializer,
+    UserDefaultAdapterSerializer,
+)
 
 from .constants import AdapterKeys as constant
 from .models import AdapterInstance, UserDefaultAdapter
@@ -130,11 +131,9 @@ class AdapterViewSet(GenericViewSet):
 
 
 class AdapterInstanceViewSet(ModelViewSet):
-
     serializer_class = AdapterInstanceSerializer
 
     def get_permissions(self) -> list[Any]:
-
         if self.action in ["update", "retrieve"]:
             return [IsFrictionLessAdapter()]
 
@@ -148,7 +147,7 @@ class AdapterInstanceViewSet(ModelViewSet):
         # User cant view/update metadata but can delete/share etc
         return [IsOwner()]
 
-    def get_queryset(self) -> Optional[QuerySet]:
+    def get_queryset(self) -> QuerySet | None:
         if filter_args := FilterHelper.build_filter_args(
             self.request,
             constant.ADAPTER_TYPE,
@@ -237,9 +236,7 @@ class AdapterInstanceViewSet(ModelViewSet):
                 name=serializer.validated_data.get(AdapterKeys.ADAPTER_NAME)
             )
         headers = self.get_success_headers(serializer.data)
-        return Response(
-            serializer.data, status=status.HTTP_201_CREATED, headers=headers
-        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def destroy(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
@@ -261,13 +258,11 @@ class AdapterInstanceViewSet(ModelViewSet):
                 )
                 or (
                     adapter_type == AdapterKeys.EMBEDDING
-                    and adapter_instance
-                    == user_default_adapter.default_embedding_adapter
+                    and adapter_instance == user_default_adapter.default_embedding_adapter
                 )
                 or (
                     adapter_type == AdapterKeys.VECTOR_DB
-                    and adapter_instance
-                    == user_default_adapter.default_vector_db_adapter
+                    and adapter_instance == user_default_adapter.default_vector_db_adapter
                 )
                 or (
                     adapter_type == AdapterKeys.X2TEXT
@@ -316,16 +311,21 @@ class AdapterInstanceViewSet(ModelViewSet):
                         )
                     )
 
-                    if user_default_adapter.default_llm_adapter == adapter:
-                        user_default_adapter.default_llm_adapter = None
-                    elif user_default_adapter.default_embedding_adapter == adapter:
-                        user_default_adapter.default_embedding_adapter = None
-                    elif user_default_adapter.default_vector_db_adapter == adapter:
-                        user_default_adapter.default_vector_db_adapter = None
-                    elif user_default_adapter.default_x2text_adapter == adapter:
-                        user_default_adapter.default_x2text_adapter = None
+                    adapter_fields = [
+                        "default_llm_adapter",
+                        "default_embedding_adapter",
+                        "default_vector_db_adapter",
+                        "default_x2text_adapter",
+                    ]
 
-                    user_default_adapter.save()
+                    updated = False
+                    for field in adapter_fields:
+                        if getattr(user_default_adapter, field) == adapter:
+                            setattr(user_default_adapter, field, None)
+                            updated = True
+
+                    if updated:
+                        user_default_adapter.save()
                 except UserDefaultAdapter.DoesNotExist:
                     logger.debug(
                         "User id : %s doesnt have default adapters configured",
@@ -337,16 +337,65 @@ class AdapterInstanceViewSet(ModelViewSet):
 
     @action(detail=True, methods=["get"])
     def list_of_shared_users(self, request: HttpRequest, pk: Any = None) -> Response:
-
         adapter = self.get_object()
 
         serialized_instances = SharedUserListSerializer(adapter).data
 
         return Response(serialized_instances)
 
+    def update(
+        self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
+    ) -> Response:
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        logger.info("ADAPTER UPDATE CALLED")
+
+        # Check if adapter metadata is being updated and contains the platform key flag
+        use_platform_unstract_key = False
+        adapter_metadata = request.data.get(AdapterKeys.ADAPTER_METADATA)
+
+        if adapter_metadata and adapter_metadata.get(
+            AdapterKeys.PLATFORM_PROVIDED_UNSTRACT_KEY, False
+        ):
+            use_platform_unstract_key = True
+            logger.error(f"Platform key flag detected: {use_platform_unstract_key}")
+
+        # Get the adapter instance for update
+        adapter = self.get_object()
+
+        if use_platform_unstract_key:
+            logger.error("Processing adapter with platform key")
+            serializer = self.get_serializer(adapter, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+
+            # Get adapter_type from validated data (consistent with create method)
+            adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
+            logger.error(f"Adapter type from validated data: {adapter_type}")
+
+            if adapter_type == AdapterKeys.X2TEXT:
+                logger.error("Processing X2TEXT adapter with platform key")
+                adapter_metadata_b = serializer.validated_data.get(
+                    AdapterKeys.ADAPTER_METADATA_B
+                )
+                adapter_metadata_b = AdapterProcessor.update_adapter_metadata(
+                    adapter_metadata_b, is_paid_subscription=True
+                )
+                # Update the validated data with the new adapter_metadata
+                serializer.validated_data[AdapterKeys.ADAPTER_METADATA_B] = (
+                    adapter_metadata_b
+                )
+
+            # Save the instance with updated metadata
+            serializer.save()
+            return Response(serializer.data)
+
+        # For non-platform-key cases, use the default update behavior
+        return super().update(request, *args, **kwargs)
+
     @action(detail=True, methods=["get"])
     def adapter_info(self, request: HttpRequest, pk: uuid) -> Response:
-
         adapter = self.get_object()
 
         serialized_instances = AdapterInfoSerializer(adapter).data

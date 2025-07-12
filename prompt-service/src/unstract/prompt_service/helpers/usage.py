@@ -2,6 +2,7 @@ from logging import Logger
 from typing import Any
 
 from flask import current_app as app
+
 from unstract.prompt_service.constants import DBTableV2
 from unstract.prompt_service.extensions import db, db_context
 from unstract.prompt_service.utils.db_utils import DBUtils
@@ -9,7 +10,6 @@ from unstract.prompt_service.utils.env_loader import get_env_or_die
 
 
 class UsageHelper:
-
     @staticmethod
     def query_usage_metadata(token: str, metadata: dict[str, Any]) -> dict[str, Any]:
         DB_SCHEMA = get_env_or_die("DB_SCHEMA", "unstract")
@@ -40,11 +40,11 @@ class UsageHelper:
                     # Process results as needed
                     for row in results:
                         key, item = UsageHelper._get_key_and_item(row)
-                    # Initialize the key as an empty list if it doesn't exist
-                    if key not in metadata:
-                        metadata[key] = []
-                    # Append the item to the list associated with the key
-                    metadata[key].append(item)
+                        # Initialize the key as an empty list if it doesn't exist
+                        if key not in metadata:
+                            metadata[key] = []
+                        # Append the item to the list associated with the key
+                        metadata[key].append(item)
         except Exception as e:
             logger.error(f"Error while querying usage metadata: {e}")
         return metadata

@@ -3,13 +3,16 @@ import time
 from flask import current_app as app
 from llama_index.core import VectorStoreIndex
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
+
 from unstract.prompt_service.core.retrievers.base_retriever import BaseRetriever
 
 
 class SimpleRetriever(BaseRetriever):
     def retrieve(self) -> set[str]:
+        app.logger.info(
+            f"Retrieving context for prompt: {self.prompt} with doc_id: {self.doc_id}"
+        )
         context = self._simple_retrieval()
-        app.logger.info(f"context {context}")
         if not context:
             # UN-1288 For Pinecone, we are seeing an inconsistent case where
             # query with doc_id fails even though indexing just happened.

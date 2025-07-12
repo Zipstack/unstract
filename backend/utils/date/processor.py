@@ -1,11 +1,11 @@
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Optional, Union
 
 from dateutil.parser import parse
 from django.utils import timezone
 from isodate import parse_datetime
+
 from utils.date.enums import DateRangePresets
 from utils.date.exceptions import InvalidDatetime
 
@@ -14,8 +14,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class DateRange:
-    """
-    Represents a validated date range with start and end dates.
+    """Represents a validated date range with start and end dates.
 
     Attributes:
         start_date: Beginning of the date range
@@ -32,8 +31,7 @@ class DateTimeProcessor:
 
     @staticmethod
     def normalize_datetime(date_str: str) -> str:
-        """
-        Converts various datetime string formats to ISO 8601 format.
+        """Converts various datetime string formats to ISO 8601 format.
 
         Args:
             date_input: A string representing a date/time in any recognizable format
@@ -54,11 +52,10 @@ class DateTimeProcessor:
     @classmethod
     def parse_date_parameter(
         cls,
-        date_param: Optional[Union[str, datetime]],
-        default_date: Optional[datetime] = None,
-    ) -> Optional[datetime]:
-        """
-        Parses and converts date parameters to datetime objects.
+        date_param: str | datetime | None,
+        default_date: datetime | None = None,
+    ) -> datetime | None:
+        """Parses and converts date parameters to datetime objects.
 
         Args:
             date_param: Date parameter that can be either a string or datetime object
@@ -79,11 +76,10 @@ class DateTimeProcessor:
     @classmethod
     def process_date_range(
         cls,
-        start_date_param: Optional[Union[str, datetime]] = None,
-        end_date_param: Optional[Union[str, datetime]] = None,
+        start_date_param: str | datetime | None = None,
+        end_date_param: str | datetime | None = None,
     ) -> DateRange:
-        """
-        Processes and validates start and end dates with smart defaults.
+        """Processes and validates start and end dates with smart defaults.
 
         Logic:
         1. If no end_date: use current time
@@ -106,8 +102,7 @@ class DateTimeProcessor:
             ... )
             >>> # Both dates provided
             >>> range = DateTimeProcessor.process_date_range(
-            ...     start_date_param="2023-11-01",
-            ...     end_date_param="2023-12-01"
+            ...     start_date_param="2023-11-01", end_date_param="2023-12-01"
             ... )
         """
         # Process end date first
@@ -125,7 +120,7 @@ class DateTimeProcessor:
         return cls._validate_date_range(start_date, end_date)
 
     @classmethod
-    def filter_date_range(cls, value: str) -> Optional[DateRange]:
+    def filter_date_range(cls, value: str) -> DateRange | None:
         preset = DateRangePresets.from_value(value)
         if not preset:
             return None
@@ -133,34 +128,24 @@ class DateTimeProcessor:
         return cls._validate_date_range(start_date=start_date, end_date=end_date)
 
     @classmethod
-    def _process_end_date(
-        cls, end_date_param: Optional[Union[str, datetime]]
-    ) -> datetime:
-        """
-        Processes end date with default to current time.
-        """
+    def _process_end_date(cls, end_date_param: str | datetime | None) -> datetime:
+        """Processes end date with default to current time."""
         if end_date_param:
             return cls.parse_date_parameter(end_date_param)
         return timezone.now()
 
     @classmethod
     def _process_start_date(
-        cls, start_date_param: Optional[Union[str, datetime]], end_date: datetime
+        cls, start_date_param: str | datetime | None, end_date: datetime
     ) -> datetime:
-        """
-        Processes start date with default to end_date minus DEFAULT_DAYS_RANGE.
-        """
+        """Processes start date with default to end_date minus DEFAULT_DAYS_RANGE."""
         if start_date_param:
             return cls.parse_date_parameter(start_date_param)
         return end_date - timedelta(days=cls.DEFAULT_DAYS_RANGE)
 
     @classmethod
-    def _validate_date_range(
-        cls, start_date: datetime, end_date: datetime
-    ) -> DateRange:
-        """
-        Validates the date range and returns a DateRange object.
-        """
+    def _validate_date_range(cls, start_date: datetime, end_date: datetime) -> DateRange:
+        """Validates the date range and returns a DateRange object."""
         if start_date > timezone.now():
             raise InvalidDatetime("Start date cannot be in the future")
         if start_date > end_date:

@@ -3,9 +3,10 @@ import logging
 import os
 import time
 import traceback
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
+import httpx
 import redis
 from kombu import Connection
 
@@ -13,7 +14,13 @@ from unstract.core.constants import LogEventArgument, LogProcessingTask
 
 
 class LogPublisher:
-    kombu_conn = Connection(os.environ.get("CELERY_BROKER_URL"))
+    broker_url = str(
+        httpx.URL(os.getenv("CELERY_BROKER_BASE_URL", "amqp://")).copy_with(
+            username=os.getenv("CELERY_BROKER_USER"),
+            password=os.getenv("CELERY_BROKER_PASS"),
+        )
+    )
+    kombu_conn = Connection(broker_url)
     r = redis.Redis(
         host=os.environ.get("REDIS_HOST"),
         port=os.environ.get("REDIS_PORT", 6379),
@@ -24,12 +31,12 @@ class LogPublisher:
     @staticmethod
     def log_usage(
         level: str = "INFO",
-        added_token_count: Optional[int] = None,
-        max_token_count_set: Optional[int] = None,
+        added_token_count: int | None = None,
+        max_token_count_set: int | None = None,
         enabled: bool = False,
     ) -> dict[str, Any]:
         return {
-            "timestamp": datetime.now(timezone.utc).timestamp(),
+            "timestamp": datetime.now(UTC).timestamp(),
             "type": "LOG",
             "service": "usage",
             "level": level,
@@ -43,18 +50,18 @@ class LogPublisher:
         stage: str,
         message: str,
         level: str = "INFO",
-        cost_type: Optional[str] = None,
-        cost_units: Optional[str] = None,
-        cost_value: Optional[float] = None,
-        step: Optional[int] = None,
-        iteration: Optional[int] = None,
-        iteration_total: Optional[int] = None,
-        execution_id: Optional[str] = None,
-        file_execution_id: Optional[str] = None,
-        organization_id: Optional[str] = None,
+        cost_type: str | None = None,
+        cost_units: str | None = None,
+        cost_value: float | None = None,
+        step: int | None = None,
+        iteration: int | None = None,
+        iteration_total: int | None = None,
+        execution_id: str | None = None,
+        file_execution_id: str | None = None,
+        organization_id: str | None = None,
     ) -> dict[str, Any]:
         return {
-            "timestamp": datetime.now(timezone.utc).timestamp(),
+            "timestamp": datetime.now(UTC).timestamp(),
             "type": "LOG",
             "level": level,
             "stage": stage,
@@ -74,10 +81,10 @@ class LogPublisher:
     def log_workflow_update(
         state: str,
         message: str,
-        component: Optional[str],
+        component: str | None,
     ) -> dict[str, Any]:
         return {
-            "timestamp": datetime.now(timezone.utc).timestamp(),
+            "timestamp": datetime.now(UTC).timestamp(),
             "type": "UPDATE",
             "component": component,
             "state": state,
@@ -92,7 +99,7 @@ class LogPublisher:
         message: str,
     ) -> dict[str, str]:
         return {
-            "timestamp": datetime.now(timezone.utc).timestamp(),
+            "timestamp": datetime.now(UTC).timestamp(),
             "type": "LOG",
             "service": "prompt",
             "component": component,
@@ -105,7 +112,6 @@ class LogPublisher:
     def _get_task_message(
         cls, user_session_id: str, event: str, message: Any
     ) -> dict[str, Any]:
-
         task_kwargs = {
             LogEventArgument.EVENT: event,
             LogEventArgument.MESSAGE: message,
@@ -160,9 +166,7 @@ class LogPublisher:
         return True
 
     @classmethod
-    def store_for_unified_notification(
-        cls, event: str, payload: dict[str, Any]
-    ) -> None:
+    def store_for_unified_notification(cls, event: str, payload: dict[str, Any]) -> None:
         """Helps persist messages for unified notification.
 
         Message is stored in redis with a configurable TTL.

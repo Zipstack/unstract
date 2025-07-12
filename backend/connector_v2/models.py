@@ -87,7 +87,8 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
     # TODO: Remove if unused
     def get_connector_metadata(self) -> dict[str, str]:
         """Gets connector metadata and refreshes the tokens if needed in case
-        of OAuth."""
+        of OAuth.
+        """
         tokens_refreshed = False
         if self.connector_auth:
             (
@@ -108,8 +109,7 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
 
     def __str__(self) -> str:
         return (
-            f"Connector({self.id}, type{self.connector_type},"
-            f" workflow: {self.workflow})"
+            f"Connector({self.id}, type{self.connector_type}, workflow: {self.workflow})"
         )
 
     def get_connector_metadata_bytes(self):
