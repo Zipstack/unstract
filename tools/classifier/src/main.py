@@ -1,22 +1,36 @@
 import sys
 from typing import Any
 
-from helper import (
-    ClassifierHelper,  # type: ignore
-    ReservedBins,
-)
+from helper import ClassifierHelper  # type: ignore
+from helper import ReservedBins
 
-from unstract.sdk.constants import (
-    LogLevel,
-    LogState,
-    MetadataKey,
-    ToolSettingsKey,
-    UsageKwargs,
-)
-from unstract.sdk.exceptions import SdkError
-from unstract.sdk.llm import LLM
-from unstract.sdk.tool.base import BaseTool
-from unstract.sdk.tool.entrypoint import ToolEntrypoint
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.constants import (
+        Common,
+        LogLevel,
+        LogState,
+        MetadataKey,
+        ToolSettingsKey,
+        UsageKwargs,
+    )
+    from unstract.sdk1.exceptions import SdkError
+    from unstract.sdk1.llm import LLM
+    from unstract.sdk1.tool.base import BaseTool
+    from unstract.sdk1.tool.entrypoint import ToolEntrypoint
+else:
+    from unstract.sdk.constants import (
+        LogLevel,
+        LogState,
+        MetadataKey,
+        ToolSettingsKey,
+        UsageKwargs,
+    )
+    from unstract.sdk.exceptions import SdkError
+    from unstract.sdk.llm import LLM
+    from unstract.sdk.tool.base import BaseTool
+    from unstract.sdk.tool.entrypoint import ToolEntrypoint
 
 
 class UnstractClassifier(BaseTool):
@@ -95,11 +109,18 @@ class UnstractClassifier(BaseTool):
         usage_kwargs[UsageKwargs.RUN_ID] = self.file_execution_id
 
         try:
-            llm = LLM(
-                tool=self,
-                adapter_instance_id=llm_adapter_instance_id,
-                usage_kwargs=usage_kwargs,
-            )
+            if check_feature_flag_status("sdk1"):
+                llm = LLM(
+                    adapter_id=llm_adapter_instance_id,
+                    adapter_metadata=settings[Common.ADAPTER_METADATA],
+                    kwargs=usage_kwargs,
+                )
+            else:
+                llm = LLM(
+                    tool=self,
+                    adapter_instance_id=llm_adapter_instance_id,
+                    usage_kwargs=usage_kwargs,
+                )
         except SdkError:
             self.helper.stream_error_and_exit("Unable to get llm instance")
             return

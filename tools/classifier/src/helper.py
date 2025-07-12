@@ -2,12 +2,22 @@ import re
 from pathlib import Path
 from typing import Any
 
-from unstract.sdk.cache import ToolCache
-from unstract.sdk.constants import LogLevel, MetadataKey, ToolEnv, UsageKwargs
-from unstract.sdk.llm import LLM
-from unstract.sdk.tool.base import BaseTool
-from unstract.sdk.utils import ToolUtils
-from unstract.sdk.x2txt import TextExtractionResult, X2Text
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.constants import LogLevel, MetadataKey, ToolEnv, UsageKwargs
+    from unstract.sdk1.llm import LLM
+    from unstract.sdk1.tool.base import BaseTool
+    from unstract.sdk1.tool.cache import ToolCache
+    from unstract.sdk1.utils import ToolUtils
+    from unstract.sdk1.x2txt import TextExtractionResult, X2Text
+else:
+    from unstract.sdk.cache import ToolCache
+    from unstract.sdk.constants import LogLevel, MetadataKey, ToolEnv, UsageKwargs
+    from unstract.sdk.llm import LLM
+    from unstract.sdk.tool.base import BaseTool
+    from unstract.sdk.utils import ToolUtils
+    from unstract.sdk.x2txt import TextExtractionResult, X2Text
 
 
 class ReservedBins:
