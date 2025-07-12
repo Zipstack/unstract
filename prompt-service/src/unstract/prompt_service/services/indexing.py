@@ -1,5 +1,6 @@
 import logging
 
+from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.prompt_service.core.index_v2 import Index
 from unstract.prompt_service.dto import (
     ChunkingConfig,
@@ -10,9 +11,15 @@ from unstract.prompt_service.dto import (
 from unstract.prompt_service.exceptions import APIError
 from unstract.prompt_service.helpers.prompt_ide_base_tool import PromptServiceBaseTool
 from unstract.prompt_service.utils.file_utils import FileUtils
-from unstract.sdk.embedding import Embedding
-from unstract.sdk.utils.indexing_utils import IndexingUtils
-from unstract.sdk.vector_db import VectorDB
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.embedding import Embedding
+    from unstract.sdk1.utils.indexing import IndexingUtils
+    from unstract.sdk1.vector_db import VectorDB
+else:
+    from unstract.sdk.embedding import Embedding
+    from unstract.sdk.utils.indexing_utils import IndexingUtils
+    from unstract.sdk.vector_db import VectorDB
 
 logger = logging.getLogger(__name__)
 

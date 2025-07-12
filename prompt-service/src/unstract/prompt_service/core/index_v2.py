@@ -11,25 +11,41 @@ from llama_index.core.vector_stores import (
     VectorStoreQueryResult,
 )
 
+from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.prompt_service.dto import (
     ChunkingConfig,
     FileInfo,
     InstanceIdentifiers,
     ProcessingOptions,
 )
-from unstract.sdk.adapter import ToolAdapter
-from unstract.sdk.adapters.vectordb.no_op.src.no_op_custom_vectordb import (
-    NoOpCustomVectorDB,
-)
-from unstract.sdk.constants import LogLevel
-from unstract.sdk.embedding import Embedding
-from unstract.sdk.exceptions import IndexingError, SdkError
-from unstract.sdk.file_storage.impl import FileStorage
-from unstract.sdk.file_storage.provider import FileStorageProvider
-from unstract.sdk.tool.stream import StreamMixin
-from unstract.sdk.utils.common_utils import capture_metrics
-from unstract.sdk.utils.tool_utils import ToolUtils
-from unstract.sdk.vector_db import VectorDB
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.adapters.vectordb.no_op.src.no_op_custom_vectordb import (
+        NoOpCustomVectorDB,
+    )
+    from unstract.sdk1.constants import LogLevel
+    from unstract.sdk1.embedding import Embedding
+    from unstract.sdk1.exceptions import IndexingError, SdkError
+    from unstract.sdk1.file_storage.impl import FileStorage
+    from unstract.sdk1.file_storage.provider import FileStorageProvider
+    from unstract.sdk1.platform import PlatformHelper as ToolAdapter
+    from unstract.sdk1.tool.stream import StreamMixin
+    from unstract.sdk1.utils import ToolUtils, capture_metrics
+    from unstract.sdk1.vector_db import VectorDB
+else:
+    from unstract.sdk.adapter import ToolAdapter
+    from unstract.sdk.adapters.vectordb.no_op.src.no_op_custom_vectordb import (
+        NoOpCustomVectorDB,
+    )
+    from unstract.sdk.constants import LogLevel
+    from unstract.sdk.embedding import Embedding
+    from unstract.sdk.exceptions import IndexingError, SdkError
+    from unstract.sdk.file_storage.impl import FileStorage
+    from unstract.sdk.file_storage.provider import FileStorageProvider
+    from unstract.sdk.tool.stream import StreamMixin
+    from unstract.sdk.utils.common_utils import capture_metrics
+    from unstract.sdk.utils.tool_utils import ToolUtils
+    from unstract.sdk.vector_db import VectorDB
 
 logger = logging.getLogger(__name__)
 

@@ -2,10 +2,12 @@
 
 from typing import Any
 
-from flask import Blueprint, request
+from flask import Blueprint
 from flask import current_app as app
+from flask import request
 
 from unstract.core.flask.exceptions import APIError
+from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.constants import RunLevel
 from unstract.prompt_service.exceptions import BadRequest
@@ -23,14 +25,25 @@ from unstract.prompt_service.services.variable_replacement import (
 )
 from unstract.prompt_service.utils.file_utils import FileUtils
 from unstract.prompt_service.utils.log import publish_log
-from unstract.sdk.adapter import ToolAdapter
-from unstract.sdk.adapters.llm.no_op.src.no_op_custom_llm import NoOpCustomLLM
-from unstract.sdk.constants import LogLevel
-from unstract.sdk.embedding import Embedding
-from unstract.sdk.exceptions import SdkError
-from unstract.sdk.index import Index
-from unstract.sdk.llm import LLM
-from unstract.sdk.vector_db import VectorDB
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.adapters.llm.no_op.src.no_op_custom_llm import NoOpCustomLLM
+    from unstract.sdk1.constants import LogLevel
+    from unstract.sdk1.embedding import Embedding
+    from unstract.sdk1.exceptions import SdkError
+    from unstract.sdk1.index import Index
+    from unstract.sdk1.llm import LLM
+    from unstract.sdk1.platform import PlatformHelper as ToolAdapter
+    from unstract.sdk1.vector_db import VectorDB
+else:
+    from unstract.sdk.adapter import ToolAdapter
+    from unstract.sdk.adapters.llm.no_op.src.no_op_custom_llm import NoOpCustomLLM
+    from unstract.sdk.constants import LogLevel
+    from unstract.sdk.embedding import Embedding
+    from unstract.sdk.exceptions import SdkError
+    from unstract.sdk.index import Index
+    from unstract.sdk.llm import LLM
+    from unstract.sdk.vector_db import VectorDB
 
 answer_prompt_bp = Blueprint("answer-prompt", __name__)
 
@@ -139,15 +152,26 @@ def prompt_processor() -> Any:
         try:
             usage_kwargs = {"run_id": run_id, "execution_id": execution_id}
             adapter_instance_id = output[PSKeys.LLM]
-            llm = LLM(
-                tool=util,
-                adapter_instance_id=adapter_instance_id,
-                usage_kwargs={
-                    **usage_kwargs,
-                    PSKeys.LLM_USAGE_REASON: PSKeys.EXTRACTION,
-                },
-                capture_metrics=True,
-            )
+            if check_feature_flag_status("sdk1"):
+                llm = LLM(
+                    adapter_id=adapter_instance_id,
+                    adapter_metadata={},    # TODO
+                    kwargs={
+                        **usage_kwargs,
+                        PSKeys.LLM_USAGE_REASON: PSKeys.EXTRACTION,
+                        PSKeys.CAPTURE_METRICS: True,
+                    }
+                )
+            else:
+                llm = LLM(
+                    tool=util,
+                    adapter_instance_id=adapter_instance_id,
+                    usage_kwargs={
+                        **usage_kwargs,
+                        PSKeys.LLM_USAGE_REASON: PSKeys.EXTRACTION,
+                    },
+                    capture_metrics=True,
+                )
 
             embedding = Embedding(
                 tool=util,
@@ -486,15 +510,26 @@ def prompt_processor() -> Any:
                             RunLevel.CHALLENGE,
                             "Challenging response",
                         )
-                        challenge_llm = LLM(
-                            tool=util,
-                            adapter_instance_id=tool_settings[PSKeys.CHALLENGE_LLM],
-                            usage_kwargs={
-                                **usage_kwargs,
-                                PSKeys.LLM_USAGE_REASON: PSKeys.CHALLENGE,
-                            },
-                            capture_metrics=True,
-                        )
+                        if check_feature_flag_status("sdk1"):
+                            challenge_llm = LLM(
+                                adapter_id=tool_settings[PSKeys.CHALLENGE_LLM],
+                                adapter_metadata={},    # TODO
+                                kwargs={
+                                    **usage_kwargs,
+                                    PSKeys.LLM_USAGE_REASON: PSKeys.CHALLENGE,
+                                    PSKeys.CAPTURE_METRICS: True
+                                },
+                            )
+                        else:
+                            challenge_llm = LLM(
+                                tool=util,
+                                adapter_instance_id=tool_settings[PSKeys.CHALLENGE_LLM],
+                                usage_kwargs={
+                                    **usage_kwargs,
+                                    PSKeys.LLM_USAGE_REASON: PSKeys.CHALLENGE,
+                                },
+                                capture_metrics=True,
+                            )
                         challenge = challenge_plugin["entrypoint_cls"](
                             llm=llm,
                             challenge_llm=challenge_llm,

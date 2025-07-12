@@ -78,6 +78,7 @@ class PromptServiceConstants:
     REQUIRED = "required"
     EXECUTION_SOURCE = "execution_source"
     METRICS = "metrics"
+    CAPTURE_METRICS = "capture_metrics"
     LINE_ITEM = "line-item"
     LINE_NUMBERS = "line_numbers"
     WHISPER_HASH = "whisper_hash"

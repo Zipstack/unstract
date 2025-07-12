@@ -1,7 +1,14 @@
+from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.prompt_service.constants import ExecutionSource, FileStorageKeys
-from unstract.sdk.file_storage import FileStorage
-from unstract.sdk.file_storage.constants import StorageType
-from unstract.sdk.file_storage.env_helper import EnvHelper
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.file_storage import FileStorage
+    from unstract.sdk1.file_storage.constants import StorageType
+    from unstract.sdk1.file_storage.env_helper import EnvHelper
+else:
+    from unstract.sdk.file_storage import FileStorage
+    from unstract.sdk.file_storage.constants import StorageType
+    from unstract.sdk.file_storage.env_helper import EnvHelper
 
 
 class FileUtils:
