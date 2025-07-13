@@ -256,7 +256,7 @@ function Header({
     }
 
     // Check for existing API deployments before proceeding
-    const path = `/api/v1/unstract/${sessionDetails.orgId.replaceAll('"', "")}`;
+    const path = `/api/v1/unstract/${sessionDetails.orgId}`;
     const requestOptions = {
       method: "GET",
       url: `${path}/api/deployment/`,
