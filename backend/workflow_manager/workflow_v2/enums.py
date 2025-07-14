@@ -44,6 +44,47 @@ class ExecutionStatus(TextChoices):
             )
         return status_enum in [cls.COMPLETED, cls.STOPPED, cls.ERROR]
 
+    @classmethod
+    def is_active(cls, status: str | ExecutionStatus) -> bool:
+        """Check if the workflow execution status is active (in progress)."""
+        try:
+            status_enum = cls(status)
+        except ValueError:
+            raise ValueError(
+                f"Invalid status: {status}. Must be a valid ExecutionStatus."
+            )
+        return status_enum in [cls.PENDING, cls.EXECUTING]
+
+    @classmethod
+    def get_skip_processing_statuses(cls) -> list[ExecutionStatus]:
+        """Get list of statuses that should skip file processing.
+
+        Skip processing if:
+        - EXECUTING: File is currently being processed
+        - PENDING: File is queued to be processed
+        - COMPLETED: File has already been successfully processed
+
+        Returns:
+            list[ExecutionStatus]: List of statuses where file processing should be skipped
+        """
+        return [cls.EXECUTING, cls.PENDING, cls.COMPLETED]
+
+    @classmethod
+    def should_skip_file_processing(cls, status: str | ExecutionStatus) -> bool:
+        """Check if file processing should be skipped based on status.
+
+        Allow processing (retry) if:
+        - STOPPED: Processing was stopped, can retry
+        - ERROR: Processing failed, can retry
+        """
+        try:
+            status_enum = cls(status)
+        except ValueError:
+            raise ValueError(
+                f"Invalid status: {status}. Must be a valid ExecutionStatus."
+            )
+        return status_enum in cls.get_skip_processing_statuses()
+
 
 class SchemaType(Enum):
     """Possible types for workflow module's JSON schema.

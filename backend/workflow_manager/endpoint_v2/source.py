@@ -44,10 +44,6 @@ from workflow_manager.workflow_v2.models.file_history import FileHistory
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
-from unstract.core.file_execution_tracker import (
-    FileExecutionStage,
-    FileExecutionStatusTracker,
-)
 from unstract.filesystem import FileStorageType, FileSystem
 from unstract.sdk.file_storage import FileStorage
 from unstract.workflow_execution.enums import LogStage, LogState
@@ -379,46 +375,101 @@ class SourceConnector(BaseConnector):
         return count
 
     def _is_file_being_processed(self, file_hash: FileHash) -> bool:
-        """Check if file is currently being processed in any active execution
-        Uses existing FileExecutionStatusTracker infrastructure
+        """Check if file is currently being processed or should be skipped
+        Uses direct database queries instead of FileExecutionStatusTracker
 
         Args:
             file_hash (FileHash): The file hash to check
 
         Returns:
-            bool: True if file is being processed, False otherwise
+            bool: True if file should be skipped (being processed or already completed), False otherwise
         """
-        # Get active executions for this workflow with organization filtering for security
+        active_executions = self._get_active_workflow_executions()
+        logger.info(
+            f"Found {len(active_executions)} active executions for workflow {self.workflow.id}"
+        )
+
+        for execution in active_executions:
+            if self._has_blocking_file_execution(execution, file_hash):
+                return True
+
+        return False
+
+    def _get_active_workflow_executions(self):
+        """Get active executions for this workflow with organization filtering for security."""
         organization = UserContext.get_organization()
-        active_executions = WorkflowExecution.objects.filter(
+        return WorkflowExecution.objects.filter(
             workflow=self.workflow,
             workflow__organization_id=organization.id,  # Security: Organization isolation
             status__in=[ExecutionStatus.EXECUTING, ExecutionStatus.PENDING],
         )
 
-        tracker = FileExecutionStatusTracker()
+    def _has_blocking_file_execution(self, execution, file_hash: FileHash) -> bool:
+        """Check if there's a blocking file execution that prevents processing."""
+        try:
+            # Try to find blocking file execution using file_hash
+            file_exec = self._find_blocking_file_execution_by_hash(execution, file_hash)
+            if file_exec:
+                self._log_duplicate_file_execution_skip(file_hash, file_exec, execution)
+                return True
 
-        for execution in active_executions:
-            # Check if this file is being tracked in this execution
-            file_executions = WorkflowFileExecution.objects.filter(
-                workflow_execution=execution, file_hash=file_hash.file_hash
+            # Try to find blocking file execution using provider_file_uuid
+            file_exec = self._find_blocking_file_execution_by_provider_uuid(
+                execution, file_hash
+            )
+            if file_exec:
+                self._log_duplicate_file_execution_skip(file_hash, file_exec, execution)
+                return True
+
+        except Exception as e:
+            logger.warning(
+                f"Error checking file execution status for {file_hash.file_name}: {e}"
             )
 
-            for file_exec in file_executions:
-                if tracker.exists(str(execution.id), str(file_exec.id)):
-                    file_data = tracker.get_data(str(execution.id), str(file_exec.id))
-                    # If stage is not COMPLETED, file is still being processed
-                    if (
-                        file_data
-                        and file_data.stage_status.stage != FileExecutionStage.COMPLETED
-                    ):
-                        logger.info(
-                            f"File '{file_hash.file_name}' is being processed in execution {execution.id}, "
-                            f"stage: {file_data.stage_status.stage.value}, status: {file_data.stage_status.status.value}"
-                        )
-                        return True
-
         return False
+
+    def _find_blocking_file_execution_by_hash(self, execution, file_hash: FileHash):
+        """Find blocking file execution by file hash if it exists."""
+        if not file_hash.file_hash:
+            return None
+
+        try:
+            return WorkflowFileExecution.objects.get(
+                workflow_execution=execution,
+                file_hash=file_hash.file_hash,
+                file_path=file_hash.file_path,
+                status__in=ExecutionStatus.get_skip_processing_statuses(),
+            )
+        except WorkflowFileExecution.DoesNotExist:
+            return None
+
+    def _find_blocking_file_execution_by_provider_uuid(
+        self, execution, file_hash: FileHash
+    ):
+        """Find blocking file execution by provider UUID if it exists."""
+        if not file_hash.provider_file_uuid:
+            return None
+
+        try:
+            return WorkflowFileExecution.objects.get(
+                workflow_execution=execution,
+                provider_file_uuid=file_hash.provider_file_uuid,
+                file_path=file_hash.file_path,
+                status__in=ExecutionStatus.get_skip_processing_statuses(),
+            )
+        except WorkflowFileExecution.DoesNotExist:
+            return None
+
+    def _log_duplicate_file_execution_skip(
+        self, file_hash: FileHash, file_exec, execution
+    ):
+        """Log message when skipping file due to duplicate/blocking execution."""
+        message = (
+            f"Skipping file '{file_hash.file_name}' - status: {file_exec.status} "
+            f"in execution {execution.id}, file execution id: {file_exec.id}"
+        )
+        self.workflow_log.publish_log(message)
+        logger.info(message)
 
     def _should_skip_file(
         self,
@@ -446,9 +497,6 @@ class SourceConnector(BaseConnector):
 
         # NEW: Check if file is being processed
         if self._is_file_being_processed(file_hash):
-            msg = f"Skipping file '{file_hash.file_name}' - currently being processed by another execution"
-            self.workflow_log.publish_log(msg)
-            logger.info(msg)
             return True
 
         return False
