@@ -389,9 +389,10 @@ class SourceConnector(BaseConnector):
             bool: True if file is being processed, False otherwise
         """
         # Get active executions for this workflow with organization filtering for security
+        organization = UserContext.get_organization()
         active_executions = WorkflowExecution.objects.filter(
             workflow=self.workflow,
-            workflow__organization_id=self.organization_id,  # Security: Organization isolation
+            workflow__organization_id=organization.id,  # Security: Organization isolation
             status__in=[ExecutionStatus.EXECUTING, ExecutionStatus.PENDING],
         )
 
