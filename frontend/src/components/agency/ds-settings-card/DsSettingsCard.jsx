@@ -144,11 +144,24 @@ function DsSettingsCard({ type, endpointDetails, message }) {
       setConnType(endpointDetails?.connection_type);
     }
 
-    if (!endpointDetails?.connector_instance?.length) {
+    if (!endpointDetails?.connector_instance) {
       setConnDetails({});
       return;
     }
 
+    // Use connector_instance data directly from endpointDetails if it's an object
+    if (typeof endpointDetails?.connector_instance === "object") {
+      const connectorData = endpointDetails.connector_instance;
+      connectorData.connector_metadata = connectorData.connector_metadata || {};
+      connectorData.connector_metadata.connectorName =
+        connectorData?.connector_name || "";
+      connectorData.icon = endpointDetails?.connector_icon; // Use the icon from endpoint
+      setConnDetails(connectorData);
+      setSelectedId(connectorData?.connector_id);
+      return;
+    }
+
+    // Fallback for legacy connector_instance ID format
     if (connDetails?.id === endpointDetails?.connector_instance) {
       return;
     }

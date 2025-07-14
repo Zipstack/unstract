@@ -131,44 +131,42 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
     def _add_connector_data(
         self,
         repr: OrderedDict[str, Any],
-        connector_instance_list: list[Any],
+        workflow_endpoints: list[Any],
         connectors: list[Any],
     ) -> OrderedDict[str, Any]:
         """Adds connector Input/Output data.
 
         Args:
-            sef (_type_): _description_
-            repr (OrderedDict[str, Any]): _description_
+            repr (OrderedDict[str, Any]): The representation dictionary
+            workflow_endpoints (list[Any]): List of WorkflowEndpoint objects
+            connectors (list[Any]): List of available connectors
 
         Returns:
-            OrderedDict[str, Any]: _description_
+            OrderedDict[str, Any]: Updated representation with connector data
         """
         repr[PC.SOURCE_NAME] = PC.NOT_CONFIGURED
         repr[PC.DESTINATION_NAME] = PC.NOT_CONFIGURED
-        for instance in connector_instance_list:
-            if instance.connector_type == "INPUT":
-                repr[PC.SOURCE_NAME], repr[PC.SOURCE_ICON] = self._get_name_and_icon(
-                    connectors=connectors,
-                    connector_id=instance.connector_id,
-                )
-            if instance.connector_type == "OUTPUT":
-                repr[PC.DESTINATION_NAME], repr[PC.DESTINATION_ICON] = (
-                    self._get_name_and_icon(
+
+        for endpoint in workflow_endpoints:
+            if endpoint.endpoint_type == WorkflowEndpoint.EndpointType.SOURCE:
+                if endpoint.connector_instance:
+                    repr[PC.SOURCE_NAME], repr[PC.SOURCE_ICON] = self._get_name_and_icon(
                         connectors=connectors,
-                        connector_id=instance.connector_id,
+                        connector_id=endpoint.connector_instance.connector_id,
                     )
-                )
-            if repr[PC.DESTINATION_NAME] == PC.NOT_CONFIGURED:
-                try:
-                    check_manual_review = WorkflowEndpoint.objects.get(
-                        workflow=instance.workflow,
-                        endpoint_type=WorkflowEndpoint.EndpointType.DESTINATION,
-                        connection_type=WorkflowEndpoint.ConnectionType.MANUALREVIEW,
+            elif endpoint.endpoint_type == WorkflowEndpoint.EndpointType.DESTINATION:
+                if (
+                    endpoint.connection_type
+                    == WorkflowEndpoint.ConnectionType.MANUALREVIEW
+                ):
+                    repr[PC.DESTINATION_NAME] = "Manual Review"
+                elif endpoint.connector_instance:
+                    repr[PC.DESTINATION_NAME], repr[PC.DESTINATION_ICON] = (
+                        self._get_name_and_icon(
+                            connectors=connectors,
+                            connector_id=endpoint.connector_instance.connector_id,
+                        )
                     )
-                    if check_manual_review:
-                        repr[PC.DESTINATION_NAME] = "Manual Review"
-                except Exception as ex:
-                    logger.debug(f"Not a Manual review destination: {ex}")
         return repr
 
     def to_representation(self, instance: Pipeline) -> OrderedDict[str, Any]:
@@ -180,15 +178,17 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
 
         if SerializerUtils.check_context_for_GET_or_POST(context=self.context):
             workflow = instance.workflow
-            connector_instance_list = ConnectorInstance.objects.filter(
-                workflow=workflow.id
-            ).all()
+            workflow_endpoints = (
+                WorkflowEndpoint.objects.filter(workflow=workflow.id)
+                .select_related("connector_instance")
+                .all()
+            )
             repr[PK.WORKFLOW_ID] = workflow.id
             repr[PK.WORKFLOW_NAME] = workflow.workflow_name
             repr[PK.CRON_STRING] = repr.pop(PK.CRON_STRING)
             repr = self._add_connector_data(
                 repr=repr,
-                connector_instance_list=connector_instance_list,
+                workflow_endpoints=workflow_endpoints,
                 connectors=connectors,
             )
 

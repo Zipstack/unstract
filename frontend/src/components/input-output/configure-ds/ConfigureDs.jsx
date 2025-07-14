@@ -3,7 +3,10 @@ import PropTypes from "prop-types";
 import { createRef, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
-import { sourceTypes } from "../../../helpers/GetStaticData.js";
+import {
+  sourceTypes,
+  CONNECTOR_TYPE_MAP,
+} from "../../../helpers/GetStaticData.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { RjsfFormLayout } from "../../../layouts/rjsf-form-layout/RjsfFormLayout.jsx";
@@ -184,15 +187,19 @@ function ConfigureDs({
       const connectorMetadata = { ...formData };
       const connectorName = connectorMetadata?.connectorName;
       delete connectorMetadata.connectorName;
+      const endpointType = CONNECTOR_TYPE_MAP[type]?.toUpperCase();
+
       body = {
         workflow: id,
-        created_by: sessionDetails?.id,
-        connector_id: selectedSourceId,
-        connector_metadata: connectorMetadata,
-        connector_type: type.toUpperCase(),
-        connector_name: connectorName,
+        endpoint_type: endpointType,
+        connector_instance: {
+          connector_id: selectedSourceId,
+          connector_metadata: connectorMetadata,
+          connector_name: connectorName,
+          created_by: sessionDetails?.id,
+        },
       };
-      url += "connector/";
+      url += "workflow-endpoint/";
 
       try {
         setPostHogCustomEvent(

@@ -45,25 +45,29 @@ function InputOutput() {
 
     setConnectorType(type);
 
+    const endpointType = CONNECTOR_TYPE_MAP[type]?.toUpperCase();
+
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${
-        sessionDetails?.orgId
-      }/connector/?workflow=${id}&connector_type=${type.toUpperCase()}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow-endpoint/?workflow=${id}&endpoint_type=${endpointType}`,
     };
 
     axiosPrivate(requestOptions)
       .then((res) => {
-        const sources = res?.data;
-        if (sources?.length === 0) {
+        const endpoints = res?.data;
+        if (endpoints?.length === 0) {
           setSelectedItem("");
           setListOfItems([]);
           return;
         }
-        const menuItems = sources.map((item) =>
-          getItem(item?.connector_name, item?.id, sourceIcon(item?.icon))
+        const menuItems = endpoints.map((item) =>
+          getItem(
+            item?.connector_name,
+            item?.id,
+            sourceIcon(item?.connector_icon)
+          )
         );
-        const firstId = sources[0].id.toString();
+        const firstId = endpoints[0].id.toString();
         setSelectedItem(firstId);
         setListOfItems(menuItems);
       })
@@ -92,7 +96,7 @@ function InputOutput() {
   const handleDelete = () => {
     const requestOptions = {
       method: "DELETE",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/connector/${selectedItem}/`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow-endpoint/${selectedItem}/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
