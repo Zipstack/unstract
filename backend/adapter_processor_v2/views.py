@@ -157,10 +157,9 @@ class AdapterInstanceViewSet(ModelViewSet):
         data = serializer.data
 
         # Check if we need to hide the unstract_key
-        if (
-            data.get("adapter_metadata", {}).get("use_platform_provided_unstract_key") is True
-            and "unstract_key" in data.get("adapter_metadata", {})
-        ):
+        if data.get("adapter_metadata", {}).get(
+            "use_platform_provided_unstract_key"
+        ) is True and "unstract_key" in data.get("adapter_metadata", {}):
             # Set the unstract_key to an empty string instead of removing it
             data["adapter_metadata"]["unstract_key"] = ""
         return Response(data)
