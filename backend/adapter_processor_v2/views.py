@@ -147,6 +147,24 @@ class AdapterInstanceViewSet(ModelViewSet):
         # User cant view/update metadata but can delete/share etc
         return [IsOwner()]
 
+    def retrieve(self, request, *args, **kwargs):
+        """Retrieve a single adapter instance.
+        This method overrides the default retrieve method from ModelViewSet.
+        Hides the unstract_key when use_platform_provided_unstract_key is True.
+        """
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        data = serializer.data
+
+        # Check if we need to hide the unstract_key
+        if (
+            data.get("adapter_metadata", {}).get("use_platform_provided_unstract_key") is True
+            and "unstract_key" in data.get("adapter_metadata", {})
+        ):
+            # Set the unstract_key to an empty string instead of removing it
+            data["adapter_metadata"]["unstract_key"] = ""
+        return Response(data)
+
     def get_queryset(self) -> QuerySet | None:
         if filter_args := FilterHelper.build_filter_args(
             self.request,
