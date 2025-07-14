@@ -56,6 +56,17 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
 
         rep.pop(AdapterKeys.ADAPTER_METADATA_B)
         adapter_metadata = instance.metadata
+
+        # Hide unstract_key when use_platform_provided_unstract_key is True
+        if (
+            adapter_metadata.get("use_platform_provided_unstract_key") is True
+            and "unstract_key" in adapter_metadata
+        ):
+            # Create a copy to avoid mutating the original metadata
+            adapter_metadata = adapter_metadata.copy()
+            # Set the unstract_key to an empty string instead of removing it
+            adapter_metadata["unstract_key"] = ""
+
         rep[AdapterKeys.ADAPTER_METADATA] = adapter_metadata
         # Retrieve context window if adapter is a LLM
         # For other adapter types, context_window is not relevant.
