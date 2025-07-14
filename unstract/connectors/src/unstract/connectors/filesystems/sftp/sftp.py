@@ -121,8 +121,7 @@ class SftpFS(UnstractFileSystem):
             ) from e
         if not is_dir:
             raise ConnectorError(
-                "Unable to connect to SFTP server, "
-                "please check the connection settings."
+                "Unable to connect to SFTP server, please check the connection settings."
             )
         return True
 
