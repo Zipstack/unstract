@@ -141,7 +141,8 @@ class OutputManagerHelper:
                 continue
 
             if not is_single_pass_extract:
-                context = context.get(prompt.prompt_key)
+                if context:
+                    context = context.get(prompt.prompt_key)
                 if highlight_data:
                     highlight_data = highlight_data.get(prompt.prompt_key)
                 if confidence_data:
@@ -152,12 +153,12 @@ class OutputManagerHelper:
             if challenge_data:
                 challenge_data["file_name"] = metadata.get("file_name")
 
-            output = outputs.get(prompt.prompt_key)
             # TODO: use enums here
+            output = outputs.get(prompt.prompt_key)
             if prompt.enforce_type in {"json", "table", "record", "line-item"}:
                 output = json.dumps(output)
-            profile_manager = default_profile
             eval_metrics = outputs.get(f"{prompt.prompt_key}__evaluation", [])
+            profile_manager = default_profile
 
             # Update or create the prompt output
             prompt_output = update_or_create_prompt_output(

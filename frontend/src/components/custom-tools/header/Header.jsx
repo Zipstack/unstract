@@ -322,11 +322,13 @@ function Header({
           loading={isExportLoading}
           toolDetails={toolDetails}
         />
-        <CreateApiDeploymentFromPromptStudio
-          open={openCreateApiDeploymentModal}
-          setOpen={setOpenCreateApiDeploymentModal}
-          toolDetails={details}
-        />
+        {!isPublicSource && (
+          <CreateApiDeploymentFromPromptStudio
+            open={openCreateApiDeploymentModal}
+            setOpen={setOpenCreateApiDeploymentModal}
+            toolDetails={details}
+          />
+        )}
       </div>
       <Modal
         onOk={handleConfirmForceExport} // Pass the confirm action
