@@ -229,6 +229,7 @@ def prompt_processor() -> Any:
                     # Track token usage by sending to the audit service
                     try:
                         from unstract.sdk.utils.token_counter import TokenCounter
+
                         # Get metrics from the extraction result
                         metrics = extraction_result.get("metrics", {})
 
