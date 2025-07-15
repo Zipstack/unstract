@@ -168,9 +168,6 @@ class DeploymentHelper(BaseAPIKeyValidator):
         """
         workflow_id = api.workflow.id
         pipeline_id = api.id
-        # Use API name as default document class if hitl_queue_name not provided
-        if hitl_queue_name and not hitl_queue_name.strip():
-            hitl_queue_name = api.api_name
         logger.info(
             f"API execution: hitl_queue_name={hitl_queue_name}, api_name={api.api_name}"
         )
