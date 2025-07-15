@@ -7,13 +7,11 @@ from rest_framework.serializers import ListField, Serializer, UUIDField, Validat
 from workflow_manager.workflow_v2.constants import WorkflowKey
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
-from backend.constants import RequestKey
 from backend.serializers import AuditSerializer
 from tool_instance_v2.constants import ToolInstanceKey as TIKey
 from tool_instance_v2.constants import ToolKey
 from tool_instance_v2.exceptions import ToolDoesNotExist
 from tool_instance_v2.models import ToolInstance
-from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
 from tool_instance_v2.tool_processor import ToolProcessor
 from unstract.tool_registry.dto import Tool
 
@@ -53,11 +51,6 @@ class ToolInstanceSerializer(AuditSerializer):
             return rep
         rep[ToolKey.ICON] = tool.icon
         rep[ToolKey.NAME] = tool.properties.display_name
-        # Need to Change it into better method
-        if self.context.get(RequestKey.REQUEST):
-            metadata = ToolInstanceHelper.get_altered_metadata(instance)
-            if metadata:
-                rep[TIKey.METADATA] = metadata
         return rep
 
     def create(self, validated_data: dict[str, Any]) -> Any:

@@ -11,7 +11,8 @@ from api_v2.models import APIDeployment
 from celery import chord, current_task
 from celery import exceptions as celery_exceptions
 from celery.result import AsyncResult
-from django.conf import settings
+from configuration.enums import ConfigKey
+from configuration.models import Configuration
 from django.db import IntegrityError
 from pipeline_v2.models import Pipeline
 from plugins.workflow_manager.workflow_v2.utils import WorkflowUtil
@@ -79,18 +80,6 @@ class WorkflowHelper:
             raise WorkflowDoesNotExistError()
 
     @staticmethod
-    def get_active_workflow_by_project_id(project_id: str) -> Workflow:
-        try:
-            workflow: Workflow = Workflow.objects.filter(
-                project_id=project_id, is_active=True
-            ).first()
-            if not workflow or workflow is None:
-                raise WorkflowDoesNotExistError()
-            return workflow
-        except Workflow.DoesNotExist:
-            raise WorkflowDoesNotExistError()
-
-    @staticmethod
     def active_project_workflow(workflow_id: str) -> Workflow:
         workflow: Workflow = WorkflowHelper.get_workflow_by_id(workflow_id)
         workflow.is_active = True
@@ -114,7 +103,11 @@ class WorkflowHelper:
         }
 
         # Prepare batches of files for parallel processing
-        BATCH_SIZE = settings.MAX_PARALLEL_FILE_BATCHES  # Max number of batches
+        organization = UserContext.get_organization()
+        BATCH_SIZE = Configuration.get_value_by_organization(
+            config_key=ConfigKey.MAX_PARALLEL_FILE_BATCHES, organization=organization
+        )  # Max number of batches
+
         file_items = list(json_serializable_files.items())
 
         # Calculate how many items per batch
