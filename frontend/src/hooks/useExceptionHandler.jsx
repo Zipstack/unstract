@@ -42,10 +42,33 @@ const useExceptionHandler = () => {
           if (setBackendErrors) {
             setBackendErrors(err?.response?.data);
           } else {
+            // Handle both single error and array of errors
+            let errorMessage = "Validation error";
+            if (errors && Array.isArray(errors) && errors.length > 0) {
+              if (errors.length === 1) {
+                // Single error
+                const error = errors[0];
+                errorMessage = error.attr
+                  ? `${error.attr}: ${error.detail}`
+                  : error.detail || errMessage;
+              } else {
+                // Multiple errors - format as list
+                errorMessage =
+                  "Validation errors:\n" +
+                  errors
+                    .map(
+                      (error) =>
+                        `• ${error.attr ? error.attr + ": " : ""}${
+                          error.detail
+                        }`
+                    )
+                    .join("\n");
+              }
+            }
             return {
               title: title,
               type: "error",
-              content: errors?.[0]?.detail ? errors[0].detail : errMessage,
+              content: errorMessage,
               duration: duration,
             };
           }
