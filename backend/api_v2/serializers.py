@@ -1,3 +1,4 @@
+import re
 import uuid
 from collections import OrderedDict
 from typing import Any
@@ -44,6 +45,12 @@ class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
                 "This API name is already in use. Please select a different name."
             ),
         },
+        "unique_workflow_per_organization": {
+            "field": "workflow",
+            "message": (
+                "This workflow already has an active API deployment. Only one API deployment per workflow is allowed."
+            ),
+        },
     }
 
     def validate_api_name(self, value: str) -> str:
@@ -55,6 +62,27 @@ class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
         )
         api_name_validator(value)
         return value
+
+    def validate(self, data):
+        """Validate that only one API deployment per workflow is allowed for new deployments."""
+        workflow = data.get("workflow")
+
+        # Only apply this validation for new deployments (not updates)
+        if workflow and not self.instance:
+            # Check if this workflow already has an active API deployment
+            existing_active_count = APIDeployment.objects.filter(
+                workflow=workflow, is_active=True
+            ).count()
+
+            # If there's already an active API deployment, prevent creating a new one
+            if existing_active_count > 0:
+                raise ValidationError(
+                    {
+                        "workflow": "This workflow already has an active API deployment. Only one API deployment per workflow is allowed."
+                    }
+                )
+
+        return data
 
 
 class APIKeySerializer(AuditSerializer):
@@ -117,8 +145,6 @@ class ExecutionRequestSerializer(TagParamsSerializer):
             e.g:'tag1,tag2-name,tag3_name'
         llm_profile_id (str): UUID of the LLM profile to override the default profile.
             If not provided, the default profile will be used.
-nwhatok        push_to_hitl (bool): Flag to push files to manual review queue (HITL).
-            Defaults to False.
         hitl_queue_name (str, optional): Document class name for manual review queue.
             If not provided, uses API name as document class.
     """
@@ -132,8 +158,33 @@ nwhatok        push_to_hitl (bool): Flag to push files to manual review queue (H
     include_metrics = BooleanField(default=False)
     use_file_history = BooleanField(default=False)
     llm_profile_id = CharField(required=False, allow_null=True, allow_blank=True)
-    push_to_hitl = BooleanField(default=False)
     hitl_queue_name = CharField(required=False, allow_null=True, allow_blank=True)
+
+    def validate_hitl_queue_name(self, value: str) -> str:
+        """Validate queue name format: a-z0-9-_ with no repeating/starting/ending _-"""
+        if not value:
+            return value
+
+        # Check valid characters: a-z, 0-9, _, -
+        if not re.match(r"^[a-z0-9_-]+$", value):
+            raise ValidationError(
+                "Queue name can only contain lowercase letters, numbers, underscores, and hyphens."
+            )
+
+        # Check no starting/ending with _ or -
+        if value.startswith(("_", "-")) or value.endswith(("_", "-")):
+            raise ValidationError(
+                "Queue name cannot start or end with underscore or hyphen."
+            )
+
+        # Check no repeating _ or -
+        if "__" in value or "--" in value or "_-" in value or "-_" in value:
+            raise ValidationError(
+                "Queue name cannot have repeating underscores or hyphens."
+            )
+
+        return value
+
     files = ListField(
         child=FileField(),
         required=True,
@@ -181,7 +232,6 @@ nwhatok        push_to_hitl (bool): Flag to push files to manual review queue (H
             raise ValidationError("You can only use profiles that you own")
 
         return value
-
 
 
 class ExecutionQuerySerializer(Serializer):

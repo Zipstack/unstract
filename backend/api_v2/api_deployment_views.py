@@ -65,7 +65,6 @@ class DeploymentExecution(views.APIView):
         use_file_history = serializer.validated_data.get(ApiExecution.USE_FILE_HISTORY)
         tag_names = serializer.validated_data.get(ApiExecution.TAGS)
         llm_profile_id = serializer.validated_data.get(ApiExecution.LLM_PROFILE_ID)
-        push_to_hitl = serializer.validated_data.get(ApiExecution.PUSH_TO_HITL)
         hitl_queue_name = serializer.validated_data.get(ApiExecution.HITL_QUEUE_NAME)
 
         response = DeploymentHelper.execute_workflow(
@@ -78,7 +77,6 @@ class DeploymentExecution(views.APIView):
             use_file_history=use_file_history,
             tag_names=tag_names,
             llm_profile_id=llm_profile_id,
-            push_to_hitl=push_to_hitl,
             hitl_queue_name=hitl_queue_name,
         )
         logger.info(f"Workflow execution response: {response}")

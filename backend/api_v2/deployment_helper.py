@@ -149,7 +149,6 @@ class DeploymentHelper(BaseAPIKeyValidator):
         use_file_history: bool = False,
         tag_names: list[str] = [],
         llm_profile_id: str | None = None,
-        push_to_hitl: bool = False,
         hitl_queue_name: str | None = None,
     ) -> ReturnDict:
         """Execute workflow by api.
@@ -162,8 +161,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 processed files. Defaults to False
             tag_names (list(str)): list of tag names
             llm_profile_id (str, optional): LLM profile ID for overriding tool settings
-            push_to_hitl (bool): Flag to push files to manual review queue
-            queue (str, optional): Custom queue name for manual review
+            hitl_queue_name (str, optional): Custom queue name for manual review
 
         Returns:
             ReturnDict: execution status/ result
@@ -171,9 +169,11 @@ class DeploymentHelper(BaseAPIKeyValidator):
         workflow_id = api.workflow.id
         pipeline_id = api.id
         # Use API name as default document class if hitl_queue_name not provided
-        if push_to_hitl and not hitl_queue_name:
+        if hitl_queue_name and not hitl_queue_name.strip():
             hitl_queue_name = api.api_name
-        logger.info(f"API execution: push_to_hitl={push_to_hitl}, hitl_queue_name={hitl_queue_name}, api_name={api.api_name}")
+        logger.info(
+            f"API execution: hitl_queue_name={hitl_queue_name}, api_name={api.api_name}"
+        )
         tags = Tag.bulk_get_or_create(tag_names=tag_names)
         workflow_execution = WorkflowExecutionServiceHelper.create_workflow_execution(
             workflow_id=workflow_id,
@@ -201,7 +201,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 queue=CeleryQueue.CELERY_API_DEPLOYMENTS,
                 use_file_history=use_file_history,
                 llm_profile_id=llm_profile_id,
-                push_to_hitl=push_to_hitl,
+                push_to_hitl=bool(hitl_queue_name),
                 hitl_queue_name=hitl_queue_name,
                 api_name=api.api_name,
             )
