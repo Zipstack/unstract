@@ -161,16 +161,7 @@ class ExecutionRequestSerializer(TagParamsSerializer):
     hitl_queue_name = CharField(required=False, allow_null=True, allow_blank=True)
 
     def validate_hitl_queue_name(self, value: str) -> str:
-        """Validate queue name format with comprehensive checks.
-
-        Rules:
-        - Length: 3-50 characters
-        - Characters: lowercase letters (a-z), numbers (0-9), underscores (_), hyphens (-)
-        - Must start with a letter
-        - Cannot start or end with underscore or hyphen
-        - No consecutive special characters (__, --, _-, -_)
-        - No reserved system words
-        """
+        """Validate queue name format: a-z0-9-_ with length and pattern restrictions."""
         if not value:
             return value
 
@@ -180,131 +171,23 @@ class ExecutionRequestSerializer(TagParamsSerializer):
         if len(value) > 50:
             raise ValidationError("Queue name cannot exceed 50 characters.")
 
-        # Must start with a letter
-        if not value[0].isalpha():
-            raise ValidationError("Queue name must start with a letter.")
-
         # Check valid characters: a-z, 0-9, _, -
         if not re.match(r"^[a-z0-9_-]+$", value):
             raise ValidationError(
-                "Queue name can only contain lowercase letters (a-z), "
-                "numbers (0-9), underscores (_), and hyphens (-)."
+                "Queue name can only contain lowercase letters, numbers, underscores, and hyphens."
             )
 
         # Check no starting/ending with _ or -
         if value.startswith(("_", "-")) or value.endswith(("_", "-")):
             raise ValidationError(
-                "Queue name cannot start or end with underscore (_) or hyphen (-)."
+                "Queue name cannot start or end with underscore or hyphen."
             )
 
         # Check no consecutive special characters
         if re.search(r"[_-]{2,}", value):
             raise ValidationError(
-                "Queue name cannot contain consecutive underscores or hyphens "
-                "(e.g., __, --, _-, -_)."
+                "Queue name cannot have repeating underscores or hyphens."
             )
-
-        # Reserved words check (common system/database reserved words)
-        reserved_words = {
-            "admin",
-            "api",
-            "app",
-            "application",
-            "backup",
-            "bin",
-            "cache",
-            "config",
-            "data",
-            "database",
-            "db",
-            "debug",
-            "default",
-            "delete",
-            "dev",
-            "development",
-            "docs",
-            "error",
-            "errors",
-            "export",
-            "file",
-            "files",
-            "help",
-            "home",
-            "import",
-            "index",
-            "info",
-            "internal",
-            "lib",
-            "library",
-            "local",
-            "lock",
-            "log",
-            "logs",
-            "mail",
-            "main",
-            "master",
-            "meta",
-            "metadata",
-            "null",
-            "private",
-            "prod",
-            "production",
-            "public",
-            "queue",
-            "queues",
-            "readme",
-            "reserved",
-            "root",
-            "secure",
-            "security",
-            "server",
-            "service",
-            "services",
-            "session",
-            "sessions",
-            "settings",
-            "setup",
-            "src",
-            "staging",
-            "static",
-            "status",
-            "system",
-            "temp",
-            "temporary",
-            "test",
-            "tests",
-            "tmp",
-            "undefined",
-            "update",
-            "upload",
-            "uploads",
-            "user",
-            "users",
-            "var",
-            "vendor",
-            "version",
-        }
-
-        if value.lower() in reserved_words:
-            raise ValidationError(
-                f"'{value}' is a reserved word and cannot be used as a queue name. "
-                "Please choose a more descriptive name."
-            )
-
-        # Check for potential SQL injection patterns (extra safety)
-        sql_patterns = [
-            r"(drop|alter|create|truncate|exec|execute)\s+",
-            r"(select|insert|update|delete)\s+.*\s+(from|into|where)",
-            r"union\s+select",
-            r";\s*(drop|alter|create|truncate)",
-        ]
-
-        for pattern in sql_patterns:
-            if re.search(pattern, value, re.IGNORECASE):
-                raise ValidationError(
-                    "Queue name contains potentially unsafe patterns. "
-                    "Please use only alphanumeric characters with underscores or hyphens."
-                )
 
         return value
 
