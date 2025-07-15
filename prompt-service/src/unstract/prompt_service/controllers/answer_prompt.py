@@ -242,10 +242,10 @@ def prompt_processor() -> Any:
                         )
 
                         # Extract model name from llm config
-                        model_name = metrics.get("model_info").get("model_name")
-
-                        # Get provider from adapter_prefix
-                        provider = metrics.get("model_info").get("provider")
+                        # Extract model name from llm config
+                        model_info = metrics.get("model_info") or {}
+                        model_name = model_info.get("model_name")
+                        provider = model_info.get("provider")
 
                         # Prepare usage data for audit
                         kwargs = {
