@@ -45,7 +45,7 @@ class QueueResult:
         return {
             "file": self.file,
             "whisper_hash": self.whisper_hash,
-            "status": self.status,
+            "status": self.status.value,  # Convert enum to string value
             "result": self.result,
             "workflow_id": self.workflow_id,
             "file_content": self.file_content,

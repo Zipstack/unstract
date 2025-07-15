@@ -828,6 +828,70 @@ class DestinationConnector(BaseConnector):
             conn.enqueue(queue_name=q_name, message=queue_result_json)
             logger.info(f"Pushed {file_name} to queue {q_name} with file content")
 
+    def _read_file_content_for_queue(
+        self, input_file_path: str | None, file_name: str
+    ) -> str | None:
+        """Read and encode file content for queue message.
+
+        Args:
+            input_file_path: Path to the file to read
+            file_name: Name of the file for logging purposes
+
+        Returns:
+            Base64 encoded file content or None if reading fails
+        """
+        if not input_file_path:
+            logger.warning(f"No input_file_path provided for: {file_name}")
+            return None
+
+        logger.debug(
+            f"Attempting to read file content - input_file_path: {input_file_path}"
+        )
+
+        # Try filesystem abstraction first
+        try:
+            file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+            file_storage = file_system.get_file_storage()
+            if file_storage.exists(input_file_path):
+                file_bytes = file_storage.read(input_file_path, mode="rb")
+                if isinstance(file_bytes, str):
+                    file_bytes = file_bytes.encode("utf-8")
+                file_content = base64.b64encode(file_bytes).decode("utf-8")
+                logger.info(
+                    f"Successfully read file content using filesystem abstraction: {file_name}, "
+                    f"content length: {len(file_content)}"
+                )
+                return file_content
+            else:
+                logger.warning(
+                    f"File does not exist in filesystem storage: {input_file_path}"
+                )
+        except Exception as fs_e:
+            logger.warning(
+                f"Filesystem abstraction failed: {fs_e}, trying direct file access"
+            )
+
+        # Fallback to direct file access
+        try:
+            if os.path.exists(input_file_path):
+                file_size = os.path.getsize(input_file_path)
+                logger.debug(f"File exists on disk, size: {file_size} bytes")
+
+                with open(input_file_path, "rb") as file:
+                    file_bytes = file.read()
+                    file_content = base64.b64encode(file_bytes).decode("utf-8")
+                    logger.info(
+                        f"Successfully read file content using direct access: {file_name}, "
+                        f"content length: {len(file_content)}"
+                    )
+                    return file_content
+            else:
+                logger.warning(f"File does not exist on disk: {input_file_path}")
+        except Exception as e:
+            logger.error(f"Failed to read file content for {file_name}: {e}")
+
+        return None
+
     def _push_to_queue_without_file_content(
         self,
         file_name: str,
@@ -842,80 +906,23 @@ class DestinationConnector(BaseConnector):
         This is used when the source connector is None (API deployments).
         We try to read file content from input_file_path if available.
         """
-        # Use common queue naming method
         q_name = self._get_queue_name()
-
-        whisper_hash = None
-        if meta_data:
-            whisper_hash = meta_data.get("whisper-hash")
-
-        # Try to read file content for API deployments
-        file_content = None
-        logger.debug(
-            f"Attempting to read file content for API deployment - input_file_path: {input_file_path}"
-        )
-        if input_file_path:
-            try:
-                import base64
-                import os
-
-                from unstract.filesystem import FileStorageType, FileSystem
-
-                # First try using the filesystem abstraction (like ETL does)
-                try:
-                    file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
-                    file_storage = file_system.get_file_storage()
-                    if file_storage.exists(input_file_path):
-                        file_bytes = file_storage.read(input_file_path, mode="rb")
-                        file_content = base64.b64encode(file_bytes).decode("utf-8")
-                        logger.info(
-                            f"Successfully read file content using filesystem abstraction for API deployment: {file_name}, content length: {len(file_content)}"
-                        )
-                    else:
-                        logger.warning(
-                            f"File does not exist in filesystem storage: {input_file_path}"
-                        )
-                except Exception as fs_e:
-                    logger.warning(
-                        f"Filesystem abstraction failed: {fs_e}, trying direct file access"
-                    )
-
-                    # Fallback to direct file access
-                    if os.path.exists(input_file_path):
-                        file_size = os.path.getsize(input_file_path)
-                        logger.info(f"File exists on disk, size: {file_size} bytes")
-
-                        with open(input_file_path, "rb") as file:
-                            file_bytes = file.read()
-                            file_content = base64.b64encode(file_bytes).decode("utf-8")
-                            logger.info(
-                                f"Successfully read file content using direct access for API deployment: {file_name}, content length: {len(file_content)}"
-                            )
-                    else:
-                        logger.warning(f"File does not exist on disk: {input_file_path}")
-
-            except Exception as e:
-                logger.error(
-                    f"Failed to read file content for API deployment {file_name}: {e}"
-                )
-                file_content = None
-        else:
-            logger.warning(f"No input_file_path provided for API deployment: {file_name}")
+        whisper_hash = meta_data.get("whisper-hash") if meta_data else None
+        file_content = self._read_file_content_for_queue(input_file_path, file_name)
 
         queue_result = QueueResult(
             file=file_name,
             status=QueueResultStatus.SUCCESS,
             result=result,
             workflow_id=str(self.workflow_id),
-            file_content=file_content,  # Include file content if available
+            file_content=file_content or "",  # Provide empty string if None
             whisper_hash=whisper_hash,
             file_execution_id=file_execution_id,
         ).to_dict()
 
-        # Convert the result dictionary to a JSON string
         queue_result_json = json.dumps(queue_result)
         conn = QueueUtils.get_queue_inst()
-        # Enqueue the JSON string
         conn.enqueue(queue_name=q_name, message=queue_result_json)
+
         content_status = "with file content" if file_content else "without file content"
         logger.info(f"Pushed {file_name} to queue {q_name} {content_status}")
