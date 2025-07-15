@@ -94,12 +94,14 @@ class UsageHelper:
         model_name: str = "",
     ) -> bool:
         """Push usage data to the audit service.
+
         Args:
             event_type: Type of usage event being recorded
             kwargs: Additional data to include with the event
             platform_api_key: API key for authentication with the audit service
             token_counter: Token counter object with token usage metrics
             model_name: Name of the model used (if applicable)
+
         Returns:
             bool: True if successful, False otherwise
         Note:
