@@ -726,8 +726,8 @@ class DestinationConnector(BaseConnector):
                 - API deployment: review_queue_{org}_{workflow_id}:{hitl_queue_name}
                 - ETL workflow: review_queue_{org}_{workflow_id}
         """
-        logger.info(
-            f"DEBUG: Queue naming - api_name={self.api_name}, hitl_queue_name={self.hitl_queue_name}"
+        logger.debug(
+            f"Queue naming - api_name={self.api_name}, hitl_queue_name={self.hitl_queue_name}"
         )
 
         # Base queue format: review_queue_{org}_{workflow_id}
@@ -736,11 +736,11 @@ class DestinationConnector(BaseConnector):
         if self.api_name and self.hitl_queue_name:
             # API deployment with custom queue: review_queue_{org}_{workflow_id}:{hitl_queue_name}
             q_name = f"{base_queue_name}:{self.hitl_queue_name}"
-            logger.info(f"DEBUG: Using API queue with custom name: {q_name}")
+            logger.debug(f"Using API queue with custom name: {q_name}")
         else:
             # Standard queue format (ETL or API without custom queue name)
             q_name = base_queue_name
-            logger.info(f"DEBUG: Using standard queue name: {q_name}")
+            logger.debug(f"Using standard queue name: {q_name}")
 
         return q_name
 
@@ -851,8 +851,8 @@ class DestinationConnector(BaseConnector):
 
         # Try to read file content for API deployments
         file_content = None
-        logger.info(
-            f"DEBUG: Attempting to read file content for API deployment - input_file_path: {input_file_path}"
+        logger.debug(
+            f"Attempting to read file content for API deployment - input_file_path: {input_file_path}"
         )
         if input_file_path:
             try:
