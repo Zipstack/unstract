@@ -59,7 +59,7 @@ const useExceptionHandler = () => {
                     .map(
                       (error) =>
                         `• ${error.attr ? error.attr + ": " : ""}${
-                          error.detail
+                          error.detail || "Unknown error"
                         }`
                     )
                     .join("\n");
