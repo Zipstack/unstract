@@ -24,6 +24,7 @@ class FormDataItem:
     type: str
     src: str | None = None
     value: str | None = None
+    description: str | None = None
 
     def __post_init__(self) -> None:
         if self.type == "file":

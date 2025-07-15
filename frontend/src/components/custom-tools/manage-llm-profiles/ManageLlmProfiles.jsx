@@ -116,32 +116,22 @@ function ManageLlmProfiles() {
     const modifiedRows = llmProfiles.map((item) => {
       return {
         key: item?.profile_id,
-        name: (
-          <div>
-            <div>{item?.profile_name || ""}</div>
-            <div className="profile-id-container">
-              <Typography.Text type="secondary" className="profile-id-text">
-                {item?.profile_id}
-              </Typography.Text>
-              <Tooltip title="Copy Profile ID">
-                <Button
-                  size="small"
-                  type="text"
-                  className="profile-copy-button"
-                  onClick={() => copyProfileId(item?.profile_id)}
-                >
-                  <CopyOutlined className="profile-copy-icon" />
-                </Button>
-              </Tooltip>
-            </div>
-          </div>
-        ),
+        name: item?.profile_name || "",
         llm: item?.llm || "",
         embedding_model: item?.embedding_model || "",
         vector_db: item?.vector_store || "",
         text_extractor: item?.x2text || "",
         actions: (
           <div className="action-buttons-container">
+            <Tooltip title="Copy Profile ID">
+              <Button
+                size="small"
+                className="display-flex-align-center"
+                onClick={() => copyProfileId(item?.profile_id)}
+              >
+                <CopyOutlined classID="manage-llm-pro-icon" />
+              </Button>
+            </Tooltip>
             <Button
               size="small"
               className="display-flex-align-center"

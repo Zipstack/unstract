@@ -19,6 +19,7 @@ from workflow_manager.workflow_v2.models import Workflow, WorkflowExecution
 from workflow_manager.workflow_v2.workflow_helper import WorkflowHelper
 
 from api_v2.api_key_validator import BaseAPIKeyValidator
+from api_v2.dto import DeploymentExecutionDTO
 from api_v2.exceptions import (
     ApiKeyCreateException,
     APINotFound,
@@ -52,8 +53,11 @@ class DeploymentHelper(BaseAPIKeyValidator):
         api_name = kwargs.get("api_name") or request.data.get("api_name")
         api_deployment = DeploymentHelper.get_deployment_by_api_name(api_name=api_name)
         DeploymentHelper.validate_api(api_deployment=api_deployment, api_key=api_key)
-        kwargs["api"] = api_deployment
-        kwargs["api_key"] = api_key
+
+        deployment_execution_dto = DeploymentExecutionDTO(
+            api=api_deployment, api_key=api_key
+        )
+        kwargs["deployment_execution_dto"] = deployment_execution_dto
         return func(self, request, *args, **kwargs)
 
     @staticmethod
