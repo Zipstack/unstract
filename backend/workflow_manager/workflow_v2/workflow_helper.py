@@ -11,7 +11,8 @@ from api_v2.models import APIDeployment
 from celery import chord, current_task
 from celery import exceptions as celery_exceptions
 from celery.result import AsyncResult
-from django.conf import settings
+from configuration.enums import ConfigKey
+from configuration.models import Configuration
 from django.db import IntegrityError
 from pipeline_v2.models import Pipeline
 from plugins.workflow_manager.workflow_v2.utils import WorkflowUtil
@@ -79,18 +80,6 @@ class WorkflowHelper:
             raise WorkflowDoesNotExistError()
 
     @staticmethod
-    def get_active_workflow_by_project_id(project_id: str) -> Workflow:
-        try:
-            workflow: Workflow = Workflow.objects.filter(
-                project_id=project_id, is_active=True
-            ).first()
-            if not workflow or workflow is None:
-                raise WorkflowDoesNotExistError()
-            return workflow
-        except Workflow.DoesNotExist:
-            raise WorkflowDoesNotExistError()
-
-    @staticmethod
     def active_project_workflow(workflow_id: str) -> Workflow:
         workflow: Workflow = WorkflowHelper.get_workflow_by_id(workflow_id)
         workflow.is_active = True
@@ -114,7 +103,11 @@ class WorkflowHelper:
         }
 
         # Prepare batches of files for parallel processing
-        BATCH_SIZE = settings.MAX_PARALLEL_FILE_BATCHES  # Max number of batches
+        organization = UserContext.get_organization()
+        BATCH_SIZE = Configuration.get_value_by_organization(
+            config_key=ConfigKey.MAX_PARALLEL_FILE_BATCHES, organization=organization
+        )  # Max number of batches
+
         file_items = list(json_serializable_files.items())
 
         # Calculate how many items per batch
@@ -146,6 +139,7 @@ class WorkflowHelper:
         scheduled: bool,
         execution_mode: tuple[str, str],
         use_file_history: bool,
+        llm_profile_id: str | None,
     ) -> str | None:
         total_files = len(input_files)
         workflow_log.publish_initial_workflow_logs(total_files=total_files)
@@ -196,6 +190,7 @@ class WorkflowHelper:
                 execution_mode=mode,
                 use_file_history=use_file_history,
                 q_file_no_list=list(q_file_no_list) if q_file_no_list else [],
+                llm_profile_id=llm_profile_id,
             )
             batch_data = FileBatchData(files=batch, file_data=file_data)
 
@@ -255,6 +250,7 @@ class WorkflowHelper:
         single_step: bool = False,
         execution_mode: tuple[str, str] | None = None,
         use_file_history: bool = True,
+        llm_profile_id: str | None = None,
     ) -> ExecutionResponse:
         tool_instances: list[ToolInstance] = (
             ToolInstanceHelper.get_tool_instances_by_workflow(
@@ -304,6 +300,7 @@ class WorkflowHelper:
                 scheduled=scheduled,
                 use_file_history=use_file_history,
                 execution_mode=execution_mode,
+                llm_profile_id=llm_profile_id,
             )
             api_results = []
             return ExecutionResponse(
@@ -424,6 +421,7 @@ class WorkflowHelper:
         pipeline_id: str | None = None,
         queue: str | None = None,
         use_file_history: bool = True,
+        llm_profile_id: str | None = None,
     ) -> ExecutionResponse:
         """Adding a workflow to the queue for execution.
 
@@ -435,6 +433,7 @@ class WorkflowHelper:
             queue (Optional[str]): Name of the celery queue to push into
             use_file_history (bool): Use FileHistory table to return results on already
                 processed files. Defaults to True
+            llm_profile_id (str, optional): LLM profile ID for overriding tool settings
 
         Returns:
             ExecutionResponse: Existing status of execution
@@ -459,6 +458,7 @@ class WorkflowHelper:
                     "pipeline_id": pipeline_id,
                     "log_events_id": log_events_id,
                     "use_file_history": use_file_history,
+                    "llm_profile_id": llm_profile_id,
                 },
                 queue=queue,
             )
@@ -625,6 +625,8 @@ class WorkflowHelper:
         workflow = Workflow.objects.get(id=workflow_id)
         # TODO: Make use of WorkflowExecution.get_or_create()
         try:
+            # Filter out llm_profile_id from kwargs as create_workflow_execution doesn't accept it
+            filtered_kwargs = {k: v for k, v in kwargs.items() if k != "llm_profile_id"}
             workflow_execution = WorkflowExecutionServiceHelper.create_workflow_execution(
                 workflow_id=workflow_id,
                 single_step=False,
@@ -632,7 +634,7 @@ class WorkflowHelper:
                 mode=WorkflowExecution.Mode.QUEUE,
                 execution_id=execution_id,
                 total_files=len(hash_values),
-                **kwargs,  # type: ignore
+                **filtered_kwargs,  # type: ignore
             )
         except IntegrityError:
             # Use existing instance on retry attempt
@@ -650,6 +652,7 @@ class WorkflowHelper:
                 execution_mode=execution_mode,
                 hash_values_of_files=hash_values,
                 use_file_history=use_file_history,
+                llm_profile_id=kwargs.get("llm_profile_id"),
             )
         except Exception as error:
             error_message = traceback.format_exc()

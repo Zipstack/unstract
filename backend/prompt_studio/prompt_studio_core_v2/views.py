@@ -1,11 +1,13 @@
+import json
 import logging
 import uuid
+from datetime import datetime
 from typing import Any
 
 from account_v2.custom_exceptions import DuplicateData
 from django.db import IntegrityError
 from django.db.models import QuerySet
-from django.http import HttpRequest
+from django.http import HttpRequest, HttpResponse
 from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
 from permissions.permission import IsOwner, IsOwnerOrSharedUser
@@ -16,6 +18,7 @@ from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from tool_instance_v2.models import ToolInstance
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
+from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
 
 from prompt_studio.processor_loader import get_plugin_class_by_name
@@ -518,3 +521,98 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             return Response(serialized_instances)
         else:
             return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["get"])
+    def export_project(self, request: Request, pk: Any = None) -> HttpResponse:
+        """API Endpoint for exporting project settings as downloadable JSON."""
+        custom_tool = self.get_object()
+
+        try:
+            # Get the export data using our helper method
+            export_data = PromptStudioHelper.export_project_settings(custom_tool)
+
+            # Create filename with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{custom_tool.tool_name}_{timestamp}.json"
+
+            # Create HTTP response with JSON file
+            response = HttpResponse(
+                json.dumps(export_data, indent=2), content_type="application/json"
+            )
+            response["Content-Disposition"] = f'attachment; filename="{filename}"'
+
+            return response
+
+        except Exception as exc:
+            logger.error(f"Error exporting project: {exc}")
+            return Response(
+                {"error": "Failed to export project"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=False, methods=["post"])
+    def import_project(self, request: Request) -> Response:
+        """API Endpoint for importing project settings from JSON file."""
+        try:
+            import_data, selected_adapters = PromptStudioHelper.validate_import_file(
+                request
+            )
+
+            organization = UserContext.get_organization()
+            if not organization:
+                return Response(
+                    {"error": "Unable to determine organization context"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            tool_name = PromptStudioHelper.generate_unique_tool_name(
+                import_data["tool_metadata"]["tool_name"], organization
+            )
+
+            new_tool = PromptStudioHelper.create_tool_from_import_data(
+                import_data, tool_name, organization, request.user
+            )
+
+            try:
+                PromptStudioHelper.create_profile_manager(
+                    import_data, selected_adapters, new_tool, request.user
+                )
+            except ValueError as e:
+                return Response(
+                    {"error": str(e)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            except Exception as e:
+                logger.error(f"Error creating profile manager: {e}")
+                return Response(
+                    {"error": "Failed to create profile manager"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+            PromptStudioHelper.import_prompts(
+                import_data["prompts"], new_tool, request.user
+            )
+
+            needs_adapter_config, warning_message = (
+                PromptStudioHelper.validate_adapter_configuration(
+                    selected_adapters, new_tool
+                )
+            )
+
+            response_data = {
+                "message": f"Project imported successfully as '{tool_name}'",
+                "tool_id": str(new_tool.tool_id),
+                "needs_adapter_config": needs_adapter_config,
+            }
+
+            if warning_message:
+                response_data["warning"] = warning_message
+
+            return Response(response_data, status=status.HTTP_201_CREATED)
+
+        except Exception as exc:
+            logger.error(f"Error importing project: {exc}")
+            return Response(
+                {"error": "Failed to import project"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )

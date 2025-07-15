@@ -433,6 +433,7 @@ class FileExecutionTasks:
                 workflow_file_execution,
                 file_hash,
                 workflow_execution,
+                file_data,
             )
 
             # Update file execution tracker with updated file hash
@@ -671,6 +672,7 @@ class FileExecutionTasks:
         workflow_file_exec: WorkflowFileExecution,
         file_hash: FileHash,
         workflow_execution: WorkflowExecution,
+        file_data: FileData,
     ) -> str:
         """Handle file preparation and volume storage."""
         workflow_file_exec.update_status(ExecutionStatus.EXECUTING)
@@ -687,6 +689,7 @@ class FileExecutionTasks:
                 workflow_file_execution=workflow_file_exec,
                 tags=workflow_execution.tag_names,
                 file_hash=file_hash,
+                llm_profile_id=file_data.llm_profile_id,
             )
             file_hash.file_hash = content_hash
             workflow_file_exec.update(file_hash=content_hash)

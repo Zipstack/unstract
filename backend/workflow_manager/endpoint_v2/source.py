@@ -810,6 +810,7 @@ class SourceConnector(BaseConnector):
         workflow_file_execution: WorkflowFileExecution,
         tags: list[str],
         file_hash: FileHash,
+        llm_profile_id: str | None = None,
     ) -> str:
         """Add input file to execution directory.
 
@@ -817,6 +818,7 @@ class SourceConnector(BaseConnector):
             workflow_file_execution: WorkflowFileExecution model
             tags (list[str]): Tag names associated with the workflow execution.
             file_hash: FileHash model
+            llm_profile_id (str, optional): LLM profile ID for overriding tool settings.
 
         Raises:
             InvalidSource: _description_
@@ -849,6 +851,7 @@ class SourceConnector(BaseConnector):
             file_execution_id=workflow_file_execution.id,
             source_hash=file_content_hash,
             tags=tags,
+            llm_profile_id=llm_profile_id,
         )
         return file_content_hash
 
@@ -928,6 +931,12 @@ class SourceConnector(BaseConnector):
 
             mime_type = file.content_type
             logger.info(f"Detected MIME type: {mime_type} for file {file_name}")
+            if not mime_type:
+                logger.info(
+                    f"MIME type not found for file {file_name}, using default MIME type: {AllowedFileTypes.OCTET_STREAM.value}"
+                )
+                mime_type = AllowedFileTypes.OCTET_STREAM.value
+
             if not AllowedFileTypes.is_allowed(mime_type):
                 log_message = f"Skipping file '{file_name}' to stage due to unsupported MIME type '{mime_type}'"
                 workflow_log.log_info(logger=logger, message=log_message)

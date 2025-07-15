@@ -4,6 +4,7 @@ from typing import Any
 
 from django.core.validators import RegexValidator
 from pipeline_v2.models import Pipeline
+from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from rest_framework.serializers import (
     BooleanField,
     CharField,
@@ -114,6 +115,8 @@ class ExecutionRequestSerializer(TagParamsSerializer):
             helpful for demos.
         tags (str): Comma-separated List of tags to associate with the execution.
             e.g:'tag1,tag2-name,tag3_name'
+        llm_profile_id (str): UUID of the LLM profile to override the default profile.
+            If not provided, the default profile will be used.
     """
 
     MAX_FILES_ALLOWED = 32
@@ -124,6 +127,7 @@ class ExecutionRequestSerializer(TagParamsSerializer):
     include_metadata = BooleanField(default=False)
     include_metrics = BooleanField(default=False)
     use_file_history = BooleanField(default=False)
+    llm_profile_id = CharField(required=False, allow_null=True, allow_blank=True)
     files = ListField(
         child=FileField(),
         required=True,
@@ -140,6 +144,36 @@ class ExecutionRequestSerializer(TagParamsSerializer):
             raise ValidationError("The file list cannot be empty.")
         if len(value) > self.MAX_FILES_ALLOWED:
             raise ValidationError(f"Maximum '{self.MAX_FILES_ALLOWED}' files allowed.")
+        return value
+
+    def validate_llm_profile_id(self, value):
+        """Validate that the llm_profile_id belongs to the API key owner."""
+        if not value:
+            return value
+
+        # Get context from serializer
+        api = self.context.get("api")
+        api_key = self.context.get("api_key")
+
+        if not api or not api_key:
+            raise ValidationError("Unable to validate LLM profile ownership")
+
+        # Check if profile exists
+        try:
+            profile = ProfileManager.objects.get(profile_id=value)
+        except ProfileManager.DoesNotExist:
+            raise ValidationError("Profile not found")
+
+        # Get the specific API key being used
+        try:
+            active_api_key = api.api_keys.get(api_key=api_key, is_active=True)
+        except api.api_keys.model.DoesNotExist:
+            raise ValidationError("API key not found or not active for this deployment")
+
+        # Check if the profile owner matches the API key owner
+        if profile.created_by != active_api_key.created_by:
+            raise ValidationError("You can only use profiles that you own")
+
         return value
 
 

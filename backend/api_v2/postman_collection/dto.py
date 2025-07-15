@@ -24,6 +24,7 @@ class FormDataItem:
     type: str
     src: str | None = None
     value: str | None = None
+    description: str | None = None
 
     def __post_init__(self) -> None:
         if self.type == "file":
@@ -119,6 +120,12 @@ class APIDeploymentDto(APIBase):
             ),
             FormDataItem(key=ApiExecution.INCLUDE_METADATA, type="text", value="False"),
             FormDataItem(key=ApiExecution.INCLUDE_METRICS, type="text", value="False"),
+            FormDataItem(
+                key=ApiExecution.LLM_PROFILE_ID,
+                type="text",
+                value="",
+                description="Optional: UUID of the LLM profile to override default settings",
+            ),
         ]
 
     def get_api_key(self) -> str:

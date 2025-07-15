@@ -3,7 +3,6 @@ from collections import OrderedDict
 from typing import Any
 
 from connector_processor.connector_processor import ConnectorProcessor
-from connector_v2.connector_instance_helper import ConnectorInstanceHelper
 from connector_v2.models import ConnectorInstance
 from croniter import croniter
 from django.conf import settings
@@ -181,11 +180,9 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
 
         if SerializerUtils.check_context_for_GET_or_POST(context=self.context):
             workflow = instance.workflow
-            connector_instance_list = (
-                ConnectorInstanceHelper.get_input_output_connector_instances_by_workflow(  # noqa
-                    workflow.id
-                )
-            )
+            connector_instance_list = ConnectorInstance.objects.filter(
+                workflow=workflow.id
+            ).all()
             repr[PK.WORKFLOW_ID] = workflow.id
             repr[PK.WORKFLOW_NAME] = workflow.workflow_name
             repr[PK.CRON_STRING] = repr.pop(PK.CRON_STRING)
