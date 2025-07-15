@@ -234,7 +234,6 @@ def prompt_processor() -> Any:
                         metrics = extraction_result.get("metrics", {})
 
                         # Create token counter adapter from metrics
-                        token_counter = TokenCounter(
                         token_usage = metrics.get("token_usage") or {}
                         token_counter = TokenCounter(
                             input_tokens=token_usage.get("prompt_tokens"),
