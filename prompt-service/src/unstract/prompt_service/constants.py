@@ -1,4 +1,16 @@
-from enum import Enum
+from enum import Enum, auto
+
+
+class RetrievalStrategy(str, Enum):
+    """Enum for retrieval strategies."""
+    
+    SIMPLE = "simple"
+    SUBQUESTION = "subquestion"
+    FUSION = "fusion"
+    RECURSIVE = "recursive"
+    ROUTER = "router"
+    KEYWORD_TABLE = "keyword_table"
+    AUTO_MERGING = "auto_merging"
 
 
 class PromptServiceConstants:
@@ -25,8 +37,7 @@ class PromptServiceConstants:
     IS_ASSERT = "is_assert"
     ASSERTION_FAILURE_PROMPT = "assertion_failure_prompt"
     RETRIEVAL_STRATEGY = "retrieval-strategy"
-    SIMPLE = "simple"
-    SUBQUESTION = "subquestion"
+    RETRIEVAL_PARAMS = "retrieval-params"
     TYPE = "type"
     NUMBER = "number"
     EMAIL = "email"

@@ -7,7 +7,7 @@ from flask import current_app as app
 
 from unstract.core.flask.exceptions import APIError
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
-from unstract.prompt_service.constants import RunLevel
+from unstract.prompt_service.constants import RetrievalStrategy, RunLevel
 from unstract.prompt_service.exceptions import BadRequest
 from unstract.prompt_service.helpers.auth import AuthHelper
 from unstract.prompt_service.helpers.plugin import PluginManager
@@ -319,8 +319,9 @@ def prompt_processor() -> Any:
             )
 
             retrieval_strategy = output.get(PSKeys.RETRIEVAL_STRATEGY)
-
-            if retrieval_strategy in {PSKeys.SIMPLE, PSKeys.SUBQUESTION}:
+            
+            # All retrieval strategies are valid now
+            if retrieval_strategy:
                 app.logger.info(f"[{tool_id}] Performing retrieval for : {file_path}")
                 answer, context = RetrievalService.perform_retrieval(
                     tool_settings=tool_settings,

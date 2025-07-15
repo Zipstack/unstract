@@ -1,4 +1,9 @@
-import { ArrowLeftOutlined, CaretRightOutlined } from "@ant-design/icons";
+import {
+  ArrowLeftOutlined,
+  CaretRightOutlined,
+  InfoCircleOutlined,
+} from "@ant-design/icons";
+import RetrievalStrategyModal from "../retrieval-strategy-modal/RetrievalStrategyModal";
 import {
   Button,
   Col,
@@ -10,6 +15,7 @@ import {
   Space,
   Typography,
   theme,
+  Tooltip,
 } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
@@ -36,6 +42,7 @@ function AddLlmProfile({
   const [resetForm, setResetForm] = useState(false);
   const [backendErrors, setBackendErrors] = useState(null);
   const [retrievalItems, setRetrievalItems] = useState([]);
+  const [isRetrievalModalVisible, setIsRetrievalModalVisible] = useState(false);
   const [llmItems, setLlmItems] = useState([]);
   const [vectorDbItems, setVectorDbItems] = useState([]);
   const [embeddingItems, setEmbeddingItems] = useState([]);
@@ -251,7 +258,24 @@ function AddLlmProfile({
       children: (
         <div>
           <Form.Item
-            label="Retrieval Strategy"
+            label={
+              <span>
+                Retrieval Strategy
+                <Tooltip title="Different strategies for retrieving information from documents. Click to learn more about each strategy.">
+                  <InfoCircleOutlined
+                    style={{
+                      marginLeft: 8,
+                      color: "#1890ff",
+                      cursor: "pointer",
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsRetrievalModalVisible(true);
+                    }}
+                  />
+                </Tooltip>
+              </span>
+            }
             name="retrieval_strategy"
             validateStatus={
               getBackendErrorDetail("retrieval_strategy", backendErrors)
@@ -260,7 +284,14 @@ function AddLlmProfile({
             }
             help={getBackendErrorDetail("retrieval_strategy", backendErrors)}
           >
-            <Select options={retrievalItems} />
+            <Select
+              options={retrievalItems}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsRetrievalModalVisible(true);
+              }}
+              dropdownStyle={{ display: "none" }} // Hide the dropdown completely
+            />
           </Form.Item>
           <Form.Item
             label="Matching count limit (similarity top-k)"
@@ -401,8 +432,21 @@ function AddLlmProfile({
     return tokenSize;
   }
 
+  const renderRetrievalModal = () => (
+    <RetrievalStrategyModal
+      visible={isRetrievalModalVisible}
+      onCancel={() => setIsRetrievalModalVisible(false)}
+      onSelectStrategy={(strategy) => {
+        form.setFieldsValue({ retrieval_strategy: strategy });
+        setIsRetrievalModalVisible(false);
+      }}
+      currentStrategy={form.getFieldValue("retrieval_strategy")}
+    />
+  );
+
   return (
     <div className="settings-body-pad-top">
+      {renderRetrievalModal()}
       <Form
         form={form}
         layout="vertical"
