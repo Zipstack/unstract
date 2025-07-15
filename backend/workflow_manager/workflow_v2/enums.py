@@ -85,6 +85,29 @@ class ExecutionStatus(TextChoices):
             )
         return status_enum in cls.get_skip_processing_statuses()
 
+    @classmethod
+    def can_update_to_pending(cls, status: str | ExecutionStatus) -> bool:
+        """Check if a status can be updated to PENDING.
+
+        Allow updating to PENDING if:
+        - Status is STOPPED or ERROR (can retry)
+        - Status is None (new record)
+
+        Don't allow updating to PENDING if:
+        - Status is EXECUTING (currently processing)
+        - Status is COMPLETED (already done)
+        - Status is already PENDING (no change needed)
+        """
+        if status is None:
+            return True
+
+        try:
+            status_enum = cls(status)
+        except ValueError:
+            return True  # Invalid status, allow update
+
+        return status_enum in [cls.STOPPED, cls.ERROR]
+
 
 class SchemaType(Enum):
     """Possible types for workflow module's JSON schema.
