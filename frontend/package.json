@@ -62,7 +62,7 @@
     "eject": "react-scripts eject",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
-    "lint:changed": "eslint"
+    "lint:changed": "eslint $(git diff --name-only --diff-filter=ACMR | grep '\\.jsx\\?$' | tr '\\n' ' ')"
   },
   "eslintConfig": {
     "extends": [

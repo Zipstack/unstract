@@ -718,6 +718,32 @@ class DestinationConnector(BaseConnector):
 
         return destination
 
+    def _get_queue_name(self) -> str:
+        """Generate queue name based on deployment type.
+
+        Returns:
+            str: Queue name in the appropriate format:
+                - API deployment: review_queue_{org}_{workflow_id}:{hitl_queue_name}
+                - ETL workflow: review_queue_{org}_{workflow_id}
+        """
+        logger.info(
+            f"DEBUG: Queue naming - api_name={self.api_name}, hitl_queue_name={self.hitl_queue_name}"
+        )
+
+        # Base queue format: review_queue_{org}_{workflow_id}
+        base_queue_name = f"review_queue_{self.organization_id}_{str(self.workflow_id)}"
+
+        if self.api_name and self.hitl_queue_name:
+            # API deployment with custom queue: review_queue_{org}_{workflow_id}:{hitl_queue_name}
+            q_name = f"{base_queue_name}:{self.hitl_queue_name}"
+            logger.info(f"DEBUG: Using API queue with custom name: {q_name}")
+        else:
+            # Standard queue format (ETL or API without custom queue name)
+            q_name = base_queue_name
+            logger.info(f"DEBUG: Using standard queue name: {q_name}")
+
+        return q_name
+
     def _push_to_queue(
         self,
         file_name: str,
@@ -779,24 +805,9 @@ class DestinationConnector(BaseConnector):
             file_content = remote_file.read()
             # Convert file content to a base64 encoded string
             file_content_base64 = base64.b64encode(file_content).decode("utf-8")
-            # Use simplified queue naming format
-            logger.info(
-                f"DEBUG: Queue naming - api_name={self.api_name}, hitl_queue_name={self.hitl_queue_name}"
-            )
 
-            # Base queue format: review_queue_{org}_{workflow_id}
-            base_queue_name = (
-                f"review_queue_{self.organization_id}_{str(self.workflow_id)}"
-            )
-
-            if self.api_name and self.hitl_queue_name:
-                # API deployment with custom queue: review_queue_{org}_{workflow_id}:{hitl_queue_name}
-                q_name = f"{base_queue_name}:{self.hitl_queue_name}"
-                logger.info(f"DEBUG: Using API queue with custom name: {q_name}")
-            else:
-                # Standard queue format (ETL or API without custom queue name)
-                q_name = base_queue_name
-                logger.info(f"DEBUG: Using standard queue name: {q_name}")
+            # Use common queue naming method
+            q_name = self._get_queue_name()
             if meta_data:
                 whisper_hash = meta_data.get("whisper-hash")
             else:
@@ -831,22 +842,8 @@ class DestinationConnector(BaseConnector):
         This is used when the source connector is None (API deployments).
         We try to read file content from input_file_path if available.
         """
-        # Use self-describing queue names to distinguish ETL vs API deployments
-        logger.info(
-            f"DEBUG: Queue naming - api_name={self.api_name}, hitl_queue_name={self.hitl_queue_name}"
-        )
-
-        # Base queue format: review_queue_{org}_{workflow_id}
-        base_queue_name = f"review_queue_{self.organization_id}_{str(self.workflow_id)}"
-
-        if self.api_name and self.hitl_queue_name:
-            # API deployment with custom queue: review_queue_{org}_{workflow_id}:{hitl_queue_name}
-            q_name = f"{base_queue_name}:{self.hitl_queue_name}"
-            logger.info(f"DEBUG: Using API queue with custom name: {q_name}")
-        else:
-            # Standard queue format (ETL or API without custom queue name)
-            q_name = base_queue_name
-            logger.info(f"DEBUG: Using standard queue name: {q_name}")
+        # Use common queue naming method
+        q_name = self._get_queue_name()
 
         whisper_hash = None
         if meta_data:
