@@ -11,7 +11,7 @@ dependencies = [
     "docker~=6.1.3",
     "jsonschema>=4.18.6,<5.0",
     "PyYAML~=6.0.1",
-    "unstract-sdk~=0.74.0",
+    "unstract-sdk~=0.75.0",
     "unstract-tool-sandbox",
     "unstract-flags",
 ]
