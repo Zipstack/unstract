@@ -1,9 +1,9 @@
-from enum import Enum, auto
+from enum import Enum
 
 
 class RetrievalStrategy(str, Enum):
     """Enum for retrieval strategies."""
-    
+
     SIMPLE = "simple"
     SUBQUESTION = "subquestion"
     FUSION = "fusion"

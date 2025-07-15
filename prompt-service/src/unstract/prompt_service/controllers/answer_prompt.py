@@ -7,12 +7,11 @@ from flask import current_app as app
 
 from unstract.core.flask.exceptions import APIError
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
-from unstract.prompt_service.constants import RetrievalStrategy, RunLevel
+from unstract.prompt_service.constants import RunLevel
 from unstract.prompt_service.exceptions import BadRequest
 from unstract.prompt_service.helpers.auth import AuthHelper
 from unstract.prompt_service.helpers.plugin import PluginManager
 from unstract.prompt_service.helpers.prompt_ide_base_tool import PromptServiceBaseTool
-from unstract.prompt_service.helpers.usage import UsageHelper
 from unstract.prompt_service.services.answer_prompt import AnswerPromptService
 from unstract.prompt_service.services.rentrolls_extractor.interface import (
     RentRollExtractor,
@@ -226,7 +225,7 @@ def prompt_processor() -> Any:
                         PSKeys.METADATA: extraction_result["metrics"],
                         PSKeys.METRICS: extraction_result["metrics"],
                     }
-                    
+
                     # Track token usage by sending to the audit service
                     try:
                         from unstract.prompt_service.helpers.usage import UsageHelper
@@ -234,17 +233,21 @@ def prompt_processor() -> Any:
 
                         # Get metrics from the extraction result
                         metrics = extraction_result.get("metrics", {})
-                        
+
                         # Create token counter adapter from metrics
-                        token_counter = TokenCounter(input_tokens=metrics.get("token_usage").get("prompt_tokens"),
-                        output_tokens=metrics.get("token_usage").get("completion_tokens"))
-                        
+                        token_counter = TokenCounter(
+                            input_tokens=metrics.get("token_usage").get("prompt_tokens"),
+                            output_tokens=metrics.get("token_usage").get(
+                                "completion_tokens"
+                            ),
+                        )
+
                         # Extract model name from llm config
                         model_name = metrics.get("model_info").get("model_name")
-                        
+
                         # Get provider from adapter_prefix
                         provider = metrics.get("model_info").get("provider")
-                        
+
                         # Prepare usage data for audit
                         kwargs = {
                             "workflow_id": "",  # Not applicable for rent rolls
@@ -254,7 +257,7 @@ def prompt_processor() -> Any:
                             "provider": provider,
                             "llm_usage_reason": "extraction",
                         }
-                        
+
                         # Push usage data to audit service
                         UsageHelper.push_usage_data(
                             event_type="extraction",
@@ -263,7 +266,9 @@ def prompt_processor() -> Any:
                             token_counter=token_counter,
                             model_name=model_name,
                         )
-                        app.logger.info("Successfully pushed token usage data to audit service")
+                        app.logger.info(
+                            "Successfully pushed token usage data to audit service"
+                        )
                     except Exception as e:
                         # Don't let usage tracking failures affect the main flow
                         app.logger.warning(f"Failed to track token usage: {str(e)}")
@@ -353,7 +358,7 @@ def prompt_processor() -> Any:
             )
 
             retrieval_strategy = output.get(PSKeys.RETRIEVAL_STRATEGY)
-            
+
             # All retrieval strategies are valid now
             if retrieval_strategy:
                 app.logger.info(f"[{tool_id}] Performing retrieval for : {file_path}")
