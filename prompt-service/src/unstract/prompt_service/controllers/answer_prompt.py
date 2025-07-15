@@ -235,10 +235,10 @@ def prompt_processor() -> Any:
 
                         # Create token counter adapter from metrics
                         token_counter = TokenCounter(
-                            input_tokens=metrics.get("token_usage").get("prompt_tokens"),
-                            output_tokens=metrics.get("token_usage").get(
-                                "completion_tokens"
-                            ),
+                        token_usage = metrics.get("token_usage") or {}
+                        token_counter = TokenCounter(
+                            input_tokens=token_usage.get("prompt_tokens"),
+                            output_tokens=token_usage.get("completion_tokens"),
                         )
 
                         # Extract model name from llm config
