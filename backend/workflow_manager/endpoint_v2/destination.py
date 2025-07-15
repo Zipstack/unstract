@@ -159,7 +159,7 @@ class DestinationConnector(BaseConnector):
                 logger.error(f"Database connection failed: {str(e)}")
                 raise
 
-    def _handle_hitl(
+    def _should_handle_hitl(
         self,
         file_name: str,
         file_hash: FileHash,
@@ -167,9 +167,9 @@ class DestinationConnector(BaseConnector):
         input_file_path: str,
         file_execution_id: str,
     ) -> bool:
-        """Handles HITL processing, returning True if data was pushed to the queue."""
+        """Determines if HITL processing should be performed, returning True if data was pushed to the queue."""
         logger.info(
-            f"_handle_hitl called: push_to_hitl={self.push_to_hitl}, hitl_queue_name={self.hitl_queue_name}, api_name={self.api_name}"
+            f"HITL check called: push_to_hitl={self.push_to_hitl}, hitl_queue_name={self.hitl_queue_name}, api_name={self.api_name}"
         )
         # Check if API deployment requested HITL override
         if self.push_to_hitl:
@@ -180,7 +180,7 @@ class DestinationConnector(BaseConnector):
                 input_file_path=input_file_path,
                 file_execution_id=file_execution_id,
             )
-            logger.info(f"Successfully pushed {file_name} to queue")
+            logger.info(f"Successfully pushed {file_name} to HITL queue")
             return True
 
         # Otherwise use existing workflow-based HITL logic
@@ -231,7 +231,7 @@ class DestinationConnector(BaseConnector):
         if connection_type == WorkflowEndpoint.ConnectionType.FILESYSTEM:
             self.copy_output_to_output_directory()
         elif connection_type == WorkflowEndpoint.ConnectionType.DATABASE:
-            if not self._handle_hitl(
+            if not self._should_handle_hitl(
                 file_name=file_name,
                 file_hash=file_hash,
                 workflow=workflow,
@@ -242,7 +242,7 @@ class DestinationConnector(BaseConnector):
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
             logger.info(f"API connection type detected for file {file_name}")
             # Check for HITL (Manual Review Queue) override for API deployments
-            if not self._handle_hitl(
+            if not self._should_handle_hitl(
                 file_name=file_name,
                 file_hash=file_hash,
                 workflow=workflow,

@@ -68,6 +68,14 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 
 logger = logging.getLogger(__name__)
 
+# Parameters to exclude when calling create_workflow_execution
+EXECUTION_EXCLUDED_PARAMS = {
+    "llm_profile_id",
+    "push_to_hitl",
+    "hitl_queue_name",
+    "api_name",
+}
+
 
 class WorkflowHelper:
     @staticmethod
@@ -443,6 +451,8 @@ class WorkflowHelper:
             use_file_history (bool): Use FileHistory table to return results on already
                 processed files. Defaults to True
             push_to_hitl (bool): Flag to push files to manual review queue
+            hitl_queue_name (str | None): Name of the HITL queue to push files to
+            api_name (str | None): Name of the API deployment for queue naming
             llm_profile_id (str, optional): LLM profile ID for overriding tool settings
 
         Returns:
@@ -640,10 +650,7 @@ class WorkflowHelper:
         try:
             # Filter out parameters that create_workflow_execution doesn't accept
             filtered_kwargs = {
-                k: v
-                for k, v in kwargs.items()
-                if k
-                not in ["llm_profile_id", "push_to_hitl", "hitl_queue_name", "api_name"]
+                k: v for k, v in kwargs.items() if k not in EXECUTION_EXCLUDED_PARAMS
             }
             workflow_execution = WorkflowExecutionServiceHelper.create_workflow_execution(
                 workflow_id=workflow_id,
