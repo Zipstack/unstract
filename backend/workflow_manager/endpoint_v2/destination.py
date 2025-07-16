@@ -6,6 +6,7 @@ import os
 from typing import Any
 
 from connector_v2.models import ConnectorInstance
+from pluggable_apps.manual_review_v2.models import HITLSettings
 from plugins.workflow_manager.workflow_v2.utils import WorkflowUtil
 from rest_framework.exceptions import APIException
 from utils.user_context import UserContext
@@ -723,7 +724,8 @@ class DestinationConnector(BaseConnector):
                 whisper_hash = meta_data.get("whisper-hash")
             else:
                 whisper_hash = None
-            queue_result = QueueResult(
+            # Create QueueResult with TTL metadata
+            queue_result_obj = QueueResult(
                 file=file_name,
                 status=QueueResultStatus.SUCCESS,
                 result=result,
@@ -731,9 +733,24 @@ class DestinationConnector(BaseConnector):
                 file_content=file_content_base64,
                 whisper_hash=whisper_hash,
                 file_execution_id=file_execution_id,
-            ).to_dict()
-            # Convert the result dictionary to a JSON string
+            )
+
+            # Add TTL metadata based on HITLSettings
+            try:
+                hitl_settings = HITLSettings.objects.get(workflow=workflow)
+                if hitl_settings.ttl_type == "custom" and hitl_settings.ttl_hours:
+                    queue_result_obj.original_ttl_seconds = hitl_settings.ttl_hours * 3600
+            except HITLSettings.DoesNotExist:
+                pass  # Keep original_ttl_seconds as None for unlimited TTL
+
+            queue_result = queue_result_obj.to_dict()
             queue_result_json = json.dumps(queue_result)
+
             conn = QueueUtils.get_queue_inst()
-            # Enqueue the JSON string
-            conn.enqueue(queue_name=q_name, message=queue_result_json)
+
+            # Use the TTL metadata that was already set in the QueueResult object
+            ttl_seconds = queue_result_obj.original_ttl_seconds
+
+            conn.enqueue_with_ttl(
+                queue_name=q_name, message=queue_result_json, ttl_seconds=ttl_seconds
+            )
