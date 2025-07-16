@@ -154,7 +154,7 @@ class ExecutionRequestSerializer(TagParamsSerializer):
     llm_profile_id = CharField(required=False, allow_null=True, allow_blank=True)
     hitl_queue_name = CharField(required=False, allow_null=True, allow_blank=True)
 
-    def validate_hitl_queue_name(self, value: str) -> str:
+    def validate_hitl_queue_name(self, value: str | None) -> str | None:
         """Validate queue name format: a-z0-9-_ with length and pattern restrictions."""
         if not value:
             return value

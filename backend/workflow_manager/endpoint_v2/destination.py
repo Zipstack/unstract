@@ -167,7 +167,6 @@ class DestinationConnector(BaseConnector):
         file_execution_id: str,
     ) -> bool:
         """Determines if HITL processing should be performed, returning True if data was pushed to the queue."""
-        logger.info(f"HITL check called: hitl_queue_name={self.hitl_queue_name}")
         # Check if API deployment requested HITL override
         if self.hitl_queue_name:
             logger.info(f"API HITL override: pushing to queue for file {file_name}")
@@ -769,10 +768,10 @@ class DestinationConnector(BaseConnector):
             return
         connector: ConnectorInstance = self.source_endpoint.connector_instance
 
-        # For API deployments, connector might be None - handle this case
-        if connector is None:
-            logger.warning(
-                f"No connector instance found for {file_name}, using workflow execution file system"
+        # For API deployments, use workflow execution storage instead of connector
+        if self.is_api:
+            logger.debug(
+                f"API deployment detected for {file_name}, using workflow execution file system"
             )
             # For API deployments, read file content from workflow execution storage
             file_content_base64 = self._read_file_content_for_queue(
