@@ -114,10 +114,6 @@ class DestinationConfig:
         else:
             data = json.loads(json_str_or_dict)
 
-        # Handle backward compatibility for new HITL fields
-        if "hitl_queue_name" not in data:
-            data["hitl_queue_name"] = None
-
         return DestinationConfig(**data)
 
 

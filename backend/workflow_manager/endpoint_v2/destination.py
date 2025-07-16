@@ -710,8 +710,8 @@ class DestinationConnector(BaseConnector):
 
         return destination
 
-    def _get_queue_name(self) -> str:
-        """Generate queue name based on HITL requirements.
+    def _get_review_queue_name(self) -> str:
+        """Generate review queue name with optional HITL override for manual review processing.
 
         Returns:
             str: Queue name in the appropriate format:
@@ -779,7 +779,7 @@ class DestinationConnector(BaseConnector):
             )
 
             # Use common queue naming method
-            q_name = self._get_queue_name()
+            q_name = self._get_review_queue_name()
             whisper_hash = meta_data.get("whisper-hash") if meta_data else None
 
             queue_result = QueueResult(
@@ -810,7 +810,7 @@ class DestinationConnector(BaseConnector):
             file_content_base64 = base64.b64encode(file_content).decode("utf-8")
 
             # Use common queue naming method
-            q_name = self._get_queue_name()
+            q_name = self._get_review_queue_name()
             if meta_data:
                 whisper_hash = meta_data.get("whisper-hash")
             else:
