@@ -840,10 +840,21 @@ class DestinationConnector(BaseConnector):
 
         Returns:
             Base64 encoded file content
+
+        Raises:
+            APIException: If file cannot be read or doesn't exist
         """
-        file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
-        file_storage = file_system.get_file_storage()
-        file_bytes = file_storage.read(input_file_path, mode="rb")
-        if isinstance(file_bytes, str):
-            file_bytes = file_bytes.encode("utf-8")
-        return base64.b64encode(file_bytes).decode("utf-8")
+        try:
+            file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+            file_storage = file_system.get_file_storage()
+
+            if not file_storage.exists(input_file_path):
+                raise APIException(f"File not found: {input_file_path}")
+
+            file_bytes = file_storage.read(input_file_path, mode="rb")
+            if isinstance(file_bytes, str):
+                file_bytes = file_bytes.encode("utf-8")
+            return base64.b64encode(file_bytes).decode("utf-8")
+        except Exception as e:
+            logger.error(f"Failed to read file content for {file_name}: {e}")
+            raise APIException(f"Failed to read file content for queue: {e}")
