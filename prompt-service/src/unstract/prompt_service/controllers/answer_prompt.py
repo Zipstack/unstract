@@ -209,30 +209,67 @@ def prompt_processor() -> Any:
                 extractor = RentRollExtractor()
                 fs_instance = FileUtils.get_fs_instance(execution_source=execution_source)
                 extracted_data = fs_instance.read(path=file_path, mode="r")
-                app.logger.info("Starting asyncio.run...")
-                # Call the process method asynchronously
+                app.logger.info("Starting rent roll extraction run...")
                 try:
-                    import asyncio
-
-                    # Get the extraction result
-                    extraction_result = asyncio.run(
-                        extractor.process(
-                            extractor_settings=output,
-                            extracted_data=extracted_data,
-                            llm_config=llm_adapter_config,
-                            schema=prompt_text,
-                        )
+                    extraction_result = extractor.process(
+                        extractor_settings=output,
+                        extracted_data=extracted_data,
+                        llm_config=llm_adapter_config,
+                        schema=prompt_text,
                     )
 
                     # Update structured output with the extraction result
-                    # TODO: Add metrics
-                    # TODO: Add metadata
-                    structured_output[output[PSKeys.NAME]] = extraction_result
+                    structured_output[output[PSKeys.NAME]] = extraction_result["data"]
                     response = {
                         PSKeys.OUTPUT: structured_output,
-                        PSKeys.METADATA: {},
-                        PSKeys.METRICS: {},
+                        PSKeys.METADATA: extraction_result["metrics"],
+                        PSKeys.METRICS: extraction_result["metrics"],
                     }
+
+                    # Track token usage by sending to the audit service
+                    try:
+                        from unstract.sdk.utils.token_counter import TokenCounter
+
+                        # Get metrics from the extraction result
+                        metrics = extraction_result.get("metrics", {})
+
+                        # Create token counter adapter from metrics
+                        token_usage = metrics.get("token_usage") or {}
+                        token_counter = TokenCounter(
+                            input_tokens=token_usage.get("prompt_tokens"),
+                            output_tokens=token_usage.get("completion_tokens"),
+                        )
+
+                        # Extract model name from llm config
+                        # Extract model name from llm config
+                        model_info = metrics.get("model_info") or {}
+                        model_name = model_info.get("model_name")
+                        provider = model_info.get("provider")
+
+                        # Prepare usage data for audit
+                        kwargs = {
+                            "workflow_id": "",  # Not applicable for rent rolls
+                            "execution_id": "",  # Not applicable for rent rolls
+                            "adapter_instance_id": adapter_id,
+                            "run_id": str(run_id),
+                            "provider": provider,
+                            "llm_usage_reason": "extraction",
+                        }
+
+                        # Push usage data to audit service
+                        UsageHelper.push_usage_data(
+                            event_type="extraction",
+                            kwargs=kwargs,
+                            platform_api_key=platform_key,
+                            token_counter=token_counter,
+                            model_name=model_name,
+                        )
+                        app.logger.info(
+                            "Successfully pushed token usage data to audit service"
+                        )
+                    except Exception as e:
+                        # Don't let usage tracking failures affect the main flow
+                        app.logger.warning(f"Failed to track token usage: {str(e)}")
                     app.logger.info("Rent roll extraction completed successfully")
                     return response
                 except Exception as e:
