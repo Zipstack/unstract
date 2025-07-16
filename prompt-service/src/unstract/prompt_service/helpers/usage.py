@@ -134,5 +134,7 @@ class UsageHelper:
             logger.info(f"Successfully pushed usage data for {model_name}")
             return True
         except Exception as e:
-            logger.exception(f"Error pushing usage data: {str(e)} - {traceback.format_exc()}")
+            logger.exception(
+                f"Error pushing usage data: {str(e)} - {traceback.format_exc()}"
+            )
             return False
