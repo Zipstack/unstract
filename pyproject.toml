@@ -37,7 +37,7 @@ hook-check-django-migrations = [
     "psycopg2-binary==2.9.9",
     "python-dotenv==1.0.0",
     "python-magic==0.4.27",
-    "unstract-sdk~=0.76.0",
+    "unstract-sdk~=0.76.1",
     "unstract-connectors",
     "unstract-core",
     "unstract-flags",

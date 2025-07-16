@@ -15,7 +15,7 @@ dependencies = [
     "redis~=5.2.1",
     "cryptography>=41.0.7",
     "requests>=2.31.0",
-    "unstract-sdk[gcs, azure, aws]~=0.76.0", # Add version
+    "unstract-sdk[gcs, azure, aws]~=0.76.1", # Add version
     "unstract-flags",
     "unstract-core[flask]",
 ]
