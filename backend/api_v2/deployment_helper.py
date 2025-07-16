@@ -168,9 +168,10 @@ class DeploymentHelper(BaseAPIKeyValidator):
         """
         workflow_id = api.workflow.id
         pipeline_id = api.id
-        logger.info(
-            f"API execution: hitl_queue_name={hitl_queue_name}, api_name={api.api_name}"
-        )
+        if hitl_queue_name:
+            logger.info(
+                f"API execution with HITL: hitl_queue_name={hitl_queue_name}, api_name={api.api_name}"
+            )
         tags = Tag.bulk_get_or_create(tag_names=tag_names)
         workflow_execution = WorkflowExecutionServiceHelper.create_workflow_execution(
             workflow_id=workflow_id,

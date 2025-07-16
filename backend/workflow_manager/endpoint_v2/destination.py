@@ -59,9 +59,7 @@ class DestinationConnector(BaseConnector):
         workflow_log: WorkflowLog,
         use_file_history: bool,
         file_execution_id: str | None = None,
-        push_to_hitl: bool = False,
         hitl_queue_name: str | None = None,
-        api_name: str | None = None,
     ) -> None:
         """Initialize a DestinationConnector object.
 
@@ -79,9 +77,7 @@ class DestinationConnector(BaseConnector):
         )
         self.workflow_log = workflow_log
         self.use_file_history = use_file_history
-        self.push_to_hitl = push_to_hitl
         self.hitl_queue_name = hitl_queue_name
-        self.api_name = api_name
         self.workflow = workflow
 
     def _get_endpoint_for_workflow(
@@ -168,11 +164,9 @@ class DestinationConnector(BaseConnector):
         file_execution_id: str,
     ) -> bool:
         """Determines if HITL processing should be performed, returning True if data was pushed to the queue."""
-        logger.info(
-            f"HITL check called: push_to_hitl={self.push_to_hitl}, hitl_queue_name={self.hitl_queue_name}, api_name={self.api_name}"
-        )
+        logger.info(f"HITL check called: hitl_queue_name={self.hitl_queue_name}")
         # Check if API deployment requested HITL override
-        if self.push_to_hitl:
+        if self.hitl_queue_name:
             logger.info(f"API HITL override: pushing to queue for file {file_name}")
             self._push_data_to_queue(
                 file_name=file_name,
@@ -681,9 +675,7 @@ class DestinationConnector(BaseConnector):
             workflow_id=self.workflow.id,
             execution_id=self.execution_id,
             use_file_history=self.use_file_history,
-            push_to_hitl=self.push_to_hitl,
             hitl_queue_name=self.hitl_queue_name,
-            api_name=self.api_name,
         )
 
     @classmethod
@@ -699,7 +691,7 @@ class DestinationConnector(BaseConnector):
             DestinationConnector: New instance
         """
         logger.info(
-            f"Creating DestinationConnector from config: push_to_hitl={config.push_to_hitl}, hitl_queue_name={config.hitl_queue_name}, api_name={config.api_name}"
+            f"Creating DestinationConnector from config: hitl_queue_name={config.hitl_queue_name}"
         )
         # Reconstruct workflow
         workflow = Workflow.objects.get(id=config.workflow_id)
@@ -711,34 +703,30 @@ class DestinationConnector(BaseConnector):
             workflow_log=workflow_log,
             use_file_history=config.use_file_history,
             file_execution_id=config.file_execution_id,
-            push_to_hitl=config.push_to_hitl,
             hitl_queue_name=config.hitl_queue_name,
-            api_name=config.api_name,
         )
 
         return destination
 
     def _get_queue_name(self) -> str:
-        """Generate queue name based on deployment type.
+        """Generate queue name based on HITL requirements.
 
         Returns:
             str: Queue name in the appropriate format:
-                - API deployment: review_queue_{org}_{workflow_id}:{hitl_queue_name}
-                - ETL workflow: review_queue_{org}_{workflow_id}
+                - Custom HITL queue: review_queue_{org}_{workflow_id}:{hitl_queue_name}
+                - Standard queue: review_queue_{org}_{workflow_id}
         """
-        logger.debug(
-            f"Queue naming - api_name={self.api_name}, hitl_queue_name={self.hitl_queue_name}"
-        )
+        logger.debug(f"Queue naming - hitl_queue_name={self.hitl_queue_name}")
 
         # Base queue format: review_queue_{org}_{workflow_id}
         base_queue_name = f"review_queue_{self.organization_id}_{str(self.workflow_id)}"
 
-        if self.api_name and self.hitl_queue_name:
-            # API deployment with custom queue: review_queue_{org}_{workflow_id}:{hitl_queue_name}
+        if self.hitl_queue_name:
+            # Custom HITL queue with user-specified name
             q_name = f"{base_queue_name}:{self.hitl_queue_name}"
-            logger.debug(f"Using API queue with custom name: {q_name}")
+            logger.debug(f"Using custom HITL queue: {q_name}")
         else:
-            # Standard queue format (ETL or API without custom queue name)
+            # Standard queue format for workflow-based processing
             q_name = base_queue_name
             logger.debug(f"Using standard queue name: {q_name}")
 

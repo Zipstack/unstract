@@ -45,12 +45,6 @@ class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
                 "This API name is already in use. Please select a different name."
             ),
         },
-        "unique_workflow_per_organization": {
-            "field": "workflow",
-            "message": (
-                "This workflow already has an active API deployment. Only one API deployment per workflow is allowed."
-            ),
-        },
     }
 
     def validate_api_name(self, value: str) -> str:
