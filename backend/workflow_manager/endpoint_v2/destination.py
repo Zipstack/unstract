@@ -13,7 +13,6 @@ from workflow_manager.endpoint_v2.base_connector import BaseConnector
 from workflow_manager.endpoint_v2.constants import (
     ApiDeploymentResultStatus,
     DestinationKey,
-    QueueResultStatus,
 )
 from workflow_manager.endpoint_v2.database_utils import DatabaseUtils
 from workflow_manager.endpoint_v2.dto import DestinationConfig, FileHash
@@ -25,7 +24,11 @@ from workflow_manager.endpoint_v2.exceptions import (
     ToolOutputTypeMismatch,
 )
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
-from workflow_manager.endpoint_v2.queue_utils import QueueResult, QueueUtils
+from workflow_manager.endpoint_v2.queue_utils import (
+    QueueResult,
+    QueueResultStatus,
+    QueueUtils,
+)
 from workflow_manager.utils.workflow_log import WorkflowLog
 from workflow_manager.workflow_v2.models.file_history import FileHistory
 from workflow_manager.workflow_v2.models.workflow import Workflow
@@ -769,18 +772,31 @@ class DestinationConnector(BaseConnector):
         # For API deployments, connector might be None - handle this case
         if connector is None:
             logger.warning(
-                f"No connector instance found for {file_name}, skipping file read from source"
+                f"No connector instance found for {file_name}, using workflow execution file system"
             )
-            # For API deployments, we might need to handle this differently
-            # For now, create a simplified queue entry without file content
-            self._push_to_queue_without_file_content(
-                file_name=file_name,
-                workflow=workflow,
+            # For API deployments, read file content from workflow execution storage
+            file_content_base64 = self._read_file_content_for_queue(
+                input_file_path, file_name
+            )
+
+            # Use common queue naming method
+            q_name = self._get_queue_name()
+            whisper_hash = meta_data.get("whisper-hash") if meta_data else None
+
+            queue_result = QueueResult(
+                file=file_name,
+                status=QueueResultStatus.SUCCESS,
                 result=result,
-                meta_data=meta_data,
+                workflow_id=str(self.workflow_id),
+                file_content=file_content_base64,
+                whisper_hash=whisper_hash,
                 file_execution_id=file_execution_id,
-                input_file_path=input_file_path,
-            )
+            ).to_dict()
+
+            queue_result_json = json.dumps(queue_result)
+            conn = QueueUtils.get_queue_inst()
+            conn.enqueue(queue_name=q_name, message=queue_result_json)
+            logger.info(f"Pushed {file_name} to queue {q_name} with file content")
             return
 
         connector_settings: dict[str, Any] = connector.connector_metadata
@@ -816,9 +832,7 @@ class DestinationConnector(BaseConnector):
             conn.enqueue(queue_name=q_name, message=queue_result_json)
             logger.info(f"Pushed {file_name} to queue {q_name} with file content")
 
-    def _read_file_content_for_queue(
-        self, input_file_path: str | None, file_name: str
-    ) -> str | None:
+    def _read_file_content_for_queue(self, input_file_path: str, file_name: str) -> str:
         """Read and encode file content for queue message.
 
         Args:
@@ -826,91 +840,11 @@ class DestinationConnector(BaseConnector):
             file_name: Name of the file for logging purposes
 
         Returns:
-            Base64 encoded file content or None if reading fails
+            Base64 encoded file content
         """
-        if not input_file_path:
-            logger.warning(f"No input_file_path provided for: {file_name}")
-            return None
-
-        logger.debug(
-            f"Attempting to read file content - input_file_path: {input_file_path}"
-        )
-
-        # Try filesystem abstraction first
-        try:
-            file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
-            file_storage = file_system.get_file_storage()
-            if file_storage.exists(input_file_path):
-                file_bytes = file_storage.read(input_file_path, mode="rb")
-                if isinstance(file_bytes, str):
-                    file_bytes = file_bytes.encode("utf-8")
-                file_content = base64.b64encode(file_bytes).decode("utf-8")
-                logger.info(
-                    f"Successfully read file content using filesystem abstraction: {file_name}, "
-                    f"content length: {len(file_content)}"
-                )
-                return file_content
-            else:
-                logger.warning(
-                    f"File does not exist in filesystem storage: {input_file_path}"
-                )
-        except Exception as fs_e:
-            logger.warning(
-                f"Filesystem abstraction failed: {fs_e}, trying direct file access"
-            )
-
-        # Fallback to direct file access
-        try:
-            if os.path.exists(input_file_path):
-                file_size = os.path.getsize(input_file_path)
-                logger.debug(f"File exists on disk, size: {file_size} bytes")
-
-                with open(input_file_path, "rb") as file:
-                    file_bytes = file.read()
-                    file_content = base64.b64encode(file_bytes).decode("utf-8")
-                    logger.info(
-                        f"Successfully read file content using direct access: {file_name}, "
-                        f"content length: {len(file_content)}"
-                    )
-                    return file_content
-            else:
-                logger.warning(f"File does not exist on disk: {input_file_path}")
-        except Exception as e:
-            logger.error(f"Failed to read file content for {file_name}: {e}")
-
-        return None
-
-    def _push_to_queue_without_file_content(
-        self,
-        file_name: str,
-        workflow: Workflow,
-        result: str | None = None,
-        meta_data: dict[str, Any] | None = None,
-        file_execution_id: str = None,
-        input_file_path: str | None = None,
-    ) -> None:
-        """Push to queue for API deployments with file content if available.
-
-        This is used when the source connector is None (API deployments).
-        We try to read file content from input_file_path if available.
-        """
-        q_name = self._get_queue_name()
-        whisper_hash = meta_data.get("whisper-hash") if meta_data else None
-        file_content = self._read_file_content_for_queue(input_file_path, file_name)
-
-        queue_result = QueueResult(
-            file=file_name,
-            status=QueueResultStatus.SUCCESS,
-            result=result,
-            workflow_id=str(self.workflow_id),
-            file_content=file_content or "",  # Provide empty string if None
-            whisper_hash=whisper_hash,
-            file_execution_id=file_execution_id,
-        ).to_dict()
-
-        queue_result_json = json.dumps(queue_result)
-        conn = QueueUtils.get_queue_inst()
-        conn.enqueue(queue_name=q_name, message=queue_result_json)
-
-        content_status = "with file content" if file_content else "without file content"
-        logger.info(f"Pushed {file_name} to queue {q_name} {content_status}")
+        file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+        file_storage = file_system.get_file_storage()
+        file_bytes = file_storage.read(input_file_path, mode="rb")
+        if isinstance(file_bytes, str):
+            file_bytes = file_bytes.encode("utf-8")
+        return base64.b64encode(file_bytes).decode("utf-8")
