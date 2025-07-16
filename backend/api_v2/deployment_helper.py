@@ -198,9 +198,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 queue=CeleryQueue.CELERY_API_DEPLOYMENTS,
                 use_file_history=use_file_history,
                 llm_profile_id=llm_profile_id,
-                push_to_hitl=bool(hitl_queue_name),
                 hitl_queue_name=hitl_queue_name,
-                api_name=api.api_name,
             )
             result.status_api = DeploymentHelper.construct_status_endpoint(
                 api_endpoint=api.api_endpoint, execution_id=execution_id

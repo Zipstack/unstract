@@ -71,9 +71,7 @@ logger = logging.getLogger(__name__)
 # Parameters to exclude when calling create_workflow_execution
 EXECUTION_EXCLUDED_PARAMS = {
     "llm_profile_id",
-    "push_to_hitl",
     "hitl_queue_name",
-    "api_name",
 }
 
 
@@ -259,9 +257,7 @@ class WorkflowHelper:
         execution_mode: tuple[str, str] | None = None,
         use_file_history: bool = True,
         llm_profile_id: str | None = None,
-        push_to_hitl: bool = False,
         hitl_queue_name: str | None = None,
-        api_name: str | None = None,
     ) -> ExecutionResponse:
         tool_instances: list[ToolInstance] = (
             ToolInstanceHelper.get_tool_instances_by_workflow(
@@ -289,9 +285,7 @@ class WorkflowHelper:
             execution_id=execution_id,
             workflow_log=workflow_log,
             use_file_history=use_file_history,
-            push_to_hitl=push_to_hitl,
             hitl_queue_name=hitl_queue_name,
-            api_name=api_name,
         )
         try:
             # Validating endpoints
@@ -436,9 +430,7 @@ class WorkflowHelper:
         queue: str | None = None,
         use_file_history: bool = True,
         llm_profile_id: str | None = None,
-        push_to_hitl: bool = False,
         hitl_queue_name: str | None = None,
-        api_name: str | None = None,
     ) -> ExecutionResponse:
         """Adding a workflow to the queue for execution.
 
@@ -450,9 +442,7 @@ class WorkflowHelper:
             queue (Optional[str]): Name of the celery queue to push into
             use_file_history (bool): Use FileHistory table to return results on already
                 processed files. Defaults to True
-            push_to_hitl (bool): Flag to push files to manual review queue
             hitl_queue_name (str | None): Name of the HITL queue to push files to
-            api_name (str | None): Name of the API deployment for queue naming
             llm_profile_id (str, optional): LLM profile ID for overriding tool settings
 
         Returns:
@@ -479,9 +469,7 @@ class WorkflowHelper:
                     "log_events_id": log_events_id,
                     "use_file_history": use_file_history,
                     "llm_profile_id": llm_profile_id,
-                    "push_to_hitl": push_to_hitl,
                     "hitl_queue_name": hitl_queue_name,
-                    "api_name": api_name,
                 },
                 queue=queue,
             )
@@ -669,7 +657,7 @@ class WorkflowHelper:
         )
         try:
             logger.info(
-                f"Starting workflow execution: workflow_id={workflow_id}, execution_id={execution_id}, push_to_hitl={kwargs.get('push_to_hitl', False)}, hitl_queue_name={kwargs.get('hitl_queue_name')}, api_name={kwargs.get('api_name')}"
+                f"Starting workflow execution: workflow_id={workflow_id}, execution_id={execution_id}, hitl_queue_name={kwargs.get('hitl_queue_name')}"
             )
             execution_response = WorkflowHelper.run_workflow(
                 workflow=workflow,
@@ -681,9 +669,7 @@ class WorkflowHelper:
                 hash_values_of_files=hash_values,
                 use_file_history=use_file_history,
                 llm_profile_id=kwargs.get("llm_profile_id"),
-                push_to_hitl=kwargs.get("push_to_hitl", False),
                 hitl_queue_name=kwargs.get("hitl_queue_name"),
-                api_name=kwargs.get("api_name"),
             )
         except Exception as error:
             error_message = traceback.format_exc()

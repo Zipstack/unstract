@@ -79,9 +79,8 @@ class DeploymentExecution(views.APIView):
             llm_profile_id=llm_profile_id,
             hitl_queue_name=hitl_queue_name,
         )
-        logger.info(f"Workflow execution response: {response}")
         if "error" in response and response["error"]:
-            logger.error(f"Workflow execution error: {response}")
+            logger.error("API deployment execution failed")
             return Response(
                 {"message": response},
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY,
