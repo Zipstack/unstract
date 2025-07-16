@@ -97,20 +97,9 @@ class APIDeployment(DefaultOrganizationMixin, BaseModel):
 
         Also enforces one API deployment per workflow constraint for new deployments.
         """
-        from django.core.exceptions import ValidationError
-
         organization_id = UserContext.get_organization_identifier()
 
         # For new deployments, check one API per workflow constraint
-        if self.pk is None and self.is_active:
-            existing_active_count = APIDeployment.objects.filter(
-                workflow=self.workflow, is_active=True, organization=self.organization
-            ).count()
-
-            if existing_active_count > 0:
-                raise ValidationError(
-                    "This workflow already has an active API deployment. Only one API deployment per workflow is allowed."
-                )
 
         # Update api_endpoint logic
         if self.pk is not None:
