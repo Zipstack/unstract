@@ -59,7 +59,6 @@ from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.local_context import StateStore
 
-from unstract.backend import feature_flag
 from unstract.core.pubsub_helper import LogPublisher
 from unstract.flags.feature_flag import check_feature_flag_status
 
