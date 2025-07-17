@@ -58,11 +58,20 @@ class IndexingService:
                 tool=util,
                 fs=fs_instance,
             )
-            embedding = Embedding(
-                tool=util,
-                adapter_instance_id=instance_identifiers.embedding_instance_id,
-                usage_kwargs=processing_options.usage_kwargs,
-            )
+            if check_feature_flag_status("sdk1"):
+                embedding = Embedding(
+                    adapter_id=instance_identifiers.embedding_instance_id,
+                    adapter_metadata={},    # TODO
+                    kwargs={
+                        **processing_options.usage_kwargs,
+                    }
+                )
+            else:
+                embedding = Embedding(
+                    tool=util,
+                    adapter_instance_id=instance_identifiers.embedding_instance_id,
+                    usage_kwargs=processing_options.usage_kwargs,
+                )
 
             vector_db = VectorDB(
                 tool=util,

@@ -109,9 +109,6 @@ class LLM:
                 callback_manager.on_stream(text)
             yield text
 
-    # ------------------------------------------------------------------
-    # Async helpers ------------------------------------------------------
-    # ------------------------------------------------------------------
     async def acomplete(self, prompt: str, **kwargs: Any) -> Dict[str, Any]:
         """Asynchronous chat completion (wrapper around ``litellm.acompletion``)."""
         messages = [
@@ -127,8 +124,6 @@ class LLM:
         )
         self._last_usage = response.get("usage")
         return response
-
-    # Convenience alias ----------------------------------------------------
 
     def get_usage(self) -> Optional[dict[str, Any]]:  # noqa: D401
         """Return usage dict if present (provider specific)."""
@@ -156,9 +151,9 @@ class LLM:
             #     if s not in self.kwargs:
             #         logger.warning("Missing supported parameter for '%s': %s", self.provider, s)
         except AttributeError as e:
-            raise SdkError("Adapter not supported: " + self.provider)
+            raise SdkError("LLM adapter not supported: " + self.provider)
         except ValidationError as e:
-            raise SdkError("Invalid adapter metadata: " + str(e))
+            raise SdkError("Invalid LLM adapter metadata: " + str(e))
 
     def _extract_azureopenai_kwargs(self):
         self.provider = "azure"

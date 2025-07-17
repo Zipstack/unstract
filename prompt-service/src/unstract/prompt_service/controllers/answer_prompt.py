@@ -151,10 +151,9 @@ def prompt_processor() -> Any:
 
         try:
             usage_kwargs = {"run_id": run_id, "execution_id": execution_id}
-            adapter_instance_id = output[PSKeys.LLM]
             if check_feature_flag_status("sdk1"):
                 llm = LLM(
-                    adapter_id=adapter_instance_id,
+                    adapter_id=output[PSKeys.LLM],
                     adapter_metadata={},    # TODO
                     kwargs={
                         **usage_kwargs,
@@ -162,10 +161,18 @@ def prompt_processor() -> Any:
                         PSKeys.CAPTURE_METRICS: True,
                     }
                 )
+
+                embedding = Embedding(
+                    adapter_id=output[PSKeys.EMBEDDING],
+                    adapter_metadata={},    # TODO
+                    kwargs={
+                        **usage_kwargs,
+                    }
+                )
             else:
                 llm = LLM(
                     tool=util,
-                    adapter_instance_id=adapter_instance_id,
+                    adapter_instance_id=output[PSKeys.LLM],
                     usage_kwargs={
                         **usage_kwargs,
                         PSKeys.LLM_USAGE_REASON: PSKeys.EXTRACTION,
@@ -173,11 +180,11 @@ def prompt_processor() -> Any:
                     capture_metrics=True,
                 )
 
-            embedding = Embedding(
-                tool=util,
-                adapter_instance_id=output[PSKeys.EMBEDDING],
-                usage_kwargs=usage_kwargs.copy(),
-            )
+                embedding = Embedding(
+                    tool=util,
+                    adapter_instance_id=output[PSKeys.EMBEDDING],
+                    usage_kwargs=usage_kwargs.copy(),
+                )
 
             vector_db = VectorDB(
                 tool=util,
