@@ -343,7 +343,7 @@ class PromptStudioHelper:
 
         Raises:
             ToolNotValid
-            Sdk1IndexingError | IndexingError
+            IndexingError
         """
         tool: CustomTool = CustomTool.objects.get(pk=tool_id)
         file_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(

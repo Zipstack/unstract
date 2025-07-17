@@ -25,6 +25,7 @@ if check_feature_flag_status("sdk1"):
 else:
     from unstract.sdk.adapters.enums import AdapterTypes
     from unstract.sdk.tool.validator import DefaultsGeneratingValidator
+
 from unstract.tool_registry.constants import AdapterPropertyKey
 from unstract.tool_registry.dto import Spec, Tool
 from unstract.tool_registry.tool_utils import ToolUtils
@@ -72,7 +73,7 @@ class ToolInstanceHelper:
         metadata: dict[str, Any],
         adapter_key: str,
         adapter_property: dict[str, Any],
-        adapter_type: Sdk1AdapterTypes | AdapterTypes,
+        adapter_type: AdapterTypes,
     ) -> None:
         """Update the metadata dictionary with adapter properties.
 
@@ -83,7 +84,7 @@ class ToolInstanceHelper:
                 The key in the metadata dictionary corresponding to the adapter.
             adapter_property (dict[str, Any]):
                 The properties of the adapter.
-            adapter_type (Sdk1AdapterTypes | AdapterTypes):
+            adapter_type (AdapterTypes):
                 The type of the adapter.
 
         Returns:
@@ -125,7 +126,7 @@ class ToolInstanceHelper:
                 metadata=metadata,
                 adapter_key=adapter_key,
                 adapter_property=adapter_property,
-                adapter_type=Sdk1AdapterTypes.LLM if FeatureFlagHelper.check_flag_status('sdk_v1') else AdapterTypes.LLM,
+                adapter_type=AdapterTypes.LLM,
             )
 
         for adapter_key, adapter_property in embedding_properties.items():
@@ -133,7 +134,7 @@ class ToolInstanceHelper:
                 metadata=metadata,
                 adapter_key=adapter_key,
                 adapter_property=adapter_property,
-                adapter_type=Sdk1AdapterTypes.EMBEDDING if FeatureFlagHelper.check_flag_status('sdk_v1') else AdapterTypes.EMBEDDING,
+                adapter_type=AdapterTypes.EMBEDDING,
             )
 
         for adapter_key, adapter_property in vector_db_properties.items():
@@ -141,7 +142,7 @@ class ToolInstanceHelper:
                 metadata=metadata,
                 adapter_key=adapter_key,
                 adapter_property=adapter_property,
-                adapter_type=Sdk1AdapterTypes.VECTOR_DB if FeatureFlagHelper.check_flag_status('sdk_v1') else AdapterTypes.VECTOR_DB,
+                adapter_type=AdapterTypes.VECTOR_DB,
             )
 
         for adapter_key, adapter_property in x2text_properties.items():
@@ -149,7 +150,7 @@ class ToolInstanceHelper:
                 metadata=metadata,
                 adapter_key=adapter_key,
                 adapter_property=adapter_property,
-                adapter_type=Sdk1AdapterTypes.X2TEXT if FeatureFlagHelper.check_flag_status('sdk_v1') else AdapterTypes.X2TEXT,
+                adapter_type=AdapterTypes.X2TEXT,
             )
 
         for adapter_key, adapter_property in ocr_properties.items():
@@ -157,12 +158,12 @@ class ToolInstanceHelper:
                 metadata=metadata,
                 adapter_key=adapter_key,
                 adapter_property=adapter_property,
-                adapter_type=Sdk1AdapterTypes.OCR if FeatureFlagHelper.check_flag_status('sdk_v1') else AdapterTypes.OCR,
+                adapter_type=AdapterTypes.OCR,
             )
 
     @staticmethod
     def update_metadata_with_default_adapter(
-        adapter_type: Sdk1AdapterTypes | AdapterTypes,
+        adapter_type: AdapterTypes,
         schema_spec: Spec,
         adapter: AdapterInstance,
         metadata: dict[str, Any],
@@ -171,7 +172,7 @@ class ToolInstanceHelper:
         enabled adapters.
 
         Parameters:
-            adapter_type (Sdk1AdapterTypes | AdapterTypes): The type of adapter to update
+            adapter_type (AdapterTypes): The type of adapter to update
             the metadata for.
             schema_spec (Spec): The schema specification for the tool.
             adapter (AdapterInstance): The adapter instance to use for updating
@@ -182,28 +183,16 @@ class ToolInstanceHelper:
             None
         """
         properties = {}
-        if FeatureFlagHelper.check_flag_status('sdk_v1'):
-            if adapter_type == Sdk1AdapterTypes.LLM:
-                properties = schema_spec.get_llm_adapter_properties()
-            if adapter_type == Sdk1AdapterTypes.EMBEDDING:
-                properties = schema_spec.get_embedding_adapter_properties()
-            if adapter_type == Sdk1AdapterTypes.VECTOR_DB:
-                properties = schema_spec.get_vector_db_adapter_properties()
-            if adapter_type == Sdk1AdapterTypes.X2TEXT:
-                properties = schema_spec.get_text_extractor_adapter_properties()
-            if adapter_type == Sdk1AdapterTypes.OCR:
-                properties = schema_spec.get_ocr_adapter_properties()
-        else:
-            if adapter_type == AdapterTypes.LLM:
-                properties = schema_spec.get_llm_adapter_properties()
-            if adapter_type == AdapterTypes.EMBEDDING:
-                properties = schema_spec.get_embedding_adapter_properties()
-            if adapter_type == AdapterTypes.VECTOR_DB:
-                properties = schema_spec.get_vector_db_adapter_properties()
-            if adapter_type == AdapterTypes.X2TEXT:
-                properties = schema_spec.get_text_extractor_adapter_properties()
-            if adapter_type == AdapterTypes.OCR:
-                properties = schema_spec.get_ocr_adapter_properties()
+        if adapter_type == AdapterTypes.LLM:
+            properties = schema_spec.get_llm_adapter_properties()
+        if adapter_type == AdapterTypes.EMBEDDING:
+            properties = schema_spec.get_embedding_adapter_properties()
+        if adapter_type == AdapterTypes.VECTOR_DB:
+            properties = schema_spec.get_vector_db_adapter_properties()
+        if adapter_type == AdapterTypes.X2TEXT:
+            properties = schema_spec.get_text_extractor_adapter_properties()
+        if adapter_type == AdapterTypes.OCR:
+            properties = schema_spec.get_ocr_adapter_properties()
         for adapter_key, adapter_property in properties.items():
             metadata_key_for_id = adapter_property.get(
                 AdapterPropertyKey.ADAPTER_ID_KEY, AdapterPropertyKey.ADAPTER_ID
@@ -234,7 +223,7 @@ class ToolInstanceHelper:
         default_adapters = AdapterProcessor.get_default_adapters(user=user)
         for adapter in default_adapters:
             try:
-                adapter_type = Sdk1AdapterTypes(adapter.adapter_type) if FeatureFlagHelper.check_flag_status('sdk_v1') else AdapterTypes(adapter.adapter_type)
+                adapter_type = AdapterTypes(adapter.adapter_type)
                 ToolInstanceHelper.update_metadata_with_default_adapter(
                     adapter_type=adapter_type,
                     schema_spec=schema,
@@ -289,10 +278,7 @@ class ToolInstanceHelper:
             tool_uid=tool_uid, user=user
         )
         try:
-            if FeatureFlagHelper.check_flag_status('sdk_v1'):
-                Sdk1DefaultsGeneratingValidator(schema_json).validate(tool_meta)
-            else:
-                DefaultsGeneratingValidator(schema_json).validate(tool_meta)
+            DefaultsGeneratingValidator(schema_json).validate(tool_meta)
         except JSONValidationError as e:
             logger.error(e, stack_info=True, exc_info=True)
             err_msg = e.message
