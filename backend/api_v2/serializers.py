@@ -120,7 +120,7 @@ class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
 
         return workflow
 
-      def validate(self, data):
+    def validate(self, data):
         """Validate that only one API deployment per workflow is allowed for new deployments."""
         workflow = data.get("workflow")
 
