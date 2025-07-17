@@ -68,6 +68,12 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 
 logger = logging.getLogger(__name__)
 
+# Parameters to exclude when calling create_workflow_execution
+EXECUTION_EXCLUDED_PARAMS = {
+    "llm_profile_id",
+    "hitl_queue_name",
+}
+
 
 class WorkflowHelper:
     @staticmethod
@@ -251,6 +257,7 @@ class WorkflowHelper:
         execution_mode: tuple[str, str] | None = None,
         use_file_history: bool = True,
         llm_profile_id: str | None = None,
+        hitl_queue_name: str | None = None,
     ) -> ExecutionResponse:
         tool_instances: list[ToolInstance] = (
             ToolInstanceHelper.get_tool_instances_by_workflow(
@@ -278,6 +285,7 @@ class WorkflowHelper:
             execution_id=execution_id,
             workflow_log=workflow_log,
             use_file_history=use_file_history,
+            hitl_queue_name=hitl_queue_name,
         )
         try:
             # Validating endpoints
@@ -422,6 +430,7 @@ class WorkflowHelper:
         queue: str | None = None,
         use_file_history: bool = True,
         llm_profile_id: str | None = None,
+        hitl_queue_name: str | None = None,
     ) -> ExecutionResponse:
         """Adding a workflow to the queue for execution.
 
@@ -433,6 +442,7 @@ class WorkflowHelper:
             queue (Optional[str]): Name of the celery queue to push into
             use_file_history (bool): Use FileHistory table to return results on already
                 processed files. Defaults to True
+            hitl_queue_name (str | None): Name of the HITL queue to push files to
             llm_profile_id (str, optional): LLM profile ID for overriding tool settings
 
         Returns:
@@ -459,6 +469,7 @@ class WorkflowHelper:
                     "log_events_id": log_events_id,
                     "use_file_history": use_file_history,
                     "llm_profile_id": llm_profile_id,
+                    "hitl_queue_name": hitl_queue_name,
                 },
                 queue=queue,
             )
@@ -625,8 +636,10 @@ class WorkflowHelper:
         workflow = Workflow.objects.get(id=workflow_id)
         # TODO: Make use of WorkflowExecution.get_or_create()
         try:
-            # Filter out llm_profile_id from kwargs as create_workflow_execution doesn't accept it
-            filtered_kwargs = {k: v for k, v in kwargs.items() if k != "llm_profile_id"}
+            # Filter out parameters that create_workflow_execution doesn't accept
+            filtered_kwargs = {
+                k: v for k, v in kwargs.items() if k not in EXECUTION_EXCLUDED_PARAMS
+            }
             workflow_execution = WorkflowExecutionServiceHelper.create_workflow_execution(
                 workflow_id=workflow_id,
                 single_step=False,
@@ -643,6 +656,9 @@ class WorkflowHelper:
             execution_id=execution_id, task_id=task_id
         )
         try:
+            logger.info(
+                f"Starting workflow execution: workflow_id={workflow_id}, execution_id={execution_id}, hitl_queue_name={kwargs.get('hitl_queue_name')}"
+            )
             execution_response = WorkflowHelper.run_workflow(
                 workflow=workflow,
                 organization_id=organization_id,
@@ -653,6 +669,7 @@ class WorkflowHelper:
                 hash_values_of_files=hash_values,
                 use_file_history=use_file_history,
                 llm_profile_id=kwargs.get("llm_profile_id"),
+                hitl_queue_name=kwargs.get("hitl_queue_name"),
             )
         except Exception as error:
             error_message = traceback.format_exc()
