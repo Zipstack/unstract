@@ -99,8 +99,6 @@ class APIDeployment(DefaultOrganizationMixin, BaseModel):
         """
         organization_id = UserContext.get_organization_identifier()
 
-        # For new deployments, check one API per workflow constraint
-
         # Update api_endpoint logic
         if self.pk is not None:
             try:
