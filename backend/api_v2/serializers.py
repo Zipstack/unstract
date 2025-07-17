@@ -18,6 +18,7 @@ from rest_framework.serializers import (
 )
 from tags.serializers import TagParamsSerializer
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
+from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.exceptions import ExecutionDoesNotExistError
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
@@ -55,6 +56,68 @@ class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
         )
         api_name_validator(value)
         return value
+
+    def validate_workflow(self, workflow):
+        """Validate that the workflow has properly configured source and destination endpoints."""
+        if not workflow:
+            raise ValidationError("Workflow is required.")
+
+        # Get all endpoints for this workflow
+        endpoints = WorkflowEndpoint.objects.filter(workflow=workflow)
+
+        # Check for source endpoint
+        source_endpoints = endpoints.filter(
+            endpoint_type=WorkflowEndpoint.EndpointType.SOURCE
+        )
+        if not source_endpoints.exists():
+            raise ValidationError(
+                "Workflow must have a source endpoint configured before creating an API deployment."
+            )
+
+        source_endpoint = source_endpoints.first()
+        if not source_endpoint.connection_type:
+            raise ValidationError(
+                "Source endpoint must have a connection type configured before creating an API deployment."
+            )
+
+        # For non-API connections, check if connector instance is configured
+        if (
+            source_endpoint.connection_type != WorkflowEndpoint.ConnectionType.API
+            and not source_endpoint.connector_instance
+        ):
+            raise ValidationError(
+                "Source endpoint must have a connector configured for non-API connections before creating an API deployment."
+            )
+
+        # Check for destination endpoint
+        destination_endpoints = endpoints.filter(
+            endpoint_type=WorkflowEndpoint.EndpointType.DESTINATION
+        )
+        if not destination_endpoints.exists():
+            raise ValidationError(
+                "Workflow must have a destination endpoint configured before creating an API deployment."
+            )
+
+        destination_endpoint = destination_endpoints.first()
+        if not destination_endpoint.connection_type:
+            raise ValidationError(
+                "Destination endpoint must have a connection type configured before creating an API deployment."
+            )
+
+        # For non-API and non-manual review connections, check if connector instance is configured
+        if (
+            destination_endpoint.connection_type
+            not in [
+                WorkflowEndpoint.ConnectionType.API,
+                WorkflowEndpoint.ConnectionType.MANUALREVIEW,
+            ]
+            and not destination_endpoint.connector_instance
+        ):
+            raise ValidationError(
+                "Destination endpoint must have a connector configured for non-API and non-manual review connections before creating an API deployment."
+            )
+
+        return workflow
 
 
 class APIKeySerializer(AuditSerializer):
