@@ -49,9 +49,11 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
     HOUR_MINUTES = 60
 
     def _get_validation_examples(self, min_interval: int) -> str:
-        """Generate examples for error messages."""
-        second_val = min_interval * 2 if min_interval * 2 <= 59 else (60 - min_interval)
-        return f"'0,{min_interval}', '{min_interval},{second_val}'"
+        """Generate examples for error messages with exact min_interval gaps."""
+        first = 0
+        second = (first + min_interval) % self.HOUR_MINUTES
+        third = (second + min_interval) % self.HOUR_MINUTES
+        return f"'{first},{second}', '{second},{third}'"
 
     def _get_cron_error_every_minute(self) -> str:
         min_interval = PipelineScheduling.get_min_interval_minutes()
