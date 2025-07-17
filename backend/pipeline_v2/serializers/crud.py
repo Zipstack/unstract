@@ -52,6 +52,7 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
         """Generate examples for error messages."""
         second_val = min_interval * 2 if min_interval * 2 <= 59 else (60 - min_interval)
         return f"'0,{min_interval}', '{min_interval},{second_val}'"
+
     def _get_cron_error_every_minute(self) -> str:
         min_interval = PipelineScheduling.get_min_interval_minutes()
         return f"Cron schedule cannot run every minute. Use {min_interval}-minute or longer intervals."
