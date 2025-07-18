@@ -149,6 +149,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         use_file_history: bool = False,
         tag_names: list[str] = [],
         llm_profile_id: str | None = None,
+        hitl_queue_name: str | None = None,
     ) -> ReturnDict:
         """Execute workflow by api.
 
@@ -160,12 +161,17 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 processed files. Defaults to False
             tag_names (list(str)): list of tag names
             llm_profile_id (str, optional): LLM profile ID for overriding tool settings
+            hitl_queue_name (str, optional): Custom queue name for manual review
 
         Returns:
             ReturnDict: execution status/ result
         """
         workflow_id = api.workflow.id
         pipeline_id = api.id
+        if hitl_queue_name:
+            logger.info(
+                f"API execution with HITL: hitl_queue_name={hitl_queue_name}, api_name={api.api_name}"
+            )
         tags = Tag.bulk_get_or_create(tag_names=tag_names)
         workflow_execution = WorkflowExecutionServiceHelper.create_workflow_execution(
             workflow_id=workflow_id,
@@ -193,6 +199,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 queue=CeleryQueue.CELERY_API_DEPLOYMENTS,
                 use_file_history=use_file_history,
                 llm_profile_id=llm_profile_id,
+                hitl_queue_name=hitl_queue_name,
             )
             result.status_api = DeploymentHelper.construct_status_endpoint(
                 api_endpoint=api.api_endpoint, execution_id=execution_id

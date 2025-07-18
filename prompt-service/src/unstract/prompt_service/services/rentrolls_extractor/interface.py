@@ -2,7 +2,7 @@ import logging
 import os
 from typing import Any
 
-import aiohttp
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ class RentRollExtractor:
         logger.info("Initialized RentRollExtractor")
         pass
 
-    async def process(
+    def process(
         self,
         extractor_settings: dict[str, Any],
         extracted_data: str,
@@ -49,24 +49,22 @@ class RentRollExtractor:
             }
 
             # Make HTTP call to rent roll service
-            timeout = aiohttp.ClientTimeout(total=1800)
             logger.info(f"Calling rent roll service at: {rentroll_url}")
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(rentroll_url, json=payload) as response:
-                    if response.status == 200:
-                        result = await response.json()
-                        logger.info(
-                            "Successfully received response from rent roll service"
-                        )
-                        return result
-                    else:
-                        error_text = await response.text()
-                        logger.error(
-                            f"Rent roll service returned status {response.status}: {error_text}"
-                        )
-                        raise Exception(
-                            f"Rent roll service error: {response.status} - {error_text}"
-                        )
+            response = requests.post(rentroll_url, json=payload)
+
+            if response.status_code == 200:
+                result = response.json()
+
+                logger.info("Successfully received response from rent roll service")
+                return result
+            else:
+                error_text = response.text
+                logger.error(
+                    f"Rent roll service returned status {response.status_code}: {error_text}"
+                )
+                raise Exception(
+                    f"Rent roll service error: {response.status_code} - {error_text}"
+                )
         except Exception as e:
             logger.error(f"Error in rent roll extraction: {str(e)}", exc_info=True)
             raise

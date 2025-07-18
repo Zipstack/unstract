@@ -3967,7 +3967,7 @@ requires-dist = [
     { name = "unstract-core", editable = "../unstract/core" },
     { name = "unstract-filesystem", editable = "../unstract/filesystem" },
     { name = "unstract-flags", editable = "../unstract/flags" },
-    { name = "unstract-sdk", extras = ["azure"], specifier = "~=0.74.0" },
+    { name = "unstract-sdk", extras = ["azure"], specifier = "~=0.76.1" },
     { name = "unstract-tool-registry", editable = "../unstract/tool-registry" },
     { name = "unstract-tool-sandbox", editable = "../unstract/tool-sandbox" },
     { name = "unstract-workflow-execution", editable = "../unstract/workflow-execution" },
@@ -4073,7 +4073,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "unstract-sdk", specifier = "~=0.74.0" }]
+requires-dist = [{ name = "unstract-sdk", specifier = "~=0.76.1" }]
 
 [[package]]
 name = "unstract-flags"
@@ -4092,7 +4092,7 @@ requires-dist = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.74.0"
+version = "0.76.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filetype" },
@@ -4131,9 +4131,9 @@ dependencies = [
     { name = "tiktoken" },
     { name = "transformers" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/74/b7/8d4db4b8a334ef1969cf56074e595922a4814e8252d525cf9223772ed01b/unstract_sdk-0.74.0.tar.gz", hash = "sha256:adb2e320dfedf2c52d4fe9fa29cfb6c64deb7869712cd6c344b0e15062606def", size = 2376223 }
+sdist = { url = "https://files.pythonhosted.org/packages/91/ea/038da8c278e811ec9a5263c856d157a8a4ce57a10052c507edfb192afc60/unstract_sdk-0.76.1.tar.gz", hash = "sha256:05ecdf1a1b4cdfaa2414a0a31f42bb8ba9c895980b4ff891dceca25a5b4e0407", size = 2376403 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a4/2f/862cef00c35ef9dc2d546e1b82e498a5b4750bfc6d55c1217123fa7fc56a/unstract_sdk-0.74.0-py3-none-any.whl", hash = "sha256:209a85c002e8ee049a3fdd1ffffaac6848b8670222c9b272593ee4002f519aef", size = 266399 },
+    { url = "https://files.pythonhosted.org/packages/fa/dc/b39d10ae577d61820546977064231cf4ae454b189fef2a25328fe873b1c6/unstract_sdk-0.76.1-py3-none-any.whl", hash = "sha256:3ddbacc1d5705a06c368225b5884797d0b406e31f5ae5a08e01c80873f6787d1", size = 266606 },
 ]
 
 [package.optional-dependencies]
@@ -4157,10 +4157,10 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "docker", specifier = "~=6.1.3" },
-    { name = "jsonschema", specifier = "~=4.18.2" },
+    { name = "jsonschema", specifier = ">=4.18.6,<5.0" },
     { name = "pyyaml", specifier = "~=6.0.1" },
     { name = "unstract-flags", editable = "../unstract/flags" },
-    { name = "unstract-sdk", specifier = "~=0.74.0" },
+    { name = "unstract-sdk", specifier = "~=0.76.1" },
     { name = "unstract-tool-sandbox", editable = "../unstract/tool-sandbox" },
 ]
 
