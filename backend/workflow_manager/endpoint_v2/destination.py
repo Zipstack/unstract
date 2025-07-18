@@ -6,7 +6,6 @@ import os
 from typing import Any
 
 from connector_v2.models import ConnectorInstance
-from pluggable_apps.manual_review_v2.models import HITLSettings
 from plugins.workflow_manager.workflow_v2.utils import WorkflowUtil
 from rest_framework.exceptions import APIException
 from utils.user_context import UserContext
@@ -828,12 +827,9 @@ class DestinationConnector(BaseConnector):
             )
 
             # Add TTL metadata based on HITLSettings
-            try:
-                hitl_settings = HITLSettings.objects.get(workflow=workflow)
-                if hitl_settings.ttl_type == "custom" and hitl_settings.ttl_hours:
-                    queue_result_obj.original_ttl_seconds = hitl_settings.ttl_hours * 3600
-            except HITLSettings.DoesNotExist:
-                pass  # Keep original_ttl_seconds as None for unlimited TTL
+            queue_result_obj.original_ttl_seconds = WorkflowUtil.get_hitl_ttl_seconds(
+                workflow
+            )
 
             queue_result = queue_result_obj.to_dict()
             queue_result_json = json.dumps(queue_result)
