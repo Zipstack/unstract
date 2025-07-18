@@ -423,7 +423,8 @@ class SourceConnector(BaseConnector):
 
         except Exception as e:
             logger.warning(
-                f"Error checking file execution status for {file_hash.file_name}: {e}"
+                f"Error checking file execution status for {file_hash.file_name}: {e}\n"
+                "Allowing its execution to continue anyway"
             )
 
         return False
