@@ -187,6 +187,19 @@ class WorkflowFileExecution(BaseModel):
                 fields=["workflow_execution", "provider_file_uuid"],
                 name="workflow_exec_p_uuid_idx",
             ),
+            models.Index(
+                fields=["workflow_execution", "file_hash", "file_path", "status"],
+                name="wf_file_hash_path_status_idx",
+            ),
+            models.Index(
+                fields=[
+                    "workflow_execution",
+                    "provider_file_uuid",
+                    "file_path",
+                    "status",
+                ],
+                name="wf_provider_uuid_path_stat_idx",
+            ),
         ]
         constraints = [
             models.UniqueConstraint(
