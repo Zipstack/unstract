@@ -155,18 +155,19 @@ function DsSettingsCard({ type, endpointDetails, message }) {
       connectorData.connector_metadata = connectorData.connector_metadata || {};
       connectorData.connector_metadata.connectorName =
         connectorData?.connector_name || "";
-      connectorData.icon = endpointDetails?.connector_icon; // Use the icon from endpoint
       setConnDetails(connectorData);
       setSelectedId(connectorData?.connector_id);
       return;
     }
 
-    // Fallback for legacy connector_instance ID format
-    if (connDetails?.id === endpointDetails?.connector_instance) {
+    // Fallback for legacy connector_instance ID format (string)
+    if (typeof endpointDetails?.connector_instance === "string") {
+      // Only call getSourceDetails if we haven't already loaded this connector
+      if (connDetails?.id !== endpointDetails?.connector_instance) {
+        getSourceDetails();
+      }
       return;
     }
-
-    getSourceDetails();
   }, [endpointDetails]);
 
   useEffect(() => {
@@ -292,22 +293,20 @@ function DsSettingsCard({ type, endpointDetails, message }) {
     if (type === "input") {
       clearDestination({
         connection_type: "",
-        connector_instance: null,
+        connector_instance_id: null,
       });
     }
   };
 
   const handleUpdate = (updatedData, showSuccess) => {
-    const body = { ...endpointDetails, ...updatedData };
-
     const requestOptions = {
-      method: "PUT",
+      method: "PATCH",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/endpoint/${endpointDetails?.id}/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
       },
-      data: body,
+      data: updatedData,
     };
     axiosPrivate(requestOptions)
       .then((res) => {
@@ -334,7 +333,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
   const getSourceDetails = () => {
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/connector/${endpointDetails?.connector_instance}/`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/connector/${endpointDetails?.connector_instance?.id}/`,
     };
 
     axiosPrivate(requestOptions)
@@ -375,7 +374,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                   onChange={(value) => {
                     handleUpdate({
                       connection_type: value,
-                      connector_instance: null,
+                      connector_instance_id: null,
                     });
                     updateDestination();
                   }}

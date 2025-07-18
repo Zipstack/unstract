@@ -3,15 +3,13 @@ import PropTypes from "prop-types";
 import { createRef, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
-import {
-  sourceTypes,
-  CONNECTOR_TYPE_MAP,
-} from "../../../helpers/GetStaticData.js";
+import { sourceTypes } from "../../../helpers/GetStaticData.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { RjsfFormLayout } from "../../../layouts/rjsf-form-layout/RjsfFormLayout.jsx";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
+import { useWorkflowStore } from "../../../store/workflow-store";
 import { OAuthDs } from "../../oauth-ds/oauth-ds/OAuthDs.jsx";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import "./ConfigureDs.css";
@@ -47,6 +45,7 @@ function ConfigureDs({
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const { updateSessionDetails } = useSessionStore();
+  const { details: workflowDetails } = useWorkflowStore();
   const {
     posthogTcEventText,
     posthogSubmitEventText,
@@ -187,19 +186,17 @@ function ConfigureDs({
       const connectorMetadata = { ...formData };
       const connectorName = connectorMetadata?.connectorName;
       delete connectorMetadata.connectorName;
-      const endpointType = CONNECTOR_TYPE_MAP[type]?.toUpperCase();
 
       body = {
-        workflow: id,
-        endpoint_type: endpointType,
-        connector_instance: {
-          connector_id: selectedSourceId,
-          connector_metadata: connectorMetadata,
-          connector_name: connectorName,
-          created_by: sessionDetails?.id,
-        },
+        connector_id: selectedSourceId,
+        connector_metadata: connectorMetadata,
+        connector_name: connectorName,
+        created_by: sessionDetails?.user_id || sessionDetails?.id,
+        workflow: id || workflowDetails?.id,
+        connector_type: type.toUpperCase(),
       };
-      url += "workflow-endpoint/";
+
+      url += "connector/";
 
       try {
         setPostHogCustomEvent(
@@ -261,7 +258,10 @@ function ConfigureDs({
         const data = res?.data;
         if (sourceTypes.connectors.includes(type)) {
           handleUpdate(
-            { connector_instance: data?.id, configuration: formDataConfig },
+            {
+              connector_instance_id: data?.id,
+              configuration: formDataConfig,
+            },
             true
           );
           setIsTcSuccessful(false);
