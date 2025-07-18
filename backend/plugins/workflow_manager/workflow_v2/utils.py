@@ -92,4 +92,4 @@ class WorkflowUtil:
         Returns:
             Optional[int]: TTL in seconds if custom TTL is set, None for unlimited TTL.
         """
-        return
+        return False
