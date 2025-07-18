@@ -181,7 +181,9 @@ def prompt_processor() -> Any:
             llm_config = adapter_parent_data.get("adapter_metadata")
             adapter_id = adapter_parent_data.get("adapter_id")
             adapter_prefix = adapter_id.split("|")[0]
+            llm_provider = llm._usage_kwargs.get("provider")
             llm_adapter_config = {"adapter_id": adapter_prefix}
+            llm_adapter_config["provider"] = llm_provider
             if adapter_prefix == "azureopenai":
                 llm_adapter_config["model"] = llm_config.get("model")
                 llm_adapter_config["api_key"] = llm_config.get("api_key")
@@ -200,6 +202,15 @@ def prompt_processor() -> Any:
                 llm_adapter_config["model"] = llm_config.get("model")
                 llm_adapter_config["api_key"] = llm_config.get("api_key")
                 llm_adapter_config["max_retries"] = llm_config.get("max_retries")
+                llm_adapter_config["timeout"] = llm_config.get("timeout")
+            if adapter_prefix == "bedrock":
+                llm_adapter_config["model"] = llm_config.get("model")
+                llm_adapter_config["aws_access_key_id"] = llm_config.get("aws_access_key_id")
+                llm_adapter_config["aws_secret_access_key"] = llm_config.get("aws_secret_access_key")
+                llm_adapter_config["max_retries"] = llm_config.get("max_retries")
+                llm_adapter_config["budget_tokens"] = llm_config.get("budget_tokens")
+                llm_adapter_config["max_tokens"] = llm_config.get("max_tokens")
+                llm_adapter_config["region_name"] = llm_config.get("region_name")
                 llm_adapter_config["timeout"] = llm_config.get("timeout")
             table_settings = output[PSKeys.TABLE_SETTINGS]
             document_type: str = table_settings.get(PSKeys.DOCUMENT_TYPE)
