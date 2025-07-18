@@ -55,15 +55,9 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
         third = (second + min_interval) % self.HOUR_MINUTES
         return f"'{first},{second}', '{second},{third}'"
 
-    def _get_cron_error_every_minute(self) -> str:
-        min_interval = PipelineScheduling.get_min_interval_minutes()
-        return f"Cron schedule cannot run every minute. Use {min_interval}-minute or longer intervals."
-
     def _get_cron_error_too_frequent(self) -> str:
         min_interval = PipelineScheduling.get_min_interval_minutes()
-        return (
-            f"Cron schedule cannot run more frequently than every {min_interval} minutes."
-        )
+        return f"Configured cron schedule is too frequent. Ensure that consecutive runs are atleast {min_interval} minutes or longer."
 
     def _get_cron_error_complex_pattern(self) -> str:
         min_interval = PipelineScheduling.get_min_interval_minutes()
@@ -100,8 +94,7 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
         parts = minute_field.split("/")
         if len(parts) == 2 and parts[1].isdigit():
             step = int(parts[1])
-            min_interval_minutes = PipelineScheduling.get_min_interval_minutes()
-            if step < min_interval_minutes:
+            if step < PipelineScheduling.get_min_interval_minutes():
                 raise serializers.ValidationError(self._get_cron_error_too_frequent())
 
     def _parse_and_validate_minutes(self, parts: list[str]) -> list[int]:
@@ -130,19 +123,25 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
         """Validate comma patterns like 0,30 or 0,10,20,30,40,50."""
         parts = [p.strip() for p in minute_field.split(",")]
         minutes = self._parse_and_validate_minutes(parts)
-        min_interval = PipelineScheduling.get_min_interval_minutes()
 
+        min_interval = PipelineScheduling.get_min_interval_minutes()
         self._check_consecutive_intervals(minutes, min_interval)
         self._check_wraparound_interval(minutes, min_interval)
 
     def _validate_range_pattern(self, minute_field: str) -> None:
-        """Validate range patterns like 0-30."""
+        """Validate range patterns like 0-30.
+
+        Range patterns are not supported because they can create intervals
+        shorter than the minimum required interval. For example, with a
+        30-minute minimum, "0-30" would create executions every minute
+        from 0 to 30, violating the minimum interval constraint.
+        """
         raise serializers.ValidationError(self._get_cron_error_range_pattern())
 
     def _validate_minute_field(self, minute_field: str) -> None:
         """Validate the minute field for configurable minimum intervals."""
         if minute_field == "*":
-            raise serializers.ValidationError(self._get_cron_error_every_minute())
+            raise serializers.ValidationError(self._get_cron_error_too_frequent())
 
         if "/" in minute_field:
             self._validate_step_pattern(minute_field)
