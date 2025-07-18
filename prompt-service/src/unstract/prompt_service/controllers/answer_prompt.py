@@ -205,8 +205,12 @@ def prompt_processor() -> Any:
                 llm_adapter_config["timeout"] = llm_config.get("timeout")
             if adapter_prefix == "bedrock":
                 llm_adapter_config["model"] = llm_config.get("model")
-                llm_adapter_config["aws_access_key_id"] = llm_config.get("aws_access_key_id")
-                llm_adapter_config["aws_secret_access_key"] = llm_config.get("aws_secret_access_key")
+                llm_adapter_config["aws_access_key_id"] = llm_config.get(
+                    "aws_access_key_id"
+                )
+                llm_adapter_config["aws_secret_access_key"] = llm_config.get(
+                    "aws_secret_access_key"
+                )
                 llm_adapter_config["max_retries"] = llm_config.get("max_retries")
                 llm_adapter_config["budget_tokens"] = llm_config.get("budget_tokens")
                 llm_adapter_config["max_tokens"] = llm_config.get("max_tokens")
