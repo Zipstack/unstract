@@ -68,7 +68,7 @@ function InputOutput() {
             sourceIcon(item?.connector_instance?.connector_icon)
           )
         );
-        const firstId = endpoints[0].connector_instance?.id.toString();
+        const firstId = endpoints[0]?.connector_instance?.id?.toString();
         setSelectedItem(firstId);
         setListOfItems(menuItems);
       })

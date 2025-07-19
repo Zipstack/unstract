@@ -34,15 +34,4 @@ class Migration(migrations.Migration):
                 to="workflow_v2.workflow",
             ),
         ),
-        migrations.AlterField(
-            model_name="connectorinstance",
-            name="connector_auth",
-            field=models.ForeignKey(
-                blank=True,
-                null=True,
-                on_delete=django.db.models.deletion.CASCADE,
-                related_name="connector_instances",
-                to="connector_auth_v2.connectorauth",
-            ),
-        ),
     ]

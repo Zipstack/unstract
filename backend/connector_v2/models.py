@@ -72,7 +72,7 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
     # TODO: handle connector_auth cascade deletion
     connector_auth = models.ForeignKey(
         ConnectorAuth,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name="connector_instances",

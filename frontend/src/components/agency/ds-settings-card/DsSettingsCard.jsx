@@ -333,7 +333,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
   const getSourceDetails = () => {
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/connector/${endpointDetails?.connector_instance?.id}/`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/connector/${endpointDetails?.connector_instance}/`,
     };
 
     axiosPrivate(requestOptions)
