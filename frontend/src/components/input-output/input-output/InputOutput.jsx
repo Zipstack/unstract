@@ -45,25 +45,30 @@ function InputOutput() {
 
     setConnectorType(type);
 
+    const endpointType = CONNECTOR_TYPE_MAP[type]?.toUpperCase();
+
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${
-        sessionDetails?.orgId
-      }/connector/?workflow=${id}&connector_type=${type.toUpperCase()}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/endpoint/?workflow=${id}&endpoint_type=${endpointType}`,
     };
 
     axiosPrivate(requestOptions)
       .then((res) => {
-        const sources = res?.data;
-        if (sources?.length === 0) {
+        const endpoints = res?.data;
+        console.log("Endpoints data", endpoints);
+        if (endpoints?.length === 0) {
           setSelectedItem("");
           setListOfItems([]);
           return;
         }
-        const menuItems = sources.map((item) =>
-          getItem(item?.connector_name, item?.id, sourceIcon(item?.icon))
+        const menuItems = endpoints.map((item) =>
+          getItem(
+            item?.connector_instance?.connector_name,
+            item?.connector_instance?.id,
+            sourceIcon(item?.connector_instance?.connector_icon)
+          )
         );
-        const firstId = sources[0].id.toString();
+        const firstId = endpoints[0]?.connector_instance?.id?.toString();
         setSelectedItem(firstId);
         setListOfItems(menuItems);
       })

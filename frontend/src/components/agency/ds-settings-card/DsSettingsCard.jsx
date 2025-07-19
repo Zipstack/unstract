@@ -144,16 +144,30 @@ function DsSettingsCard({ type, endpointDetails, message }) {
       setConnType(endpointDetails?.connection_type);
     }
 
-    if (!endpointDetails?.connector_instance?.length) {
+    if (!endpointDetails?.connector_instance) {
       setConnDetails({});
       return;
     }
 
-    if (connDetails?.id === endpointDetails?.connector_instance) {
+    // Use connector_instance data directly from endpointDetails if it's an object
+    if (typeof endpointDetails?.connector_instance === "object") {
+      const connectorData = endpointDetails.connector_instance;
+      connectorData.connector_metadata = connectorData.connector_metadata || {};
+      connectorData.connector_metadata.connectorName =
+        connectorData?.connector_name || "";
+      setConnDetails(connectorData);
+      setSelectedId(connectorData?.connector_id);
       return;
     }
 
-    getSourceDetails();
+    // Fallback for legacy connector_instance ID format (string)
+    if (typeof endpointDetails?.connector_instance === "string") {
+      // Only call getSourceDetails if we haven't already loaded this connector
+      if (connDetails?.id !== endpointDetails?.connector_instance) {
+        getSourceDetails();
+      }
+      return;
+    }
   }, [endpointDetails]);
 
   useEffect(() => {
@@ -279,22 +293,20 @@ function DsSettingsCard({ type, endpointDetails, message }) {
     if (type === "input") {
       clearDestination({
         connection_type: "",
-        connector_instance: null,
+        connector_instance_id: null,
       });
     }
   };
 
   const handleUpdate = (updatedData, showSuccess) => {
-    const body = { ...endpointDetails, ...updatedData };
-
     const requestOptions = {
-      method: "PUT",
+      method: "PATCH",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/endpoint/${endpointDetails?.id}/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
       },
-      data: body,
+      data: updatedData,
     };
     axiosPrivate(requestOptions)
       .then((res) => {
@@ -362,7 +374,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                   onChange={(value) => {
                     handleUpdate({
                       connection_type: value,
-                      connector_instance: null,
+                      connector_instance_id: null,
                     });
                     updateDestination();
                   }}

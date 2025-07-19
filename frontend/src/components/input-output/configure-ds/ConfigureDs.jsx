@@ -9,6 +9,7 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { RjsfFormLayout } from "../../../layouts/rjsf-form-layout/RjsfFormLayout.jsx";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
+import { useWorkflowStore } from "../../../store/workflow-store";
 import { OAuthDs } from "../../oauth-ds/oauth-ds/OAuthDs.jsx";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import "./ConfigureDs.css";
@@ -44,6 +45,7 @@ function ConfigureDs({
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const { updateSessionDetails } = useSessionStore();
+  const { details: workflowDetails } = useWorkflowStore();
   const {
     posthogTcEventText,
     posthogSubmitEventText,
@@ -184,14 +186,16 @@ function ConfigureDs({
       const connectorMetadata = { ...formData };
       const connectorName = connectorMetadata?.connectorName;
       delete connectorMetadata.connectorName;
+
       body = {
-        workflow: id,
-        created_by: sessionDetails?.id,
         connector_id: selectedSourceId,
         connector_metadata: connectorMetadata,
-        connector_type: type.toUpperCase(),
         connector_name: connectorName,
+        created_by: sessionDetails?.user_id || sessionDetails?.id,
+        workflow: id || workflowDetails?.id,
+        connector_type: type.toUpperCase(),
       };
+
       url += "connector/";
 
       try {
@@ -254,7 +258,10 @@ function ConfigureDs({
         const data = res?.data;
         if (sourceTypes.connectors.includes(type)) {
           handleUpdate(
-            { connector_instance: data?.id, configuration: formDataConfig },
+            {
+              connector_instance_id: data?.id,
+              configuration: formDataConfig,
+            },
             true
           );
           setIsTcSuccessful(false);
