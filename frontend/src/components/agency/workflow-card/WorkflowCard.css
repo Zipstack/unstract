@@ -1,0 +1,19 @@
+/* WorkflowCard specific styles that extend the base styles */
+.workflow-card .ds-set-card-row {
+  margin-bottom: 0;
+}
+
+.workflow-card .ds-set-card-col1,
+.workflow-card .ds-set-card-col2,
+.workflow-card .ds-set-card-col3 {
+  padding: 4px 0;
+}
+
+.workflow-card .ds-set-card-select {
+  width: 100%;
+}
+
+/* Ensure the DsSettingsCard content fits well in the workflow card */
+.workflow-card-content > div {
+  width: 100%;
+}

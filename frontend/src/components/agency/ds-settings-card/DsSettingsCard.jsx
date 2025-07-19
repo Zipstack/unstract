@@ -1,11 +1,4 @@
 import {
-  ExclamationCircleOutlined,
-  ExportOutlined,
-  ImportOutlined,
-  SettingOutlined,
-  CheckCircleTwoTone,
-} from "@ant-design/icons";
-import {
   Button,
   Col,
   Image,
@@ -18,7 +11,7 @@ import {
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
-import { getMenuItem, titleCase } from "../../../helpers/GetStaticData";
+import { getMenuItem } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -27,11 +20,6 @@ import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { ConfigureConnectorModal } from "../configure-connector-modal/ConfigureConnectorModal";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import "./DsSettingsCard.css";
-
-const tooltip = {
-  input: "Data Source Settings",
-  output: "Data Destination Settings",
-};
 
 const disabledIdsByType = {
   FILE_SYSTEM: [
@@ -82,11 +70,6 @@ function DsSettingsCard({ type, endpointDetails, message }) {
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
   const { flags } = sessionDetails;
-
-  const icons = {
-    input: <ImportOutlined className="ds-set-icon-size" />,
-    output: <ExportOutlined className="ds-set-icon-size" />,
-  };
 
   const setUpdatedInputoptions = (inputOption) => {
     setInputOptions((prevInputOptions) => {
@@ -340,9 +323,6 @@ function DsSettingsCard({ type, endpointDetails, message }) {
   return (
     <>
       <Row className="ds-set-card-row">
-        <Col span={4} className="ds-set-card-col1">
-          <Tooltip title={tooltip[type]}>{icons[type]}</Tooltip>
-        </Col>
         <Col span={12} className="ds-set-card-col2">
           <SpaceWrapper>
             <Space>
@@ -354,7 +334,6 @@ function DsSettingsCard({ type, endpointDetails, message }) {
               >
                 <Select
                   className="ds-set-card-select"
-                  size="small"
                   options={options}
                   placeholder="Select Connector Type"
                   value={endpointDetails?.connection_type || undefined}
@@ -377,8 +356,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                 }`}
               >
                 <Button
-                  type="text"
-                  size="small"
+                  type="primary"
                   onClick={() => setOpenModal(true)}
                   disabled={
                     !endpointDetails?.connection_type ||
@@ -386,51 +364,10 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                     connType === "APPDEPLOYMENT"
                   }
                 >
-                  <SettingOutlined />
+                  Configure
                 </Button>
               </Tooltip>
             </Space>
-            <div className="display-flex-align-center">
-              {connDetails?.connector_name ? (
-                <Space>
-                  <Image
-                    src={connDetails?.icon}
-                    height={20}
-                    width={20}
-                    preview={false}
-                  />
-                  <Typography.Text className="font-size-12">
-                    {connDetails?.connector_name}
-                  </Typography.Text>
-                </Space>
-              ) : (
-                <>
-                  {connType === "API" || connType === "APPDEPLOYMENT" ? (
-                    <Typography.Text
-                      className="font-size-12 display-flex-align-center"
-                      ellipsis={{ rows: 1, expandable: false }}
-                      type="secondary"
-                    >
-                      <CheckCircleTwoTone twoToneColor="#52c41a" />
-                      <span style={{ marginLeft: "5px" }}>
-                        {titleCase(type)} set to {connType} successfully
-                      </span>
-                    </Typography.Text>
-                  ) : (
-                    <Typography.Text
-                      className="font-size-12 display-flex-align-center"
-                      ellipsis={{ rows: 1, expandable: false }}
-                      type="secondary"
-                    >
-                      <ExclamationCircleOutlined />
-                      <span style={{ marginLeft: "5px" }}>
-                        Connector not configured
-                      </span>
-                    </Typography.Text>
-                  )}
-                </>
-              )}
-            </div>
           </SpaceWrapper>
         </Col>
         <Col span={8} className="ds-set-card-col3">
