@@ -1,11 +1,22 @@
-import { Button, Row, Col, Typography, Progress, Dropdown, Select } from "antd";
-import { LeftOutlined, MoreOutlined, BugOutlined } from "@ant-design/icons";
+import {
+  Button,
+  Row,
+  Col,
+  Typography,
+  Progress,
+  Dropdown,
+  Select,
+  Alert,
+} from "antd";
+import { BugOutlined, SettingOutlined } from "@ant-design/icons";
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { Actions } from "../actions/Actions";
 import "./Agency.css";
 import { useSocketMessagesStore } from "../../../store/socket-messages-store";
 import { useWorkflowStore } from "../../../store/workflow-store";
+import { useToolSettingsStore } from "../../../store/tool-settings";
 import { SidePanel } from "../side-panel/SidePanel";
 import { PageTitle } from "../../widgets/page-title/PageTitle";
 import { WorkflowCard } from "../workflow-card/WorkflowCard";
@@ -17,9 +28,10 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { CreateApiDeploymentModal } from "../../deployments/create-api-deployment-modal/CreateApiDeploymentModal.jsx";
 import { EtlTaskDeploy } from "../../pipelines-or-deployments/etl-task-deploy/EtlTaskDeploy.jsx";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
-
+import { IslandLayout } from "../../../layouts/island-layout/IslandLayout.jsx";
 function Agency() {
   const [steps, setSteps] = useState([]);
+  const [workflowProgress, setWorkflowProgress] = useState(0);
   // eslint-disable-next-line no-unused-vars
   const [inputMd, setInputMd] = useState("");
   // eslint-disable-next-line no-unused-vars
@@ -39,6 +51,7 @@ function Agency() {
     updateWorkflow,
   } = workflowStore;
   const { sessionDetails } = useSessionStore();
+  const { orgName } = sessionDetails;
   const axiosPrivate = useAxiosPrivate();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
@@ -50,19 +63,36 @@ function Agency() {
   const [stepLoader, setStepLoader] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
-  const [promptStudioProjects, setPromptStudioProjects] = useState([]);
-  const [selectedProject, setSelectedProject] = useState(null);
+  const [exportedTools, setExportedTools] = useState([]);
+  const [selectedTool, setSelectedTool] = useState(null);
   const [selectedDeploymentType, setSelectedDeploymentType] = useState(null);
   const [openAddApiModal, setOpenAddApiModal] = useState(false);
   const [openAddETLModal, setOpenAddETLModal] = useState(false);
   const [openAddTaskModal, setOpenAddTaskModal] = useState(false);
+  const [deploymentName, setDeploymentName] = useState("");
+  const [deploymentType, setDeploymentType] = useState("");
+  const [apiOpsPresent, setApiOpsPresent] = useState(false);
+  const [canAddTaskPipeline, setCanAddTaskPipeline] = useState(false);
+  const [canAddETLPipeline, setCanAddETLPipeline] = useState(false);
+
   const { setPostHogCustomEvent } = usePostHogEvents();
 
   useEffect(() => {
     getWfEndpointDetails();
     canUpdateWorkflow();
-    getPromptStudioProjects();
+    getExportedTools();
+    initializeSelectedTool();
   }, []);
+
+  useEffect(() => {
+    if (apiOpsPresent) {
+      setDeploymentType("API");
+    } else if (canAddTaskPipeline) {
+      setDeploymentType("Task Pipeline");
+    } else if (canAddETLPipeline) {
+      setDeploymentType("ETL Pipeline");
+    }
+  }, [deploymentName]);
 
   useEffect(() => {
     if (prevLoadingType !== "EXECUTE") {
@@ -79,6 +109,30 @@ function Agency() {
     setToolInstances();
     setIsUpdateSteps(false);
   }, [isUpdateSteps, prompt]);
+
+  useEffect(() => {
+    // Enable Deploy as API only when
+    // Source & Destination connection_type are selected as API
+    setApiOpsPresent(
+      source?.connection_type === "API" &&
+        destination?.connection_type === "API"
+    );
+    // Enable Deploy as Task Pipeline only when
+    // destination connection_type is FILESYSTEM and Source & Destination are Configured
+    setCanAddTaskPipeline(
+      destination?.connection_type === "FILESYSTEM" &&
+        source?.connector_instance &&
+        destination?.connector_instance
+    );
+    // Enable Deploy as ETL Pipeline only when
+    // destination connection_type is DATABASE and Source & Destination are Configured
+    setCanAddETLPipeline(
+      source?.connector_instance &&
+        ((destination?.connection_type === "DATABASE" &&
+          destination.connector_instance) ||
+          destination.connection_type === "MANUALREVIEW")
+    );
+  }, [source, destination]);
 
   const getWfEndpointDetails = () => {
     const requestOptions = {
@@ -125,21 +179,48 @@ function Agency() {
       });
   };
 
-  const getPromptStudioProjects = () => {
+  const getExportedTools = () => {
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/tool/`,
     };
     axiosPrivate(requestOptions)
       .then((res) => {
         const data = res?.data || [];
-        setPromptStudioProjects(data);
+        setExportedTools(data);
       })
       .catch((err) => {
-        setAlertDetails(
-          handleException(err, "Failed to get prompt studio projects")
-        );
+        setAlertDetails(handleException(err, "Failed to get exported tools"));
       });
+  };
+
+  // Initialize selected tool from existing tool instances on page load
+  const initializeSelectedTool = () => {
+    if (details?.tool_instances?.length > 0) {
+      const toolInstance = details.tool_instances[0]; // Get first tool instance
+      setSelectedTool(toolInstance.tool_id);
+    }
+  };
+
+  // Check if workflow has any active deployments (for progress calculation)
+  const checkDeploymentStatus = async () => {
+    try {
+      const requestOptions = {
+        method: "GET",
+        url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/${details?.id}/deployment/`,
+      };
+      const res = await axiosPrivate(requestOptions);
+      const deployments = res?.data || [];
+
+      // Check if any deployment is active
+      const hasActiveDeployment = deployments.some(
+        (deployment) => deployment.is_active === true
+      );
+
+      return hasActiveDeployment;
+    } catch (err) {
+      return false;
+    }
   };
 
   const createDeployment = (type) => {
@@ -186,6 +267,11 @@ function Agency() {
     if (value) {
       handleDeployBtnClick(value);
     }
+  };
+
+  // Get deployment status text for a specific type
+  const getDeploymentStatusText = (type) => {
+    return `Deploy as ${type}`;
   };
 
   const setToolInstances = () => {
@@ -277,6 +363,75 @@ function Agency() {
     setSteps(newSteps);
   }, [message]);
 
+  // Get connector status information
+  const getConnectorStatus = (endpoint) => {
+    if (!endpoint?.connector_instance) {
+      return { configured: false, type: null, name: null };
+    }
+
+    // For filesystem connectors, they are automatically configured
+    if (endpoint.connection_type === "FILESYSTEM") {
+      return {
+        configured: true,
+        type: "File System",
+        name: "Local File System",
+      };
+    }
+
+    return {
+      configured: true,
+      type: endpoint.connection_type,
+      name: endpoint.connector_name || "Configured",
+    };
+  };
+
+  // Calculate workflow progress based on completed steps
+  const calculateProgress = async () => {
+    let completedSteps = 0;
+
+    // Check if source connector is configured
+    const sourceStatus = getConnectorStatus(source);
+    if (sourceStatus.configured) {
+      completedSteps++;
+    }
+
+    // Check if destination connector is configured
+    const destStatus = getConnectorStatus(destination);
+    if (destStatus.configured) {
+      completedSteps++;
+    }
+
+    // Check if tool is selected AND tool instance exists
+    if (selectedTool && details?.tool_instances?.length > 0) {
+      completedSteps++;
+    }
+
+    // Check if workflow has active deployments (step 4)
+    const hasActiveDeployment = await checkDeploymentStatus();
+    if (hasActiveDeployment) {
+      completedSteps++;
+    }
+
+    const progress = (completedSteps / 4) * 100;
+    return { progress, completedSteps };
+  };
+
+  // Initialize selected tool when workflow details are loaded
+  useEffect(() => {
+    if (details?.tool_instances?.length > 0 && !selectedTool) {
+      initializeSelectedTool();
+    }
+  }, [details?.tool_instances, details?.id]);
+
+  // Update progress whenever relevant state changes
+  useEffect(() => {
+    const updateProgress = async () => {
+      const { progress } = await calculateProgress();
+      setWorkflowProgress(progress);
+    };
+    updateProgress();
+  }, [source, destination, selectedTool, details?.tool_instances]);
+
   const actionsMenuItems = [
     {
       key: "clear-cache",
@@ -293,201 +448,316 @@ function Agency() {
   ];
 
   return (
-    <div className="workflow-builder-layout">
-      <PageTitle title={projectName} />
+    <IslandLayout>
+      <div className="workflow-builder-layout">
+        <PageTitle title={projectName} />
 
-      {/* Header */}
-      <div className="workflow-builder-header">
-        <div className="workflow-title">
-          <Button type="text" icon={<LeftOutlined />} size="small" />
-          <Typography.Text>
-            Workflow Builder - Create AI-powered data processing workflows
-          </Typography.Text>
-        </div>
-        <Dropdown
-          menu={{ items: actionsMenuItems }}
-          placement="bottomRight"
-          trigger={["click"]}
-        >
-          <Button type="primary" icon={<MoreOutlined />}>
-            Actions
-          </Button>
-        </Dropdown>
-      </div>
-
-      {/* Progress Section */}
-      <div className="workflow-progress-section">
-        <div className="progress-header">
-          <Typography.Text className="progress-label">
-            Workflow Setup Progress
-          </Typography.Text>
-          <Typography.Text className="progress-count">
-            0 of 4 steps completed
-          </Typography.Text>
-        </div>
-        <Progress percent={0} strokeColor="#1890ff" />
-      </div>
-
-      {/* 2x2 Grid */}
-      <div className="workflow-grid-container">
-        <Row gutter={[24, 24]}>
-          {/* Configure Source Connector */}
-          <Col span={12}>
-            <WorkflowCard
-              number="1"
-              title="Configure Source Connector"
-              description="Select and configure your data input connector"
-              type={sourceTypes.connectors[0]}
-              endpointDetails={source}
-              message={sourceMsg}
-            />
-          </Col>
-
-          {/* Configure Output Destination */}
-          <Col span={12}>
-            <WorkflowCard
-              number="2"
-              title="Configure Output Destination"
-              description="Select and configure your data output connector"
-              type={sourceTypes.connectors[1]}
-              endpointDetails={destination}
-              message={destinationMsg}
-            />
-          </Col>
-
-          {/* Select Prompt Studio Project */}
-          <Col span={12}>
-            <WorkflowCard
-              number="3"
-              title="Select Prompt Studio Project"
-              description="Choose the AI tool for processing your data"
-              customContent={
-                <div className="workflow-card-content">
-                  <Select
-                    className="workflow-select"
-                    placeholder="Select Project"
-                    value={selectedProject}
-                    onChange={setSelectedProject}
-                    options={promptStudioProjects.map((project) => ({
-                      value: project.id,
-                      label: project.tool_name || project.name,
-                    }))}
-                  />
-                  <Button
-                    type="primary"
-                    onClick={() => setShowSidebar(!showSidebar)}
-                  >
-                    Configure Settings
-                  </Button>
-                </div>
-              }
-            />
-          </Col>
-
-          {/* Deploy Workflow */}
-          <Col span={12}>
-            <WorkflowCard
-              number="4"
-              title="Deploy Workflow"
-              description="Deploy your workflow for processing"
-              customContent={
-                <div className="workflow-card-content">
-                  <Select
-                    className="workflow-select"
-                    placeholder="Select Deployment Type"
-                    value={selectedDeploymentType}
-                    onChange={handleDeploymentTypeChange}
-                    options={[
-                      { value: "API", label: "Deploy as API" },
-                      { value: "ETL", label: "Deploy as ETL Pipeline" },
-                      { value: "TASK", label: "Deploy as Task Pipeline" },
-                    ]}
-                  />
-                  <Button
-                    type="primary"
-                    disabled={!selectedDeploymentType}
-                    onClick={() =>
-                      selectedDeploymentType &&
-                      handleDeployBtnClick(selectedDeploymentType)
-                    }
-                  >
-                    Deploy Workflow
-                  </Button>
-                </div>
-              }
-            />
-          </Col>
-        </Row>
-      </div>
-
-      {/* Debug Panel */}
-      <div className="debug-panel">
-        <div className="debug-panel-header">
-          <div className="debug-panel-title">
-            <BugOutlined />
-            <Typography.Text>Debug Panel</Typography.Text>
+        {/* Header */}
+        <div className="workflow-builder-header">
+          <div className="workflow-progress-section">
+            <div className="progress-header">
+              <Typography.Text className="progress-label">
+                Workflow Setup Progress
+              </Typography.Text>
+              <Typography.Text className="progress-count">
+                {Math.floor(workflowProgress / 25)} of 4 steps completed
+              </Typography.Text>
+            </div>
+            <Progress percent={workflowProgress} strokeColor="#1890ff" />
           </div>
-          <Button
-            type="text"
-            onClick={() => setShowDebug(!showDebug)}
-            className="show-debug-btn"
+          <Dropdown
+            menu={{ items: actionsMenuItems }}
+            placement="bottomRight"
+            trigger={["click"]}
           >
-            Show Debug {showDebug ? "▲" : "▼"}
-          </Button>
+            <Button type="primary" icon={<SettingOutlined />}>
+              Actions
+            </Button>
+          </Dropdown>
         </div>
-        {showDebug && (
-          <div className="debug-panel-content">
-            <Typography.Text type="secondary">
-              Select a workflow stage to see input and output data here.
-            </Typography.Text>
+
+        {/* Progress Section */}
+
+        {/* 2x2 Grid */}
+        <div className="workflow-grid-container">
+          <Row gutter={[24, 24]}>
+            {/* Configure Source Connector */}
+            <Col span={12}>
+              <WorkflowCard
+                number={(() => {
+                  const status = getConnectorStatus(source);
+                  return status.configured ? `✓ ${status.name}` : "1";
+                })()}
+                title="Configure Source Connector"
+                description="Select and configure your data input connector"
+                type={sourceTypes.connectors[0]}
+                endpointDetails={source}
+                message={sourceMsg}
+              />
+            </Col>
+
+            {/* Configure Output Destination */}
+            <Col span={12}>
+              <WorkflowCard
+                number={(() => {
+                  const status = getConnectorStatus(destination);
+                  return status.configured ? `✓ ${status.name}` : "2";
+                })()}
+                title="Configure Output Destination"
+                description="Select and configure your data output connector"
+                type={sourceTypes.connectors[1]}
+                endpointDetails={destination}
+                message={destinationMsg}
+              />
+            </Col>
+            <Col span={12}>
+              <WorkflowCard
+                number={selectedTool ? `✓ ${selectedTool}` : "3"}
+                title="Select Exported Tool"
+                description="Choose an exported tool for processing your data"
+                customContent={
+                  <div className="workflow-card-content">
+                    <Select
+                      className="workflow-select"
+                      placeholder="Select Tool"
+                      value={selectedTool}
+                      onChange={async (functionName) => {
+                        setSelectedTool(functionName);
+
+                        const tool = exportedTools.find(
+                          (t) => t.function_name === functionName
+                        );
+
+                        if (tool && details?.id) {
+                          try {
+                            // Check if there are existing tool instances
+                            if (details?.tool_instances?.length > 0) {
+                              // Remove existing tool instances
+                              for (const existingTool of details.tool_instances) {
+                                const deleteOptions = {
+                                  method: "DELETE",
+                                  url: `/api/v1/unstract/${sessionDetails?.orgId}/tool_instance/${existingTool.id}/`,
+                                  headers: {
+                                    "X-CSRFToken": sessionDetails?.csrfToken,
+                                  },
+                                };
+                                await axiosPrivate(deleteOptions);
+                              }
+
+                              // Update workflow store to remove old tool instances
+                              const { deleteToolInstance } =
+                                useWorkflowStore.getState();
+                              details.tool_instances.forEach((instance) => {
+                                deleteToolInstance(instance.id);
+                              });
+                            }
+
+                            // Create new tool instance
+                            const body = {
+                              tool_id: functionName,
+                              workflow_id: details.id,
+                            };
+
+                            const requestOptions = {
+                              method: "POST",
+                              url: `/api/v1/unstract/${sessionDetails?.orgId}/tool_instance/`,
+                              headers: {
+                                "X-CSRFToken": sessionDetails?.csrfToken,
+                                "Content-Type": "application/json",
+                              },
+                              data: body,
+                            };
+
+                            const res = await axiosPrivate(requestOptions);
+                            const newToolInstance = res.data;
+
+                            // Update tool settings for sidebar
+                            const { setToolSettings } =
+                              useToolSettingsStore.getState();
+                            setToolSettings({
+                              id: newToolInstance.id,
+                              tool_id: newToolInstance.tool_id,
+                            });
+
+                            // Update workflow store with new tool instance
+                            const { addNewTool } = useWorkflowStore.getState();
+                            addNewTool(newToolInstance);
+
+                            setAlertDetails({
+                              type: "success",
+                              content:
+                                details?.tool_instances?.length > 0
+                                  ? "Tool replaced successfully"
+                                  : "Tool added successfully",
+                            });
+                          } catch (err) {
+                            setAlertDetails(
+                              handleException(err, "Failed to update tool")
+                            );
+                          }
+                        }
+                      }}
+                      options={exportedTools.map((tool) => {
+                        return {
+                          value: tool.function_name,
+                          label: tool.name,
+                        };
+                      })}
+                    />
+                    <Button
+                      type="primary"
+                      onClick={() => setShowSidebar(!showSidebar)}
+                      disabled={!selectedTool}
+                    >
+                      Configure Settings
+                    </Button>
+                  </div>
+                }
+              />
+            </Col>
+
+            {/* Deploy Workflow */}
+            <Col span={12}>
+              <WorkflowCard
+                number={details?.tool_instances?.length > 0 ? "✓ Ready" : "4"}
+                title="Deploy Workflow"
+                description="Deploy your workflow for processing"
+                customContent={
+                  <div className="workflow-card-content">
+                    <Select
+                      className="workflow-select"
+                      placeholder="Select Deployment Type"
+                      value={selectedDeploymentType}
+                      onChange={handleDeploymentTypeChange}
+                      options={[
+                        {
+                          value: "API",
+                          label: getDeploymentStatusText("API"),
+                          disabled: false,
+                        },
+                        {
+                          value: "ETL",
+                          label: getDeploymentStatusText("ETL"),
+                          disabled: false,
+                        },
+                        {
+                          value: "TASK",
+                          label: getDeploymentStatusText("TASK"),
+                          disabled: false,
+                        },
+                      ]}
+                    />
+                    <Button
+                      type="primary"
+                      disabled={!selectedDeploymentType}
+                      onClick={() =>
+                        selectedDeploymentType &&
+                        handleDeployBtnClick(selectedDeploymentType)
+                      }
+                    >
+                      Deploy Workflow
+                    </Button>
+                  </div>
+                }
+              />
+            </Col>
+          </Row>
+        </div>
+        {deploymentName && (
+          <Alert
+            message={
+              <>
+                <span>
+                  This Workflow has been deployed as an {deploymentType}:{" "}
+                </span>
+                <Link
+                  to={`/${orgName}/${deploymentType
+                    .split(" ")[0]
+                    .toLowerCase()}`}
+                >
+                  {deploymentName}
+                </Link>
+              </>
+            }
+            type="success"
+          />
+        )}
+
+        {/* Debug Panel */}
+        <div className="debug-panel">
+          <div className="debug-panel-header">
+            <div className="debug-panel-title">
+              <BugOutlined />
+              <Typography.Text>Debug Panel</Typography.Text>
+            </div>
+            <Button
+              type="text"
+              onClick={() => setShowDebug(!showDebug)}
+              className="show-debug-btn"
+            >
+              Show Debug {showDebug ? "▲" : "▼"}
+            </Button>
+          </div>
+          {showDebug && (
+            <div className="debug-panel-content">
+              <Typography.Text type="secondary">
+                Select a workflow stage to see input and output data here.
+              </Typography.Text>
+            </div>
+          )}
+        </div>
+
+        {/* Sidebar - conditionally shown */}
+        {showSidebar && (
+          <div className="workflow-sidebar">
+            <SidePanel />
+            <Button
+              className="close-sidebar-btn"
+              onClick={() => setShowSidebar(false)}
+              size="small"
+            >
+              ×
+            </Button>
           </div>
         )}
-      </div>
 
-      {/* Sidebar - conditionally shown */}
-      {showSidebar && (
-        <div className="workflow-sidebar">
-          <SidePanel />
-          <Button
-            className="close-sidebar-btn"
-            onClick={() => setShowSidebar(false)}
-            size="small"
-          >
-            ×
-          </Button>
+        {/* Actions - Hidden by default, can be shown via Actions dropdown */}
+        <div style={{ display: "none" }}>
+          <Actions
+            statusBarMsg={statusBarMsg}
+            initializeWfComp={initializeWfComp}
+            stepLoader={stepLoader}
+          />
         </div>
-      )}
 
-      {/* Actions - Hidden by default, can be shown via Actions dropdown */}
-      <div style={{ display: "none" }}>
-        <Actions
-          statusBarMsg={statusBarMsg}
-          initializeWfComp={initializeWfComp}
-          stepLoader={stepLoader}
+        {/* Deployment Modals */}
+        {openAddApiModal && (
+          <CreateApiDeploymentModal
+            open={openAddApiModal}
+            setOpen={setOpenAddApiModal}
+            workflowId={details?.id}
+            isEdit={false}
+            setDeploymentName={setDeploymentName}
+          />
+        )}
+
+        <EtlTaskDeploy
+          open={openAddETLModal}
+          setOpen={setOpenAddETLModal}
+          type="ETL"
+          workflowId={details?.id}
+          setDeploymentName={setDeploymentName}
+        />
+
+        <EtlTaskDeploy
+          open={openAddTaskModal}
+          setOpen={setOpenAddTaskModal}
+          type="TASK"
+          workflowId={details?.id}
+          setDeploymentName={setDeploymentName}
         />
       </div>
-
-      {/* Deployment Modals */}
-      <CreateApiDeploymentModal
-        open={openAddApiModal}
-        setOpen={setOpenAddApiModal}
-        workflowId={details?.id}
-      />
-
-      <EtlTaskDeploy
-        open={openAddETLModal}
-        setOpen={setOpenAddETLModal}
-        type="ETL"
-        workflowId={details?.id}
-      />
-
-      <EtlTaskDeploy
-        open={openAddTaskModal}
-        setOpen={setOpenAddTaskModal}
-        type="TASK"
-        workflowId={details?.id}
-      />
-    </div>
+    </IslandLayout>
   );
 }
 
