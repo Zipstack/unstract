@@ -191,12 +191,13 @@ class AnswerPromptService:
         structured_output: dict[str, Any],
         llm: LLM,
         execution_source: str,
+        prompt: str,
     ) -> dict[str, Any]:
         table_settings = output[PSKeys.TABLE_SETTINGS]
         table_extractor: dict[str, Any] = PluginManager().get_plugin("table-extractor")
         if not table_extractor:
             raise APIError(
-                "Unable to extract line-item details. "
+                "Unable to extract table details. "
                 "Please contact admin to resolve this issue."
             )
         fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
@@ -211,10 +212,11 @@ class AnswerPromptService:
                 env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
             )
         try:
-            answer = table_extractor["entrypoint_cls"].extract_large_table(
+            answer = table_extractor["entrypoint_cls"].run_table_extraction(
                 llm=llm,
                 table_settings=table_settings,
                 fs_instance=fs_instance,
+                prompt=prompt,
             )
             structured_output[output[PSKeys.NAME]] = answer
             # We do not support summary and eval for table.
@@ -244,14 +246,19 @@ class AnswerPromptService:
             structured_output[prompt_key] = None
         else:
             # Attempt parsing as-is (could be a valid object, array, or partial JSON)
-            a = repair_json(json_str=answer, return_objects=True)
+            a = repair_json(json_str=answer, return_objects=True, ensure_ascii=False)
 
             # Attempt parsing with array wrap (useful for multiple comma-separated objects like {}, {}, {})
-            b = repair_json(json_str="[" + answer, return_objects=True)
+            b = repair_json(
+                json_str="[" + answer, return_objects=True, ensure_ascii=False
+            )
 
             # Heuristic: if wrapping only added '[' and ']', len(b) - len(a) == 2 → original was valid, use 'a'
             # Otherwise, fallback to 'b' which likely fixed multiple items or invalid top-level structure
-            parsed_data = a if len(json.dumps(b)) - len(json.dumps(a)) == 2 else b
+            dump_a = json.dumps(a, ensure_ascii=False)
+            dump_b = json.dumps(b, ensure_ascii=False)
+            ARRAY_WRAP_DELTA = 2  # '[' and ']'
+            parsed_data = a if len(dump_b) - len(dump_a) == ARRAY_WRAP_DELTA else b
 
             if isinstance(parsed_data, str):
                 err_msg = "Error parsing response (to json)\n" f"Candidate JSON: {answer}"

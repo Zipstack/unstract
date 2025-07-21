@@ -82,8 +82,7 @@ class WorkflowExecutionService:
         logger.info(f"Execution {execution_id}: compiling workflow started")
         self.log_stage = LogStage.COMPILE
         log_message = (
-            f"Compiling workflow '{self.workflow_id}' "
-            f"of {len(self.tool_instances)} steps"
+            f"Compiling workflow '{self.workflow_id}' of {len(self.tool_instances)} steps"
         )
         self.publish_log(log_message)
 
@@ -98,7 +97,7 @@ class WorkflowExecutionService:
 
             logger.info(f"Execution {execution_id}: compilation completed")
             log_message = (
-                f"Workflow '{self.workflow_id}' is valid " "and is compiled successfully"
+                f"Workflow '{self.workflow_id}' is valid and is compiled successfully"
             )
             self.publish_log(log_message)
 
@@ -119,8 +118,7 @@ class WorkflowExecutionService:
         logger.info(f"Execution {self.execution_id}: Build started")
         self.log_stage = LogStage.BUILD
         log_message = (
-            f"Building workflow '{self.workflow_id}' "
-            f"of {len(self.tool_instances)} steps"
+            f"Building workflow '{self.workflow_id}' of {len(self.tool_instances)} steps"
         )
         self.publish_log(log_message)
 
@@ -130,8 +128,7 @@ class WorkflowExecutionService:
             )
 
             log_message = (
-                f"Workflow built successfully. Built tools = "
-                f"{len(self.tool_instances)}"
+                f"Workflow built successfully. Built tools = {len(self.tool_instances)}"
             )
             self.publish_log(log_message)
         except Exception as exception:
@@ -193,8 +190,7 @@ class WorkflowExecutionService:
         tool_instance_id = sandbox.get_tool_instance_id()
         log_message = f"Executing step {actual_step} with tool {tool_uid}"
         logger.info(
-            f"Execution {self.execution_id}, Run {self.file_execution_id}"
-            f": {log_message}"
+            f"Execution {self.execution_id}, Run {self.file_execution_id}: {log_message}"
         )
         # TODO: Mention run_id in the FE logs / components
         self.publish_log(
@@ -212,8 +208,8 @@ class WorkflowExecutionService:
             result = self.tool_utils.run_tool(
                 file_execution_id=self.file_execution_id, tool_sandbox=sandbox
             )
-            if result and result.get("error"):
-                raise ToolOutputNotFoundException(result.get("error"))
+            if result and result.error:
+                raise ToolOutputNotFoundException(result.error)
             if not self.validate_execution_result(step + 1):
                 raise ToolOutputNotFoundException(
                     f"Error running tool '{tool_uid}' for run "
@@ -264,7 +260,7 @@ class WorkflowExecutionService:
                 message="1",
                 component=LogComponent.NEXT_STEP,
             )
-            log_message = f"Execution '{self.execution_id}' " "is waiting for user input"
+            log_message = f"Execution '{self.execution_id}' is waiting for user input"
             self.publish_log(log_message)
 
             wait_for_user = 0
@@ -277,9 +273,7 @@ class WorkflowExecutionService:
                 if execution_value:
                     execution_action = ExecutionAction(execution_value)
                 if execution_action == ExecutionAction.NEXT:
-                    log_message = (
-                        f"Execution '{self.execution_id}' Executing " "NEXT step"
-                    )
+                    log_message = f"Execution '{self.execution_id}' Executing NEXT step"
                     self.publish_log(log_message)
                     break
                 if execution_action == ExecutionAction.CONTINUE:
@@ -291,7 +285,7 @@ class WorkflowExecutionService:
                     self.override_single_step = True
                     break
                 if execution_action == ExecutionAction.STOP:
-                    log_message = f"Execution '{self.execution_id}' " "STOPPING execution"
+                    log_message = f"Execution '{self.execution_id}' STOPPING execution"
                     self.publish_log(log_message)
                     raise StopExecution("User clicked on stop button. Stopping execution")
                 time.sleep(1)

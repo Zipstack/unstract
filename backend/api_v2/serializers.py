@@ -1,9 +1,11 @@
+import re
 import uuid
 from collections import OrderedDict
 from typing import Any
 
 from django.core.validators import RegexValidator
 from pipeline_v2.models import Pipeline
+from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from rest_framework.serializers import (
     BooleanField,
     CharField,
@@ -55,6 +57,27 @@ class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
         )
         api_name_validator(value)
         return value
+
+    def validate(self, data):
+        """Validate that only one API deployment per workflow is allowed for new deployments."""
+        workflow = data.get("workflow")
+
+        # Only apply this validation for new deployments (not updates)
+        if workflow and not self.instance:
+            # Check if this workflow already has an active API deployment
+            existing_active_count = APIDeployment.objects.filter(
+                workflow=workflow, is_active=True
+            ).count()
+
+            # If there's already an active API deployment, prevent creating a new one
+            if existing_active_count > 0:
+                raise ValidationError(
+                    {
+                        "workflow": "This workflow already has an active API deployment. Only one API deployment per workflow is allowed."
+                    }
+                )
+
+        return data
 
 
 class APIKeySerializer(AuditSerializer):
@@ -115,6 +138,10 @@ class ExecutionRequestSerializer(TagParamsSerializer):
             helpful for demos.
         tags (str): Comma-separated List of tags to associate with the execution.
             e.g:'tag1,tag2-name,tag3_name'
+        llm_profile_id (str): UUID of the LLM profile to override the default profile.
+            If not provided, the default profile will be used.
+        hitl_queue_name (str, optional): Document class name for manual review queue.
+            If not provided, uses API name as document class.
     """
 
     MAX_FILES_ALLOWED = 32
@@ -127,6 +154,39 @@ class ExecutionRequestSerializer(TagParamsSerializer):
     use_file_history = BooleanField(default=False)
 
     presigned_urls = ListField(child=URLField(), required=False)
+    llm_profile_id = CharField(required=False, allow_null=True, allow_blank=True)
+    hitl_queue_name = CharField(required=False, allow_null=True, allow_blank=True)
+
+    def validate_hitl_queue_name(self, value: str | None) -> str | None:
+        """Validate queue name format: a-z0-9-_ with length and pattern restrictions."""
+        if not value:
+            return value
+
+        # Length validation
+        if len(value) < 3:
+            raise ValidationError("Queue name must be at least 3 characters long.")
+        if len(value) > 50:
+            raise ValidationError("Queue name cannot exceed 50 characters.")
+
+        # Check valid characters: a-z, 0-9, _, -
+        if not re.match(r"^[a-z0-9_-]+$", value):
+            raise ValidationError(
+                "Queue name can only contain lowercase letters, numbers, underscores, and hyphens."
+            )
+
+        # Check no starting/ending with _ or -
+        if value.startswith(("_", "-")) or value.endswith(("_", "-")):
+            raise ValidationError(
+                "Queue name cannot start or end with underscore or hyphen."
+            )
+
+        # Check no consecutive special characters
+        if re.search(r"[_-]{2,}", value):
+            raise ValidationError(
+                "Queue name cannot have repeating underscores or hyphens."
+            )
+
+        return value
 
     files = ListField(
         child=FileField(),
@@ -149,6 +209,36 @@ class ExecutionRequestSerializer(TagParamsSerializer):
             )
 
         return data
+
+    def validate_llm_profile_id(self, value):
+        """Validate that the llm_profile_id belongs to the API key owner."""
+        if not value:
+            return value
+
+        # Get context from serializer
+        api = self.context.get("api")
+        api_key = self.context.get("api_key")
+
+        if not api or not api_key:
+            raise ValidationError("Unable to validate LLM profile ownership")
+
+        # Check if profile exists
+        try:
+            profile = ProfileManager.objects.get(profile_id=value)
+        except ProfileManager.DoesNotExist:
+            raise ValidationError("Profile not found")
+
+        # Get the specific API key being used
+        try:
+            active_api_key = api.api_keys.get(api_key=api_key, is_active=True)
+        except api.api_keys.model.DoesNotExist:
+            raise ValidationError("API key not found or not active for this deployment")
+
+        # Check if the profile owner matches the API key owner
+        if profile.created_by != active_api_key.created_by:
+            raise ValidationError("You can only use profiles that you own")
+
+        return value
 
 
 class ExecutionQuerySerializer(Serializer):

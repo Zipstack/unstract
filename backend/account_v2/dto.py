@@ -60,6 +60,7 @@ class UserSessionInfo:
     organization_id: str
     user: UserInfo
     role: str
+    provider: str
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> "UserSessionInfo":
@@ -69,6 +70,7 @@ class UserSessionInfo:
             email=data["email"],
             organization_id=data["organization_id"],
             role=data["role"],
+            provider=data["provider"],
         )
 
     def to_dict(self) -> Any:

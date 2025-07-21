@@ -122,3 +122,24 @@ class ContainerClientInterface(ABC):
     def cleanup_volume(self) -> None:
         """Cleans up the shared volume"""
         pass
+
+    @abstractmethod
+    def get_container_status(self, container_name: str) -> str:
+        """Get the status of the container."""
+        pass
+
+    @abstractmethod
+    def remove_container_by_name(
+        self, container_name: str, with_sidecar: bool = False, force: bool = True
+    ) -> bool:
+        """Remove a container by its name.
+
+        Args:
+            container_name (str): Name of the container to remove.
+            with_sidecar (bool, optional): Remove sidecar container if running. Defaults to False.
+            force (bool, optional): Force removal if running. Defaults to True.
+
+        Returns:
+            bool: True if container was removed or not found, False if error.
+        """
+        pass

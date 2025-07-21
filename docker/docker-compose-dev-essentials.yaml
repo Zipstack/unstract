@@ -134,6 +134,19 @@ services:
     env_file:
       - ./essentials.env
 
+  rabbitmq:
+    image: rabbitmq:4.1.0-management
+    container_name: unstract-rabbitmq
+    hostname: unstract-rabbit
+    restart: unless-stopped
+    env_file:
+      - ./essentials.env
+    ports:
+      - "5672:5672"  # AMQP port
+      - "15672:15672"  # Management UI port
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
 volumes:
   flipt_data:
   minio_data:
@@ -141,3 +154,4 @@ volumes:
   qdrant_data:
   redis_data:
   prompt_studio_data:
+  rabbitmq_data:

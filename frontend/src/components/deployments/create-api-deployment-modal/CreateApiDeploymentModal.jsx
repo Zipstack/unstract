@@ -130,7 +130,22 @@ const CreateApiDeploymentModal = ({
         });
       })
       .catch((err) => {
-        handleException(err, "", setBackendErrors);
+        if (err.response?.data) {
+          setBackendErrors(err.response.data);
+
+          // Show error notification
+          const errorData = err.response.data;
+          if (errorData.errors && errorData.errors.length > 0) {
+            setAlertDetails({
+              type: "error",
+              content: errorData.errors[0].detail || "Validation failed",
+            });
+          }
+        } else {
+          setAlertDetails(
+            handleException(err, "Failed to create API deployment")
+          );
+        }
       })
       .finally(() => {
         setIsLoading(false);
@@ -153,7 +168,13 @@ const CreateApiDeploymentModal = ({
         });
       })
       .catch((err) => {
-        handleException(err, "", setBackendErrors);
+        if (err.response?.data) {
+          setBackendErrors(err.response.data);
+        } else {
+          setAlertDetails(
+            handleException(err, "Failed to update API deployment")
+          );
+        }
       })
       .finally(() => {
         setIsLoading(false);
@@ -183,9 +204,9 @@ const CreateApiDeploymentModal = ({
         onValuesChange={handleInputChange}
       >
         <Form.Item
-          label="Display Name(for humans)"
+          label="Display Name (for humans)"
           name="display_name"
-          rules={[{ required: true, message: "Please enter display name" }]}
+          rules={[{ required: true, message: "Please enter a display name" }]}
           validateStatus={
             getBackendErrorDetail("display_name", backendErrors) ? "error" : ""
           }
@@ -206,10 +227,10 @@ const CreateApiDeploymentModal = ({
         </Form.Item>
 
         <Form.Item
-          label="API Name(forms part of the API signature)"
+          label="API Name (forms part of the API signature)"
           name="api_name"
           rules={[
-            { required: true, message: "Please enter API Name" },
+            { required: true, message: "Please enter an API Name" },
             {
               pattern: /^[a-zA-Z0-9_-]+$/,
               message:
@@ -232,7 +253,7 @@ const CreateApiDeploymentModal = ({
           <Form.Item
             label="Workflow"
             name="workflow"
-            rules={[{ required: true, message: "Please select an workflow" }]}
+            rules={[{ required: true, message: "Please select a workflow" }]}
             validateStatus={
               getBackendErrorDetail("workflow", backendErrors) ? "error" : ""
             }

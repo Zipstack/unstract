@@ -34,3 +34,55 @@
 .select-llm-pro-header {
   padding-top: 12px;
 }
+
+.export-text{
+  display: flex;
+  align-items: center;
+}
+
+/* API Deployment Confirmation Modal Styles */
+.api-deployment-modal-content {
+  margin-bottom: 16px;
+}
+
+.api-deployment-actions-list {
+  padding-left: 20px;
+  margin-bottom: 16px;
+}
+
+.api-deployment-notice {
+  padding: 12px;
+  background: #fff7e6;
+  border: 1px solid #ffd591;
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+
+.api-deployment-notice-title {
+  margin: 0 0 8px 0;
+  font-weight: bold;
+  color: #fa8c16;
+}
+
+.api-deployment-notice-description {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+}
+
+.api-deployment-existing-section {
+  font-size: 14px;
+}
+
+.api-deployment-existing-list {
+  margin: 4px 0 0 0;
+  padding-left: 16px;
+}
+
+.api-deployment-existing-item {
+  margin-bottom: 2px;
+}
+
+.api-deployment-api-name {
+  color: #666;
+  font-size: 12px;
+}

@@ -1,7 +1,6 @@
 import logging
 from typing import Any
 
-from project.constants import ProjectKey
 from rest_framework.serializers import (
     CharField,
     ChoiceField,
@@ -17,7 +16,6 @@ from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 
 from backend.constants import RequestKey
 from backend.serializers import AuditSerializer
-from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.constants import WorkflowExecutionKey, WorkflowKey
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.execution_log import ExecutionLog
@@ -68,7 +66,6 @@ class WorkflowSerializer(IntegrityErrorMixin, AuditSerializer):
 
 class ExecuteWorkflowSerializer(Serializer):
     workflow_id = UUIDField(required=False)
-    project_id = UUIDField(required=False)
     execution_action = ChoiceField(
         choices=Workflow.ExecutionAction.choices, required=False
     )
@@ -78,9 +75,6 @@ class ExecuteWorkflowSerializer(Serializer):
 
     def get_workflow_id(self, validated_data: dict[str, str | None]) -> str | None:
         return validated_data.get(WorkflowKey.WF_ID)
-
-    def get_project_id(self, validated_data: dict[str, str | None]) -> str | None:
-        return validated_data.get(ProjectKey.PROJECT_ID)
 
     def get_execution_id(self, validated_data: dict[str, str | None]) -> str | None:
         return validated_data.get(WorkflowExecutionKey.EXECUTION_ID)
@@ -93,12 +87,9 @@ class ExecuteWorkflowSerializer(Serializer):
 
     def validate(self, data: dict[str, str | None]) -> dict[str, str | None]:
         workflow_id = data.get(WorkflowKey.WF_ID)
-        project_id = data.get(ProjectKey.PROJECT_ID)
 
-        if not workflow_id and not project_id:
-            raise ValidationError(
-                "At least one of 'workflow_id' or 'project_id' is required."
-            )
+        if not workflow_id:
+            raise ValidationError("'workflow_id' is required.")
 
         return data
 
@@ -110,14 +101,6 @@ class ExecuteWorkflowResponseSerializer(Serializer):
     log_id = CharField()
     error = CharField()
     result = JSONField()
-
-
-class WorkflowEndpointSerializer(ModelSerializer):
-    workflow_name = CharField(source="workflow.workflow_name", read_only=True)
-
-    class Meta:
-        model = WorkflowEndpoint
-        fields = "__all__"
 
 
 class WorkflowExecutionSerializer(ModelSerializer):

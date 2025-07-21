@@ -101,6 +101,7 @@ class ExecutionFileHandler:
         file_execution_id: str,
         source_hash: str,
         tags: list[str],
+        llm_profile_id: str | None = None,
     ) -> None:
         """Creating metadata for workflow. This method is responsible for
         creating metadata for the workflow. It takes the input file path and
@@ -112,6 +113,7 @@ class ExecutionFileHandler:
             file_execution_id (str): Unique execution id for the file.
             source_hash (str): The hash value of the source/input file.
             tags (list[str]): Tag names associated with the workflow execution.
+            llm_profile_id (str, optional): LLM profile ID for overriding tool settings.
 
         Returns:
             None
@@ -134,6 +136,11 @@ class ExecutionFileHandler:
             MetaDataKey.FILE_EXECUTION_ID: str(file_execution_id),
             MetaDataKey.TAGS: tags,
         }
+
+        # Add llm_profile_id to metadata if provided
+        if llm_profile_id:
+            content[MetaDataKey.LLM_PROFILE_ID] = llm_profile_id
+
         file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
         file_storage = file_system.get_file_storage()
         file_storage.json_dump(path=metadata_path, data=content)

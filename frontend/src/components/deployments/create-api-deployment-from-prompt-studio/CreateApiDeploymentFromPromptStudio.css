@@ -1,0 +1,78 @@
+.create-api-deployment-from-prompt-studio-modal .ant-modal-body {
+  padding: 24px;
+}
+
+.create-api-deployment-from-prompt-studio-modal .ant-steps {
+  margin-bottom: 24px;
+}
+
+.create-api-deployment-from-prompt-studio-modal .steps-container {
+  margin-bottom: 24px;
+}
+
+.create-api-deployment-from-prompt-studio-modal .tool-settings-section {
+  margin-top: 16px;
+}
+
+.create-api-deployment-from-prompt-studio-modal .tool-settings-section h4 {
+  margin-bottom: 16px;
+  color: #000;
+  font-weight: 600;
+}
+
+.create-api-deployment-from-prompt-studio-modal .loading-container {
+  text-align: center;
+  padding: 40px;
+}
+
+.create-api-deployment-from-prompt-studio-modal .loading-container p {
+  margin-top: 16px;
+  color: #666;
+}
+
+.create-api-deployment-from-prompt-studio-modal .no-settings-message {
+  text-align: center;
+  color: #666;
+  font-style: italic;
+  padding: 20px;
+}
+
+.create-api-deployment-from-prompt-studio-modal .success-content {
+  padding: 20px 0;
+  text-align: left;
+}
+
+.create-api-deployment-from-prompt-studio-modal .success-content .ant-typography h4 {
+  text-align: center;
+  margin-bottom: 24px;
+  color: #52c41a;
+}
+
+.create-api-deployment-from-prompt-studio-modal .success-content .ant-btn {
+  height: 48px;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.create-api-deployment-from-prompt-studio-modal .success-content .ant-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transition: all 0.3s ease;
+}
+
+.create-api-deployment-from-prompt-studio-modal .success-content-space {
+  width: 100%;
+}
+
+.create-api-deployment-from-prompt-studio-modal .success-buttons-space {
+  width: 100%;
+}
+
+.create-api-deployment-from-prompt-studio-modal .success-button-full-width {
+  width: 100%;
+}
+
+.create-api-deployment-from-prompt-studio-modal .success-footer {
+  text-align: center;
+  margin-top: 16px;
+}

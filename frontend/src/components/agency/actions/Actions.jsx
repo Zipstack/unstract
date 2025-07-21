@@ -555,6 +555,7 @@ function Actions({ statusBarMsg, initializeWfComp, stepLoader }) {
           isEdit={false}
           workflowId={details?.id}
           setDeploymentName={setDeploymentName}
+          workflowEndpointList={[]}
         />
       )}
       {openAddTaskModal && (

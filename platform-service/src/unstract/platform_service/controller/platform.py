@@ -528,3 +528,31 @@ def custom_tool_instance() -> Any:
             f"{prompt_registry_id}: {e}"
         )
         raise APIError(message=msg) from e
+
+
+@platform_bp.route(
+    "/llm_profile_instance",
+    methods=["GET"],
+    endpoint="llm_profile_instance",
+)
+@authentication_middleware
+def llm_profile_instance() -> Any:
+    """Fetching llm profile instance."""
+    bearer_token = get_token_from_auth_header(request)
+    _, organization_id = get_organization_from_bearer_token(bearer_token)
+    if not organization_id:
+        return Env.INVALID_ORGANIZATOIN, 403
+    llm_profile_id = request.args.get("llm_profile_id")
+    if not llm_profile_id:
+        raise APIError(message="llm_profile_id is required", code=400)
+    try:
+        data_dict = PromptStudioRequestHelper.get_llm_profile_instance_from_db(
+            organization_id=organization_id,
+            llm_profile_id=llm_profile_id,
+        )
+        return jsonify(data_dict)
+    except Exception as e:
+        if isinstance(e, APIError):
+            raise e
+        msg = f"Error while getting data for LLM profile {llm_profile_id}: {e}"
+        raise APIError(message=msg) from e

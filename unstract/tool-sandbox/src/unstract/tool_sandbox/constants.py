@@ -5,6 +5,8 @@ class UnstractRunner:
     PROPERTIES_API_ENDPOINT = "/container/properties"
     ICON_API_ENDPOINT = "/container/icon"
     VARIABLES_API_ENDPOINT = "/container/variables"
+    RUN_STATUS_API_ENDPOINT = "/container/run-status"
+    CLEANUP_TOOL_CONTAINER_API_ENDPOINT = "/container/remove"
 
 
 class ToolCommandKey:

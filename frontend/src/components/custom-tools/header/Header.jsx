@@ -1,5 +1,5 @@
 import { SettingOutlined } from "@ant-design/icons";
-import { Button, Modal, Tooltip, Typography } from "antd";
+import { Button, Modal, Tooltip, Typography, Dropdown } from "antd";
 import PropTypes from "prop-types";
 import { useCallback, useState } from "react";
 
@@ -12,6 +12,7 @@ import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { ExportTool } from "../export-tool/ExportTool";
+import { CreateApiDeploymentFromPromptStudio } from "../../deployments/create-api-deployment-from-prompt-studio/CreateApiDeploymentFromPromptStudio.jsx";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import "./Header.css";
 
@@ -55,6 +56,13 @@ function Header({
   const [toolDetails, setToolDetails] = useState(null);
   const [confirmModalVisible, setConfirmModalVisible] = useState(false);
   const [lastExportParams, setLastExportParams] = useState(null);
+  const [openCreateApiDeploymentModal, setOpenCreateApiDeploymentModal] =
+    useState(false);
+  const [
+    apiDeploymentConfirmModalVisible,
+    setApiDeploymentConfirmModalVisible,
+  ] = useState(false);
+  const [existingApiDeployments, setExistingApiDeployments] = useState([]);
 
   const handleExport = (
     selectedUsers,
@@ -175,6 +183,104 @@ function Header({
     return userList;
   };
 
+  const handleExportProject = () => {
+    try {
+      setPostHogCustomEvent("intent_tool_export_project", {
+        info: "Clicked Export Project in tool IDE",
+        tool_id: details?.tool_id,
+        tool_name: details?.tool_name,
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+
+    setIsExportLoading(true);
+    const downloadUrl = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/project-transfer/${details?.tool_id}`;
+
+    // Add authorization header by fetching the file
+    const requestOptions = {
+      method: "GET",
+      url: downloadUrl,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
+      responseType: "blob",
+    };
+
+    axiosPrivate(requestOptions)
+      .then((response) => {
+        // Create blob link to download
+        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const link = document.createElement("a");
+        link.href = url;
+
+        // Get filename from response headers or use default
+        const contentDisposition = response.headers["content-disposition"];
+        let filename = `${details?.tool_name}_export.json`;
+        if (contentDisposition) {
+          const filenameMatch =
+            contentDisposition.match(/filename="?([^"]+)"?/);
+          if (filenameMatch) {
+            filename = filenameMatch[1];
+          }
+        }
+
+        link.setAttribute("download", filename);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+
+        setAlertDetails({
+          type: "success",
+          content: "Project exported successfully",
+        });
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err, "Failed to export project"));
+      })
+      .finally(() => {
+        setIsExportLoading(false);
+      });
+  };
+
+  const handleCreateApiDeployment = () => {
+    try {
+      setPostHogCustomEvent("intent_create_api_deployment_from_prompt_studio", {
+        info: "Clicked Create API Deployment in tool IDE",
+        tool_id: details?.tool_id,
+        tool_name: details?.tool_name,
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+
+    // Check for existing API deployments before proceeding
+    const path = `/api/v1/unstract/${sessionDetails.orgId}`;
+    const requestOptions = {
+      method: "GET",
+      url: `${path}/api/deployment/`,
+    };
+    axiosPrivate(requestOptions)
+      .then((response) => {
+        const deployments = response?.data || [];
+        setExistingApiDeployments(deployments);
+        setApiDeploymentConfirmModalVisible(true);
+      })
+      .catch((err) => {
+        setAlertDetails(
+          handleException(err, "Failed to check existing deployments")
+        );
+        // If check fails, still allow proceeding
+        setOpenCreateApiDeploymentModal(true);
+      });
+  };
+
+  const handleConfirmApiDeployment = useCallback(() => {
+    setApiDeploymentConfirmModalVisible(false);
+    setOpenCreateApiDeploymentModal(true);
+  }, []);
+
   return (
     <div className="custom-tools-header-layout">
       {isPublicSource ? (
@@ -203,18 +309,39 @@ function Header({
           <PromptShareButton setOpenShareModal={setOpenShareModal} />
         )}
         <div className="custom-tools-header-v-divider" />
-        <div>
-          <Tooltip title="Export as tool">
-            <CustomButton
-              type="primary"
-              onClick={() => handleShare(true)}
-              loading={isExportLoading}
-              disabled={isPublicSource}
-            >
-              <ExportToolIcon />
-            </CustomButton>
-          </Tooltip>
-        </div>
+        <Dropdown
+          menu={{
+            items: [
+              {
+                key: "export-tool",
+                label: "Export as Tool",
+                onClick: () => handleShare(true),
+              },
+              {
+                key: "export-json",
+                label: "Export as JSON",
+                onClick: handleExportProject,
+              },
+              {
+                key: "create-api-deployment",
+                label: "Create API Deployment",
+                onClick: handleCreateApiDeployment,
+              },
+            ],
+          }}
+          trigger={["click"]}
+          disabled={isPublicSource}
+        >
+          <CustomButton
+            type="primary"
+            loading={isExportLoading}
+            disabled={isPublicSource}
+            icon={<ExportToolIcon />}
+            className="export-text"
+          >
+            Export
+          </CustomButton>
+        </Dropdown>
         <ExportTool
           allUsers={userList}
           open={openExportToolModal}
@@ -223,6 +350,13 @@ function Header({
           loading={isExportLoading}
           toolDetails={toolDetails}
         />
+        {!isPublicSource && (
+          <CreateApiDeploymentFromPromptStudio
+            open={openCreateApiDeploymentModal}
+            setOpen={setOpenCreateApiDeploymentModal}
+            toolDetails={details}
+          />
+        )}
       </div>
       <Modal
         onOk={handleConfirmForceExport} // Pass the confirm action
@@ -235,6 +369,55 @@ function Header({
         Unable to export tool. Some prompt(s) were not run. Please run them
         before exporting.{" "}
         <strong>Would you like to force export anyway?</strong>
+      </Modal>
+      <Modal
+        onOk={handleConfirmApiDeployment}
+        onCancel={() => setApiDeploymentConfirmModalVisible(false)}
+        open={apiDeploymentConfirmModalVisible}
+        title="Create API Deployment"
+        okText="Proceed"
+        centered
+        width={600}
+      >
+        <div className="api-deployment-modal-content">
+          <p>
+            <strong>
+              You are about to create a new API deployment for this tool.
+            </strong>
+          </p>
+        </div>
+        {existingApiDeployments.length > 0 && (
+          <div className="api-deployment-notice">
+            <p className="api-deployment-notice-title">
+              Notice: You have {existingApiDeployments.length} existing API
+              deployment{existingApiDeployments.length > 1 ? "s" : ""}
+            </p>
+            <p className="api-deployment-notice-description">
+              Creating a new deployment will add another API endpoint. Consider
+              managing existing deployments if needed.
+            </p>
+            <div className="api-deployment-existing-section">
+              <strong>Existing deployments:</strong>
+              <ul className="api-deployment-existing-list">
+                {existingApiDeployments.map((deployment) => (
+                  <li
+                    key={deployment.id}
+                    className="api-deployment-existing-item"
+                  >
+                    {deployment.display_name}
+                    {deployment.api_name && (
+                      <span className="api-deployment-api-name">
+                        {" "}
+                        (API: {deployment.api_name})
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+        <p>Do you want to proceed with creating the API deployment?</p>
       </Modal>
     </div>
   );

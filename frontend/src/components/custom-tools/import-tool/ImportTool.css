@@ -1,0 +1,30 @@
+.import-tool-content {
+  padding: 16px 0;
+}
+
+.import-tool-description {
+  display: block;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+
+.import-tool-uploader:hover {
+  border-color: #1890ff;
+}
+
+.import-tool-uploader .ant-upload-drag-icon {
+  font-size: 48px;
+  color: #1890ff;
+  margin-bottom: 16px;
+}
+
+.import-tool-uploader .ant-upload-text {
+  font-size: 16px;
+  color: rgba(0, 0, 0, 0.85);
+  margin-bottom: 8px;
+}
+
+.import-tool-uploader .ant-upload-hint {
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 14px;
+}
