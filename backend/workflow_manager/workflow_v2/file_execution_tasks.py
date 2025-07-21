@@ -179,37 +179,33 @@ class FileExecutionTasks:
 
         logger.info(f"Processing {total_files} files of execution {execution_id}")
 
-        for file_number, (file_name, file_hash_dict) in enumerate(
-            file_batch_data.files, 1
+        # Pre-create all WorkflowFileExecution records with PENDING status to prevent race conditions
+        pre_created_data = FileExecutionTasks._pre_create_file_executions(
+            file_batch_data.files, workflow, workflow_execution
+        )
+
+        for file_number, (file_name, (workflow_file_execution, file_hash)) in enumerate(
+            pre_created_data.items(), 1
         ):
             logger.info(
                 f"[{celery_task_id}][{file_number}/{total_files}] Processing file '{file_name}'"
             )
-            file_hash = FileHash(
-                file_path=file_hash_dict.get("file_path"),
-                file_name=file_hash_dict.get("file_name"),
-                source_connection_type=file_hash_dict.get("source_connection_type"),
-                file_hash=file_hash_dict.get("file_hash"),
-                file_size=file_hash_dict.get("file_size"),
-                provider_file_uuid=file_hash_dict.get("provider_file_uuid"),
-                mime_type=file_hash_dict.get("mime_type"),
-                fs_metadata=file_hash_dict.get("fs_metadata"),
-                file_destination=file_hash_dict.get("file_destination"),
-                is_executed=file_hash_dict.get("is_executed"),
-                file_number=file_hash_dict.get("file_number"),
-            )
+
+            # Apply file destination processing
             file_hash = WorkflowUtil.add_file_destination_filehash(
                 file_hash.file_number,
                 q_file_no_list,
                 file_hash,
             )
             logger.info(f"File hash for file {file_name}: {file_hash.to_json()}")
+
             file_execution_result = FileExecutionTasks._process_file(
                 current_file_idx=file_number,
                 total_files=total_files,
                 file_data=file_data,
                 file_hash=file_hash,
                 workflow_execution=workflow_execution,
+                workflow_file_execution=workflow_file_execution,
             )
             if file_execution_result.error:
                 failed_files += 1
@@ -231,6 +227,65 @@ class FileExecutionTasks:
             successful_files=successful_files,
             failed_files=failed_files,
         ).to_dict()
+
+    @classmethod
+    def _pre_create_file_executions(
+        cls,
+        files: list[tuple[str, dict]],
+        workflow: Workflow,
+        workflow_execution: WorkflowExecution,
+    ) -> dict[str, tuple[WorkflowFileExecution, FileHash]]:
+        """Pre-create WorkflowFileExecution records with PENDING status to prevent race conditions.
+
+        Args:
+            files: List of (file_name, file_hash_dict) tuples
+            workflow: Workflow instance
+            workflow_execution: WorkflowExecution instance
+
+        Returns:
+            dict: Mapping of file names to (WorkflowFileExecution, FileHash) tuples
+        """
+        pre_created_data = {}
+
+        # Get endpoint information
+        endpoint: WorkflowEndpoint = WorkflowEndpoint.objects.get(
+            workflow=workflow,
+            endpoint_type=WorkflowEndpoint.EndpointType.SOURCE,
+        )
+        is_api = endpoint.connection_type == WorkflowEndpoint.ConnectionType.API
+
+        for file_name, file_hash_dict in files:
+            file_hash = FileHash(
+                file_path=file_hash_dict.get("file_path"),
+                file_name=file_hash_dict.get("file_name"),
+                source_connection_type=file_hash_dict.get("source_connection_type"),
+                file_hash=file_hash_dict.get("file_hash"),
+                file_size=file_hash_dict.get("file_size"),
+                provider_file_uuid=file_hash_dict.get("provider_file_uuid"),
+                mime_type=file_hash_dict.get("mime_type"),
+                fs_metadata=file_hash_dict.get("fs_metadata"),
+                file_destination=file_hash_dict.get("file_destination"),
+                is_executed=file_hash_dict.get("is_executed"),
+                file_number=file_hash_dict.get("file_number"),
+            )
+
+            # Create WorkflowFileExecution record
+            workflow_file_execution = (
+                WorkflowFileExecution.objects.get_or_create_file_execution(
+                    workflow_execution=workflow_execution,
+                    file_hash=file_hash,
+                    is_api=is_api,
+                )
+            )
+
+            # Update status to PENDING if allowed
+            if ExecutionStatus.can_update_to_pending(workflow_file_execution.status):
+                workflow_file_execution.update_status(ExecutionStatus.PENDING)
+
+            pre_created_data[file_name] = (workflow_file_execution, file_hash)
+
+        logger.info(f"Pre-created {len(pre_created_data)} WorkflowFileExecution records")
+        return pre_created_data
 
     @file_processing_callback_app.task(
         bind=True,
@@ -337,6 +392,7 @@ class FileExecutionTasks:
         file_data: FileData,
         file_hash: FileHash,
         workflow_execution: WorkflowExecution,
+        workflow_file_execution: WorkflowFileExecution | None = None,
     ) -> FileExecutionResult:
         """Process a single file in the workflow.
 
@@ -356,7 +412,7 @@ class FileExecutionTasks:
             )
             # Initialization Phase
             execution_context = cls._initialize_execution_context(
-                file_data, file_hash, workflow_execution
+                file_data, file_hash, workflow_execution, workflow_file_execution
             )
             workflow_log = execution_context.workflow_log
             workflow_file_execution = execution_context.workflow_file_execution
@@ -614,6 +670,7 @@ class FileExecutionTasks:
         file_data: FileData,
         file_hash: FileHash,
         workflow_execution: WorkflowExecution,
+        workflow_file_execution: WorkflowFileExecution | None = None,
     ) -> ExecutionContext:
         """Set up all required execution context objects and configurations."""
         try:
@@ -625,14 +682,17 @@ class FileExecutionTasks:
 
             is_api = endpoint.connection_type == WorkflowEndpoint.ConnectionType.API
 
-            # Create execution record
-            file_execution: WorkflowFileExecution = (
-                WorkflowFileExecution.objects.get_or_create_file_execution(
-                    workflow_execution=workflow_execution,
-                    file_hash=file_hash,
-                    is_api=is_api,
+            # Use pre-created execution record or create new one if not provided
+            if workflow_file_execution is None:
+                file_execution: WorkflowFileExecution = (
+                    WorkflowFileExecution.objects.get_or_create_file_execution(
+                        workflow_execution=workflow_execution,
+                        file_hash=file_hash,
+                        is_api=is_api,
+                    )
                 )
-            )
+            else:
+                file_execution = workflow_file_execution
 
             # Create configurations
             source_config = SourceConfig.from_json(file_data.source_config)
