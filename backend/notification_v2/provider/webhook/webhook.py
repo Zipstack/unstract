@@ -71,8 +71,7 @@ class Webhook(NotificationProvider):
             )
         except ValueError:
             raise ValueError(
-                "Unsupported authorization type: "
-                f"{self.notification.authorization_type}"
+                f"Unsupported authorization type: {self.notification.authorization_type}"
             )
         authorization_key = self.notification.authorization_key
         authorization_header = self.notification.authorization_header
