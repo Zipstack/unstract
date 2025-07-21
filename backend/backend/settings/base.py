@@ -155,6 +155,10 @@ INSTANT_WF_POLLING_TIMEOUT = int(
     os.environ.get("INSTANT_WF_POLLING_TIMEOUT", "300")
 )  # 5 minutes
 
+# ETL Pipeline minimum schedule interval (in seconds)
+# Default: 1800 seconds (30 minutes)
+MIN_SCHEDULE_INTERVAL_SECONDS = int(os.environ.get("MIN_SCHEDULE_INTERVAL_SECONDS", 1800))
+
 # File processing batches
 MAX_PARALLEL_FILE_BATCHES = int(os.environ.get("MAX_PARALLEL_FILE_BATCHES", 1))
 # Upper limit for batch validation
