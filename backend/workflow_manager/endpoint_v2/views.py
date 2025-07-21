@@ -6,8 +6,8 @@ from rest_framework.response import Response
 from workflow_manager.endpoint_v2.destination import DestinationConnector
 from workflow_manager.endpoint_v2.endpoint_utils import WorkflowEndpointUtils
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
+from workflow_manager.endpoint_v2.serializers import WorkflowEndpointSerializer
 from workflow_manager.endpoint_v2.source import SourceConnector
-from workflow_manager.workflow_v2.serializers import WorkflowEndpointSerializer
 
 
 class WorkflowEndpointViewSet(viewsets.ModelViewSet):
@@ -19,10 +19,15 @@ class WorkflowEndpointViewSet(viewsets.ModelViewSet):
             .select_related("workflow")
             .filter(workflow__created_by=self.request.user)
         )
+        workflow_filter = self.request.query_params.get("workflow", None)
+        if workflow_filter:
+            queryset = queryset.filter(workflow_id=workflow_filter)
+
         endpoint_type_filter = self.request.query_params.get("endpoint_type", None)
-        connection_type_filter = self.request.query_params.get("connection_type", None)
         if endpoint_type_filter:
             queryset = queryset.filter(endpoint_type=endpoint_type_filter)
+
+        connection_type_filter = self.request.query_params.get("connection_type", None)
         if connection_type_filter:
             queryset = queryset.filter(connection_type=connection_type_filter)
         return queryset
