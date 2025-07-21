@@ -75,6 +75,13 @@ class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
             )
 
         source_endpoint = source_endpoints.first()
+
+        # First check if connection_type is configured
+        if not source_endpoint.connection_type:
+            raise ValidationError(
+                "Source endpoint must have a connection type configured before creating an API deployment."
+            )
+
         # For non-API connections, check if connector instance is configured
         if source_endpoint.connection_type == WorkflowEndpoint.ConnectionType.API:
             # API connections don't need connector instances
@@ -94,6 +101,13 @@ class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
             )
 
         destination_endpoint = destination_endpoints.first()
+
+        # First check if connection_type is configured
+        if not destination_endpoint.connection_type:
+            raise ValidationError(
+                "Destination endpoint must have a connection type configured before creating an API deployment."
+            )
+
         # For non-API and non-manual review connections, check if connector instance is configured
         if destination_endpoint.connection_type in [
             WorkflowEndpoint.ConnectionType.API,
