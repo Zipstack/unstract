@@ -9,3 +9,4 @@ class ApiExecution:
     EXECUTION_ID: str = "execution_id"
     TAGS: str = "tags"
     LLM_PROFILE_ID: str = "llm_profile_id"
+    HITL_QUEUE_NAME: str = "hitl_queue_name"
