@@ -311,16 +311,21 @@ class AdapterInstanceViewSet(ModelViewSet):
                         )
                     )
 
-                    if user_default_adapter.default_llm_adapter == adapter:
-                        user_default_adapter.default_llm_adapter = None
-                    elif user_default_adapter.default_embedding_adapter == adapter:
-                        user_default_adapter.default_embedding_adapter = None
-                    elif user_default_adapter.default_vector_db_adapter == adapter:
-                        user_default_adapter.default_vector_db_adapter = None
-                    elif user_default_adapter.default_x2text_adapter == adapter:
-                        user_default_adapter.default_x2text_adapter = None
+                    adapter_fields = [
+                        "default_llm_adapter",
+                        "default_embedding_adapter",
+                        "default_vector_db_adapter",
+                        "default_x2text_adapter",
+                    ]
 
-                    user_default_adapter.save()
+                    updated = False
+                    for field in adapter_fields:
+                        if getattr(user_default_adapter, field) == adapter:
+                            setattr(user_default_adapter, field, None)
+                            updated = True
+
+                    if updated:
+                        user_default_adapter.save()
                 except UserDefaultAdapter.DoesNotExist:
                     logger.debug(
                         "User id : %s doesnt have default adapters configured",
@@ -337,6 +342,57 @@ class AdapterInstanceViewSet(ModelViewSet):
         serialized_instances = SharedUserListSerializer(adapter).data
 
         return Response(serialized_instances)
+
+    def update(
+        self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
+    ) -> Response:
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        logger.info("ADAPTER UPDATE CALLED")
+
+        # Check if adapter metadata is being updated and contains the platform key flag
+        use_platform_unstract_key = False
+        adapter_metadata = request.data.get(AdapterKeys.ADAPTER_METADATA)
+
+        if adapter_metadata and adapter_metadata.get(
+            AdapterKeys.PLATFORM_PROVIDED_UNSTRACT_KEY, False
+        ):
+            use_platform_unstract_key = True
+            logger.error(f"Platform key flag detected: {use_platform_unstract_key}")
+
+        # Get the adapter instance for update
+        adapter = self.get_object()
+
+        if use_platform_unstract_key:
+            logger.error("Processing adapter with platform key")
+            serializer = self.get_serializer(adapter, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+
+            # Get adapter_type from validated data (consistent with create method)
+            adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
+            logger.error(f"Adapter type from validated data: {adapter_type}")
+
+            if adapter_type == AdapterKeys.X2TEXT:
+                logger.error("Processing X2TEXT adapter with platform key")
+                adapter_metadata_b = serializer.validated_data.get(
+                    AdapterKeys.ADAPTER_METADATA_B
+                )
+                adapter_metadata_b = AdapterProcessor.update_adapter_metadata(
+                    adapter_metadata_b, is_paid_subscription=True
+                )
+                # Update the validated data with the new adapter_metadata
+                serializer.validated_data[AdapterKeys.ADAPTER_METADATA_B] = (
+                    adapter_metadata_b
+                )
+
+            # Save the instance with updated metadata
+            serializer.save()
+            return Response(serializer.data)
+
+        # For non-platform-key cases, use the default update behavior
+        return super().update(request, *args, **kwargs)
 
     @action(detail=True, methods=["get"])
     def adapter_info(self, request: HttpRequest, pk: uuid) -> Response:

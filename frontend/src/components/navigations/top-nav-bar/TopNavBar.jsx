@@ -101,7 +101,7 @@ const CustomLogo = ({ onClick, className }) => {
 };
 let APIHubLogo;
 try {
-  APIHubLogo = require("../../../plugins/assets/index.js").APIHubLogo;
+  APIHubLogo = require("../../../plugins/assets/verticals/index.js").APIHubLogo;
 } catch {
   // Ignore if hook not available
 }
@@ -333,7 +333,12 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
       });
     }
 
-    if (isUnstract && UnstractPricingMenuLink && sessionDetails?.isAdmin) {
+    if (
+      isUnstract &&
+      UnstractPricingMenuLink &&
+      sessionDetails?.isAdmin &&
+      !sessionDetails?.provider
+    ) {
       menuItems.push({
         key: "7",
         label: <UnstractPricingMenuLink orgName={orgName} />,

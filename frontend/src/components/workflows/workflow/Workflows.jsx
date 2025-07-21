@@ -2,7 +2,7 @@ import { PlusOutlined, UserOutlined } from "@ant-design/icons";
 import { Typography } from "antd";
 import isEmpty from "lodash/isEmpty";
 import PropTypes from "prop-types";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { useAlertStore } from "../../../store/alert-store";
@@ -21,6 +21,10 @@ import { ViewTools } from "../../custom-tools/view-tools/ViewTools.jsx";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import { PromptStudioModal } from "../../common/PromptStudioModal";
 import { usePromptStudioService } from "../../api/prompt-studio-service";
+import {
+  useInitialFetchCount,
+  usePromptStudioModal,
+} from "../../../hooks/usePromptStudioFetchCount";
 
 const PROJECT_FILTER_OPTIONS = [
   { label: "My Workflows", value: "mine" },
@@ -36,13 +40,12 @@ function Workflows() {
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
   const { count, isLoading, fetchCount } = usePromptStudioStore();
-  const [showModal, setShowModal] = useState(false);
-  const [modalDismissed, setModalDismissed] = useState(false);
   const { getPromptStudioCount } = usePromptStudioService();
 
-  useEffect(() => {
-    fetchCount(getPromptStudioCount);
-  }, [fetchCount]);
+  const initialFetchComplete = useInitialFetchCount(
+    fetchCount,
+    getPromptStudioCount
+  );
 
   const [projectList, setProjectList] = useState();
   const [editingProject, setEditProject] = useState();
@@ -200,18 +203,12 @@ function Workflows() {
     );
   };
 
-  useEffect(() => {
-    if (!isLoading && count === 0 && !modalDismissed) {
-      setShowModal(true);
-    } else if (!isLoading && count > 0) {
-      setShowModal(false);
-    }
-  }, [isLoading, count, modalDismissed]);
-
-  const handleModalClose = useCallback(() => {
-    setShowModal(false);
-    setModalDismissed(true); // Prevent modal reopen.
-  }, []); // Prevents re-renders.
+  // Using the custom hook to manage modal state
+  const { showModal, handleModalClose } = usePromptStudioModal(
+    initialFetchComplete,
+    isLoading,
+    count
+  );
 
   return (
     <>

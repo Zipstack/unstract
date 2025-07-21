@@ -45,7 +45,9 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         mode: tuple[str, str] = WorkflowExecution.Mode.INSTANT,
         workflow_execution: WorkflowExecution | None = None,
         use_file_history: bool = True,
+        file_execution_id: str | None = None,
     ) -> None:
+        self.file_execution_id = file_execution_id
         tool_instances_as_dto = []
         for tool_instance in tool_instances:
             tool_instances_as_dto.append(
@@ -66,6 +68,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             tool_instances=tool_instances_as_dto,
             platform_service_api_key=str(platform_key.key),
             ignore_processed_entities=False,
+            file_execution_id=file_execution_id,
         )
         if not workflow_execution:
             # Use pipline_id for pipelines / API deployment
@@ -146,7 +149,6 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             else WorkflowExecution.Type.COMPLETE
         )
         execution_log_id = log_events_id if log_events_id else pipeline_id
-
         # Create the workflow execution
         workflow_execution = WorkflowExecution.objects.create(
             id=execution_id if execution_id else uuid.uuid4(),
@@ -253,7 +255,6 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         start_time = time.time()
         try:
             self.execute_workflow(
-                file_execution_id=file_execution_id,
                 execution_type=execution_type,
             )
             end_time = time.time()
@@ -272,64 +273,6 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
                 f" Error {exception}"
             )
             raise WorkflowExecutionError(message) from exception
-
-    def publish_initial_workflow_logs(self, total_files: int) -> None:
-        """Publishes the initial logs for the workflow.
-
-        Args:
-            total_files (int): The total number of matched files.
-
-        Returns:
-            None
-        """
-        self.publish_log(f"Total matched files: {total_files}")
-        self.publish_update_log(LogState.BEGIN_WORKFLOW, "1", LogComponent.STATUS_BAR)
-        self.publish_update_log(
-            LogState.RUNNING, "Ready for execution", LogComponent.WORKFLOW
-        )
-
-    def publish_final_workflow_logs(
-        self,
-        total_files: int,
-        successful_files: int,
-        failed_files: int,
-    ) -> None:
-        """Publishes the final logs for the workflow.
-
-        Returns:
-            None
-        """
-        self.publish_average_cost_log(total_files=successful_files)
-
-        # To not associate final logs with a file execution
-        self.file_execution_id = None
-
-        self.publish_update_log(LogState.END_WORKFLOW, "1", LogComponent.STATUS_BAR)
-        self.publish_update_log(
-            LogState.SUCCESS, "Executed successfully", LogComponent.WORKFLOW
-        )
-        self.publish_log(
-            f"Total files: {total_files}, "
-            f"{successful_files} successfully executed and {failed_files} error(s)"
-        )
-
-    def publish_average_cost_log(self, total_files: int):
-        try:
-            execution = WorkflowExecution.objects.get(pk=self.execution_id)
-            total_cost = execution.get_aggregated_usage_cost()
-
-            if total_cost is not None:
-                average_cost = round(total_cost / total_files, 5)
-                self.publish_log(
-                    message=(
-                        f"The average cost per file for execution "
-                        f"'{self.execution_id}' is '${average_cost}'"
-                    )
-                )
-        except Exception as e:
-            logger.warning(
-                f"Unable to get aggregated cost for '{self.execution_id}': {str(e)}"
-            )
 
     def log_total_cost_per_file(self, run_id: str, file_name: str):
         """Log cost details to user

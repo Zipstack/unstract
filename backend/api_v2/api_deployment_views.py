@@ -17,6 +17,7 @@ from workflow_manager.workflow_v2.dto import ExecutionResponse
 from api_v2.api_deployment_dto_registry import ApiDeploymentDTORegistry
 from api_v2.constants import ApiExecution
 from api_v2.deployment_helper import DeploymentHelper
+from api_v2.dto import DeploymentExecutionDTO
 from api_v2.exceptions import NoActiveAPIKeyError
 from api_v2.models import APIDeployment
 from api_v2.serializers import (
@@ -45,9 +46,17 @@ class DeploymentExecution(views.APIView):
 
     @DeploymentHelper.validate_api_key
     def post(
-        self, request: Request, org_name: str, api_name: str, api: APIDeployment
+        self,
+        request: Request,
+        org_name: str,
+        api_name: str,
+        deployment_execution_dto: DeploymentExecutionDTO,
     ) -> Response:
-        serializer = ExecutionRequestSerializer(data=request.data)
+        api: APIDeployment = deployment_execution_dto.api
+        api_key: str = deployment_execution_dto.api_key
+        serializer = ExecutionRequestSerializer(
+            data=request.data, context={"api": api, "api_key": api_key}
+        )
         serializer.is_valid(raise_exception=True)
         file_objs = serializer.validated_data.get(ApiExecution.FILES_FORM_DATA)
         timeout = serializer.validated_data.get(ApiExecution.TIMEOUT_FORM_DATA)
@@ -55,6 +64,9 @@ class DeploymentExecution(views.APIView):
         include_metrics = serializer.validated_data.get(ApiExecution.INCLUDE_METRICS)
         use_file_history = serializer.validated_data.get(ApiExecution.USE_FILE_HISTORY)
         tag_names = serializer.validated_data.get(ApiExecution.TAGS)
+        llm_profile_id = serializer.validated_data.get(ApiExecution.LLM_PROFILE_ID)
+        hitl_queue_name = serializer.validated_data.get(ApiExecution.HITL_QUEUE_NAME)
+
         response = DeploymentHelper.execute_workflow(
             organization_name=org_name,
             api=api,
@@ -64,8 +76,11 @@ class DeploymentExecution(views.APIView):
             include_metrics=include_metrics,
             use_file_history=use_file_history,
             tag_names=tag_names,
+            llm_profile_id=llm_profile_id,
+            hitl_queue_name=hitl_queue_name,
         )
         if "error" in response and response["error"]:
+            logger.error("API deployment execution failed")
             return Response(
                 {"message": response},
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -74,7 +89,11 @@ class DeploymentExecution(views.APIView):
 
     @DeploymentHelper.validate_api_key
     def get(
-        self, request: Request, org_name: str, api_name: str, api: APIDeployment
+        self,
+        request: Request,
+        org_name: str,
+        api_name: str,
+        deployment_execution_dto: DeploymentExecutionDTO,
     ) -> Response:
         serializer = ExecutionQuerySerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)

@@ -401,8 +401,25 @@ const formattedDateTime = (ISOdateTime) => {
 
 const getBackendErrorDetail = (attr, backendErrors) => {
   if (backendErrors) {
-    const error = backendErrors?.errors.find((error) => error?.attr === attr);
-    return error ? error?.detail : null;
+    // Handle structured error response with errors array
+    if (backendErrors?.errors && Array.isArray(backendErrors.errors)) {
+      const error = backendErrors.errors.find((error) => error?.attr === attr);
+      return error ? error?.detail : null;
+    }
+
+    // Handle direct field errors (e.g., { api_name: ["error message"] })
+    if (backendErrors[attr]) {
+      return Array.isArray(backendErrors[attr])
+        ? backendErrors[attr].join(", ")
+        : backendErrors[attr];
+    }
+
+    // Handle nested errors in non_field_errors
+    if (backendErrors?.non_field_errors) {
+      return Array.isArray(backendErrors.non_field_errors)
+        ? backendErrors.non_field_errors.join(", ")
+        : backendErrors.non_field_errors;
+    }
   }
   return null;
 };

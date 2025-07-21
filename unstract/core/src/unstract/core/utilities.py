@@ -51,3 +51,22 @@ class UnstractUtils:
                 f"Truncated container name: {container_name[:63]}"
             )
         return container_name[:63]
+
+
+## Static utility functions  ##
+def redact_sensitive_string(str_to_redact: str, reveal_length: int = 4) -> str:
+    """Hides sensitive information partially. Useful for logging keys.
+
+    Args:
+        str_to_redact (str): String to redact
+
+    Returns:
+        str: Redacted string
+    """
+    if reveal_length < 0:
+        raise ValueError("Reveal length must be a non-negative integer")
+
+    redacted_length = max(len(str_to_redact) - reveal_length, 0)
+    revealed_part = str_to_redact[:reveal_length]
+    redacted_part = "x" * redacted_length
+    return revealed_part + redacted_part

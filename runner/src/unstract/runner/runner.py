@@ -8,7 +8,18 @@ from dotenv import load_dotenv
 from flask import Flask
 
 from unstract.core.constants import LogFieldName
+from unstract.core.file_execution_tracker import (
+    FileExecutionStage,
+    FileExecutionStageData,
+    FileExecutionStageStatus,
+    FileExecutionStatusTracker,
+)
 from unstract.core.pubsub_helper import LogPublisher
+from unstract.core.tool_execution_status import (
+    ToolExecutionData,
+    ToolExecutionStatus,
+    ToolExecutionTracker,
+)
 from unstract.runner.clients.helper import ContainerClientHelper
 from unstract.runner.clients.interface import (
     ContainerClientInterface,
@@ -42,11 +53,11 @@ class UnstractRunner:
         execution_id: str,
         organization_id: str,
         file_execution_id: str,
+        container_name: str,
         channel: str | None = None,
     ) -> None:
         for line in container.logs(follow=True):
             log_message = line
-            self.logger.debug(f"[{container.name}] - {log_message}")
             self.process_log_message(
                 log_message=log_message,
                 tool_instance_id=tool_instance_id,
@@ -54,6 +65,7 @@ class UnstractRunner:
                 execution_id=execution_id,
                 organization_id=organization_id,
                 file_execution_id=file_execution_id,
+                container_name=container_name,
             )
 
     def get_valid_log_message(self, log_message: str) -> dict[str, Any] | None:
@@ -79,23 +91,31 @@ class UnstractRunner:
         execution_id: str,
         organization_id: str,
         file_execution_id: str,
+        container_name: str,
         channel: str | None = None,
     ) -> dict[str, Any] | None:
         log_dict = self.get_valid_log_message(log_message)
         if not log_dict:
+            self.logger.debug(f"[{container_name}] {log_message}")
             return None
         log_type = log_dict.get("type")
         log_level = log_dict.get("level")
-        if log_type == LogType.LOG and log_level == LogLevel.ERROR:
-            raise ToolRunException(log_dict.get("log"))
+
         if not self.is_valid_log_type(log_type):
             self.logger.warning(
                 f"Received invalid logType: {log_type} with log message: {log_dict}"
             )
             return None
-        if log_type == LogType.RESULT:
+
+        if log_type == LogType.LOG:
+            if log_level == LogLevel.ERROR:
+                raise ToolRunException(log_dict.get("log"))
+            self.logger.debug(f"[{container_name}] {log_message}")
+        elif log_type == LogType.RESULT:
+            self.logger.debug(f"[{container_name}] Completed running")
             return log_dict
-        if log_type == LogType.UPDATE:
+        elif log_type == LogType.UPDATE:
+            self.logger.debug(f"[{container_name}] Pushing UI updates")
             log_dict["component"] = tool_instance_id
         if channel:
             log_dict[LogFieldName.EXECUTION_ID] = execution_id
@@ -217,7 +237,10 @@ class UnstractRunner:
             "FILE_EXECUTION_ID": file_execution_id,
             "MESSAGING_CHANNEL": messaging_channel,
             "LOG_LEVEL": os.getenv(Env.LOG_LEVEL, "INFO"),
-            "CELERY_BROKER_URL": os.getenv(Env.CELERY_BROKER_URL),
+            "CELERY_BROKER_BASE_URL": os.getenv(Env.CELERY_BROKER_BASE_URL),
+            "CELERY_BROKER_USER": os.getenv(Env.CELERY_BROKER_USER),
+            "CELERY_BROKER_PASS": os.getenv(Env.CELERY_BROKER_PASS),
+            "CONTAINER_NAME": container_name,
         }
         sidecar_config = self.client.get_container_run_config(
             command=[],
@@ -291,11 +314,84 @@ class UnstractRunner:
             "return $exit_code; "
             "}"
         )
-        execute_cmd = f"run_tool 2>&1 | tee -a {shared_log_file}"
+        execute_cmd = f"run_tool > {shared_log_file} 2>&1"
 
         # Combine all commands
         shell_script = f"{mkdir_cmd} && {run_tool_fn}; {execute_cmd}"
         return shell_script
+
+    def _handle_tool_execution_status(
+        self, execution_id: str, file_execution_id: str, container_name: str
+    ):
+        """Get the tool execution status data from the tool execution tracker."""
+        try:
+            tool_execution_data = ToolExecutionData(
+                execution_id=execution_id,
+                file_execution_id=file_execution_id,
+            )
+            tool_execution_tracker = ToolExecutionTracker()
+            tool_execution_status = tool_execution_tracker.get_status(tool_execution_data)
+            if not tool_execution_status:
+                self.logger.warning(
+                    f"Execution ID: {execution_id}, docker "
+                    f"container: {container_name} - failed to fetch execution status"
+                )
+                return
+            status = tool_execution_status.status
+            error = tool_execution_status.error
+            if status == ToolExecutionStatus.FAILED:
+                self.logger.error(
+                    f"Execution ID: {execution_id}, docker "
+                    f"container: {container_name} - tool run failed. Error: {error}"
+                )
+                raise ToolRunException(error)
+            elif status == ToolExecutionStatus.SUCCESS:
+                self.logger.info(
+                    f"Execution ID: {execution_id}, docker "
+                    f"container: {container_name} - tool execution completed successfully"
+                )
+            else:
+                self.logger.warning(
+                    f"Execution ID: {execution_id}, docker "
+                    f"container: {container_name} - unexpected tool status: {status}"
+                )
+        except ToolRunException as e:
+            # Tool execution failed; propagate the exception to be handled by the caller
+            raise e
+        except Exception as e:
+            self.logger.error(
+                f"Execution ID: {execution_id}, docker "
+                f"container: {container_name} - failed to fetch execution status. Error: {e}",
+                exc_info=True,
+            )
+        finally:
+            # Delete the status from cache since it is no longer needed
+            tool_execution_tracker.delete_status(tool_execution_data)
+
+    def get_container_status(
+        self,
+        container_name: str,
+    ) -> str:
+        """Get container status."""
+        return self.client.get_container_status(container_name)
+
+    def remove_container_by_name(self, container_name: str) -> dict[str, Any]:
+        """Remove container by name and its sidecar if enabled.
+
+        Args:
+            container_name (str): Name of the container to remove
+
+        Returns:
+            dict[str, Any]: Status of the operation
+        """
+        if not Utils.remove_container_on_exit():
+            return {"status": "skipped"}
+
+        success = self.client.remove_container_by_name(
+            container_name, with_sidecar=self.sidecar_enabled
+        )
+
+        return {"status": "success" if success else "error"}
 
     def run_container(
         self,
@@ -305,8 +401,8 @@ class UnstractRunner:
         file_execution_id: str,
         settings: dict[str, Any],
         envs: dict[str, Any],
+        container_name: str,
         messaging_channel: str | None = None,
-        container_name: str | None = None,
     ) -> Any | None:
         """RUN container With RUN Command.
 
@@ -325,6 +421,7 @@ class UnstractRunner:
             organization_id,
             workflow_id,
             execution_id,
+            file_execution_id,
         )
         envs[Env.WORKFLOW_EXECUTION_FILE_STORAGE_CREDENTIALS] = os.getenv(
             Env.WORKFLOW_EXECUTION_FILE_STORAGE_CREDENTIALS, "{}"
@@ -339,6 +436,22 @@ class UnstractRunner:
             shared_log_dir=shared_log_dir,
             shared_log_file=shared_log_file,
             settings=settings,
+        )
+
+        # Update Execution Tracker status
+        file_execution_tracker = FileExecutionStatusTracker()
+        file_execution_tracker.update_stage_status(
+            execution_id=execution_id,
+            file_execution_id=file_execution_id,
+            stage_status=FileExecutionStageData(
+                stage=FileExecutionStage(FileExecutionStage.TOOL_EXECUTION),
+                status=FileExecutionStageStatus(FileExecutionStageStatus.IN_PROGRESS),
+            ),
+        )
+        file_execution_tracker.update_tool_container_name(
+            execution_id=execution_id,
+            file_execution_id=file_execution_id,
+            tool_container_name=container_name,
         )
 
         container_config = self.client.get_container_run_config(
@@ -378,29 +491,14 @@ class UnstractRunner:
         # Run the Docker container
         container = None
         sidecar = None
-        result = {"type": "RESULT", "result": None}
+        result = {"type": "RESULT", "result": None, "status": "RUNNING"}
         try:
             self.logger.info(
                 f"Execution ID: {execution_id}, running docker "
                 f"container: {container_name}"
             )
             if sidecar_config:
-                containers: tuple[ContainerInterface, ContainerInterface | None] = (
-                    self.client.run_container_with_sidecar(
-                        container_config, sidecar_config
-                    )
-                )
-                container, sidecar = containers
-                status = self.client.wait_for_container_stop(container)
-                self.logger.info(
-                    f"Execution ID: {execution_id}, docker "
-                    f"container: {container_name} ran with status: {status}"
-                )
-                self.client.wait_for_container_stop(sidecar, main_container_status=status)
-                self.logger.info(
-                    f"Execution ID: {execution_id}, docker "
-                    f"container: {container_name} completed execution"
-                )
+                self.client.run_container_with_sidecar(container_config, sidecar_config)
             else:
                 container: ContainerInterface = self.client.run_container(
                     container_config
@@ -417,25 +515,35 @@ class UnstractRunner:
                     execution_id=execution_id,
                     organization_id=organization_id,
                     file_execution_id=file_execution_id,
+                    container_name=container_name,
                 )
                 self.logger.info(
                     f"Execution ID: {execution_id}, docker "
                     f"container: {container_name} ran successfully"
                 )
-
+                result = {"type": "RESULT", "result": None, "status": "SUCCESS"}
         except ToolRunException as te:
             self.logger.error(
-                "Error while running docker container"
-                f" {container_config.get('name')}: {te}",
+                f"Error while running docker container {container_config.get('name')}: {te}",
                 stack_info=True,
                 exc_info=True,
             )
-            result = {"type": "RESULT", "result": None, "error": str(te.message)}
+            result = {
+                "type": "RESULT",
+                "result": None,
+                "error": str(te.message),
+                "status": "ERROR",
+            }
         except Exception as e:
             self.logger.error(
                 f"Failed to run docker container: {e}", stack_info=True, exc_info=True
             )
-            result = {"type": "RESULT", "result": None, "error": str(e)}
+            result = {
+                "type": "RESULT",
+                "result": None,
+                "error": str(e),
+                "status": "ERROR",
+            }
         if container:
             container.cleanup(client=self.client)
         if sidecar:

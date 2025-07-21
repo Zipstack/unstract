@@ -23,3 +23,4 @@ deploy = [
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",
 ]
+dev = ["debugpy>=1.8.14"]

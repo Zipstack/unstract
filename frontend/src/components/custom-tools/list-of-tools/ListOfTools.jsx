@@ -1,5 +1,6 @@
-import { PlusOutlined } from "@ant-design/icons";
+import { ArrowDownOutlined, PlusOutlined } from "@ant-design/icons";
 import { useEffect, useState } from "react";
+import { Space } from "antd";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
@@ -12,25 +13,15 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
 import { SharePermission } from "../../widgets/share-permission/SharePermission";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
-
-let OnboardMessagesModal;
-let slides;
-try {
-  OnboardMessagesModal =
-    require("../../../plugins/onboarding-messages/OnboardMessagesModal.jsx").OnboardMessagesModal;
-  slides =
-    require("../../../plugins/onboarding-messages/login-slides.jsx").LoginSlides;
-} catch (err) {
-  OnboardMessagesModal = null;
-  slides = [];
-}
+import { ImportTool } from "../import-tool/ImportTool";
 
 function ListOfTools() {
   const [isListLoading, setIsListLoading] = useState(false);
   const [openAddTool, setOpenAddTool] = useState(false);
+  const [openImportTool, setOpenImportTool] = useState(false);
+  const [isImportLoading, setIsImportLoading] = useState(false);
   const [editItem, setEditItem] = useState(null);
   const { sessionDetails } = useSessionStore();
-  const { loginOnboardingMessage } = sessionDetails;
   const { setPostHogCustomEvent } = usePostHogEvents();
 
   const { setAlertDetails } = useAlertStore();
@@ -46,7 +37,6 @@ function ListOfTools() {
   const [isPermissionEdit, setIsPermissionEdit] = useState(false);
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [allUserList, setAllUserList] = useState([]);
-  const [loginModalOpen, setLoginModalOpen] = useState(true);
 
   useEffect(() => {
     getListOfTools();
@@ -195,15 +185,82 @@ function ListOfTools() {
     }
   };
 
+  const handleImportProject = (file, selectedAdapters) => {
+    try {
+      setPostHogCustomEvent("intent_tool_import_project", {
+        info: "Importing project from projects list",
+        file_name: file.name,
+      });
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+
+    setIsImportLoading(true);
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    // Add selected adapter IDs to the form data
+    if (selectedAdapters) {
+      formData.append("llm_adapter_id", selectedAdapters.llm);
+      formData.append("vector_db_adapter_id", selectedAdapters.vectorDb);
+      formData.append("embedding_adapter_id", selectedAdapters.embedding);
+      formData.append("x2text_adapter_id", selectedAdapters.x2text);
+    }
+
+    const requestOptions = {
+      method: "POST",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/project-transfer/`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+      },
+      data: formData,
+    };
+
+    axiosPrivate(requestOptions)
+      .then((response) => {
+        const {
+          message,
+          warning,
+          needs_adapter_config: needsAdapterConfig,
+        } = response.data;
+
+        setAlertDetails({
+          type: needsAdapterConfig ? "warning" : "success",
+          content: warning ? `${message} ${warning}` : message,
+        });
+        setOpenImportTool(false);
+
+        // Refresh the list of tools to show the new imported project
+        getListOfTools();
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err, "Failed to import project"));
+      })
+      .finally(() => {
+        setIsImportLoading(false);
+      });
+  };
+
   const CustomButtons = () => {
     return (
-      <CustomButton
-        type="primary"
-        icon={<PlusOutlined />}
-        onClick={handleNewProjectBtnClick}
-      >
-        New Project
-      </CustomButton>
+      <Space gap={16}>
+        <CustomButton
+          type="default"
+          icon={<ArrowDownOutlined />}
+          onClick={() => setOpenImportTool(true)}
+          loading={isImportLoading}
+        >
+          Import Project
+        </CustomButton>
+        <CustomButton
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={handleNewProjectBtnClick}
+        >
+          New Project
+        </CustomButton>
+      </Space>
     );
   };
 
@@ -313,6 +370,12 @@ function ListOfTools() {
           handleAddNewTool={handleAddNewTool}
         />
       )}
+      <ImportTool
+        open={openImportTool}
+        setOpen={setOpenImportTool}
+        onImport={handleImportProject}
+        loading={isImportLoading}
+      />
       <SharePermission
         open={openSharePermissionModal}
         setOpen={setOpenSharePermissionModal}
@@ -322,13 +385,6 @@ function ListOfTools() {
         allUsers={allUserList}
         onApply={onShare}
       />
-      {!loginOnboardingMessage && OnboardMessagesModal && (
-        <OnboardMessagesModal
-          open={loginModalOpen}
-          setOpen={setLoginModalOpen}
-          slides={slides}
-        />
-      )}
     </>
   );
 }

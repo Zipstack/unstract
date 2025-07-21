@@ -5,7 +5,10 @@ from typing import Any
 import azure.core.exceptions as AzureException
 from adlfs import AzureBlobFileSystem
 
-from unstract.connectors.exceptions import AzureHttpError, ConnectorError
+from unstract.connectors.exceptions import AzureHttpError
+from unstract.connectors.filesystems.azure_cloud_storage.exceptions import (
+    parse_azure_error,
+)
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 from unstract.filesystem import FileStorageType, FileSystem
 
@@ -21,6 +24,7 @@ class AzureCloudStorageFS(UnstractFileSystem):
         super().__init__("AzureCloudStorageFS")
         account_name = settings.get("account_name", "")
         access_key = settings.get("access_key", "")
+        self.bucket = settings.get("bucket", "")
         self.azure_fs = AzureBlobFileSystem(
             account_name=account_name, credential=access_key
         )
@@ -85,16 +89,34 @@ class AzureCloudStorageFS(UnstractFileSystem):
         )
         return None
 
+    def is_dir_by_metadata(self, metadata: dict[str, Any]) -> bool:
+        """Check if the given path is a directory.
+
+        Args:
+            metadata (dict): Metadata dictionary obtained from fsspec or cloud API.
+
+        Returns:
+            bool: True if the path is a directory, False otherwise.
+        """
+        inner_metadata = metadata.get("metadata")
+        if not isinstance(inner_metadata, dict):
+            inner_metadata = {}
+
+        is_dir = inner_metadata.get("is_directory") == "true"
+        if not is_dir:
+            is_dir = metadata.get("type") == "directory"
+        return is_dir
+
     def test_credentials(self) -> bool:
         """To test credentials for Azure Cloud Storage."""
         try:
-            is_dir = bool(self.get_fsspec_fs().isdir(""))
-            if not is_dir:
-                raise RuntimeError("Could not access root directory.")
+            self.get_fsspec_fs().info(self.bucket)
         except Exception as e:
-            raise ConnectorError(
+            logger.error(
                 f"Error from Azure Cloud Storage while testing connection: {str(e)}"
-            ) from e
+            )
+            err = parse_azure_error(e)
+            raise err from e
         return True
 
     def upload_file_to_storage(self, source_path: str, destination_path: str) -> None:

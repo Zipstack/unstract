@@ -9,9 +9,12 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
+import logging
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
+import httpx
 from dotenv import find_dotenv, load_dotenv
 from utils.common_utils import CommonUtils
 
@@ -44,6 +47,15 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Load default log from env
 DEFAULT_LOG_LEVEL = os.environ.get("DEFAULT_LOG_LEVEL", "INFO")
 
+# Celery Broker Configuration
+CELERY_BROKER_BASE_URL = get_required_setting("CELERY_BROKER_BASE_URL")
+CELERY_BROKER_USER = get_required_setting("CELERY_BROKER_USER")
+CELERY_BROKER_PASS = get_required_setting("CELERY_BROKER_PASS")
+CELERY_BROKER_URL = str(
+    httpx.URL(CELERY_BROKER_BASE_URL).copy_with(
+        username=CELERY_BROKER_USER, password=CELERY_BROKER_PASS
+    )
+)
 
 ENV_FILE = find_dotenv()
 if ENV_FILE:
@@ -55,11 +67,9 @@ WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND = os.environ.get(
     "WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND", 10800
 )
 WEB_APP_ORIGIN_URL = os.environ.get("WEB_APP_ORIGIN_URL", "http://localhost:3000")
+parsed_url = urlparse(WEB_APP_ORIGIN_URL)
+WEB_APP_ORIGIN_URL_WITH_WILD_CARD = f"{parsed_url.scheme}://*.{parsed_url.netloc}"
 CORS_ALLOWED_ORIGINS = [WEB_APP_ORIGIN_URL]
-
-LOGIN_NEXT_URL = os.environ.get("LOGIN_NEXT_URL", "http://localhost:3000/org")
-LANDING_URL = os.environ.get("LANDING_URL", "http://localhost:3000/landing")
-ERROR_URL = os.environ.get("ERROR_URL", "http://localhost:3000/error")
 
 DJANGO_APP_BACKEND_URL = os.environ.get("DJANGO_APP_BACKEND_URL", "http://localhost:8000")
 INTERNAL_SERVICE_API_KEY = os.environ.get("INTERNAL_SERVICE_API_KEY")
@@ -128,6 +138,37 @@ LOGS_BATCH_LIMIT = int(get_required_setting("LOGS_BATCH_LIMIT", "30"))
 LOGS_EXPIRATION_TIME_IN_SECOND = int(
     get_required_setting("LOGS_EXPIRATION_TIME_IN_SECOND", "86400")
 )
+EXECUTION_RESULT_TTL_SECONDS = int(
+    os.environ.get("EXECUTION_RESULT_TTL_SECONDS", 10800)
+)  # 3 hours
+EXECUTION_CACHE_TTL_SECONDS = int(
+    os.environ.get("EXECUTION_CACHE_TTL_SECONDS", 10800)
+)  # 3 hours
+FILE_EXECUTION_TRACKER_TTL_IN_SECOND = int(
+    os.environ.get("FILE_EXECUTION_TRACKER_TTL_IN_SECOND", 60 * 60 * 5)
+)
+FILE_EXECUTION_TRACKER_COMPLETED_TTL_IN_SECOND = int(
+    os.environ.get("FILE_EXECUTION_TRACKER_COMPLETED_TTL_IN_SECOND", 60 * 10)
+)  # 10 minutes
+
+INSTANT_WF_POLLING_TIMEOUT = int(
+    os.environ.get("INSTANT_WF_POLLING_TIMEOUT", "300")
+)  # 5 minutes
+
+# ETL Pipeline minimum schedule interval (in seconds)
+# Default: 1800 seconds (30 minutes)
+MIN_SCHEDULE_INTERVAL_SECONDS = int(os.environ.get("MIN_SCHEDULE_INTERVAL_SECONDS", 1800))
+
+# File processing batches
+MAX_PARALLEL_FILE_BATCHES = int(os.environ.get("MAX_PARALLEL_FILE_BATCHES", 1))
+# Upper limit for batch validation
+MAX_PARALLEL_FILE_BATCHES_MAX_VALUE = int(
+    os.environ.get("MAX_PARALLEL_FILE_BATCHES_MAX_VALUE", 100)
+)
+
+CELERY_RESULT_CHORD_RETRY_INTERVAL = int(
+    os.environ.get("CELERY_RESULT_CHORD_RETRY_INTERVAL", "3")
+)
 
 INDEXING_FLAG_TTL = int(get_required_setting("INDEXING_FLAG_TTL"))
 NOTIFICATION_TIMEOUT = int(get_required_setting("NOTIFICATION_TIMEOUT", "5"))
@@ -148,15 +189,23 @@ ENCRYPTION_KEY = get_required_setting("ENCRYPTION_KEY")
 DEBUG = True
 
 ALLOWED_HOSTS = ["*"]
-CSRF_TRUSTED_ORIGINS = [WEB_APP_ORIGIN_URL]
+CSRF_TRUSTED_ORIGINS = [WEB_APP_ORIGIN_URL, WEB_APP_ORIGIN_URL_WITH_WILD_CARD]
 CORS_ALLOW_ALL_ORIGINS = False
 
-# Determine if OpenTelemetry trace context should be included in logs
-OTEL_TRACE_CONTEXT = (
-    " trace_id:%(otelTraceID)s span_id:%(otelSpanID)s"
-    if os.environ.get("OTEL_TRACES_EXPORTER", "none").lower() != "none"
-    else ""
-)
+# Request ID middleware settings
+LOG_REQUEST_ID_HEADER = "X-Request-ID"
+REQUEST_ID_RESPONSE_HEADER = "X-Request-ID"
+GENERATE_REQUEST_ID_IF_NOT_IN_HEADER = True
+NO_REQUEST_ID = "-"
+
+
+class OTelFieldFilter(logging.Filter):
+    def filter(self, record):
+        for attr in ["otelTraceID", "otelSpanID"]:
+            if not hasattr(record, attr):
+                setattr(record, attr, "-")
+        return True
+
 
 # Logging configuration
 LOGGING = {
@@ -164,15 +213,15 @@ LOGGING = {
     "disable_existing_loggers": False,
     "filters": {
         "request_id": {"()": "log_request_id.filters.RequestIDFilter"},
+        "otel_ids": {"()": "backend.settings.base.OTelFieldFilter"},
     },
     "formatters": {
         "enriched": {
             "format": (
                 "%(levelname)s : [%(asctime)s]"
                 "{module:%(module)s process:%(process)d "
-                "thread:%(thread)d request_id:%(request_id)s"
-                + OTEL_TRACE_CONTEXT
-                + "} :- %(message)s"
+                "thread:%(thread)d request_id:%(request_id)s "
+                "trace_id:%(otelTraceID)s span_id:%(otelSpanID)s} :- %(message)s"
             ),
         },
         "verbose": {
@@ -188,7 +237,7 @@ LOGGING = {
         "console": {
             "level": DEFAULT_LOG_LEVEL,  # Set the desired logging level here
             "class": "logging.StreamHandler",
-            "filters": ["request_id"],
+            "filters": ["request_id", "otel_ids"],
             "formatter": "enriched",
         },
     },
@@ -198,6 +247,7 @@ LOGGING = {
         # Set the desired logging level here as well
     },
 }
+
 SHARED_APPS = (
     # Multitenancy
     # "django_tenants",
@@ -254,6 +304,7 @@ SHARED_APPS = (
     "prompt_studio.prompt_studio_document_manager_v2",
     "prompt_studio.prompt_studio_index_manager_v2",
     "tags",
+    "configuration",
 )
 TENANT_APPS = []
 
@@ -384,13 +435,13 @@ AUTH_PASSWORD_VALIDATORS = [
         "UserAttributeSimilarityValidator",
     },
     {
-        "NAME": "django.contrib.auth.password_validation." "MinimumLengthValidator",
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
     },
     {
-        "NAME": "django.contrib.auth.password_validation." "CommonPasswordValidator",
+        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
     },
     {
-        "NAME": "django.contrib.auth.password_validation." "NumericPasswordValidator",
+        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
     },
 ]
 
@@ -502,11 +553,6 @@ SOCIAL_AUTH_GOOGLE_OAUTH2_AUTH_EXTRA_ARGUMENTS = {
 }
 SOCIAL_AUTH_GOOGLE_OAUTH2_USE_UNIQUE_USER_ID = True
 
-# Request ID middleware settings
-LOG_REQUEST_ID_HEADER = "X-Request-ID"
-REQUEST_ID_RESPONSE_HEADER = "X-Request-ID"
-GENERATE_REQUEST_ID_IF_NOT_IN_HEADER = True
-NO_REQUEST_ID = "N/A"
 
 # Always keep this line at the bottom of the file.
 if missing_settings:

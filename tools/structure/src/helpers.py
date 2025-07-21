@@ -1,5 +1,6 @@
 import datetime
-import json
+import logging
+from collections.abc import Callable
 from typing import Any
 
 from constants import IndexingConstants as IKeys
@@ -7,6 +8,8 @@ from constants import SettingsKeys  # type: ignore [attr-defined]
 
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.tool.base import BaseTool
+
+logger = logging.getLogger(__name__)
 
 
 class StructureToolHelper:
@@ -22,7 +25,6 @@ class StructureToolHelper:
         execution_run_data_folder: str,
     ) -> str:
         x2text = tool_settings[SettingsKeys.X2TEXT_ADAPTER]
-        tool.stream_log(f"Extracting text from {file_path} into {extract_file_path}")
         payload = {
             IKeys.X2TEXT_INSTANCE_ID: x2text,
             IKeys.FILE_PATH: file_path,
@@ -36,18 +38,15 @@ class StructureToolHelper:
             IKeys.EXECUTION_DATA_DIR: str(execution_run_data_folder),
         }
 
-        tool.stream_log(f"Payload constructed : {payload}")
-        responder = PromptTool(
+        logger.info(f"Prompt service payload for text extraction:\n{payload}")
+
+        prompt_tool = PromptTool(
             tool=tool,
             prompt_host=tool.get_env_or_die(SettingsKeys.PROMPT_HOST),
             prompt_port=tool.get_env_or_die(SettingsKeys.PROMPT_PORT),
+            request_id=run_id,
         )
-        tool.stream_log(f"responder : {responder}")
-        response = responder.extract(payload=payload)
-        response_data = response.get("structure_output")
-        structure_output = json.loads(response_data)
-        extracted_text = structure_output.get("extracted_text")
-        return extracted_text
+        return prompt_tool.extract(payload=payload)
 
     @staticmethod
     def dynamic_indexing(
@@ -87,13 +86,47 @@ class StructureToolHelper:
             IKeys.EXTRACTED_TEXT: extracted_text,
         }
 
+        sensitive_keys = [IKeys.EXTRACTED_TEXT]
+        payload_to_log = {k: v for k, v in payload.items() if k not in sensitive_keys}
+        logger.info(f"Prompt service payload for indexing:\n{payload_to_log}")
         responder = PromptTool(
             tool=tool,
             prompt_host=tool.get_env_or_die(SettingsKeys.PROMPT_HOST),
             prompt_port=tool.get_env_or_die(SettingsKeys.PROMPT_PORT),
+            request_id=run_id,
         )
-        doc_id = responder.index(payload=payload)
-        return doc_id
+        return responder.index(payload=payload)
+
+    @staticmethod
+    def handle_profile_overrides(
+        tool: BaseTool,
+        llm_profile_to_override: dict,
+        llm_profile_id: str,
+        tool_metadata: dict,
+        apply_profile_overrides_func: Callable[[dict, dict], list[str]],
+    ) -> None:
+        """Handle profile overrides and logging.
+
+        Args:
+            tool: The tool instance for logging
+            llm_profile_to_override: The profile data to apply, or None if no profile
+            llm_profile_id: The profile ID for logging purposes
+            tool_metadata: The tool metadata dictionary to modify
+            apply_profile_overrides_func: Function to apply profile overrides
+        """
+        if llm_profile_to_override:
+            tool.stream_log(
+                f"Applying profile overrides from profile: {llm_profile_to_override.get('profile_name', llm_profile_id)}"
+            )
+            changes = apply_profile_overrides_func(tool_metadata, llm_profile_to_override)
+            if changes:
+                tool.stream_log("Profile overrides applied successfully. Changes made:")
+                for change in changes:
+                    tool.stream_log(f"  - {change}")
+            else:
+                tool.stream_log(
+                    "Profile overrides applied - no changes needed (values already matched)"
+                )
 
     @staticmethod
     def elapsed_time(start_time) -> float:

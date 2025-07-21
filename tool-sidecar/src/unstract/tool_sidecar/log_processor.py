@@ -13,20 +13,20 @@ from typing import Any
 
 from unstract.core.constants import LogFieldName
 from unstract.core.pubsub_helper import LogPublisher
+from unstract.core.tool_execution_status import (
+    ToolExecutionData,
+    ToolExecutionStatus,
+    ToolExecutionTracker,
+)
+from unstract.core.utilities import redact_sensitive_string
 
 from .constants import Env, LogLevel, LogType
 from .dto import LogLineDTO
 
-logging.basicConfig(
-    level=getattr(logging, os.getenv(Env.LOG_LEVEL, "INFO")),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
 logger = logging.getLogger(__name__)
 
 
 class LogProcessor:
-    TERMINATION_MARKER = "TOOL_EXECUTION_COMPLETE"
-
     def __init__(
         self,
         log_path: str,
@@ -39,6 +39,7 @@ class LogProcessor:
         organization_id: str,
         file_execution_id: str,
         messaging_channel: str,
+        container_name: str = "",
     ):
         """Initialize the log processor with necessary connections and paths.
 
@@ -60,6 +61,27 @@ class LogProcessor:
         self.organization_id = organization_id
         self.file_execution_id = file_execution_id
         self.messaging_channel = messaging_channel
+        self.container_name = container_name
+        self.tool_execution_tracker = ToolExecutionTracker()
+        self._update_tool_execution_status(status=ToolExecutionStatus.RUNNING)
+
+    def _update_tool_execution_status(
+        self, status: ToolExecutionStatus, error: str | None = None
+    ) -> None:
+        try:
+            tool_execution_data = ToolExecutionData(
+                execution_id=self.execution_id,
+                tool_instance_id=self.tool_instance_id,
+                file_execution_id=self.file_execution_id,
+                organization_id=self.organization_id,
+                status=status,
+                error=error,
+            )
+            self.tool_execution_tracker.update_status(
+                tool_execution_data=tool_execution_data
+            )
+        except Exception as e:
+            logger.error(f"Failed to update tool execution status: {e}", exc_info=True)
 
     def wait_for_log_file(self, timeout: int = 300) -> bool:
         """Wait for the log file to be created by the tool container.
@@ -93,34 +115,45 @@ class LogProcessor:
                 f"{LogFieldName.TOOL_TERMINATION_MARKER}"
             )
             return LogLineDTO(is_terminated=True)
+
         log_dict = self.get_valid_log_message(line)
         if not log_dict:
+            logger.info(f"{line}")
             return LogLineDTO()
+
         log_type = log_dict.get("type")
         log_level = log_dict.get("level")
-        if log_type == LogType.LOG and log_level == LogLevel.ERROR:
-            logger.error(f"Error in log: {log_dict.get('log')}")
-            return LogLineDTO(error=log_dict.get("log"))
         if not self.is_valid_log_type(log_type):
             logger.warning(
                 f"Received invalid logType: {log_type} with log message: {log_dict}"
             )
             return LogLineDTO()
-        if log_type == LogType.RESULT:
-            logger.info(
-                f"Tool {self.tool_instance_id} execution {self.execution_id} "
-                "completed successfully with result."
-            )
+
+        log_process_status = LogLineDTO()
+        if log_type == LogType.LOG:
+            if log_level == LogLevel.ERROR:
+                logger.error(f"{log_dict.get('log')}")
+                log_process_status.error = log_dict.get("log")
+                self._update_tool_execution_status(
+                    status=ToolExecutionStatus.FAILED, error=log_dict.get("log")
+                )
+            else:
+                logger.info(f"{log_dict.get('log')}")
+        elif log_type == LogType.RESULT:
+            logger.info(f"Tool '{self.container_name}' completed running")
+            self._update_tool_execution_status(status=ToolExecutionStatus.SUCCESS)
             return LogLineDTO(with_result=True)
-        if log_type == LogType.UPDATE:
+        elif log_type == LogType.UPDATE:
+            logger.info("Pushing UI updates")
             log_dict["component"] = self.tool_instance_id
+
         log_dict[LogFieldName.EXECUTION_ID] = self.execution_id
         log_dict[LogFieldName.ORGANIZATION_ID] = self.organization_id
         log_dict[LogFieldName.TIMESTAMP] = self.get_log_timestamp(log_dict)
         log_dict[LogFieldName.FILE_EXECUTION_ID] = self.file_execution_id
         # Publish to channel of socket io
         LogPublisher.publish(self.messaging_channel, log_dict)
-        return LogLineDTO()
+        return log_process_status
 
     def get_log_timestamp(self, log_dict: dict[str, Any]) -> float:
         """Obtains the timestamp from the log dictionary.
@@ -219,7 +252,10 @@ def main():
     redis_port = os.getenv(Env.REDIS_PORT)
     redis_user = os.getenv(Env.REDIS_USER)
     redis_password = os.getenv(Env.REDIS_PASSWORD)
-    celery_broker_url = os.getenv(Env.CELERY_BROKER_URL)
+    # Needed for Kombu (used from unstract-core)
+    celery_broker_base_url = os.getenv(Env.CELERY_BROKER_BASE_URL)
+    celery_broker_user = os.getenv(Env.CELERY_BROKER_USER)
+    celery_broker_pass = os.getenv(Env.CELERY_BROKER_PASS, "")
 
     # Get execution parameters from environment
     tool_instance_id = os.getenv(Env.TOOL_INSTANCE_ID)
@@ -227,6 +263,7 @@ def main():
     organization_id = os.getenv(Env.ORGANIZATION_ID)
     file_execution_id = os.getenv(Env.FILE_EXECUTION_ID)
     messaging_channel = os.getenv(Env.MESSAGING_CHANNEL)
+    container_name = os.getenv(Env.CONTAINER_NAME)
 
     # Validate required parameters
     required_params = {
@@ -238,7 +275,9 @@ def main():
         Env.LOG_PATH: log_path,
         Env.REDIS_HOST: redis_host,
         Env.REDIS_PORT: redis_port,
-        Env.CELERY_BROKER_URL: celery_broker_url,
+        Env.CELERY_BROKER_BASE_URL: celery_broker_base_url,
+        Env.CELERY_BROKER_USER: celery_broker_user,
+        Env.CELERY_BROKER_PASS: redact_sensitive_string(celery_broker_pass),
     }
 
     logger.info(f"Log processor started with params: {required_params}")
@@ -261,6 +300,7 @@ def main():
         execution_id=execution_id,
         organization_id=organization_id,
         file_execution_id=file_execution_id,
+        container_name=container_name,
     )
     processor.monitor_logs()
 

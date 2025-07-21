@@ -97,23 +97,8 @@ const DetailedLogs = () => {
   };
 
   const fetchExecutionFiles = async (id, page, customParams = null) => {
-    try {
-      const url = getUrl(`/execution/${id}/files/`);
-      const defaultParams = {
-        page_size: pagination.pageSize,
-        page,
-        ordering,
-        status: statusFilter || null,
-        file_name: searchText.trim() || null,
-      };
-
-      const params = customParams || defaultParams;
-      const response = await axiosPrivate.get(url, { params });
-      setPagination({
-        current: page,
-        pageSize: pagination.pageSize,
-        total: response?.data?.count,
-      });
+    // Helper function to process API response
+    function processResponse(response) {
       const formattedData = response?.data?.results.map((item, index) => {
         return {
           key: `${index.toString()}-${item?.id}`,
@@ -130,6 +115,41 @@ const DetailedLogs = () => {
       });
 
       setExecutionFiles(formattedData);
+    }
+
+    try {
+      const url = getUrl(`/execution/${id}/files/`);
+      const defaultParams = {
+        page_size: pagination.pageSize,
+        page,
+        ordering,
+        file_name: searchText.trim() || null,
+      };
+      const params = { ...defaultParams, ...customParams };
+      const searchParams = new URLSearchParams();
+
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== null && value !== undefined) {
+          searchParams.append(key, value);
+        }
+      });
+
+      // Handle file status filter for MultipleChoiceFilter
+      if (statusFilter && statusFilter.length > 0) {
+        statusFilter.forEach((status) => {
+          searchParams.append("status", status);
+        });
+      }
+
+      const response = await axiosPrivate.get(
+        `${url}?${searchParams.toString()}`
+      );
+      setPagination({
+        current: page,
+        pageSize: pagination.pageSize,
+        total: response?.data?.count,
+      });
+      processResponse(response);
     } catch (err) {
       setAlertDetails(handleException(err));
     } finally {
@@ -146,10 +166,6 @@ const DetailedLogs = () => {
 
     const timeoutId = setTimeout(() => {
       const params = {
-        page_size: pagination.pageSize,
-        page: pagination.current,
-        ordering,
-        status: statusFilter || null,
         file_name: value.trim() || null,
       };
       fetchExecutionFiles(id, pagination.current, params);
@@ -192,8 +208,8 @@ const DetailedLogs = () => {
           />
         </div>
       ),
-      filterIcon: (filtered) => (
-        <SearchOutlined style={{ color: filtered ? "#1890ff" : undefined }} />
+      filterIcon: () => (
+        <SearchOutlined style={{ color: searchText ? "#1890ff" : undefined }} />
       ),
     },
     {

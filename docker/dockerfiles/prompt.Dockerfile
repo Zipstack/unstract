@@ -1,12 +1,12 @@
 # Use a specific version of Python slim image
-FROM python:3.12.9-slim
+FROM python:3.12.9-slim AS base
 
+ARG VERSION=dev
 LABEL maintainer="Zipstack Inc." \
     description="Prompt Service Container" \
-    version="1.0"
+    version="${VERSION}"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    # Set to immediately flush stdout and stderr streams without first buffering
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/unstract \
     BUILD_CONTEXT_PATH=prompt-service \
@@ -21,55 +21,69 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     OTEL_SERVICE_NAME=unstract_prompt
 
 # Install system dependencies, create user, and setup directories in one layer
-RUN apt-get update && \
-    apt-get --no-install-recommends install -y \
-    build-essential \
-    libmagic-dev \
-    pkg-config \
-    git && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* && \
-    adduser -u 5678 --disabled-password --gecos "" ${APP_USER} && \
-    mkdir -p ${APP_HOME} && \
-    chown -R ${APP_USER}:${APP_USER} ${APP_HOME}
+RUN apt-get update \
+    && apt-get --no-install-recommends install -y \
+       build-essential \
+       libmagic-dev \
+       pkg-config \
+       git \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* \
+    && adduser -u 5678 --disabled-password --gecos "" ${APP_USER} \
+    && mkdir -p ${APP_HOME} \
+    && chown -R ${APP_USER}:${APP_USER} ${APP_HOME}
 
 # Install uv package manager
 COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /uvx /bin/
 
+# Create working directory
 WORKDIR ${APP_HOME}
 
-# Copy dependency files first for better caching
-COPY --chown=${APP_USER} ${BUILD_CONTEXT_PATH}/pyproject.toml ${BUILD_CONTEXT_PATH}/uv.lock ./
+# -----------------------------------------------
+# EXTERNAL DEPENDENCIES STAGE - This layer gets cached if external dependencies don't change
+# -----------------------------------------------
+FROM base AS ext-dependencies
 
-# Copy required packages
-COPY --chown=${APP_USER} ${BUILD_PACKAGES_PATH}/core /unstract/core
-COPY --chown=${APP_USER} ${BUILD_PACKAGES_PATH}/flags /unstract/flags
+# Copy dependency-related files
+COPY --chown=${APP_USER}:${APP_USER} ${BUILD_CONTEXT_PATH}/pyproject.toml ${BUILD_CONTEXT_PATH}/uv.lock ${BUILD_CONTEXT_PATH}/README.md ./
 
-# Copy application code
-COPY --chown=${APP_USER} ${BUILD_CONTEXT_PATH} /app/
+# Copy local package dependencies
+COPY --chown=${APP_USER}:${APP_USER} ${BUILD_PACKAGES_PATH}/core /unstract/core
+COPY --chown=${APP_USER}:${APP_USER} ${BUILD_PACKAGES_PATH}/flags /unstract/flags
 
 # Switch to non-root user
 USER ${APP_USER}
 
-# Install dependencies in a single layer
-RUN uv sync --frozen && \
-    uv sync && \
-    . .venv/bin/activate && \
-    for dir in "${TARGET_PLUGINS_PATH}"/*/; do \
+# Install external dependencies from pyproject.toml
+RUN uv sync --group deploy --locked --no-install-project --no-dev && \
+    .venv/bin/python3 -m ensurepip --upgrade && \
+    uv run opentelemetry-bootstrap -a install
+
+# -----------------------------------------------
+# FINAL STAGE - Minimal image for production
+# -----------------------------------------------
+FROM ext-dependencies AS production
+
+# Copy application code (this layer changes most frequently)
+COPY --chown=${APP_USER}:${APP_USER} ${BUILD_CONTEXT_PATH} ./
+
+# Switch to non-root user
+USER ${APP_USER}
+
+# Install just the application in editable mode
+RUN uv sync --group deploy --locked
+
+# Install plugins after copying source code
+RUN for dir in "${TARGET_PLUGINS_PATH}"/*/; do \
     dirpath=${dir%*/}; \
-    if [ "${dirpath##*/}" != "*" ]; then \
-    cd "$dirpath" && \
-    echo "Installing plugin: ${dirpath##*/}..." && \
-    uv sync && \
-    cd -; \
+    dirname=${dirpath##*/}; \
+    if [ "${dirname}" != "*" ]; then \
+    echo "Installing plugin: ${dirname}..." && \
+    uv pip install "${TARGET_PLUGINS_PATH}/${dirname}"; \
     fi; \
     done && \
-    uv sync --group deploy && \
-    .venv/bin/python3 -m ensurepip --upgrade && \
-    uv run opentelemetry-bootstrap -a install && \
     mkdir -p prompt-studio-data
 
 EXPOSE 3003
 
-# Default command
 CMD ["./entrypoint.sh"]

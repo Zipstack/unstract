@@ -15,7 +15,8 @@ license = { text = "AGPL v3" }
 dependencies = [
     "redis~=5.2.1",
     "requests==2.31.0",
-    "kombu==5.3.7",
+    "kombu~=5.5.3",
+    "httpx>=0.27.0",
 ]
 
 [project.optional-dependencies]

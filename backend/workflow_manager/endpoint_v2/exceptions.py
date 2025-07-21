@@ -107,3 +107,13 @@ class UnstractQueueException(APIException):
     def __init__(self, detail: str = default_detail) -> None:
         status_code = 500
         super().__init__(detail=detail, code=status_code)
+
+
+class SourceFileOrInfilePathNotFound(APIException):
+    status_code = 500
+    default_detail = "Unable to obtain file (Source or Infile) for execution."
+
+
+class UnsupportedMimeTypeError(APIException):
+    status_code = 400
+    default_detail = "Unsupported MIME type."
