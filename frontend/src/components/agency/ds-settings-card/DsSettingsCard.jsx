@@ -23,6 +23,7 @@ import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { useWorkflowStore } from "../../../store/workflow-store";
+import useRequestUrl from "../../../hooks/useRequestUrl";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { ConfigureConnectorModal } from "../configure-connector-modal/ConfigureConnectorModal";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -82,6 +83,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
   const { flags } = sessionDetails;
+  const { getUrl } = useRequestUrl();
 
   const icons = {
     input: <ImportOutlined className="ds-set-icon-size" />,
@@ -201,7 +203,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
     setFormDataConfig(endpointDetails.configuration || {});
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/endpoint/${endpointDetails?.id}/settings/`,
+      url: getUrl(`workflow/endpoint/${endpointDetails?.id}/settings/`),
     };
 
     setIsSpecConfigLoading(true);
@@ -225,9 +227,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
 
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${
-        sessionDetails?.orgId
-      }/supported_connectors/?type=${type.toUpperCase()}`,
+      url: getUrl(`supported_connectors/?type=${type.toUpperCase()}`),
     };
 
     axiosPrivate(requestOptions)
@@ -268,7 +268,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
 
     const requestOptions = {
       method: "PUT",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/endpoint/${destination?.id}/`,
+      url: getUrl(`workflow/endpoint/${destination?.id}/`),
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
@@ -301,7 +301,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
   const handleUpdate = (updatedData, showSuccess) => {
     const requestOptions = {
       method: "PATCH",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/endpoint/${endpointDetails?.id}/`,
+      url: getUrl(`workflow/endpoint/${endpointDetails?.id}/`),
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
@@ -333,7 +333,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
   const getSourceDetails = () => {
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/connector/${endpointDetails?.connector_instance}/`,
+      url: getUrl(`connector/${endpointDetails?.connector_instance}/`),
     };
 
     axiosPrivate(requestOptions)

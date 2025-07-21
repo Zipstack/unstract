@@ -6,6 +6,7 @@ import { CONNECTOR_TYPE_MAP } from "../../../helpers/GetStaticData.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
+import useRequestUrl from "../../../hooks/useRequestUrl";
 import { AddSourceModal } from "../add-source-modal/AddSourceModal.jsx";
 import { ManageFiles } from "../manage-files/ManageFiles.jsx";
 import { Sidebar } from "../sidebar/Sidebar.jsx";
@@ -26,6 +27,7 @@ function InputOutput() {
   const { id } = useParams();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+  const { getUrl } = useRequestUrl();
   const location = useLocation();
   const currentPath = location.pathname;
 
@@ -49,13 +51,14 @@ function InputOutput() {
 
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/endpoint/?workflow=${id}&endpoint_type=${endpointType}`,
+      url: getUrl(
+        `workflow/endpoint/?workflow=${id}&endpoint_type=${endpointType}`
+      ),
     };
 
     axiosPrivate(requestOptions)
       .then((res) => {
         const endpoints = res?.data;
-        console.log("Endpoints data", endpoints);
         if (endpoints?.length === 0) {
           setSelectedItem("");
           setListOfItems([]);
@@ -97,7 +100,7 @@ function InputOutput() {
   const handleDelete = () => {
     const requestOptions = {
       method: "DELETE",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/connector/${selectedItem}/`,
+      url: getUrl(`connector/${selectedItem}/`),
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
