@@ -2,8 +2,11 @@ import logging
 from collections import OrderedDict
 from typing import Any
 
+from connector_auth_v2.models import ConnectorAuth
+from connector_auth_v2.pipeline.common import ConnectorAuthHelper
 from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
+from connector_processor.exceptions import OAuthTimeOut
 from rest_framework.serializers import SerializerMethodField
 from utils.fields import EncryptedBinaryFieldSerializer
 from utils.serializer_utils import SerializerUtils
@@ -24,6 +27,39 @@ class ConnectorInstanceSerializer(AuditSerializer):
     class Meta:
         model = ConnectorInstance
         fields = "__all__"
+
+    def save(self, **kwargs):  # type: ignore
+        user = self.context.get("request").user or None
+        connector_id: str = kwargs[CIKey.CONNECTOR_ID]
+        connector_oauth: ConnectorAuth | None = None
+        if (
+            ConnectorInstance.supportsOAuth(connector_id=connector_id)
+            and CIKey.CONNECTOR_METADATA in kwargs
+        ):
+            try:
+                connector_oauth = ConnectorAuthHelper.get_or_create_connector_auth(
+                    user=user,  # type: ignore
+                    oauth_credentials=kwargs[CIKey.CONNECTOR_METADATA],
+                )
+                kwargs[CIKey.CONNECTOR_AUTH] = connector_oauth
+                (
+                    kwargs[CIKey.CONNECTOR_METADATA],
+                    refresh_status,
+                ) = connector_oauth.get_and_refresh_tokens()
+            except Exception as exc:
+                logger.error(
+                    "Error while obtaining ConnectorAuth for connector id "
+                    f"{connector_id}: {exc}"
+                )
+                raise OAuthTimeOut
+
+        connector_mode = ConnectorProcessor.get_connector_data_with_key(
+            connector_id, CIKey.CONNECTOR_MODE
+        )
+        kwargs[CIKey.CONNECTOR_MODE] = connector_mode.value
+
+        instance = super().save(**kwargs)
+        return instance
 
     def get_icon(self, obj: ConnectorInstance) -> str:
         """Get connector icon from ConnectorProcessor."""

@@ -4,10 +4,8 @@ from typing import Any
 
 from account_v2.models import User
 from connector_auth_v2.models import ConnectorAuth
-from connector_auth_v2.pipeline.common import ConnectorAuthHelper
 from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
-from connector_processor.exceptions import OAuthTimeOut
 from django.db import models
 from utils.fields import EncryptedBinaryField
 from utils.models.base_model import BaseModel
@@ -25,22 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 class ConnectorInstanceModelManager(DefaultOrganizationManagerMixin, models.Manager):
-    def create(self, **kwargs):
-        """Override create to handle connector mode for new instance."""
-        # Avoids circular import error
-        from connector_v2.constants import ConnectorInstanceKey as CIKey
-
-        connector_id = kwargs.get(CIKey.CONNECTOR_ID)
-        if connector_id and not kwargs.get(CIKey.CONNECTOR_MODE):
-            connector_mode = ConnectorProcessor.get_connector_data_with_key(
-                connector_id, CIKey.CONNECTOR_MODE
-            )
-            if connector_mode:
-                kwargs[CIKey.CONNECTOR_MODE] = connector_mode.value
-
-        instance = self.model(**kwargs)
-        instance.save(using=self._db)
-        return instance
+    pass
 
 
 class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
@@ -138,36 +121,6 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
             stacklevel=2,
         )
         return self.connector_metadata
-
-    def save(self, *args, **kwargs):
-        """Override save to handle OAuth and connector mode."""
-        # Handle OAuth if needed and connector_metadata is provided
-        if (
-            self.connector_metadata
-            and self.connector_id
-            and ConnectorInstance.supportsOAuth(connector_id=self.connector_id)
-        ):
-            try:
-                if self.modified_by:
-                    connector_oauth = ConnectorAuthHelper.get_or_create_connector_auth(
-                        user=self.modified_by,
-                        oauth_credentials=self.connector_metadata,
-                    )
-                    self.connector_auth = connector_oauth
-                    (
-                        updated_metadata,
-                        _,
-                    ) = connector_oauth.get_and_refresh_tokens()
-                    # Update the metadata with refreshed tokens
-                    self.connector_metadata = updated_metadata
-            except Exception as exc:
-                logger.error(
-                    "Error while obtaining ConnectorAuth for connector id "
-                    f"{self.connector_id}: {exc}"
-                )
-                raise OAuthTimeOut
-
-        super().save(*args, **kwargs)
 
     class Meta:
         db_table = "connector_instance"
