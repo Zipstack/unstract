@@ -69,11 +69,7 @@ class DeploymentExecution(views.APIView):
         hitl_queue_name = serializer.validated_data.get(ApiExecution.HITL_QUEUE_NAME)
 
         if presigned_urls:
-            error_response = DeploymentHelper.load_presigned_files(
-                presigned_urls, file_objs
-            )
-            if error_response:
-                return error_response
+            DeploymentHelper.load_presigned_files(presigned_urls, file_objs)
 
         response = DeploymentHelper.execute_workflow(
             organization_name=org_name,

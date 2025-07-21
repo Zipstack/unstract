@@ -1,7 +1,7 @@
 import logging
 from io import BytesIO
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import requests
 from django.conf import settings
@@ -29,6 +29,7 @@ from api_v2.exceptions import (
     APINotFound,
     InactiveAPI,
     InvalidAPIRequest,
+    PresignedURLFetchError,
 )
 from api_v2.key_helper import KeyHelper
 from api_v2.models import APIDeployment, APIKey
@@ -241,20 +242,21 @@ class DeploymentHelper(BaseAPIKeyValidator):
         )
         return execution_response
 
+    @staticmethod
     def load_presigned_files(
         presigned_urls: list[str], file_objs: list[InMemoryUploadedFile]
-    ) -> Response | None:
+    ) -> None:
         for url in presigned_urls:
             try:
                 resp = requests.get(url)
                 resp.raise_for_status()
-            except Exception as e:
-                return Response(
-                    {"message": f"Failed to fetch file from URL: {url}", "error": str(e)},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+            except (requests.ConnectionError, requests.RequestException) as e:
+                raise PresignedURLFetchError(url=url, error_message=str(e))
 
-            filename = url.split("?")[0].split("/")[-1]
+            # Extract filename using urlparse for better handling
+            parsed_url = urlparse(url)
+            filename = parsed_url.path.split("/")[-1] if parsed_url.path else "unknown_file"
+            
             file_stream = BytesIO(resp.content)
             uploaded_file = InMemoryUploadedFile(
                 file=file_stream,
@@ -265,5 +267,3 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 charset=None,
             )
             file_objs.append(uploaded_file)
-
-        return None
