@@ -63,8 +63,10 @@ class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
         if not workflow:
             raise ValidationError("Workflow is required.")
 
-        # Get all endpoints for this workflow
-        endpoints = WorkflowEndpoint.objects.filter(workflow=workflow)
+        # Get all endpoints for this workflow with related data
+        endpoints = WorkflowEndpoint.objects.filter(workflow=workflow).select_related(
+            "connector_instance"
+        )
 
         # Check for source endpoint
         source_endpoints = endpoints.filter(
