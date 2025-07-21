@@ -6,9 +6,7 @@ from urllib.parse import urlencode, urlparse
 import requests
 from django.conf import settings
 from django.core.files.uploadedfile import InMemoryUploadedFile, UploadedFile
-from rest_framework import status
 from rest_framework.request import Request
-from rest_framework.response import Response
 from rest_framework.serializers import Serializer
 from rest_framework.utils.serializer_helpers import ReturnDict
 from tags.models import Tag
@@ -255,8 +253,10 @@ class DeploymentHelper(BaseAPIKeyValidator):
 
             # Extract filename using urlparse for better handling
             parsed_url = urlparse(url)
-            filename = parsed_url.path.split("/")[-1] if parsed_url.path else "unknown_file"
-            
+            filename = (
+                parsed_url.path.split("/")[-1] if parsed_url.path else "unknown_file"
+            )
+
             file_stream = BytesIO(resp.content)
             uploaded_file = InMemoryUploadedFile(
                 file=file_stream,
