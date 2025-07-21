@@ -53,6 +53,9 @@ class Redshift(UnstractDB, PsycoPgHandler):
     def can_read() -> bool:
         return True
 
+    def get_string_type(self) -> str:
+        return "varchar"
+
     def get_engine(self) -> connection:
         return psycopg2.connect(
             host=self.host,
@@ -66,18 +69,39 @@ class Redshift(UnstractDB, PsycoPgHandler):
     def sql_to_db_mapping(self, value: str) -> str:
         python_type = type(value)
         mapping = {
-            str: "VARCHAR(65535)",
+            str: "VARCHAR(MAX)",
             int: "BIGINT",
             float: "DOUBLE PRECISION",
             datetime.datetime: "TIMESTAMP",
+            dict: "VARCHAR(MAX)",
+            list: "VARCHAR(MAX)",
         }
-        return mapping.get(python_type, "VARCHAR(65535)")
+        return mapping.get(python_type, "VARCHAR(MAX)")
 
     def get_create_table_base_query(self, table: str) -> str:
         sql_query = (
             f"CREATE TABLE IF NOT EXISTS {table} "
             f"(id VARCHAR(65535) ,"
             f"created_by VARCHAR(65535), created_at TIMESTAMP, "
+            f"metadata VARCHAR(65535), "
+            f"user_field_1 BOOLEAN DEFAULT FALSE, "
+            f"user_field_2 INTEGER DEFAULT 0, "
+            f"user_field_3 VARCHAR(65535) DEFAULT NULL, "
+            f"status VARCHAR(10) CHECK (status IN ('ERROR', 'STATUS')), "
+            f"error_message VARCHAR(65535), "
+        )
+        return sql_query
+
+    def prepare_multi_column_migration(self, table_name: str, column_name: str) -> str:
+        sql_query = (
+            f"ALTER TABLE {table_name} "
+            f"ADD COLUMN {column_name}_v2 VARCHAR(65535), "
+            f"ADD COLUMN metadata VARCHAR(65535), "
+            f"ADD COLUMN user_field_1 BOOLEAN DEFAULT FALSE, "
+            f"ADD COLUMN user_field_2 INTEGER DEFAULT 0, "
+            f"ADD COLUMN user_field_3 VARCHAR(65535) DEFAULT NULL, "
+            f"ADD COLUMN status VARCHAR(10) CHECK (status IN ('ERROR', 'STATUS')), "
+            f"ADD COLUMN error_message VARCHAR(65535)"
         )
         return sql_query
 

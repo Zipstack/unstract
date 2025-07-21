@@ -6,6 +6,7 @@ from typing import Any
 
 from utils.constants import Common
 from workflow_manager.endpoint_v2.constants import DBConnectionClass, TableColumns
+from workflow_manager.endpoint_v2.enums import FileStatus
 from workflow_manager.endpoint_v2.exceptions import UnstractDBException
 from workflow_manager.workflow_v2.enums import AgentName, ColumnModes
 
@@ -58,9 +59,12 @@ class DatabaseUtils:
                 else:
                     sql_values[column] = f"{values[column]}"
             else:
-                # Default to Other SQL DBs
-                # TODO: Handle numeric types with no quotes
-                sql_values[column] = f"{values[column]}"
+                # Handle JSON types for each database
+                value = values[column]
+                if isinstance(value, (dict, list)):
+                    sql_values[column] = json.dumps(value)
+                else:
+                    sql_values[column] = f"{value}"  # Non-JSON types handled as before
         # If table has a column 'id', unstract inserts a unique value to it
         # Oracle db has column 'ID' instead of 'id'
         if any(key in column_types for key in ["id", "ID"]):
@@ -109,6 +113,9 @@ class DatabaseUtils:
         include_agent: bool = False,
         agent_name: str | None = AgentName.UNSTRACT_DBWRITER.value,
         single_column_name: str = "data",
+        table_info: dict[str, str] | None = None,
+        metadata: dict[str, Any] | None = None,
+        error: str | None = None,
     ) -> dict[str, Any]:
         """Generate a dictionary of columns and values based on specified
         parameters.
@@ -144,18 +151,41 @@ class DatabaseUtils:
         if include_timestamp:
             values[TableColumns.CREATED_AT] = datetime.datetime.now()
 
+        if metadata:
+            values[TableColumns.METADATA] = json.dumps(metadata)
+
+        if error:
+            values[TableColumns.ERROR_MESSAGE] = error
+            values[TableColumns.STATUS] = FileStatus.ERROR
+        else:
+            values[TableColumns.STATUS] = FileStatus.SUCCESS
+
         if column_mode == ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN:
             if isinstance(data, str):
-                values[single_column_name] = data
+                wrapped_dict = {"result": data}
+                values[single_column_name] = wrapped_dict
+                if table_info and f"{single_column_name}_v2" in table_info:
+                    values[f"{single_column_name}_v2"] = wrapped_dict
             else:
-                values[single_column_name] = json.dumps(data)
+                values[single_column_name] = data
+                if table_info and f"{single_column_name}_v2" in table_info:
+                    values[f"{single_column_name}_v2"] = data
         if column_mode == ColumnModes.SPLIT_JSON_INTO_COLUMNS:
             if isinstance(data, dict):
-                values.update(data)
+                values[single_column_name] = data
             elif isinstance(data, str):
                 values[single_column_name] = data
+                # Only write to v2 if it exists
+                if table_info and f"{single_column_name}_v2" in table_info:
+                    values[f"{single_column_name}_v2"] = data
             else:
-                values[single_column_name] = json.dumps(data)
+                values[single_column_name] = json.dumps(
+                    data
+                )  # Legacy column gets JSON string
+                # Only write to v2 if it exists
+                if table_info and f"{single_column_name}_v2" in table_info:
+                    values[f"{single_column_name}_v2"] = data
+
         values[file_path_name] = file_path
         values[execution_id_name] = execution_id
         return values
