@@ -1,4 +1,5 @@
 import logging
+import mimetypes
 from io import BytesIO
 from typing import Any
 from urllib.parse import urlencode, urlparse
@@ -241,29 +242,95 @@ class DeploymentHelper(BaseAPIKeyValidator):
         return execution_response
 
     @staticmethod
+    def fetch_presigned_file(url: str) -> InMemoryUploadedFile:
+        """Fetch a single file from a presigned URL.
+        
+        Args:
+            url (str): The presigned URL to fetch the file from
+            
+        Returns:
+            InMemoryUploadedFile: The fetched file as an uploaded file object
+            
+        Raises:
+            PresignedURLFetchError: If the file cannot be fetched
+        """
+        try:
+            resp = requests.get(url)
+            resp.raise_for_status()
+        except (requests.ConnectionError, requests.RequestException) as e:
+            raise PresignedURLFetchError(url=url, error_message=str(e))
+
+        # Extract filename using urlparse for better handling
+        parsed_url = urlparse(url)
+        filename = (
+            parsed_url.path.split("/")[-1] if parsed_url.path else "unknown_file"
+        )
+        
+        # Remove query parameters from filename if present
+        if "?" in filename:
+            filename = filename.split("?")[0]
+
+        # Determine content type with better MIME type detection
+        content_type = resp.headers.get("Content-Type", "")
+        
+        # If content type is generic or not set, try to detect from filename
+        if not content_type or content_type in ["application/octet-stream", "binary/octet-stream"]:
+            detected_type, _ = mimetypes.guess_type(filename)
+            if detected_type:
+                content_type = detected_type
+                logger.info(f"Detected MIME type '{content_type}' for file '{filename}' from extension")
+            else:
+                # If we still can't detect the type, check for common patterns in URL
+                if any(ext in url.lower() for ext in ['.pdf', '.docx', '.xlsx', '.png', '.jpg', '.jpeg']):
+                    # Extract extension from URL path
+                    for ext in ['.pdf', '.docx', '.xlsx', '.png', '.jpg', '.jpeg']:
+                        if ext in url.lower():
+                            temp_filename = f"file{ext}"
+                            detected_type, _ = mimetypes.guess_type(temp_filename)
+                            if detected_type:
+                                content_type = detected_type
+                                logger.info(f"Detected MIME type '{content_type}' from URL pattern '{ext}'")
+                                break
+                
+                if content_type in ["", "application/octet-stream", "binary/octet-stream"]:
+                    content_type = "application/octet-stream"
+                    logger.warning(f"Could not detect MIME type for file '{filename}' from URL '{url}', using fallback")
+        
+        logger.info(f"Fetched file '{filename}' with MIME type '{content_type}' from presigned URL")
+
+        file_stream = BytesIO(resp.content)
+        uploaded_file = InMemoryUploadedFile(
+            file=file_stream,
+            field_name="file",
+            name=filename,
+            content_type=content_type,
+            size=len(resp.content),
+            charset=None,
+        )
+        return uploaded_file
+
+    @staticmethod
+    def load_presigned_files_generator(presigned_urls: list[str]):
+        """Generator that yields files from presigned URLs one by one.
+        
+        Args:
+            presigned_urls (list[str]): List of presigned URLs to fetch files from
+            
+        Yields:
+            InMemoryUploadedFile: Each fetched file as an uploaded file object
+        """
+        for url in presigned_urls:
+            yield DeploymentHelper.fetch_presigned_file(url)
+
+    @staticmethod
     def load_presigned_files(
         presigned_urls: list[str], file_objs: list[InMemoryUploadedFile]
     ) -> None:
-        for url in presigned_urls:
-            try:
-                resp = requests.get(url)
-                resp.raise_for_status()
-            except (requests.ConnectionError, requests.RequestException) as e:
-                raise PresignedURLFetchError(url=url, error_message=str(e))
-
-            # Extract filename using urlparse for better handling
-            parsed_url = urlparse(url)
-            filename = (
-                parsed_url.path.split("/")[-1] if parsed_url.path else "unknown_file"
-            )
-
-            file_stream = BytesIO(resp.content)
-            uploaded_file = InMemoryUploadedFile(
-                file=file_stream,
-                field_name="file",
-                name=filename,
-                content_type=resp.headers.get("Content-Type", "application/octet-stream"),
-                size=len(resp.content),
-                charset=None,
-            )
+        """Load files from presigned URLs using a memory-efficient generator pattern.
+        
+        Args:
+            presigned_urls (list[str]): List of presigned URLs to fetch files from
+            file_objs (list[InMemoryUploadedFile]): List to append the fetched files to
+        """
+        for uploaded_file in DeploymentHelper.load_presigned_files_generator(presigned_urls):
             file_objs.append(uploaded_file)
