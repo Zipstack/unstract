@@ -339,7 +339,7 @@ class DestinationConnector(BaseConnector):
 
         data = self.get_tool_execution_result()
         metadata = self.get_combined_metadata()
-    
+
         # If data is None, don't execute CREATE or INSERT query
         if not data:
             logger.info("No data obtained from tool to insert into destination DB.")
@@ -614,7 +614,7 @@ class DestinationConnector(BaseConnector):
         workflow_metadata["usage"] = usage_metadata
 
         return workflow_metadata
-      
+
     def delete_file_execution_directory(self) -> None:
         """Delete the file execution directory.
 
