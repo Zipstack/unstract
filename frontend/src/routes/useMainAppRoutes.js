@@ -34,6 +34,7 @@ let PRODUCT_NAMES = {};
 let ManualReviewPage;
 let SimpleManualReviewPage;
 let ReviewLayout;
+let Manage;
 let UnstractUsagePage;
 let UnstractSubscriptionPage;
 let UnstractSubscriptionCheck;
@@ -80,6 +81,7 @@ try {
     require("../plugins/manual-review/review-layout/ReviewLayout.jsx").ReviewLayout;
   SimpleManualReviewPage =
     require("../plugins/manual-review/page/simple/SimpleManualReviewPage.jsx").SimpleManualReviewPage;
+  Manage = require("../plugins/manual-review/page/manage/Manage.jsx").Manage;
 } catch (err) {
   // Do nothing, Not-found Page will be triggered.
 }
@@ -186,14 +188,18 @@ function useMainAppRoutes() {
             path="review"
             element={<ManualReviewPage type="review" />}
           ></Route>
-          <Route
-            path="simple_review/review"
-            element={<SimpleManualReviewPage type="simple_review" />}
-          ></Route>
-          <Route
-            path="simple_review/approve"
-            element={<SimpleManualReviewPage type="simple_approve" />}
-          ></Route>
+          {SimpleManualReviewPage && (
+            <>
+              <Route
+                path="simple_review/review"
+                element={<SimpleManualReviewPage type="simple_review" />}
+              ></Route>
+              <Route
+                path="simple_review/approve"
+                element={<SimpleManualReviewPage type="simple_approve" />}
+              ></Route>
+            </>
+          )}
           <Route
             path="review/download_and_sync"
             element={<ManualReviewPage type="download" />}
@@ -202,6 +208,7 @@ function useMainAppRoutes() {
             path="review/approve"
             element={<ManualReviewPage type="approve" />}
           />
+          {Manage && <Route path="review/manage" element={<Manage />} />}
         </Route>
       )}
     </>

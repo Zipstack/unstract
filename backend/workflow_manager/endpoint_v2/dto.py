@@ -91,6 +91,7 @@ class DestinationConfig:
     execution_id: str
     use_file_history: bool
     file_execution_id: str | None = None
+    hitl_queue_name: str | None = None
 
     def to_json(self) -> dict[str, Any]:
         """Serialize the DestinationConfig instance to a JSON string."""
@@ -102,6 +103,7 @@ class DestinationConfig:
             "execution_id": str(self.execution_id),
             "use_file_history": self.use_file_history,
             "file_execution_id": file_execution_id,
+            "hitl_queue_name": self.hitl_queue_name,
         }
 
     @staticmethod
@@ -111,6 +113,7 @@ class DestinationConfig:
             data = json_str_or_dict
         else:
             data = json.loads(json_str_or_dict)
+
         return DestinationConfig(**data)
 
 

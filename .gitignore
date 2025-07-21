@@ -680,6 +680,7 @@ prompting/
 
 # Claude
 CLAUDE.md
+.claude/*
 
 # Windsurf
 .qodo

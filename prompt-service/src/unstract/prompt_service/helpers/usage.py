@@ -1,3 +1,5 @@
+import logging
+import traceback
 from logging import Logger
 from typing import Any
 
@@ -7,6 +9,9 @@ from unstract.prompt_service.constants import DBTableV2
 from unstract.prompt_service.extensions import db, db_context
 from unstract.prompt_service.utils.db_utils import DBUtils
 from unstract.prompt_service.utils.env_loader import get_env_or_die
+from unstract.sdk.audit import Audit
+
+logger = logging.getLogger(__name__)
 
 
 class UsageHelper:
@@ -80,3 +85,56 @@ class UsageHelper:
     def _format_float_positional(value: float, precision: int = 10) -> str:
         formatted: str = f"{value:.{precision}f}"
         return formatted.rstrip("0").rstrip(".") if "." in formatted else formatted
+
+    @staticmethod
+    def push_usage_data(
+        event_type: str,
+        kwargs: dict[str, Any],
+        platform_api_key: str,
+        token_counter=None,
+        model_name: str = "",
+    ) -> bool:
+        """Push usage data to the audit service.
+
+        Args:
+            event_type: Type of usage event being recorded
+            kwargs: Additional data to include with the event
+            platform_api_key: API key for authentication with the audit service
+            token_counter: Token counter object with token usage metrics
+            model_name: Name of the model used (if applicable)
+
+        Returns:
+            bool: True if successful, False otherwise
+        Note:
+            This method handles all exceptions internally and returns False on failure
+            rather than propagating exceptions to the caller.
+        """
+        if not kwargs or not isinstance(kwargs, dict):
+            logger.error("Invalid kwargs provided to push_usage_data")
+            return False
+
+        if not platform_api_key or not isinstance(platform_api_key, str):
+            logger.error("Invalid platform_api_key provided to push_usage_data")
+            return False
+
+        try:
+            logger.debug(
+                f"Pushing usage data for event_type: {event_type}, model: {model_name}"
+            )
+
+            # Call the Audit SDK with the appropriate parameters
+            Audit().push_usage_data(
+                platform_api_key=platform_api_key,
+                token_counter=token_counter,
+                model_name=model_name,
+                event_type=event_type,
+                kwargs=kwargs,
+            )
+
+            logger.info(f"Successfully pushed usage data for {model_name}")
+            return True
+        except Exception as e:
+            logger.exception(
+                f"Error pushing usage data: {str(e)} - {traceback.format_exc()}"
+            )
+            return False

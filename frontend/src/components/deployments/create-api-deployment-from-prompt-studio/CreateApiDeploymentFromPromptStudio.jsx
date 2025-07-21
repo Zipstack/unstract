@@ -367,8 +367,10 @@ const CreateApiDeploymentFromPromptStudio = ({
       // Step 5: Update tool instance with proper metadata
       const toolInstanceMetadata = {
         ...toolSettings,
-        tool_instance_id: toolInstanceResponse.data.id,
-        prompt_registry_id: toolDetails.tool_id,
+        tool_instance_id:
+          toolInstanceResponse?.data?.metadata?.tool_instance_id,
+        prompt_registry_id:
+          toolInstanceResponse?.data?.metadata?.prompt_registry_id,
         // Use default_llm instead of specific adapter ID for consistency with manual creation
         challenge_llm:
           toolSettings.challenge_llm ||
@@ -458,14 +460,13 @@ const CreateApiDeploymentFromPromptStudio = ({
     // Update each endpoint to set connection_type to API
     for (const endpoint of endpoints) {
       await axiosPrivate({
-        method: "PUT",
+        method: "PATCH",
         url: getUrl(`workflow/endpoint/${endpoint.id}/`),
         headers: {
           "X-CSRFToken": sessionDetails?.csrfToken,
           "Content-Type": "application/json",
         },
         data: {
-          ...endpoint,
           connection_type: "API",
           configuration: endpoint.configuration || {},
         },
@@ -485,7 +486,7 @@ const CreateApiDeploymentFromPromptStudio = ({
 
   const navigateToWorkflow = () => {
     if (createdWorkflowId) {
-      navigate(`/${sessionDetails?.orgId}/workflows/${createdWorkflowId}`);
+      navigate(`/${sessionDetails?.orgName}/workflows/${createdWorkflowId}`);
       handleCancel();
     }
   };
@@ -495,7 +496,7 @@ const CreateApiDeploymentFromPromptStudio = ({
     const searchParams = createdApiDeployment?.api_name
       ? `?search=${encodeURIComponent(createdApiDeployment.api_name)}`
       : "";
-    navigate(`/${sessionDetails?.orgId}/api${searchParams}`);
+    navigate(`/${sessionDetails?.orgName}/api${searchParams}`);
     handleCancel();
   };
 

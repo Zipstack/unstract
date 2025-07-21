@@ -6,6 +6,7 @@ import { CONNECTOR_TYPE_MAP } from "../../../helpers/GetStaticData.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
+import useRequestUrl from "../../../hooks/useRequestUrl";
 import { AddSourceModal } from "../add-source-modal/AddSourceModal.jsx";
 import { ManageFiles } from "../manage-files/ManageFiles.jsx";
 import { Sidebar } from "../sidebar/Sidebar.jsx";
@@ -26,6 +27,7 @@ function InputOutput() {
   const { id } = useParams();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+  const { getUrl } = useRequestUrl();
   const location = useLocation();
   const currentPath = location.pathname;
 
@@ -45,25 +47,31 @@ function InputOutput() {
 
     setConnectorType(type);
 
+    const endpointType = CONNECTOR_TYPE_MAP[type]?.toUpperCase();
+
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${
-        sessionDetails?.orgId
-      }/connector/?workflow=${id}&connector_type=${type.toUpperCase()}`,
+      url: getUrl(
+        `workflow/endpoint/?workflow=${id}&endpoint_type=${endpointType}`
+      ),
     };
 
     axiosPrivate(requestOptions)
       .then((res) => {
-        const sources = res?.data;
-        if (sources?.length === 0) {
+        const endpoints = res?.data;
+        if (endpoints?.length === 0) {
           setSelectedItem("");
           setListOfItems([]);
           return;
         }
-        const menuItems = sources.map((item) =>
-          getItem(item?.connector_name, item?.id, sourceIcon(item?.icon))
+        const menuItems = endpoints.map((item) =>
+          getItem(
+            item?.connector_instance?.connector_name,
+            item?.connector_instance?.id,
+            sourceIcon(item?.connector_instance?.connector_icon)
+          )
         );
-        const firstId = sources[0].id.toString();
+        const firstId = endpoints[0]?.connector_instance?.id?.toString();
         setSelectedItem(firstId);
         setListOfItems(menuItems);
       })
@@ -92,7 +100,7 @@ function InputOutput() {
   const handleDelete = () => {
     const requestOptions = {
       method: "DELETE",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/connector/${selectedItem}/`,
+      url: getUrl(`connector/${selectedItem}/`),
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
