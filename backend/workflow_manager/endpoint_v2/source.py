@@ -37,7 +37,9 @@ from workflow_manager.endpoint_v2.exceptions import (
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.utils.workflow_log import WorkflowLog
+from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.file_history_helper import FileHistoryHelper
+from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.file_history import FileHistory
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
@@ -121,10 +123,6 @@ class SourceConnector(BaseConnector):
             workflow=workflow,
             endpoint_type=WorkflowEndpoint.EndpointType.SOURCE,
         )
-        if endpoint.connector_instance:
-            endpoint.connector_instance.connector_metadata = (
-                endpoint.connector_instance.metadata
-            )
         return endpoint
 
     def validate(self) -> None:
@@ -377,6 +375,104 @@ class SourceConnector(BaseConnector):
             count += 1
         return count
 
+    def _is_file_being_processed(self, file_hash: FileHash) -> bool:
+        """Check if file is currently being processed or should be skipped
+        Uses direct database queries instead of FileExecutionStatusTracker
+
+        Args:
+            file_hash (FileHash): The file hash to check
+
+        Returns:
+            bool: True if file should be skipped (being processed or already completed), False otherwise
+        """
+        active_executions = self._get_active_workflow_executions()
+        logger.info(
+            f"Found {len(active_executions)} active executions for workflow {self.workflow.id}"
+        )
+
+        for execution in active_executions:
+            if self._has_blocking_file_execution(execution, file_hash):
+                return True
+
+        return False
+
+    def _get_active_workflow_executions(self):
+        """Get active executions for this workflow with organization filtering for security."""
+        organization = UserContext.get_organization()
+        return WorkflowExecution.objects.filter(
+            workflow=self.workflow,
+            workflow__organization_id=organization.id,  # Security: Organization isolation
+            status__in=[ExecutionStatus.EXECUTING, ExecutionStatus.PENDING],
+        )
+
+    def _has_blocking_file_execution(self, execution, file_hash: FileHash) -> bool:
+        """Check if there's a blocking file execution that prevents processing."""
+        try:
+            # Try to find blocking file execution using file_hash
+            file_exec = self._find_blocking_file_execution_by_hash(execution, file_hash)
+            if file_exec:
+                self._log_duplicate_file_execution_skip(file_hash, file_exec, execution)
+                return True
+
+            # Try to find blocking file execution using provider_file_uuid
+            file_exec = self._find_blocking_file_execution_by_provider_uuid(
+                execution, file_hash
+            )
+            if file_exec:
+                self._log_duplicate_file_execution_skip(file_hash, file_exec, execution)
+                return True
+
+        except Exception as e:
+            logger.warning(
+                f"Error checking file execution status for {file_hash.file_name}: {e}\n"
+                "Allowing its execution to continue anyway"
+            )
+
+        return False
+
+    def _find_blocking_file_execution_by_hash(self, execution, file_hash: FileHash):
+        """Find blocking file execution by file hash if it exists."""
+        if not file_hash.file_hash:
+            return None
+
+        try:
+            return WorkflowFileExecution.objects.get(
+                workflow_execution=execution,
+                file_hash=file_hash.file_hash,
+                file_path=file_hash.file_path,
+                status__in=ExecutionStatus.get_skip_processing_statuses(),
+            )
+        except WorkflowFileExecution.DoesNotExist:
+            return None
+
+    def _find_blocking_file_execution_by_provider_uuid(
+        self, execution, file_hash: FileHash
+    ):
+        """Find blocking file execution by provider UUID if it exists."""
+        if not file_hash.provider_file_uuid:
+            return None
+
+        try:
+            return WorkflowFileExecution.objects.get(
+                workflow_execution=execution,
+                provider_file_uuid=file_hash.provider_file_uuid,
+                file_path=file_hash.file_path,
+                status__in=ExecutionStatus.get_skip_processing_statuses(),
+            )
+        except WorkflowFileExecution.DoesNotExist:
+            return None
+
+    def _log_duplicate_file_execution_skip(
+        self, file_hash: FileHash, file_exec, execution
+    ):
+        """Log message when skipping file due to duplicate/blocking execution."""
+        message = (
+            f"Skipping file '{file_hash.file_name}' - status: {file_exec.status} "
+            f"in execution {execution.id}, file execution id: {file_exec.id}"
+        )
+        self.workflow_log.publish_log(message)
+        logger.info(message)
+
     def _should_skip_file(
         self,
         file_hash: FileHash,
@@ -392,12 +488,20 @@ class SourceConnector(BaseConnector):
             bool: True if the file should be skipped, False otherwise.
         """
         file_name = os.path.basename(file_hash.file_path)
-        return not self._should_process_file(
-            file_name, patterns
-        ) or not self._is_new_file(
-            file_hash=file_hash,
-            workflow=self.endpoint.workflow,
-        )
+
+        # Existing pattern check
+        if not self._should_process_file(file_name, patterns):
+            return True
+
+        # Existing file history check
+        if not self._is_new_file(file_hash=file_hash, workflow=self.endpoint.workflow):
+            return True
+
+        # NEW: Check if file is being processed
+        if self._is_file_being_processed(file_hash):
+            return True
+
+        return False
 
     def _is_duplicate(self, file_hash: FileHash, unique_file_paths: set[str]) -> bool:
         return (

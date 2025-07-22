@@ -130,7 +130,22 @@ const CreateApiDeploymentModal = ({
         });
       })
       .catch((err) => {
-        handleException(err, "", setBackendErrors);
+        if (err.response?.data) {
+          setBackendErrors(err.response.data);
+
+          // Show error notification
+          const errorData = err.response.data;
+          if (errorData.errors && errorData.errors.length > 0) {
+            setAlertDetails({
+              type: "error",
+              content: errorData.errors[0].detail || "Validation failed",
+            });
+          }
+        } else {
+          setAlertDetails(
+            handleException(err, "Failed to create API deployment")
+          );
+        }
       })
       .finally(() => {
         setIsLoading(false);
@@ -153,7 +168,13 @@ const CreateApiDeploymentModal = ({
         });
       })
       .catch((err) => {
-        handleException(err, "", setBackendErrors);
+        if (err.response?.data) {
+          setBackendErrors(err.response.data);
+        } else {
+          setAlertDetails(
+            handleException(err, "Failed to update API deployment")
+          );
+        }
       })
       .finally(() => {
         setIsLoading(false);
