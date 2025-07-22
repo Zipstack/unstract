@@ -239,11 +239,23 @@ class WorkflowHelper:
         tool_instances: list[ToolInstance],
     ) -> None:
         for tool in tool_instances:
-            ToolInstanceHelper.validate_tool_settings(
-                user=tool.workflow.created_by,
-                tool_uid=tool.tool_id,
-                tool_meta=tool.metadata,
-            )
+            try:
+                # Ensure adapter IDs are resolved before validation
+                user = tool.workflow.created_by
+                migrated_metadata = ToolInstanceHelper.ensure_adapter_ids_in_metadata(
+                    tool, user=user
+                )
+                ToolInstanceHelper.validate_tool_settings(
+                    user=user,
+                    tool_uid=tool.tool_id,
+                    tool_meta=migrated_metadata,
+                )
+            except Exception as e:
+                # Re-raise with additional context for better error messages
+                logger.error(
+                    f"Failed to validate tool instance {tool.id} in workflow: {e}"
+                )
+                raise
 
     @staticmethod
     def run_workflow(

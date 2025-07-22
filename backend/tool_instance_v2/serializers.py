@@ -51,7 +51,85 @@ class ToolInstanceSerializer(AuditSerializer):
             return rep
         rep[ToolKey.ICON] = tool.icon
         rep[ToolKey.NAME] = tool.properties.display_name
+
+        # Transform adapter IDs back to names for UI display
+        metadata = rep.get(TIKey.METADATA, {})
+        if metadata:
+            rep[TIKey.METADATA] = self._transform_adapter_ids_to_names_for_display(
+                metadata, tool_function
+            )
+
         return rep
+
+    def _transform_adapter_ids_to_names_for_display(
+        self, metadata: dict[str, Any], tool_uid: str
+    ) -> dict[str, Any]:
+        """Transform adapter IDs back to names for UI display."""
+        from adapter_processor_v2.adapter_processor import AdapterProcessor
+
+        from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
+        from tool_instance_v2.tool_processor import ToolProcessor
+        from unstract.tool_registry.tool_utils import ToolUtils
+
+        # Create a copy to avoid mutating the original
+        display_metadata = metadata.copy()
+
+        try:
+            tool: Tool = ToolProcessor.get_tool_by_uid(tool_uid=tool_uid)
+            schema = ToolUtils.get_json_schema_for_tool(tool)
+
+            # Get all adapter keys
+            adapter_keys = set()
+            adapter_keys.update(schema.get_llm_adapter_properties().keys())
+            adapter_keys.update(schema.get_embedding_adapter_properties().keys())
+            adapter_keys.update(schema.get_vector_db_adapter_properties().keys())
+            adapter_keys.update(schema.get_text_extractor_adapter_properties().keys())
+            adapter_keys.update(schema.get_ocr_adapter_properties().keys())
+
+            # Transform IDs back to names for display
+            for adapter_key in adapter_keys:
+                if adapter_key in display_metadata and display_metadata[adapter_key]:
+                    adapter_value = display_metadata[adapter_key]
+                    # If it's a UUID (adapter ID), convert to name for display
+                    if ToolInstanceHelper.is_uuid_format(adapter_value):
+                        try:
+                            adapter_name = AdapterProcessor.get_adapter_instance_by_id(
+                                adapter_value
+                            )
+                            if adapter_name:
+                                display_metadata[adapter_key] = adapter_name
+                            else:
+                                # Adapter ID exists but returns None - mark as orphaned
+                                display_metadata[adapter_key] = (
+                                    f"[DELETED ADAPTER: {adapter_value[:8]}...]"
+                                )
+                                logger.warning(
+                                    f"Adapter ID {adapter_value} references a deleted or inaccessible adapter"
+                                )
+                        except Exception as e:
+                            # If conversion fails, show user-friendly error
+                            display_metadata[adapter_key] = (
+                                f"[ERROR: {adapter_value[:8]}...]"
+                            )
+                            logger.error(
+                                f"Could not resolve adapter ID {adapter_value} to name: {e}"
+                            )
+                    # If it's not a UUID, it might be an old adapter name that couldn't be migrated
+                    elif adapter_value and not ToolInstanceHelper.is_uuid_format(
+                        adapter_value
+                    ):
+                        # This might be an orphaned adapter name - show warning
+                        display_metadata[adapter_key] = f"{adapter_value} [NEEDS UPDATE]"
+                        logger.warning(
+                            f"Tool metadata contains non-UUID adapter reference: {adapter_value}"
+                        )
+
+        except Exception as e:
+            logger.warning(f"Error transforming adapter IDs to names: {e}")
+            # Return original metadata if transformation fails
+            pass
+
+        return display_metadata
 
     def create(self, validated_data: dict[str, Any]) -> Any:
         workflow_id = validated_data.pop(WorkflowKey.WF_ID)
