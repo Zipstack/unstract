@@ -1,4 +1,4 @@
-import logging
+import json
 import uuid
 from typing import Any
 
@@ -6,8 +6,10 @@ from account_v2.models import User
 from connector_auth_v2.models import ConnectorAuth
 from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
+from cryptography.fernet import Fernet, InvalidToken
+from django.conf import settings
 from django.db import models
-from utils.fields import EncryptedBinaryField
+from utils.exceptions import InvalidEncryptionKey
 from utils.models.base_model import BaseModel
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
@@ -18,8 +20,6 @@ from backend.constants import FieldLengthConstants as FLC
 
 CONNECTOR_NAME_SIZE = 128
 VERSION_NAME_SIZE = 64
-
-logger = logging.getLogger(__name__)
 
 
 class ConnectorInstanceModelManager(DefaultOrganizationManagerMixin, models.Manager):
@@ -45,13 +45,13 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
         "workflow_v2.Workflow",
         on_delete=models.CASCADE,
         related_name="connector_workflow",
-        null=True,
+        null=False,
         blank=False,
     )
     connector_id = models.CharField(max_length=FLC.CONNECTOR_ID_LENGTH, default="")
-    connector_metadata = EncryptedBinaryField(null=True)
+    connector_metadata = models.BinaryField(null=True)
     connector_version = models.CharField(max_length=VERSION_NAME_SIZE, default="")
-    connector_type = models.CharField(choices=ConnectorType.choices, null=True)
+    connector_type = models.CharField(choices=ConnectorType.choices)
     # TODO: handle connector_auth cascade deletion
     connector_auth = models.ForeignKey(
         ConnectorAuth,
@@ -84,6 +84,21 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
     # Manager
     objects = ConnectorInstanceModelManager()
 
+    # TODO: Remove if unused
+    def get_connector_metadata(self) -> dict[str, str]:
+        """Gets connector metadata and refreshes the tokens if needed in case
+        of OAuth.
+        """
+        tokens_refreshed = False
+        if self.connector_auth:
+            (
+                self.connector_metadata,
+                tokens_refreshed,
+            ) = self.connector_auth.get_and_refresh_tokens()
+        if tokens_refreshed:
+            self.save()
+        return self.connector_metadata
+
     @staticmethod
     def supportsOAuth(connector_id: str) -> bool:
         return bool(
@@ -94,8 +109,18 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
 
     def __str__(self) -> str:
         return (
-            f"Connector({self.id}, ID={self.connector_id}, mode: {self.connector_mode})"
+            f"Connector({self.id}, type{self.connector_type}, workflow: {self.workflow})"
         )
+
+    def get_connector_metadata_bytes(self):
+        """Convert connector_metadata to bytes if it is a memoryview.
+
+        Returns:
+            bytes: The connector_metadata as bytes.
+        """
+        if isinstance(self.connector_metadata, memoryview):
+            return self.connector_metadata.tobytes()
+        return self.connector_metadata
 
     @property
     def metadata(self) -> Any:
@@ -107,20 +132,21 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
 
         Returns:
             dict: The decrypted connector metadata.
-
-        .. deprecated::
-            This property is deprecated. Use `connector_metadata` field directly instead.
-            This property will be removed in a future version.
         """
-        import warnings
+        try:
+            connector_metadata_bytes = self.get_connector_metadata_bytes()
 
-        warnings.warn(
-            "The 'metadata' property is deprecated. Use 'connector_metadata' field directly instead. "
-            "This property will be removed in a future version.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.connector_metadata
+            if connector_metadata_bytes is None:
+                return None
+
+            if isinstance(connector_metadata_bytes, (dict)):
+                return connector_metadata_bytes
+            encryption_secret: str = settings.ENCRYPTION_KEY
+            cipher_suite: Fernet = Fernet(encryption_secret.encode("utf-8"))
+            decrypted_value = cipher_suite.decrypt(connector_metadata_bytes)
+        except InvalidToken:
+            raise InvalidEncryptionKey(entity=InvalidEncryptionKey.Entity.CONNECTOR)
+        return json.loads(decrypted_value.decode("utf-8"))
 
     class Meta:
         db_table = "connector_instance"

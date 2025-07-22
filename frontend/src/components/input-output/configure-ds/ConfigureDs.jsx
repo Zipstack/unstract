@@ -184,16 +184,14 @@ function ConfigureDs({
       const connectorMetadata = { ...formData };
       const connectorName = connectorMetadata?.connectorName;
       delete connectorMetadata.connectorName;
-
       body = {
+        workflow: id,
+        created_by: sessionDetails?.id,
         connector_id: selectedSourceId,
         connector_metadata: connectorMetadata,
-        connector_name: connectorName,
-        created_by: sessionDetails?.id,
-        workflow: id,
         connector_type: type.toUpperCase(),
+        connector_name: connectorName,
       };
-
       url += "connector/";
 
       try {
@@ -256,10 +254,7 @@ function ConfigureDs({
         const data = res?.data;
         if (sourceTypes.connectors.includes(type)) {
           handleUpdate(
-            {
-              connector_instance_id: data?.id,
-              configuration: formDataConfig,
-            },
+            { connector_instance: data?.id, configuration: formDataConfig },
             true
           );
           setIsTcSuccessful(false);
