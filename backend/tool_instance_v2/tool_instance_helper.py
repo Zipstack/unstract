@@ -82,6 +82,10 @@ class ToolInstanceHelper:
         Returns:
             None
         """
+        print("** adapter_key ** ", adapter_key)
+        print("** adapter_property ** ", adapter_property)
+        print("** adapter_type ** ", adapter_type)
+
         if adapter_key in metadata:
             adapter_name = metadata[adapter_key]
             adapter = AdapterProcessor.get_adapter_by_name_and_type(
@@ -252,6 +256,71 @@ class ToolInstanceHelper:
             tool_instance.save()
 
     @staticmethod
+    def transform_adapter_names_to_ids(
+        tool_meta: dict[str, Any], tool_uid: str
+    ) -> dict[str, Any]:
+        """Transform adapter names to IDs in tool metadata for validation.
+
+        This method creates a copy of tool metadata where adapter names are
+        replaced with adapter IDs for JSON schema validation, while preserving
+        the original metadata for UI display purposes.
+        """
+        tool: Tool = ToolProcessor.get_tool_by_uid(tool_uid=tool_uid)
+        schema: Spec = ToolUtils.get_json_schema_for_tool(tool)
+
+        # Get all adapter properties from tool schema
+        llm_properties = schema.get_llm_adapter_properties()
+        embedding_properties = schema.get_embedding_adapter_properties()
+        vector_db_properties = schema.get_vector_db_adapter_properties()
+        x2text_properties = schema.get_text_extractor_adapter_properties()
+        ocr_properties = schema.get_ocr_adapter_properties()
+
+        # Transform names to IDs for each adapter type
+        for adapter_key, adapter_property in llm_properties.items():
+            if adapter_key in tool_meta and tool_meta[adapter_key]:
+                adapter = AdapterProcessor.get_adapter_by_name_and_type(
+                    adapter_type=AdapterTypes.LLM, adapter_name=tool_meta[adapter_key]
+                )
+                if adapter:
+                    tool_meta[adapter_key] = str(adapter.id)
+
+        for adapter_key, adapter_property in embedding_properties.items():
+            if adapter_key in tool_meta and tool_meta[adapter_key]:
+                adapter = AdapterProcessor.get_adapter_by_name_and_type(
+                    adapter_type=AdapterTypes.EMBEDDING,
+                    adapter_name=tool_meta[adapter_key],
+                )
+                if adapter:
+                    tool_meta[adapter_key] = str(adapter.id)
+
+        for adapter_key, adapter_property in vector_db_properties.items():
+            if adapter_key in tool_meta and tool_meta[adapter_key]:
+                adapter = AdapterProcessor.get_adapter_by_name_and_type(
+                    adapter_type=AdapterTypes.VECTOR_DB,
+                    adapter_name=tool_meta[adapter_key],
+                )
+                if adapter:
+                    tool_meta[adapter_key] = str(adapter.id)
+
+        for adapter_key, adapter_property in x2text_properties.items():
+            if adapter_key in tool_meta and tool_meta[adapter_key]:
+                adapter = AdapterProcessor.get_adapter_by_name_and_type(
+                    adapter_type=AdapterTypes.X2TEXT, adapter_name=tool_meta[adapter_key]
+                )
+                if adapter:
+                    tool_meta[adapter_key] = str(adapter.id)
+
+        for adapter_key, adapter_property in ocr_properties.items():
+            if adapter_key in tool_meta and tool_meta[adapter_key]:
+                adapter = AdapterProcessor.get_adapter_by_name_and_type(
+                    adapter_type=AdapterTypes.OCR, adapter_name=tool_meta[adapter_key]
+                )
+                if adapter:
+                    tool_meta[adapter_key] = str(adapter.id)
+
+        return tool_meta
+
+    @staticmethod
     def validate_tool_settings(
         user: User, tool_uid: str, tool_meta: dict[str, Any]
     ) -> bool:
@@ -269,8 +338,14 @@ class ToolInstanceHelper:
         schema_json: dict[str, Any] = ToolProcessor.get_json_schema_for_tool(
             tool_uid=tool_uid, user=user
         )
+
+        # Transform adapter names to IDs for validation
+        validation_meta = ToolInstanceHelper.transform_adapter_names_to_ids(
+            tool_meta=tool_meta.copy(), tool_uid=tool_uid
+        )
+
         try:
-            DefaultsGeneratingValidator(schema_json).validate(tool_meta)
+            DefaultsGeneratingValidator(schema_json).validate(validation_meta)
         except JSONValidationError as e:
             logger.error(e, stack_info=True, exc_info=True)
             err_msg = e.message

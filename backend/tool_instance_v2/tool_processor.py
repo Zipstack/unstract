@@ -82,38 +82,38 @@ class ToolProcessor:
         if llm_keys:
             adapters = AdapterProcessor.get_adapters_by_type(AdapterTypes.LLM, user=user)
             for key in llm_keys:
-                adapter_names = map(lambda adapter: str(adapter.adapter_name), adapters)
-                schema.properties[key]["enum"] = list(adapter_names)
+                adapter_ids = map(lambda adapter: str(adapter.id), adapters)
+                schema.properties[key]["enum"] = list(adapter_ids)
 
         if embedding_keys:
             adapters = AdapterProcessor.get_adapters_by_type(
                 AdapterTypes.EMBEDDING, user=user
             )
             for key in embedding_keys:
-                adapter_names = map(lambda adapter: str(adapter.adapter_name), adapters)
-                schema.properties[key]["enum"] = list(adapter_names)
+                adapter_ids = map(lambda adapter: str(adapter.id), adapters)
+                schema.properties[key]["enum"] = list(adapter_ids)
 
         if vector_db_keys:
             adapters = AdapterProcessor.get_adapters_by_type(
                 AdapterTypes.VECTOR_DB, user=user
             )
             for key in vector_db_keys:
-                adapter_names = map(lambda adapter: str(adapter.adapter_name), adapters)
-                schema.properties[key]["enum"] = list(adapter_names)
+                adapter_ids = map(lambda adapter: str(adapter.id), adapters)
+                schema.properties[key]["enum"] = list(adapter_ids)
 
         if x2text_keys:
             adapters = AdapterProcessor.get_adapters_by_type(
                 AdapterTypes.X2TEXT, user=user
             )
             for key in x2text_keys:
-                adapter_names = map(lambda adapter: str(adapter.adapter_name), adapters)
-                schema.properties[key]["enum"] = list(adapter_names)
+                adapter_ids = map(lambda adapter: str(adapter.id), adapters)
+                schema.properties[key]["enum"] = list(adapter_ids)
 
         if ocr_keys:
             adapters = AdapterProcessor.get_adapters_by_type(AdapterTypes.OCR, user=user)
             for key in ocr_keys:
-                adapter_names = map(lambda adapter: str(adapter.adapter_name), adapters)
-                schema.properties[key]["enum"] = list(adapter_names)
+                adapter_ids = map(lambda adapter: str(adapter.id), adapters)
+                schema.properties[key]["enum"] = list(adapter_ids)
 
     @staticmethod
     def get_tool_list(user: User) -> list[dict[str, Any]]:
