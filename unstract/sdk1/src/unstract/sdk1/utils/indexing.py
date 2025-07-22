@@ -1,7 +1,7 @@
 import json
 
-from unstract.sdk1.adapter import ToolAdapter
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
+from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.tool.base import BaseTool
 from unstract.sdk1.utils import ToolUtils
 
@@ -39,9 +39,9 @@ class IndexingUtils:
         # marking certain keys of the adapter config as necessary.
         index_key = {
             "file_hash": file_hash,
-            "vector_db_config": ToolAdapter.get_adapter_config(tool, vector_db),
-            "embedding_config": ToolAdapter.get_adapter_config(tool, embedding),
-            "x2text_config": ToolAdapter.get_adapter_config(tool, x2text),
+            "vector_db_config": PlatformHelper.get_adapter_config(tool, vector_db),
+            "embedding_config": PlatformHelper.get_adapter_config(tool, embedding),
+            "x2text_config": PlatformHelper.get_adapter_config(tool, x2text),
             # Typed and hashed as strings since the final hash is persisted
             # and this is required to be backward compatible
             "chunk_size": str(chunk_size),
