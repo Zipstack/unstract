@@ -1,7 +1,6 @@
 import { create } from "zustand";
-import { uniqueId } from "lodash";
-
 import { isNonNegativeNumber } from "../helpers/GetStaticData";
+import { uniqueId } from "lodash";
 
 const DEFAULT_DURATION = 6;
 

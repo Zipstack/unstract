@@ -35,7 +35,7 @@ class FileManagerHelper:
     @staticmethod
     def get_file_system(connector: ConnectorInstance) -> UnstractFileSystem:
         """Creates the `UnstractFileSystem` for the corresponding connector."""
-        metadata = connector.connector_metadata
+        metadata = connector.metadata
         if connector.connector_id in fs_connectors:
             connector = fs_connectors[connector.connector_id]["metadata"]["connector"]
             connector_class: UnstractFileSystem = connector(metadata)
