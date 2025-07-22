@@ -172,6 +172,9 @@ class DestinationConnector(BaseConnector):
             return True
 
         # Otherwise use existing workflow-based HITL logic
+        # Skip HITL validation if we're using file_history and no execution result is available
+        if self.use_file_history:
+            return False
         execution_result = self.get_tool_execution_result()
         if WorkflowUtil.validate_db_rule(
             execution_result, workflow, file_hash.file_destination
