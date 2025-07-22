@@ -1,3 +1,4 @@
+import json
 import logging
 from collections import OrderedDict
 from typing import Any
@@ -7,8 +8,8 @@ from connector_auth_v2.pipeline.common import ConnectorAuthHelper
 from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
 from connector_processor.exceptions import OAuthTimeOut
-from rest_framework.serializers import SerializerMethodField
-from utils.fields import EncryptedBinaryFieldSerializer
+from cryptography.fernet import Fernet
+from django.conf import settings
 from utils.serializer_utils import SerializerUtils
 
 from backend.serializers import AuditSerializer
@@ -21,12 +22,21 @@ logger = logging.getLogger(__name__)
 
 
 class ConnectorInstanceSerializer(AuditSerializer):
-    connector_metadata = EncryptedBinaryFieldSerializer(required=False, allow_null=True)
-    icon = SerializerMethodField()
-
     class Meta:
         model = ConnectorInstance
         fields = "__all__"
+
+    def validate_connector_metadata(self, value: dict[Any]) -> dict[Any]:
+        """Validating Json metadata This custom validation is to avoid conflict
+        with user input and db binary data.
+
+        Args:
+            value (Any): dict of metadata
+
+        Returns:
+            dict[Any]: dict of metadata
+        """
+        return value
 
     def save(self, **kwargs):  # type: ignore
         user = self.context.get("request").user or None
@@ -58,18 +68,14 @@ class ConnectorInstanceSerializer(AuditSerializer):
         )
         kwargs[CIKey.CONNECTOR_MODE] = connector_mode.value
 
+        encryption_secret: str = settings.ENCRYPTION_KEY
+        f: Fernet = Fernet(encryption_secret.encode("utf-8"))
+        json_string: str = json.dumps(kwargs.get(CIKey.CONNECTOR_METADATA))
+
+        kwargs[CIKey.CONNECTOR_METADATA] = f.encrypt(json_string.encode("utf-8"))
+
         instance = super().save(**kwargs)
         return instance
-
-    def get_icon(self, obj: ConnectorInstance) -> str:
-        """Get connector icon from ConnectorProcessor."""
-        icon_path = ConnectorProcessor.get_connector_data_with_key(
-            obj.connector_id, ConnectorKeys.ICON
-        )
-        # Ensure icon path is properly formatted for frontend
-        if icon_path and not icon_path.startswith("/"):
-            return f"/{icon_path}"
-        return icon_path
 
     def to_representation(self, instance: ConnectorInstance) -> dict[str, str]:
         # to remove the sensitive fields being returned
@@ -78,6 +84,11 @@ class ConnectorInstanceSerializer(AuditSerializer):
             rep[CIKey.CONNECTOR_METADATA] = {}
         if SerializerUtils.check_context_for_GET_or_POST(context=self.context):
             rep.pop(CIKey.CONNECTOR_AUTH)
-            rep[ConnectorKeys.ICON] = self.get_icon(instance)
+            # set icon fields for UI
+            rep[ConnectorKeys.ICON] = ConnectorProcessor.get_connector_data_with_key(
+                instance.connector_id, ConnectorKeys.ICON
+            )
 
+        if instance.connector_metadata:
+            rep[CIKey.CONNECTOR_METADATA] = instance.metadata
         return rep
