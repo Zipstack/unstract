@@ -16,6 +16,7 @@ from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 
 from backend.constants import RequestKey
 from backend.serializers import AuditSerializer
+from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.constants import WorkflowExecutionKey, WorkflowKey
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.execution_log import ExecutionLog
@@ -101,6 +102,14 @@ class ExecuteWorkflowResponseSerializer(Serializer):
     log_id = CharField()
     error = CharField()
     result = JSONField()
+
+
+class WorkflowEndpointSerializer(ModelSerializer):
+    workflow_name = CharField(source="workflow.workflow_name", read_only=True)
+
+    class Meta:
+        model = WorkflowEndpoint
+        fields = "__all__"
 
 
 class WorkflowExecutionSerializer(ModelSerializer):
