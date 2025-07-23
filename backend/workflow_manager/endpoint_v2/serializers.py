@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class WorkflowEndpointSerializer(ModelSerializer):
     connector_instance = ConnectorInstanceSerializer(read_only=True)
     connector_instance_id = serializers.PrimaryKeyRelatedField(
-        queryset=ConnectorInstance.objects.all(),
+        queryset=ConnectorInstance.objects.all(),  # To not make DRF shout
         source="connector_instance",
         write_only=True,
         allow_null=True,
@@ -23,3 +23,8 @@ class WorkflowEndpointSerializer(ModelSerializer):
     class Meta:
         model = WorkflowEndpoint
         fields = "__all__"
+
+    def get_fields(self):
+        fields = super().get_fields()
+        fields["connector_instance_id"].queryset = ConnectorInstance.objects.all()
+        return fields
