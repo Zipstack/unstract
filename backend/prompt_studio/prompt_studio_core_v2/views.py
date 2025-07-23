@@ -227,7 +227,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
         # Generate a run_id
-        if FeatureFlagHelper.check_flag_status('sdk_v1'):
+        if FeatureFlagHelper.check_flag_status('sdk1'):
             run_id = Utils.generate_uuid()
         else:
             run_id = CommonUtils.generate_uuid()
@@ -272,7 +272,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         profile_manager: str = request.data.get(ToolStudioPromptKeys.PROFILE_MANAGER_ID)
         if not run_id:
             # Generate a run_id
-            if FeatureFlagHelper.check_flag_status('sdk_v1'):
+            if FeatureFlagHelper.check_flag_status('sdk1'):
                 run_id = Utils.generate_uuid()
             else:
                 run_id = CommonUtils.generate_uuid()
@@ -306,7 +306,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         run_id: str = request.data.get(ToolStudioPromptKeys.RUN_ID)
         if not run_id:
             # Generate a run_id
-            if FeatureFlagHelper.check_flag_status('sdk_v1'):
+            if FeatureFlagHelper.check_flag_status('sdk1'):
                 run_id = Utils.generate_uuid()
             else:
                 run_id = CommonUtils.generate_uuid()

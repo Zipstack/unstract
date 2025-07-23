@@ -98,14 +98,14 @@ class AdapterProcessor:
     def test_adapter(adapter_id: str, adapter_metadata: dict[str, Any]) -> bool:
         logger.info(
             "\n!!! TEST ADAPTER !!!\n"
-            f"`sdk_v1` feature flag: {check_feature_flag_status("sdk_v1")}\n"
+            f"`sdk1` feature flag: {check_feature_flag_status("sdk1")}\n"
             f"Adapter ID: {adapter_id}\n"
             f"Adapter Metadata:\n"
             f"{json.dumps(adapter_metadata, indent=2)}"
             "\n!!! TEST ADAPTER !!!\n"
         )
 
-        if check_feature_flag_status("sdk_v1"):
+        if check_feature_flag_status("sdk1"):
             try:
                 llm = LLM(adapter_id=adapter_id, adapter_metadata=adapter_metadata)
                 return llm.test_connection()
