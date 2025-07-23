@@ -680,15 +680,7 @@ backend/backend/*_urls.py
 backend/backend/*_urls_v2.py
 !backend/backend/public_urls_v2.py
 
-## Vibe coding / Prompting-related files ##
-prompting/
-.prompting/
-
-# Claude
+# Adding claude prompting directories
 CLAUDE.md
-.claude/*
-
-# Windsurf
-.qodo
-.windsurfrules
-.windsurf/rules
+CONTRIBUTION_GUIDE.md
+prompting/*
