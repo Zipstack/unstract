@@ -348,9 +348,6 @@ class WorkflowHelper:
             ExecutionResponse: _description_
         """
         execution: WorkflowExecution = WorkflowExecution.objects.get(id=execution_id)
-        if not execution.task_id:
-            logger.warning(f"No task ID found for execution: {execution_id}")
-
         task_result = None
         result_acknowledged = execution.result_acknowledged
         # Prepare the initial response with the task's current status and result.
@@ -482,14 +479,14 @@ class WorkflowHelper:
                 id=execution_id
             )
 
-            # Handle empty task_id gracefully
-            if not async_execution.id or async_execution.id == "":
+            # Handle empty task_id gracefully using existing validation logic
+            if not async_execution.id:
                 logger.warning(
                     f"[{org_schema}] Celery returned empty task_id for execution_id '{execution_id}'. "
-                    f"Execution will continue but status tracking may not work."
                 )
                 # Continue without setting task_id - execution can still complete
             else:
+                # Use existing method to handle task_id setting with validation
                 workflow_execution.task_id = async_execution.id
                 workflow_execution.save(update_fields=["task_id"])
                 logger.info(
