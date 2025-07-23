@@ -70,7 +70,6 @@ class ToolInstanceHelper:
         adapter_key: str,
         adapter_property: dict[str, Any],
         adapter_type: AdapterTypes,
-        strict_validation: bool = False,
     ) -> None:
         """Update the metadata dictionary with adapter properties.
 
@@ -86,15 +85,13 @@ class ToolInstanceHelper:
                 The properties of the adapter.
             adapter_type (AdapterTypes):
                 The type of the adapter.
-            strict_validation (bool, optional):
-                If True, raises exceptions for invalid adapters. If False, logs warnings.
-                Defaults to False for backward compatibility.
 
         Returns:
             None
 
         Raises:
-            AdapterResolutionError: If strict_validation=True and adapter cannot be resolved.
+            AdapterResolutionError: When adapter cannot be resolved.
+            OrphanedAdapterError: When adapter ID is invalid or adapter doesn't exist.
         """
         print("** adapter_key ** ", adapter_key)
         print("** adapter_property ** ", adapter_property)
@@ -119,32 +116,16 @@ class ToolInstanceHelper:
                     logger.debug(f"Validated existing adapter ID: {adapter_id}")
                 except AdapterInstance.DoesNotExist:
                     error_msg = f"Adapter ID {adapter_value} not found or wrong type {adapter_type}"
-                    if strict_validation:
-                        available_adapters = (
-                            ToolInstanceHelper.get_available_adapter_names_by_type(
-                                adapter_type
-                            )
-                        )
-                        raise OrphanedAdapterError(
-                            adapter_name=adapter_value, tool_instance_id="Unknown"
-                        )
-                    else:
-                        logger.warning(error_msg)
-                        adapter_id = None
+                    logger.error(error_msg)
+                    raise OrphanedAdapterError(
+                        adapter_name=adapter_value, tool_instance_id="Unknown"
+                    )
                 except Exception as e:
                     error_msg = f"Error validating adapter ID {adapter_value}: {e}"
-                    if strict_validation:
-                        available_adapters = (
-                            ToolInstanceHelper.get_available_adapter_names_by_type(
-                                adapter_type
-                            )
-                        )
-                        raise OrphanedAdapterError(
-                            adapter_name=adapter_value, tool_instance_id="Unknown"
-                        )
-                    else:
-                        logger.error(error_msg)
-                        adapter_id = None
+                    logger.error(error_msg)
+                    raise OrphanedAdapterError(
+                        adapter_name=adapter_value, tool_instance_id="Unknown"
+                    )
             else:
                 # It's an adapter name - resolve to ID (legacy format)
                 logger.debug(f"Resolving adapter name '{adapter_value}' to ID")
@@ -163,24 +144,7 @@ class ToolInstanceHelper:
                         error_msg = (
                             f"Could not resolve adapter name '{adapter_value}' to ID"
                         )
-                        if strict_validation:
-                            available_adapters = (
-                                ToolInstanceHelper.get_available_adapter_names_by_type(
-                                    adapter_type
-                                )
-                            )
-                            raise AdapterResolutionError(
-                                adapter_name=adapter_value,
-                                adapter_type=adapter_type.value,
-                                available_adapters=available_adapters,
-                                tool_name="Unknown Tool",
-                            )
-                        else:
-                            logger.warning(error_msg)
-                            adapter_id = None
-                except Exception as e:
-                    error_msg = f"Error resolving adapter name '{adapter_value}': {e}"
-                    if strict_validation:
+                        logger.error(error_msg)
                         available_adapters = (
                             ToolInstanceHelper.get_available_adapter_names_by_type(
                                 adapter_type
@@ -192,9 +156,20 @@ class ToolInstanceHelper:
                             available_adapters=available_adapters,
                             tool_name="Unknown Tool",
                         )
-                    else:
-                        logger.error(error_msg)
-                        adapter_id = None
+                except Exception as e:
+                    error_msg = f"Error resolving adapter name '{adapter_value}': {e}"
+                    logger.error(error_msg)
+                    available_adapters = (
+                        ToolInstanceHelper.get_available_adapter_names_by_type(
+                            adapter_type
+                        )
+                    )
+                    raise AdapterResolutionError(
+                        adapter_name=adapter_value,
+                        adapter_type=adapter_type.value,
+                        available_adapters=available_adapters,
+                        tool_name="Unknown Tool",
+                    )
 
             # Set the dedicated adapter ID field
             metadata_key_for_id = adapter_property.get(
