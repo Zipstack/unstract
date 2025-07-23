@@ -460,13 +460,14 @@ const CreateApiDeploymentFromPromptStudio = ({
     // Update each endpoint to set connection_type to API
     for (const endpoint of endpoints) {
       await axiosPrivate({
-        method: "PATCH",
+        method: "PUT",
         url: getUrl(`workflow/endpoint/${endpoint.id}/`),
         headers: {
           "X-CSRFToken": sessionDetails?.csrfToken,
           "Content-Type": "application/json",
         },
         data: {
+          ...endpoint,
           connection_type: "API",
           configuration: endpoint.configuration || {},
         },

@@ -1,5 +1,4 @@
 import { usePostHog } from "posthog-js/react";
-
 import { useSessionStore } from "../store/session-store";
 
 const usePostHogEvents = () => {

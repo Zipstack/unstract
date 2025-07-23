@@ -23,7 +23,6 @@ import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { useWorkflowStore } from "../../../store/workflow-store";
-import useRequestUrl from "../../../hooks/useRequestUrl";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { ConfigureConnectorModal } from "../configure-connector-modal/ConfigureConnectorModal";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -83,7 +82,6 @@ function DsSettingsCard({ type, endpointDetails, message }) {
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
   const { flags } = sessionDetails;
-  const { getUrl } = useRequestUrl();
 
   const icons = {
     input: <ImportOutlined className="ds-set-icon-size" />,
@@ -146,30 +144,16 @@ function DsSettingsCard({ type, endpointDetails, message }) {
       setConnType(endpointDetails?.connection_type);
     }
 
-    if (!endpointDetails?.connector_instance) {
+    if (!endpointDetails?.connector_instance?.length) {
       setConnDetails({});
       return;
     }
 
-    // Use connector_instance data directly from endpointDetails if it's an object
-    if (typeof endpointDetails?.connector_instance === "object") {
-      const connectorData = endpointDetails.connector_instance;
-      connectorData.connector_metadata = connectorData.connector_metadata || {};
-      connectorData.connector_metadata.connectorName =
-        connectorData?.connector_name || "";
-      setConnDetails(connectorData);
-      setSelectedId(connectorData?.connector_id);
+    if (connDetails?.id === endpointDetails?.connector_instance) {
       return;
     }
 
-    // Fallback for legacy connector_instance ID format (string)
-    if (typeof endpointDetails?.connector_instance === "string") {
-      // Only call getSourceDetails if we haven't already loaded this connector
-      if (connDetails?.id !== endpointDetails?.connector_instance) {
-        getSourceDetails();
-      }
-      return;
-    }
+    getSourceDetails();
   }, [endpointDetails]);
 
   useEffect(() => {
@@ -203,7 +187,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
     setFormDataConfig(endpointDetails.configuration || {});
     const requestOptions = {
       method: "GET",
-      url: getUrl(`workflow/endpoint/${endpointDetails?.id}/settings/`),
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/endpoint/${endpointDetails?.id}/settings/`,
     };
 
     setIsSpecConfigLoading(true);
@@ -227,7 +211,9 @@ function DsSettingsCard({ type, endpointDetails, message }) {
 
     const requestOptions = {
       method: "GET",
-      url: getUrl(`supported_connectors/?type=${type.toUpperCase()}`),
+      url: `/api/v1/unstract/${
+        sessionDetails?.orgId
+      }/supported_connectors/?type=${type.toUpperCase()}`,
     };
 
     axiosPrivate(requestOptions)
@@ -268,7 +254,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
 
     const requestOptions = {
       method: "PUT",
-      url: getUrl(`workflow/endpoint/${destination?.id}/`),
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/endpoint/${destination?.id}/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
@@ -293,20 +279,22 @@ function DsSettingsCard({ type, endpointDetails, message }) {
     if (type === "input") {
       clearDestination({
         connection_type: "",
-        connector_instance_id: null,
+        connector_instance: null,
       });
     }
   };
 
   const handleUpdate = (updatedData, showSuccess) => {
+    const body = { ...endpointDetails, ...updatedData };
+
     const requestOptions = {
-      method: "PATCH",
-      url: getUrl(`workflow/endpoint/${endpointDetails?.id}/`),
+      method: "PUT",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/endpoint/${endpointDetails?.id}/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
       },
-      data: updatedData,
+      data: body,
     };
     axiosPrivate(requestOptions)
       .then((res) => {
@@ -333,7 +321,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
   const getSourceDetails = () => {
     const requestOptions = {
       method: "GET",
-      url: getUrl(`connector/${endpointDetails?.connector_instance}/`),
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/connector/${endpointDetails?.connector_instance}/`,
     };
 
     axiosPrivate(requestOptions)
@@ -374,7 +362,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                   onChange={(value) => {
                     handleUpdate({
                       connection_type: value,
-                      connector_instance_id: null,
+                      connector_instance: null,
                     });
                     updateDestination();
                   }}
