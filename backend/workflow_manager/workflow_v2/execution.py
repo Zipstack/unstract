@@ -404,9 +404,12 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
     @staticmethod
     def update_execution_task(execution_id: str, task_id: str) -> None:
         try:
+            logger.info(
+                f"Updating task_id for execution {execution_id} with task_id {task_id}"
+            )
             if not task_id:
                 logger.warning(
-                    f"Skipped setting taskID for execution {execution_id} since its NULL/empty"
+                    f"Skipped setting task_id for execution {execution_id} since its NULL/empty"
                 )
                 return  # Don't save empty task_id
 
