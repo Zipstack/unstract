@@ -113,69 +113,25 @@ class ToolInstanceHelper:
                         id=adapter_value, adapter_type=adapter_type.value
                     )
                     adapter_id = str(adapter.id)
-                    logger.debug(f"Validated existing adapter ID: {adapter_id}")
+                    metadata_key_for_id = adapter_property.get(
+                        AdapterPropertyKey.ADAPTER_ID_KEY, AdapterPropertyKey.ADAPTER_ID
+                    )
+                    metadata[metadata_key_for_id] = adapter_id
                 except AdapterInstance.DoesNotExist:
                     error_msg = f"Adapter ID {adapter_value} not found or wrong type {adapter_type}"
                     logger.error(error_msg)
                     raise OrphanedAdapterError(
                         adapter_name=adapter_value, tool_instance_id="Unknown"
                     )
-                except Exception as e:
-                    error_msg = f"Error validating adapter ID {adapter_value}: {e}"
-                    logger.error(error_msg)
-                    raise OrphanedAdapterError(
-                        adapter_name=adapter_value, tool_instance_id="Unknown"
-                    )
             else:
-                # It's an adapter name - resolve to ID (legacy format)
-                logger.debug(f"Resolving adapter name '{adapter_value}' to ID")
-                try:
-                    adapter = AdapterProcessor.get_adapter_by_name_and_type(
-                        adapter_type=adapter_type, adapter_name=adapter_value
-                    )
-                    if adapter:
-                        adapter_id = str(adapter.id)
-                        # Update metadata to use ID instead of name for consistency
-                        metadata[adapter_key] = adapter_id
-                        logger.debug(
-                            f"Resolved adapter name '{adapter_value}' to ID '{adapter_id}'"
-                        )
-                    else:
-                        error_msg = (
-                            f"Could not resolve adapter name '{adapter_value}' to ID"
-                        )
-                        logger.error(error_msg)
-                        available_adapters = (
-                            ToolInstanceHelper.get_available_adapter_names_by_type(
-                                adapter_type
-                            )
-                        )
-                        raise AdapterResolutionError(
-                            adapter_name=adapter_value,
-                            adapter_type=adapter_type.value,
-                            available_adapters=available_adapters,
-                            tool_name="Unknown Tool",
-                        )
-                except Exception as e:
-                    error_msg = f"Error resolving adapter name '{adapter_value}': {e}"
-                    logger.error(error_msg)
-                    available_adapters = (
-                        ToolInstanceHelper.get_available_adapter_names_by_type(
-                            adapter_type
-                        )
-                    )
-                    raise AdapterResolutionError(
-                        adapter_name=adapter_value,
-                        adapter_type=adapter_type.value,
-                        available_adapters=available_adapters,
-                        tool_name="Unknown Tool",
-                    )
-
-            # Set the dedicated adapter ID field
-            metadata_key_for_id = adapter_property.get(
-                AdapterPropertyKey.ADAPTER_ID_KEY, AdapterPropertyKey.ADAPTER_ID
-            )
-            metadata[metadata_key_for_id] = adapter_id
+                adapter = AdapterProcessor.get_adapter_by_name_and_type(
+                    adapter_type=adapter_type, adapter_name=adapter_value
+                )
+                adapter_id = str(adapter.id)
+                metadata_key_for_id = adapter_property.get(
+                    AdapterPropertyKey.ADAPTER_ID_KEY, AdapterPropertyKey.ADAPTER_ID
+                )
+                metadata[metadata_key_for_id] = adapter_id
 
     @staticmethod
     def update_metadata_with_adapter_instances(
