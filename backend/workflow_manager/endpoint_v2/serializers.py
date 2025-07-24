@@ -19,6 +19,7 @@ class WorkflowEndpointSerializer(ModelSerializer):
         write_only=True,
         allow_null=True,
     )
+    workflow_name = serializers.CharField(source="workflow.workflow_name", read_only=True)
 
     class Meta:
         model = WorkflowEndpoint
