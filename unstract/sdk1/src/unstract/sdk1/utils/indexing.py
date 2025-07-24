@@ -3,7 +3,7 @@ import json
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
 from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.tool.base import BaseTool
-from unstract.sdk1.utils import ToolUtils
+from unstract.sdk1.utils.tool import ToolUtils
 
 
 class IndexingUtils:

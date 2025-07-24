@@ -13,7 +13,8 @@ if check_feature_flag_status("sdk1"):
     from unstract.sdk1.adapters.x2text.constants import X2TextConstants
     from unstract.sdk1.adapters.x2text.llm_whisperer.src import LLMWhisperer
     from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import LLMWhispererV2
-    from unstract.sdk1.utils import ToolUtils, log_elapsed
+    from unstract.sdk1.utils.tool import ToolUtils
+    from unstract.sdk1.utils.common import log_elapsed
     from unstract.sdk1.x2txt import TextExtractionResult, X2Text
 else:
     from unstract.sdk.adapters.exceptions import AdapterError

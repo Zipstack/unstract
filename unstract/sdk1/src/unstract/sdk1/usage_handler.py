@@ -8,7 +8,7 @@ from llama_index.core.llms import LLM
 
 from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.tool.stream import StreamMixin
-from unstract.sdk1.utils.audit import Audit
+from unstract.sdk1.audit import Audit
 from unstract.sdk1.utils.token_counter import TokenCounter
 
 

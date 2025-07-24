@@ -10,7 +10,7 @@ from requests import ConnectionError, RequestException, Response
 from unstract.sdk1.constants import MimeType, RequestHeader, ToolEnv
 from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.tool.base import BaseTool
-from unstract.sdk1.utils import log_elapsed
+from unstract.sdk1.utils.common import log_elapsed
 
 logger = logging.getLogger(__name__)
 

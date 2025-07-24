@@ -30,7 +30,8 @@ if check_feature_flag_status("sdk1"):
     from unstract.sdk1.file_storage.provider import FileStorageProvider
     from unstract.sdk1.platform import PlatformHelper as ToolAdapter
     from unstract.sdk1.tool.stream import StreamMixin
-    from unstract.sdk1.utils import ToolUtils, capture_metrics
+    from unstract.sdk1.utils.tool import ToolUtils 
+    from unstract.sdk1.utils.common import capture_metrics
     from unstract.sdk1.vector_db import VectorDB
 else:
     from unstract.sdk.adapter import ToolAdapter

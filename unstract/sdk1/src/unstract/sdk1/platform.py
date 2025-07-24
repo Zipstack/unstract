@@ -17,7 +17,7 @@ from unstract.sdk1.constants import (
 )
 from unstract.sdk1.exceptions import SdkError
 from unstract.sdk1.tool.base import BaseTool
-from unstract.sdk1.utils import Utils
+from unstract.sdk1.utils.common import Utils
 
 logger = logging.getLogger(__name__)
 

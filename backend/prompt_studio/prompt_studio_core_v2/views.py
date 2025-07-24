@@ -61,7 +61,7 @@ from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
 
 if check_feature_flag_status("sdk1"):
-    from unstract.sdk1.utils import Utils as CommonUtils
+    from unstract.sdk1.utils.common import Utils as CommonUtils
 else:
     from unstract.sdk.utils.common_utils import CommonUtils
 

@@ -9,7 +9,7 @@ if check_feature_flag_status("sdk1"):
     from unstract.sdk1.llm import LLM
     from unstract.sdk1.tool.base import BaseTool
     from unstract.sdk1.tool.cache import ToolCache
-    from unstract.sdk1.utils import ToolUtils
+    from unstract.sdk1.utils.tool import ToolUtils
     from unstract.sdk1.x2txt import TextExtractionResult, X2Text
 else:
     from unstract.sdk.cache import ToolCache
