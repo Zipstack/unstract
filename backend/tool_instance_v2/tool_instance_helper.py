@@ -105,6 +105,7 @@ class ToolInstanceHelper:
             # Check if the value is already an adapter ID (UUID format)
             if ToolInstanceHelper.is_uuid_format(adapter_value):
                 # It's already an adapter ID - validate it exists
+                print("#### 1 #### ")
                 logger.debug(f"Adapter value '{adapter_value}' is already in UUID format")
                 try:
                     from adapter_processor_v2.models import AdapterInstance
@@ -124,6 +125,7 @@ class ToolInstanceHelper:
                         adapter_name=adapter_value, tool_instance_id="Unknown"
                     )
             else:
+                print("#### 2 #### ")
                 adapter = AdapterProcessor.get_adapter_by_name_and_type(
                     adapter_type=adapter_type, adapter_name=adapter_value
                 )

@@ -69,25 +69,31 @@ class ToolInstanceSerializer(AuditSerializer):
 
         from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
         from tool_instance_v2.tool_processor import ToolProcessor
+        from unstract.sdk.adapters.enums import AdapterTypes
         from unstract.tool_registry.tool_utils import ToolUtils
 
-        # Create a copy to avoid mutating the original
+        # Create a copy to avoid mutating the original metadata
         display_metadata = metadata.copy()
 
         try:
             tool: Tool = ToolProcessor.get_tool_by_uid(tool_uid=tool_uid)
             schema = ToolUtils.get_json_schema_for_tool(tool)
 
-            # Get all adapter keys
-            adapter_keys = set()
-            adapter_keys.update(schema.get_llm_adapter_properties().keys())
-            adapter_keys.update(schema.get_embedding_adapter_properties().keys())
-            adapter_keys.update(schema.get_vector_db_adapter_properties().keys())
-            adapter_keys.update(schema.get_text_extractor_adapter_properties().keys())
-            adapter_keys.update(schema.get_ocr_adapter_properties().keys())
+            # Create mapping of adapter keys to their types
+            adapter_key_to_type = {}
+            for key in schema.get_llm_adapter_properties().keys():
+                adapter_key_to_type[key] = AdapterTypes.LLM
+            for key in schema.get_embedding_adapter_properties().keys():
+                adapter_key_to_type[key] = AdapterTypes.EMBEDDING
+            for key in schema.get_vector_db_adapter_properties().keys():
+                adapter_key_to_type[key] = AdapterTypes.VECTOR_DB
+            for key in schema.get_text_extractor_adapter_properties().keys():
+                adapter_key_to_type[key] = AdapterTypes.X2TEXT
+            for key in schema.get_ocr_adapter_properties().keys():
+                adapter_key_to_type[key] = AdapterTypes.OCR
 
             # Transform IDs back to names for display
-            for adapter_key in adapter_keys:
+            for adapter_key, adapter_type in adapter_key_to_type.items():
                 if adapter_key in display_metadata and display_metadata[adapter_key]:
                     adapter_value = display_metadata[adapter_key]
                     # If it's a UUID (adapter ID), convert to name for display
@@ -114,15 +120,32 @@ class ToolInstanceSerializer(AuditSerializer):
                             logger.error(
                                 f"Could not resolve adapter ID {adapter_value} to name: {e}"
                             )
-                    # If it's not a UUID, it might be an old adapter name that couldn't be migrated
+                    # If it's not a UUID, validate if the adapter name still exists
                     elif adapter_value and not ToolInstanceHelper.is_uuid_format(
                         adapter_value
                     ):
-                        # This might be an orphaned adapter name - show warning
-                        display_metadata[adapter_key] = f"{adapter_value} [NEEDS UPDATE]"
-                        logger.warning(
-                            f"Tool metadata contains non-UUID adapter reference: {adapter_value}"
-                        )
+                        try:
+                            # Validate if adapter name still exists
+                            adapter = AdapterProcessor.get_adapter_by_name_and_type(
+                                adapter_type=adapter_type, adapter_name=adapter_value
+                            )
+                            if adapter:
+                                # Adapter name is valid, display as-is
+                                display_metadata[adapter_key] = adapter_value
+                            else:
+                                # Adapter name no longer exists (likely renamed)
+                                display_metadata[adapter_key] = (
+                                    f"{adapter_value} [NEEDS UPDATE]"
+                                )
+                                logger.warning(
+                                    f"Adapter name '{adapter_value}' no longer exists for type {adapter_type} - may have been renamed"
+                                )
+                        except Exception as e:
+                            # If validation fails, show error
+                            display_metadata[adapter_key] = f"[ERROR: {adapter_value}]"
+                            logger.error(
+                                f"Could not validate adapter name '{adapter_value}': {e}"
+                            )
 
         except Exception as e:
             logger.warning(f"Error transforming adapter IDs to names: {e}")
