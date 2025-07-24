@@ -52,7 +52,7 @@ class EncryptedBinaryField(models.BinaryField):
             raise ValueError("ENCRYPTION_KEY not found in Django settings")
         return encryption_key.encode("utf-8")
 
-    def _encrypt_value(self, value: Any) -> bytes:
+    def _encrypt_value(self, value: Any) -> bytes | None:
         """Encrypt a Python value (typically dict) to bytes."""
         if value is None:
             return None
