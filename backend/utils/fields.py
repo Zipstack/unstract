@@ -82,8 +82,12 @@ class EncryptedBinaryField(models.BinaryField):
 
             # If it's already a dict, return as-is (for backward compatibility)
             if isinstance(value, dict):
+                logger.warning(
+                    "Detected unencrypted dict in EncryptedBinaryField – "
+                    "legacy data will remain unencrypted. "
+                    "Run a migration to secure all records."
+                )
                 return value
-
             # Decrypt the bytes
             cipher_suite = Fernet(self._get_encryption_key())
             decrypted_bytes = cipher_suite.decrypt(value)
