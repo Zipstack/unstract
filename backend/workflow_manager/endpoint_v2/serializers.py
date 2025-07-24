@@ -25,6 +25,11 @@ class WorkflowEndpointSerializer(ModelSerializer):
         fields = "__all__"
 
     def get_fields(self):
+        """Override get_fields to dynamically set the connector_instance_id queryset.
+
+        This is needed to ensure that the queryset is set after the organization
+        context is available.
+        """
         fields = super().get_fields()
         fields["connector_instance_id"].queryset = ConnectorInstance.objects.all()
         return fields
