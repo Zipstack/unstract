@@ -100,10 +100,11 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             is_active=True,
         )
         try:
+            # Create empty WorkflowEndpoints for UI compatibility
+            # ConnectorInstances will be created when users actually configure connectors
             WorkflowEndpointUtils.create_endpoints_for_workflow(workflow)
-            # NOTE: Add default connector here if needed
         except Exception as e:
-            logger.error(f"Error saving workflow to DB: {e}")
+            logger.error(f"Error creating workflow endpoints: {e}")
             raise WorkflowGenerationError
         return workflow
 
