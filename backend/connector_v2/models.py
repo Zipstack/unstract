@@ -41,17 +41,9 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
     connector_name = models.TextField(
         max_length=CONNECTOR_NAME_SIZE, null=False, blank=False
     )
-    workflow = models.ForeignKey(
-        "workflow_v2.Workflow",
-        on_delete=models.CASCADE,
-        related_name="connector_workflow",
-        null=True,
-        blank=False,
-    )
     connector_id = models.CharField(max_length=FLC.CONNECTOR_ID_LENGTH, default="")
     connector_metadata = EncryptedBinaryField(null=True)
     connector_version = models.CharField(max_length=VERSION_NAME_SIZE, default="")
-    connector_type = models.CharField(choices=ConnectorType.choices, null=True)
     # TODO: handle connector_auth cascade deletion
     connector_auth = models.ForeignKey(
         ConnectorAuth,
@@ -94,7 +86,7 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
 
     def __str__(self) -> str:
         return (
-            f"Connector({self.id}, ID={self.connector_id}, mode: {self.connector_mode})"
+            f"Connector(pk={self.id}, name={self.connector_name}, ID={self.connector_id})"
         )
 
     @property
@@ -128,7 +120,7 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
         verbose_name_plural = "Connector Instances"
         constraints = [
             models.UniqueConstraint(
-                fields=["connector_name", "workflow", "connector_type"],
-                name="unique_workflow_connector",
+                fields=["connector_name", "organization"],
+                name="unique_organization_connector",
             ),
         ]
