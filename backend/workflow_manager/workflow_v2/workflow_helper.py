@@ -55,7 +55,6 @@ from workflow_manager.workflow_v2.enums import (
 )
 from workflow_manager.workflow_v2.exceptions import (
     InvalidRequest,
-    TaskDoesNotExistError,
     WorkflowDoesNotExistError,
     WorkflowExecutionError,
     WorkflowExecutionNotExist,
@@ -343,16 +342,12 @@ class WorkflowHelper:
             execution_id (str): workflow execution id
 
         Raises:
-            TaskDoesNotExistError: Not found exception
             ExecutionDoesNotExistError: If execution is not found
 
         Returns:
             ExecutionResponse: _description_
         """
         execution: WorkflowExecution = WorkflowExecution.objects.get(id=execution_id)
-        if not execution.task_id:
-            raise TaskDoesNotExistError(f"No task ID found for execution: {execution_id}")
-
         task_result = None
         result_acknowledged = execution.result_acknowledged
         # Prepare the initial response with the task's current status and result.
@@ -473,15 +468,32 @@ class WorkflowHelper:
                 },
                 queue=queue,
             )
+
+            # Log task_id for debugging
             logger.info(
-                f"[{org_schema}] Job '{async_execution}' has been enqueued for "
-                f"execution_id '{execution_id}', '{len(hash_values_of_files)}' files"
+                f"[{org_schema}] AsyncResult created with task_id: '{async_execution.id}' "
+                f"(type: {type(async_execution.id).__name__})"
             )
+
             workflow_execution: WorkflowExecution = WorkflowExecution.objects.get(
                 id=execution_id
             )
-            workflow_execution.task_id = async_execution.id
-            workflow_execution.save()
+
+            # Handle empty task_id gracefully using existing validation logic
+            if not async_execution.id:
+                logger.warning(
+                    f"[{org_schema}] Celery returned empty task_id for execution_id '{execution_id}'. "
+                )
+                # Continue without setting task_id - execution can still complete
+            else:
+                # Use existing method to handle task_id setting with validation
+                WorkflowExecutionServiceHelper.update_execution_task(
+                    execution_id=execution_id, task_id=async_execution.id
+                )
+                logger.info(
+                    f"[{org_schema}] Job '{async_execution.id}' has been enqueued for "
+                    f"execution_id '{execution_id}', '{len(hash_values_of_files)}' files"
+                )
             execution_status = workflow_execution.status
             if timeout > -1:
                 while not ExecutionStatus.is_completed(execution_status) and timeout > 0:
