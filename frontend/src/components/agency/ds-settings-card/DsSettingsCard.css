@@ -5,3 +5,11 @@
 .ds-set-card-col2 {
   z-index: 20;
 }
+
+.ds-set-card-select{
+  width: 200px !important;
+}
+
+.ds-set-card-btn{
+  align-self: flex-end;
+}
