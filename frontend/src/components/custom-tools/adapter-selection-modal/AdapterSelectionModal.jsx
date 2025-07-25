@@ -128,12 +128,17 @@ function AdapterSelectionModal({
             placeholder="Select an LLM adapter"
             loading={loadingAdapters}
             showSearch
+            optionFilterProp="label"
             filterOption={(input, option) =>
-              option.children.toLowerCase().includes(input.toLowerCase())
+              option.label?.toLowerCase().includes(input.toLowerCase())
             }
           >
             {adapters.llm.map((adapter) => (
-              <Option key={adapter?.id} value={adapter?.id}>
+              <Option
+                key={adapter?.id}
+                value={adapter?.id}
+                label={adapter?.adapter_name}
+              >
                 <Space>
                   <span>{adapter?.adapter_name}</span>
                   <Text
@@ -158,12 +163,17 @@ function AdapterSelectionModal({
             placeholder="Select a vector database adapter"
             loading={loadingAdapters}
             showSearch
+            optionFilterProp="label"
             filterOption={(input, option) =>
-              option.children.toLowerCase().includes(input.toLowerCase())
+              option.label?.toLowerCase().includes(input.toLowerCase())
             }
           >
             {adapters?.vectorDb?.map((adapter) => (
-              <Option key={adapter?.id} value={adapter?.id}>
+              <Option
+                key={adapter?.id}
+                value={adapter?.id}
+                label={adapter?.adapter_name}
+              >
                 <Space>
                   <span>{adapter?.adapter_name}</span>
                   <Text
@@ -188,12 +198,17 @@ function AdapterSelectionModal({
             placeholder="Select an embedding adapter"
             loading={loadingAdapters}
             showSearch
+            optionFilterProp="label"
             filterOption={(input, option) =>
-              option.children.toLowerCase().includes(input.toLowerCase())
+              option.label?.toLowerCase().includes(input.toLowerCase())
             }
           >
             {adapters?.embedding?.map((adapter) => (
-              <Option key={adapter?.id} value={adapter?.id}>
+              <Option
+                key={adapter?.id}
+                value={adapter?.id}
+                label={adapter?.adapter_name}
+              >
                 <Space>
                   <span>{adapter?.adapter_name}</span>
                   <Text
@@ -218,12 +233,17 @@ function AdapterSelectionModal({
             placeholder="Select an X2Text adapter"
             loading={loadingAdapters}
             showSearch
+            optionFilterProp="label"
             filterOption={(input, option) =>
-              option.children.toLowerCase().includes(input.toLowerCase())
+              option.label?.toLowerCase().includes(input.toLowerCase())
             }
           >
             {adapters?.x2text?.map((adapter) => (
-              <Option key={adapter?.id} value={adapter?.id}>
+              <Option
+                key={adapter?.id}
+                value={adapter?.id}
+                label={adapter?.adapter_name}
+              >
                 <Space>
                   <span>{adapter?.adapter_name}</span>
                   <Text
