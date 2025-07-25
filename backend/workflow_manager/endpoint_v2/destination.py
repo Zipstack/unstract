@@ -100,10 +100,6 @@ class DestinationConnector(BaseConnector):
             workflow=workflow,
             endpoint_type=WorkflowEndpoint.EndpointType.DESTINATION,
         )
-        if endpoint.connector_instance:
-            endpoint.connector_instance.connector_metadata = (
-                endpoint.connector_instance.metadata
-            )
         return endpoint
 
     def _get_source_endpoint_for_workflow(
@@ -123,10 +119,6 @@ class DestinationConnector(BaseConnector):
             workflow=workflow,
             endpoint_type=WorkflowEndpoint.EndpointType.SOURCE,
         )
-        if endpoint.connector_instance:
-            endpoint.connector_instance.connector_metadata = (
-                endpoint.connector_instance.metadata
-            )
         return endpoint
 
     def validate(self) -> None:
@@ -149,7 +141,7 @@ class DestinationConnector(BaseConnector):
                 # Get database class and test connection
                 db_class = DatabaseUtils.get_db_class(
                     connector_id=connector.connector_id,
-                    connector_settings=connector.metadata,
+                    connector_settings=connector.connector_metadata,
                 )
                 engine = db_class.get_engine()
                 if hasattr(engine, "close"):
@@ -319,7 +311,7 @@ class DestinationConnector(BaseConnector):
     def insert_into_db(self, input_file_path: str) -> None:
         """Insert data into the database."""
         connector_instance: ConnectorInstance = self.endpoint.connector_instance
-        connector_settings: dict[str, Any] = connector_instance.metadata
+        connector_settings: dict[str, Any] = connector_instance.connector_metadata
         destination_configurations: dict[str, Any] = self.endpoint.configuration
         table_name: str = str(destination_configurations.get(DestinationKey.TABLE))
         include_agent: bool = bool(
