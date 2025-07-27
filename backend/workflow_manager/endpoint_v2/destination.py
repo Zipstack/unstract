@@ -171,6 +171,10 @@ class DestinationConnector(BaseConnector):
             logger.info(f"Successfully pushed {file_name} to HITL queue")
             return True
 
+        # Skip HITL validation if we're using file_history and no execution result is available
+        if self.is_api and self.use_file_history:
+            return False
+
         # Otherwise use existing workflow-based HITL logic
         execution_result = self.get_tool_execution_result()
         if WorkflowUtil.validate_db_rule(
