@@ -45,6 +45,7 @@ from prompt_studio.prompt_studio_core_v2.exceptions import (
     MaxProfilesReachedError,
     ToolDeleteError,
 )
+from prompt_studio.prompt_studio_core_v2.migration_utils import SummarizeMigrationUtils
 from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import PromptStudioHelper
 from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManager
 from prompt_studio.prompt_studio_document_manager_v2.prompt_studio_document_helper import (  # noqa: E501
@@ -93,6 +94,18 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
     def get_queryset(self) -> QuerySet | None:
         return CustomTool.objects.for_user(self.request.user)
 
+    def retrieve(
+        self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
+    ) -> Response:
+        """Override retrieve to trigger safe migration when accessing tools."""
+        instance = self.get_object()
+
+        # Trigger lazy migration if needed (safe, with locking)
+        SummarizeMigrationUtils.migrate_tool_to_adapter_based(instance)
+
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
     def create(self, request: HttpRequest) -> Response:
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -138,6 +151,13 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
     def partial_update(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
+        # Get the tool instance
+        prompt_tool = self.get_object()
+
+        # Trigger lazy migration if needed (safe, with locking)
+        # This is appropriate here since we're already in a write operation
+        SummarizeMigrationUtils.migrate_tool_to_adapter_based(prompt_tool)
+
         # Handle new summarize_llm_adapter field (prioritized)
         summarize_llm_adapter_id = request.data.get(
             ToolStudioKeys.SUMMARIZE_LLM_ADAPTER, None
@@ -150,7 +170,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
         if summarize_llm_adapter_id:
             # Validate adapter exists and is accessible
-            prompt_tool = self.get_object()
             try:
                 adapter = AdapterInstance.objects.for_user(request.user).get(
                     id=summarize_llm_adapter_id
@@ -168,8 +187,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
         elif summarize_llm_profile_id:
             # Legacy profile-based handling
-            prompt_tool = self.get_object()
-
             ProfileManager.objects.filter(prompt_studio_tool=prompt_tool).update(
                 is_summarize_llm=False
             )

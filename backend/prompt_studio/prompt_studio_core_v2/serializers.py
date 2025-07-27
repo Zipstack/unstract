@@ -3,7 +3,6 @@ from typing import Any
 
 from account_v2.models import User
 from account_v2.serializer import UserSerializer
-from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
 from utils.FileValidator import FileValidator
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
@@ -18,6 +17,7 @@ from prompt_studio.prompt_studio_output_manager_v2.output_manager_util import (
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_v2.serializers import ToolStudioPromptSerializer
 
+from .migration_utils import SummarizeMigrationUtils
 from .models import CustomTool
 
 logger = logging.getLogger(__name__)
@@ -52,36 +52,15 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
         data = super().to_representation(instance)
         default_profile = None
 
-        # Handle summarize LLM adapter (new approach) - with lazy migration
-        if instance.summarize_llm_adapter:
-            # New adapter-based approach
-            data[TSKeys.SUMMARIZE_LLM_ADAPTER] = instance.summarize_llm_adapter.id
-        else:
-            # Check for legacy profile-based approach and provide adapter info
-            try:
-                summarize_profile = ProfileManager.objects.get(
-                    prompt_studio_tool=instance, is_summarize_llm=True
-                )
+        # Handle summarize LLM adapter (read-only, safe for serialization)
+        summarize_adapter_id = SummarizeMigrationUtils.get_summarize_adapter_id(instance)
+        if summarize_adapter_id:
+            data[TSKeys.SUMMARIZE_LLM_ADAPTER] = summarize_adapter_id
 
-                # Provide the adapter ID from the profile for frontend display
-                if summarize_profile.llm:
-                    data[TSKeys.SUMMARIZE_LLM_ADAPTER] = summarize_profile.llm.id
-
-                    # Perform lazy migration: copy adapter from profile to tool
-                    instance.summarize_llm_adapter = summarize_profile.llm
-                    instance.save()
-                    logger.info(
-                        "Lazy migration performed for tool %s: copied LLM adapter from profile to direct field",
-                        str(instance.tool_id),
-                    )
-
-                # Also provide legacy field for backward compatibility
-                data[TSKeys.SUMMARIZE_LLM_PROFILE] = summarize_profile.profile_id
-            except ObjectDoesNotExist:
-                logger.info(
-                    "Summarize LLM profile doesn't exist for prompt tool %s",
-                    str(instance.tool_id),
-                )
+        # Provide legacy profile field for backward compatibility
+        summarize_profile_id = SummarizeMigrationUtils.get_summarize_profile_id(instance)
+        if summarize_profile_id:
+            data[TSKeys.SUMMARIZE_LLM_PROFILE] = summarize_profile_id
 
         # Fetch default LLM profile
         try:
