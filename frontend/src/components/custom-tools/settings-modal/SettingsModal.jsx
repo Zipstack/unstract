@@ -11,7 +11,6 @@ import {
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { getMenuItem } from "../../../helpers/GetStaticData";
 import { ManageLlmProfiles } from "../manage-llm-profiles/ManageLlmProfiles";
-import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { CustomSynonyms } from "../custom-synonyms/CustomSynonyms";
 import { PreAndPostAmbleModal } from "../pre-and-post-amble-modal/PreAndPostAmbleModal";
 
@@ -33,8 +32,6 @@ try {
 }
 function SettingsModal({ open, setOpen, handleUpdateTool }) {
   const [selectedId, setSelectedId] = useState(1);
-  const [llmItems, setLlmItems] = useState([]);
-  const { llmProfiles } = useCustomToolStore();
   const [menuItems, setMenuItems] = useState([]);
   const [components, setComponents] = useState([]);
 
@@ -113,25 +110,11 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
     }
     setMenuItems(items);
     setComponents(listOfComponents);
-  }, [llmItems]);
-
-  useEffect(() => {
-    getLlmProfilesDropdown();
-  }, [llmProfiles]);
+  }, []);
 
   const handleSelectItem = (e) => {
     const id = e.key;
     setSelectedId(id?.toString());
-  };
-
-  const getLlmProfilesDropdown = () => {
-    const items = [...llmProfiles].map((item) => {
-      return {
-        value: item?.profile_id,
-        label: item?.profile_name,
-      };
-    });
-    setLlmItems(items);
   };
 
   return (

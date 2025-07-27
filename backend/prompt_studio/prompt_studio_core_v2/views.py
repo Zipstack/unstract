@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any
 
 from account_v2.custom_exceptions import DuplicateData
+from adapter_processor_v2.models import AdapterInstance
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
@@ -13,6 +14,7 @@ from file_management.exceptions import FileNotFound
 from permissions.permission import IsOwner, IsOwnerOrSharedUser
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
@@ -136,8 +138,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
     def partial_update(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
-        from adapter_processor_v2.models import AdapterInstance
-
         # Handle new summarize_llm_adapter field (prioritized)
         summarize_llm_adapter_id = request.data.get(
             ToolStudioKeys.SUMMARIZE_LLM_ADAPTER, None
@@ -164,8 +164,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                     is_summarize_llm=False
                 )
             except AdapterInstance.DoesNotExist:
-                from rest_framework.exceptions import ValidationError
-
                 raise ValidationError("Selected LLM adapter not found or not accessible")
 
         elif summarize_llm_profile_id:
