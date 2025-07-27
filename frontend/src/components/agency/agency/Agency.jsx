@@ -16,7 +16,6 @@ import {
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { Actions } from "../actions/Actions";
 import "./Agency.css";
 import { useSocketMessagesStore } from "../../../store/socket-messages-store";
 import { useWorkflowStore } from "../../../store/workflow-store";
@@ -24,7 +23,7 @@ import { useToolSettingsStore } from "../../../store/tool-settings";
 import { SidePanel } from "../side-panel/SidePanel";
 import { PageTitle } from "../../widgets/page-title/PageTitle";
 import { WorkflowCard } from "../workflow-card/WorkflowCard";
-import { sourceTypes } from "../../../helpers/GetStaticData";
+import { sourceTypes, wfExecutionTypes } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -33,7 +32,6 @@ import { CreateApiDeploymentModal } from "../../deployments/create-api-deploymen
 import { EtlTaskDeploy } from "../../pipelines-or-deployments/etl-task-deploy/EtlTaskDeploy.jsx";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import FileUpload from "../file-upload/FileUpload.jsx";
-import { wfExecutionTypes } from "../../../helpers/GetStaticData";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout.jsx";
 import { apiDeploymentsService } from "../../deployments/api-deployment/api-deployments-service.js";
 import { pipelineService } from "../../pipelines-or-deployments/pipeline-service.js";
@@ -43,9 +41,7 @@ import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 function Agency() {
   const [steps, setSteps] = useState([]);
   const [workflowProgress, setWorkflowProgress] = useState(0);
-  // eslint-disable-next-line no-unused-vars
   const [inputMd, setInputMd] = useState("");
-  // eslint-disable-next-line no-unused-vars
   const [outputMd, setOutputMd] = useState("");
   const [statusBarMsg, setStatusBarMsg] = useState("");
   const [sourceMsg, setSourceMsg] = useState("");
@@ -72,7 +68,6 @@ function Agency() {
   const prompt = details?.prompt_text;
   const [prevLoadingType, setPrevLoadingType] = useState("");
   const [isUpdateSteps, setIsUpdateSteps] = useState(false);
-  const [stepLoader, setStepLoader] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
   const [showToolSelectionSidebar, setShowToolSelectionSidebar] =
@@ -440,7 +435,7 @@ function Agency() {
     }
 
     if (msgComp === "NEXT_STEP") {
-      setStepLoader((prev) => !prev);
+      // Step execution is disabled - ignoring NEXT_STEP messages
       return;
     }
 
@@ -1173,7 +1168,14 @@ function Agency() {
           </div>
           {showDebug && (
             <div className="debug-panel-content">
-              <InputOutput />
+              {statusBarMsg && (
+                <div className="status-message">
+                  <Typography.Text type="secondary" className="status-text">
+                    {statusBarMsg}
+                  </Typography.Text>
+                </div>
+              )}
+              <InputOutput input={inputMd} output={outputMd} />
             </div>
           )}
         </div>
@@ -1203,15 +1205,6 @@ function Agency() {
             continueWfExecution={handleWfExecution}
           />
         )}
-
-        {/* Actions - Hidden by default, can be shown via Actions dropdown */}
-        <div style={{ display: "none" }}>
-          <Actions
-            statusBarMsg={statusBarMsg}
-            initializeWfComp={initializeWfComp}
-            stepLoader={stepLoader}
-          />
-        </div>
 
         {/* Deployment Modals */}
         {openAddApiModal && (

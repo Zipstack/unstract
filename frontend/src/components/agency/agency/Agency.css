@@ -267,6 +267,21 @@
   color: #1890ff;
 }
 
+/* Status Message */
+.status-message {
+  padding: 8px 16px;
+  background: #f6f8fa;
+  border: 1px solid #e1e4e8;
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+
+.status-text {
+  font-size: 14px;
+  color: #586069;
+  font-style: italic;
+}
+
 /* Loading Container */
 .agency-loading-container {
   display: flex;
