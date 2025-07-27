@@ -332,6 +332,17 @@ function DsSettingsCard({ type, endpointDetails, message }) {
       });
   };
 
+  // Generate configure button tooltip message
+  const getConfigureTooltipMessage = () => {
+    if (!allowChangeEndpoint) {
+      return "Configuration disabled - Workflow is deployed";
+    }
+    if (!endpointDetails?.connection_type) {
+      return "Select the connector type from the dropdown";
+    }
+    return "";
+  };
+
   return (
     <>
       <Row className="ds-set-card-row">
@@ -360,15 +371,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                 />
               </Tooltip>
 
-              <Tooltip
-                title={
-                  !allowChangeEndpoint
-                    ? "Configuration disabled - Workflow is deployed"
-                    : !endpointDetails?.connection_type
-                    ? "Select the connector type from the dropdown"
-                    : ""
-                }
-              >
+              <Tooltip title={getConfigureTooltipMessage()}>
                 <Button
                   type="primary"
                   onClick={() => setOpenModal(true)}
