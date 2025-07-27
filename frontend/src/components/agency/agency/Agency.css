@@ -134,11 +134,13 @@
 }
 
 .workflow-card-number.completed {
-  background: #52c41a;
+  background: #e6f7ff;
+  color: #1890ff;
 }
 
 .workflow-card-number.completed .anticon {
   font-size: 16px;
+  color: #1890ff;
 }
 
 .workflow-card-info {
@@ -229,4 +231,47 @@
 
 .show-debug-btn {
   color: #8c8c8c;
+}
+
+/* Tool Selection Display */
+.tool-selection-display {
+  margin-bottom: 16px;
+}
+
+.selected-tool-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 12px;
+  background: #f6f8fa;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+}
+
+.selected-tool-name {
+  font-weight: 500;
+  color: #24292f;
+}
+
+.select-tool-btn {
+  width: 100%;
+  height: 40px;
+  border-style: dashed;
+  border-color: #d9d9d9;
+  color: #8c8c8c;
+  background: #fafafa;
+}
+
+.select-tool-btn:hover {
+  border-color: #1890ff;
+  color: #1890ff;
+}
+
+/* Loading Container */
+.agency-loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 60vh;
+  width: 100%;
 }
