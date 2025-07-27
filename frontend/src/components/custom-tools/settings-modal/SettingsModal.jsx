@@ -71,10 +71,7 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
         getMenuItem("SummarizedExtraction", 2, <FileTextOutlined />)
       );
       listOfComponents[2] = (
-        <SummarizeManager
-          llmItems={llmItems}
-          handleUpdateTool={handleUpdateTool}
-        />
+        <SummarizeManager handleUpdateTool={handleUpdateTool} />
       );
       position++;
     }

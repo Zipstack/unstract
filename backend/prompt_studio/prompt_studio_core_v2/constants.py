@@ -7,6 +7,7 @@ class ToolStudioKeys:
     PROMPTS = "prompts"
     PLATFORM_SERVICE_API_KEY = "PLATFORM_SERVICE_API_KEY"
     SUMMARIZE_LLM_PROFILE = "summarize_llm_profile"
+    SUMMARIZE_LLM_ADAPTER = "summarize_llm_adapter"
     DEFAULT_PROFILE = "default_profile"
 
 

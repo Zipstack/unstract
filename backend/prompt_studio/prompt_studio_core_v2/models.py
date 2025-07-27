@@ -66,6 +66,14 @@ class CustomTool(DefaultOrganizationMixin, BaseModel):
         db_comment="Field to store the summarize prompt",
         unique=False,
     )
+    summarize_llm_adapter = models.ForeignKey(
+        AdapterInstance,
+        on_delete=models.PROTECT,
+        db_comment="Field to store the LLM adapter for summarization",
+        null=True,
+        blank=True,
+        related_name="custom_tools_summarize_llm",
+    )
     preamble = models.TextField(
         blank=True,
         db_comment="Preamble to the prompts",

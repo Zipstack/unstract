@@ -136,10 +136,40 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
     def partial_update(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
+        from adapter_processor_v2.models import AdapterInstance
+
+        # Handle new summarize_llm_adapter field (prioritized)
+        summarize_llm_adapter_id = request.data.get(
+            ToolStudioKeys.SUMMARIZE_LLM_ADAPTER, None
+        )
+
+        # Handle legacy summarize_llm_profile field (for backward compatibility)
         summarize_llm_profile_id = request.data.get(
             ToolStudioKeys.SUMMARIZE_LLM_PROFILE, None
         )
-        if summarize_llm_profile_id:
+
+        if summarize_llm_adapter_id:
+            # Validate adapter exists and is accessible
+            prompt_tool = self.get_object()
+            try:
+                adapter = AdapterInstance.objects.for_user(request.user).get(
+                    id=summarize_llm_adapter_id
+                )
+                # Set the adapter directly on the tool
+                prompt_tool.summarize_llm_adapter = adapter
+                prompt_tool.save()
+
+                # Clear any existing profile-based summarize setting
+                ProfileManager.objects.filter(prompt_studio_tool=prompt_tool).update(
+                    is_summarize_llm=False
+                )
+            except AdapterInstance.DoesNotExist:
+                from rest_framework.exceptions import ValidationError
+
+                raise ValidationError("Selected LLM adapter not found or not accessible")
+
+        elif summarize_llm_profile_id:
+            # Legacy profile-based handling
             prompt_tool = self.get_object()
 
             ProfileManager.objects.filter(prompt_studio_tool=prompt_tool).update(

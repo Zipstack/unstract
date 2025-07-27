@@ -52,17 +52,36 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
         data = super().to_representation(instance)
         default_profile = None
 
-        # Fetch summarize LLM profile
-        try:
-            summarize_profile = ProfileManager.objects.get(
-                prompt_studio_tool=instance, is_summarize_llm=True
-            )
-            data[TSKeys.SUMMARIZE_LLM_PROFILE] = summarize_profile.profile_id
-        except ObjectDoesNotExist:
-            logger.info(
-                "Summarize LLM profile doesn't exist for prompt tool %s",
-                str(instance.tool_id),
-            )
+        # Handle summarize LLM adapter (new approach) - with lazy migration
+        if instance.summarize_llm_adapter:
+            # New adapter-based approach
+            data[TSKeys.SUMMARIZE_LLM_ADAPTER] = instance.summarize_llm_adapter.id
+        else:
+            # Check for legacy profile-based approach and provide adapter info
+            try:
+                summarize_profile = ProfileManager.objects.get(
+                    prompt_studio_tool=instance, is_summarize_llm=True
+                )
+
+                # Provide the adapter ID from the profile for frontend display
+                if summarize_profile.llm:
+                    data[TSKeys.SUMMARIZE_LLM_ADAPTER] = summarize_profile.llm.id
+
+                    # Perform lazy migration: copy adapter from profile to tool
+                    instance.summarize_llm_adapter = summarize_profile.llm
+                    instance.save()
+                    logger.info(
+                        "Lazy migration performed for tool %s: copied LLM adapter from profile to direct field",
+                        str(instance.tool_id),
+                    )
+
+                # Also provide legacy field for backward compatibility
+                data[TSKeys.SUMMARIZE_LLM_PROFILE] = summarize_profile.profile_id
+            except ObjectDoesNotExist:
+                logger.info(
+                    "Summarize LLM profile doesn't exist for prompt tool %s",
+                    str(instance.tool_id),
+                )
 
         # Fetch default LLM profile
         try:
