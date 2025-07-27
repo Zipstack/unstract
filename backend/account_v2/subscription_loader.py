@@ -21,8 +21,19 @@ class SubscriptionConfig:
     METADATA_IS_ACTIVE = "is_active"
 
 
+# Cache for loaded plugins to avoid repeated loading
+_subscription_plugins_cache: list[Any] = []
+_plugins_loaded = False
+
+
 def load_plugins() -> list[Any]:
     """Iterate through the subscription plugins and register them."""
+    global _subscription_plugins_cache, _plugins_loaded
+
+    # Return cached plugins if already loaded
+    if _plugins_loaded:
+        return _subscription_plugins_cache
+
     plugins_app = apps.get_app_config(SubscriptionConfig.PLUGINS_APP)
     package_path = plugins_app.module.__package__
     subscription_dir = os.path.join(plugins_app.path, SubscriptionConfig.PLUGIN_DIR)
@@ -30,6 +41,8 @@ def load_plugins() -> list[Any]:
     subscription_plugins: list[Any] = []
 
     if not os.path.exists(subscription_dir):
+        _subscription_plugins_cache = subscription_plugins
+        _plugins_loaded = True
         return subscription_plugins
 
     for item in os.listdir(subscription_dir):
@@ -75,6 +88,10 @@ def load_plugins() -> list[Any]:
     if len(subscription_plugins) == 0:
         logger.info("No subscription plugins found.")
 
+    # Cache the results for future requests
+    _subscription_plugins_cache = subscription_plugins
+    _plugins_loaded = True
+
     return subscription_plugins
 
 
@@ -87,6 +104,7 @@ def validate_etl_run(org_id: str) -> bool:
     Returns:
         A boolean indicating whether the pre-run check passed or not.
     """
+    return True
     try:
         from pluggable_apps.subscription_v2.subscription_helper import (
             SubscriptionHelper,

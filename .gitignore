@@ -622,6 +622,12 @@ backend/plugins/processor/*
 # Subscription Plugins
 backend/plugins/subscription/*
 
+# Queue Plugin Contents (keep directory structure, ignore implementation files)
+backend/plugins/queues/**
+!backend/plugins/queues/
+!backend/plugins/queues/*/
+!backend/plugins/queues/**/README.md
+
 # API Deployment Plugins
 backend/plugins/api/**
 
@@ -674,6 +680,7 @@ backend/requirements.txt
 
 # Backend URLs
 backend/backend/*_urls.py
+!backend/backend/internal_urls.py
 !backend/backend/base_urls.py
 !backend/backend/public_urls.py
 # TODO: Remove after v2 migration is completed

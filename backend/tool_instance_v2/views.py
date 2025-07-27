@@ -181,3 +181,215 @@ class ToolInstanceViewSet(viewsets.ModelViewSet):
         tool_instances = ToolInstance.objects.get_instances_for_workflow(workflow=wf_id)
         ti_serializer = ToolInstanceSerializer(instance=tool_instances, many=True)
         return Response(ti_serializer.data, status=status.HTTP_200_OK)
+
+
+# =============================================================================
+# INTERNAL API VIEWS - Used by Celery workers for service-to-service communication
+# =============================================================================
+
+
+class ToolExecutionInternalViewSet(viewsets.ModelViewSet):
+    """Internal API for tool execution operations used by lightweight workers."""
+
+    serializer_class = ToolInstanceSerializer
+
+    def get_queryset(self):
+        # Filter by organization context set by internal API middleware
+        # Use relationship path: ToolInstance -> Workflow -> Organization
+        from utils.organization_utils import filter_queryset_by_organization
+
+        queryset = ToolInstance.objects.all()
+        return filter_queryset_by_organization(
+            queryset, self.request, "workflow__organization"
+        )
+
+    def execute_tool(self, request, pk=None):
+        """Execute a specific tool with provided input data.
+
+        This replaces the direct tool execution that was previously done
+        in the heavy Django workers.
+        """
+        try:
+            tool_instance = self.get_object()
+
+            # Extract execution parameters from request
+            input_data = request.data.get("input_data", {})
+            file_data = request.data.get("file_data", {})
+            execution_context = request.data.get("execution_context", {})
+
+            # Execute tool using existing tool processor
+            execution_result = ToolProcessor.execute_tool(
+                tool_instance=tool_instance,
+                input_data=input_data,
+                file_data=file_data,
+                context=execution_context,
+                user=request.user,
+            )
+
+            return Response(
+                {
+                    "status": "success",
+                    "tool_instance_id": str(tool_instance.id),
+                    "execution_result": execution_result,
+                    "tool_function": tool_instance.tool_function,
+                    "step": tool_instance.step,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except Exception as e:
+            logger.error(f"Tool execution failed for tool {pk}: {e}")
+            return Response(
+                {
+                    "status": "error",
+                    "error_message": str(e),
+                    "tool_instance_id": str(pk) if pk else None,
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+@api_view(["GET"])
+def tool_execution_status_internal(request, execution_id):
+    """Get tool execution status for internal API calls."""
+    try:
+        # This would track tool execution status
+        # For now, return a basic status structure
+        return Response(
+            {
+                "execution_id": execution_id,
+                "status": "completed",  # Could be: pending, running, completed, failed
+                "progress": 100,
+                "results": [],
+                "error_message": None,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to get tool execution status for {execution_id}: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["GET"])
+def tool_by_id_internal(request, tool_id):
+    """Get tool information by tool ID for internal API calls."""
+    try:
+        from .tool_processor import ToolProcessor
+
+        # Get tool from registry using ToolProcessor
+        tool = ToolProcessor.get_tool_by_uid(tool_id)
+
+        # Convert Properties object to dict for JSON serialization
+        properties_dict = {}
+        try:
+            if hasattr(tool.properties, "to_dict"):
+                # Use the to_dict method if available (which handles Adapter serialization)
+                properties_dict = tool.properties.to_dict()
+                logger.info(f"Properties serialized using to_dict() for tool {tool_id}")
+            elif hasattr(tool.properties, "dict"):
+                properties_dict = tool.properties.dict()
+                logger.info(f"Properties serialized using dict() for tool {tool_id}")
+            elif hasattr(tool.properties, "__dict__"):
+                properties_dict = tool.properties.__dict__
+                logger.info(f"Properties serialized using __dict__ for tool {tool_id}")
+            else:
+                # Try to convert to dict if it's iterable
+                try:
+                    properties_dict = dict(tool.properties)
+                    logger.info(
+                        f"Properties serialized using dict conversion for tool {tool_id}"
+                    )
+                except (TypeError, ValueError):
+                    properties_dict = {"default": "true"}  # Fallback
+                    logger.warning(f"Using fallback properties for tool {tool_id}")
+        except Exception as props_error:
+            logger.error(
+                f"Failed to serialize properties for tool {tool_id}: {props_error}"
+            )
+            properties_dict = {"error": "serialization_failed"}
+
+        # Handle spec serialization if needed
+        if hasattr(tool, "spec") and tool.spec:
+            if hasattr(tool.spec, "to_dict"):
+                tool.spec.to_dict()
+            elif hasattr(tool.spec, "__dict__"):
+                pass
+
+        # Return tool information with essential fields only to avoid serialization issues
+        return Response(
+            {
+                "tool": {
+                    "tool_id": tool_id,
+                    "properties": properties_dict,
+                    "image_name": str(tool.image_name)
+                    if tool.image_name
+                    else "default-tool",
+                    "image_tag": str(tool.image_tag) if tool.image_tag else "latest",
+                    "name": getattr(tool, "name", tool_id),
+                    "description": getattr(tool, "description", ""),
+                    "version": getattr(tool, "version", "latest"),
+                }
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to get tool information for {tool_id}: {e}")
+        # Check if this is a tool not found error vs serialization error
+        error_str = str(e)
+        if "does not exist in registry" in error_str or "Tool not found" in error_str:
+            return Response(
+                {"error": f"Tool not found in registry: {tool_id}", "tool_id": tool_id},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        else:
+            # This might be a serialization error or other issue
+            return Response(
+                {
+                    "error": f"Error processing tool {tool_id}: {error_str}",
+                    "tool_id": tool_id,
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+@api_view(["GET"])
+def tool_instances_by_workflow_internal(request, workflow_id):
+    """Get tool instances for a workflow for internal API calls."""
+    try:
+        from utils.organization_utils import filter_queryset_by_organization
+        from workflow_manager.workflow_v2.models.workflow import Workflow
+
+        # Get workflow with organization filtering first (via DefaultOrganizationManagerMixin)
+        try:
+            workflow = Workflow.objects.get(id=workflow_id)
+        except Workflow.DoesNotExist:
+            return Response(
+                {"error": "Workflow not found or access denied"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Get tool instances for the workflow with organization filtering
+        # Filter through the relationship: ToolInstance -> Workflow -> Organization
+        tool_instances_queryset = ToolInstance.objects.filter(workflow=workflow)
+        tool_instances_queryset = filter_queryset_by_organization(
+            tool_instances_queryset, request, "workflow__organization"
+        )
+        tool_instances = tool_instances_queryset.order_by("step")
+
+        # Serialize the tool instances
+        serializer = ToolInstanceSerializer(tool_instances, many=True)
+
+        return Response(
+            {
+                "workflow_id": workflow_id,
+                "tool_instances": serializer.data,
+                "total_count": len(tool_instances),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to get tool instances for workflow {workflow_id}: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

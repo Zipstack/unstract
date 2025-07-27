@@ -20,8 +20,19 @@ class ProcessorConfig:
     METADATA_IS_ACTIVE = "is_active"
 
 
+# Cache for loaded plugins to avoid repeated loading
+_processor_plugins_cache: list[Any] = []
+_plugins_loaded = False
+
+
 def load_plugins() -> list[Any]:
     """Iterate through the processor plugins and register them."""
+    global _processor_plugins_cache, _plugins_loaded
+
+    # Return cached plugins if already loaded
+    if _plugins_loaded:
+        return _processor_plugins_cache
+
     plugins_app = apps.get_app_config(ProcessorConfig.PLUGINS_APP)
     package_path = plugins_app.module.__package__
     processor_dir = os.path.join(plugins_app.path, ProcessorConfig.PLUGIN_DIR)
@@ -70,6 +81,10 @@ def load_plugins() -> list[Any]:
 
     if len(processor_plugins) == 0:
         logger.info("No processor plugins found.")
+
+    # Cache the results for future requests
+    _processor_plugins_cache = processor_plugins
+    _plugins_loaded = True
 
     return processor_plugins
 

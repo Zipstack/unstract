@@ -1,3 +1,5 @@
+from typing import Any
+
 from django.conf import settings
 from utils.cache_service import CacheService
 
@@ -50,16 +52,64 @@ class ExecutionCacheUtils:
         )
 
     @classmethod
-    def update_status(
-        cls, workflow_id: str, execution_id: str, status: ExecutionStatus
-    ) -> None:
-        """Update execution status."""
+    def _normalize_status(cls, status: Any) -> ExecutionStatus:
+        """Intelligently normalize any status input to ExecutionStatus enum.
+
+        Handles:
+        - ExecutionStatus enum objects (pass-through)
+        - Valid enum values: "PENDING", "EXECUTING", etc.
+        - Legacy enum representations: "ExecutionStatus.PENDING"
+        - Case variations and validates against known enum values
+
+        Args:
+            status: Any status input (enum, string, etc.)
+
+        Returns:
+            ExecutionStatus: Normalized enum object
+
+        Raises:
+            ValueError: If status cannot be normalized to valid ExecutionStatus
+        """
+        # Already an ExecutionStatus enum? Perfect!
+        print(f"status ---------_normalize_status---------->>>: {status}")
+        print(f"type(status) ---------_normalize_status---------->>>: {type(status)}")
+        if isinstance(status, ExecutionStatus):
+            return status
+
+        # Convert to string for processing
+        status_str = str(status).strip()
+
+        # Try direct enum construction first (handles "PENDING", "EXECUTING", etc.)
         try:
-            status_enum = ExecutionStatus(status)
+            return ExecutionStatus(status_str)
         except ValueError:
-            raise ValueError(
-                f"Invalid status: {status}. Must be a valid ExecutionStatus."
-            )
+            pass
+
+        print(f"status_str ---------_normalize_status---------->>>: {status_str}")
+        # Handle enum string representations by trying to extract the value
+        # Works for: "ExecutionStatus.PENDING", "<ExecutionStatus.PENDING: 'PENDING'>", etc.
+        for enum_member in ExecutionStatus:
+            if enum_member.name in status_str:
+                return enum_member
+
+        # Last resort: try case-insensitive matching
+        status_upper = status_str.upper()
+        print(f"status_upper ---------_normalize_status---------->>>: {status_upper}")
+        for enum_member in ExecutionStatus:
+            if enum_member.value.upper() == status_upper:
+                return enum_member
+
+        # If we get here, it's truly invalid
+        valid_values = [e.value for e in ExecutionStatus]
+        raise ValueError(
+            f"Cannot normalize status '{status}' (type: {type(status).__name__}) "
+            f"to ExecutionStatus. Valid values: {valid_values}"
+        )
+
+    @classmethod
+    def update_status(cls, workflow_id: str, execution_id: str, status: Any) -> None:
+        """Update execution status with intelligent parsing."""
+        status_enum = cls._normalize_status(status)
         cache_key = cls._get_execution_cache_key(
             workflow_id=workflow_id, execution_id=execution_id
         )

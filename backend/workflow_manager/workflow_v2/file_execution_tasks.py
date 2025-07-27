@@ -11,15 +11,13 @@ from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
 from utils.constants import Account
 from utils.local_context import StateStore
 
+# Use generic Django Celery app instead of specific worker apps
+from backend.celery_service import app as celery_app
 from backend.workers.file_processing.constants import (
     QueueNames as FileProcessingQueueNames,
 )
-from backend.workers.file_processing.file_processing import app as file_processing_app
 from backend.workers.file_processing_callback.constants import (
     QueueNames as FileProcessingCallbackQueueNames,
-)
-from backend.workers.file_processing_callback.file_processing_callback import (
-    app as file_processing_callback_app,
 )
 from unstract.core.file_execution_tracker import (
     FileExecutionData,
@@ -45,7 +43,6 @@ from workflow_manager.endpoint_v2.result_cache_utils import ResultCacheUtils
 from workflow_manager.endpoint_v2.source import SourceConnector
 from workflow_manager.execution.execution_cache_utils import ExecutionCacheUtils
 from workflow_manager.file_execution.models import WorkflowFileExecution
-from workflow_manager.utils.pipeline_utils import PipelineUtils
 from workflow_manager.utils.workflow_log import WorkflowLog
 from workflow_manager.workflow_v2.dto import (
     ExecutionContext,
@@ -124,8 +121,9 @@ class FileExecutionTasks:
         workflow_execution_service.build()
         return workflow_execution_service
 
-    @file_processing_app.task(
+    @celery_app.task(
         bind=True,
+        name="process_file_batch",  # Explicit task name that matches lightweight workers
         max_retries=0,  # Maximum number of retries
         ignore_result=False,  # result is passed to the callback task
         retry_backoff=True,
@@ -287,102 +285,103 @@ class FileExecutionTasks:
         logger.info(f"Pre-created {len(pre_created_data)} WorkflowFileExecution records")
         return pre_created_data
 
-    @file_processing_callback_app.task(
-        bind=True,
-        max_retries=0,  # Maximum number of retries
-        retry_backoff=True,
-        retry_backoff_max=500,  # Max delay between retries (500 seconds)
-        retry_jitter=True,  # Add random jitter to prevent thundering herd
-        default_retry_delay=5,  # Initial retry delay (5 seconds)
-    )
-    def process_batch_callback(self, results, **kwargs):
-        """Callback task to handle batch processing results.
+    # @file_processing_callback_app.task(
+    #     bind=True,
+    #     name='process_batch_callback',  # Explicit task name that matches lightweight workers
+    #     max_retries=0,  # Maximum number of retries
+    #     retry_backoff=True,
+    #     retry_backoff_max=500,  # Max delay between retries (500 seconds)
+    #     retry_jitter=True,  # Add random jitter to prevent thundering herd
+    #     default_retry_delay=5,  # Initial retry delay (5 seconds)
+    # )
+    # def process_batch_callback(self, results, **kwargs):
+    #     """Callback task to handle batch processing results.
 
-        Args:
-            results (list): List of results from each batch
-                Each result is a dictionary containing:
-                - successful_files: Number of successfully processed files
-                - failed_files: Number of failed files
-                - error_messages: List of error messages
-                - execution_id: ID of the execution
-        """
-        execution_id = kwargs.get("execution_id")
-        workflow_execution: WorkflowExecution = WorkflowExecution.objects.get(
-            id=execution_id
-        )
-        workflow = workflow_execution.workflow
-        organization = workflow.organization
-        organization_id = organization.organization_id
-        pipeline_id = str(workflow_execution.pipeline_id)
-        log_events_id = workflow_execution.execution_log_id
-        workflow_log = WorkflowLog(
-            execution_id=execution_id,
-            log_stage=LogStage.FINALIZE,
-            organization_id=organization_id,
-            pipeline_id=pipeline_id,
-        )
-        StateStore.set(Common.LOG_EVENTS_ID, log_events_id)
+    #     Args:
+    #         results (list): List of results from each batch
+    #             Each result is a dictionary containing:
+    #             - successful_files: Number of successfully processed files
+    #             - failed_files: Number of failed files
+    #             - error_messages: List of error messages
+    #             - execution_id: ID of the execution
+    #     """
+    #     execution_id = kwargs.get("execution_id")
+    #     workflow_execution: WorkflowExecution = WorkflowExecution.objects.get(
+    #         id=execution_id
+    #     )
+    #     workflow = workflow_execution.workflow
+    #     organization = workflow.organization
+    #     organization_id = organization.organization_id
+    #     pipeline_id = str(workflow_execution.pipeline_id)
+    #     log_events_id = workflow_execution.execution_log_id
+    #     workflow_log = WorkflowLog(
+    #         execution_id=execution_id,
+    #         log_stage=LogStage.FINALIZE,
+    #         organization_id=organization_id,
+    #         pipeline_id=pipeline_id,
+    #     )
+    #     StateStore.set(Common.LOG_EVENTS_ID, log_events_id)
 
-        # Set organization ID in StateStore
-        StateStore.set(Account.ORGANIZATION_ID, organization_id)
+    #     # Set organization ID in StateStore
+    #     StateStore.set(Account.ORGANIZATION_ID, organization_id)
 
-        logger.info(f"Processing batch callback for execution id: '{execution_id}'")
-        if not results:
-            return None
+    #     logger.info(f"Processing batch callback for execution id: '{execution_id}'")
+    #     if not results:
+    #         return None
 
-        # Aggregate results
-        total_successful = sum(result["successful_files"] for result in results)
-        total_failed = sum(result["failed_files"] for result in results)
+    #     # Aggregate results
+    #     total_successful = sum(result["successful_files"] for result in results)
+    #     total_failed = sum(result["failed_files"] for result in results)
 
-        batch_result = FileBatchResult(
-            successful_files=total_successful,
-            failed_files=total_failed,
-        )
+    #     batch_result = FileBatchResult(
+    #         successful_files=total_successful,
+    #         failed_files=total_failed,
+    #     )
 
-        total_files = batch_result.total_files
-        # Update final status
-        final_status = (
-            ExecutionStatus.COMPLETED if total_successful else ExecutionStatus.ERROR
-        )
-        error_message = None
-        # Update execution service with final results
-        workflow_execution.update_execution(
-            status=final_status,
-            error=error_message,
-        )
-        PipelineUtils.update_pipeline_status(
-            pipeline_id=pipeline_id, workflow_execution=workflow_execution
-        )
-        # clean up execution and api storage directories
-        DestinationConnector.delete_execution_and_api_storage_dir(
-            workflow_id=workflow.id, execution_id=execution_id
-        )
-        workflow_log.publish_average_cost_log(
-            logger=logger,
-            total_files=total_files,
-            execution_id=execution_id,
-            total_cost=workflow_execution.aggregated_usage_cost,
-        )
-        workflow_log.publish_final_workflow_logs(
-            total_files=total_files,
-            successful_files=total_successful,
-            failed_files=total_failed,
-        )
-        logger.info(
-            f"Execution completed for execution id: '{execution_id}' "
-            f"with status: '{final_status}' "
-            f"and total files: '{total_files}' "
-            f"and successful files: '{total_successful}' "
-            f"and failed files: '{total_failed}'"
-        )
-        return {
-            "execution_id": execution_id,
-            "total_files": total_files,
-            "successful_files": total_successful,
-            "failed_files": total_failed,
-            "error_message": error_message,
-            "status": final_status,
-        }
+    #     total_files = batch_result.total_files
+    #     # Update final status
+    #     final_status = (
+    #         ExecutionStatus.COMPLETED if total_successful else ExecutionStatus.ERROR
+    #     )
+    #     error_message = None
+    #     # Update execution service with final results
+    #     workflow_execution.update_execution(
+    #         status=final_status,
+    #         error=error_message,
+    #     )
+    #     PipelineUtils.update_pipeline_status(
+    #         pipeline_id=pipeline_id, workflow_execution=workflow_execution
+    #     )
+    #     # clean up execution and api storage directories
+    #     DestinationConnector.delete_execution_and_api_storage_dir(
+    #         workflow_id=workflow.id, execution_id=execution_id
+    #     )
+    #     workflow_log.publish_average_cost_log(
+    #         logger=logger,
+    #         total_files=total_files,
+    #         execution_id=execution_id,
+    #         total_cost=workflow_execution.aggregated_usage_cost,
+    #     )
+    #     workflow_log.publish_final_workflow_logs(
+    #         total_files=total_files,
+    #         successful_files=total_successful,
+    #         failed_files=total_failed,
+    #     )
+    #     logger.info(
+    #         f"Execution completed for execution id: '{execution_id}' "
+    #         f"with status: '{final_status}' "
+    #         f"and total files: '{total_files}' "
+    #         f"and successful files: '{total_successful}' "
+    #         f"and failed files: '{total_failed}'"
+    #     )
+    #     return {
+    #         "execution_id": execution_id,
+    #         "total_files": total_files,
+    #         "successful_files": total_successful,
+    #         "failed_files": total_failed,
+    #         "error_message": error_message,
+    #         "status": final_status,
+    #     }
 
     @classmethod
     def _process_file(

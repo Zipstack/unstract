@@ -1,0 +1,766 @@
+"""API Deployment Worker Tasks
+
+Exact implementation matching Django backend patterns for API deployment tasks.
+Uses the same patterns as workflow_helper.py and file_execution_tasks.py
+"""
+
+import time
+from typing import Any
+from uuid import UUID
+
+# Import shared worker infrastructure
+from shared.api_client import InternalAPIClient
+from shared.config import WorkerConfig
+
+# Import from shared worker modules
+from shared.constants import Account
+from shared.local_context import StateStore
+from shared.logging_utils import WorkerLogger, log_context, monitor_performance
+from shared.retry_utils import retry
+from worker import app
+
+# Import shared data models for type safety
+from unstract.core.data_models import ExecutionStatus, FileHashData
+
+logger = WorkerLogger.get_logger(__name__)
+
+
+@app.task(
+    bind=True,
+    name="async_execute_bin_api",
+    autoretry_for=(Exception,),
+    max_retries=0,  # Match Django backend pattern
+    retry_backoff=True,
+    retry_backoff_max=500,
+    retry_jitter=True,
+)
+@monitor_performance
+def async_execute_bin_api(
+    self,
+    schema_name: str,
+    workflow_id: str,
+    execution_id: str,
+    hash_values_of_files: dict[str, FileHashData],
+    scheduled: bool = False,
+    execution_mode: tuple | None = None,
+    pipeline_id: str | None = None,
+    log_events_id: str | None = None,
+    use_file_history: bool = False,
+    **kwargs: dict[str, Any],
+) -> dict[str, Any]:
+    """API deployment workflow execution task.
+
+    This matches exactly the Django backend pattern for API deployments,
+    following the same execution flow as the current system.
+
+    Args:
+        schema_name: Organization schema name
+        workflow_id: Workflow ID
+        execution_id: Execution ID
+        hash_values_of_files: File hash data
+        scheduled: Whether execution is scheduled
+        execution_mode: Execution mode tuple
+        pipeline_id: Pipeline ID (for API deployments)
+        log_events_id: Log events ID
+        use_file_history: Whether to use file history
+
+    Returns:
+        Execution result dictionary
+    """
+    task_id = self.request.id
+
+    with log_context(
+        task_id=task_id,
+        execution_id=execution_id,
+        workflow_id=workflow_id,
+        organization_id=schema_name,
+        pipeline_id=pipeline_id,
+    ):
+        logger.info(
+            f"Starting API deployment execution for workflow {workflow_id}, execution {execution_id}"
+        )
+
+        try:
+            # Set organization context in StateStore (matching Django pattern)
+            StateStore.set(Account.ORGANIZATION_ID, schema_name)
+
+            # Initialize API client with organization context
+            config = WorkerConfig()
+            with InternalAPIClient(config) as api_client:
+                api_client.set_organization_context(schema_name)
+
+                # Get workflow execution context
+                api_client.get_workflow_execution(execution_id)
+                logger.info(f"Retrieved execution context for {execution_id}")
+
+                # Run workflow using the exact same pattern as Django backend
+                return _run_workflow_api(
+                    api_client=api_client,
+                    schema_name=schema_name,
+                    workflow_id=workflow_id,
+                    execution_id=execution_id,
+                    hash_values_of_files=hash_values_of_files,
+                    scheduled=scheduled,
+                    execution_mode=execution_mode,
+                    pipeline_id=pipeline_id,
+                    use_file_history=use_file_history,
+                    task_id=task_id,
+                )
+
+        except Exception as e:
+            logger.error(f"API deployment execution failed for {execution_id}: {e}")
+
+            # Try to update execution status to failed (matching Django pattern)
+            try:
+                config = WorkerConfig()
+                with InternalAPIClient(config) as api_client:
+                    api_client.set_organization_context(schema_name)
+                    api_client.update_workflow_execution_status(
+                        execution_id=execution_id,
+                        status=ExecutionStatus.ERROR.value,
+                        error_message=str(e),
+                        attempts=self.request.retries + 1,
+                    )
+            except Exception as update_error:
+                logger.error(f"Failed to update execution status: {update_error}")
+
+            # Re-raise for Celery retry mechanism
+            raise
+
+
+# Add alias for backward compatibility with backend
+@app.task(
+    bind=True,
+    name="async_execute_bin",  # Backend sends this name
+    autoretry_for=(Exception,),
+    max_retries=0,
+    retry_backoff=True,
+    retry_backoff_max=500,
+    retry_jitter=True,
+)
+@monitor_performance
+def async_execute_bin(
+    self,
+    schema_name: str,
+    workflow_id: str,
+    execution_id: str,
+    hash_values_of_files: dict[str, FileHashData],
+    scheduled: bool = False,
+    execution_mode: tuple | None = None,
+    pipeline_id: str | None = None,
+    log_events_id: str | None = None,
+    use_file_history: bool = False,
+    **kwargs: dict[str, Any],
+) -> dict[str, Any]:
+    """API deployment workflow execution task (alias for backend compatibility).
+
+    The backend sends 'async_execute_bin' tasks but we want to handle them
+    as API deployments. This is identical to async_execute_bin_api.
+    """
+    task_id = self.request.id
+
+    with log_context(
+        task_id=task_id,
+        execution_id=execution_id,
+        workflow_id=workflow_id,
+        organization_id=schema_name,
+        pipeline_id=pipeline_id,
+    ):
+        logger.info(
+            f"Starting API deployment execution for workflow {workflow_id}, execution {execution_id}"
+        )
+
+        try:
+            # Set organization context in StateStore (matching Django pattern)
+            StateStore.set(Account.ORGANIZATION_ID, schema_name)
+
+            # Initialize API client with organization context
+            config = WorkerConfig()
+            with InternalAPIClient(config) as api_client:
+                api_client.set_organization_context(schema_name)
+
+                # Get workflow execution context
+                api_client.get_workflow_execution(execution_id)
+                logger.info(f"Retrieved execution context for {execution_id}")
+
+                # Run workflow using the exact same pattern as Django backend
+                return _run_workflow_api(
+                    api_client=api_client,
+                    schema_name=schema_name,
+                    workflow_id=workflow_id,
+                    execution_id=execution_id,
+                    hash_values_of_files=hash_values_of_files,
+                    scheduled=scheduled,
+                    execution_mode=execution_mode,
+                    pipeline_id=pipeline_id,
+                    use_file_history=use_file_history,
+                    task_id=task_id,
+                )
+
+        except Exception as e:
+            logger.error(f"API deployment execution failed for {execution_id}: {e}")
+
+            # Try to update execution status to failed (matching Django pattern)
+            try:
+                config = WorkerConfig()
+                with InternalAPIClient(config) as api_client:
+                    api_client.set_organization_context(schema_name)
+                    api_client.update_workflow_execution_status(
+                        execution_id=execution_id,
+                        status=ExecutionStatus.ERROR.value,
+                        error_message=str(e),
+                        attempts=self.request.retries + 1,
+                    )
+            except Exception as update_error:
+                logger.error(f"Failed to update execution status: {update_error}")
+
+            # Re-raise for Celery retry mechanism
+            raise
+
+
+def _run_workflow_api(
+    api_client: InternalAPIClient,
+    schema_name: str,
+    workflow_id: str,
+    execution_id: str,
+    hash_values_of_files: dict[str, FileHashData],
+    scheduled: bool,
+    execution_mode: tuple | None,
+    pipeline_id: str | None,
+    use_file_history: bool,
+    task_id: str,
+) -> dict[str, Any]:
+    """Run workflow matching the exact pattern from Django backend.
+
+    This follows the same logic as WorkflowHelper.run_workflow() and
+    WorkflowHelper.process_input_files() methods.
+    """
+    total_files = len(hash_values_of_files)
+
+    # Update total_files immediately so UI can show proper progress (fixes race condition)
+    api_client.update_workflow_execution_status(
+        execution_id=execution_id,
+        status=ExecutionStatus.EXECUTING.value,
+        total_files=total_files,
+    )
+
+    logger.info(f"Processing {total_files} files for execution {execution_id}")
+
+    if not hash_values_of_files:
+        logger.info(f"Execution {execution_id} no files to process")
+        # Complete immediately with no files
+        api_client.update_workflow_execution_status(
+            execution_id=execution_id, status=ExecutionStatus.COMPLETED.value
+        )
+
+        # Update pipeline status if needed
+        if pipeline_id:
+            api_client.update_pipeline_status(
+                pipeline_id=pipeline_id,
+                execution_id=execution_id,
+                status=ExecutionStatus.COMPLETED.value,
+            )
+
+        return {
+            "status": "completed",
+            "execution_id": execution_id,
+            "workflow_id": workflow_id,
+            "task_id": task_id,
+            "files_processed": 0,
+            "message": "No files to process",
+        }
+
+    # Get file batches using the exact same logic as Django backend
+    batches = _get_file_batches(hash_values_of_files)
+    logger.info(
+        f"Execution {execution_id} processing {total_files} files in {len(batches)} batches"
+    )
+
+    # Create batch tasks following the exact Django pattern
+    batch_tasks = []
+    execution_mode_str = (
+        (execution_mode[1] if isinstance(execution_mode, tuple) else str(execution_mode))
+        if execution_mode
+        else None
+    )
+
+    for batch in batches:
+        # Create file data exactly matching Django FileBatchData structure
+        file_data = _create_file_data(
+            workflow_id=workflow_id,
+            execution_id=execution_id,
+            organization_id=schema_name,
+            pipeline_id=pipeline_id,
+            scheduled=scheduled,
+            execution_mode=execution_mode_str,
+            use_file_history=use_file_history,
+        )
+
+        # Create batch data exactly matching Django FileBatchData structure
+        batch_data = _create_batch_data(files=batch, file_data=file_data)
+
+        # Determine queue using the same logic as Django backend
+        file_processing_queue = _get_queue_name_api()
+
+        # Create task signature matching Django backend pattern
+        batch_tasks.append(
+            app.signature(
+                "process_file_batch",  # Use same task name as Django
+                args=[batch_data],
+                queue=file_processing_queue,
+            )
+        )
+
+    try:
+        # Create callback queue using same logic as Django backend
+        file_processing_callback_queue = _get_callback_queue_name_api()
+
+        # Execute chord exactly matching Django pattern
+        from celery import chord
+
+        result = chord(batch_tasks)(
+            app.signature(
+                "process_batch_callback",  # Use same task name as Django
+                kwargs={
+                    "execution_id": str(execution_id)
+                },  # Pass as kwarg like Django backend
+                queue=file_processing_callback_queue,
+            )
+        )
+
+        if not result:
+            exception = f"Failed to queue execution task {execution_id}"
+            logger.error(exception)
+            raise Exception(exception)
+
+        logger.info(f"Execution {execution_id} task queued successfully")
+
+        return {
+            "status": "orchestrated",
+            "execution_id": execution_id,
+            "workflow_id": workflow_id,
+            "task_id": task_id,
+            "files_processed": total_files,
+            "batches_created": len(batches),
+            "chord_id": result.id,
+            "message": "File processing orchestrated, waiting for completion",
+        }
+
+    except Exception as e:
+        # Update execution to ERROR status matching Django pattern
+        api_client.update_workflow_execution_status(
+            execution_id=execution_id,
+            status=ExecutionStatus.ERROR.value,
+            error_message=f"Error while processing files: {str(e)}",
+        )
+        logger.error(f"Execution {execution_id} failed: {str(e)}", exc_info=True)
+        raise
+
+
+def _get_file_batches(input_files: dict[str, FileHashData] | list[dict]) -> list:
+    """Get file batches using the exact same logic as Django backend.
+
+    This matches WorkflowHelper.get_file_batches() exactly.
+
+    Args:
+        input_files: Dictionary of file hash data or list of file dictionaries (for backward compatibility)
+
+    Returns:
+        List of file batches
+    """
+    import math
+    import os
+
+    # Handle both list and dict formats for backward compatibility
+    if isinstance(input_files, list):
+        # Convert list format to dict format
+        logger.info(f"Converting list format to dict format for {len(input_files)} files")
+        dict_files = {}
+        for file_data in input_files:
+            if isinstance(file_data, dict):
+                file_name = file_data.get("file_name", f"file_{len(dict_files)}")
+                # Handle duplicate file names
+                if file_name in dict_files:
+                    base_name, ext = os.path.splitext(file_name)
+                    counter = 1
+                    while f"{base_name}_{counter}{ext}" in dict_files:
+                        counter += 1
+                    file_name = f"{base_name}_{counter}{ext}"
+                    logger.warning(
+                        f"Duplicate file name detected, renamed to: {file_name}"
+                    )
+                dict_files[file_name] = file_data
+            else:
+                logger.error(f"Unexpected file data type in list: {type(file_data)}")
+                continue
+        input_files = dict_files
+    elif not isinstance(input_files, dict):
+        logger.error(
+            f"Unexpected input_files type: {type(input_files)}, expected dict or list"
+        )
+        raise TypeError(f"input_files must be dict or list, got {type(input_files)}")
+
+    # Convert FileHashData objects to serializable format for batching
+    json_serializable_files = {}
+    for file_name, file_hash_data in input_files.items():
+        if isinstance(file_hash_data, FileHashData):
+            json_serializable_files[file_name] = file_hash_data.to_dict()
+        elif isinstance(file_hash_data, dict):
+            # Backward compatibility for dict format
+            json_serializable_files[file_name] = file_hash_data
+        else:
+            logger.error(
+                f"Unexpected file data type for '{file_name}': {type(file_hash_data)}"
+            )
+            continue
+
+    # Prepare batches of files for parallel processing (exact Django logic)
+    BATCH_SIZE = int(os.getenv("MAX_PARALLEL_FILE_BATCHES", "4"))  # Default from Django
+    file_items = list(json_serializable_files.items())
+
+    # Calculate how many items per batch (exact Django logic)
+    num_files = len(file_items)
+    num_batches = min(BATCH_SIZE, num_files)
+    items_per_batch = math.ceil(num_files / num_batches)
+
+    # Split into batches (exact Django logic)
+    batches = []
+    for start_index in range(0, len(file_items), items_per_batch):
+        end_index = start_index + items_per_batch
+        batch = file_items[start_index:end_index]
+        batches.append(batch)
+
+    return batches
+
+
+def _create_file_data(
+    workflow_id: str,
+    execution_id: str,
+    organization_id: str,
+    pipeline_id: str | None,
+    scheduled: bool,
+    execution_mode: str | None,
+    use_file_history: bool,
+) -> dict[str, Any]:
+    """Create file data matching Django FileData structure exactly.
+
+    Args:
+        workflow_id: Workflow ID
+        execution_id: Execution ID
+        organization_id: Organization ID
+        pipeline_id: Pipeline ID
+        scheduled: Whether scheduled execution
+        execution_mode: Execution mode string
+        use_file_history: Whether to use file history
+
+    Returns:
+        File data dictionary matching Django FileData
+    """
+    return {
+        "workflow_id": str(workflow_id),
+        "execution_id": str(execution_id),
+        "organization_id": str(organization_id),
+        "pipeline_id": str(pipeline_id) if pipeline_id else None,
+        "scheduled": scheduled,
+        "execution_mode": execution_mode,
+        "use_file_history": use_file_history,
+        "single_step": False,  # API deployments are always complete execution
+        "q_file_no_list": [],  # Empty for API deployments
+    }
+
+
+def _create_batch_data(files: list, file_data: dict[str, Any]) -> dict[str, Any]:
+    """Create batch data matching Django FileBatchData structure exactly.
+
+    Args:
+        files: List of (file_name, file_hash) tuples
+        file_data: File data dictionary
+
+    Returns:
+        Batch data dictionary matching Django FileBatchData
+    """
+    return {"files": files, "file_data": file_data}
+
+
+def _get_queue_name_api() -> str:
+    """Get queue name for API file processing matching Django logic.
+
+    This matches FileExecutionTasks.get_queue_name() for API deployments.
+
+    Returns:
+        Queue name for API file processing
+    """
+    # For API deployments, use api_file_processing queue
+    return "api_file_processing"
+
+
+def _get_callback_queue_name_api() -> str:
+    """Get callback queue name for API deployments matching Django logic.
+
+    This matches FileExecutionTasks.get_queue_name() for API callbacks.
+
+    Returns:
+        Queue name for API file processing callbacks
+    """
+    # For API deployments, use api_file_processing_callback queue
+    return "api_file_processing_callback"
+
+
+def _create_file_batches_api(
+    api_client: InternalAPIClient,
+    execution_id: str,
+    hash_values_of_files: dict[str, FileHashData],
+    pipeline_id: str | None = None,
+) -> list:
+    """Create file batches for API deployment execution.
+
+    Args:
+        api_client: Internal API client
+        execution_id: Execution ID
+        hash_values_of_files: File hash data
+        pipeline_id: Pipeline ID
+
+    Returns:
+        List of file batch results
+    """
+    logger.info(
+        f"Processing {len(hash_values_of_files)} files for execution {execution_id}"
+    )
+
+    try:
+        # Convert hash values to file data format expected by API
+        files_data = []
+        for file_key, file_hash_data in hash_values_of_files.items():
+            # Robust UUID serialization handling
+            provider_file_uuid = file_hash_data.get("provider_file_uuid")
+            if provider_file_uuid:
+                # Handle UUID objects, strings, and other types
+                if isinstance(provider_file_uuid, UUID):
+                    provider_file_uuid = str(provider_file_uuid)
+                elif hasattr(provider_file_uuid, "hex"):
+                    # Handle UUID-like objects
+                    provider_file_uuid = str(provider_file_uuid)
+                elif not isinstance(provider_file_uuid, str):
+                    # Convert other types to string
+                    provider_file_uuid = str(provider_file_uuid)
+
+            file_data = {
+                "file_name": file_hash_data.get("file_name", file_key),
+                "file_path": file_hash_data.get("file_path"),
+                "file_size": file_hash_data.get("file_size"),
+                "file_hash": file_hash_data.get("file_hash"),
+                "provider_file_uuid": provider_file_uuid,
+                "mime_type": file_hash_data.get("mime_type"),
+                "fs_metadata": file_hash_data.get("fs_metadata", {}),
+            }
+            files_data.append(file_data)
+
+        # Create file batch via internal API
+        batch_response = api_client.create_file_batch(
+            workflow_execution_id=execution_id,
+            files=files_data,
+            is_api=True,  # This is for API deployments
+        )
+
+        logger.info(
+            f"Created file batch {batch_response.get('batch_id')} with {batch_response.get('total_files')} files"
+        )
+
+        return [batch_response]
+
+    except Exception as e:
+        logger.error(f"Failed to process file batches: {e}")
+        raise
+
+
+def _orchestrate_file_processing_chord(
+    api_client: InternalAPIClient,
+    execution_id: str,
+    workflow_id: str,
+    batch_results: list,
+    pipeline_id: str | None,
+    execution_mode: tuple | None,
+    use_file_history: bool,
+    schema_name: str,
+) -> dict[str, Any]:
+    """Orchestrate file processing using Celery chord pattern.
+
+    Creates file processing tasks and sets up callback for completion.
+
+    Args:
+        api_client: Internal API client
+        execution_id: Execution ID
+        workflow_id: Workflow ID
+        batch_results: File batch creation results
+        pipeline_id: Pipeline ID
+        execution_mode: Execution mode
+        use_file_history: Whether to use file history
+        schema_name: Organization schema name
+
+    Returns:
+        Chord orchestration result
+    """
+    from celery import chord
+
+    logger.info(f"Orchestrating file processing chord for {len(batch_results)} batches")
+
+    try:
+        # Create file processing tasks for each batch
+        file_processing_tasks = []
+
+        for batch_result in batch_results:
+            batch_id = batch_result.get("batch_id")
+            created_files = batch_result.get("created_file_executions", [])
+
+            logger.info(
+                f"Creating file processing task for batch {batch_id} with {len(created_files)} files"
+            )
+
+            # Import file processing task
+            from worker import app as celery_app
+
+            # Create task signature for file processing
+            task_signature = celery_app.signature(
+                "process_file_batch_api",
+                args=[
+                    schema_name,
+                    workflow_id,
+                    execution_id,
+                    batch_id,
+                    created_files,
+                    pipeline_id,
+                    execution_mode,
+                    use_file_history,
+                ],
+                queue="api_file_processing",
+            )
+
+            file_processing_tasks.append(task_signature)
+
+        # Create callback task signature
+        # Note: In chord callback, the first argument is automatically the results from chord tasks
+        callback_signature = celery_app.signature(
+            "process_batch_callback_api",
+            args=[
+                schema_name,
+                workflow_id,
+                execution_id,
+                len(batch_results),
+                pipeline_id,
+            ],
+            queue="api_file_processing_callback",
+        )
+
+        # Execute chord: file processing tasks → callback
+        chord_result = chord(file_processing_tasks)(callback_signature)
+
+        logger.info(f"Chord orchestrated with ID: {chord_result.id}")
+
+        return {
+            "chord_id": chord_result.id,
+            "file_processing_tasks": len(file_processing_tasks),
+            "status": "orchestrated",
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to orchestrate file processing chord: {e}")
+        raise
+
+
+@app.task(bind=True)
+@monitor_performance
+@retry(max_attempts=3, base_delay=2.0)
+def api_deployment_status_check(
+    self, execution_id: str, organization_id: str
+) -> dict[str, Any]:
+    """Check status of API deployment execution.
+
+    Args:
+        execution_id: Execution ID to check
+        organization_id: Organization context
+
+    Returns:
+        Status information
+    """
+    task_id = self.request.id
+
+    with log_context(
+        task_id=task_id, execution_id=execution_id, organization_id=organization_id
+    ):
+        logger.info(f"Checking status for API deployment execution {execution_id}")
+
+        try:
+            config = WorkerConfig()
+            with InternalAPIClient(config) as api_client:
+                api_client.set_organization_context(organization_id)
+
+                # Get execution status
+                execution_context = api_client.get_workflow_execution(execution_id)
+                execution_data = execution_context.get("execution", {})
+
+                status_info = {
+                    "execution_id": execution_id,
+                    "status": execution_data.get("status"),
+                    "created_at": execution_data.get("created_at"),
+                    "modified_at": execution_data.get("modified_at"),
+                    "total_files": execution_data.get("total_files"),
+                    "attempts": execution_data.get("attempts"),
+                    "execution_time": execution_data.get("execution_time"),
+                    "error_message": execution_data.get("error_message"),
+                    "is_api_deployment": True,
+                }
+
+                logger.info(
+                    f"API deployment execution {execution_id} status: {status_info['status']}"
+                )
+
+                return status_info
+
+        except Exception as e:
+            logger.error(f"Failed to check API deployment status: {e}")
+            raise
+
+
+@app.task(bind=True)
+@monitor_performance
+def api_deployment_cleanup(
+    self, execution_id: str, organization_id: str
+) -> dict[str, Any]:
+    """Cleanup resources after API deployment execution.
+
+    Args:
+        execution_id: Execution ID
+        organization_id: Organization context
+
+    Returns:
+        Cleanup result
+    """
+    task_id = self.request.id
+
+    with log_context(
+        task_id=task_id, execution_id=execution_id, organization_id=organization_id
+    ):
+        logger.info(f"Starting cleanup for API deployment execution {execution_id}")
+
+        try:
+            # Cleanup logic would go here
+            # - Remove temporary files
+            # - Clean up API deployment resources
+            # - Archive execution data if needed
+
+            cleanup_result = {
+                "execution_id": execution_id,
+                "cleanup_completed": True,
+                "cleanup_time": time.time(),
+                "task_id": task_id,
+            }
+
+            logger.info(f"Cleanup completed for API deployment execution {execution_id}")
+
+            return cleanup_result
+
+        except Exception as e:
+            logger.error(
+                f"Cleanup failed for API deployment execution {execution_id}: {e}"
+            )
+            raise

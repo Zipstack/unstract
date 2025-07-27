@@ -21,6 +21,8 @@ classifiers = [
 
 dependencies = [
     "singleton-decorator~=1.0.0",
+    # Internal Unstract dependencies
+    "unstract-core",
     # For GCSHelper
     "google-auth==2.20.0",
     "google-cloud-secret-manager==2.16.1",

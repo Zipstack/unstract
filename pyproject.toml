@@ -22,6 +22,14 @@ dev = [
     "types-tzlocal~=5.1.0.1",
 ]
 
+workers = [
+    "unstract-workers",
+    "unstract-worker-api-deployment",
+    "unstract-worker-general",
+    "unstract-worker-file-processing",
+    "unstract-worker-callback",
+]
+
 hook-check-django-migrations = [
     "celery>=5.3.4",
     "cron-descriptor==1.4.0",
@@ -55,6 +63,12 @@ unstract-tool-registry = { path = "./unstract/tool-registry", editable = true }
 unstract-flags = { path = "./unstract/flags", editable = true }
 unstract-core = { path = "./unstract/core", editable = true }
 unstract-connectors = { path = "./unstract/connectors", editable = true }
+# Workers
+unstract-workers = { path = "./workers", editable = true }
+unstract-worker-api-deployment = { path = "./workers/api-deployment", editable = true }
+unstract-worker-general = { path = "./workers/general", editable = true }
+unstract-worker-file-processing = { path = "./workers/file-processing", editable = true }
+unstract-worker-callback = { path = "./workers/callback", editable = true }
 # === Development tool configurations ===
 
 [tool.ruff]

@@ -64,6 +64,8 @@ COPY ${BUILD_CONTEXT_PATH}/ ./
 # Install the application
 RUN uv sync --group deploy --locked && \
     chmod +x ./entrypoint.sh
+RUN set -e; \
+    uv add -r requirements.txt
 
 EXPOSE 8000
 

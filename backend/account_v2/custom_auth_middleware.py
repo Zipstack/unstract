@@ -22,6 +22,10 @@ class CustomAuthMiddleware:
         if any(request.path.startswith(path) for path in settings.WHITELISTED_PATHS):
             return self.get_response(request)
 
+        # Skip internal API paths - they are handled by InternalAPIAuthMiddleware
+        if request.path.startswith("/internal/"):
+            return self.get_response(request)
+
         # Authenticating With API_KEY
         x_api_key = request.headers.get(RequestHeader.X_API_KEY)
         if (

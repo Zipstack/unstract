@@ -411,8 +411,6 @@ class WorkflowHelper:
                 execution_id=execution_id,
                 status=ExecutionStatus(execution_model.status),
                 total_files=execution_model.total_files,
-                completed_files=execution_model.completed_files,
-                failed_files=execution_model.failed_files,
             )
             ExecutionCacheUtils.create_execution(
                 execution=execution_cache,
@@ -453,6 +451,25 @@ class WorkflowHelper:
                 key: value.to_json() for key, value in hash_values_of_files.items()
             }
             org_schema = UserContext.get_organization_identifier()
+
+            # If no organization context from user (e.g., API deployments), get it from workflow
+            if not org_schema:
+                try:
+                    workflow = Workflow.objects.get(id=workflow_id)
+                    if workflow.organization:
+                        org_schema = workflow.organization.organization_id
+                        logger.info(
+                            f"Retrieved organization {org_schema} from workflow {workflow_id}"
+                        )
+                except Workflow.DoesNotExist:
+                    logger.error(
+                        f"Workflow {workflow_id} not found for organization resolution"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to get organization from workflow {workflow_id}: {e}"
+                    )
+
             log_events_id = StateStore.get(Common.LOG_EVENTS_ID)
             async_execution: AsyncResult = celery_app.send_task(
                 "async_execute_bin",
@@ -551,7 +568,11 @@ class WorkflowHelper:
         use_file_history: bool = True,
         **kwargs: dict[str, Any],
     ) -> list[Any] | None:
-        """Asynchronous Execution By celery.
+        """Asynchronous Execution By celery - Router Task.
+
+        This task routes workflow executions to specialized workers based on the
+        execution type. API deployments are routed to async_execute_bin_api,
+        while general workflows are routed to async_execute_bin_general.
 
         Args:
             schema_name (str): schema name to get Data
@@ -572,21 +593,96 @@ class WorkflowHelper:
         Returns:
             dict[str, list[Any]]: Returns a dict with result from workflow execution
         """
-        task_id = current_task.request.id
+        logger.info(f"Routing execution {execution_id} for workflow {workflow_id}")
+
         # Set organization in state store for execution
         StateStore.set(Account.ORGANIZATION_ID, schema_name)
-        WorkflowHelper.execute_workflow(
-            organization_id=schema_name,
-            task_id=task_id,
-            workflow_id=workflow_id,
-            execution_id=execution_id,
-            hash_values_of_files=hash_values_of_files,
-            scheduled=scheduled,
-            execution_mode=execution_mode,
-            pipeline_id=pipeline_id,
-            use_file_history=use_file_history,
-            **kwargs,
+
+        # Determine execution type and route to appropriate specialized worker
+        is_api_deployment = WorkflowHelper._is_api_deployment_execution(
+            pipeline_id, workflow_id, schema_name
         )
+
+        if is_api_deployment:
+            logger.info(f"Routing execution {execution_id} to API deployment worker")
+            # Route to API deployment worker via Celery
+            result = celery_app.send_task(
+                "async_execute_bin_api",
+                args=[
+                    schema_name,
+                    workflow_id,
+                    execution_id,
+                    hash_values_of_files,
+                ],
+                kwargs={
+                    "scheduled": scheduled,
+                    "execution_mode": execution_mode,
+                    "pipeline_id": pipeline_id,
+                    "use_file_history": use_file_history,
+                    **kwargs,
+                },
+                queue="celery_api_deployments",
+            )
+            return result.get()
+        else:
+            logger.info(f"Routing execution {execution_id} to general workflow worker")
+            # Route to general workflow worker via Celery
+            result = celery_app.send_task(
+                "async_execute_bin_general",
+                args=[
+                    schema_name,
+                    workflow_id,
+                    execution_id,
+                    hash_values_of_files,
+                ],
+                kwargs={
+                    "scheduled": scheduled,
+                    "execution_mode": execution_mode,
+                    "pipeline_id": pipeline_id,
+                    "use_file_history": use_file_history,
+                    **kwargs,
+                },
+                queue="celery",
+            )
+            return result.get()
+
+    @staticmethod
+    def _is_api_deployment_execution(
+        pipeline_id: str | None, workflow_id: str, schema_name: str
+    ) -> bool:
+        """Determine if this execution is for an API deployment.
+
+        Args:
+            pipeline_id: Pipeline ID (may be None)
+            workflow_id: Workflow ID
+            schema_name: Organization schema name
+
+        Returns:
+            True if this is an API deployment execution, False otherwise
+        """
+        try:
+            if not pipeline_id:
+                return False
+
+            # Check if pipeline_id is associated with an APIDeployment
+            api_deployment = APIDeployment.objects.filter(pipeline_id=pipeline_id).first()
+
+            if api_deployment:
+                logger.info(f"Execution {pipeline_id} identified as API deployment")
+                return True
+
+            # Fallback: Check if workflow has API deployment workflow type
+            workflow = WorkflowHelper.get_workflow_by_id(workflow_id)
+            if hasattr(workflow, "workflow_type") and workflow.workflow_type == "API":
+                logger.info(f"Workflow {workflow_id} identified as API type")
+                return True
+
+            return False
+
+        except Exception as e:
+            logger.warning(f"Failed to determine if execution is API deployment: {e}")
+            # Default to general workflow on error
+            return False
 
     @staticmethod
     def execute_workflow(
@@ -704,6 +800,13 @@ class WorkflowHelper:
             execution_id = workflow_execution.id
             log_events_id = StateStore.get(Common.LOG_EVENTS_ID)
             org_schema = UserContext.get_organization_identifier()
+
+            # If no organization context from user (e.g., API deployments), get it from workflow
+            if not org_schema and workflow and workflow.organization:
+                org_schema = workflow.organization.organization_id
+                logger.info(
+                    f"Retrieved organization {org_schema} from workflow {workflow.id} in complete_execution"
+                )
             if execution_mode == WorkflowExecution.Mode.INSTANT:
                 # Instant request from UX (Sync now in ETL and Workflow page)
                 response: ExecutionResponse = WorkflowHelper.execute_workflow_async(

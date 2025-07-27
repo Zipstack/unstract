@@ -1,0 +1,701 @@
+"""Common File Operations for Unstract Platform
+
+This module provides shared file operations that can be used by both
+Django backend and Celery workers without Django dependencies.
+
+Shared between:
+- backend/workflow_manager/endpoint_v2/source.py
+- workers/shared/source_operations.py
+- Any other component that needs file operations
+"""
+
+import hashlib
+import logging
+import mimetypes
+import os
+from pathlib import Path
+from typing import Any
+
+from .data_models import FileHashData
+
+logger = logging.getLogger(__name__)
+
+
+class FileOperations:
+    """Common file operations shared between backend and workers"""
+
+    @staticmethod
+    def compute_file_hash(file_path: str, chunk_size: int = 8192) -> str:
+        """Compute SHA-256 hash of file content.
+
+        Args:
+            file_path: Path to the file
+            chunk_size: Size of chunks to read (default 8KB)
+
+        Returns:
+            SHA-256 hex string of file content
+
+        Raises:
+            FileNotFoundError: If file doesn't exist
+            PermissionError: If file cannot be read
+        """
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        hash_sha256 = hashlib.sha256()
+        try:
+            with open(file_path, "rb") as f:
+                for chunk in iter(lambda: f.read(chunk_size), b""):
+                    hash_sha256.update(chunk)
+            return hash_sha256.hexdigest()
+        except Exception as e:
+            logger.error(f"Failed to compute hash for {file_path}: {str(e)}")
+            raise
+
+    @staticmethod
+    def detect_mime_type(file_path: str) -> str:
+        """Detect MIME type of file.
+
+        Args:
+            file_path: Path to the file
+
+        Returns:
+            MIME type string (default: 'application/octet-stream')
+        """
+        try:
+            mime_type, _ = mimetypes.guess_type(file_path)
+            return mime_type or "application/octet-stream"
+        except Exception as e:
+            logger.warning(f"Failed to detect MIME type for {file_path}: {str(e)}")
+            return "application/octet-stream"
+
+    @staticmethod
+    def validate_file_compatibility(
+        file_data: FileHashData, workflow_config: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Validate file against workflow requirements.
+
+        This shared validation logic ensures consistency between
+        backend endpoint validation and worker file processing.
+
+        Args:
+            file_data: FileHashData object with file information
+            workflow_config: Workflow configuration with validation rules
+
+        Returns:
+            Dictionary with 'is_valid' boolean and 'errors' list
+        """
+        validations = {"is_valid": True, "errors": []}
+
+        # Check file size limits
+        max_size = workflow_config.get(
+            "max_file_size", 100 * 1024 * 1024
+        )  # 100MB default
+        if file_data.file_size > max_size:
+            validations["is_valid"] = False
+            validations["errors"].append(
+                f"File size {file_data.file_size} bytes exceeds limit: {max_size} bytes"
+            )
+
+        # Check minimum file size
+        min_size = workflow_config.get("min_file_size", 1)  # 1 byte default
+        if file_data.file_size < min_size:
+            validations["is_valid"] = False
+            validations["errors"].append(
+                f"File size {file_data.file_size} bytes below minimum: {min_size} bytes"
+            )
+
+        # Check allowed MIME types
+        allowed_types = workflow_config.get("allowed_mime_types", [])
+        if allowed_types and file_data.mime_type not in allowed_types:
+            validations["is_valid"] = False
+            validations["errors"].append(
+                f"MIME type not allowed: {file_data.mime_type}. Allowed: {allowed_types}"
+            )
+
+        # Check blocked MIME types
+        blocked_types = workflow_config.get("blocked_mime_types", [])
+        if blocked_types and file_data.mime_type in blocked_types:
+            validations["is_valid"] = False
+            validations["errors"].append(f"MIME type blocked: {file_data.mime_type}")
+
+        # Check file extensions
+        allowed_extensions = workflow_config.get("allowed_extensions", [])
+        if allowed_extensions:
+            file_ext = Path(file_data.file_name).suffix.lower()
+            if file_ext not in [ext.lower() for ext in allowed_extensions]:
+                validations["is_valid"] = False
+                validations["errors"].append(
+                    f"File extension not allowed: {file_ext}. Allowed: {allowed_extensions}"
+                )
+
+        # Check blocked extensions
+        blocked_extensions = workflow_config.get("blocked_extensions", [])
+        if blocked_extensions:
+            file_ext = Path(file_data.file_name).suffix.lower()
+            if file_ext in [ext.lower() for ext in blocked_extensions]:
+                validations["is_valid"] = False
+                validations["errors"].append(f"File extension blocked: {file_ext}")
+
+        return validations
+
+    @staticmethod
+    def create_file_metadata(
+        file_path: str, compute_hash: bool = True, include_fs_metadata: bool = True
+    ) -> FileHashData:
+        """Create FileHashData with computed metadata.
+
+        This shared logic ensures consistent file metadata creation
+        across backend and workers.
+
+        Args:
+            file_path: Path to the file
+            compute_hash: Whether to compute SHA-256 content hash
+            include_fs_metadata: Whether to include filesystem metadata
+
+        Returns:
+            FileHashData object with computed metadata
+
+        Raises:
+            FileNotFoundError: If file doesn't exist
+        """
+        file_info = Path(file_path)
+
+        if not file_info.exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        # Get basic file information
+        stat_info = file_info.stat()
+
+        file_data = FileHashData(
+            file_name=file_info.name,
+            file_path=str(file_path),
+            file_size=stat_info.st_size,
+            mime_type=FileOperations.detect_mime_type(str(file_path)),
+        )
+
+        # Compute content hash if requested
+        if compute_hash:
+            try:
+                file_data.file_hash = FileOperations.compute_file_hash(str(file_path))
+            except Exception as e:
+                logger.warning(f"Failed to compute hash for {file_path}: {str(e)}")
+                file_data.file_hash = ""
+
+        # Include filesystem metadata if requested
+        if include_fs_metadata:
+            file_data.fs_metadata = {
+                "created_time": stat_info.st_ctime,
+                "modified_time": stat_info.st_mtime,
+                "accessed_time": stat_info.st_atime,
+                "is_file": file_info.is_file(),
+                "is_dir": file_info.is_dir(),
+                "permissions": oct(stat_info.st_mode)[-3:],
+            }
+
+        return file_data
+
+    @staticmethod
+    def validate_file_path(
+        file_path: str, allowed_paths: list[str] | None = None
+    ) -> dict[str, Any]:
+        """Validate file path for security and access.
+
+        Args:
+            file_path: Path to validate
+            allowed_paths: List of allowed path prefixes (optional)
+
+        Returns:
+            Dictionary with 'is_valid' boolean and 'errors' list
+        """
+        validation = {"is_valid": True, "errors": []}
+
+        try:
+            # Resolve and normalize path
+            resolved_path = Path(file_path).resolve()
+
+            # Check for path traversal attempts
+            if ".." in str(resolved_path):
+                validation["is_valid"] = False
+                validation["errors"].append("Path traversal detected")
+
+            # Check against allowed paths if provided
+            if allowed_paths:
+                path_allowed = False
+                for allowed_path in allowed_paths:
+                    try:
+                        resolved_allowed = Path(allowed_path).resolve()
+                        if resolved_path.is_relative_to(resolved_allowed):
+                            path_allowed = True
+                            break
+                    except (ValueError, OSError):
+                        continue
+
+                if not path_allowed:
+                    validation["is_valid"] = False
+                    validation["errors"].append(
+                        f"Path not in allowed directories: {allowed_paths}"
+                    )
+
+            # Check if file exists
+            if not resolved_path.exists():
+                validation["is_valid"] = False
+                validation["errors"].append("File does not exist")
+
+            # Check if it's actually a file (not a directory)
+            elif not resolved_path.is_file():
+                validation["is_valid"] = False
+                validation["errors"].append("Path is not a file")
+
+        except Exception as e:
+            validation["is_valid"] = False
+            validation["errors"].append(f"Path validation failed: {str(e)}")
+
+        return validation
+
+    @staticmethod
+    def get_file_batch_metadata(file_paths: list[str]) -> dict[str, Any]:
+        """Get metadata for a batch of files efficiently.
+
+        Args:
+            file_paths: List of file paths
+
+        Returns:
+            Dictionary with batch metadata and individual file data
+        """
+        batch_metadata = {
+            "total_files": len(file_paths),
+            "total_size": 0,
+            "valid_files": 0,
+            "invalid_files": 0,
+            "file_data": [],
+            "errors": [],
+        }
+
+        for file_path in file_paths:
+            try:
+                file_data = FileOperations.create_file_metadata(
+                    file_path=file_path,
+                    compute_hash=False,  # Skip hash computation for batch operations
+                    include_fs_metadata=False,
+                )
+
+                batch_metadata["file_data"].append(file_data.to_dict())
+                batch_metadata["total_size"] += file_data.file_size
+                batch_metadata["valid_files"] += 1
+
+            except Exception as e:
+                batch_metadata["invalid_files"] += 1
+                batch_metadata["errors"].append({"file_path": file_path, "error": str(e)})
+
+        return batch_metadata
+
+    @staticmethod
+    def is_directory_by_patterns(
+        file_path: str,
+        metadata: dict[str, Any] | None = None,
+        connector_name: str | None = None,
+    ) -> bool:
+        """Enhanced directory detection using file patterns and metadata.
+
+        This method provides connector-agnostic directory detection that works
+        across different storage backends (GCS, S3, Azure, local filesystem).
+
+        Args:
+            file_path: Path to check
+            metadata: Optional file metadata from connector
+            connector_name: Optional connector name for specific patterns
+
+        Returns:
+            True if the path appears to be a directory
+        """
+        # Primary check: Path ends with slash (universal directory indicator)
+        if file_path.endswith("/"):
+            logger.debug(
+                f"[Directory Check] '{file_path}' identified as directory: ends with '/'"
+            )
+            return True
+
+        # Check for common directory naming patterns
+        if FileOperations._looks_like_directory_path(file_path):
+            logger.debug(
+                f"[Directory Check] '{file_path}' identified as directory: naming pattern"
+            )
+            return True
+
+        # Connector-specific directory detection
+        if metadata and connector_name:
+            if FileOperations._is_directory_by_connector_patterns(
+                file_path, metadata, connector_name
+            ):
+                logger.debug(
+                    f"[Directory Check] '{file_path}' identified as directory: connector-specific pattern"
+                )
+                return True
+
+        # Enhanced zero-size file check with additional validation
+        if metadata:
+            file_size = metadata.get("size", 0)
+            if file_size == 0:
+                # Only treat zero-size objects as directories if they have directory indicators
+                if FileOperations._has_directory_indicators(
+                    file_path, metadata, connector_name
+                ):
+                    logger.debug(
+                        f"[Directory Check] '{file_path}' identified as directory: zero-size with directory indicators"
+                    )
+                    return True
+
+        return False
+
+    @staticmethod
+    def _looks_like_directory_path(file_path: str) -> bool:
+        """Check if a file path looks like a directory based on naming patterns."""
+        file_name = os.path.basename(file_path)
+
+        # Directory-like names (no file extension, common folder names)
+        common_dir_names = {
+            "tmp",
+            "temp",
+            "cache",
+            "logs",
+            "data",
+            "config",
+            "bin",
+            "lib",
+            "src",
+            "test",
+            "tests",
+            "docs",
+            "assets",
+            "images",
+            "files",
+            "duplicate-test",  # Add the specific directory from the issue
+        }
+
+        # Check if it's a common directory name
+        if file_name.lower() in common_dir_names:
+            return True
+
+        # Check if it has no file extension and contains no dots (likely a folder)
+        if "." not in file_name and len(file_name) > 0:
+            return True
+
+        return False
+
+    @staticmethod
+    def _is_directory_by_connector_patterns(
+        file_path: str, metadata: dict[str, Any], connector_name: str
+    ) -> bool:
+        """Check connector-specific patterns that indicate a directory."""
+        connector_name = connector_name.lower()
+
+        # Google Cloud Storage specific patterns
+        if "google" in connector_name or "gcs" in connector_name:
+            content_type = metadata.get("contentType", "")
+            object_name = metadata.get("name", file_path)
+
+            # GCS folder objects often have specific content types
+            if content_type in ["text/plain", "application/x-www-form-urlencoded"]:
+                return True
+
+            # GCS folder objects may have no content type
+            if not content_type and metadata.get("size", 0) == 0:
+                return True
+
+            # Object name ends with "/" in GCS
+            if object_name.endswith("/"):
+                return True
+
+        # AWS S3 specific patterns (for future extensibility)
+        elif "s3" in connector_name or "amazon" in connector_name:
+            # S3 folder objects typically end with /
+            if file_path.endswith("/"):
+                return True
+
+            # S3 may have specific metadata markers
+            if metadata.get("ContentType") == "application/x-directory":
+                return True
+
+        # Azure Blob Storage specific patterns (for future extensibility)
+        elif "azure" in connector_name:
+            content_type = metadata.get("content_type", "")
+            if content_type == "httpd/unix-directory":
+                return True
+
+        return False
+
+    @staticmethod
+    def _has_directory_indicators(
+        file_path: str, metadata: dict[str, Any], connector_name: str | None = None
+    ) -> bool:
+        """Check if a zero-size object has additional directory indicators."""
+        # Path-based indicators
+        if file_path.endswith("/"):
+            return True
+
+        if FileOperations._looks_like_directory_path(file_path):
+            return True
+
+        # Metadata-based indicators
+        if connector_name:
+            connector_name = connector_name.lower()
+
+            # GCS-specific indicators
+            if "google" in connector_name or "gcs" in connector_name:
+                content_type = metadata.get("contentType", "")
+                if content_type in ["text/plain", "application/x-www-form-urlencoded"]:
+                    return True
+
+                # Check for folder-like etag patterns in GCS
+                etag = metadata.get("etag", "")
+                if etag and not etag.startswith(
+                    '"'
+                ):  # GCS folders often have simple etags
+                    return True
+
+        return False
+
+    @staticmethod
+    def should_skip_directory_object(
+        file_path: str,
+        metadata: dict[str, Any] | None = None,
+        connector_name: str | None = None,
+    ) -> bool:
+        """Determine if a file object should be skipped because it's actually a directory.
+
+        This method provides a single entry point for directory filtering
+        that can be used by both backend and workers.
+
+        Args:
+            file_path: Path to check
+            metadata: Optional file metadata from connector
+            connector_name: Optional connector name for specific patterns
+
+        Returns:
+            True if the object should be skipped (it's a directory)
+        """
+        is_directory = FileOperations.is_directory_by_patterns(
+            file_path=file_path, metadata=metadata, connector_name=connector_name
+        )
+
+        if is_directory:
+            logger.info(f"Skipping directory object: {file_path}")
+            return True
+
+        return False
+
+    @staticmethod
+    def validate_provider_file_uuid(
+        file_path: str,
+        provider_file_uuid: str | None,
+        metadata: dict[str, Any] | None = None,
+        connector_name: str | None = None,
+    ) -> dict[str, Any]:
+        """Validate provider file UUID and ensure it's not assigned to directories.
+
+        Args:
+            file_path: File path
+            provider_file_uuid: Provider-assigned file UUID
+            metadata: File metadata
+            connector_name: Connector name
+
+        Returns:
+            Dictionary with validation results
+        """
+        validation = {"is_valid": True, "should_have_uuid": True, "errors": []}
+
+        # Check if this is a directory - directories shouldn't have UUIDs
+        if FileOperations.is_directory_by_patterns(file_path, metadata, connector_name):
+            validation["should_have_uuid"] = False
+
+            if provider_file_uuid:
+                validation["is_valid"] = False
+                validation["errors"].append(
+                    f"Directory object '{file_path}' should not have provider UUID: {provider_file_uuid}"
+                )
+
+        # Check UUID format if present
+        if provider_file_uuid and validation["should_have_uuid"]:
+            if not provider_file_uuid.strip():
+                validation["is_valid"] = False
+                validation["errors"].append("Provider UUID is empty or whitespace-only")
+
+        return validation
+
+    @staticmethod
+    def create_deduplication_key(
+        file_path: str | None = None,
+        provider_file_uuid: str | None = None,
+        file_hash: str | None = None,
+    ) -> list[str]:
+        """Create deduplication keys for file tracking.
+
+        Returns multiple keys to support different deduplication strategies.
+
+        Args:
+            file_path: File path
+            provider_file_uuid: Provider UUID
+            file_hash: Content hash
+
+        Returns:
+            List of deduplication keys
+        """
+        keys = []
+
+        # Path-based key
+        if file_path:
+            keys.append(f"path:{file_path}")
+
+        # UUID-based key (most reliable for same file across different paths)
+        if provider_file_uuid:
+            keys.append(f"uuid:{provider_file_uuid}")
+
+        # Content-based key (for content deduplication)
+        if file_hash:
+            keys.append(f"hash:{file_hash}")
+
+        return keys
+
+    @staticmethod
+    def is_file_already_processed(
+        api_client,
+        workflow_id: str,
+        provider_file_uuid: str | None,
+        file_path: str,
+        organization_id: str,
+        use_file_history: bool = True,
+    ) -> dict[str, Any]:
+        """Check if file is already processed using backend-compatible FileHistory logic.
+
+        This method replicates the exact logic from backend source.py:515-540 (_is_new_file)
+        to ensure consistent deduplication behavior between backend and workers.
+
+        Args:
+            api_client: API client for backend communication
+            workflow_id: Workflow ID
+            provider_file_uuid: Provider file UUID (from source connector)
+            file_path: File path
+            organization_id: Organization ID
+            use_file_history: Whether to use file history (matches backend parameter)
+
+        Returns:
+            Dictionary with processing status:
+            {
+                'is_new_file': bool,
+                'should_process': bool,
+                'skip_reason': str,
+                'file_history': dict
+            }
+        """
+        result = {
+            "is_new_file": True,
+            "should_process": True,
+            "skip_reason": None,
+            "file_history": None,
+        }
+
+        try:
+            # Always treat as new if history usage is not enforced (backend source.py:517-518)
+            if not use_file_history:
+                logger.debug(
+                    f"File history not enforced - treating {file_path} as new file"
+                )
+                return result
+
+            # Always treat as new if provider_file_uuid is not available (backend source.py:521-522)
+            if not provider_file_uuid:
+                logger.debug(
+                    f"No provider_file_uuid available for {file_path} - treating as new file"
+                )
+                return result
+
+            logger.info(
+                f"Checking file history for {file_path} with provider UUID: {provider_file_uuid}"
+            )
+
+            # Call backend API to get file history using FileHistoryHelper (backend source.py:566-570)
+            file_history_response = api_client.get_file_history(
+                workflow_id=workflow_id,
+                provider_file_uuid=provider_file_uuid,
+                file_path=file_path,
+                organization_id=organization_id,
+            )
+
+            if not file_history_response or "file_history" not in file_history_response:
+                logger.info(
+                    f"No file history found for {file_path} - treating as new file"
+                )
+                return result
+
+            file_history = file_history_response["file_history"]
+            result["file_history"] = file_history
+
+            # No history or incomplete history means the file is new (backend source.py:528-529)
+            if not file_history or not file_history.get("is_completed", False):
+                logger.info(
+                    f"File history incomplete for {file_path} - treating as new file"
+                )
+                return result
+
+            # Compare file paths (backend source.py:535-536)
+            history_file_path = file_history.get("file_path")
+            if history_file_path and history_file_path != file_path:
+                logger.info(
+                    f"File path changed from {history_file_path} to {file_path} - treating as new file"
+                )
+                return result
+
+            # File has been processed with the same path (backend source.py:539-540)
+            result["is_new_file"] = False
+            result["should_process"] = False
+            result["skip_reason"] = (
+                f"File '{file_path}' has already been processed. Clear file markers to process again."
+            )
+
+            logger.info(f"File {file_path} already processed - skipping")
+            return result
+
+        except Exception as e:
+            # If file history check fails, err on the side of processing the file
+            logger.warning(
+                f"Failed to check file history for {file_path}: {str(e)} - treating as new file"
+            )
+            result["skip_reason"] = f"File history check failed: {str(e)}"
+            return result
+
+    @staticmethod
+    def is_file_already_processed_for_listing(
+        workflow_id: str,
+        provider_file_uuid: str | None,
+        file_path: str,
+        organization_id: str,
+    ) -> dict[str, Any]:
+        """Check if file is already processed for file listing phase (without API client).
+
+        This is a simplified version of is_file_already_processed that works during
+        file listing when we don't have API client access.
+
+        Args:
+            workflow_id: Workflow ID
+            provider_file_uuid: Provider file UUID
+            file_path: File path
+            organization_id: Organization ID
+
+        Returns:
+            Dictionary with should_process and skip_reason
+        """
+        # For file listing phase, we'll make a simplified check
+        # Since we don't have API client here, we'll return should_process=True
+        # and let the actual processing phase handle the deduplication
+
+        # TODO: Implement direct database access for file listing phase
+        # For now, return True to maintain existing behavior but log the check
+
+        return {
+            "should_process": True,
+            "is_new_file": True,
+            "skip_reason": None,
+            "file_history": None,
+            "note": "File listing phase - deduplication deferred to processing phase",
+        }
