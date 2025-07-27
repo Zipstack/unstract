@@ -62,6 +62,7 @@ from prompt_studio.prompt_studio_registry_v2.serializers import (
 from prompt_studio.prompt_studio_v2.constants import ToolStudioPromptErrors
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_v2.serializers import ToolStudioPromptSerializer
+from unstract.sdk.adapters.enums import AdapterTypes
 from unstract.sdk.utils.common_utils import CommonUtils
 
 from .models import CustomTool
@@ -174,6 +175,12 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 adapter = AdapterInstance.objects.for_user(request.user).get(
                     id=summarize_llm_adapter_id
                 )
+                # Validate that the adapter type is LLM
+                if adapter.adapter_type != AdapterTypes.LLM.value:
+                    raise ValidationError(
+                        "Only LLM adapters are allowed for summarization"
+                    )
+
                 # Set the adapter directly on the tool
                 prompt_tool.summarize_llm_adapter = adapter
                 prompt_tool.save()
