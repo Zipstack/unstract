@@ -133,6 +133,15 @@
   justify-content: center;
   font-weight: 600;
   flex-shrink: 0;
+  transition: background-color 0.3s ease;
+}
+
+.workflow-card-number.completed {
+  background: #52c41a;
+}
+
+.workflow-card-number.completed .anticon {
+  font-size: 16px;
 }
 
 .workflow-card-info {

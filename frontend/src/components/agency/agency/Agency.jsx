@@ -486,7 +486,7 @@ function Agency() {
               <WorkflowCard
                 number={(() => {
                   const status = getConnectorStatus(source);
-                  return status.configured ? `✓ ${status.name}` : "1";
+                  return status.configured ? "✓" : "1";
                 })()}
                 title="Configure Source Connector"
                 description="Select and configure your data input connector"
@@ -501,7 +501,7 @@ function Agency() {
               <WorkflowCard
                 number={(() => {
                   const status = getConnectorStatus(destination);
-                  return status.configured ? `✓ ${status.name}` : "2";
+                  return status.configured ? "✓" : "2";
                 })()}
                 title="Configure Output Destination"
                 description="Select and configure your data output connector"
@@ -512,7 +512,7 @@ function Agency() {
             </Col>
             <Col span={12}>
               <WorkflowCard
-                number={selectedTool ? `✓ ${selectedTool}` : "3"}
+                number={selectedTool ? "✓" : "3"}
                 title="Select Exported Tool"
                 description="Choose an exported tool for processing your data"
                 customContent={
@@ -619,7 +619,7 @@ function Agency() {
             {/* Deploy Workflow */}
             <Col span={12}>
               <WorkflowCard
-                number={details?.tool_instances?.length > 0 ? "✓ Ready" : "4"}
+                number={details?.tool_instances?.length > 0 ? "✓" : "4"}
                 title="Deploy Workflow"
                 description="Deploy your workflow for processing"
                 customContent={

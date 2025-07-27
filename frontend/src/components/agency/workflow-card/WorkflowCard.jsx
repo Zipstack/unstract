@@ -1,3 +1,4 @@
+import { CheckOutlined } from "@ant-design/icons";
 import { Flex, Typography } from "antd";
 import PropTypes from "prop-types";
 
@@ -13,10 +14,17 @@ function WorkflowCard({
   message,
   customContent,
 }) {
+  // Check if step is completed (number starts with ✓ or number is a specific completed indicator)
+  const isCompleted = typeof number === "string" && number.startsWith("✓");
+
   return (
     <div className="workflow-card">
       <div className="workflow-card-header">
-        <div className="workflow-card-number">{number}</div>
+        <div
+          className={`workflow-card-number ${isCompleted ? "completed" : ""}`}
+        >
+          {isCompleted ? <CheckOutlined /> : number}
+        </div>
         <Flex vertical>
           <div className="workflow-card-info">
             <Typography.Title level={4}>{title}</Typography.Title>
