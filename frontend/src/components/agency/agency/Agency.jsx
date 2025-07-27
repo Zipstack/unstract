@@ -8,7 +8,11 @@ import {
   Select,
   Alert,
 } from "antd";
-import { BugOutlined, SettingOutlined } from "@ant-design/icons";
+import {
+  BugOutlined,
+  SettingOutlined,
+  PlayCircleOutlined,
+} from "@ant-design/icons";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -28,7 +32,12 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { CreateApiDeploymentModal } from "../../deployments/create-api-deployment-modal/CreateApiDeploymentModal.jsx";
 import { EtlTaskDeploy } from "../../pipelines-or-deployments/etl-task-deploy/EtlTaskDeploy.jsx";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
+import FileUpload from "../file-upload/FileUpload.jsx";
+import { wfExecutionTypes } from "../../../helpers/GetStaticData";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout.jsx";
+import { apiDeploymentsService } from "../../deployments/api-deployment/api-deployments-service.js";
+import { pipelineService } from "../../pipelines-or-deployments/pipeline-service.js";
+import { InputOutput } from "../input-output/InputOutput";
 function Agency() {
   const [steps, setSteps] = useState([]);
   const [workflowProgress, setWorkflowProgress] = useState(0);
@@ -49,15 +58,16 @@ function Agency() {
     destination,
     projectId,
     updateWorkflow,
+    allowChangeEndpoint,
   } = workflowStore;
   const { sessionDetails } = useSessionStore();
   const { orgName } = sessionDetails;
   const axiosPrivate = useAxiosPrivate();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
+  const apiDeploymentService = apiDeploymentsService();
+  const pipelineServiceInstance = pipelineService();
   const prompt = details?.prompt_text;
-  // eslint-disable-next-line no-unused-vars
-  const [activeToolId, setActiveToolId] = useState("");
   const [prevLoadingType, setPrevLoadingType] = useState("");
   const [isUpdateSteps, setIsUpdateSteps] = useState(false);
   const [stepLoader, setStepLoader] = useState(false);
@@ -74,6 +84,11 @@ function Agency() {
   const [apiOpsPresent, setApiOpsPresent] = useState(false);
   const [canAddTaskPipeline, setCanAddTaskPipeline] = useState(false);
   const [canAddETLPipeline, setCanAddETLPipeline] = useState(false);
+  const [deploymentInfo, setDeploymentInfo] = useState(null);
+  const [executionId, setExecutionId] = useState("");
+  const [openFileUploadModal, setOpenFileUploadModal] = useState(false);
+  const [fileList, setFileList] = useState([]);
+  const [wfExecutionParams, setWfExecutionParams] = useState([]);
 
   const { setPostHogCustomEvent } = usePostHogEvents();
 
@@ -82,6 +97,7 @@ function Agency() {
     canUpdateWorkflow();
     getExportedTools();
     initializeSelectedTool();
+    fetchDeploymentInfo();
   }, []);
 
   useEffect(() => {
@@ -113,10 +129,19 @@ function Agency() {
   useEffect(() => {
     // Enable Deploy as API only when
     // Source & Destination connection_type are selected as API
-    setApiOpsPresent(
+    const isApiOps =
       source?.connection_type === "API" &&
-        destination?.connection_type === "API"
-    );
+      destination?.connection_type === "API";
+    setApiOpsPresent(isApiOps);
+
+    // If API ops is enabled and other deployment types were selected, reset
+    if (
+      isApiOps &&
+      selectedDeploymentType &&
+      selectedDeploymentType !== "API"
+    ) {
+      setSelectedDeploymentType(null);
+    }
     // Enable Deploy as Task Pipeline only when
     // destination connection_type is FILESYSTEM and Source & Destination are Configured
     setCanAddTaskPipeline(
@@ -194,6 +219,61 @@ function Agency() {
       });
   };
 
+  // Fetch deployment information for the current workflow
+  const fetchDeploymentInfo = async () => {
+    if (!projectId) {
+      return;
+    }
+
+    try {
+      // Fetch API deployments and pipelines in parallel
+      const [apiDeployments, pipelines] = await Promise.all([
+        apiDeploymentService.getDeploymentsByWorkflowId(projectId),
+        pipelineServiceInstance.getPipelinesByWorkflowId(projectId),
+      ]);
+
+      const apiDeploymentData = apiDeployments?.data || [];
+      const pipelineData = pipelines?.data || [];
+
+      // Find active deployments
+      const activeApiDeployment = apiDeploymentData.find(
+        (deployment) => deployment.is_active
+      );
+      const activePipelines = pipelineData.filter(
+        (pipeline) => pipeline.active
+      );
+
+      // Set deployment info
+      let deploymentInfo = null;
+      if (activeApiDeployment) {
+        deploymentInfo = {
+          type: "API",
+          name: activeApiDeployment.display_name,
+          id: activeApiDeployment.id,
+        };
+      } else if (activePipelines.length > 0) {
+        // If multiple pipelines, prioritize by type: ETL > TASK
+        const etlPipeline = activePipelines.find(
+          (p) => p.pipeline_type === "ETL"
+        );
+        const taskPipeline = activePipelines.find(
+          (p) => p.pipeline_type === "TASK"
+        );
+        const pipeline = etlPipeline || taskPipeline || activePipelines[0];
+
+        deploymentInfo = {
+          type: pipeline.pipeline_type,
+          name: pipeline.pipeline_name,
+          id: pipeline.id,
+        };
+      }
+
+      setDeploymentInfo(deploymentInfo);
+    } catch (err) {
+      // Don't show alert for this as it's not critical
+    }
+  };
+
   // Initialize selected tool from existing tool instances on page load
   const initializeSelectedTool = () => {
     if (details?.tool_instances?.length > 0) {
@@ -203,24 +283,10 @@ function Agency() {
   };
 
   // Check if workflow has any active deployments (for progress calculation)
-  const checkDeploymentStatus = async () => {
-    try {
-      const requestOptions = {
-        method: "GET",
-        url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/${details?.id}/deployment/`,
-      };
-      const res = await axiosPrivate(requestOptions);
-      const deployments = res?.data || [];
-
-      // Check if any deployment is active
-      const hasActiveDeployment = deployments.some(
-        (deployment) => deployment.is_active === true
-      );
-
-      return hasActiveDeployment;
-    } catch (err) {
-      return false;
-    }
+  // Check if workflow is deployed using allowChangeEndpoint flag
+  const isWorkflowDeployed = () => {
+    // When allowChangeEndpoint is false, workflow is deployed and locked
+    return !allowChangeEndpoint;
   };
 
   const createDeployment = (type) => {
@@ -281,7 +347,6 @@ function Agency() {
 
   const initializeWfComp = () => {
     setToolInstances();
-    setActiveToolId("");
     setInputMd("");
     setOutputMd("");
     setStatusBarMsg("");
@@ -339,7 +404,6 @@ function Agency() {
     if (msgComp === "DESTINATION") {
       const destMsg = message?.state + ": " + message?.message;
       setDestinationMsg(destMsg);
-      setActiveToolId("");
       return;
     }
 
@@ -355,7 +419,6 @@ function Agency() {
         return stepObj;
       }
 
-      setActiveToolId(msgComp);
       stepObj["progress"] = message?.state;
       stepObj["status"] = message?.message;
       return stepObj;
@@ -364,9 +427,28 @@ function Agency() {
   }, [message]);
 
   // Get connector status information
-  const getConnectorStatus = (endpoint) => {
-    if (!endpoint?.connector_instance) {
+  const getConnectorStatus = (endpoint, isDeployed = false) => {
+    // If workflow is deployed, connectors are considered completed
+    if (isDeployed) {
+      return {
+        configured: true,
+        type: endpoint?.connection_type || "Deployed",
+        name: endpoint?.connector_name || "Configured",
+      };
+    }
+
+    // If no endpoint exists, not configured
+    if (!endpoint) {
       return { configured: false, type: null, name: null };
+    }
+
+    // For API connections, just having an endpoint is sufficient
+    if (endpoint.connection_type === "API") {
+      return {
+        configured: true,
+        type: "API",
+        name: endpoint.connector_name || "API Endpoint",
+      };
     }
 
     // For filesystem connectors, they are automatically configured
@@ -378,6 +460,11 @@ function Agency() {
       };
     }
 
+    // For other connection types, check if connector instance is configured
+    if (!endpoint?.connector_instance) {
+      return { configured: false, type: null, name: null };
+    }
+
     return {
       configured: true,
       type: endpoint.connection_type,
@@ -386,17 +473,17 @@ function Agency() {
   };
 
   // Calculate workflow progress based on completed steps
-  const calculateProgress = async () => {
+  const calculateProgress = () => {
     let completedSteps = 0;
 
     // Check if source connector is configured
-    const sourceStatus = getConnectorStatus(source);
+    const sourceStatus = getConnectorStatus(source, !allowChangeEndpoint);
     if (sourceStatus.configured) {
       completedSteps++;
     }
 
     // Check if destination connector is configured
-    const destStatus = getConnectorStatus(destination);
+    const destStatus = getConnectorStatus(destination, !allowChangeEndpoint);
     if (destStatus.configured) {
       completedSteps++;
     }
@@ -406,9 +493,9 @@ function Agency() {
       completedSteps++;
     }
 
-    // Check if workflow has active deployments (step 4)
-    const hasActiveDeployment = await checkDeploymentStatus();
-    if (hasActiveDeployment) {
+    // Check if workflow is deployed (step 4)
+    const workflowDeployed = isWorkflowDeployed() || deploymentInfo !== null;
+    if (workflowDeployed) {
       completedSteps++;
     }
 
@@ -423,16 +510,302 @@ function Agency() {
     }
   }, [details?.tool_instances, details?.id]);
 
+  // Refresh deployment info when allowChangeEndpoint changes (indicates deployment status change)
+  useEffect(() => {
+    if (projectId) {
+      fetchDeploymentInfo();
+    }
+  }, [allowChangeEndpoint, projectId]);
+
   // Update progress whenever relevant state changes
   useEffect(() => {
-    const updateProgress = async () => {
-      const { progress } = await calculateProgress();
-      setWorkflowProgress(progress);
+    const { progress } = calculateProgress();
+    setWorkflowProgress(progress);
+  }, [
+    source,
+    destination,
+    selectedTool,
+    details?.tool_instances,
+    allowChangeEndpoint,
+    deploymentInfo,
+  ]);
+
+  // Disable Run & Step execution - when NO tool present in the workflow
+  // When source OR destination is NOT configured
+  const disableAction = () => {
+    if (!details?.tool_instances?.length) {
+      return true;
+    }
+    if (
+      source?.connection_type === "API" &&
+      destination?.connection_type === "API"
+    ) {
+      return false;
+    }
+    if (
+      source?.connection_type === "FILESYSTEM" &&
+      destination?.connection_type === "MANUALREVIEW"
+    ) {
+      return false;
+    }
+    return !source?.connector_instance || !destination?.connector_instance;
+  };
+
+  const getInputFile = (isInitial, isStepExecution, executionAction) => {
+    setWfExecutionParams([isInitial, isStepExecution, executionAction]);
+    setFileList([]);
+    setOpenFileUploadModal(true);
+  };
+
+  const handleInitialExecution = async (
+    body,
+    isStepExecution,
+    executionAction
+  ) => {
+    initializeWfComp();
+    if (isStepExecution) {
+      body["execution_action"] = wfExecutionTypes[0];
+    }
+
+    const loadingStatus = {
+      isLoading: true,
+      loadingType: "EXECUTE",
     };
-    updateProgress();
-  }, [source, destination, selectedTool, details?.tool_instances]);
+    updateWorkflow(loadingStatus);
+
+    try {
+      const initialRes = await handleWfExecutionApi(body);
+      const execIdValue = initialRes?.data?.execution_id;
+
+      setExecutionId(execIdValue);
+      body["execution_id"] = execIdValue;
+      if (isStepExecution) {
+        body["execution_action"] = wfExecutionTypes[executionAction];
+      }
+      const wfExecRes = await handleWfExecutionApi(body);
+      const data = wfExecRes?.data;
+      if (data?.execution_status === "ERROR") {
+        setAlertDetails({
+          type: "error",
+          content: data?.error,
+        });
+      }
+    } catch (err) {
+      const errorDetail =
+        err?.response?.data?.errors?.length > 0
+          ? err.response.data.errors[0].detail
+          : "Something went wrong";
+      setAlertDetails({
+        type: "error",
+        content: errorDetail,
+      });
+    } finally {
+      handleClearStates();
+      loadingStatus["isLoading"] = false;
+      loadingStatus["loadingType"] = "";
+      updateWorkflow(loadingStatus);
+    }
+  };
+
+  const handleClearStates = () => {
+    setExecutionId("");
+  };
+
+  const getRequestBody = (body) => {
+    const formData = new FormData();
+    fileList.forEach((file) => {
+      formData.append("files", file);
+    });
+    formData.append("workflow_id", body["workflow_id"]);
+    formData.append("execution_id", body["execution_id"]);
+    if (body["execution_action"]) {
+      formData.append("execution_action", body["execution_action"]);
+    }
+    return formData;
+  };
+
+  const shouldIncludeFile = (body) => {
+    return body["execution_id"] && body["execution_id"].length > 0;
+  };
+
+  const handleWfExecutionApi = async (body) => {
+    let header = {
+      "X-CSRFToken": sessionDetails?.csrfToken,
+      "Content-Type": "application/json",
+    };
+    if (shouldIncludeFile(body) && apiOpsPresent && fileList.length > 0) {
+      body = getRequestBody(body);
+      header = {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+        "Content-Type": "multipart/form-data",
+      };
+    }
+    const requestOptions = {
+      method: "POST",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/execute/`,
+      headers: header,
+      data: body,
+    };
+
+    return axiosPrivate(requestOptions)
+      .then((res) => res)
+      .catch((err) => {
+        setAlertDetails(handleException(err));
+      });
+  };
+
+  const handleWfExecution = async (
+    isInitial,
+    isStepExecution,
+    executionAction
+  ) => {
+    try {
+      if (isStepExecution) {
+        setPostHogCustomEvent("wf_step", {
+          info: `Clicked on '${wfExecutionTypes[executionAction]}' button (Step Execution)`,
+        });
+      } else {
+        setPostHogCustomEvent("wf_run_wf", {
+          info: "Clicked on 'Run Workflow' button (Normal Execution)",
+        });
+      }
+    } catch (err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
+    }
+    const workflowId = details?.id;
+
+    if (!workflowId) {
+      setAlertDetails({
+        type: "error",
+        content: "Invalid workflow id",
+      });
+      return;
+    }
+
+    const body = {
+      workflow_id: workflowId,
+    };
+
+    if (isInitial) {
+      await handleInitialExecution(body, isStepExecution, executionAction);
+    } else {
+      body["execution_id"] = executionId;
+      body["execution_action"] = wfExecutionTypes[executionAction];
+
+      handleWfExecutionApi(body)
+        .then(() => {})
+        .catch((err) => {
+          setAlertDetails(handleException(err));
+        });
+    }
+  };
+
+  // Handle Run Workflow action
+  const handleRunWorkflow = async () => {
+    if (disableAction()) {
+      setAlertDetails({
+        type: "error",
+        content: "Please configure all workflow components before running",
+      });
+      return;
+    }
+
+    if (apiOpsPresent) {
+      getInputFile(true, false, 4);
+    } else {
+      await handleWfExecution(true, false, 4);
+    }
+  };
+
+  // Handle Clear Cache action
+  const handleClearCache = () => {
+    const workflowId = details?.id;
+    if (!workflowId) {
+      setAlertDetails({
+        type: "error",
+        content: "Invalid workflow id",
+      });
+      return;
+    }
+
+    const requestOptions = {
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/${workflowId}/clear-cache/`,
+    };
+
+    axiosPrivate(requestOptions)
+      .then((res) => {
+        const msg = res?.data;
+        setAlertDetails({
+          type: "success",
+          content: msg,
+        });
+      })
+      .catch((err) => {
+        const msg = err?.response?.data || "Failed to clear cache.";
+        setAlertDetails({
+          type: "error",
+          content: msg,
+        });
+      });
+  };
+
+  // Handle Clear Processed File History action
+  const handleClearFileMarker = () => {
+    const workflowId = details?.id;
+    if (!workflowId) {
+      setAlertDetails({
+        type: "error",
+        content: "Invalid workflow id",
+      });
+      return;
+    }
+
+    const requestOptions = {
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/${workflowId}/clear-file-marker/`,
+    };
+
+    axiosPrivate(requestOptions)
+      .then((res) => {
+        const msg = res?.data;
+        setAlertDetails({
+          type: "success",
+          content: msg,
+        });
+      })
+      .catch((err) => {
+        const msg = err?.response?.data || "Failed to clear file marker.";
+        setAlertDetails({
+          type: "error",
+          content: msg,
+        });
+      });
+  };
+
+  // Handle dropdown menu click
+  const handleMenuClick = ({ key }) => {
+    switch (key) {
+      case "run-workflow":
+        handleRunWorkflow();
+        break;
+      case "clear-cache":
+        handleClearCache();
+        break;
+      case "clear-history":
+        handleClearFileMarker();
+        break;
+      default:
+        break;
+    }
+  };
 
   const actionsMenuItems = [
+    {
+      key: "run-workflow",
+      label: "Run Workflow",
+      icon: <PlayCircleOutlined />,
+    },
     {
       key: "clear-cache",
       label: "Clear Cache",
@@ -441,19 +814,15 @@ function Agency() {
       key: "clear-history",
       label: "Clear Processed File History",
     },
-    {
-      key: "debug",
-      label: "Debug Previous Workflow",
-    },
   ];
 
   return (
     <IslandLayout>
-      <div className="workflow-builder-layout">
+      <div className="agency-layout">
         <PageTitle title={projectName} />
 
         {/* Header */}
-        <div className="workflow-builder-header">
+        <div className="agency-header">
           <div className="workflow-progress-section">
             <div className="progress-header">
               <Typography.Text className="progress-label">
@@ -463,10 +832,13 @@ function Agency() {
                 {Math.floor(workflowProgress / 25)} of 4 steps completed
               </Typography.Text>
             </div>
-            <Progress percent={workflowProgress} strokeColor="#1890ff" />
+            <Progress
+              percent={workflowProgress}
+              strokeColor={workflowProgress === 100 ? "#52c41a" : "#1890ff"}
+            />
           </div>
           <Dropdown
-            menu={{ items: actionsMenuItems }}
+            menu={{ items: actionsMenuItems, onClick: handleMenuClick }}
             placement="bottomRight"
             trigger={["click"]}
           >
@@ -485,7 +857,10 @@ function Agency() {
             <Col span={12}>
               <WorkflowCard
                 number={(() => {
-                  const status = getConnectorStatus(source);
+                  const status = getConnectorStatus(
+                    source,
+                    !allowChangeEndpoint
+                  );
                   return status.configured ? "✓" : "1";
                 })()}
                 title="Configure Source Connector"
@@ -500,7 +875,10 @@ function Agency() {
             <Col span={12}>
               <WorkflowCard
                 number={(() => {
-                  const status = getConnectorStatus(destination);
+                  const status = getConnectorStatus(
+                    destination,
+                    !allowChangeEndpoint
+                  );
                   return status.configured ? "✓" : "2";
                 })()}
                 title="Configure Output Destination"
@@ -619,7 +997,7 @@ function Agency() {
             {/* Deploy Workflow */}
             <Col span={12}>
               <WorkflowCard
-                number={details?.tool_instances?.length > 0 ? "✓" : "4"}
+                number={deploymentInfo || !allowChangeEndpoint ? "✓" : "4"}
                 title="Deploy Workflow"
                 description="Deploy your workflow for processing"
                 customContent={
@@ -627,29 +1005,42 @@ function Agency() {
                     <Select
                       className="workflow-select"
                       placeholder="Select Deployment Type"
-                      value={selectedDeploymentType}
+                      value={
+                        deploymentInfo
+                          ? deploymentInfo.type
+                          : selectedDeploymentType
+                      }
                       onChange={handleDeploymentTypeChange}
+                      disabled={deploymentInfo || !allowChangeEndpoint}
                       options={[
                         {
                           value: "API",
                           label: getDeploymentStatusText("API"),
                           disabled: false,
                         },
-                        {
-                          value: "ETL",
-                          label: getDeploymentStatusText("ETL"),
-                          disabled: false,
-                        },
-                        {
-                          value: "TASK",
-                          label: getDeploymentStatusText("TASK"),
-                          disabled: false,
-                        },
+                        ...(apiOpsPresent
+                          ? []
+                          : [
+                              {
+                                value: "ETL",
+                                label: getDeploymentStatusText("ETL"),
+                                disabled: false,
+                              },
+                              {
+                                value: "TASK",
+                                label: getDeploymentStatusText("TASK"),
+                                disabled: false,
+                              },
+                            ]),
                       ]}
                     />
                     <Button
                       type="primary"
-                      disabled={!selectedDeploymentType}
+                      disabled={
+                        deploymentInfo ||
+                        !allowChangeEndpoint ||
+                        !selectedDeploymentType
+                      }
                       onClick={() =>
                         selectedDeploymentType &&
                         handleDeployBtnClick(selectedDeploymentType)
@@ -663,20 +1054,40 @@ function Agency() {
             </Col>
           </Row>
         </div>
-        {deploymentName && (
+        {(deploymentName || deploymentInfo) && (
           <Alert
+            className="deployment-alert"
             message={
               <>
                 <span>
-                  This Workflow has been deployed as an {deploymentType}:{" "}
+                  This Workflow has been deployed as{" "}
+                  {deploymentInfo ? (
+                    <>
+                      {deploymentInfo.type === "API" ? "an" : "a"}{" "}
+                      {deploymentInfo.type}:{" "}
+                      <Link
+                        to={`/${orgName}/${
+                          deploymentInfo.type === "API"
+                            ? "api"
+                            : deploymentInfo.type.toLowerCase()
+                        }`}
+                      >
+                        {deploymentInfo.name}
+                      </Link>
+                    </>
+                  ) : (
+                    <>
+                      an {deploymentType}:{" "}
+                      <Link
+                        to={`/${orgName}/${deploymentType
+                          .split(" ")[0]
+                          .toLowerCase()}`}
+                      >
+                        {deploymentName}
+                      </Link>
+                    </>
+                  )}
                 </span>
-                <Link
-                  to={`/${orgName}/${deploymentType
-                    .split(" ")[0]
-                    .toLowerCase()}`}
-                >
-                  {deploymentName}
-                </Link>
               </>
             }
             type="success"
@@ -700,9 +1111,7 @@ function Agency() {
           </div>
           {showDebug && (
             <div className="debug-panel-content">
-              <Typography.Text type="secondary">
-                Select a workflow stage to see input and output data here.
-              </Typography.Text>
+              <InputOutput />
             </div>
           )}
         </div>
@@ -719,6 +1128,18 @@ function Agency() {
               ×
             </Button>
           </div>
+        )}
+
+        {/* File Upload Modal */}
+        {openFileUploadModal && (
+          <FileUpload
+            open={openFileUploadModal}
+            setFileList={setFileList}
+            fileList={fileList}
+            setOpen={setOpenFileUploadModal}
+            wfExecutionParams={wfExecutionParams}
+            continueWfExecution={handleWfExecution}
+          />
         )}
 
         {/* Actions - Hidden by default, can be shown via Actions dropdown */}
@@ -738,6 +1159,7 @@ function Agency() {
             workflowId={details?.id}
             isEdit={false}
             setDeploymentName={setDeploymentName}
+            onDeploymentCreated={fetchDeploymentInfo}
           />
         )}
 
@@ -747,6 +1169,7 @@ function Agency() {
           type="ETL"
           workflowId={details?.id}
           setDeploymentName={setDeploymentName}
+          onDeploymentCreated={fetchDeploymentInfo}
         />
 
         <EtlTaskDeploy
@@ -755,6 +1178,7 @@ function Agency() {
           type="TASK"
           workflowId={details?.id}
           setDeploymentName={setDeploymentName}
+          onDeploymentCreated={fetchDeploymentInfo}
         />
       </div>
     </IslandLayout>
