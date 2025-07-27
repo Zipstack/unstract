@@ -38,6 +38,8 @@ import { IslandLayout } from "../../../layouts/island-layout/IslandLayout.jsx";
 import { apiDeploymentsService } from "../../deployments/api-deployment/api-deployments-service.js";
 import { pipelineService } from "../../pipelines-or-deployments/pipeline-service.js";
 import { InputOutput } from "../input-output/InputOutput";
+import { ToolSelectionSidebar } from "../tool-selection-sidebar/ToolSelectionSidebar.jsx";
+import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 function Agency() {
   const [steps, setSteps] = useState([]);
   const [workflowProgress, setWorkflowProgress] = useState(0);
@@ -73,6 +75,9 @@ function Agency() {
   const [stepLoader, setStepLoader] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [showToolSelectionSidebar, setShowToolSelectionSidebar] =
+    useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [exportedTools, setExportedTools] = useState([]);
   const [selectedTool, setSelectedTool] = useState(null);
   const [selectedDeploymentType, setSelectedDeploymentType] = useState(null);
@@ -93,11 +98,27 @@ function Agency() {
   const { setPostHogCustomEvent } = usePostHogEvents();
 
   useEffect(() => {
-    getWfEndpointDetails();
-    canUpdateWorkflow();
-    getExportedTools();
-    initializeSelectedTool();
-    fetchDeploymentInfo();
+    const initializeData = async () => {
+      try {
+        setIsInitialLoading(true);
+        await Promise.all([
+          getWfEndpointDetails(),
+          canUpdateWorkflow(),
+          getExportedTools(),
+          fetchDeploymentInfo(),
+        ]);
+        initializeSelectedTool();
+      } catch (error) {
+        console.error("Error initializing workflow data:", error);
+      } finally {
+        // Add a small delay to prevent flash of content
+        setTimeout(() => {
+          setIsInitialLoading(false);
+        }, 500);
+      }
+    };
+
+    initializeData();
   }, []);
 
   useEffect(() => {
@@ -164,7 +185,7 @@ function Agency() {
       method: "GET",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/${projectId}/endpoint/`,
     };
-    axiosPrivate(requestOptions)
+    return axiosPrivate(requestOptions)
       .then((res) => {
         const data = res?.data || [];
         const sourceDetails = data.find(
@@ -181,6 +202,7 @@ function Agency() {
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to get endpoints"));
+        throw err;
       });
   };
 
@@ -189,7 +211,7 @@ function Agency() {
       method: "GET",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/${projectId}/can-update/`,
     };
-    axiosPrivate(requestOptions)
+    return axiosPrivate(requestOptions)
       .then((res) => {
         const data = res?.data || {};
         const body = {
@@ -201,6 +223,7 @@ function Agency() {
         setAlertDetails(
           handleException(err, "Failed to get can update status")
         );
+        throw err;
       });
   };
 
@@ -209,13 +232,14 @@ function Agency() {
       method: "GET",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/tool/`,
     };
-    axiosPrivate(requestOptions)
+    return axiosPrivate(requestOptions)
       .then((res) => {
         const data = res?.data || [];
         setExportedTools(data);
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to get exported tools"));
+        throw err;
       });
   };
 
@@ -239,9 +263,10 @@ function Agency() {
       const activeApiDeployment = apiDeploymentData.find(
         (deployment) => deployment.is_active
       );
-      const activePipelines = pipelineData.filter(
-        (pipeline) => pipeline.active
-      );
+
+      // For pipelines, any pipeline associated with this workflow is considered a deployment
+      // regardless of active status, since workflows can only have one deployment
+      const workflowPipelines = pipelineData;
 
       // Set deployment info
       let deploymentInfo = null;
@@ -251,15 +276,15 @@ function Agency() {
           name: activeApiDeployment.display_name,
           id: activeApiDeployment.id,
         };
-      } else if (activePipelines.length > 0) {
+      } else if (workflowPipelines.length > 0) {
         // If multiple pipelines, prioritize by type: ETL > TASK
-        const etlPipeline = activePipelines.find(
+        const etlPipeline = workflowPipelines.find(
           (p) => p.pipeline_type === "ETL"
         );
-        const taskPipeline = activePipelines.find(
+        const taskPipeline = workflowPipelines.find(
           (p) => p.pipeline_type === "TASK"
         );
-        const pipeline = etlPipeline || taskPipeline || activePipelines[0];
+        const pipeline = etlPipeline || taskPipeline || workflowPipelines[0];
 
         deploymentInfo = {
           type: pipeline.pipeline_type,
@@ -279,6 +304,13 @@ function Agency() {
     if (details?.tool_instances?.length > 0) {
       const toolInstance = details.tool_instances[0]; // Get first tool instance
       setSelectedTool(toolInstance.tool_id);
+
+      // Also update tool settings store for proper sidebar functionality
+      const { setToolSettings } = useToolSettingsStore.getState();
+      setToolSettings({
+        id: toolInstance.id,
+        tool_id: toolInstance.tool_id,
+      });
     }
   };
 
@@ -710,6 +742,9 @@ function Agency() {
       return;
     }
 
+    // Auto-open debug panel when workflow starts
+    setShowDebug(true);
+
     if (apiOpsPresent) {
       getInputFile(true, false, 4);
     } else {
@@ -748,6 +783,78 @@ function Agency() {
           content: msg,
         });
       });
+  };
+
+  // Handle tool selection from sidebar
+  const handleToolSelection = async (functionName) => {
+    setSelectedTool(functionName);
+
+    const tool = exportedTools.find((t) => t.function_name === functionName);
+
+    if (tool && details?.id) {
+      try {
+        // Check if there are existing tool instances
+        if (details?.tool_instances?.length > 0) {
+          // Remove existing tool instances
+          for (const existingTool of details.tool_instances) {
+            const deleteOptions = {
+              method: "DELETE",
+              url: `/api/v1/unstract/${sessionDetails?.orgId}/tool_instance/${existingTool.id}/`,
+              headers: {
+                "X-CSRFToken": sessionDetails?.csrfToken,
+              },
+            };
+            await axiosPrivate(deleteOptions);
+          }
+
+          // Update workflow store to remove old tool instances
+          const { deleteToolInstance } = useWorkflowStore.getState();
+          details.tool_instances.forEach((instance) => {
+            deleteToolInstance(instance.id);
+          });
+        }
+
+        // Create new tool instance
+        const body = {
+          tool_id: functionName,
+          workflow_id: details.id,
+        };
+
+        const requestOptions = {
+          method: "POST",
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/tool_instance/`,
+          headers: {
+            "X-CSRFToken": sessionDetails?.csrfToken,
+            "Content-Type": "application/json",
+          },
+          data: body,
+        };
+
+        const res = await axiosPrivate(requestOptions);
+        const newToolInstance = res.data;
+
+        // Update tool settings for sidebar
+        const { setToolSettings } = useToolSettingsStore.getState();
+        setToolSettings({
+          id: newToolInstance.id,
+          tool_id: newToolInstance.tool_id,
+        });
+
+        // Update workflow store with new tool instance
+        const { addNewTool } = useWorkflowStore.getState();
+        addNewTool(newToolInstance);
+
+        setAlertDetails({
+          type: "success",
+          content:
+            details?.tool_instances?.length > 0
+              ? "Tool replaced successfully"
+              : "Tool added successfully",
+        });
+      } catch (err) {
+        setAlertDetails(handleException(err, "Failed to update tool"));
+      }
+    }
   };
 
   // Handle Clear Processed File History action
@@ -816,6 +923,17 @@ function Agency() {
     },
   ];
 
+  // Show loading spinner during initial data load
+  if (isInitialLoading) {
+    return (
+      <IslandLayout>
+        <div className="agency-loading-container">
+          <SpinnerLoader text="Loading workflow data..." align="center" />
+        </div>
+      </IslandLayout>
+    );
+  }
+
   return (
     <IslandLayout>
       <div className="agency-layout">
@@ -842,7 +960,12 @@ function Agency() {
             placement="bottomRight"
             trigger={["click"]}
           >
-            <Button type="primary" icon={<SettingOutlined />}>
+            <Button
+              type="primary"
+              icon={<SettingOutlined />}
+              loading={loadingType === "EXECUTE"}
+              disabled={loadingType === "EXECUTE"}
+            >
               Actions
             </Button>
           </Dropdown>
@@ -895,93 +1018,32 @@ function Agency() {
                 description="Choose an exported tool for processing your data"
                 customContent={
                   <div className="workflow-card-content">
-                    <Select
-                      className="workflow-select"
-                      placeholder="Select Tool"
-                      value={selectedTool}
-                      onChange={async (functionName) => {
-                        setSelectedTool(functionName);
-
-                        const tool = exportedTools.find(
-                          (t) => t.function_name === functionName
-                        );
-
-                        if (tool && details?.id) {
-                          try {
-                            // Check if there are existing tool instances
-                            if (details?.tool_instances?.length > 0) {
-                              // Remove existing tool instances
-                              for (const existingTool of details.tool_instances) {
-                                const deleteOptions = {
-                                  method: "DELETE",
-                                  url: `/api/v1/unstract/${sessionDetails?.orgId}/tool_instance/${existingTool.id}/`,
-                                  headers: {
-                                    "X-CSRFToken": sessionDetails?.csrfToken,
-                                  },
-                                };
-                                await axiosPrivate(deleteOptions);
-                              }
-
-                              // Update workflow store to remove old tool instances
-                              const { deleteToolInstance } =
-                                useWorkflowStore.getState();
-                              details.tool_instances.forEach((instance) => {
-                                deleteToolInstance(instance.id);
-                              });
-                            }
-
-                            // Create new tool instance
-                            const body = {
-                              tool_id: functionName,
-                              workflow_id: details.id,
-                            };
-
-                            const requestOptions = {
-                              method: "POST",
-                              url: `/api/v1/unstract/${sessionDetails?.orgId}/tool_instance/`,
-                              headers: {
-                                "X-CSRFToken": sessionDetails?.csrfToken,
-                                "Content-Type": "application/json",
-                              },
-                              data: body,
-                            };
-
-                            const res = await axiosPrivate(requestOptions);
-                            const newToolInstance = res.data;
-
-                            // Update tool settings for sidebar
-                            const { setToolSettings } =
-                              useToolSettingsStore.getState();
-                            setToolSettings({
-                              id: newToolInstance.id,
-                              tool_id: newToolInstance.tool_id,
-                            });
-
-                            // Update workflow store with new tool instance
-                            const { addNewTool } = useWorkflowStore.getState();
-                            addNewTool(newToolInstance);
-
-                            setAlertDetails({
-                              type: "success",
-                              content:
-                                details?.tool_instances?.length > 0
-                                  ? "Tool replaced successfully"
-                                  : "Tool added successfully",
-                            });
-                          } catch (err) {
-                            setAlertDetails(
-                              handleException(err, "Failed to update tool")
-                            );
-                          }
-                        }
-                      }}
-                      options={exportedTools.map((tool) => {
-                        return {
-                          value: tool.function_name,
-                          label: tool.name,
-                        };
-                      })}
-                    />
+                    <div className="tool-selection-display">
+                      {selectedTool ? (
+                        <div className="selected-tool-info">
+                          <span className="selected-tool-name">
+                            {exportedTools.find(
+                              (t) => t.function_name === selectedTool
+                            )?.name || selectedTool}
+                          </span>
+                          <Button
+                            type="link"
+                            onClick={() => setShowToolSelectionSidebar(true)}
+                            size="small"
+                          >
+                            Change Tool
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          type="default"
+                          onClick={() => setShowToolSelectionSidebar(true)}
+                          className="select-tool-btn"
+                        >
+                          Select Tool
+                        </Button>
+                      )}
+                    </div>
                     <Button
                       type="primary"
                       onClick={() => setShowSidebar(!showSidebar)}
@@ -1018,7 +1080,7 @@ function Agency() {
                           label: getDeploymentStatusText("API"),
                           disabled: false,
                         },
-                        ...(apiOpsPresent
+                        ...(apiOpsPresent && !deploymentInfo
                           ? []
                           : [
                               {
@@ -1179,6 +1241,16 @@ function Agency() {
           workflowId={details?.id}
           setDeploymentName={setDeploymentName}
           onDeploymentCreated={fetchDeploymentInfo}
+        />
+
+        {/* Tool Selection Sidebar */}
+        <ToolSelectionSidebar
+          visible={showToolSelectionSidebar}
+          onClose={() => setShowToolSelectionSidebar(false)}
+          tools={exportedTools}
+          selectedTool={selectedTool}
+          onToolSelect={handleToolSelection}
+          onSave={() => setShowToolSelectionSidebar(false)}
         />
       </div>
     </IslandLayout>

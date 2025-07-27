@@ -361,11 +361,13 @@ function DsSettingsCard({ type, endpointDetails, message }) {
               </Tooltip>
 
               <Tooltip
-                title={`${
-                  endpointDetails?.connection_type
-                    ? ""
-                    : "Select the connector type from the dropdown"
-                }`}
+                title={
+                  !allowChangeEndpoint
+                    ? "Configuration disabled - Workflow is deployed"
+                    : !endpointDetails?.connection_type
+                    ? "Select the connector type from the dropdown"
+                    : ""
+                }
               >
                 <Button
                   type="primary"
@@ -373,7 +375,8 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                   disabled={
                     !endpointDetails?.connection_type ||
                     connType === "API" ||
-                    connType === "APPDEPLOYMENT"
+                    connType === "APPDEPLOYMENT" ||
+                    !allowChangeEndpoint
                   }
                 >
                   Configure
