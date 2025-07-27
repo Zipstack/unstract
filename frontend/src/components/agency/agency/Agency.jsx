@@ -93,27 +93,41 @@ function Agency() {
   const { setPostHogCustomEvent } = usePostHogEvents();
 
   useEffect(() => {
+    const abortController = new AbortController();
+    const signal = abortController.signal;
+
     const initializeData = async () => {
       try {
         setIsInitialLoading(true);
         await Promise.all([
-          getWfEndpointDetails(),
-          canUpdateWorkflow(),
-          getExportedTools(),
-          fetchDeploymentInfo(),
+          getWfEndpointDetails(signal),
+          canUpdateWorkflow(signal),
+          getExportedTools(signal),
+          fetchDeploymentInfo(signal),
         ]);
-        initializeSelectedTool();
+
+        if (!signal.aborted) {
+          initializeSelectedTool();
+        }
       } catch (error) {
-        console.error("Error initializing workflow data:", error);
+        if (!signal.aborted) {
+          console.error("Error initializing workflow data:", error);
+        }
       } finally {
-        // Add a small delay to prevent flash of content
-        setTimeout(() => {
-          setIsInitialLoading(false);
-        }, 500);
+        if (!signal.aborted) {
+          // Add a small delay to prevent flash of content
+          setTimeout(() => {
+            setIsInitialLoading(false);
+          }, 500);
+        }
       }
     };
 
     initializeData();
+
+    return () => {
+      abortController.abort();
+    };
   }, []);
 
   useEffect(() => {
@@ -124,7 +138,7 @@ function Agency() {
     } else if (canAddETLPipeline) {
       setDeploymentType("ETL Pipeline");
     }
-  }, [deploymentName]);
+  }, [apiOpsPresent, canAddTaskPipeline, canAddETLPipeline]);
 
   useEffect(() => {
     if (prevLoadingType !== "EXECUTE") {
@@ -175,71 +189,86 @@ function Agency() {
     );
   }, [source, destination]);
 
-  const getWfEndpointDetails = () => {
+  const getWfEndpointDetails = (signal) => {
     const requestOptions = {
       method: "GET",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/${projectId}/endpoint/`,
+      signal,
     };
     return axiosPrivate(requestOptions)
       .then((res) => {
-        const data = res?.data || [];
-        const sourceDetails = data.find(
-          (item) => item?.endpoint_type === "SOURCE"
-        );
-        const destDetails = data.find(
-          (item) => item?.endpoint_type === "DESTINATION"
-        );
-        const body = {
-          source: sourceDetails,
-          destination: destDetails,
-        };
-        updateWorkflow(body);
+        if (!signal?.aborted) {
+          const data = res?.data || [];
+          const sourceDetails = data.find(
+            (item) => item?.endpoint_type === "SOURCE"
+          );
+          const destDetails = data.find(
+            (item) => item?.endpoint_type === "DESTINATION"
+          );
+          const body = {
+            source: sourceDetails,
+            destination: destDetails,
+          };
+          updateWorkflow(body);
+        }
       })
       .catch((err) => {
-        setAlertDetails(handleException(err, "Failed to get endpoints"));
+        if (!signal?.aborted) {
+          setAlertDetails(handleException(err, "Failed to get endpoints"));
+        }
         throw err;
       });
   };
 
-  const canUpdateWorkflow = () => {
+  const canUpdateWorkflow = (signal) => {
     const requestOptions = {
       method: "GET",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/${projectId}/can-update/`,
+      signal,
     };
     return axiosPrivate(requestOptions)
       .then((res) => {
-        const data = res?.data || {};
-        const body = {
-          allowChangeEndpoint: data?.can_update,
-        };
-        updateWorkflow(body);
+        if (!signal?.aborted) {
+          const data = res?.data || {};
+          const body = {
+            allowChangeEndpoint: data?.can_update,
+          };
+          updateWorkflow(body);
+        }
       })
       .catch((err) => {
-        setAlertDetails(
-          handleException(err, "Failed to get can update status")
-        );
+        if (!signal?.aborted) {
+          setAlertDetails(
+            handleException(err, "Failed to get can update status")
+          );
+        }
         throw err;
       });
   };
 
-  const getExportedTools = () => {
+  const getExportedTools = (signal) => {
     const requestOptions = {
       method: "GET",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/tool/`,
+      signal,
     };
     return axiosPrivate(requestOptions)
       .then((res) => {
-        const data = res?.data || [];
-        setExportedTools(data);
+        if (!signal?.aborted) {
+          const data = res?.data || [];
+          setExportedTools(data);
+        }
       })
       .catch((err) => {
-        setAlertDetails(handleException(err, "Failed to get exported tools"));
+        if (!signal?.aborted) {
+          setAlertDetails(handleException(err, "Failed to get exported tools"));
+        }
         throw err;
       });
   };
 
   // Fetch deployment information for the current workflow
-  const fetchDeploymentInfo = async () => {
+  const fetchDeploymentInfo = async (signal) => {
     if (!projectId) {
       return;
     }
@@ -250,6 +279,11 @@ function Agency() {
         apiDeploymentService.getDeploymentsByWorkflowId(projectId),
         pipelineServiceInstance.getPipelinesByWorkflowId(projectId),
       ]);
+
+      // Check if request was aborted before setting state
+      if (signal?.aborted) {
+        return;
+      }
 
       const apiDeploymentData = apiDeployments?.data || [];
       const pipelineData = pipelines?.data || [];
@@ -288,9 +322,15 @@ function Agency() {
         };
       }
 
-      setDeploymentInfo(deploymentInfo);
+      if (!signal?.aborted) {
+        setDeploymentInfo(deploymentInfo);
+      }
     } catch (err) {
       // Don't show alert for this as it's not critical
+      // Also check if error is due to abort
+      if (signal?.aborted) {
+        return;
+      }
     }
   };
 
@@ -357,14 +397,38 @@ function Agency() {
 
   const handleDeploymentTypeChange = (value) => {
     setSelectedDeploymentType(value);
-    if (value) {
-      handleDeployBtnClick(value);
-    }
   };
 
   // Get deployment status text for a specific type
   const getDeploymentStatusText = (type) => {
     return `Deploy as ${type}`;
+  };
+
+  // Generate deployment alert message content
+  const generateDeploymentMessage = () => {
+    if (deploymentInfo) {
+      const article = deploymentInfo.type === "API" ? "an" : "a";
+      const urlPath =
+        deploymentInfo.type === "API"
+          ? "api"
+          : deploymentInfo.type.toLowerCase();
+
+      return (
+        <>
+          {article} {deploymentInfo.type}:{" "}
+          <Link to={`/${orgName}/${urlPath}`}>{deploymentInfo.name}</Link>
+        </>
+      );
+    } else {
+      const urlPath = deploymentType.split(" ")[0].toLowerCase();
+
+      return (
+        <>
+          an {deploymentType}:{" "}
+          <Link to={`/${orgName}/${urlPath}`}>{deploymentName}</Link>
+        </>
+      );
+    }
   };
 
   const setToolInstances = () => {
@@ -540,7 +604,12 @@ function Agency() {
   // Refresh deployment info when allowChangeEndpoint changes (indicates deployment status change)
   useEffect(() => {
     if (projectId) {
-      fetchDeploymentInfo();
+      const abortController = new AbortController();
+      fetchDeploymentInfo(abortController.signal);
+
+      return () => {
+        abortController.abort();
+      };
     }
   }, [allowChangeEndpoint, projectId]);
 
@@ -1115,37 +1184,9 @@ function Agency() {
           <Alert
             className="deployment-alert"
             message={
-              <>
-                <span>
-                  This Workflow has been deployed as{" "}
-                  {deploymentInfo ? (
-                    <>
-                      {deploymentInfo.type === "API" ? "an" : "a"}{" "}
-                      {deploymentInfo.type}:{" "}
-                      <Link
-                        to={`/${orgName}/${
-                          deploymentInfo.type === "API"
-                            ? "api"
-                            : deploymentInfo.type.toLowerCase()
-                        }`}
-                      >
-                        {deploymentInfo.name}
-                      </Link>
-                    </>
-                  ) : (
-                    <>
-                      an {deploymentType}:{" "}
-                      <Link
-                        to={`/${orgName}/${deploymentType
-                          .split(" ")[0]
-                          .toLowerCase()}`}
-                      >
-                        {deploymentName}
-                      </Link>
-                    </>
-                  )}
-                </span>
-              </>
+              <span>
+                This Workflow has been deployed as {generateDeploymentMessage()}
+              </span>
             }
             type="success"
           />
