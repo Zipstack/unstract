@@ -31,6 +31,22 @@ class SummarizeMigrationUtils:
 
         # Skip if already migrated
         if skip_if_migrated and tool_instance.summarize_llm_adapter:
+            logger.debug(
+                f"Tool {tool_instance.tool_id} already migrated to adapter-based summarization, "
+                f"skipping migration (created_by: {tool_instance.created_by.email if tool_instance.created_by else 'unknown'}, "
+                f"org: {tool_instance.organization})"
+            )
+            return False
+
+        # Check if there's a summarize profile before entering transaction
+        try:
+            summarize_profile = ProfileManager.objects.get(
+                prompt_studio_tool=tool_instance, is_summarize_llm=True
+            )
+        except ObjectDoesNotExist:
+            logger.info(
+                f"No summarize profile found for tool {tool_instance.tool_id}, skipping migration"
+            )
             return False
 
         try:
@@ -42,7 +58,7 @@ class SummarizeMigrationUtils:
                 if skip_if_migrated and tool_instance.summarize_llm_adapter:
                     return False
 
-                # Find the summarize profile
+                # Re-fetch the summarize profile with lock within transaction
                 try:
                     summarize_profile = ProfileManager.objects.select_for_update().get(
                         prompt_studio_tool=tool_instance, is_summarize_llm=True
@@ -64,11 +80,20 @@ class SummarizeMigrationUtils:
                 tool_instance.summarize_llm_adapter = summarize_profile.llm
                 tool_instance.save(update_fields=["summarize_llm_adapter"])
 
+                # Clear any existing profile-based summarize setting after successful migration
+                ProfileManager.objects.filter(prompt_studio_tool=tool_instance).update(
+                    is_summarize_llm=False
+                )
+
                 logger.info(
                     f"Successfully migrated tool {tool_instance.tool_id} from profile-based to adapter-based summarization"
                 )
                 return True
 
         except Exception as e:
-            logger.error(f"Failed to migrate tool {tool_instance.tool_id}: {str(e)}")
+            logger.warning(
+                f"Failed to migrate tool {tool_instance.tool_id}: {str(e)}\n"
+                f"Continuing with the deprecated approach for now",
+                exc_info=True,
+            )
             return False

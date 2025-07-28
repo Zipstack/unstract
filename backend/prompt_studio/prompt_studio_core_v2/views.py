@@ -5,7 +5,6 @@ from datetime import datetime
 from typing import Any
 
 from account_v2.custom_exceptions import DuplicateData
-from adapter_processor_v2.models import AdapterInstance
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
@@ -14,7 +13,6 @@ from file_management.exceptions import FileNotFound
 from permissions.permission import IsOwner, IsOwnerOrSharedUser
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
@@ -62,7 +60,6 @@ from prompt_studio.prompt_studio_registry_v2.serializers import (
 from prompt_studio.prompt_studio_v2.constants import ToolStudioPromptErrors
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_v2.serializers import ToolStudioPromptSerializer
-from unstract.sdk.adapters.enums import AdapterTypes
 from unstract.sdk.utils.common_utils import CommonUtils
 
 from .models import CustomTool
@@ -159,40 +156,12 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         # This is appropriate here since we're already in a write operation
         SummarizeMigrationUtils.migrate_tool_to_adapter_based(prompt_tool)
 
-        # Handle new summarize_llm_adapter field (prioritized)
-        summarize_llm_adapter_id = request.data.get(
-            ToolStudioKeys.SUMMARIZE_LLM_ADAPTER, None
-        )
-
         # Handle legacy summarize_llm_profile field (for backward compatibility)
         summarize_llm_profile_id = request.data.get(
             ToolStudioKeys.SUMMARIZE_LLM_PROFILE, None
         )
 
-        if summarize_llm_adapter_id:
-            # Validate adapter exists and is accessible
-            try:
-                adapter = AdapterInstance.objects.for_user(request.user).get(
-                    id=summarize_llm_adapter_id
-                )
-                # Validate that the adapter type is LLM
-                if adapter.adapter_type != AdapterTypes.LLM.value:
-                    raise ValidationError(
-                        "Only LLM adapters are allowed for summarization"
-                    )
-
-                # Set the adapter directly on the tool
-                prompt_tool.summarize_llm_adapter = adapter
-                prompt_tool.save(update_fields=["summarize_llm_adapter"])
-
-                # Clear any existing profile-based summarize setting
-                ProfileManager.objects.filter(prompt_studio_tool=prompt_tool).update(
-                    is_summarize_llm=False
-                )
-            except AdapterInstance.DoesNotExist:
-                raise ValidationError("Selected LLM adapter not found or not accessible")
-
-        elif summarize_llm_profile_id:
+        if summarize_llm_profile_id:
             # Legacy profile-based handling
             ProfileManager.objects.filter(prompt_studio_tool=prompt_tool).update(
                 is_summarize_llm=False

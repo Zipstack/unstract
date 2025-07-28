@@ -5,6 +5,7 @@ from account_v2.models import User
 from account_v2.serializer import UserSerializer
 from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
 from utils.FileValidator import FileValidator
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 
@@ -17,6 +18,7 @@ from prompt_studio.prompt_studio_output_manager_v2.output_manager_util import (
 )
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_v2.serializers import ToolStudioPromptSerializer
+from unstract.sdk.adapters.enums import AdapterTypes
 
 from .models import CustomTool
 
@@ -47,6 +49,46 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
             ),
         }
     }
+
+    def validate_summarize_llm_adapter(self, value):
+        """Validate that the adapter type is LLM and is accessible to the user."""
+        if value is None:
+            return value
+
+        # Check if user has access to this adapter
+        request = self.context.get("request")
+        if request and hasattr(request, "user"):
+            from adapter_processor_v2.models import AdapterInstance
+
+            try:
+                adapter = AdapterInstance.objects.for_user(request.user).get(id=value.id)
+                # Validate that the adapter type is LLM
+                if adapter.adapter_type != AdapterTypes.LLM.value:
+                    raise ValidationError(
+                        "Only LLM adapters are allowed for summarization"
+                    )
+            except AdapterInstance.DoesNotExist:
+                raise ValidationError("Selected LLM adapter not found or not accessible")
+
+        return value
+
+    def update(self, instance, validated_data):
+        """Custom update method to handle profile clearing when adapter is set."""
+        # Check if summarize_llm_adapter is being updated
+        if (
+            "summarize_llm_adapter" in validated_data
+            and validated_data["summarize_llm_adapter"]
+        ):
+            # Update the instance first
+            instance = super().update(instance, validated_data)
+
+            # Clear any existing profile-based summarize setting
+            ProfileManager.objects.filter(prompt_studio_tool=instance).update(
+                is_summarize_llm=False
+            )
+            return instance
+
+        return super().update(instance, validated_data)
 
     def to_representation(self, instance):  # type: ignore
         data = super().to_representation(instance)
