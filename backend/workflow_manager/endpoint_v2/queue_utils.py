@@ -100,7 +100,7 @@ class QueueResult:
     whisper_hash: str | None = None
     file_execution_id: str | None = None
     enqueued_at: float | None = None
-    original_ttl_seconds: int | None = None
+    ttl_seconds: int | None = None
 
     def __post_init__(self):
         """Initialize enqueued_at timestamp if not provided"""
@@ -117,6 +117,6 @@ class QueueResult:
             "file_content": self.file_content,
             "file_execution_id": self.file_execution_id,
             "enqueued_at": self.enqueued_at,
-            "original_ttl_seconds": self.original_ttl_seconds,
+            "ttl_seconds": self.ttl_seconds,
         }
         return result_dict
