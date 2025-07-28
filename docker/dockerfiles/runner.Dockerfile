@@ -63,11 +63,10 @@ COPY ${BUILD_CONTEXT_PATH} ./
 RUN uv sync --group deploy --no-dev --locked
 
 # Install cloud requirements if they exist and setup OTEL
-RUN uv pip install --system; \
-    if [ -f cloud_requirements.txt ]; then \
-    uv pip install --system -r cloud_requirements.txt; \
+RUN if [ -f cloud_requirements.txt ]; then \
+        uv pip install -r cloud_requirements.txt; \
     else \
-    echo "cloud_requirements.txt does not exist"; \
+        echo "cloud_requirements.txt does not exist"; \
     fi && \
     uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement -
 
