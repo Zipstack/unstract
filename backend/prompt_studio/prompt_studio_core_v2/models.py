@@ -72,7 +72,7 @@ class CustomTool(DefaultOrganizationMixin, BaseModel):
         db_comment="Field to store the LLM adapter for summarization",
         null=True,
         blank=True,
-        related_name="custom_tools_summarize_llm",
+        related_name="summarize_enabled_custom_tools",
     )
     preamble = models.TextField(
         blank=True,

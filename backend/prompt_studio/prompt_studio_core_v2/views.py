@@ -183,7 +183,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
                 # Set the adapter directly on the tool
                 prompt_tool.summarize_llm_adapter = adapter
-                prompt_tool.save()
+                prompt_tool.save(update_fields=["summarize_llm_adapter"])
 
                 # Clear any existing profile-based summarize setting
                 ProfileManager.objects.filter(prompt_studio_tool=prompt_tool).update(

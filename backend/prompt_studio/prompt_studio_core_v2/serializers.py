@@ -3,6 +3,7 @@ from typing import Any
 
 from account_v2.models import User
 from account_v2.serializer import UserSerializer
+from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
 from utils.FileValidator import FileValidator
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
@@ -17,7 +18,6 @@ from prompt_studio.prompt_studio_output_manager_v2.output_manager_util import (
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_v2.serializers import ToolStudioPromptSerializer
 
-from .migration_utils import SummarizeMigrationUtils
 from .models import CustomTool
 
 logger = logging.getLogger(__name__)
@@ -52,15 +52,19 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
         data = super().to_representation(instance)
         default_profile = None
 
-        # Handle summarize LLM adapter (read-only, safe for serialization)
-        summarize_adapter_id = SummarizeMigrationUtils.get_summarize_adapter_id(instance)
-        if summarize_adapter_id:
-            data[TSKeys.SUMMARIZE_LLM_ADAPTER] = summarize_adapter_id
+        # Check new adapter-based approach first
+        if instance.summarize_llm_adapter:
+            data[TSKeys.SUMMARIZE_LLM_ADAPTER] = instance.summarize_llm_adapter.id
 
-        # Provide legacy profile field for backward compatibility
-        summarize_profile_id = SummarizeMigrationUtils.get_summarize_profile_id(instance)
-        if summarize_profile_id:
-            data[TSKeys.SUMMARIZE_LLM_PROFILE] = summarize_profile_id
+        # Check legacy profile-based approach
+        try:
+            summarize_profile = ProfileManager.objects.get(
+                prompt_studio_tool=instance, is_summarize_llm=True
+            )
+            if summarize_profile.llm:
+                data[TSKeys.SUMMARIZE_LLM_PROFILE] = summarize_profile.profile_id
+        except ObjectDoesNotExist:
+            pass
 
         # Fetch default LLM profile
         try:

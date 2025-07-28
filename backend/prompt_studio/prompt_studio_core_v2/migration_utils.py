@@ -26,6 +26,7 @@ class SummarizeMigrationUtils:
         Returns:
             bool: True if migration was performed, False if skipped or failed
         """
+        # Import here to avoid circular import with ProfileManager -> CustomTool -> migration_utils
         from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 
         # Skip if already migrated
@@ -71,53 +72,3 @@ class SummarizeMigrationUtils:
         except Exception as e:
             logger.error(f"Failed to migrate tool {tool_instance.tool_id}: {str(e)}")
             return False
-
-    @staticmethod
-    def get_summarize_adapter_id(tool_instance) -> str | None:
-        """Get the summarize adapter ID for a tool, checking both new and legacy approaches.
-
-        This method is safe for serializers as it doesn't perform writes.
-
-        Args:
-            tool_instance: The CustomTool instance
-
-        Returns:
-            Optional[str]: The adapter ID if found, None otherwise
-        """
-        from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
-
-        # Check new adapter-based approach first
-        if tool_instance.summarize_llm_adapter:
-            return tool_instance.summarize_llm_adapter.id
-
-        # Check legacy profile-based approach
-        try:
-            summarize_profile = ProfileManager.objects.get(
-                prompt_studio_tool=tool_instance, is_summarize_llm=True
-            )
-            if summarize_profile.llm:
-                return summarize_profile.llm.id
-        except ObjectDoesNotExist:
-            pass
-
-        return None
-
-    @staticmethod
-    def get_summarize_profile_id(tool_instance) -> str | None:
-        """Get the summarize profile ID for a tool (legacy support).
-
-        Args:
-            tool_instance: The CustomTool instance
-
-        Returns:
-            Optional[str]: The profile ID if found, None otherwise
-        """
-        from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
-
-        try:
-            summarize_profile = ProfileManager.objects.get(
-                prompt_studio_tool=tool_instance, is_summarize_llm=True
-            )
-            return summarize_profile.profile_id
-        except ObjectDoesNotExist:
-            return None
