@@ -32,7 +32,6 @@ from prompt_studio.prompt_profile_manager_v2.serializers import ProfileManagerSe
 from prompt_studio.prompt_studio_core_v2.constants import (
     FileViewTypes,
     ToolStudioErrors,
-    ToolStudioKeys,
     ToolStudioPromptKeys,
 )
 from prompt_studio.prompt_studio_core_v2.document_indexing_service import (
@@ -92,17 +91,14 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
     def get_queryset(self) -> QuerySet | None:
         return CustomTool.objects.for_user(self.request.user)
 
-    def retrieve(
-        self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
-    ) -> Response:
-        """Override retrieve to trigger safe migration when accessing tools."""
-        instance = self.get_object()
+    def get_object(self):
+        """Override get_object to trigger lazy migration when accessing tools."""
+        instance = super().get_object()
 
         # Trigger lazy migration if needed (safe, with locking)
         SummarizeMigrationUtils.migrate_tool_to_adapter_based(instance)
 
-        serializer = self.get_serializer(instance)
-        return Response(serializer.data)
+        return instance
 
     def create(self, request: HttpRequest) -> Response:
         serializer = self.get_serializer(data=request.data)
@@ -149,27 +145,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
     def partial_update(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
-        # Get the tool instance
-        prompt_tool = self.get_object()
-
-        # Trigger lazy migration if needed (safe, with locking)
-        # This is appropriate here since we're already in a write operation
-        SummarizeMigrationUtils.migrate_tool_to_adapter_based(prompt_tool)
-
-        # Handle legacy summarize_llm_profile field (for backward compatibility)
-        summarize_llm_profile_id = request.data.get(
-            ToolStudioKeys.SUMMARIZE_LLM_PROFILE, None
-        )
-
-        if summarize_llm_profile_id:
-            # Legacy profile-based handling
-            ProfileManager.objects.filter(prompt_studio_tool=prompt_tool).update(
-                is_summarize_llm=False
-            )
-            profile_manager = ProfileManager.objects.get(pk=summarize_llm_profile_id)
-            profile_manager.is_summarize_llm = True
-            profile_manager.save()
-
         return super().partial_update(request, *args, **kwargs)
 
     @action(detail=True, methods=["get"])

@@ -3,6 +3,7 @@ from typing import Any
 
 from account_v2.models import User
 from account_v2.serializer import UserSerializer
+from adapter_processor_v2.models import AdapterInstance
 from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
@@ -58,8 +59,6 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
         # Check if user has access to this adapter
         request = self.context.get("request")
         if request and hasattr(request, "user"):
-            from adapter_processor_v2.models import AdapterInstance
-
             try:
                 adapter = AdapterInstance.objects.for_user(request.user).get(id=value.id)
                 # Validate that the adapter type is LLM
@@ -74,21 +73,15 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
 
     def update(self, instance, validated_data):
         """Custom update method to handle profile clearing when adapter is set."""
-        # Check if summarize_llm_adapter is being updated
-        if (
-            "summarize_llm_adapter" in validated_data
-            and validated_data["summarize_llm_adapter"]
-        ):
-            # Update the instance first
-            instance = super().update(instance, validated_data)
-
-            # Clear any existing profile-based summarize setting
+        instance = super().update(instance, validated_data)
+        if validated_data.get("summarize_llm_adapter"):
+            # Clear any existing deprecated profile-based summarize setting
             ProfileManager.objects.filter(prompt_studio_tool=instance).update(
                 is_summarize_llm=False
             )
             return instance
 
-        return super().update(instance, validated_data)
+        return instance
 
     def to_representation(self, instance):  # type: ignore
         data = super().to_representation(instance)
