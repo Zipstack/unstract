@@ -82,10 +82,8 @@ RUN for dir in "${TARGET_PLUGINS_PATH}"/*/; do \
     echo "Installing plugin: ${dirname}..." && \
     uv pip install "${TARGET_PLUGINS_PATH}/${dirname}"; \
     fi; \
-    done
-
-# Install OTEL instrumentation packages (separate layer for better caching)
-RUN uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement -
+    done && \
+    uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement -
 
 # Create required directories
 RUN mkdir -p prompt-studio-data
