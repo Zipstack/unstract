@@ -46,14 +46,15 @@ COPY ${BUILD_PACKAGES_PATH}/core /unstract/core
 COPY ${BUILD_PACKAGES_PATH}/flags /unstract/flags
 
 # Install external dependencies from pyproject.toml
-RUN uv sync --group deploy --locked --no-install-project --no-dev && \
-    .venv/bin/python3 -m ensurepip --upgrade && \
-    uv run opentelemetry-bootstrap -a install
+RUN uv sync --group deploy --locked --no-install-project --no-dev
 
 # -----------------------------------------------
 # FINAL STAGE - Minimal image for production
 # -----------------------------------------------
 FROM ext-dependencies AS production
+
+# Set shell options for better error handling
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Copy application code (this layer changes most frequently)
 COPY ${BUILD_CONTEXT_PATH} ./
@@ -61,13 +62,14 @@ COPY ${BUILD_CONTEXT_PATH} ./
 # Install the application
 RUN uv sync --group deploy --no-dev --locked
 
-# Install cloud requirements if they exist
+# Install cloud requirements if they exist and setup OTEL
 RUN uv pip install --system; \
     if [ -f cloud_requirements.txt ]; then \
-    uv pip install --no-cache-dir -r cloud_requirements.txt; \
+    uv pip install --system -r cloud_requirements.txt; \
     else \
     echo "cloud_requirements.txt does not exist"; \
-    fi
+    fi && \
+    uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement -
 
 EXPOSE 5002
 
