@@ -55,14 +55,15 @@ COPY --chown=${APP_USER}:${APP_USER} ${BUILD_PACKAGES_PATH}/flags /unstract/flag
 USER ${APP_USER}
 
 # Install external dependencies from pyproject.toml
-RUN uv sync --group deploy --locked --no-install-project --no-dev && \
-    .venv/bin/python3 -m ensurepip --upgrade && \
-    uv run opentelemetry-bootstrap -a install
+RUN uv sync --group deploy --locked --no-install-project --no-dev
 
 # -----------------------------------------------
 # FINAL STAGE - Minimal image for production
 # -----------------------------------------------
 FROM ext-dependencies AS production
+
+# Set shell options for better error handling
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Copy application code (this layer changes most frequently)
 COPY --chown=${APP_USER}:${APP_USER} ${BUILD_CONTEXT_PATH} ./
@@ -82,7 +83,10 @@ RUN for dir in "${TARGET_PLUGINS_PATH}"/*/; do \
     uv pip install "${TARGET_PLUGINS_PATH}/${dirname}"; \
     fi; \
     done && \
-    mkdir -p prompt-studio-data
+    uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement -
+
+# Create required directories
+RUN mkdir -p prompt-studio-data
 
 EXPOSE 3003
 
