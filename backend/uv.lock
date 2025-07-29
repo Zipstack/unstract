@@ -1813,7 +1813,7 @@ wheels = [
 
 [[package]]
 name = "litellm"
-version = "1.74.7"
+version = "1.74.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1828,9 +1828,9 @@ dependencies = [
     { name = "tiktoken" },
     { name = "tokenizers" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/91/4c/e8ffbd01d0f43357315646890524ce53648a3962169498e08a4b8edca6e2/litellm-1.74.7.tar.gz", hash = "sha256:53b809a342154d8543ea96422cf962cd5ea9df293f83dab0cc63b27baadf0ece", size = 9587483, upload-time = "2025-07-20T01:03:11.853Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c0/16/89c5123c808cbc51e398afc2f1a56da1d75d5e8ef7be417895a3794f0416/litellm-1.74.8.tar.gz", hash = "sha256:6e0a18aecf62459d465ee6d9a2526fcb33719a595b972500519abe95fe4906e0", size = 9639701, upload-time = "2025-07-23T23:38:02.903Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1c/54/eb5fee089d3e5e07a6d60b2565f798c66d43f46ba8f339e77f78cee98462/litellm-1.74.7-py3-none-any.whl", hash = "sha256:d630785faf07813cf0d5e9fb0bb84aaa18aa728297858c58c56f34c0b9190df1", size = 8652488, upload-time = "2025-07-20T01:03:09.226Z" },
+    { url = "https://files.pythonhosted.org/packages/af/4a/eba1b617acb7fa597d169cdd1b5ce98502bd179138f130721a2367d2deb8/litellm-1.74.8-py3-none-any.whl", hash = "sha256:f9433207d1e12e545495e5960fe02d93e413ecac4a28225c522488e1ab1157a1", size = 8713698, upload-time = "2025-07-23T23:38:00.708Z" },
 ]
 
 [[package]]
@@ -4297,11 +4297,47 @@ azure = [
 name = "unstract-sdk1"
 source = { editable = "../unstract/sdk1" }
 dependencies = [
+    { name = "filetype" },
+    { name = "httpx" },
+    { name = "jsonschema" },
     { name = "litellm" },
+    { name = "llama-index" },
+    { name = "llama-index-vector-stores-milvus" },
+    { name = "llama-index-vector-stores-pinecone" },
+    { name = "llama-index-vector-stores-postgres" },
+    { name = "llama-index-vector-stores-qdrant" },
+    { name = "llama-index-vector-stores-weaviate" },
+    { name = "llama-parse" },
+    { name = "llmwhisperer-client" },
+    { name = "pdfplumber" },
+    { name = "python-dotenv" },
+    { name = "python-magic" },
+    { name = "redis" },
+    { name = "singleton-decorator" },
+    { name = "tiktoken" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "litellm", specifier = "==1.74.7" }]
+requires-dist = [
+    { name = "filetype", specifier = "~=1.2.0" },
+    { name = "httpx", specifier = ">=0.25.2" },
+    { name = "jsonschema" },
+    { name = "litellm", specifier = "~=1.74.7" },
+    { name = "llama-index", specifier = "==0.12.39" },
+    { name = "llama-index-vector-stores-milvus", specifier = "==0.4.0" },
+    { name = "llama-index-vector-stores-pinecone", specifier = "==0.4.2" },
+    { name = "llama-index-vector-stores-postgres", specifier = "==0.4.1" },
+    { name = "llama-index-vector-stores-qdrant", specifier = "==0.4.2" },
+    { name = "llama-index-vector-stores-weaviate", specifier = "==1.3.1" },
+    { name = "llama-parse", specifier = "==0.5.19" },
+    { name = "llmwhisperer-client", specifier = ">=2.2.1" },
+    { name = "pdfplumber", specifier = ">=0.11.2" },
+    { name = "python-dotenv", specifier = "==1.0.0" },
+    { name = "python-magic", specifier = "~=0.4.27" },
+    { name = "redis", specifier = ">=5.2.1" },
+    { name = "singleton-decorator", specifier = "~=1.0.0" },
+    { name = "tiktoken", specifier = "~=0.9.0" },
+]
 
 [package.metadata.requires-dev]
 dev = [
