@@ -121,21 +121,13 @@ function ConfigureDs({
     // Reset test connection success when switching connectors
     setIsTcSuccessful(false);
 
-    // Clear current session OAuth state when switching connectors
-    const currentConnector = localStorage.getItem("oauth-current-connector");
-    const currentConnectorId = `${id}-${connectorRole}-${selectedSourceId}`;
-    if (currentConnector && currentConnector !== currentConnectorId) {
-      // Only clear current session indicators, preserve connector-specific OAuth credentials
-      localStorage.removeItem("oauth-current-connector");
-
-      // Reset local state only if current connector doesn't have stored OAuth credentials
-      const hasStoredOAuthState =
-        localStorage.getItem(oauthStatusKey) ||
-        localStorage.getItem(oauthCacheKey);
-      if (oAuthProvider?.length > 0 && !hasStoredOAuthState) {
-        setStatus("");
-        setCacheKey("");
-      }
+    // Reset local state only if current connector doesn't have stored OAuth credentials
+    const hasStoredOAuthState =
+      localStorage.getItem(oauthStatusKey) ||
+      localStorage.getItem(oauthCacheKey);
+    if (oAuthProvider?.length > 0 && !hasStoredOAuthState) {
+      setStatus("");
+      setCacheKey("");
     }
   }, [selectedSourceId, id, connectorRole, oauthStatusKey, oauthCacheKey]);
 

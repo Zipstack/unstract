@@ -63,13 +63,13 @@ function OAuthDs({
 
   const handleOAuth = async () => {
     try {
-      // Store the current connector ID to track which connector the OAuth is for
+      // Store connector ID in sessionStorage for OAuth callback (survives window.open)
       const currentConnectorId = `${workflowId}-${connType}-${selectedSourceId}`;
-      localStorage.setItem("oauth-current-connector", currentConnectorId);
+      sessionStorage.setItem("oauth-current-connector", currentConnectorId);
 
       const requestOptions = {
         method: "GET",
-        url: `/api/v1/oauth/cache-key/${oAuthProvider}?workflow_id=${workflowId}&conn_type=${connType}`,
+        url: `/api/v1/oauth/cache-key/${oAuthProvider}`,
       };
 
       const response = await axiosPrivate(requestOptions);
