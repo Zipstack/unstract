@@ -50,10 +50,10 @@
   border-radius: 0px;
 }
 
-.agency-ide-log-modal .ant-modal-content{
+.agency-ide-log-modal .ant-modal-content {
   height: 80vh;
 }
 
-.agency-ide-log-modal .agency-ide-logs{
+.agency-ide-log-modal .agency-ide-logs {
   height: 70vh !important;
 }

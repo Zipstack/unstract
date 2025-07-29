@@ -12,8 +12,8 @@
 
 .uppercase-text {
   text-transform: uppercase;
-  color: #0C355A;
-  font-family: 'SF Pro Text', sans-serif;
+  color: #0c355a;
+  font-family: "SF Pro Text", sans-serif;
   margin-bottom: 20px;
 }
 
@@ -30,37 +30,37 @@
 }
 
 .text-title-style {
-  color: #0C355A;
-  font-family: 'SF Pro Text', sans-serif;
+  color: #0c355a;
+  font-family: "SF Pro Text", sans-serif;
   font-weight: 700;
   margin-block-end: 0em;
   margin-block-start: 0em;
 }
 
 .text-description-style {
-    font-family: 'SF Pro Text', sans-serif;
-    color: #3D6182;
-    font-weight: 400;
+  font-family: "SF Pro Text", sans-serif;
+  color: #3d6182;
+  font-weight: 400;
 }
 
 .card-style {
-    width: 1000px;
-    background: #FFFFFF;
-    box-shadow: 0px 6px 16px 0px #00000014;
-    margin-bottom: 10px;
-    border-radius: 35px;
+  width: 1000px;
+  background: #ffffff;
+  box-shadow: 0px 6px 16px 0px #00000014;
+  margin-bottom: 10px;
+  border-radius: 35px;
 }
 
 .button-style {
-    background: #FF4D6D;
-    border: 1px solid #FF4D6D;
-    box-shadow: 0px 2px 0px 0px #00000005;
-    color: #FFFFFF;
+  background: #ff4d6d;
+  border: 1px solid #ff4d6d;
+  box-shadow: 0px 2px 0px 0px #00000005;
+  color: #ffffff;
 }
 
 .landing-logo {
-    height: 40px;
-    margin-bottom: 20px;
+  height: 40px;
+  margin-bottom: 20px;
 }
 
 @media screen and (max-height: 900px) {
@@ -86,7 +86,7 @@
 
 .circle-number {
   color: white;
-  font-family: 'SF Pro Text', sans-serif;
+  font-family: "SF Pro Text", sans-serif;
 }
 
 .later-div-style {
@@ -113,7 +113,7 @@
 }
 
 .configured-icon {
-  color: #52C41A;
+  color: #52c41a;
   font-size: 24px;
   vertical-align: middle;
 }
@@ -137,7 +137,7 @@
   }
 }
 
-@media screen and (max-height: 720px) and (max-width: 1280px){
+@media screen and (max-height: 720px) and (max-width: 1280px) {
   .card-style {
     width: 1200px;
     margin-bottom: 5px;
@@ -145,7 +145,7 @@
   }
 }
 
-@media screen and (max-height: 780px) and (max-width: 1024px){
+@media screen and (max-height: 780px) and (max-width: 1024px) {
   .card-style {
     width: 940px;
     margin-bottom: 5px;
@@ -165,10 +165,10 @@
 
 .help-text {
   flex: 1;
-  color: #3D6182;
-  font-family: 'SF Pro Text', sans-serif;
+  color: #3d6182;
+  font-family: "SF Pro Text", sans-serif;
 }
 
 .link-color {
-  color: #00A6ED;
+  color: #00a6ed;
 }

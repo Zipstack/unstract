@@ -1,20 +1,20 @@
 /* Styles for ManageDocsModal */
 
 .manage-docs-upload {
-    background-color: #0000000A;
+  background-color: #0000000a;
 }
 
 .manage-docs-items-list {
-    max-height: 400px;
-    width: 100%;
-    overflow-y: auto;
+  max-height: 400px;
+  width: 100%;
+  overflow-y: auto;
 }
 
 .manage-docs-item {
-    display: flex;
-    justify-content: space-between;
+  display: flex;
+  justify-content: space-between;
 }
 
 .manage-docs-div {
-    margin: 0;
+  margin: 0;
 }

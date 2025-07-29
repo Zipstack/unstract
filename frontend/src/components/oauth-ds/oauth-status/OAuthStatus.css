@@ -1,11 +1,11 @@
 /* Styles for OAuthStatus */
 
 .oauth-status-layout {
-    width: 100%;
+  width: 100%;
 }
 
 .oauth-status-text {
-    margin-top: 25px;
-    font-size: 24px;
-    font-weight: bold;
+  margin-top: 25px;
+  font-size: 24px;
+  font-weight: bold;
 }

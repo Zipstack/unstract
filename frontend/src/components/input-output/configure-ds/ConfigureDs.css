@@ -1,22 +1,22 @@
 /* Styles for ConfigureDs */
 
 .config-layout {
-    width: 100%;
-    padding-bottom: 15px;
+  width: 100%;
+  padding-bottom: 15px;
 }
 
 .config-row {
-    margin-top: 10px;
+  margin-top: 10px;
 }
 
 .config-col1 {
-    padding-right: 5px;
+  padding-right: 5px;
 }
 
 .config-col2 {
-    padding-right: 5px;
+  padding-right: 5px;
 }
 
 .config-tc-btn {
-    background-color: #4BB543 !important;
+  background-color: #4bb543 !important;
 }

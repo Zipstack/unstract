@@ -1,8 +1,8 @@
 .container {
-    background: #ECEFF3;
-    height: 100%;
-    width: 100%;
-    background-image: url('../../assets/landing_bg.svg');
-    background-size: cover;
-    flex-direction: column;
+  background: #eceff3;
+  height: 100%;
+  width: 100%;
+  background-image: url("../../assets/landing_bg.svg");
+  background-size: cover;
+  flex-direction: column;
 }

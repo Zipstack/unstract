@@ -1,12 +1,12 @@
 :root {
-  --font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
-  --white: #FFFFFF;
+  --font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  --white: #ffffff;
   --black: #000000;
 
-  --primary: #092C4C;
-  --secondary: #0C3861;
+  --primary: #092c4c;
+  --secondary: #0c3861;
 
-  --font-color-1: #FFFFFF;
+  --font-color-1: #ffffff;
 
   /* font sizes */
   --font-size-16: 16px;
@@ -17,27 +17,27 @@
   --font-weight-500: 500;
   --font-weight-600: 600;
 
-  --page-bg-1: #FFFFFF;
+  --page-bg-1: #ffffff;
   --page-bg-2: #e9e9e9;
-  --page-bg-3: #F5F7F9;
+  --page-bg-3: #f5f7f9;
 
-  --border-color-1: #E1E1E1;
+  --border-color-1: #e1e1e1;
   --border-color-2: #efeaea;
 }
 
 .dark {
   --white: #000000;
-  --black: #FFFFFF;
+  --black: #ffffff;
 
-  --primary: #092C4C;
-  --secondary: #0C3861;
+  --primary: #092c4c;
+  --secondary: #0c3861;
 
-  --font-color-1: #FFFFFF;
+  --font-color-1: #ffffff;
 
   --page-bg-1: #000000;
   --page-bg-2: #141414;
   --page-bg-3: #111418;
 
-  --border-color-1: #1D1D1D;
+  --border-color-1: #1d1d1d;
   --border-color-2: #383535;
 }

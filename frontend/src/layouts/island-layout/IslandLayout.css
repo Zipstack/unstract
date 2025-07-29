@@ -1,11 +1,11 @@
 /* Styles for IslandLayout */
 
 .island-layout {
-    padding: 12px;
-    height: 100%;
+  padding: 12px;
+  height: 100%;
 }
 
 .island-layout > div {
-    background-color: var(--white);
-    height: 100%;
+  background-color: var(--white);
+  height: 100%;
 }

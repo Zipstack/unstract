@@ -1,12 +1,12 @@
 /* Styles for PlatformSettings */
 
 .plt-set-layout {
-    height: 100%;
-    background-color: var(--page-bg-2);
+  height: 100%;
+  background-color: var(--page-bg-2);
 }
 
 .plt-set-layout-2 {
-    padding: 20px;
+  padding: 20px;
 }
 
 .plt-set-head {
@@ -16,18 +16,18 @@
 }
 
 .plt-set-head-typo {
-    font-size: 18px;
-    font-weight: 600;
+  font-size: 18px;
+  font-weight: 600;
 }
 
 .plt-set-key-head {
-    margin-bottom: 8px;
+  margin-bottom: 8px;
 }
 
 .plt-set-key-head-col-1 {
-    padding-right: 16px;
+  padding-right: 16px;
 }
 
 .plt-set-key-display {
-    width: 300px;
+  width: 300px;
 }

@@ -1,21 +1,21 @@
 /* Styles for GridView */
 
 .grid-view-wrapper {
-    height: 100%;
-    overflow: hidden auto;
+  height: 100%;
+  overflow: hidden auto;
 }
 
 .grid-view-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-    grid-auto-flow: dense;
-    justify-items: center;
-    gap: 20px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  grid-auto-flow: dense;
+  justify-items: center;
+  gap: 20px;
 }
 
 .grid-view-card-content {
-    height: 100px;
-    min-width: 210px;
-    display: grid;
-    grid-template-rows: 1fr auto;
+  height: 100px;
+  min-width: 210px;
+  display: grid;
+  grid-template-rows: 1fr auto;
 }

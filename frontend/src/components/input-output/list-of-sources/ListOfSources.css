@@ -1,15 +1,15 @@
 /* Styles for ListOfAdapters */
 
 .list-of-srcs {
-    height: 600px;
-    overflow-y: auto;
-    overflow-x: hidden;
+  height: 600px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .list-of-srcs > .searchbox {
-    max-width: 300px;
+  max-width: 300px;
 }
 
 .list-of-srcs > .list {
-    padding-top: 20px;
+  padding-top: 20px;
 }

@@ -1,23 +1,23 @@
 /* Styles for Settings */
 
 .settings-bg-col {
-    background-color: var(--page-bg-2);
-    height: 100%;
+  background-color: var(--page-bg-2);
+  height: 100%;
 }
 
 .settings-layout {
-    padding: 20px;
+  padding: 20px;
 }
 
 .settings-head {
-    margin-bottom: 8px;
+  margin-bottom: 8px;
 }
 
 .settings-head-typo {
-    font-size: 18px;
-    font-weight: 600;
+  font-size: 18px;
+  font-weight: 600;
 }
 
 .settings-plt-typo {
-    font-size: 14px;
+  font-size: 14px;
 }

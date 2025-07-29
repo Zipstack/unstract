@@ -1,47 +1,47 @@
 /* Styles for DocumentManager */
 
 .doc-manager-layout {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
 }
 
 .doc-manager-header {
-    display: flex;
-    justify-content: space-between;
-    padding-right: 12px
+  display: flex;
+  justify-content: space-between;
+  padding-right: 12px;
 }
 
 .doc-manager-btn {
-    max-width: 250px;
+  max-width: 250px;
 }
 
 .doc-manager-body {
-    flex: 1;
-    overflow-y: auto;
+  flex: 1;
+  overflow-y: auto;
 }
 
 .doc-manager-paginate-icon {
-    font-size: 12px;
+  font-size: 12px;
 }
 
 .text-viewer-layout {
-    height: 100%;
-    padding: 0px 12px;
-    flex: 1;
-    overflow-y: auto;
+  height: 100%;
+  padding: 0px 12px;
+  flex: 1;
+  overflow-y: auto;
 }
 
 .rpv-default-layout__container {
-    border: 0 !important;
+  border: 0 !important;
 }
 
-.doc-main-title{
-    color: darkgray;
-    font-size: 12px;
+.doc-main-title {
+  color: darkgray;
+  font-size: 12px;
 }
 
 .doc-main-title-div {
-    max-width: 150px;
+  max-width: 150px;
 }

@@ -320,7 +320,7 @@
 }
 
 .json-value.clickable {
-  color: #0097D8;
+  color: #0097d8;
   cursor: pointer;
 }
 
@@ -329,9 +329,9 @@
 }
 
 .json-value.selected {
-  color: #5A8300;
+  color: #5a8300;
 }
 
-.prompt-output-result{
+.prompt-output-result {
   font-size: 12px;
 }

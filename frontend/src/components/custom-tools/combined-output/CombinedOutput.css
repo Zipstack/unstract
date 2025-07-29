@@ -1,39 +1,39 @@
 /* Styles for CombinedOutput */
 
 .combined-op-layout {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    overflow-y: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: hidden;
 }
 
 .combined-op-header {
-    display: flex;
-    margin-top: 7px;
+  display: flex;
+  margin-top: 7px;
 }
 
 .combined-op-segment {
-    margin-left: auto;
+  margin-left: auto;
 }
 
 .combined-op-body {
-    flex: 1;
-    overflow-y: auto;
+  flex: 1;
+  overflow-y: auto;
 }
 
 .combined-op-divider {
-    margin-bottom: 10px;
+  margin-bottom: 10px;
 }
 
 .code-snippet {
-    border: 1px solid #ECEFF3;
+  border: 1px solid #eceff3;
 }
 
 .code-snippet > .language-javascript {
-    margin: 0px !important;
-    height: 100%;
+  margin: 0px !important;
+  height: 100%;
 }
 
 .combined-op-layout .gap {
-    margin-bottom: 12px;
+  margin-bottom: 12px;
 }

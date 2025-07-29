@@ -1,13 +1,14 @@
 /* Modal styles */
 .prompt-studio-modal {
-  padding:10px;
+  padding: 10px;
   top: 20px;
 }
 
 .prompt-studio-modal .ant-modal-content {
   padding: 0;
   border-radius: 8px;
-  box-shadow: 0 6px 16px 0 rgba(0, 0, 0, 0.08), 0 3px 6px -4px rgba(0, 0, 0, 0.12), 0 9px 28px 8px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 6px 16px 0 rgba(0, 0, 0, 0.08),
+    0 3px 6px -4px rgba(0, 0, 0, 0.12), 0 9px 28px 8px rgba(0, 0, 0, 0.05);
 }
 
 .prompt-studio-modal .ant-modal-header {
@@ -67,8 +68,8 @@
 /* Button styles */
 .prompt-studio-create-btn {
   transition: all 0.2s ease-in-out !important;
-  background-color: #1677FF !important;
-  border-color: #1677FF !important;
+  background-color: #1677ff !important;
+  border-color: #1677ff !important;
   height: 32px !important;
   font-size: 14px !important;
   display: flex !important;
@@ -83,8 +84,8 @@
 }
 
 .prompt-studio-create-btn:hover {
-  background-color: #4096FF !important;
-  border-color: #4096FF !important;
+  background-color: #4096ff !important;
+  border-color: #4096ff !important;
 }
 
 .prompt-studio-create-btn .plus-icon {
@@ -102,12 +103,12 @@
   padding: 4px 0 !important;
   margin: 0 !important;
   font-weight: normal !important;
-  color: #1677FF !important;
+  color: #1677ff !important;
   border-radius: 6px !important;
 }
 
 .prompt-studio-guide-btn:hover {
-  color: #4096FF !important;
+  color: #4096ff !important;
   background-color: transparent !important;
 }
 

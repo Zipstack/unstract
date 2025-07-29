@@ -1,21 +1,21 @@
 /* Styles for GenerateIndex */
 
 .gen-index-text {
-    font-size: 16px;
+  font-size: 16px;
 }
 
 .gen-index-progress {
-    color: #FAAD14;
+  color: #faad14;
 }
 
 .gen-index-success {
-    color: #52C41A;
+  color: #52c41a;
 }
 
 .gen-index-fail {
-    color: #ff4242;
+  color: #ff4242;
 }
 
 .gen-index-icon {
-    font-size: 24px;
+  font-size: 24px;
 }
