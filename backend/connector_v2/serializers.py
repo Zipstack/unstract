@@ -7,7 +7,7 @@ from connector_auth_v2.pipeline.common import ConnectorAuthHelper
 from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
 from connector_processor.exceptions import OAuthTimeOut
-from rest_framework.serializers import SerializerMethodField
+from rest_framework.serializers import CharField, SerializerMethodField
 from utils.fields import EncryptedBinaryFieldSerializer
 from utils.serializer_utils import SerializerUtils
 
@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 class ConnectorInstanceSerializer(AuditSerializer):
     connector_metadata = EncryptedBinaryFieldSerializer(required=False, allow_null=True)
     icon = SerializerMethodField()
+    created_by_email = CharField(source="created_by.email", read_only=True)
 
     class Meta:
         model = ConnectorInstance

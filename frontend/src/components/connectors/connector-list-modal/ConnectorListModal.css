@@ -1,0 +1,62 @@
+.connector-list-modal {
+  padding: 0;
+}
+
+.connector-search-section {
+  margin-bottom: 20px;
+}
+
+.connector-search-section .search-icon {
+  color: #bfbfbf;
+}
+
+.connector-tabs {
+  margin-bottom: 20px;
+}
+
+.connector-tabs .ant-tabs-nav {
+  margin-bottom: 16px;
+}
+
+.connector-grid-container {
+  min-height: 300px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 16px 0;
+}
+
+.no-connectors {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  text-align: center;
+}
+
+.connector-list-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  padding: 40px;
+}
+
+/* Custom scrollbar for connector grid */
+.connector-grid-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.connector-grid-container::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.connector-grid-container::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.connector-grid-container::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
