@@ -11,7 +11,12 @@ function OAuthStatus() {
   const params = new URLSearchParams(location.search);
   const status = params.get("status");
 
-  localStorage.setItem("oauth-status", status);
+  // Set connector-specific status only - no global oauth-status to prevent contamination
+  const currentConnector = localStorage.getItem("oauth-current-connector");
+  if (currentConnector) {
+    const statusKey = `oauth-status-${currentConnector}`;
+    localStorage.setItem(statusKey, status);
+  }
 
   if (status === SUCCESS) {
     setTimeout(() => {
