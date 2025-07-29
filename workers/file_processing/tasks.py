@@ -10,18 +10,6 @@ import os
 import time
 from typing import Any
 
-# Import shared worker infrastructure
-from shared.api_client import InternalAPIClient
-from shared.config import WorkerConfig
-
-# Import from shared worker modules
-from shared.constants import Account
-from shared.local_context import StateStore
-from shared.logging_utils import WorkerLogger, log_context, monitor_performance
-from shared.source_operations_backend_compatible import WorkerFileHistoryManager
-
-# Import WorkflowExecutionService direct integration
-from shared.workflow_service import WorkerWorkflowExecutionService
 from worker import app
 
 # Import shared enums and dataclasses
@@ -34,6 +22,19 @@ from unstract.core.data_models import (
     FileHashData,
     WorkerFileData,
 )
+
+# Import shared worker infrastructure
+from workers.shared.api_client import InternalAPIClient
+from workers.shared.config import WorkerConfig
+
+# Import from shared worker modules
+from workers.shared.constants import Account
+from workers.shared.local_context import StateStore
+from workers.shared.logging_utils import WorkerLogger, log_context, monitor_performance
+from workers.shared.source_operations_backend_compatible import WorkerFileHistoryManager
+
+# Import WorkflowExecutionService direct integration
+from workers.shared.workflow_service import WorkerWorkflowExecutionService
 
 logger = WorkerLogger.get_logger(__name__)
 

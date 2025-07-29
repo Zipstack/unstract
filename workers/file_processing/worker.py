@@ -7,13 +7,14 @@ This replaces the heavy Django workers for file processing operations.
 import os
 
 from celery import Celery
-from monitoring.prometheus_metrics import init_metrics
-from shared.config import WorkerConfig
-from shared.health import HealthChecker, HealthServer
-from shared.logging_utils import WorkerLogger
 
-# Initialize configuration
-config = WorkerConfig()
+from workers.monitoring.prometheus_metrics import init_metrics
+from workers.shared.config import WorkerConfig
+from workers.shared.health import HealthChecker, HealthServer
+from workers.shared.logging_utils import WorkerLogger
+
+# Initialize configuration with file-processing-specific settings
+config = WorkerConfig.from_env("FILE_PROCESSING")
 
 # Configure logging to match Django backend
 WorkerLogger.configure(
@@ -58,6 +59,10 @@ app.conf.update(
     # Monitoring
     worker_send_task_events=True,
     task_send_sent_event=True,
+    # Task discovery
+    imports=[
+        "tasks",
+    ],
 )
 
 # Initialize metrics

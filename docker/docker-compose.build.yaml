@@ -40,3 +40,23 @@ services:
     build:
       dockerfile: docker/dockerfiles/x2text.Dockerfile
       context: ..
+  worker-api-deployment:
+    image: unstract/worker-api-deployment:${VERSION}
+    build:
+      dockerfile: docker/dockerfiles/worker-api-deployment.Dockerfile
+      context: ..
+  worker-callback:
+    image: unstract/worker-callback:${VERSION}
+    build:
+      dockerfile: docker/dockerfiles/worker-callback.Dockerfile
+      context: ..
+  worker-file-processing:
+    image: unstract/worker-file-processing:${VERSION}
+    build:
+      dockerfile: docker/dockerfiles/worker-file-processing.Dockerfile
+      context: ..
+  worker-general:
+    image: unstract/worker-general:${VERSION}
+    build:
+      dockerfile: docker/dockerfiles/worker-general.Dockerfile
+      context: ..

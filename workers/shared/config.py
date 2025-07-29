@@ -128,6 +128,10 @@ class WorkerConfig:
     enable_metrics: bool = field(
         default_factory=lambda: os.getenv("ENABLE_METRICS", "true").lower() == "true"
     )
+    enable_health_server: bool = field(
+        default_factory=lambda: os.getenv("ENABLE_HEALTH_SERVER", "true").lower()
+        == "true"
+    )
     metrics_port: int = field(
         default_factory=lambda: int(os.getenv("METRICS_PORT", "8080"))
     )

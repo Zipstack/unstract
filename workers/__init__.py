@@ -7,8 +7,8 @@ __version__ = "1.0.0"
 __author__ = "Unstract Team"
 __email__ = "support@unstract.com"
 
-# Import main worker modules for easy access
-from . import api_deployment, callback, file_processing, general, shared
+# Import only shared module to avoid circular imports
+# Individual worker modules are imported as needed
 
 __all__ = [
     "shared",

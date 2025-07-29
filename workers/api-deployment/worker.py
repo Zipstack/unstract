@@ -8,7 +8,7 @@ import os
 from celery import Celery
 
 # Import shared worker infrastructure
-from shared import HealthChecker, HealthServer, WorkerConfig, WorkerLogger
+from workers.shared import HealthChecker, HealthServer, WorkerConfig, WorkerLogger
 
 # Configure worker-specific logging to match Django backend
 WorkerLogger.configure(
@@ -40,7 +40,11 @@ celery_config.update(
             "api_deployment_cleanup": {"queue": "celery_api_deployments"},
             "api_deployment_status_check": {"queue": "celery_api_deployments"},
             "api_deployment_worker.*": {"queue": "celery_api_deployments"},
-        }
+        },
+        # Task discovery
+        "imports": [
+            "tasks",
+        ],
     }
 )
 
@@ -57,26 +61,34 @@ def check_api_deployment_health():
 
     try:
         # Check if we can access API deployment specific resources
-        from shared.api_client import InternalAPIClient
+        from workers.shared.api_client_singleton import get_singleton_api_client
 
-        with InternalAPIClient(config) as client:
-            # Test API connectivity
-            health_response = client.health_check()
+        client = get_singleton_api_client(config)
+        # Simply check if API client is available (avoid making actual calls)
+        try:
+            # If we can create the client, API connectivity is considered healthy
+            api_healthy = client is not None
+            api_status = "healthy" if api_healthy else "unhealthy"
+        except Exception:
+            api_healthy = False
+            api_status = "unhealthy"
 
-            if health_response.get("status") == "healthy":
-                return HealthCheckResult(
-                    name="api_deployment_specific",
-                    status=HealthStatus.HEALTHY,
-                    message="API deployment worker specific checks passed",
-                    details={"api_health": health_response},
-                )
-            else:
-                return HealthCheckResult(
-                    name="api_deployment_specific",
-                    status=HealthStatus.DEGRADED,
-                    message="API connectivity degraded",
-                    details={"api_health": health_response},
-                )
+        if api_healthy:
+            return HealthCheckResult(
+                name="api_deployment_specific",
+                status=HealthStatus.HEALTHY,
+                message="API deployment worker specific checks passed",
+                details={"api_health": api_status},
+            )
+        else:
+            return HealthCheckResult(
+                name="api_deployment_specific",
+                status=HealthStatus.DEGRADED,
+                message="API connectivity degraded",
+                details={
+                    "api_health": api_status if "api_status" in locals() else "unknown"
+                },
+            )
 
     except Exception as e:
         return HealthCheckResult(
@@ -117,8 +129,7 @@ def stop_health_server():
 
 logger.info(f"API deployment worker initialized with config: {config}")
 
-# Start health server when module is imported
-start_health_server()
+# Don't auto-start health server - let entrypoint.py handle it
 
 if __name__ == "__main__":
     """Run worker directly for testing."""

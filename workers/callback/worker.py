@@ -6,13 +6,14 @@ Handles result aggregation and execution finalization using internal APIs.
 import os
 
 from celery import Celery
-from monitoring.prometheus_metrics import init_metrics
-from shared.config import WorkerConfig
-from shared.health import HealthChecker, HealthServer
-from shared.logging_utils import WorkerLogger
 
-# Initialize configuration
-config = WorkerConfig()
+from workers.monitoring.prometheus_metrics import init_metrics
+from workers.shared.config import WorkerConfig
+from workers.shared.health import HealthChecker, HealthServer
+from workers.shared.logging_utils import WorkerLogger
+
+# Initialize configuration with callback-specific settings
+config = WorkerConfig.from_env("CALLBACK")
 
 # Configure logging to match Django backend
 WorkerLogger.configure(
@@ -58,6 +59,10 @@ app.conf.update(
     # Monitoring
     worker_send_task_events=True,
     task_send_sent_event=True,
+    # Task discovery
+    imports=[
+        "tasks",
+    ],
 )
 
 # Initialize metrics
@@ -77,7 +82,7 @@ def healthcheck(self):
     return {"status": "healthy", "worker_type": "callback", "task_id": self.request.id}
 
 
-# Import tasks after app configuration
+# Tasks are imported via Celery imports configuration above
 
 if __name__ == "__main__":
     logger.info(f"Starting File Processing Callback Worker with config: {config}")

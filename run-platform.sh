@@ -71,6 +71,7 @@ display_help() {
   echo -e "   -p, --only-pull     Only do docker images pull"
   echo -e "   -b, --build-local   Build docker images locally"
   echo -e "   -u, --update        Update services version"
+  echo -e "   -w, --workers-new   Use new dedicated worker containers (temporary)"
   echo -e "   -x, --trace         Enables trace mode"
   echo -e "   -V, --verbose       Print verbose logs"
   echo -e "   -v, --version       Docker images version tag (default \"latest\")"
@@ -96,6 +97,9 @@ parse_args() {
         ;;
       -u | --update)
         opt_update=true
+        ;;
+      -w | --workers-new)
+        opt_workers_new=true
         ;;
       -x | --trace)
         set -o xtrace  # display every line before execution; enables PS4
@@ -128,6 +132,7 @@ parse_args() {
   debug "OPTION only_pull: $opt_only_pull"
   debug "OPTION build_local: $opt_build_local"
   debug "OPTION upgrade: $opt_update"
+  debug "OPTION workers_new: $opt_workers_new"
   debug "OPTION verbose: $opt_verbose"
   debug "OPTION version: $opt_version"
 }
@@ -280,8 +285,13 @@ build_services() {
 run_services() {
   pushd "$script_dir/docker" 1>/dev/null
 
-  echo -e "$blue_text""Starting docker containers in detached mode""$default_text"
-  VERSION=$opt_version $docker_compose_cmd up -d
+  if [ "$opt_workers_new" = true ]; then
+    echo -e "$blue_text""Starting docker containers with NEW dedicated workers in detached mode""$default_text"
+    VERSION=$opt_version $docker_compose_cmd --profile workers-new up -d
+  else
+    echo -e "$blue_text""Starting docker containers with existing backend-based workers in detached mode""$default_text"
+    VERSION=$opt_version $docker_compose_cmd up -d
+  fi
 
   if [ "$opt_update" = true ]; then
     echo ""
@@ -324,6 +334,7 @@ opt_only_env=false
 opt_only_pull=false
 opt_build_local=false
 opt_update=false
+opt_workers_new=false
 opt_verbose=false
 opt_version="latest"
 
@@ -331,6 +342,8 @@ script_dir=$(dirname "$(readlink -f "$BASH_SOURCE")")
 first_setup=false
 # Extract service names from docker compose file
 services=($(VERSION=$opt_version $docker_compose_cmd -f "$script_dir/docker/docker-compose.build.yaml" config --services))
+# Add workers manually for env setup
+services+=("workers")
 spawned_services=("tool-structure" "tool-sidecar")
 current_version=""
 target_branch=""

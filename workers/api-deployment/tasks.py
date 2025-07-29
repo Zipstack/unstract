@@ -8,19 +8,20 @@ import time
 from typing import Any
 from uuid import UUID
 
-# Import shared worker infrastructure
-from shared.api_client import InternalAPIClient
-from shared.config import WorkerConfig
-
-# Import from shared worker modules
-from shared.constants import Account
-from shared.local_context import StateStore
-from shared.logging_utils import WorkerLogger, log_context, monitor_performance
-from shared.retry_utils import retry
 from worker import app
 
 # Import shared data models for type safety
 from unstract.core.data_models import ExecutionStatus, FileHashData
+
+# Import shared worker infrastructure
+from workers.shared.api_client import InternalAPIClient
+from workers.shared.config import WorkerConfig
+
+# Import from shared worker modules
+from workers.shared.constants import Account
+from workers.shared.local_context import StateStore
+from workers.shared.logging_utils import WorkerLogger, log_context, monitor_performance
+from workers.shared.retry_utils import retry
 
 logger = WorkerLogger.get_logger(__name__)
 

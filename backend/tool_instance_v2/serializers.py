@@ -49,8 +49,60 @@ class ToolInstanceSerializer(AuditSerializer):
             tool: Tool = ToolProcessor.get_tool_by_uid(tool_function)
         except ToolDoesNotExist:
             return rep
-        rep[ToolKey.ICON] = tool.icon
-        rep[ToolKey.NAME] = tool.properties.display_name
+
+        # Defensive handling of tool properties and icon
+        try:
+            rep[ToolKey.ICON] = tool.icon if hasattr(tool, "icon") else ""
+
+            # Handle tool.properties which might be malformed
+            if hasattr(tool, "properties") and tool.properties:
+                # Check if properties is a list (this might be the bug causing "list indices must be integers")
+                if isinstance(tool.properties, list):
+                    # If it's a list, try to find display_name in the first dict-like element
+                    display_name_found = False
+                    for prop in tool.properties:
+                        if isinstance(prop, dict):
+                            if "display_name" in prop:
+                                rep[ToolKey.NAME] = prop["display_name"]
+                                display_name_found = True
+                                break
+                            elif "displayName" in prop:
+                                rep[ToolKey.NAME] = prop["displayName"]
+                                display_name_found = True
+                                break
+                    if not display_name_found:
+                        rep[ToolKey.NAME] = tool_function
+                        logger.warning(
+                            f"Tool {tool_function} has list properties but no display_name found, using tool_function as name"
+                        )
+                elif hasattr(tool.properties, "display_name"):
+                    rep[ToolKey.NAME] = tool.properties.display_name
+                elif (
+                    isinstance(tool.properties, dict)
+                    and "display_name" in tool.properties
+                ):
+                    rep[ToolKey.NAME] = tool.properties["display_name"]
+                elif (
+                    isinstance(tool.properties, dict) and "displayName" in tool.properties
+                ):
+                    rep[ToolKey.NAME] = tool.properties["displayName"]
+                else:
+                    # Fallback: use tool_function as name
+                    rep[ToolKey.NAME] = tool_function
+                    logger.warning(
+                        f"Could not get display_name for tool {tool_function} (properties type: {type(tool.properties)}), using tool_function as name"
+                    )
+            else:
+                rep[ToolKey.NAME] = tool_function
+                logger.warning(
+                    f"Tool {tool_function} has no properties, using tool_function as name"
+                )
+        except Exception as e:
+            logger.error(f"Error accessing tool properties for {tool_function}: {e}")
+            # Use fallback values to prevent serialization errors
+            rep[ToolKey.ICON] = ""
+            rep[ToolKey.NAME] = tool_function
+
         return rep
 
     def create(self, validated_data: dict[str, Any]) -> Any:

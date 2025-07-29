@@ -9,15 +9,6 @@ import time
 from typing import Any
 
 import requests
-
-# Import shared worker infrastructure
-from shared.api_client import InternalAPIClient
-from shared.logging_utils import WorkerLogger, log_context, monitor_performance
-from shared.retry_utils import ResilientExecutor, circuit_breaker
-from shared.source_operations_backend_compatible import (
-    WorkerSourceConnector,
-)
-from shared.type_utils import FileDataValidator, TypeConverter
 from worker import app, config
 
 # Import shared data models for type safety
@@ -30,6 +21,15 @@ from unstract.core.data_models import (
 
 # Import common workflow utilities
 from unstract.core.workflow_utils import PipelineTypeResolver, WorkflowTypeDetector
+
+# Import shared worker infrastructure
+from workers.shared.api_client import InternalAPIClient
+from workers.shared.logging_utils import WorkerLogger, log_context, monitor_performance
+from workers.shared.retry_utils import ResilientExecutor, circuit_breaker
+from workers.shared.source_operations_backend_compatible import (
+    WorkerSourceConnector,
+)
+from workers.shared.type_utils import FileDataValidator, TypeConverter
 
 logger = WorkerLogger.get_logger(__name__)
 

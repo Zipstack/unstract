@@ -10,11 +10,11 @@ from enum import Enum
 class AuthorizationType(Enum):
     """Authorization types for webhook and API requests."""
 
-    NONE = "none"
-    BEARER = "bearer"
-    BASIC = "basic"
-    API_KEY = "api_key"
-    CUSTOM_HEADER = "custom_header"
+    NONE = "NONE"
+    BEARER = "BEARER"
+    BASIC = "BASIC"
+    API_KEY = "API_KEY"
+    CUSTOM_HEADER = "CUSTOM_HEADER"
 
     def __str__(self):
         return self.value

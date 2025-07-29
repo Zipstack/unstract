@@ -8,19 +8,21 @@ This replaces the heavy Django process_batch_callback task with API coordination
 import time
 from typing import Any
 
-# Import shared worker infrastructure
-from shared.api_client import InternalAPIClient
-from shared.config import WorkerConfig
-
-# Import from shared worker modules
-from shared.constants import Account
-from shared.local_context import StateStore
-from shared.logging_utils import WorkerLogger, log_context, monitor_performance
-from shared.retry_utils import CircuitBreakerOpenError, circuit_breaker
-from worker import app
+# Use Celery current_app to avoid circular imports
+from celery import current_app as app
 
 # Import shared data models for type safety
 from unstract.core.data_models import ExecutionStatus, FileHashData
+
+# Import shared worker infrastructure
+from workers.shared.api_client import InternalAPIClient
+from workers.shared.config import WorkerConfig
+
+# Import from shared worker modules
+from workers.shared.constants import Account
+from workers.shared.local_context import StateStore
+from workers.shared.logging_utils import WorkerLogger, log_context, monitor_performance
+from workers.shared.retry_utils import CircuitBreakerOpenError, circuit_breaker
 
 logger = WorkerLogger.get_logger(__name__)
 

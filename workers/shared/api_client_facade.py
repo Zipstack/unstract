@@ -23,6 +23,7 @@ from .clients import (
     WebhookAPIClient,
 )
 
+# Import exceptions from base client
 # Re-export exceptions for backward compatibility
 from .config import WorkerConfig
 
@@ -489,7 +490,7 @@ class InternalAPIClient:
         self,
         url: str,
         payload: dict[str, Any],
-        authorization_type: str = "none",
+        authorization_type: str = "NONE",
         authorization_key: str | None = None,
         authorization_header: str | None = None,
         timeout: int = 10,
