@@ -61,7 +61,6 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
             connector_metadata = ConnectorAuthHelper.get_oauth_creds_from_cache(
                 cache_key=oauth_key, delete_key=False
             )
-            print("### connector_metadata ## ", connector_metadata)
             if connector_metadata is None:
                 raise CacheMissException(
                     f"Couldn't find credentials for {oauth_key} from cache"

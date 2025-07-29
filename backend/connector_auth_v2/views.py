@@ -38,18 +38,10 @@ class ConnectorAuthViewSet(viewsets.ViewSet):
                 "console_name-."
             )
 
-        # Get workflow ID and connector role from query parameters for complete isolation
-        workflow_id = request.query_params.get("workflow_id", "")
-        conn_type = request.query_params.get("conn_type", "")
-
         random = str(uuid.uuid4())
         user_id = request.user.user_id
         org_id = UserSessionUtils.get_organization_id(request)
-
-        # Include workflow ID and connector type in cache key for complete isolation
-        cache_key = (
-            f"oauth:{org_id}|{user_id}|{backend}|{workflow_id}|{conn_type}|{random}"
-        )
+        cache_key = f"oauth:{org_id}|{user_id}|{backend}|{random}"
         logger.info(f"Generated cache key: {cache_key}")
         return Response(
             status=status.HTTP_200_OK,
