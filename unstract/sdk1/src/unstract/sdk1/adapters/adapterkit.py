@@ -6,11 +6,9 @@ from singleton_decorator import singleton
 from unstract.sdk1.adapters import AdapterDict
 from unstract.sdk1.adapters.base import Adapter
 from unstract.sdk1.adapters.constants import Common
-from unstract.sdk1.adapters.embedding import adapters as embedding_adapters
-from unstract.sdk1.adapters.llm import adapters as llm_adapters
-from unstract.sdk1.adapters.ocr import adapters as ocr_adapters
+# from unstract.sdk1.adapters.ocr import adapters as ocr_adapters
 from unstract.sdk1.adapters.vectordb import adapters as vectordb_adapters
-from unstract.sdk1.adapters.x2text import adapters as x2text_adapters
+# from unstract.sdk1.adapters.x2text import adapters as x2text_adapters
 
 logger = logging.getLogger(__name__)
 
@@ -20,12 +18,10 @@ logger = logging.getLogger(__name__)
 @singleton
 class Adapterkit:
     def __init__(self) -> None:
+        # This is for llama-index integration, hence 
+        # litellm's LLMs and Embeddings need not be included here.
         self._adapters: AdapterDict = (
-            embedding_adapters
-            | llm_adapters
-            | vectordb_adapters
-            | x2text_adapters
-            | ocr_adapters
+            vectordb_adapters
         )
 
     @property

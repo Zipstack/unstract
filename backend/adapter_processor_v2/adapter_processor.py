@@ -21,6 +21,9 @@ if check_feature_flag_status("sdk1"):
     from unstract.sdk1.constants import AdapterTypes
     from unstract.sdk1.exceptions import SdkError
     from unstract.sdk1.llm import LLM
+    from unstract.sdk1.embedding import Embedding
+    from unstract.sdk1.adapters.adapterkit import Adapterkit
+    from unstract.sdk1.adapters.base import Adapter
 else:
     from unstract.sdk.adapters.adapterkit import Adapterkit
     from unstract.sdk.adapters.base import Adapter
@@ -106,9 +109,24 @@ class AdapterProcessor:
         )
 
         if check_feature_flag_status("sdk1"):
+
             try:
-                llm = LLM(adapter_id=adapter_id, adapter_metadata=adapter_metadata)
-                return llm.test_connection()
+                # Get adapter type from metadata
+                adapter_type = adapter_metadata.get(AdapterKeys.ADAPTER_TYPE)
+                
+                if adapter_type == AdapterKeys.EMBEDDING:
+                    embedding = Embedding(adapter_id=adapter_id, adapter_metadata=adapter_metadata)
+                    test_embedding = embedding.get_query_embedding("test")
+                    return len(test_embedding) > 0
+                elif adapter_type == AdapterKeys.LLM:
+                    # For LLM and other adapter types, create LLM instance
+                    llm = LLM(adapter_id=adapter_id, adapter_metadata=adapter_metadata)
+                    return llm.test_connection()
+                else:
+                    adapter_class = Adapterkit().get_adapter_class_by_adapter_id(adapter_id)
+                    adapter_instance = adapter_class(adapter_metadata)
+                    return adapter_instance.test_connection()
+                    
             except SdkError as e:
                 raise TestAdapterError(
                     e, adapter_name=adapter_metadata[AdapterKeys.ADAPTER_NAME]

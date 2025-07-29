@@ -8,7 +8,7 @@ import litellm
 from pydantic import ValidationError
 
 from unstract.sdk1.exceptions import SdkError
-from unstract.sdk1.llm import (
+from unstract.sdk1.adapters.llm1.base import (
     AWSBedrockParams,
     AzureOpenAIParams,
     OllamaParams,
@@ -32,14 +32,15 @@ class Embedding:
         self._adapter_metadata = adapter_metadata
 
         self.kwargs = kwargs
-        self.length = len(self.get_query_embedding(self._TEST_SNIPPET))
-
+        
         self._extract_kwargs()
+        self.length = len(self.get_query_embedding(self._TEST_SNIPPET))
 
     def get_query_embedding(self, query: str) -> list[float]:
         """Return embedding vector for query string."""
         kwargs = self.kwargs.copy()
         model = kwargs.pop("model")
+        del kwargs["temperature"]
         resp = litellm.embedding(model=model, input=[query], **kwargs)
         return resp["data"][0]["embedding"]
 

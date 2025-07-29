@@ -20,6 +20,7 @@ from unstract.flags.feature_flag import check_feature_flag_status
 
 if check_feature_flag_status("sdk1"):
     from unstract.sdk1.constants import AdapterTypes
+    from unstract.sdk.adapters.adapterkit import Adapterkit
     from unstract.sdk1.exceptions import SdkError
     from unstract.sdk1.llm import LLM
 else:

@@ -10,7 +10,7 @@ import litellm
 # from litellm import get_supported_openai_params
 from pydantic import BaseModel, Field, ValidationError
 
-from unstract.sdk1.utils.exceptions import *
+from unstract.sdk1.exceptions import *
 
 logger = logging.getLogger(__name__)
 
@@ -202,7 +202,6 @@ class LLM:
     def _extract_bedrock_kwargs(self):
         self._adapter_metadata["model"] = f"{self.provider}/{self._adapter_metadata.get('model', '')}"
         self._adapter_metadata["aws_region_name"] = self._adapter_metadata.get('region_name', '')
-
         self.kwargs = AWSBedrockParams(**self._adapter_metadata).model_dump()
 
     def _extract_anthropic_kwargs(self):
@@ -225,52 +224,3 @@ class LLM:
         self._adapter_metadata["model"] = f"{self.provider}/{self._adapter_metadata.get('model', '')}"
 
         self.kwargs = OllamaParams(**self._adapter_metadata).model_dump()
-
-class LLMParameters(BaseModel):
-    """ Base parameters for all LLM providers.
-        See https://docs.litellm.ai/docs/completion/input#input-params-1
-    """
-    model: str
-    # The sampling temperature to be used, between 0 and 2.
-    temperature: Optional[float] = Field(default=0.1, ge=0, le=2)
-    # The number of chat completion choices to generate for each input message.
-    n: Optional[int] = 1
-    timeout: Optional[Union[float, int]] = 600
-    stream: Optional[bool] = False
-    max_tokens: Optional[int] = None
-    num_retries: Optional[int] = None
-
-class OpenAIParams(LLMParameters):
-    """See https://docs.litellm.ai/docs/providers/openai/"""
-    api_key: str
-    api_base: str
-    api_version: Optional[str] = None
-
-class AzureOpenAIParams(LLMParameters):
-    """See https://docs.litellm.ai/docs/providers/azure/#completion---using-azure_ad_token-api_base-api_version"""
-    api_base: str
-    api_version: Optional[str] = None
-    api_key: str
-    temperature: Optional[float] = 1
-
-class VertexAIParams(LLMParameters):
-    vertex_credentials: str
-    vertex_project: str
-    safety_settings: List[Dict[str, str]]
-
-class AWSBedrockParams(LLMParameters):
-    aws_access_key_id: Optional[str]
-    aws_secret_access_key: Optional[str]
-    aws_region_name: Optional[str]
-
-class AnthropicParams(LLMParameters):
-    api_key: str
-
-class AnyscaleParams(LLMParameters):
-    api_key: str
-
-class MistralParams(LLMParameters):
-    api_key: str
-
-class OllamaParams(LLMParameters):
-    api_base: str
