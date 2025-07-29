@@ -80,6 +80,10 @@ function ConfigureConnectorModal({
     const updatedTabItems = tabItems.map((item) => {
       if (item.key === "2") {
         item.visible = connType === "FILESYSTEM";
+        item.disabled =
+          !connectorId ||
+          connDetails?.connector_id !== selectedId ||
+          connType === "DATABASE";
       } else if (item.key === "MANUALREVIEW") {
         item.disabled =
           !connectorId || connDetails?.connector_id !== selectedId;
@@ -90,7 +94,7 @@ function ConfigureConnectorModal({
       return item;
     });
     setTabItems(updatedTabItems);
-  }, [open]);
+  }, [open, selectedId, connType, connectorId, connDetails]);
 
   useEffect(() => {
     const updatedTabItems = tabItems.map((item) => {
