@@ -25,7 +25,7 @@ class KeywordTableRetriever(BaseRetriever):
 
             # Get documents from vector index for keyword indexing
             vector_store_index: VectorStoreIndex = self.vector_db.get_vector_store_index()
-            
+
             # Get all nodes for the document
             all_retriever = vector_store_index.as_retriever(
                 similarity_top_k=1000,  # Get all nodes
@@ -35,14 +35,14 @@ class KeywordTableRetriever(BaseRetriever):
                     ],
                 ),
             )
-            
+
             # Retrieve all nodes to build keyword index
             all_nodes = all_retriever.retrieve(" ")
-            
+
             if not all_nodes:
                 logger.warning(f"No nodes found for doc_id: {self.doc_id}")
                 return set()
-            
+
             # Create KeywordTableIndex from nodes using our provided LLM
             keyword_index = KeywordTableIndex(
                 nodes=[node.node for node in all_nodes],
