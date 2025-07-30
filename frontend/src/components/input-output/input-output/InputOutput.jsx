@@ -71,9 +71,30 @@ function InputOutput() {
             sourceIcon(item?.connector_instance?.connector_icon)
           )
         );
-        const firstId = endpoints[0]?.connector_instance?.id?.toString();
-        setSelectedItem(firstId);
+
+        // Try to restore previously selected item from localStorage
+        const persistenceKey = `file-system-selected-${id}-${type}`;
+        const storedSelectedItem = localStorage.getItem(persistenceKey);
+        const availableIds = endpoints.map((item) =>
+          item?.connector_instance?.id?.toString()
+        );
+
+        let itemToSelect;
+        if (storedSelectedItem && availableIds.includes(storedSelectedItem)) {
+          // Restore previously selected item if it still exists
+          itemToSelect = storedSelectedItem;
+        } else {
+          // Fall back to first item
+          itemToSelect = endpoints[0]?.connector_instance?.id?.toString();
+        }
+
+        setSelectedItem(itemToSelect);
         setListOfItems(menuItems);
+
+        // Persist the selected item
+        if (itemToSelect) {
+          localStorage.setItem(persistenceKey, itemToSelect);
+        }
       })
       .catch((err) => {
         setAlertDetails(handleException(err));
@@ -108,11 +129,28 @@ function InputOutput() {
 
     axiosPrivate(requestOptions)
       .then(() => {
+        // Clear localStorage if the deleted item was the selected one
+        if (selectedItem && connectorType) {
+          const persistenceKey = `file-system-selected-${id}-${connectorType}`;
+          const storedItem = localStorage.getItem(persistenceKey);
+          if (storedItem === selectedItem) {
+            localStorage.removeItem(persistenceKey);
+          }
+        }
         setReloadList(true);
       })
       .catch((err) => {
         setAlertDetails(handleException(err));
       });
+  };
+
+  const handleSetSelectedItem = (itemId) => {
+    setSelectedItem(itemId);
+    // Persist selected item to localStorage
+    if (itemId && connectorType) {
+      const persistenceKey = `file-system-selected-${id}-${connectorType}`;
+      localStorage.setItem(persistenceKey, itemId);
+    }
   };
 
   const addNewItem = (newItem, isEdit) => {
@@ -135,7 +173,7 @@ function InputOutput() {
     }
     setListOfItems(items);
 
-    setSelectedItem(newItem?.id);
+    handleSetSelectedItem(newItem?.id);
   };
 
   return (
@@ -146,7 +184,7 @@ function InputOutput() {
             <Col className="input-sidebar" span={4}>
               <Sidebar
                 selectedItem={selectedItem}
-                setSelectedItem={setSelectedItem}
+                setSelectedItem={handleSetSelectedItem}
                 listOfItems={listOfItems}
                 handleOpenModal={handleOpenModal}
                 btnText={`Data ${CONNECTOR_TYPE_MAP[connectorType]}`}
