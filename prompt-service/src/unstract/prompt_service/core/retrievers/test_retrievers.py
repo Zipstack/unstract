@@ -11,24 +11,17 @@ logger = logging.getLogger(__name__)
 def test_imports():
     """Test that all retriever classes can be imported."""
     try:
-
         logger.info("✓ SimpleRetriever imported successfully")
-
 
         logger.info("✓ SubquestionRetriever imported successfully")
 
-
         logger.info("✓ FusionRetriever imported successfully")
-
 
         logger.info("✓ RecursiveRetrieval imported successfully")
 
-
         logger.info("✓ RouterRetriever imported successfully")
 
-
         logger.info("✓ KeywordTableRetriever imported successfully")
-
 
         logger.info("✓ AutomergingRetriever imported successfully")
 
