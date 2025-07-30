@@ -58,8 +58,12 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
             oauth_key = self.request.query_params.get(ConnectorAuthKey.OAUTH_KEY)
             if oauth_key is None:
                 raise MissingParamException(param=ConnectorAuthKey.OAUTH_KEY)
+            # Preserve OAuth cache for reuse across multiple operations (Test Connection, Submit,
+            # File System browsing). Frontend localStorage stores cache keys which must correspond
+            # to persistent backend credentials for tab switching and repeated operations to work.
             connector_metadata = ConnectorAuthHelper.get_oauth_creds_from_cache(
-                cache_key=oauth_key, delete_key=False
+                cache_key=oauth_key,
+                delete_key=False,  # Keep cache - frontend persistence depends on backend credential storage
             )
             if connector_metadata is None:
                 raise CacheMissException(
