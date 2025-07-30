@@ -40,10 +40,11 @@ class RouterRetriever(BaseRetriever):
                 ],
             )
 
-            # Create query engines for different strategies
+            # Create query engines for different strategies with explicit LLM
             vector_query_engine = vector_store_index.as_query_engine(
                 similarity_top_k=self.top_k,
                 filters=filters,
+                llm=self.llm,  # Explicit LLM to avoid OpenAI default
             )
 
             # If LLM is available, create router with multiple strategies
@@ -65,9 +66,9 @@ class RouterRetriever(BaseRetriever):
                 # Add keyword-based retrieval strategy
                 try:
                     keyword_query_engine = vector_store_index.as_query_engine(
-                        similarity_top_k=self.top_k
-                        * 2,  # Get more candidates for keyword matching
+                        similarity_top_k=self.top_k * 2,  # Get more candidates for keyword matching
                         filters=filters,
+                        llm=self.llm,  # Explicit LLM to avoid OpenAI default
                     )
                     query_engine_tools.append(
                         QueryEngineTool(
@@ -89,6 +90,7 @@ class RouterRetriever(BaseRetriever):
                     broad_query_engine = vector_store_index.as_query_engine(
                         similarity_top_k=self.top_k * 3,  # Cast wider net
                         filters=filters,
+                        llm=self.llm,  # Explicit LLM to avoid OpenAI default
                     )
                     query_engine_tools.append(
                         QueryEngineTool(
@@ -105,11 +107,12 @@ class RouterRetriever(BaseRetriever):
                 except Exception as e:
                     logger.debug(f"Could not create broad search engine: {e}")
 
-                # Create router query engine with explicit LLM
-                router_query_engine = RouterQueryEngine(
-                    selector=LLMSingleSelector(llm=self.llm),  # Direct LLM assignment instead of from_defaults
+                # Create router query engine with explicit LLM using from_defaults
+                router_query_engine = RouterQueryEngine.from_defaults(
+                    selector=LLMSingleSelector.from_defaults(llm=self.llm),
                     query_engine_tools=query_engine_tools,
                     verbose=True,
+                    llm=self.llm,  # Explicit LLM to avoid OpenAI default
                 )
 
                 # Query using router
