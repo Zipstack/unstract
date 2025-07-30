@@ -14,7 +14,18 @@ WORKFLOW_NAME_SIZE = 128
 
 
 class WorkflowModelManager(DefaultOrganizationManagerMixin, models.Manager):
-    pass
+    def for_user(self, user):
+        """Filter workflows that the user can access:
+        - Workflows created by the user
+        - Workflows shared with the user
+        - Workflows shared with the entire organization
+        """
+        from django.db.models import Q
+
+        return self.filter(
+            Q(created_by=user)  # Owned by user
+            | Q(shared_users=user)  # Shared with user
+        ).distinct()
 
 
 class Workflow(DefaultOrganizationMixin, BaseModel):
@@ -69,6 +80,15 @@ class Workflow(DefaultOrganizationMixin, BaseModel):
         related_name="workflows_modified",
         null=True,
         blank=True,
+    )
+
+    # Sharing fields
+    shared_users = models.ManyToManyField(
+        User, related_name="shared_workflows", blank=True
+    )
+    shared_to_org = models.BooleanField(
+        default=False,
+        db_comment="Whether this workflow is shared with the entire organization",
     )
 
     # Manager

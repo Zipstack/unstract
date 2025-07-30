@@ -3,7 +3,7 @@ from typing import Any
 
 from django.conf import settings
 from django.db.models.query import QuerySet
-from permissions.permission import IsOwner
+from permissions.permission import IsOwner, IsOwnerOrSharedUser
 from pipeline_v2.models import Pipeline
 from pipeline_v2.pipeline_processor import PipelineProcessor
 from rest_framework import serializers, status, viewsets
@@ -32,6 +32,7 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 from workflow_manager.workflow_v2.serializers import (
     ExecuteWorkflowResponseSerializer,
     ExecuteWorkflowSerializer,
+    SharedUserListSerializer,
     WorkflowSerializer,
 )
 from workflow_manager.workflow_v2.workflow_helper import (
@@ -48,7 +49,12 @@ def make_execution_response(response: ExecutionResponse) -> Any:
 
 class WorkflowViewSet(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
-    permission_classes = [IsOwner]
+
+    def get_permissions(self) -> list[Any]:
+        if self.action == "destroy":
+            return [IsOwner()]
+
+        return [IsOwnerOrSharedUser()]
 
     def get_queryset(self) -> QuerySet:
         filter_args = FilterHelper.build_filter_args(
@@ -57,10 +63,11 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             WorkflowKey.WF_OWNER,
             WorkflowKey.WF_IS_ACTIVE,
         )
+        # Use for_user method to include shared workflows
         queryset = (
-            Workflow.objects.filter(created_by=self.request.user, **filter_args)
+            Workflow.objects.for_user(self.request.user).filter(**filter_args)
             if filter_args
-            else Workflow.objects.filter(created_by=self.request.user)
+            else Workflow.objects.for_user(self.request.user)
         )
         order_by = self.request.query_params.get("order_by")
         if order_by == "desc":
@@ -273,3 +280,10 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             schema_type=schema_type, schema_entity=schema_entity
         )
         return Response(data=json_schema, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["get"], url_path="users")
+    def list_of_shared_users(self, request: Request, pk: str) -> Response:
+        """Get list of users with whom the workflow is shared."""
+        workflow = self.get_object()
+        serializer = SharedUserListSerializer(workflow)
+        return Response(serializer.data, status=status.HTTP_200_OK)
