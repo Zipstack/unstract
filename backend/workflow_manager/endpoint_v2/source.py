@@ -118,10 +118,6 @@ class SourceConnector(BaseConnector):
             workflow=workflow,
             endpoint_type=WorkflowEndpoint.EndpointType.SOURCE,
         )
-        if endpoint.connector_instance:
-            endpoint.connector_instance.connector_metadata = (
-                endpoint.connector_instance.metadata
-            )
         return endpoint
 
     def validate(self) -> None:
