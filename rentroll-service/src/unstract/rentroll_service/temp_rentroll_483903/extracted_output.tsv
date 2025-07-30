@@ -10,7 +10,7 @@ line_nos	unit_ref_id	unit_type	area	tenant_ref_id	tenant_name	market_rent	charge
 0x00b9	0124	61096A2	765.00	t0103403	Christine Prout	1,857.00	rent	1,393.00	10/13/2020	10/12/2025
 0x00bb	0124	ugarbr	5.00
 0x00bd	0124	xrecurr	-70.00
-0x00c1	0126	61096A2	765.00	VACANT	VACANT	1,857.00			
+0x00c1	0126	61096A2	765.00	VACANT	VACANT	1,857.00
 0x00c5	0128	61096B3	1,275.00	t0370123	Olivia Webb	2,275.00	rent	2,441.00	12/1/2021	5/31/2025
 0x00c7	0128	park	150.00
 0x00c9	0128	xrecurr	-122.00
@@ -18,7 +18,7 @@ line_nos	unit_ref_id	unit_type	area	tenant_ref_id	tenant_name	market_rent	charge
 0x00cf	0130	rent	1,709.00
 0x00d1	0130	xrecurr	-85.00
 0x00d3	0130	petrent	50.00
-0x00d7	0131	61096A2	765.00	VACANT	VACANT	1,787.00			
+0x00d7	0131	61096A2	765.00	VACANT	VACANT	1,787.00
 0x00db	0132	61096A3	710.00	t0596676	Amy Dixon	1,866.00	ugarbr	5.00	12/29/2023	1/28/2025
 0x00dd	0132	rent	1,683.00
 0x00df	0132	xrecurr	-84.00
@@ -55,7 +55,7 @@ line_nos	unit_ref_id	unit_type	area	tenant_ref_id	tenant_name	market_rent	charge
 0x0145	petrent	50.00
 0x0147	ugarbr	5.00
 0x0149	xrecurr	-93.00
-0x014d	0151	61096A2	765.00	VACANT	VACANT	1,837.00			
+0x014d	0151	61096A2	765.00	VACANT	VACANT	1,837.00
 0x0151-0x0152	0153	61096S1	475.00	t0666784	Kelly Piserchia	1,530.00	ugarbr	5.00	8/1/2024	7/31/2025
 0x0153	rent	1,487.00
 0x0155	petrent	50.00
@@ -94,7 +94,7 @@ line_nos	unit_ref_id	unit_type	area	tenant_ref_id	tenant_name	market_rent	charge
 0x01b7	0208	61096A3	710.00	t0597875	William Sapp	1,836.00	ugarbr	5.00	12/15/2023	1/14/2025
 0x01b9	rent	1,737.00
 0x01bb	xrecurr	-87.00
-0x01be	0209	61096B3	1,275.00	VACANT	VACANT	2,265.00			
+0x01be	0209	61096B3	1,275.00	VACANT	VACANT	2,265.00
 0x01c2	0210	61096A3	710.00	t0661467	Andrew Doran	1,836.00	ugarbr	5.00	8/3/2024	8/2/2025
 0x01c4	rent	1,908.00
 0x01c6	xrecurr	-95.00
@@ -268,7 +268,7 @@ line_nos	unit_ref_id	unit_type	area	tenant_ref_id	tenant_name	market_rent	charge
 0x0504	rent	2,108.00
 0x0506	xrecurr	-105.00
 0x0508	petrent	50.00
-0x050b	0400	61096A3	710.00	VACANT	VACANT	1,911.00			
+0x050b	0400	61096A3	710.00	VACANT	VACANT	1,911.00
 0x050f-0x0510	0401	61096A2	765.00	t0233136	Matthew Francis	1,887.00	rent	1,996.00	5/17/2021	2/16/2025
 0x0511	ugarbr	5.00
 0x0514	0402	61096B3L	1,169.00	t0048801	David Hessler	2,469.00	rent	1,906.00	1/26/2020	1/23/2025
@@ -319,7 +319,7 @@ line_nos	unit_ref_id	unit_type	area	tenant_ref_id	tenant_name	market_rent	charge
 0x0691	ugarbr	5.00
 0x0694-0x0695	0451	61096A2L	900.00	t0052701	Joshua Slonaker	1,936.00	rent	1,619.00	2/24/2020	2/23/2025
 0x0696	ugarbr	5.00
-0x0699	0453	61096S1	475.00	VACANT	VACANT	1,575.00			
+0x0699	0453	61096S1	475.00	VACANT	VACANT	1,575.00
 0x069d	0455	61096A1	525.00	t0142942	Sarah Doran	1,741.00	rent	1,490.00	1/2/2021	1/1/2026
 0x069f	ugarbr	5.00
 0x06a1	petrent	50.00
@@ -370,7 +370,7 @@ line_nos	unit_ref_id	unit_type	area	tenant_ref_id	tenant_name	market_rent	charge
 0x0614	0430	61096A3	710.00	t0632495	Nicholas Perry	1,911.00	ugarbr	5.00	3/29/2024	6/28/2025
 0x0616	rent	1,998.00
 0x0618	xrecurr	-100.00
-0x061c	0431	61096A2L	900.00	VACANT	VACANT	1,926.00			
+0x061c	0431	61096A2L	900.00	VACANT	VACANT	1,926.00
 0x0620	0432	61096A3	710.00	t0143801	Morgan Bachmann	1,911.00	rent	1,747.00	1/9/2021	1/8/2026
 0x0630	petrent	50.00
 0x0632	ugarbr	5.00

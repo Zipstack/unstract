@@ -446,4 +446,3 @@ Documents vary in how they indicate occupancy
 Mapping: `{"rented_status": "Status | Occupancy | Occupied | Vacancy Status"}`
 
 Remember: Accuracy is more important than completeness. It's better to map fewer fields correctly than to create incorrect mappings.
-

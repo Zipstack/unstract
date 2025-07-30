@@ -1,6 +1,6 @@
 
 
-Hello Unstract !! 
+Hello Unstract !!
 
-This is a sample doucment to test extraction and indexing. 
-<<<
+This is a sample doucment to test extraction and indexing.
+<<<

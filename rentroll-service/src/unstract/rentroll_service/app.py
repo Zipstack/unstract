@@ -1,7 +1,7 @@
-import os
 import logging
-from flask import Flask, request, jsonify
+
 from dotenv import load_dotenv
+from flask import Flask, jsonify, request
 from helper import extract_rent_roll
 from json_repair import repair_json
 
@@ -14,19 +14,19 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-@app.route('/api/extract-rentrolls', methods=['POST'])
+
+@app.route("/api/extract-rentrolls", methods=["POST"])
 async def handle_extract():
-    """
-    API endpoint to extract rent roll data from raw text.
+    """API endpoint to extract rent roll data from raw text.
     Expects a JSON payload with 'schema' and 'extracted_data'.
     """
     if not request.is_json:
         return jsonify({"error": "Request must be JSON"}), 400
 
     data = request.get_json()
-    schema = data.get('schema')
-    extracted_data = data.get('text')
-    llm_config = data.get('llm_config')
+    schema = data.get("schema")
+    extracted_data = data.get("text")
+    llm_config = data.get("llm_config")
     prompt = schema
     schema = repair_json(json_str=prompt, return_objects=True)
     if isinstance(schema, str):
@@ -47,6 +47,6 @@ async def handle_extract():
         logger.error(f"An error occurred during extraction: {e}", exc_info=True)
         return jsonify({"error": "An internal error occurred.", "details": str(e)}), 500
 
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5003)
 
+if __name__ == "__main__":
+    app.run(debug=True, host="0.0.0.0", port=5003)

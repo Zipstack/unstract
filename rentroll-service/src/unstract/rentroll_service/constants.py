@@ -3,20 +3,22 @@
 
 from enum import Enum
 
+
 class RentRollExtractorKeys(str, Enum):
     """Keys used in the rent roll extractor settings."""
-    
+
     # Input/Output
     INPUT_FILE = "input_file"
     OUTPUT_FILE = "output_file"
-    
+
     # Schema and Configuration
     SCHEMA = "schema"
     ENABLE_HIGHLIGHT = "enable_highlight"
     TAGS = "tags"
     USE_FORM_FEED = "use_form_feed"
     PROMPT = "prompt"
-    
+
+
 # Default schema for rent roll data
 DEFAULT_SCHEMA = {
     "type": "object",
@@ -26,10 +28,18 @@ DEFAULT_SCHEMA = {
         "area": {"type": "number", "description": "Area in square feet"},
         "tenant_name": {"type": "string", "description": "Name of tenant"},
         "rent": {"type": "number", "description": "Monthly rent amount"},
-        "lease_start": {"type": "string", "format": "date", "description": "Lease start date"},
-        "lease_end": {"type": "string", "format": "date", "description": "Lease end date"}
+        "lease_start": {
+            "type": "string",
+            "format": "date",
+            "description": "Lease start date",
+        },
+        "lease_end": {
+            "type": "string",
+            "format": "date",
+            "description": "Lease end date",
+        },
     },
-    "required": ["unit", "unit_type", "area", "rent"]
+    "required": ["unit", "unit_type", "area", "rent"],
 }
 
 USER_FIELDS = {
@@ -55,5 +65,5 @@ USER_FIELDS = {
     "rent_monthly": None,
     "rent_parking_annual": None,
     "source_rent_parking_quarterly": None,
-    "source_rent_parking_monthly": None
+    "source_rent_parking_monthly": None,
 }

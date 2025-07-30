@@ -117,4 +117,3 @@ Provide your response in this exact format:
 {note_on_sub_rows}
 
 Extract all rent roll data now.
-

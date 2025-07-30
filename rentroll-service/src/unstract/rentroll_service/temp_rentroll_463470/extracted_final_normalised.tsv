@@ -23,7 +23,7 @@ line_nos	area	lease_end_date	lease_start_date	market_rent	num_bath_rooms	num_par
 0x0040																					0109	rent
 0x0042																					0109	xrecurr
 0x0044																					0109	park
-0x0047	710.00			1,866.00												VACANT	VACANT		0110	61096A3		
+0x0047	710.00			1,866.00												VACANT	VACANT		0110	61096A3
 0x0059	1,275.00	1/21/2026	4/22/2022	2,225.00												Kendall Klein	t0396963		0111	61096B3	rent	2,256.00
 0x005b																					0111	ugarbr
 0x005d																					0111	park
@@ -48,7 +48,7 @@ line_nos	area	lease_end_date	lease_start_date	market_rent	num_bath_rooms	num_par
 0x0089																					0118	xrecurr
 0x008c-0x008d	765.00	7/14/2025	7/15/2022	1,807.00												Bryce De Iuliis	t0443031		0119	61096A2	rent	1,910.00
 0x008e																					0119	ugarbr
-0x0091	710.00			1,851.00												VACANT	VACANT		0120	61096A3		
+0x0091	710.00			1,851.00												VACANT	VACANT		0120	61096A3
 0x00a3	1,275.00	8/16/2025	5/17/2024	2,215.00												Ryan Masing	t0650894		0121	61096B3	ugarbr	5.00
 0x00a5																					rent	2,150.00
 0x00a7																					park	150.00
@@ -60,7 +60,7 @@ line_nos	area	lease_end_date	lease_start_date	market_rent	num_bath_rooms	num_par
 0x00b9	765.00	10/12/2025	10/13/2020	1,857.00												Christine Prout	t0103403		0124	61096A2	rent	1,393.00
 0x00bb																					ugarbr	5.00
 0x00bd																					xrecurr	-70.00
-0x00c1	765.00			1,857.00												VACANT	VACANT		0126	61096A2		
+0x00c1	765.00			1,857.00												VACANT	VACANT		0126	61096A2
 0x00c5	1,275.00	5/31/2025	12/1/2021	2,275.00												Olivia Webb	t0370123		0128	61096B3	rent	2,441.00
 0x00c7																					park	150.00
 0x00c9																					xrecurr	-122.00
@@ -68,7 +68,7 @@ line_nos	area	lease_end_date	lease_start_date	market_rent	num_bath_rooms	num_par
 0x00cf																					rent	1,709.00
 0x00d1																					xrecurr	-85.00
 0x00d3																					petrent	50.00
-0x00d7	765.00			1,787.00												VACANT	VACANT		0131	61096A2		
+0x00d7	765.00			1,787.00												VACANT	VACANT		0131	61096A2
 0x00db	710.00	1/28/2025	12/29/2023	1,866.00												Amy Dixon	t0596676		0132	61096A3	ugarbr	5.00
 0x00dd																					rent	1,683.00
 0x00df																					xrecurr	-84.00
@@ -105,7 +105,7 @@ line_nos	area	lease_end_date	lease_start_date	market_rent	num_bath_rooms	num_par
 0x0145																					petrent	50.00
 0x0147																					ugarbr	5.00
 0x0149																					xrecurr	-93.00
-0x014d	765.00			1,837.00												VACANT	VACANT		0151	61096A2		
+0x014d	765.00			1,837.00												VACANT	VACANT		0151	61096A2
 0x0151-0x0152	475.00	7/31/2025	8/1/2024	1,530.00												Kelly Piserchia	t0666784		0153	61096S1	ugarbr	5.00
 0x0153																					rent	1,487.00
 0x0155																					petrent	50.00
@@ -144,7 +144,7 @@ line_nos	area	lease_end_date	lease_start_date	market_rent	num_bath_rooms	num_par
 0x01b7	710.00	1/14/2025	12/15/2023	1,836.00												William Sapp	t0597875		0208	61096A3	ugarbr	5.00
 0x01b9																					rent	1,737.00
 0x01bb																					xrecurr	-87.00
-0x01be	1,275.00			2,265.00												VACANT	VACANT		0209	61096B3		
+0x01be	1,275.00			2,265.00												VACANT	VACANT		0209	61096B3
 0x01c2	710.00	8/2/2025	8/3/2024	1,836.00												Andrew Doran	t0661467		0210	61096A3	ugarbr	5.00
 0x01c4																					rent	1,908.00
 0x01c6																					xrecurr	-95.00
@@ -299,7 +299,7 @@ line_nos	area	lease_end_date	lease_start_date	market_rent	num_bath_rooms	num_par
 0x0383																					rent	2,173.00
 0x0385																					park	150.00
 0x0387																					xonetime	-2,173.00
-0x038a	710.00			1,851.00												VACANT	VACANT		0308	61096A3		
+0x038a	710.00			1,851.00												VACANT	VACANT		0308	61096A3
 0x038e	1,275.00	8/22/2025	8/23/2024	2,280.00												Austin Buffer	t0687864		0309	61096B3	ugarbr	5.00
 0x0390																					rent	2,538.00
 0x0392																					xrecurr	-127.00
@@ -311,12 +311,12 @@ line_nos	area	lease_end_date	lease_start_date	market_rent	num_bath_rooms	num_par
 0x039f																					rent	2,223.00
 0x03b2	765.00	9/30/2025	3/31/2023	1,842.00												Loma Inamdar	t0507867		0312	61096A2	rent	1,959.00
 0x03b4																					ugarbr	5.00
-0x03b8	525.00			1,721.00												VACANT	VACANT		0313	61096A1		
+0x03b8	525.00			1,721.00												VACANT	VACANT		0313	61096A1
 0x03bc	525.00	11/17/2025	10/18/2024	1,781.00												Michael Aviles	t0719242		0314	61096A1	ugarbr	5.00
 0x03be																					rent	1,399.00
 0x03c0																					petrent	50.00
 0x03c2																					xonetime	-1,399.00
-0x03c6	525.00			1,721.00												VACANT	VACANT		0315	61096A1		
+0x03c6	525.00			1,721.00												VACANT	VACANT		0315	61096A1
 0x03ca	475.00	3/31/2025	7/1/2021	1,595.00												Brooke Bailey	t0233889		0316	61096S1	rent	1,667.00
 0x03cc																					ugarbr	5.00
 0x03d0	1,052.00	6/11/2025	4/12/2023	2,172.00												Kabria Haskins	t0500240		0317	61096B2	rent	2,036.00
@@ -421,7 +421,7 @@ line_nos	area	lease_end_date	lease_start_date	market_rent	num_bath_rooms	num_par
 0x0504																					rent	2,108.00
 0x0506																					xrecurr	-105.00
 0x0508																					petrent	50.00
-0x050b	710.00			1,911.00												VACANT	VACANT		0400	61096A3		
+0x050b	710.00			1,911.00												VACANT	VACANT		0400	61096A3
 0x050f-0x0510	765.00	2/16/2025	5/17/2021	1,887.00												Matthew Francis	t0233136		0401	61096A2	rent	1,996.00
 0x0511																					ugarbr	5.00
 0x0514	1,169.00	1/23/2025	1/26/2020	2,469.00												David Hessler	t0048801		0402	61096B3L	rent	1,906.00
@@ -443,7 +443,7 @@ line_nos	area	lease_end_date	lease_start_date	market_rent	num_bath_rooms	num_par
 0x054b	1,169.00	10/4/2025	7/5/2024	2,429.00												Matthew Kennedy	t0669566		0407	61096B3L	ugarbr	5.00
 0x054d																					rent	2,623.00
 0x054f																					park	150.00
-0x0553	710.00			1,911.00												VACANT	VACANT		0408	61096A3		
+0x0553	710.00			1,911.00												VACANT	VACANT		0408	61096A3
 0x0557	1,169.00	7/11/2025	4/12/2024	2,429.00												John Donahoe	t0633439		0409	61096B3L	ugarbr	5.00
 0x0559																					rent	2,597.00
 0x055b																					xrecurr	-130.00
@@ -509,7 +509,7 @@ line_nos	area	lease_end_date	lease_start_date	market_rent	num_bath_rooms	num_par
 0x0614	710.00	6/28/2025	3/29/2024	1,911.00												Nicholas Perry	t0632495		0430	61096A3	ugarbr	5.00
 0x0616																					rent	1,998.00
 0x0618																					xrecurr	-100.00
-0x061c	900.00			1,926.00												VACANT	VACANT		0431	61096A2L		
+0x061c	900.00			1,926.00												VACANT	VACANT		0431	61096A2L
 0x0620	710.00	1/8/2026	1/9/2021	1,911.00												Morgan Bachmann	t0143801		0432	61096A3	rent	1,747.00
 0x0630																					petrent	50.00
 0x0632																					ugarbr	5.00
@@ -549,7 +549,7 @@ line_nos	area	lease_end_date	lease_start_date	market_rent	num_bath_rooms	num_par
 0x0691																					ugarbr	5.00
 0x0694-0x0695	900.00	2/23/2025	2/24/2020	1,936.00												Joshua Slonaker	t0052701		0451	61096A2L	rent	1,619.00
 0x0696																					ugarbr	5.00
-0x0699	475.00			1,575.00												VACANT	VACANT		0453	61096S1		
+0x0699	475.00			1,575.00												VACANT	VACANT		0453	61096S1
 0x069d	525.00	1/1/2026	1/2/2021	1,741.00												Sarah Doran	t0142942		0455	61096A1	rent	1,490.00
 0x069f																					ugarbr	5.00
 0x06a1																					petrent	50.00
@@ -568,12 +568,12 @@ line_nos	area	lease_end_date	lease_start_date	market_rent	num_bath_rooms	num_par
 0x06d0																					rent	2,127.00
 0x06d2																					xrecurr	-106.00
 0x06d4																					petrent	50.00
-0x06da	765.00	2/17/2026	11/18/2024	1,787.00												Scott Bentley	t0722730		0131	61096A2		
-0x06de	765.00	11/13/2025	11/14/2024	1,837.00												Joshwyn Willett	t0725669		0151	61096A2		
-0x06e2	1,052.00	2/21/2026	11/22/2024	2,157.00												Cherelle Lee	t0703224		0217	61096B2		
-0x06e6	525.00	2/17/2026	11/18/2024	1,721.00												John Asel	t0727465		0313	61096A1		
-0x06ea	525.00	11/14/2025	11/15/2024	1,721.00												Brittany Wiafe	t0726752		0315	61096A1		
-0x06ee	1,052.00	3/29/2026	12/30/2024	2,172.00												Lauren Franz	t0725508		0343	61096B2		
-0x06f2	710.00	11/17/2025	11/18/2024	1,911.00												Sarah Taylor	t0726884		0400	61096A3		
-0x06f6	900.00	11/14/2025	11/15/2024	1,926.00												Emmanuel Mendoza Vega	t0725954		0431	61096A2L		
-0x06fa	475.00	2/14/2026	11/15/2024	1,575.00												Mia Moshang	t0689914		0453	61096S1		
+0x06da	765.00	2/17/2026	11/18/2024	1,787.00												Scott Bentley	t0722730		0131	61096A2
+0x06de	765.00	11/13/2025	11/14/2024	1,837.00												Joshwyn Willett	t0725669		0151	61096A2
+0x06e2	1,052.00	2/21/2026	11/22/2024	2,157.00												Cherelle Lee	t0703224		0217	61096B2
+0x06e6	525.00	2/17/2026	11/18/2024	1,721.00												John Asel	t0727465		0313	61096A1
+0x06ea	525.00	11/14/2025	11/15/2024	1,721.00												Brittany Wiafe	t0726752		0315	61096A1
+0x06ee	1,052.00	3/29/2026	12/30/2024	2,172.00												Lauren Franz	t0725508		0343	61096B2
+0x06f2	710.00	11/17/2025	11/18/2024	1,911.00												Sarah Taylor	t0726884		0400	61096A3
+0x06f6	900.00	11/14/2025	11/15/2024	1,926.00												Emmanuel Mendoza Vega	t0725954		0431	61096A2L
+0x06fa	475.00	2/14/2026	11/15/2024	1,575.00												Mia Moshang	t0689914		0453	61096S1

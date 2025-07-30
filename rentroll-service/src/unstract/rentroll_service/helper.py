@@ -1,22 +1,29 @@
 import logging
 import os
 import shutil
-from typing import Any, Dict, Union
 from pathlib import Path
+from typing import Any
 
-from autogen_ext.models.openai import OpenAIChatCompletionClient,AzureOpenAIChatCompletionClient
 from autogen_ext.models.anthropic import AnthropicChatCompletionClient
+from autogen_ext.models.openai import (
+    AzureOpenAIChatCompletionClient,
+    OpenAIChatCompletionClient,
+)
 
 from runner import RentRollExtractorRunner
 
 logger = logging.getLogger(__name__)
 DEBUG = os.getenv("DEBUG", "true").lower() == "true"
 
-def get_llm_client(llm_config: Dict[str, Any]) -> Union[OpenAIChatCompletionClient, AzureOpenAIChatCompletionClient, AnthropicChatCompletionClient]:
 
-    """
-    Initialize and return an LLM client.
-    """
+def get_llm_client(
+    llm_config: dict[str, Any],
+) -> (
+    OpenAIChatCompletionClient
+    | AzureOpenAIChatCompletionClient
+    | AnthropicChatCompletionClient
+):
+    """Initialize and return an LLM client."""
     try:
         llm_client = None
         if llm_config.get("adapter_id") == "azureopenai":
@@ -55,6 +62,7 @@ def get_llm_client(llm_config: Dict[str, Any]) -> Union[OpenAIChatCompletionClie
         logger.error(error_msg)
         raise Exception(error_msg) from e
 
+
 def _setup_temp_dir() -> str:
     """Create a temporary directory that will be cleaned up automatically."""
     current_dir = Path(__file__).parent
@@ -62,6 +70,7 @@ def _setup_temp_dir() -> str:
     os.makedirs(temp_dir_path, exist_ok=True)
     logger.info(f"Created temporary directory at: {temp_dir_path}")
     return str(temp_dir_path)
+
 
 def _cleanup_temp_dir(temp_dir: str) -> None:
     """Clean up the temporary directory if it exists."""
@@ -72,32 +81,31 @@ def _cleanup_temp_dir(temp_dir: str) -> None:
         except Exception as e:
             logger.warning(f"Failed to clean up {temp_dir}: {str(e)}")
 
+
 async def extract_rent_roll(
-    schema: Dict[str, Any],
-    extracted_data : str,
-    llm_config: Dict[str, Any],
-) -> Dict[str, Any]:
-    """
-    Extract rent roll data using the specified settings.
-    """
+    schema: dict[str, Any],
+    extracted_data: str,
+    llm_config: dict[str, Any],
+) -> dict[str, Any]:
+    """Extract rent roll data using the specified settings."""
     temp_dir = None
     try:
         temp_dir = _setup_temp_dir()
         # AutoGen OpenAI Chat completion client
         llm_client = get_llm_client(llm_config)
         runner = RentRollExtractorRunner(llm_client, output_dir=temp_dir)
-        
+
         input_file = None
         if extracted_data:
             # Define the path for the new file
             data_file_path = Path(temp_dir) / "extracted.txt"
-            
+
             # Write the data to the file
             data_file_path.write_text(extracted_data, encoding="utf-8")
-    
+
             # Update the input_file variable to point to our new data file
             input_file = str(data_file_path)
-        
+
         if not input_file:
             raise Exception("No input data provided.")
 
