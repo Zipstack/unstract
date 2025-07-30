@@ -1,6 +1,11 @@
 from typing import Any
 
-from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
+from unstract.prompt_service.constants import PromptServiceConstants as PSKeys, RetrievalStrategy
+from unstract.prompt_service.core.retrievers.automerging import AutomergingRetriever
+from unstract.prompt_service.core.retrievers.fusion import FusionRetriever
+from unstract.prompt_service.core.retrievers.keyword_table import KeywordTableRetriever
+from unstract.prompt_service.core.retrievers.recursive import RecursiveRetrieval
+from unstract.prompt_service.core.retrievers.router import RouterRetriever
 from unstract.prompt_service.core.retrievers.simple import SimpleRetriever
 from unstract.prompt_service.core.retrievers.subquestion import SubquestionRetriever
 from unstract.prompt_service.utils.file_utils import FileUtils
@@ -20,15 +25,39 @@ class RetrievalHelper:
         context: set[str] = set()
         prompt = output[PSKeys.PROMPTX]
         top_k = output[PSKeys.SIMILARITY_TOP_K]
-        if retrieval_type == PSKeys.SUBQUESTION:
-            context = SubquestionRetriever(
-                vector_db=vector_db, doc_id=doc_id, prompt=prompt, top_k=top_k, llm=llm
-            ).retrieve()
+        
+        # Map retrieval type to retriever class
+        retriever_map = {
+            RetrievalStrategy.SIMPLE.value: SimpleRetriever,
+            RetrievalStrategy.SUBQUESTION.value: SubquestionRetriever,
+            RetrievalStrategy.FUSION.value: FusionRetriever,
+            RetrievalStrategy.RECURSIVE.value: RecursiveRetrieval,
+            RetrievalStrategy.ROUTER.value: RouterRetriever,
+            RetrievalStrategy.KEYWORD_TABLE.value: KeywordTableRetriever,
+            RetrievalStrategy.AUTOMERGING.value: AutomergingRetriever,
+        }
+        
+        # Legacy support for old constant values
         if retrieval_type == PSKeys.SIMPLE:
-            context = SimpleRetriever(
-                vector_db=vector_db, doc_id=doc_id, prompt=prompt, top_k=top_k
-            ).retrieve()
-
+            retrieval_type = RetrievalStrategy.SIMPLE.value
+        elif retrieval_type == PSKeys.SUBQUESTION:
+            retrieval_type = RetrievalStrategy.SUBQUESTION.value
+        
+        # Get the appropriate retriever class
+        retriever_class = retriever_map.get(retrieval_type)
+        if not retriever_class:
+            raise ValueError(f"Unknown retrieval type: {retrieval_type}")
+        
+        # Create and execute retriever
+        retriever = retriever_class(
+            vector_db=vector_db,
+            doc_id=doc_id,
+            prompt=prompt,
+            top_k=top_k,
+            llm=llm,
+        )
+        context = retriever.retrieve()
+        
         return context
 
     @staticmethod

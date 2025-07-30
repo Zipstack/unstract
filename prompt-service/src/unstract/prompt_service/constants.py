@@ -148,6 +148,18 @@ class VariableType(str, Enum):
     DYNAMIC = "DYNAMIC"
 
 
+class RetrievalStrategy(str, Enum):
+    """Available retrieval strategies for prompt service."""
+
+    SIMPLE = "simple"
+    SUBQUESTION = "subquestion"
+    FUSION = "fusion"
+    RECURSIVE = "recursive"
+    ROUTER = "router"
+    KEYWORD_TABLE = "keyword_table"
+    AUTOMERGING = "automerging"
+
+
 class VariableConstants:
     """Constants for variable extraction."""
 

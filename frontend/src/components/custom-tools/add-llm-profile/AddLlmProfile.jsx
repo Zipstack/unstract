@@ -1,4 +1,9 @@
-import { ArrowLeftOutlined, CaretRightOutlined } from "@ant-design/icons";
+import {
+  ArrowLeftOutlined,
+  CaretRightOutlined,
+  DownOutlined,
+  SettingOutlined,
+} from "@ant-design/icons";
 import {
   Button,
   Col,
@@ -24,6 +29,7 @@ import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import "./AddLlmProfile.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import RetrievalStrategyModal from "../retrieval-strategy-modal/RetrievalStrategyModal";
 
 function AddLlmProfile({
   editLlmProfileId,
@@ -44,9 +50,9 @@ function AddLlmProfile({
   const [loading, setLoading] = useState(false);
   const [modalTitle, setModalTitle] = useState("");
   const [areAdaptersReady, setAreAdaptersReady] = useState(false);
+  const [isRetrievalModalVisible, setIsRetrievalModalVisible] = useState(false);
   const { sessionDetails } = useSessionStore();
-  const { details, getDropdownItems, llmProfiles, updateCustomTool } =
-    useCustomToolStore();
+  const { details, llmProfiles, updateCustomTool } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const { token } = theme.useToken();
@@ -58,15 +64,22 @@ function AddLlmProfile({
 
   useEffect(() => {
     setAdaptorProfilesDropdown();
-    const data = getDropdownItems("retrieval_strategy");
-    if (!data) {
-      return;
-    }
-    const items = Object.keys(data).map((name) => {
-      return {
-        value: data[name],
-      };
-    });
+
+    // Define all available retrieval strategies (matching backend validation)
+    const allStrategies = {
+      simple: "Simple Vector Retrieval",
+      fusion: "Fusion Retrieval (RAG Fusion)",
+      subquestion: "Sub-Question Retrieval",
+      recursive: "Recursive Retrieval",
+      router: "Router-based Retrieval",
+      keyword_table: "Keyword Table Retrieval",
+      automerging: "Auto-Merging Retrieval",
+    };
+
+    const items = Object.keys(allStrategies).map((key) => ({
+      value: key,
+      label: allStrategies[key],
+    }));
     setRetrievalItems(items);
 
     return () => {
@@ -260,7 +273,53 @@ function AddLlmProfile({
             }
             help={getBackendErrorDetail("retrieval_strategy", backendErrors)}
           >
-            <Select options={retrievalItems} />
+            <div
+              className="retrieval-strategy-selector"
+              onClick={() => setIsRetrievalModalVisible(true)}
+              style={{
+                border: "1px solid #d9d9d9",
+                borderRadius: "6px",
+                padding: "4px 11px",
+                cursor: "pointer",
+                backgroundColor: "#fff",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                minHeight: "32px",
+                transition: "all 0.2s",
+              }}
+            >
+              <span
+                style={{
+                  color: formDetails.retrieval_strategy ? "#000" : "#bfbfbf",
+                  flex: 1,
+                  userSelect: "none",
+                }}
+              >
+                {formDetails.retrieval_strategy
+                  ? retrievalItems.find(
+                      (item) => item.value === formDetails.retrieval_strategy
+                    )?.label || formDetails.retrieval_strategy
+                  : "Select retrieval strategy"}
+              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <SettingOutlined
+                  style={{
+                    color: "#1890ff",
+                    fontSize: "12px",
+                    cursor: "pointer",
+                  }}
+                  title="Configure retrieval strategy"
+                />
+                <DownOutlined
+                  style={{
+                    color: "#bfbfbf",
+                    fontSize: "10px",
+                    cursor: "pointer",
+                  }}
+                />
+              </div>
+            </div>
           </Form.Item>
           <Form.Item
             label="Matching count limit (similarity top-k)"
@@ -400,6 +459,30 @@ function AddLlmProfile({
     const tokenSize = (chunkSize / 4 / 1024).toFixed(1);
     return tokenSize;
   }
+
+  const handleRetrievalStrategySelect = (strategy) => {
+    const strategyLabel =
+      retrievalItems.find((item) => item.value === strategy)?.label || strategy;
+    form.setFieldsValue({ retrieval_strategy: strategy });
+    setFormDetails({ ...formDetails, retrieval_strategy: strategy });
+    setIsRetrievalModalVisible(false);
+
+    // Clear any existing backend errors for this field
+    setBackendErrors((prevErrors) => {
+      if (prevErrors) {
+        const updatedErrors = prevErrors.errors.filter(
+          (error) => error.attr !== "retrieval_strategy"
+        );
+        return { ...prevErrors, errors: updatedErrors };
+      }
+      return null;
+    });
+
+    setAlertDetails({
+      type: "success",
+      content: `Retrieval strategy set to: ${strategyLabel}`,
+    });
+  };
 
   return (
     <div className="settings-body-pad-top">
@@ -590,6 +673,14 @@ function AddLlmProfile({
           </Space>
         </Form.Item>
       </Form>
+
+      <RetrievalStrategyModal
+        visible={isRetrievalModalVisible}
+        onCancel={() => setIsRetrievalModalVisible(false)}
+        onOk={handleRetrievalStrategySelect}
+        currentStrategy={formDetails.retrieval_strategy}
+        loading={false}
+      />
     </div>
   );
 }

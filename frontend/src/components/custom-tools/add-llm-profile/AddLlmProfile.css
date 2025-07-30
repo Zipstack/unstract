@@ -3,3 +3,17 @@
 .add-llm-profile-row {
     width: 100%;
 }
+
+.retrieval-strategy-selector {
+    transition: all 0.2s ease-in-out !important;
+}
+
+.retrieval-strategy-selector:hover {
+    border-color: #40a9ff !important;
+    box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.1);
+}
+
+.retrieval-strategy-selector:active {
+    border-color: #1890ff !important;
+    box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.15);
+}
