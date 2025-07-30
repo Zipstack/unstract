@@ -48,7 +48,7 @@ class RouterRetriever(BaseRetriever):
 
             # If LLM is available, create router with multiple strategies
             if self.llm:
-                # Define query engine tools
+                # Define query engine tools with multiple basic strategies
                 query_engine_tools = [
                     QueryEngineTool(
                         query_engine=vector_query_engine,
@@ -61,6 +61,48 @@ class RouterRetriever(BaseRetriever):
                         ),
                     ),
                 ]
+
+                # Add keyword-based retrieval strategy
+                try:
+                    keyword_query_engine = vector_store_index.as_query_engine(
+                        similarity_top_k=self.top_k * 2,  # Get more candidates for keyword matching
+                        filters=filters,
+                    )
+                    query_engine_tools.append(
+                        QueryEngineTool(
+                            query_engine=keyword_query_engine,
+                            metadata=ToolMetadata(
+                                name="keyword_search",
+                                description=(
+                                    "Best for finding specific terms, names, numbers, dates, "
+                                    "or exact phrases. Use when looking for precise matches."
+                                ),
+                            ),
+                        )
+                    )
+                except Exception as e:
+                    logger.debug(f"Could not create keyword search engine: {e}")
+
+                # Add broader context retrieval strategy
+                try:
+                    broad_query_engine = vector_store_index.as_query_engine(
+                        similarity_top_k=self.top_k * 3,  # Cast wider net
+                        filters=filters,
+                    )
+                    query_engine_tools.append(
+                        QueryEngineTool(
+                            query_engine=broad_query_engine,
+                            metadata=ToolMetadata(
+                                name="broad_search",
+                                description=(
+                                    "Useful for general questions, exploratory queries, "
+                                    "or when you need comprehensive information on a topic."
+                                ),
+                            ),
+                        )
+                    )
+                except Exception as e:
+                    logger.debug(f"Could not create broad search engine: {e}")
 
                 # Create router query engine
                 router_query_engine = RouterQueryEngine(

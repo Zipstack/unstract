@@ -1,11 +1,8 @@
 import logging
-import re
-from collections import Counter
 
-import nltk
 from llama_index.core import VectorStoreIndex
+from llama_index.core.indices.keyword_table import KeywordTableIndex
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
-from nltk.corpus import stopwords
 
 from unstract.prompt_service.core.retrievers.base_retriever import BaseRetriever
 from unstract.prompt_service.exceptions import RetrievalError
@@ -14,36 +11,25 @@ logger = logging.getLogger(__name__)
 
 
 class KeywordTableRetriever(BaseRetriever):
-    """Keyword table retrieval using keyword extraction and matching.
-    """
+    """Keyword table retrieval using LlamaIndex's native KeywordTableIndex."""
 
     def retrieve(self) -> set[str]:
-        """Retrieve text chunks using keyword-based approach.
+        """Retrieve text chunks using LlamaIndex's native KeywordTableIndex.
 
         Returns:
             set[str]: A set of text chunks retrieved from the database.
         """
         try:
             logger.info(
-                f"Retrieving chunks for {self.doc_id} using keyword-based retrieval."
+                f"Retrieving chunks for {self.doc_id} using LlamaIndex KeywordTableIndex."
             )
 
-            # Get the vector store index
+            # Get documents from vector index for keyword indexing
             vector_store_index: VectorStoreIndex = self.vector_db.get_vector_store_index()
-
-            # Extract keywords from the query
-            keywords = self._extract_keywords(self.prompt)
             
-            # If we have keywords, create an enhanced query
-            if keywords:
-                # Combine original prompt with extracted keywords for better retrieval
-                enhanced_query = f"{self.prompt} {' '.join(keywords)}"
-            else:
-                enhanced_query = self.prompt
-            
-            # Use vector retriever with the enhanced query
-            retriever = vector_store_index.as_retriever(
-                similarity_top_k=self.top_k,
+            # Get all nodes for the document
+            all_retriever = vector_store_index.as_retriever(
+                similarity_top_k=1000,  # Get all nodes
                 filters=MetadataFilters(
                     filters=[
                         ExactMatchFilter(key="doc_id", value=self.doc_id),
@@ -51,8 +37,26 @@ class KeywordTableRetriever(BaseRetriever):
                 ),
             )
             
-            # Retrieve nodes
-            nodes = retriever.retrieve(enhanced_query)
+            # Retrieve all nodes to build keyword index
+            all_nodes = all_retriever.retrieve("")
+            
+            if not all_nodes:
+                logger.warning(f"No nodes found for doc_id: {self.doc_id}")
+                return set()
+            
+            # Create KeywordTableIndex from nodes
+            keyword_index = KeywordTableIndex(
+                nodes=[node.node for node in all_nodes],
+                show_progress=False,
+            )
+            
+            # Create retriever from keyword index
+            keyword_retriever = keyword_index.as_retriever(
+                similarity_top_k=self.top_k,
+            )
+            
+            # Retrieve nodes using keyword matching
+            nodes = keyword_retriever.retrieve(self.prompt)
 
             # Extract unique text chunks
             chunks: set[str] = set()
@@ -65,48 +69,12 @@ class KeywordTableRetriever(BaseRetriever):
                         f"Ignored: {node.node_id} with score {node.score}"
                     )
 
-            logger.info(f"Successfully retrieved {len(chunks)} chunks using keyword-based approach.")
+            logger.info(f"Successfully retrieved {len(chunks)} chunks using KeywordTableIndex.")
             return chunks
 
         except (ValueError, AttributeError, KeyError, ImportError) as e:
-            logger.error(f"Error during retrieval for {self.doc_id}: {e}")
+            logger.error(f"Error during keyword retrieval for {self.doc_id}: {e}")
             raise RetrievalError(str(e)) from e
         except Exception as e:
-            logger.error(f"Unexpected error during retrieval for {self.doc_id}: {e}")
+            logger.error(f"Unexpected error during keyword retrieval for {self.doc_id}: {e}")
             raise RetrievalError(f"Unexpected error: {str(e)}") from e
-
-    def _extract_keywords(self, text: str) -> list[str]:
-        """Extract keywords from text using NLTK stopwords and frequency analysis.
-        
-        Args:
-            text: The input text to extract keywords from
-            
-        Returns:
-            list[str]: List of extracted keywords
-        """
-        # Remove punctuation and convert to lowercase
-        clean_text = re.sub(r'[^\w\s]', ' ', text.lower())
-        
-        # Get stop words using NLTK with fallback
-        try:
-            stop_words = set(stopwords.words('english'))
-        except LookupError:
-            # Fallback to a minimal set if NLTK data not available
-            logger.warning("NLTK stopwords not available, using fallback list")
-            stop_words = {
-                'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by',
-                'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did',
-                'will', 'would', 'could', 'should', 'may', 'might', 'can', 'this', 'that', 'these', 'those'
-            }
-        
-        # Split into words and filter out stop words
-        words = [
-            word for word in clean_text.split() 
-            if len(word) > 2 and word not in stop_words
-        ]
-        
-        # Count word frequency and return most common
-        word_counts = Counter(words)
-        
-        # Return top keywords (max 10)
-        return [word for word, _ in word_counts.most_common(10)]

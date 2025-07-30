@@ -1,8 +1,7 @@
 import logging
 
 from llama_index.core import VectorStoreIndex
-from llama_index.core.indices.query.query_transform import HyDEQueryTransform
-from llama_index.core.query_engine import TransformQueryEngine
+from llama_index.core.retrievers import RecursiveRetriever
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
 
 from unstract.prompt_service.core.retrievers.base_retriever import BaseRetriever
@@ -12,21 +11,21 @@ logger = logging.getLogger(__name__)
 
 
 class RecursiveRetrieval(BaseRetriever):
-    """Recursive retrieval using LlamaIndex's HyDE (Hypothetical Document Embeddings).
-
-    This generates a hypothetical document for the query and uses it to find
-    more relevant chunks, effectively doing a form of recursive refinement.
+    """Recursive retrieval using LlamaIndex's native RecursiveRetriever.
+    
+    This retriever performs recursive retrieval by breaking down queries
+    and refining results through multiple retrieval steps.
     """
 
     def retrieve(self) -> set[str]:
-        """Retrieve text chunks using HyDE query transformation.
+        """Retrieve text chunks using LlamaIndex's native RecursiveRetriever.
 
         Returns:
             set[str]: A set of text chunks retrieved from the database.
         """
         try:
             logger.info(
-                f"Retrieving chunks for {self.doc_id} using HyDE recursive approach."
+                f"Retrieving chunks for {self.doc_id} using LlamaIndex RecursiveRetriever."
             )
 
             # Get the vector store index
@@ -42,47 +41,15 @@ class RecursiveRetrieval(BaseRetriever):
                 ),
             )
 
-            # If we have an LLM, use HyDE for enhanced retrieval
-            if self.llm:
-                try:
-                    # Create HyDE query transform
-                    hyde = HyDEQueryTransform(llm=self.llm, include_original=True)
+            # Create RecursiveRetriever
+            recursive_retriever = RecursiveRetriever(
+                "vector",  # root retriever key
+                retriever_dict={"vector": base_retriever},
+                verbose=False,
+            )
 
-                    # Create query engine with transform
-                    query_engine = vector_store_index.as_query_engine(
-                        similarity_top_k=self.top_k,
-                        filters=MetadataFilters(
-                            filters=[
-                                ExactMatchFilter(key="doc_id", value=self.doc_id),
-                            ],
-                        ),
-                    )
-
-                    # Transform query engine with HyDE
-                    transformed_query_engine = TransformQueryEngine(query_engine, hyde)
-
-                    # Query and get response
-                    response = transformed_query_engine.query(self.prompt)
-
-                    # Extract chunks from source nodes
-                    chunks: set[str] = set()
-                    if hasattr(response, "source_nodes"):
-                        for node in response.source_nodes:
-                            if node.score > 0:
-                                chunks.add(node.get_content())
-
-                    if chunks:
-                        logger.info(
-                            f"Successfully retrieved {len(chunks)} chunks using HyDE."
-                        )
-                        return chunks
-                except Exception as e:
-                    logger.warning(
-                        f"HyDE retrieval failed, falling back to standard: {e}"
-                    )
-
-            # Fallback to standard retrieval
-            nodes = base_retriever.retrieve(self.prompt)
+            # Retrieve nodes using RecursiveRetriever
+            nodes = recursive_retriever.retrieve(self.prompt)
 
             # Extract unique text chunks
             chunks: set[str] = set()
@@ -95,14 +62,12 @@ class RecursiveRetrieval(BaseRetriever):
                         f"Ignored: {node.node_id} with score {node.score}"
                     )
 
-            logger.info(f"Successfully retrieved {len(chunks)} chunks.")
+            logger.info(f"Successfully retrieved {len(chunks)} chunks using RecursiveRetriever.")
             return chunks
 
         except (ValueError, AttributeError, KeyError, ImportError) as e:
             logger.error(f"Error during recursive retrieval for {self.doc_id}: {e}")
             raise RetrievalError(str(e)) from e
         except Exception as e:
-            logger.error(
-                f"Unexpected error during recursive retrieval for {self.doc_id}: {e}"
-            )
+            logger.error(f"Unexpected error during recursive retrieval for {self.doc_id}: {e}")
             raise RetrievalError(f"Unexpected error: {str(e)}") from e
