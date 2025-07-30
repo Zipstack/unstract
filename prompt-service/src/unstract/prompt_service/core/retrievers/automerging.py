@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 class AutomergingRetriever(BaseRetriever):
     """Automerging retrieval using LlamaIndex's native AutoMergingRetriever.
-    
+
     This retriever merges smaller chunks into larger ones when the smaller chunks
     don't contain enough information, providing better context for answers.
     """
@@ -46,17 +46,19 @@ class AutomergingRetriever(BaseRetriever):
                 # Create AutoMergingRetriever with the base retriever
                 auto_merging_retriever = LlamaAutoMergingRetriever(
                     base_retriever,
-                    storage_context=self.vector_db.get_storage_context() if hasattr(self.vector_db, 'get_storage_context') else None,
+                    storage_context=self.vector_db.get_storage_context()
+                    if hasattr(self.vector_db, "get_storage_context")
+                    else None,
                     verbose=False,
                 )
-                
+
                 # Retrieve nodes using auto-merging
                 nodes = auto_merging_retriever.retrieve(self.prompt)
-                
+
             except Exception as e:
                 logger.error(f"AutoMergingRetriever failed : {e}")
                 raise RetrievalError(f"AutoMergingRetriever failed: {str(e)}") from e
-              
+
             # Extract unique text chunks
             chunks: set[str] = set()
             for node in nodes:
