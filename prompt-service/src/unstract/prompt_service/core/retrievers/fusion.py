@@ -37,19 +37,19 @@ class FusionRetriever(BaseRetriever):
                     ExactMatchFilter(key="doc_id", value=self.doc_id),
                 ],
             )
-            
+
             # Retriever 1: Standard similarity search
             retriever_1 = vector_store_index.as_retriever(
                 similarity_top_k=self.top_k,
                 filters=filters,
             )
-            
-            # Retriever 2: Broader search with more candidates  
+
+            # Retriever 2: Broader search with more candidates
             retriever_2 = vector_store_index.as_retriever(
                 similarity_top_k=self.top_k * 2,
                 filters=filters,
             )
-            
+
             # Retriever 3: Focused search with fewer candidates
             retriever_3 = vector_store_index.as_retriever(
                 similarity_top_k=max(1, self.top_k // 2),

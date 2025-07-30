@@ -2,7 +2,6 @@ import logging
 
 from llama_index.core import VectorStoreIndex
 from llama_index.core.indices.keyword_table import KeywordTableIndex
-from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
 
 from unstract.prompt_service.core.retrievers.base_retriever import BaseRetriever
 from unstract.prompt_service.exceptions import RetrievalError
@@ -26,20 +25,23 @@ class KeywordTableRetriever(BaseRetriever):
 
             # Get documents from vector index for keyword indexing
             vector_store_index: VectorStoreIndex = self.vector_db.get_vector_store_index()
-            
+
             # Get all document nodes from the docstore for keyword indexing
             docstore = vector_store_index.docstore
             all_nodes = []
-            
+
             # Get all nodes for this document
             for node_id, node in docstore.docs.items():
-                if hasattr(node, 'metadata') and node.metadata.get('doc_id') == self.doc_id:
+                if (
+                    hasattr(node, "metadata")
+                    and node.metadata.get("doc_id") == self.doc_id
+                ):
                     all_nodes.append(node)
-            
+
             if not all_nodes:
                 logger.warning(f"No nodes found for doc_id: {self.doc_id}")
                 return set()
-            
+
             # Create KeywordTableIndex from document nodes
             keyword_index = KeywordTableIndex(
                 nodes=all_nodes,
