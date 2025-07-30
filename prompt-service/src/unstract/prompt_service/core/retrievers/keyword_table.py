@@ -83,9 +83,12 @@ class KeywordTableRetriever(BaseRetriever):
             )
             return chunks
 
-        except Exception as e:
+        except (ValueError, AttributeError, KeyError, ImportError) as e:
             logger.error(f"Error during keyword table retrieval for {self.doc_id}: {e}")
             raise RetrievalError(str(e)) from e
+        except Exception as e:
+            logger.error(f"Unexpected error during keyword table retrieval for {self.doc_id}: {e}")
+            raise RetrievalError(f"Unexpected error: {str(e)}") from e
 
     def _extract_keywords_from_text(self, text: str) -> set[str]:
         """Extract keywords from text.
@@ -207,8 +210,10 @@ Provide only the keywords, one per line."""
                         if keyword.strip()
                     ]
                     keywords.extend(llm_keywords)
-            except Exception as e:
+            except (ValueError, AttributeError, KeyError) as e:
                 logger.debug(f"LLM keyword extraction failed: {e}")
+            except Exception as e:
+                logger.debug(f"Unexpected error in LLM keyword extraction: {e}")
 
         # Get most frequent keywords
         keyword_counts = Counter(keywords)

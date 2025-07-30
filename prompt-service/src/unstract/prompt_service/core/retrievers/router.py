@@ -46,9 +46,12 @@ class RouterRetriever(BaseRetriever):
             else:
                 return self._simple_retrieval()
 
-        except Exception as e:
+        except (ValueError, AttributeError, KeyError, ImportError) as e:
             logger.error(f"Error during router retrieval for {self.doc_id}: {e}")
             raise RetrievalError(str(e)) from e
+        except Exception as e:
+            logger.error(f"Unexpected error during router retrieval for {self.doc_id}: {e}")
+            raise RetrievalError(f"Unexpected error: {str(e)}") from e
 
     def _determine_retrieval_strategy(self, query: str) -> str:
         """Determine the best retrieval strategy for the given query.
@@ -77,8 +80,10 @@ Respond with only the strategy name, nothing else."""
                 if strategy in ["semantic", "keyword", "hybrid"]:
                     logger.info(f"Selected retrieval strategy: {strategy}")
                     return strategy
-        except Exception as e:
+        except (ValueError, AttributeError, KeyError) as e:
             logger.warning(f"Failed to determine retrieval strategy: {e}")
+        except Exception as e:
+            logger.warning(f"Unexpected error determining retrieval strategy: {e}")
 
         # Default to hybrid
         return "hybrid"
@@ -226,8 +231,10 @@ Provide only the keywords, one per line, without additional text."""
                         if keyword.strip()
                     ]
                     return keywords[:5]
-            except Exception as e:
+            except (ValueError, AttributeError, KeyError) as e:
                 logger.warning(f"Failed to extract keywords with LLM: {e}")
+            except Exception as e:
+                logger.warning(f"Unexpected error extracting keywords with LLM: {e}")
 
         # Fallback to simple keyword extraction
         # Remove common words and split

@@ -71,9 +71,12 @@ class AutomergingRetriever(BaseRetriever):
             logger.info(f"Successfully retrieved {len(chunks)} chunks using automerging.")
             return chunks
 
-        except Exception as e:
+        except (ValueError, AttributeError, KeyError, ImportError) as e:
             logger.error(f"Error during automerging retrieval for {self.doc_id}: {e}")
             raise RetrievalError(str(e)) from e
+        except Exception as e:
+            logger.error(f"Unexpected error during automerging retrieval for {self.doc_id}: {e}")
+            raise RetrievalError(f"Unexpected error: {str(e)}") from e
 
     def _group_nodes_by_position(
         self, nodes: list[NodeWithScore]
