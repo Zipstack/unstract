@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 class RecursiveRetrieval(BaseRetriever):
     """Recursive retrieval using LlamaIndex's native RecursiveRetriever.
-    
+
     This retriever performs recursive retrieval by breaking down queries
     and refining results through multiple retrieval steps.
     """
@@ -62,12 +62,16 @@ class RecursiveRetrieval(BaseRetriever):
                         f"Ignored: {node.node_id} with score {node.score}"
                     )
 
-            logger.info(f"Successfully retrieved {len(chunks)} chunks using RecursiveRetriever.")
+            logger.info(
+                f"Successfully retrieved {len(chunks)} chunks using RecursiveRetriever."
+            )
             return chunks
 
         except (ValueError, AttributeError, KeyError, ImportError) as e:
             logger.error(f"Error during recursive retrieval for {self.doc_id}: {e}")
             raise RetrievalError(str(e)) from e
         except Exception as e:
-            logger.error(f"Unexpected error during recursive retrieval for {self.doc_id}: {e}")
+            logger.error(
+                f"Unexpected error during recursive retrieval for {self.doc_id}: {e}"
+            )
             raise RetrievalError(f"Unexpected error: {str(e)}") from e

@@ -45,12 +45,12 @@ class KeywordTableRetriever(BaseRetriever):
                 nodes=all_nodes,
                 show_progress=False,
             )
-            
+
             # Create retriever from keyword index
             keyword_retriever = keyword_index.as_retriever(
                 similarity_top_k=self.top_k,
             )
-            
+
             # Retrieve nodes using keyword matching
             nodes = keyword_retriever.retrieve(self.prompt)
 
@@ -65,12 +65,16 @@ class KeywordTableRetriever(BaseRetriever):
                         f"Ignored: {node.node_id} with score {node.score}"
                     )
 
-            logger.info(f"Successfully retrieved {len(chunks)} chunks using KeywordTableIndex.")
+            logger.info(
+                f"Successfully retrieved {len(chunks)} chunks using KeywordTableIndex."
+            )
             return chunks
 
         except (ValueError, AttributeError, KeyError, ImportError) as e:
             logger.error(f"Error during keyword retrieval for {self.doc_id}: {e}")
             raise RetrievalError(str(e)) from e
         except Exception as e:
-            logger.error(f"Unexpected error during keyword retrieval for {self.doc_id}: {e}")
+            logger.error(
+                f"Unexpected error during keyword retrieval for {self.doc_id}: {e}"
+            )
             raise RetrievalError(f"Unexpected error: {str(e)}") from e
