@@ -125,9 +125,11 @@ class RouterRetriever(BaseRetriever):
                                 f"Node score is less than 0. "
                                 f"Ignored: {node.node_id} with score {node.score}"
                             )
-                
+
                 if chunks:
-                    logger.info(f"Successfully retrieved {len(chunks)} chunks using router.")
+                    logger.info(
+                        f"Successfully retrieved {len(chunks)} chunks using router."
+                    )
                     return chunks
 
             # Fallback to simple vector retrieval
@@ -135,14 +137,16 @@ class RouterRetriever(BaseRetriever):
                 similarity_top_k=self.top_k,
                 filters=filters,
             )
-            
+
             nodes = vector_retriever.retrieve(self.prompt)
             chunks: set[str] = set()
             for node in nodes:
                 if node.score > 0:
                     chunks.add(node.get_content())
 
-            logger.info(f"Successfully retrieved {len(chunks)} chunks using vector retrieval.")
+            logger.info(
+                f"Successfully retrieved {len(chunks)} chunks using vector retrieval."
+            )
             return chunks
 
         except (ValueError, AttributeError, KeyError, ImportError) as e:
