@@ -105,11 +105,11 @@ class RouterRetriever(BaseRetriever):
                 except Exception as e:
                     logger.debug(f"Could not create broad search engine: {e}")
 
-                # Create router query engine
+                # Create router query engine with explicit LLM
                 router_query_engine = RouterQueryEngine(
-                    selector=LLMSingleSelector.from_defaults(llm=self.llm),
+                    selector=LLMSingleSelector(llm=self.llm),  # Direct LLM assignment instead of from_defaults
                     query_engine_tools=query_engine_tools,
-                    verbose=False,
+                    verbose=True,
                 )
 
                 # Query using router
@@ -127,28 +127,11 @@ class RouterRetriever(BaseRetriever):
                                 f"Ignored: {node.node_id} with score {node.score}"
                             )
 
-                if chunks:
-                    logger.info(
-                        f"Successfully retrieved {len(chunks)} chunks using router."
-                    )
-                    return chunks
+                logger.info(
+                    f"Successfully retrieved {len(chunks)} chunks using router."
+                )
+                return chunks
 
-            # Fallback to simple vector retrieval
-            vector_retriever = vector_store_index.as_retriever(
-                similarity_top_k=self.top_k,
-                filters=filters,
-            )
-
-            nodes = vector_retriever.retrieve(self.prompt)
-            chunks: set[str] = set()
-            for node in nodes:
-                if node.score > 0:
-                    chunks.add(node.get_content())
-
-            logger.info(
-                f"Successfully retrieved {len(chunks)} chunks using vector retrieval."
-            )
-            return chunks
 
         except (ValueError, AttributeError, KeyError, ImportError) as e:
             logger.error(f"Error during router retrieval for {self.doc_id}: {e}")

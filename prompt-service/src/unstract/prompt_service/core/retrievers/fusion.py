@@ -63,7 +63,7 @@ class FusionRetriever(BaseRetriever):
                 num_queries=4,  # Generate multiple query variations
                 mode="simple",  # Use simple fusion mode (reciprocal rank fusion)
                 use_async=False,
-                verbose=False,
+                verbose=True,
                 llm=self.llm,  # LLM generates query variations
             )
 

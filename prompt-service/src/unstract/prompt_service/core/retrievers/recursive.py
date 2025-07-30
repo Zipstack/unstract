@@ -45,7 +45,7 @@ class RecursiveRetrieval(BaseRetriever):
             recursive_retriever = RecursiveRetriever(
                 "vector",  # root retriever key
                 retriever_dict={"vector": base_retriever},
-                verbose=False,
+                verbose=True,
             )
 
             # Retrieve nodes using RecursiveRetriever
