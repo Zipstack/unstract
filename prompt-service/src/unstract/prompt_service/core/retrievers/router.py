@@ -130,11 +130,8 @@ class RouterRetriever(BaseRetriever):
                                 f"Ignored: {node.node_id} with score {node.score}"
                             )
 
-                logger.info(
-                    f"Successfully retrieved {len(chunks)} chunks using router."
-                )
+                logger.info(f"Successfully retrieved {len(chunks)} chunks using router.")
                 return chunks
-
 
         except (ValueError, AttributeError, KeyError, ImportError) as e:
             logger.error(f"Error during router retrieval for {self.doc_id}: {e}")
