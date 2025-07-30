@@ -27,23 +27,28 @@ class KeywordTableRetriever(BaseRetriever):
             # Get documents from vector index for keyword indexing
             vector_store_index: VectorStoreIndex = self.vector_db.get_vector_store_index()
             
-            # Get all document nodes from the docstore for keyword indexing
-            docstore = vector_store_index.docstore
-            all_nodes = []
+            # Get all nodes for the document
+            all_retriever = vector_store_index.as_retriever(
+                similarity_top_k=1000,  # Get all nodes
+                filters=MetadataFilters(
+                    filters=[
+                        ExactMatchFilter(key="doc_id", value=self.doc_id),
+                    ],
+                ),
+            )
             
-            # Get all nodes for this document
-            for node_id, node in docstore.docs.items():
-                if hasattr(node, 'metadata') and node.metadata.get('doc_id') == self.doc_id:
-                    all_nodes.append(node)
+            # Retrieve all nodes to build keyword index
+            all_nodes = all_retriever.retrieve(" ")
             
             if not all_nodes:
                 logger.warning(f"No nodes found for doc_id: {self.doc_id}")
                 return set()
             
-            # Create KeywordTableIndex from document nodes
+            # Create KeywordTableIndex from nodes using our provided LLM
             keyword_index = KeywordTableIndex(
-                nodes=all_nodes,
-                show_progress=False,
+                nodes=[node.node for node in all_nodes],
+                show_progress=True,
+                llm=self.llm,  # Use the provided LLM instead of defaulting to OpenAI
             )
 
             # Create retriever from keyword index
@@ -57,13 +62,7 @@ class KeywordTableRetriever(BaseRetriever):
             # Extract unique text chunks
             chunks: set[str] = set()
             for node in nodes:
-                if node.score > 0:
-                    chunks.add(node.get_content())
-                else:
-                    logger.info(
-                        f"Node score is less than 0. "
-                        f"Ignored: {node.node_id} with score {node.score}"
-                    )
+                chunks.add(node.get_content())
 
             logger.info(
                 f"Successfully retrieved {len(chunks)} chunks using KeywordTableIndex."
