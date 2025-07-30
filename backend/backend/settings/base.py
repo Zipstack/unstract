@@ -57,6 +57,13 @@ CELERY_BROKER_URL = str(
     )
 )
 
+# Celery Result Backend Configuration
+# Default backend type for all workers (postgres for backward compatibility)
+CELERY_RESULT_BACKEND_TYPE = os.environ.get("CELERY_RESULT_BACKEND_TYPE", "postgres")
+# Worker-specific backend configurations
+FILE_PROCESSING_CELERY_BACKEND = os.environ.get("FILE_PROCESSING_CELERY_BACKEND", "postgres")
+FILE_PROCESSING_CALLBACK_CELERY_BACKEND = os.environ.get("FILE_PROCESSING_CALLBACK_CELERY_BACKEND", "postgres")
+
 ENV_FILE = find_dotenv()
 if ENV_FILE:
     load_dotenv(ENV_FILE)
@@ -85,6 +92,8 @@ REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD", "")
 REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
 REDIS_PORT = os.environ.get("REDIS_PORT", "6379")
 REDIS_DB = os.environ.get("REDIS_DB", "")
+# Separate Redis DB for Celery results (defaults to REDIS_DB if not set)
+CELERY_REDIS_DB = os.environ.get("CELERY_REDIS_DB", REDIS_DB if REDIS_DB else "1")
 SESSION_EXPIRATION_TIME_IN_SECOND = os.environ.get(
     "SESSION_EXPIRATION_TIME_IN_SECOND", 3600
 )
