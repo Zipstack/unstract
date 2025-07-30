@@ -92,7 +92,9 @@ class RecursiveRetrieval(BaseRetriever):
             logger.error(f"Error during recursive retrieval for {self.doc_id}: {e}")
             raise RetrievalError(str(e)) from e
         except Exception as e:
-            logger.error(f"Unexpected error during recursive retrieval for {self.doc_id}: {e}")
+            logger.error(
+                f"Unexpected error during recursive retrieval for {self.doc_id}: {e}"
+            )
             raise RetrievalError(f"Unexpected error: {str(e)}") from e
 
     def _extract_key_concepts(self, initial_results: list[str]) -> list[str]:

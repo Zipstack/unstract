@@ -50,7 +50,9 @@ class RouterRetriever(BaseRetriever):
             logger.error(f"Error during router retrieval for {self.doc_id}: {e}")
             raise RetrievalError(str(e)) from e
         except Exception as e:
-            logger.error(f"Unexpected error during router retrieval for {self.doc_id}: {e}")
+            logger.error(
+                f"Unexpected error during router retrieval for {self.doc_id}: {e}"
+            )
             raise RetrievalError(f"Unexpected error: {str(e)}") from e
 
     def _determine_retrieval_strategy(self, query: str) -> str:

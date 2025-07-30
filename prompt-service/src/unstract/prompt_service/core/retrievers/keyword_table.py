@@ -87,7 +87,9 @@ class KeywordTableRetriever(BaseRetriever):
             logger.error(f"Error during keyword table retrieval for {self.doc_id}: {e}")
             raise RetrievalError(str(e)) from e
         except Exception as e:
-            logger.error(f"Unexpected error during keyword table retrieval for {self.doc_id}: {e}")
+            logger.error(
+                f"Unexpected error during keyword table retrieval for {self.doc_id}: {e}"
+            )
             raise RetrievalError(f"Unexpected error: {str(e)}") from e
 
     def _extract_keywords_from_text(self, text: str) -> set[str]:

@@ -79,7 +79,9 @@ class FusionRetriever(BaseRetriever):
             logger.error(f"Error during fusion retrieval for {self.doc_id}: {e}")
             raise RetrievalError(str(e)) from e
         except Exception as e:
-            logger.error(f"Unexpected error during fusion retrieval for {self.doc_id}: {e}")
+            logger.error(
+                f"Unexpected error during fusion retrieval for {self.doc_id}: {e}"
+            )
             raise RetrievalError(f"Unexpected error: {str(e)}") from e
 
     def _generate_query_variations(self, original_query: str) -> list[str]:
@@ -111,7 +113,9 @@ Provide only the variations, one per line, without numbering or additional text.
             except (ValueError, AttributeError, KeyError) as e:
                 logger.warning(f"Failed to generate query variations with LLM: {e}")
             except Exception as e:
-                logger.warning(f"Unexpected error generating query variations with LLM: {e}")
+                logger.warning(
+                    f"Unexpected error generating query variations with LLM: {e}"
+                )
 
         # If no LLM or LLM failed, use simple transformations
         if len(variations) == 1:

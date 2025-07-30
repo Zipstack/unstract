@@ -75,7 +75,9 @@ class AutomergingRetriever(BaseRetriever):
             logger.error(f"Error during automerging retrieval for {self.doc_id}: {e}")
             raise RetrievalError(str(e)) from e
         except Exception as e:
-            logger.error(f"Unexpected error during automerging retrieval for {self.doc_id}: {e}")
+            logger.error(
+                f"Unexpected error during automerging retrieval for {self.doc_id}: {e}"
+            )
             raise RetrievalError(f"Unexpected error: {str(e)}") from e
 
     def _group_nodes_by_position(
