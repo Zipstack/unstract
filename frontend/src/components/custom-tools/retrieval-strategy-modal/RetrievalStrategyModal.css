@@ -90,11 +90,11 @@
     width: 95% !important;
     max-width: none !important;
   }
-  
+
   .retrieval-strategy-modal .ant-modal-body > div {
     flex-direction: column;
   }
-  
+
   .retrieval-strategy-modal .ant-modal-body > div > div:last-child {
     border-left: none;
     border-top: 1px solid #f0f0f0;

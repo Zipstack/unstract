@@ -4,15 +4,26 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('prompt_profile_manager_v2', '0001_initial'),
+        ("prompt_profile_manager_v2", "0001_initial"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='profilemanager',
-            name='retrieval_strategy',
-            field=models.TextField(blank=True, choices=[('simple', 'Simple retrieval'), ('subquestion', 'Subquestion retrieval'), ('fusion', 'Fusion retrieval'), ('recursive', 'Recursive retrieval'), ('router', 'Router retrieval'), ('keyword_table', 'Keyword table retrieval'), ('automerging', 'Auto-merging retrieval')], db_comment='Field to store the retrieval strategy for prompts'),
+            model_name="profilemanager",
+            name="retrieval_strategy",
+            field=models.TextField(
+                blank=True,
+                choices=[
+                    ("simple", "Simple retrieval"),
+                    ("subquestion", "Subquestion retrieval"),
+                    ("fusion", "Fusion retrieval"),
+                    ("recursive", "Recursive retrieval"),
+                    ("router", "Router retrieval"),
+                    ("keyword_table", "Keyword table retrieval"),
+                    ("automerging", "Auto-merging retrieval"),
+                ],
+                db_comment="Field to store the retrieval strategy for prompts",
+            ),
         ),
     ]
