@@ -61,8 +61,12 @@ CELERY_BROKER_URL = str(
 # Default backend type for all workers (postgres for backward compatibility)
 CELERY_RESULT_BACKEND_TYPE = os.environ.get("CELERY_RESULT_BACKEND_TYPE", "postgres")
 # Worker-specific backend configurations
-FILE_PROCESSING_CELERY_BACKEND = os.environ.get("FILE_PROCESSING_CELERY_BACKEND", "postgres")
-FILE_PROCESSING_CALLBACK_CELERY_BACKEND = os.environ.get("FILE_PROCESSING_CALLBACK_CELERY_BACKEND", "postgres")
+FILE_PROCESSING_CELERY_BACKEND = os.environ.get(
+    "FILE_PROCESSING_CELERY_BACKEND", "postgres"
+)
+FILE_PROCESSING_CALLBACK_CELERY_BACKEND = os.environ.get(
+    "FILE_PROCESSING_CALLBACK_CELERY_BACKEND", "postgres"
+)
 
 ENV_FILE = find_dotenv()
 if ENV_FILE:

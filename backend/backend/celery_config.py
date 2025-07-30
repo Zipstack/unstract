@@ -8,7 +8,7 @@ from backend.celery_backend_types import CeleryBackendTypes
 def get_result_backend_url(backend_type):
     """Generate result backend URL based on backend type"""
     backend_type = backend_type.lower()
-    
+
     if backend_type == CeleryBackendTypes.REDIS:
         # Redis backend configuration
         if settings.REDIS_PASSWORD:

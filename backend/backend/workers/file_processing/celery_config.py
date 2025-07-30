@@ -3,7 +3,8 @@ import os
 from django.conf import settings
 from kombu import Queue
 
-from backend.celery_config import CeleryConfig as BaseCeleryConfig, get_result_backend_url
+from backend.celery_config import CeleryConfig as BaseCeleryConfig
+from backend.celery_config import get_result_backend_url
 from backend.workers.file_processing.constants import QueueNames
 
 
