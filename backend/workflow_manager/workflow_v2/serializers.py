@@ -7,6 +7,7 @@ from rest_framework.serializers import (
     JSONField,
     ModelSerializer,
     Serializer,
+    SerializerMethodField,
     UUIDField,
     ValidationError,
 )
@@ -53,7 +54,9 @@ class WorkflowSerializer(IntegrityErrorMixin, AuditSerializer):
             many=True,
             context=self.context,
         ).data
-        representation["created_by_email"] = instance.created_by.email
+        representation["created_by_email"] = (
+            instance.created_by.email if instance.created_by else None
+        )
         return representation
 
     def create(self, validated_data: dict[str, Any]) -> Any:
@@ -113,3 +116,24 @@ class WorkflowExecutionLogSerializer(ModelSerializer):
     class Meta:
         model = ExecutionLog
         fields = "__all__"
+
+
+class SharedUserListSerializer(ModelSerializer):
+    """Serializer for returning workflow with shared user details."""
+
+    shared_users = SerializerMethodField()
+    created_by = SerializerMethodField()
+
+    class Meta:
+        model = Workflow
+        fields = ["id", "workflow_name", "shared_users", "shared_to_org", "created_by"]
+
+    def get_shared_users(self, obj):
+        """Return list of shared users with id and email."""
+        return [{"id": user.id, "email": user.email} for user in obj.shared_users.all()]
+
+    def get_created_by(self, obj):
+        """Return creator details."""
+        if obj.created_by:
+            return {"id": obj.created_by.id, "email": obj.created_by.email}
+        return None
