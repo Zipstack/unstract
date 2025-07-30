@@ -264,16 +264,14 @@ function DsSettingsCard({ type, endpointDetails, message }) {
   };
 
   const clearDestination = (updatedData) => {
-    const body = { ...destination, ...updatedData };
-
     const requestOptions = {
-      method: "PUT",
+      method: "PATCH",
       url: getUrl(`workflow/endpoint/${destination?.id}/`),
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
       },
-      data: body,
+      data: updatedData,
     };
 
     axiosPrivate(requestOptions)

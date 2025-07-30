@@ -48,14 +48,15 @@ COPY ${BUILD_CONTEXT_PATH}/pyproject.toml ${BUILD_CONTEXT_PATH}/uv.lock ${BUILD_
 USER ${APP_USER}
 
 # Install external dependencies from pyproject.toml
-RUN uv sync --group deploy --locked --no-install-project --no-dev && \
-    .venv/bin/python3 -m ensurepip --upgrade && \
-    uv run opentelemetry-bootstrap -a install
+RUN uv sync --group deploy --locked --no-install-project --no-dev
 
 # -----------------------------------------------
 # FINAL STAGE - Minimal image for production
 # -----------------------------------------------
 FROM ext-dependencies AS production
+
+# Set shell options for better error handling
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Copy application code (this layer changes most frequently)
 COPY --chown=${APP_USER}:${APP_USER} ${BUILD_CONTEXT_PATH} ./
@@ -64,7 +65,8 @@ COPY --chown=${APP_USER}:${APP_USER} ${BUILD_CONTEXT_PATH} ./
 USER ${APP_USER}
 
 # Install just the application
-RUN uv sync --group deploy --locked
+RUN uv sync --group deploy --locked && \
+    uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement -
 
 EXPOSE 3004
 
