@@ -39,12 +39,15 @@ COPY requirements.txt ${APP_HOME}/
 RUN uv pip install --system \
     opentelemetry-distro \
     opentelemetry-exporter-otlp \
-    platformdirs>=3.0.0 && \
-    opentelemetry-bootstrap -a install
+    platformdirs>=3.0.0
+
+# Set shell options for better error handling
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Install project dependencies separately from OpenTelemetry
 # This allows for better caching when only project dependencies change
-RUN uv pip install --system -r requirements.txt
+RUN uv pip install --system -r requirements.txt && \
+    opentelemetry-bootstrap -a requirements | uv pip install --system --requirement -
 
 # Copy the source code after installing all dependencies
 # This ensures that changes to the source code don't invalidate the dependency layers
