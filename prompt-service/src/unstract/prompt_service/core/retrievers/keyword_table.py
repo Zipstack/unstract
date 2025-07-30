@@ -1,8 +1,8 @@
 import logging
 
 from llama_index.core import VectorStoreIndex
-from llama_index.retrievers.bm25 import BM25Retriever
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
+from llama_index.retrievers.bm25 import BM25Retriever
 
 from unstract.prompt_service.core.retrievers.base_retriever import BaseRetriever
 from unstract.prompt_service.exceptions import RetrievalError
@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 
 class KeywordTableRetriever(BaseRetriever):
     """Keyword table retrieval using LlamaIndex's BM25Retriever.
-    
-    BM25 is a ranking function that considers term frequency saturation and 
+
+    BM25 is a ranking function that considers term frequency saturation and
     document length for keyword-based retrieval.
     """
 
@@ -41,22 +41,24 @@ class KeywordTableRetriever(BaseRetriever):
                     ],
                 ),
             )
-            
+
             # Retrieve all nodes for this document
             all_nodes = vector_retriever.retrieve("")  # Empty query to get all nodes
-            
+
             if all_nodes:
                 # Create BM25 retriever from the nodes
                 bm25_retriever = BM25Retriever.from_defaults(
                     nodes=[node.node for node in all_nodes],
                     similarity_top_k=self.top_k,
                 )
-                
+
                 # Retrieve using BM25
                 nodes = bm25_retriever.retrieve(self.prompt)
             else:
                 # Fallback to vector retrieval if no nodes found
-                logger.warning(f"No nodes found for doc_id {self.doc_id}, falling back to vector retrieval")
+                logger.warning(
+                    f"No nodes found for doc_id {self.doc_id}, falling back to vector retrieval"
+                )
                 vector_retriever.similarity_top_k = self.top_k
                 nodes = vector_retriever.retrieve(self.prompt)
 

@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 
 class FusionRetriever(BaseRetriever):
     """Fusion retrieval class using LlamaIndex's native QueryFusionRetriever.
-    
-    This technique generates multiple query variations and combines results 
+
+    This technique generates multiple query variations and combines results
     using reciprocal rank fusion for improved relevance.
     """
 
@@ -24,7 +24,9 @@ class FusionRetriever(BaseRetriever):
             set[str]: A set of text chunks retrieved from the database.
         """
         try:
-            logger.info(f"Retrieving chunks for {self.doc_id} using LlamaIndex QueryFusionRetriever.")
+            logger.info(
+                f"Retrieving chunks for {self.doc_id} using LlamaIndex QueryFusionRetriever."
+            )
 
             # Get the vector store index
             vector_store_index: VectorStoreIndex = self.vector_db.get_vector_store_index()
@@ -70,5 +72,7 @@ class FusionRetriever(BaseRetriever):
             logger.error(f"Error during fusion retrieval for {self.doc_id}: {e}")
             raise RetrievalError(str(e)) from e
         except Exception as e:
-            logger.error(f"Unexpected error during fusion retrieval for {self.doc_id}: {e}")
+            logger.error(
+                f"Unexpected error during fusion retrieval for {self.doc_id}: {e}"
+            )
             raise RetrievalError(f"Unexpected error: {str(e)}") from e
