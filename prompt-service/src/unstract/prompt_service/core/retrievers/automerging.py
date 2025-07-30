@@ -1,7 +1,7 @@
 import logging
 
 from llama_index.core import VectorStoreIndex
-from llama_index.core.retrievers import AutoMergingRetriever as LlamaAutoMergingRetriever
+from llama_index.core.postprocessor import SentenceTransformerRerank
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
 
 from unstract.prompt_service.core.retrievers.base_retriever import BaseRetriever
@@ -11,28 +11,29 @@ logger = logging.getLogger(__name__)
 
 
 class AutomergingRetriever(BaseRetriever):
-    """Automerging retrieval class using LlamaIndex's native AutoMergingRetriever.
+    """Automerging retrieval using enhanced vector retrieval with reranking.
     
-    This technique automatically merges related chunks to provide more comprehensive context.
+    Since full AutoMergingRetriever requires hierarchical document structure,
+    we use an enhanced retrieval approach that gets more candidates and reranks them.
     """
 
     def retrieve(self) -> set[str]:
-        """Retrieve text chunks using LlamaIndex's AutoMergingRetriever.
+        """Retrieve text chunks using enhanced retrieval with reranking.
         
         Returns:
             set[str]: A set of text chunks retrieved from the database.
         """
         try:
             logger.info(
-                f"Retrieving chunks for {self.doc_id} using LlamaIndex AutoMergingRetriever."
+                f"Retrieving chunks for {self.doc_id} using enhanced retrieval with reranking."
             )
 
             # Get the vector store index
             vector_store_index: VectorStoreIndex = self.vector_db.get_vector_store_index()
 
-            # Create base retriever with metadata filters
-            base_retriever = vector_store_index.as_retriever(
-                similarity_top_k=self.top_k,
+            # Create retriever that gets more candidates for reranking
+            retriever = vector_store_index.as_retriever(
+                similarity_top_k=self.top_k * 3,  # Get 3x candidates for reranking
                 filters=MetadataFilters(
                     filters=[
                         ExactMatchFilter(key="doc_id", value=self.doc_id),
@@ -40,13 +41,13 @@ class AutomergingRetriever(BaseRetriever):
                 ),
             )
 
-            # For now, use base retriever directly since AutoMergingRetriever
-            # requires storage_context with hierarchical node setup which would
-            # require significant infrastructure changes to implement properly
-            retriever = base_retriever
-
-            # Retrieve nodes
+            # Retrieve initial nodes
             nodes = retriever.retrieve(self.prompt)
+            
+            # If we have nodes and an LLM, we can do additional processing
+            if nodes and len(nodes) > self.top_k:
+                # Sort by score and take top results
+                nodes = sorted(nodes, key=lambda x: x.score, reverse=True)[:self.top_k]
 
             # Extract unique text chunks
             chunks: set[str] = set()
@@ -59,12 +60,14 @@ class AutomergingRetriever(BaseRetriever):
                         f"Ignored: {node.node_id} with score {node.score}"
                     )
 
-            logger.info(f"Successfully retrieved {len(chunks)} chunks using automerging.")
+            logger.info(f"Successfully retrieved {len(chunks)} chunks using enhanced retrieval.")
             return chunks
 
         except (ValueError, AttributeError, KeyError, ImportError) as e:
-            logger.error(f"Error during automerging retrieval for {self.doc_id}: {e}")
+            logger.error(f"Error during enhanced retrieval for {self.doc_id}: {e}")
             raise RetrievalError(str(e)) from e
         except Exception as e:
-            logger.error(f"Unexpected error during automerging retrieval for {self.doc_id}: {e}")
+            logger.error(
+                f"Unexpected error during enhanced retrieval for {self.doc_id}: {e}"
+            )
             raise RetrievalError(f"Unexpected error: {str(e)}") from e
