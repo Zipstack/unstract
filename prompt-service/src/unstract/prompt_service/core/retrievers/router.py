@@ -66,7 +66,8 @@ class RouterRetriever(BaseRetriever):
                 # Add keyword-based retrieval strategy
                 try:
                     keyword_query_engine = vector_store_index.as_query_engine(
-                        similarity_top_k=self.top_k * 2,  # Get more candidates for keyword matching
+                        similarity_top_k=self.top_k
+                        * 2,  # Get more candidates for keyword matching
                         filters=filters,
                         llm=self.llm,  # Explicit LLM to avoid OpenAI default
                     )
