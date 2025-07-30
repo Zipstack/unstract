@@ -1,0 +1,1843 @@
+
+
+                                                                                                                                                                                                 5/20/2025 11:47 AM 
+
+                                                                                       Rent Roll with Lease Charges 
+                                                                                          1901 South Charles Apartments (61096) 
+                                                                                                  As Of = 11/13/2024 
+
+                                                                                                 Month Year = 11/2024 
+ Unit         Unit Type              Unit Resident     Name                                     Market Charge             Amount       Resident        Other Move In      Lease         Move Out            Balance 
+
+                                    Sq Ft                                                         Rent Code                             Deposit      Deposit              Expiration 
+ Current/Notice/Vacant Residents 
+ 0102         61096B3             1,275.00 t0331031    Agnes Mendoza                           2,275.00 rent              2,656.00        99.00          0.00 9/1/2021    5/31/2025                            0.00 
+
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      Total              2,661.00 
+
+ 0103         61096A2              765.00 t0709704     Rickkell Johnson                        1,817.00 ugarbr               5.00       1,785.00         0.00 10/14/2024 10/13/2025                            5.00 
+
+                                                                                                      rent                1,785.00 
+
+                                                                                                      xrecurr               -89.00 
+
+                                                                                                      xonetime           -1,696.00 
+                                                                                                      Total                  5.00 
+
+ 0104         61096B3             1,275.00 t0672312    Lucy Rawson                             2,275.00 rent              1,701.00      1,470.00         0.00 6/21/2024   1/22/2026                            0.00 
+
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      xrecurr               -85.00 
+                                                                                                      Total              1,621.00 
+
+0105          61096B3             1,275.00 Im4         Rachel Shuster                          2,220.00 rent              1,764.00       500.00          0.00 12/1/2018   2/28/2025                            0.00 
+
+                                                                                                      ugarbr                 5.00 
+                                                                                                      Total              1,769.00 
+
+0106          61096B3             1,275.00 t0424995    Angelina Calabro                        2,275.00 rent              2,441.00       250.00         0.00 5/21/2022    8/20/2025                            0.00 
+
+                                                                                                      ugarbr                 5.00 
+                                                                                                      xrecurr              -122.00 
+
+                                                                                                      petrent               50.00 
+
+                                                                                                      Total              2,374.00 
+
+0107          61096B3             1,275.00 t0654848    Dylan Doherty                           2,235.00 ugarbr               5.00        250.00         0.00 5/16/2024    5/15/2025                            0.00 
+
+                                                                                                      rent                2,251.00 
+
+                                                                                                      Total              2,256.00 
+
+0108          61096A3              710.00 t0630937     Eric Martin                             1,866.00 ugarbr               5.00      1,962.00         0.00 3/22/2024    6/21/2025                           50.00 
+
+                                                                                                      rent                1,712.00 
+
+                                                                                                      Total              1,717.00 
+
+0109          61096B3             1,275.00 t0653982    Timothy Skillin                         2,225.00 ugarbr               5.00         99.00         0.00 5/17/2024    8/16/2025                            0.00 
+
+                                                                                                      rent                2,160.00 
+
+                                                                                                      xrecurr              -108.00 
+
+                                                                                                      park                 150.00 
+                                                                                                      Total              2,207.00 
+
+0110          61096A3              710.00 VACANT       VACANT                                  1,866.00                      0.00          0.00         0.00                                                   0.00 
+
+                                                                                                      Total                  0.00 
+
+                                                                                                     Page 1 of 24 
+<<<
+
+                                                                                                                                                                                                 5/20/2025 11:47 AM 
+
+                                                                                       Rent Roll with Lease Charges 
+                                                                                          1901 South Charles Apartments (61096) 
+
+                                                                                                  As Of = 11/13/2024 
+
+                                                                                                 Month Year = 11/2024 
+ Unit         Unit Type              Unit Resident     Name                                     Market Charge             Amount       Resident        Other Move In      Lease         Move Out            Balance 
+
+                                    Sq Ft                                                         Rent Code                             Deposit      Deposit              Expiration 
+ 0111         61096B3             1,275.00 t0396963    Kendall Klein                           2,225.00 rent              2,256.00       250.00          0.00 4/22/2022   1/21/2026                            0.00 
+
+                                                                                                      ugarbr                  5.00 
+
+                                                                                                       park                 150.00 
+
+                                                                                                      xrecurr              -113.00 
+
+                                                                                                      Total              2,298.00 
+
+ 0112         61096A2              765.00 t0103496     Ayana Albury                            1,857.00 rent              1,393.00       250.00          0.00 10/29/2020 10/28/2025                            0.00 
+
+                                                                                                      ugarbr                 5.00 
+                                                                                                      Total              1,398.00 
+
+ 0113         61096A1              525.00 t0608704     James Chayka                            1,686.00 ugarbr               5.00       1,706.00         0.00 1/8/2024    4/7/2025                             0.00 
+
+                                                                                                      rent                1,456.00 
+
+                                                                                                      xrecurr               -73.00 
+
+                                                                                                      Total              1,388.00 
+
+0114          61096A1              525.00 t0317729     Saif Ratul                              1,736.00 rent              1,829.00       250.00          0.00 
+                                                                                                                                                             8/17/2021    1/16/2026                            0.00 
+                                                                                                      petrent               50.00 
+
+                                                                                                      ugarbr                 5.00 
+                                                                                                      Total              1,884.00 
+
+0115          61096A1              525.00 t0409499     Roberta Booker                          1,686.00 rent              1,722.00      1,812.00         0.00 4/9/2022    1/8/2026                             0.00 
+
+                                                                                                      ugarbr                 5.00 
+                                                                                                      Total              1,727.00 
+
+0117          61096B2             1,052.00 t0664553    Brady Hall                              2,147.00 ugarbr               5.00         99.00         0.00 7/6/2024     7/5/2025                             0.00 
+
+                                                                                                      rent                2,050.00 
+
+                                                                                                      xrecurr              -103.00 
+                                                                                                      petrent               50.00 
+
+                                                                                                      park                 150.00 
+                                                                                                      Total              2,152.00 
+
+0118          61096A3              710.00 t0526149     Shauna Bidgood                          1,866.00 rent              1,597.00        99.00         0.00 4/27/2023    11/30/2024                          12.87 
+
+                                                                                                      ugarbr                 5.00 
+                                                                                                      xrecurr               -80.00 
+                                                                                                      Total              1,522.00 
+
+0119          61096A2              765.00 t0443031     Bryce De Iuliis                         1,807.00 rent              1,910.00     2,111.00         0.00 
+                                                                                                                                                             7/15/2022    7/14/2025                           -5.66 
+                                                                                                      ugarbr                 5.00 
+                                                                                                      Total              1,915.00 
+
+0120          61096A3              710.00 VACANT      VACANT                                   1,851.00                      0.00          0.00         0.00                                                   0.00 
+
+                                                                                                      Total                  0.00 
+
+                                                                                                     Page 2 of 24 
+<<<
+
+                                                                                                                                                                                                 5/20/2025 11:47 AM 
+
+                                                                                      Rent Roll with Lease Charges 
+                                                                                          1901 South Charles Apartments (61096) 
+
+                                                                                                  As Of = 11/13/2024 
+
+                                                                                                 Month Year = 11/2024 
+ Unit         Unit Type              Unit Resident     Name                                    Market Charge              Amount       Resident        Other Move In      Lease         Move Out            Balance 
+
+                                    Sq Ft                                                        Rent Code                              Deposit      Deposit              Expiration 
+ 0121         61096B3             1,275.00 t0650894    Ryan Masing                             2,215.00 ugarbr               5.00        250.00          0.00 5/17/2024   8/16/2025                            0.00 
+
+                                                                                                      rent                2,150.00 
+
+                                                                                                      park                  150.00 
+
+                                                                                                      Total              2,305.00 
+
+ 0122         61096A2              765.00 t0666885     Noelle Bright                           1,857.00 rent              1,499.00        99.00          0.00 12/19/2020 12/18/2025                           67.33 
+
+                                                                                                      ugarbr                  5.00 
+
+                                                                                                      xrecurr               -75.00 
+
+                                                                                                      Total              1,429.00 
+
+ 0123         61096A2              765.00 t0033627     William Plunkett                        1,797.00 rent              1,676.00       250.00          0.00 11/1/2019   12/31/2025                           0.00 
+
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      Total              1,681.00 
+
+0124          61096A2              765.00 t0103403     Christine Prout                         1,857.00 rent              1,393.00        99.00          0.00 10/13/2020 10/12/2025                            0.00 
+
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      xrecurr               -70.00 
+
+                                                                                                      Total              1,328.00 
+
+0126          61096A2              765.00 VACANT       VACANT                                  1,857.00                      0.00          0.00          0.00                                                  0.00 
+
+                                                                                                      Total                  0.00 
+
+0128          61096B3             1,275.00 t0370123    Olivia Webb                             2,275.00 rent              2,441.00        99.00         0.00 12/1/2021    5/31/2025                            0.00 
+
+                                                                                                      park                 150.00 
+
+                                                                                                      xrecurr              -122.00 
+
+                                                                                                      Total              2,469.00 
+
+0130          61096A3              710.00 t0600439     Cianna Giordano                         1,866.00 ugarbr               5.00         99.00         0.00 12/15/2023   11/14/2024    11/14/2024           921.50 
+
+                                                                                                      rent                1,709.00 
+
+                                                                                                      xrecurr               -85.00 
+
+                                                                                                      petrent               50.00 
+
+                                                                                                      Total              1,679.00 
+
+0131          61096A2              765.00 VACANT       VACANT                                  1,787.00                      0.00          0.00         0.00                                                   0.00 
+
+                                                                                                      Total                  0.00 
+
+0132          61096A3              710.00 t0596676     Amy Dixon                               1,866.00 ugarbr               5.00         99.00         0.00 12/29/2023   1/28/2025                           43.52 
+
+                                                                                                      rent                1,683.00 
+
+                                                                                                      xrecurr               -84.00 
+
+                                                                                                      Total              1,604.00 
+
+0133          61096B3            1,275.00 t0521836     Peter Vorel                             2,220.00 park               150.00         99.00         0.00 5/12/2023    11/11/2025                           0.00 
+
+                                                                                                      rent                2,291.00 
+
+                                                                                                     Page 3 of 24 
+<<<
+
+                                                                                                                                                                                                                 5/20/2025 11:47 AM 
+
+                                                                                             Rent Roll with Lease Charges 
+                                                                                                 1901 South Charles Apartments (61096) 
+                                                                                                         As Of = 11/13/2024 
+
+                                                                                                        Month Year = 11/2024 
+Unit           Unit Type               Unit Resident       Name                                        Market Charge                Amount        Resident         Other Move In        Lease          Move Out             Balance 
+
+                                       Sq Ft                                                             Rent Code                                 Deposit        Deposit               Expiration 
+
+                                                                                                              ugarbr                    5.00 
+
+                                                                                                              xrecurr                -115.00 
+                                                                                                               Total               2,331.00 
+
+0135           61096S1                475.00 t0689140      Rachel Richardson                          1,505.00 ugarbr                   5.00         99.00           0.00 9/27/2024     6/26/2025                               0.00 
+
+                                                                                                              rent                  1,536.00 
+
+                                                                                                              xrecurr                 -75.00 
+
+                                                                                                              Total                1,466.00 
+
+0137           61096A2               765.00 t0479247       Alberto Rotger                             1,807.00 rent                 1,694.00         99.00           0.00 11/14/2022    5/13/2025                               0.00 
+
+                                                                                                              ugarbr                   5.00 
+                                                                                                              xrecurr                 -85.00 
+
+                                                                                                              Total                1,614.00 
+
+0139           61096S1               475.00 t0626667       Desmond Stone                              1,520.00 ugarbr                  5.00          99.00           0.00 3/15/2024     6/14/2025                             -45.38 
+
+                                                                                                              rent                  1,436.00 
+
+                                                                                                              xrecurr                 -72.00 
+
+                                                                                                              Total                1,369.00 
+
+0141          61096B2               1,052.00 t0368519      Idrees Razick                              2,147.00 rent                 1,982.00         99.00           0.00 11/23/2021    8/19/2025                              44.46 
+
+                                                                                                              ugarbr                   5.00 
+                                                                                                              xrecurr                 -99.00 
+
+                                                                                                              park                   150.00 
+
+                                                                                                              park                   150.00 
+                                                                                                              Total               2,188.00 
+
+0143          61096B2               1,052.00 t0676214      Francesca Nacion                           2,167.00 ugarbr                  5.00          99.00           0.00 8/27/2024     11/26/2025                              5.00 
+
+                                                                                                              rent                  2,071.00 
+
+                                                                                                              xrecurr                -106.00 
+
+                                                                                                              parkpub                150.00 
+                                                                                                              Total                2,120.00 
+
+0145          61096S1                475.00 t0090608       Leonardo Coleman                           1,550.00 rent                 1,604.00         99.00           0.00 8/29/2020     3/28/2025                               0.00 
+
+                                                                                                              ugarbr                   5.00 
+                                                                                                              xrecurr                 -80.00 
+
+                                                                                                              Total               1,529.00 
+
+0147          61096B3               1,275.00 t0648914      Allison Pooner                             2,255.00 ugarbr                  5.00          99.00           0.00 5/17/2024     5/16/2025                               0.00 
+
+                                                                                                              rent                 2,255.00 
+
+                                                                                                              xrecurr                -116.00 
+                                                                                                              petrent                 50.00 
+
+                                                                                                              Total               2,194.00 
+
+                                                                                                             Page 4 of 24 
+<<<
+
+                                                                                                                                                                                                                 5/20/2025 11:47 AM 
+
+                                                                                             Rent Roll with Lease Charges 
+                                                                                                 1901 South Charles Apartments (61096) 
+
+                                                                                                         As Of = 11/13/2024 
+
+                                                                                                        Month Year = 11/2024 
+Unit           Unit Type               Unit Resident       Name                                        Market Charge                Amount        Resident         Other Move In        Lease          Move Out             Balance 
+
+                                       Sq Ft                                                             Rent Code                                 Deposit        Deposit               Expiration 
+
+0149           61096B3              1,275.00 t0039266      Marissa Trucco                             2,255.00 rent                 1,856.00        250.00           0.00 11/11/2019    4/10/2025                               0.00 
+
+                                                                                                               petrent                 50.00 
+
+                                                                                                               ugarbr                   5.00 
+
+                                                                                                              xrecurr                 -93.00 
+
+                                                                                                               Total               1,818.00 
+
+0151           61096A2                765.00 VACANT        VACANT                                     1,837.00                          0.00          0.00           0.00                                                       0.00 
+
+                                                                                                              Total                    0.00 
+
+0153           61096S1                475.00 t0666784      Kelly Piserchia                            1,530.00 ugarbr                   5.00        250.00           0.00 8/1/2024 
+                                                                                                                                                                                        7/31/2025                               0.00 
+                                                                                                              rent                  1,487.00 
+
+                                                                                                              petrent                 50.00 
+
+                                                                                                              Total                1,542.00 
+
+0155           61096A1               525.00 t0603597       Meredith Edwards                           1,696.00 ugarbr                  5.00        1,812.00          0.00 12/26/2023 
+                                                                                                                                                                                        11/25/2024                              0.00 
+                                                                                                              rent                  1,562.00 
+
+                                                                                                              xrecurr                 -78.00 
+
+                                                                                                              Total                1,489.00 
+
+0157          61096A2                765.00 t0054220       Justine Yu                                 1,817.00 rent                 1,435.00         99.00           0.00 5/5/2020 
+                                                                                                                                                                                        5/4/2025                                0.00 
+
+                                                                                                              ugarbr                   5.00 
+
+                                                                                                              xrecurr                 -72.00 
+
+                                                                                                              Total                1,368.00 
+
+0200          61096A3                710.00 t0661007       Adam Sokolski                              1,876.00 ugarbr                  5.00          99.00           0.00 5/30/2024 
+                                                                                                                                                                                        8/29/2025                               0.00 
+                                                                                                              rent                  1,922.00 
+
+                                                                                                              xrecurr                 -96.00 
+
+                                                                                                              petrent                 50.00 
+
+                                                                                                              Total                1,881.00 
+
+0201          61096A2                765.00 t0722251       FNU Krishnakumar Divakar Nangeelil         1,852.00 ugarbr                  5.00       1,811.00           0.00 11/8/2024 
+                                                                                                                                                                                        2/7/2026                              -25.01 
+                                                                                                              rent                  1,811.00 
+
+                                                                                                              xrecurr                 -91.00 
+
+                                                                                                              Total               1,725.00 
+
+0202          61096B3               1,275.00 t0592750      Carey DeWalt                               2,305.00 ugarbr                  5.00          99.00           0.00 12/1/2023     2/28/2025                               0.00 
+
+                                                                                                              rent                 2,190.00 
+
+                                                                                                              petrent                 50.00 
+
+                                                                                                              xrecurr                -110.00 
+
+                                                                                                              park                   150.00 
+
+                                                                                                              Total               2,285.00 
+
+0203          61096A2                765.00 t0026541      Melissa Haas                                1,827.00 rent                 1,708.00         99.00           0.00 11/10/2019    5/9/2025                              104.12 
+
+                                                                                                             Page 5 of 24 
+<<<
+
+                                                                                                                                                                                                 5/20/2025 11:47 AM 
+
+                                                                                       Rent Roll with Lease Charges 
+                                                                                          1901 South Charles Apartments (61096) 
+                                                                                                  As Of = 11/13/2024 
+
+                                                                                                 Month Year = 11/2024 
+ Unit         Unit Type              Unit Resident     Name                                     Market Charge             Amount       Resident        Other Move In      Lease         Move Out            Balance 
+
+                                    Sq Ft                                                         Rent Code                             Deposit      Deposit              Expiration 
+
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      xrecurr               -85.00 
+                                                                                                      Total              1,628.00 
+
+ 0204         61096B3             1,275.00 t0619716    Bailey Benedick                         2,305.00 ugarbr               5.00        250.00          0.00 2/16/2024   5/15/2025                            5.00 
+
+                                                                                                      rent                2,240.00 
+
+                                                                                                      park                  150.00 
+                                                                                                      Total              2,395.00 
+
+ 0205         61096B3             1,275.00 t0656006    Kylee Damiano                           2,250.00 ugarbr               5.00        250.00          0.00 5/17/2024   8/16/2025                            0.00 
+
+                                                                                                      rent                2,185.00 
+
+                                                                                                      petrent               50.00 
+                                                                                                      Total              2,240.00 
+
+0206          61096B3             1,275.00 t0478377    Darreisha Brock                         2,305.00 rent              2,299.00      2,332.00         0.00 12/29/2022 6/28/2025                             0.00 
+
+                                                                                                      ugarbr                 5.00 
+                                                                                                      xrecurr              -115.00 
+
+                                                                                                      Total              2,189.00 
+
+0207          61096B3             1,275.00 t0142385    Ayasha Morris                           2,265.00 rent              1,746.00       250.00          0.00 1/2/2021    1/1/2026                             0.00 
+
+                                                                                                      ugarbr                 5.00 
+                                                                                                      Total              1,751.00 
+
+0208          61096A3              710.00 t0597875     William Sapp                            1,836.00 ugarbr               5.00         99.00          0.00 12/15/2023 1/14/2025                             0.00 
+
+                                                                                                      rent                1,737.00 
+
+                                                                                                      xrecurr               -87.00 
+                                                                                                      Total              1,655.00 
+
+0209          61096B3             1,275.00 VACANT      VACANT                                  2,265.00                      0.00          0.00         0.00                                                   0.00 
+
+                                                                                                      Total                  0.00 
+
+0210          61096A3              710.00 t0661467     Andrew Doran                            1,836.00 ugarbr               5.00         99.00         0.00 8/3/2024     8/2/2025                             0.00 
+
+                                                                                                      rent                1,908.00 
+
+                                                                                                      xrecurr               -95.00 
+                                                                                                      Total              1,818.00 
+
+0211          61096B3             1,275.00 t0637183    Rachel Rothwell                         2,265.00 ugarbr               5.00         99.00         0.00 4/5/2024     7/4/2025                             0.00 
+
+                                                                                                      rent                2,203.00 
+
+                                                                                                      xrecurr              -110.00 
+                                                                                                      Total              2,098.00 
+
+0212          61096A2              765.00 t0656588     Ryan Cohen                              1,827.00 ugarbr               5.00         99.00         0.00 6/14/2024    9/13/2025                            0.00 
+
+                                                                                                      rent                1,841.00 
+
+                                                                                                     Page 6 of 24 
+<<<
+
+                                                                                                                                                                                                 5/20/2025 11:47 AM 
+
+                                                                                       Rent Roll with Lease Charges 
+                                                                                          1901 South Charles Apartments (61096) 
+
+                                                                                                  As Of = 11/13/2024 
+
+                                                                                                 Month Year = 11/2024 
+ Unit         Unit Type              Unit Resident     Name                                     Market Charge             Amount       Resident        Other Move In      Lease         Move Out            Balance 
+
+                                    Sq Ft                                                         Rent Code                             Deposit      Deposit              Expiration 
+
+                                                                                                      xrecurr               -92.00 
+                                                                                                      Total              1,754.00 
+
+ 0213         61096A1              525.00 t0681527     Sela Plummer                            1,706.00 ugarbr               5.00        250.00          0.00 8/2/2024    11/1/2025                            0.00 
+
+                                                                                                      rent                1,801.00 
+                                                                                                      Total              1,806.00 
+
+ 0214         61096A1              525.00 t0142080     Sarah Tate                              1,726.00 rent              1,408.00       250.00          0.00 12/7/2020   12/6/2024     12/6/2024              0.00 
+
+                                                                                                      petrent                50.00 
+
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      Total              1,463.00 
+
+ 0215         61096A1              525.00 t0160720     Cassiopeia Brown                        1,706.00 rent              1,456.00       250.00          0.00 2/12/2021   2/11/2026                            0.00 
+
+                                                                                                      petrent               50.00 
+
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      xrecurr               -73.00 
+                                                                                                      Total              1,438.00 
+
+0216          61096S1              475.00 t0369347     Tessa Sayers                            1,540.00 rent              1,456.00       250.00         0.00 12/4/2021 
+                                                                                                                                                                          9/3/2025                             0.00 
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      Total              1,461.00 
+
+0217          61096B2             1,052.00 t0546987    Luis Beltran                            2,157.00 ugarbr               5.00        250.00         0.00 8/15/2023 
+                                                                                                                                                                          11/14/2024    11/14/2024         2,101.25 
+                                                                                                      rent                1,999.00 
+
+                                                                                                      Total              2,004.00 
+
+0218          61096A3              710.00 t0701899     Dylan Shreve                            1,836.00 ugarbr               5.00        250.00 
+                                                                                                                                                        0.00 9/20/2024    7/19/2025                           15.00 
+                                                                                                      rent                1,938.00 
+
+                                                                                                      xonetime           -1,938.00 
+                                                                                                      Total                  5.00 
+
+0219          61096A2              765.00 t0065282     Eugene Younger                          1,837.00 rent              1,506.00     1,366.00         0.00 6/30/2020 
+                                                                                                                                                                          12/31/2024                       2,052.46 
+                                                                                                      ugarbr                 5.00 
+                                                                                                      xrecurr               -75.00 
+                                                                                                      Total              1,436.00 
+
+0220          61096A3              710.00 t0145433    Justin Sweet                             1,821.00 rent              1,684.00       250.00         0.00 2/3/2021 
+                                                                                                                                                                          1/31/2026                            0.00 
+                                                                                                      ugarbr                 5.00 
+                                                                                                      Total              1,689.00 
+
+0221          61096B3            1,275.00 t0204639    Jack Rogers                             2,245.00 rent               2,341.00       250.00         0.00 5/20/2021 
+                                                                                                                                                                          2/19/2025    2/19/2025               0.00 
+                                                                                                      park                 150.00 
+
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                     Page 7 of 24 
+<<<
+
+                                                                                                                                                                                                 5/20/2025 11:47 AM 
+
+                                                                                       Rent Roll with Lease Charges 
+                                                                                          1901 South Charles Apartments (61096) 
+                                                                                                  As Of = 11/13/2024 
+
+                                                                                                 Month Year = 11/2024 
+ Unit         Unit Type              Unit Resident     Name                                     Market Charge             Amount       Resident        Other Move In      Lease         Move Out            Balance 
+
+                                    Sq Ft                                                         Rent Code                             Deposit      Deposit              Expiration 
+
+                                                                                                      Total              2,496.00 
+
+ 0222         61096A2              765.00 t0093122     Elizabeth Niedbala                      1,847.00 rent              1,833.00        99.00          0.00 9/15/2020   3/12/2025                            0.00 
+
+                                                                                                      ugarbr                 5.00 
+                                                                                                      xrecurr               -92.00 
+                                                                                                      Total              1,746.00 
+
+ 0223         61096A2              765.00 t0284097     Ankita Shashidhar                       1,827.00 rent              2,047.00        99.00          0.00 7/29/2021   1/28/2025                           24.89 
+
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      xrecurr              -102.00 
+                                                                                                      Total              1,950.00 
+
+0224          61096A2              765.00 t0633643     Bridget Bayer                           1,847.00 ugarbr               5.00        250.00          0.00 3/29/2024   4/28/2025                            0.00 
+
+                                                                                                      rent                1,801.00 
+
+                                                                                                      petrent               50.00 
+
+                                                                                                      petrent               50.00 
+                                                                                                      Total              1,906.00 
+
+0225          61096S1              475.00 t0589603     Gonn Chang                              1,520.00 ugarbr               5.00        250.00         0.00 
+                                                                                                                                                             11/17/2023   2/16/2025                            0.00 
+                                                                                                      rent                1,441.00 
+
+                                                                                                      Total              1,446.00 
+
+0226          61096A2              765.00 t0404493     CINTHIA RUIZ                            1,847.00 rent              1,920.00        99.00         0.00 3/18/2022    9/17/2025                            0.00 
+
+                                                                                                      petrent               50.00 
+
+                                                                                                      ugarbr                 5.00 
+                                                                                                      xrecurr               -96.00 
+                                                                                                      Total              1,879.00 
+
+0227          61096S1              475.00 t0516752     Kyle OShea                              1,530.00 rent              1,536.00       250.00         0.00 7/14/2023    1/13/2026                        1,590.50 
+
+                                                                                                      ugarbr                 5.00 
+                                                                                                      Total              1,541.00 
+
+0228          61096B3             1,275.00 t0641436    Gwendolin Schemm                        2,265.00 ugarbr               5.00         99.00         0.00 4/18/2024    7/17/2025                            0.00 
+
+                                                                                                      rent                2,403.00 
+
+                                                                                                      xrecurr              -120.00 
+
+                                                                                                      park                 150.00 
+                                                                                                      Total              2,438.00 
+
+0229          61096A1              525.00 t0634419     Michael Tornes                          1,716.00 ugarbr               5.00      2,098.00         0.00 6/14/2024    6/13/2025                            0.00 
+
+                                                                                                      rent                1,848.00 
+
+                                                                                                      Total              1,853.00 
+
+0230          61096A3              710.00 t0340696     Cherelle Lee                            1,836.00 rent              1,984.00     1,890.00         0.00 9/2/2021     3/1/2025      11/22/2024           507.67 
+
+                                                                                                     Page 8 of 24 
+<<<
+
+                                                                                                                                                                                                 5/20/2025 11:47 AM 
+
+                                                                                       Rent Roll with Lease Charges 
+                                                                                          1901 South Charles Apartments (61096) 
+                                                                                                  As Of = 11/13/2024 
+
+                                                                                                 Month Year = 11/2024 
+ Unit         Unit Type              Unit Resident     Name                                     Market Charge             Amount       Resident        Other Move In      Lease         Move Out            Balance 
+
+                                    Sq Ft                                                         Rent Code                             Deposit      Deposit              Expiration 
+
+                                                                                                      ugarbr                  5.00 
+
+                                                                                                      xrecurr               -99.00 
+                                                                                                      Total              1,890.00 
+
+ 0231         61096A2              765.00 t0650291     Allison Randolph                        1,802.00 ugarbr               5.00         99.00          0.00 6/24/2024   9/23/2025                            0.00 
+
+                                                                                                      rent                1,915.00 
+
+                                                                                                      xrecurr               -96.00 
+
+                                                                                                      Total              1,824.00 
+
+ 0232         61096A3              710.00 t0587639     Dondre Yon                              1,836.00 rent              1,886.00        99.00          0.00 11/16/2023 12/15/2025                           36.32 
+
+                                                                                                      ugarbr                 5.00 
+                                                                                                      xrecurr               -94.00 
+
+                                                                                                      Total              1,797.00 
+
+0233          61096B3             1,275.00 t0636481    Cameran Burt                            2,255.00 ugarbr               5.00         99.00          0.00 4/2/2024    7/1/2025                             0.00 
+
+                                                                                                      rent                2,000.00 
+
+                                                                                                      xrecurr              -100.00 
+
+                                                                                                      park                  150.00 
+                                                                                                      Total              2,055.00 
+
+0234          61096B3             1,275.00 t0575796    Jennifer Barrett                        2,265.00 rent              1,961.00       250.00          0.00 10/4/2023   8/8/2025                             0.00 
+
+                                                                                                      ugarbr                 5.00 
+                                                                                                      Total              1,966.00 
+
+0235          61096S1              475.00 t0609901     Rubiya Tasnim                           1,550.00 ugarbr               5.00         99.00         0.00 1/12/2024    1/11/2025                        1,508.98 
+
+                                                                                                      rent                1,492.00 
+
+                                                                                                      xrecurr               -75.00 
+                                                                                                      Total              1,422.00 
+
+0236          61096A3              710.00 t0578806     Carter Towers                           1,836.00 ugarbr               5.00        250.00         0.00 10/30/2023   1/29/2025                            0.00 
+
+                                                                                                      rent                1,736.00 
+
+                                                                                                      petrent               50.00 
+                                                                                                      Total              1,791.00 
+
+0237          61096A2              765.00 t0422753     Benjamin Koloff                         1,837.00 rent              1,947.00        99.00         0.00 5/7/2022     8/6/2025                             0.00 
+
+                                                                                                      petrent              100.00 
+
+                                                                                                      ugarbr                 5.00 
+                                                                                                      xrecurr               -97.00 
+
+                                                                                                      Total              1,955.00 
+
+0239          61096S1              475.00 t0664106     Maura Tewey                             1,530.00 ugarbr               5.00        250.00         0.00 7/5/2024     10/4/2025                            0.00 
+
+                                                                                                      rent                1,449.00 
+
+                                                                                                      Total              1,454.00 
+
+                                                                                                     Page 9 of 24 
+<<<
+
+                                                                                                                                                                                                                 5/20/2025 11:47 AM 
+
+                                                                                             Rent Roll with Lease Charges 
+                                                                                                 1901 South Charles Apartments (61096) 
+
+                                                                                                          As Of = 11/13/2024 
+
+                                                                                                        Month Year = 11/2024 
+Unit           Unit Type               Unit Resident       Name                                        Market Charge                Amount        Resident         Other Move In        Lease 
+                                                                                                                                                                                                       Move Out             Balance 
+                                       Sq Ft                                                             Rent Code                                 Deposit        Deposit               Expiration 
+
+0241           61096B2              1,052.00 t0420928      Corey Jenkins                              2,157.00 rent                 2,125.00         99.00 
+                                                                                                                                                                     0.00 7/7/2022      1/6/2025                                0.00 
+                                                                                                               park                   150.00 
+
+                                                                                                               ugarbr                   5.00 
+                                                                                                               xrecurr               -106.00 
+                                                                                                               Total               2,174.00 
+
+0243           61096B2              1,052.00 t0453734      Mackenzie Niness                           2,157.00 rent                 2,169.00         99.00           0.00 
+                                                                                                                                                                          9/18/2022     3/17/2025                               0.00 
+                                                                                                               park                   150.00 
+                                                                                                               petrent                 50.00 
+
+                                                                                                              ugarbr                    5.00 
+
+                                                                                                              xrecurr                -108.00 
+                                                                                                              Total                2,266.00 
+
+0245           61096S1               475.00 t0055994       Nathan Weinstock                           1,540.00 rent                 1,485.00         99.00 
+                                                                                                                                                                     0.00 5/15/2020     2/14/2025                               0.00 
+                                                                                                              ugarbr                   5.00 
+                                                                                                              xrecurr                 -74.00 
+
+                                                                                                              Total                1,416.00 
+
+0247          61096B3               1,275.00 t0529330      Hannah Merrifield                          2,265.00 rent                 2,431.00         99.00 
+                                                                                                                                                                     0.00 5/12/2023     5/11/2025                               0.00 
+                                                                                                              park                   150.00 
+
+                                                                                                              ugarbr                   5.00 
+
+                                                                                                              xrecurr                -122.00 
+                                                                                                              Total               2,464.00 
+
+0249          61096B3               1,275.00 t0583652      Emily Schultz                              2,265.00 ugarbr                  5.00          99.00 
+                                                                                                                                                                     0.00 12/22/2023    3/21/2025                               0.00 
+                                                                                                              rent                  2,400.00 
+
+                                                                                                              xrecurr                -120.00 
+
+                                                                                                              park                   150.00 
+                                                                                                              Total               2,435.00 
+
+0251          61096A2                765.00 t0113570       Emily Finch                                1,847.00 rent                 1,527.00      1,385.00 
+                                                                                                                                                                     0.00 10/29/2020    10/28/2025                              0.00 
+                                                                                                              ugarbr                   5.00 
+                                                                                                              Total               1,532.00 
+
+0253          61096S1                475.00 t0293194       Katherine Kessinger                        1,540.00 rent                1,668.00          99.00 
+                                                                                                                                                                     0.00 8/1/2021      4/30/2025                               0.00 
+                                                                                                              ugarbr                   5.00 
+                                                                                                              xrecurr                -83.00 
+
+                                                                                                              Total               1,590.00 
+
+0255          61096A1                525.00 t0437825       Ethan Welch                                1,706.00 rent                1,899.00          99.00 
+                                                                                                                                                                     0.00 7/1/2022      6/30/2025                               0.00 
+                                                                                                              ugarbr                   5.00 
+                                                                                                              xrecurr                 -95.00 
+
+                                                                                                            Page 10 of 24 
+<<<
+
+                                                                                                                                                                                                 5/20/2025 11:47 AM 
+
+                                                                                       Rent Roll with Lease Charges 
+                                                                                          1901 South Charles Apartments (61096) 
+
+                                                                                                  As Of = 11/13/2024 
+
+                                                                                                 Month Year = 11/2024 
+ Unit         Unit Type              Unit Resident     Name                                     Market Charge             Amount       Resident        Other Move In 
+                                                                                                                                                                          Lease         Move Out            Balance 
+                                    Sq Ft                                                         Rent Code                             Deposit      Deposit              Expiration 
+
+                                                                                                      Total              1,809.00 
+
+ 0257         61096B3             1,275.00 t0641156    Sean Burke                              2,265.00 ugarbr                5.00       250.00 
+                                                                                                                                                         0.00 4/19/2024   7/18/2025                            0.00 
+
+                                                                                                      rent                2,203.00 
+
+                                                                                                       park                 150.00 
+
+                                                                                                      Total              2,358.00 
+
+ 0259         61096B1             1,020.00 t0646295    Molly Mendelson                         2,208.00 ugarbr                5.00        99.00          0.00 7/12/2024 
+                                                                                                                                                                          7/11/2025                            0.00 
+                                                                                                      rent                2,071.00 
+
+                                                                                                      xrecurr              -104.00 
+
+                                                                                                      petrent               50.00 
+
+                                                                                                      park                  150.00 
+
+                                                                                                      Total              2,172.00 
+
+0261          61096A1              525.00 Im78         Tyler Szarko                            1,706.00 rent              2,150.00       500.00 
+                                                                                                                                                         0.00 9/12/2018   5/31/2025                            0.00 
+                                                                                                      petrent               50.00 
+
+                                                                                                      petrent               50.00 
+
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      Total              2,255.00 
+
+0263          61096B2             1,052.00 t0467477    Michael Brown                           2,157.00 rent              2,027.00        99.00          0.00 11/1/2022 
+                                                                                                                                                                          4/30/2025                         -508.00 
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      xrecurr              -101.00 
+
+                                                                                                      park                 150.00 
+
+                                                                                                      Total              2,081.00 
+
+0300          61096A3              710.00 t0665171     Nicolette Amato                         1,851.00 ugarbr               5.00         99.00 
+                                                                                                                                                        0.00 8/1/2024     7/31/2025                            0.00 
+                                                                                                      rent                1,926.00 
+
+                                                                                                      xrecurr               -96.00 
+
+                                                                                                      Total              1,835.00 
+
+0301          61096A2              765.00 t0512604     Tejas Paranjpe                          1,867.00 rent              1,974.00        99.00 
+                                                                                                                                                        0.00 3/24/2023    4/23/2025                            0.00 
+                                                                                                      petrent               50.00 
+
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      xrecurr               -99.00 
+
+                                                                                                      Total              1,930.00 
+
+0302          61096B3            1,275.00 t0365365     Briana Watson                          2,280.00 rent               1,884.00       250.00         0.00 11/2/2021    5/18/2025                            0.00 
+
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      Total              1,889.00 
+
+0303          61096A2              765.00 t0512378    Melanie Dato                             1,842.00 rent              2,006.00        99.00         0.00 5/19/2023    4/18/2025                            0.00 
+
+                                                                                                      park                 150.00 
+
+                                                                                                    Page 11 of 24 
+<<<
+
+                                                                                                                                                                                                 5/20/2025 11:47 AM 
+
+                                                                                       Rent Roll with Lease Charges 
+                                                                                          1901 South Charles Apartments (61096) 
+                                                                                                  As Of = 11/13/2024 
+
+                                                                                                 Month Year = 11/2024 
+ Unit         Unit Type              Unit Resident     Name                                     Market Charge             Amount       Resident        Other Move In      Lease         Move Out            Balance 
+
+                                    Sq Ft                                                         Rent Code                             Deposit      Deposit              Expiration 
+
+                                                                                                      ugarbr                  5.00 
+                                                                                                      Total              2,161.00 
+
+ 0304         61096B3             1,275.00 Im84        Matthew Jackson                         2,280.00 rent              2,156.00         0.00          0.00 4/2/2015    6/30/2025                            0.00 
+
+                                                                                                      petrent                50.00 
+
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      park                  150.00 
+                                                                                                      Total              2,361.00 
+
+ 0305         61096B3             1,275.00 t0647689    Kevin Mccarthy                          2,265.00 ugarbr               5.00         99.00          0.00 5/17/2024   8/16/2025                            0.00 
+
+                                                                                                      rent                2,312.00 
+
+                                                                                                      xrecurr              -116.00 
+
+                                                                                                      Total              2,201.00 
+
+0306          61096B3             1,275.00 t0141438    John Diss                               2,280.00 rent              1,707.00       250.00          0.00 12/2/2020   12/1/2025                            0.00 
+
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      park                 150.00 
+                                                                                                      Total              1,862.00 
+
+0307          61096B3             1,275.00 t0719179    Riley Mohler                            2,280.00 ugarbr               5.00        250.00          0.00 10/18/2024 9/17/2025                             0.00 
+
+                                                                                                      rent                2,173.00 
+
+                                                                                                      park                  150.00 
+
+                                                                                                      xonetime           -2,173.00 
+                                                                                                      Total                155.00 
+
+0308          61096A3              710.00 VACANT       VACANT                                  1,851.00                      0.00          0.00         0.00                                                   0.00 
+
+                                                                                                      Total                  0.00 
+
+0309          61096B3             1,275.00 t0687864    Austin Buffer                           2,280.00 ugarbr               5.00         99.00         0.00 8/23/2024    8/22/2025                           72.37 
+
+                                                                                                      rent                2,538.00 
+
+                                                                                                      xrecurr              -127.00 
+
+                                                                                                      park                 150.00 
+                                                                                                      Total              2,566.00 
+
+0310          61096A3              710.00 t0571052     Michael Laufer                          1,851.00 rent              1,944.00        99.00         0.00 9/22/2023    9/21/2025                            0.00 
+
+                                                                                                      ugarbr                 5.00 
+                                                                                                      xrecurr               -97.00 
+                                                                                                      Total              1,852.00 
+
+0311          61096B3            1,275.00 t0722696    James Crowder                            2,280.00 ugarbr               5.00        250.00         0.00 11/12/2024   10/11/2025                           0.00 
+
+                                                                                                      rent                2,223.00 
+
+                                                                                                      Total              2,228.00 
+
+                                                                                                    Page 12 of 24 
+<<<
+
+                                                                                                                                                                                                 5/20/2025 11:47 AM 
+
+                                                                                      Rent Roll with Lease Charges 
+                                                                                          1901 South Charles Apartments (61096) 
+
+                                                                                                  As Of = 11/13/2024 
+
+                                                                                                 Month Year = 11/2024 
+ Unit         Unit Type              Unit Resident     Name                                    Market Charge              Amount       Resident        Other Move In      Lease         Move Out           Balance 
+
+                                    Sq Ft                                                        Rent Code                              Deposit      Deposit              Expiration 
+
+ 0312         61096A2              765.00 t0507867     Loma Inamdar                            1,842.00 rent              1,959.00       250.00          0.00 3/31/2023   9/30/2025                           68.88 
+
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      Total              1,964.00 
+
+ 0313         61096A1              525.00 VACANT       VACANT                                  1,721.00                      0.00          0.00          0.00                                                  0.00 
+
+                                                                                                      Total                  0.00 
+
+ 0314         61096A1              525.00 t0719242     Michael Aviles                          1,781.00 ugarbr               5.00        250.00          0.00 10/18/2024 11/17/2025                            0.00 
+
+                                                                                                      rent                1,399.00 
+
+                                                                                                      petrent               50.00 
+
+                                                                                                      xonetime           -1,399.00 
+
+                                                                                                      Total                 55.00 
+
+0315          61096A1              525.00 VACANT       VACANT                                  1,721.00                      0.00          0.00          0.00                                                  0.00 
+
+                                                                                                      Total                  0.00 
+
+0316          61096S1              475.00 t0233889     Brooke Bailey                           1,595.00 rent              1,667.00       250.00         0.00 7/1/2021     3/31/2025                           75.00 
+
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      Total              1,672.00 
+
+0317          61096B2             1,052.00 t0500240    Kabria Haskins                          2,172.00 rent              2,036.00        99.00         0.00 4/12/2023    6/11/2025                            0.00 
+
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      xrecurr              -102.00 
+
+                                                                                                      park                 150.00 
+
+                                                                                                      Total              2,089.00 
+
+0318          61096A3              710.00 t0617732     Amanze Udebiuwa                         1,891.00 ugarbr               5.00        250.00         0.00 2/10/2024    5/9/2025                             0.00 
+
+                                                                                                      rent                1,687.00 
+
+                                                                                                      Total              1,692.00 
+
+0319          61096A2              765.00 t0655120     Kimberly Hsiao                          1,852.00 ugarbr               5.00         99.00         0.00 6/17/2024    6/16/2025                           68.30 
+
+                                                                                                      rent                1,970.00 
+
+                                                                                                      xrecurr               -99.00 
+
+                                                                                                      petrent               50.00 
+
+                                                                                                      park                 150.00 
+
+                                                                                                      Total              2,076.00 
+
+0320          61096A3              710.00 t0649742     Dorothy Gaddis                          1,876.00 ugarbr               5.00         99.00         0.00 6/21/2024    9/20/2025                            0.00 
+
+                                                                                                      rent                1,927.00 
+
+                                                                                                      xrecurr               -96.00 
+
+                                                                                                      petrent               50.00 
+
+                                                                                                      Total              1,886.00 
+
+                                                                                                    Page 13 of 24 
+<<<
+
+                                                                                                                                                                                                                 5/20/2025 11:47 AM 
+
+                                                                                             Rent Roll with Lease Charges 
+                                                                                                 1901 South Charles Apartments (61096) 
+                                                                                                         As Of = 11/13/2024 
+
+                                                                                                        Month Year = 11/2024 
+Unit           Unit Type               Unit Resident       Name                                        Market Charge                Amount        Resident         Other Move In        Lease          Move Out             Balance 
+
+                                       Sq Ft                                                             Rent Code                                 Deposit        Deposit               Expiration 
+0321           61096B3              1,275.00 t0687134      Ricky Ratliff                              2,270.00 ugarbr                   5.00       2,360.00          0.00 8/1/2024      7/31/2025                               -0.10 
+
+                                                                                                               rent                 2,360.00 
+
+                                                                                                              xrecurr                -118.00 
+
+                                                                                                               Total               2,247.00 
+
+0322           61096A2                765.00 t0505867      Jordan Gillespie                           1,902.00 rent                 1,750.00         99.00           0.00 3/10/2023     9/9/2025                                0.00 
+
+                                                                                                              petrent                  50.00 
+
+                                                                                                              ugarbr                    5.00 
+                                                                                                              xrecurr                 -88.00 
+                                                                                                              Total                1,717.00 
+
+0323           61096A2               765.00 t0619372       Elizabeth Trainer                          1,852.00 ugarbr                  5.00          99.00           0.00 2/23/2024     5/22/2025                               0.00 
+
+                                                                                                              rent                  1,781.00 
+
+                                                                                                              xrecurr                 -89.00 
+                                                                                                              Total                1,697.00 
+
+0324           61096A2               765.00 t0658802       Imran Nahin                                1,902.00 ugarbr                  5.00          99.00           0.00 6/19/2024     9/18/2025                               0.00 
+
+                                                                                                              rent                  2,051.00 
+
+                                                                                                              xrecurr                -103.00 
+
+                                                                                                              Total                1,953.00 
+
+0325          61096S1                475.00 t0593434       Isabella Brutch                            1,545.00 ugarbr                  5.00         250.00           0.00 12/1/2023     2/28/2025                               0.00 
+
+                                                                                                              rent                  1,466.00 
+
+                                                                                                              Total                1,471.00 
+
+0326          61096A2                765.00 t0048728       Kevin McAllister                           1,902.00 rent                 2,173.00        250.00           0.00 1/11/2020     4/10/2025                               0.00 
+
+                                                                                                              petrent                 50.00 
+
+                                                                                                              ugarbr                   5.00 
+
+                                                                                                              Total               2,228.00 
+
+0327          61096S1                475.00 t0673226       Stephen Italiano                           1,545.00 ugarbr                  5.00       1,522.00           0.00 6/25/2024     9/24/2025                               0.00 
+
+                                                                                                              rent                  1,522.00 
+                                                                                                              Total               1,527.00 
+
+0328          61096B3               1,275.00 t0371715      Douglas Gartner                            2,320.00 ugarbr                  5.00         250.00           0.00 12/3/2021     12/2/2024                               0.00 
+
+                                                                                                              rent                 2,967.00 
+
+                                                                                                              Total               2,972.00 
+
+0329          61096A1                525.00 t0638392       Sonya Moore                                1,731.00 ugarbr                  5.00         250.00           0.00 4/11/2024     7/10/2025                           1,606.27 
+
+                                                                                                              rent                  1,576.00 
+
+                                                                                                              Total               1,581.00 
+
+0330          61096A3                710.00 t0486481       Douglas Miller                             1,891.00 rent                1,848.00         250.00           0.00 1/10/2023     7/9/2025                                0.00 
+
+                                                                                                            Page 14 of 24 
+<<<
+
+                                                                                                                                                                                                 5/20/2025 11:47 AM 
+
+                                                                                       Rent Roll with Lease Charges 
+                                                                                          1901 South Charles Apartments (61096) 
+
+                                                                                                  As Of = 11/13/2024 
+
+                                                                                                 Month Year = 11/2024 
+ Unit         Unit Type              Unit Resident     Name                                     Market Charge             Amount       Resident        Other Move In      Lease 
+                                                                                                                                                                                        Move Out            Balance 
+                                    Sq Ft                                                         Rent Code                             Deposit      Deposit              Expiration 
+
+                                                                                                      ugarbr                  5.00 
+
+                                                                                                      Total              1,853.00 
+
+ 0331         61096A2              765.00 t0532346     Brooks Rogers                           1,817.00 rent              1,802.00      1,966.00         0.00 5/22/2023   11/21/2025                           0.00 
+
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      xrecurr               -90.00 
+
+                                                                                                      Total              1,717.00 
+
+ 0332         61096A3              710.00 t0666837     Cesar Ramirez                           1,891.00 ugarbr               5.00         99.00          0.00 
+                                                                                                                                                             6/13/2024    9/12/2025                           35.35 
+                                                                                                      rent                1,937.00 
+
+                                                                                                      xrecurr               -97.00 
+
+                                                                                                      Total              1,845.00 
+
+0333          61096B3             1,275.00 t0624015    Sidarth Pradeep                         2,270.00 ugarbr               5.00       2,473.00         0.00 3/15/2024   6/14/2025                            0.00 
+
+                                                                                                      rent                2,223.00 
+
+                                                                                                      Total              2,228.00 
+
+0334          61096B3             1,275.00 t0580374    Luke LoPresto                           2,320.00 ugarbr               5.00      2,590.00         0.00 
+                                                                                                                                                             11/3/2023    2/2/2025                             0.00 
+                                                                                                      rent                2,340.00 
+
+                                                                                                      xrecurr              -117.00 
+
+                                                                                                      petrent               50.00 
+
+                                                                                                      Total              2,278.00 
+
+0335          61096S1              475.00 t0417659     Joshua Irvin                            1,565.00 rent              1,525.00       -52.00         0.00 
+                                                                                                                                                             7/23/2022    11/22/2024    11/22/2024           458.26 
+
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      xrecurr               -76.00 
+
+                                                                                                      Total              1,454.00 
+
+0336          61096A3              710.00 t0658621     Jarod VanKirk                           1,891.00 ugarbr               5.00         99.00         0.00 6/19/2024    9/18/2025                           92.52 
+
+                                                                                                      rent                1,885.00 
+
+                                                                                                      xrecurr               -94.00 
+
+                                                                                                      petrent               50.00 
+
+                                                                                                      park                 150.00 
+
+                                                                                                      petrent               50.00 
+
+                                                                                                      Total              2,046.00 
+
+0337          61096A2              765.00 t0412683    Janel Geiger                             1,852.00 rent              2,009.00       250.00         0.00 
+                                                                                                                                                             5/21/2022    9/20/2025                           57.44 
+
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      petrent               50.00 
+
+                                                                                                      Total              2,064.00 
+
+0339          61096S1              475.00 t0502112    Nafees Noor                              1,545.00 rent              1,572.00        99.00         0.00 
+                                                                                                                                                            3/1/2023      8/31/2025                            0.00 
+
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                    Page 15 of 24 
+<<<
+
+                                                                                                                                                                                                                 5/20/2025 11:47 AM 
+
+                                                                                             Rent Roll with Lease Charges 
+                                                                                                 1901 South Charles Apartments (61096) 
+                                                                                                         As Of = 11/13/2024 
+
+                                                                                                        Month Year = 11/2024 
+Unit           Unit Type               Unit Resident       Name                                        Market Charge                Amount        Resident         Other Move In        Lease          Move Out             Balance 
+
+                                      Sq Ft                                                              Rent Code                                 Deposit        Deposit               Expiration 
+
+                                                                                                              xrecurr                 -79.00 
+                                                                                                               Total               1,498.00 
+
+0341           61096B2              1,052.00 t0608654      Brittany Williams                          2,172.00 ugarbr                   5.00        250.00           0.00 2/2/2024      5/1/2025                                0.00 
+
+                                                                                                               rent                 2,007.00 
+                                                                                                               Total               2,012.00 
+
+0343           61096B2              1,052.00 t0591482      Shaznay Brooks                             2,172.00 ugarbr                   5.00       2,257.00          0.00 12/14/2023    3/13/2025      12/16/2024               0.00 
+
+                                                                                                              rent                  2,007.00 
+
+                                                                                                              petrent                 50.00 
+
+                                                                                                              park                   150.00 
+                                                                                                              Total                2,212.00 
+
+0345           61096S1               475.00 t0676881       Anyssia Gibbs                              1,555.00 ugarbr                  5.00          99.00           0.00 8/15/2024     8/14/2025                               0.00 
+
+                                                                                                              rent                  1,550.00 
+
+                                                                                                              xrecurr                 -78.00 
+                                                                                                              Total                1,477.00 
+
+0347          61096B3               1,275.00 t0715252      Lander Arpi Loja                           2,280.00 rent                 1,866.00         99.00           0.00 10/2/2024     10/4/2025                               0.00 
+
+                                                                                                              ugarbr                   5.00 
+
+                                                                                                              xrecurr                 -93.00 
+                                                                                                              Total                1,778.00 
+
+0349          61096B3               1,275.00 t0543136      Dylan Clayton                              2,280.00 rent                 2,446.00        250.00           0.00 6/27/2023     6/26/2025                               0.00 
+
+                                                                                                              ugarbr                   5.00 
+                                                                                                              Total                2,451.00 
+
+0351          61096A2                765.00 t0420784       Michael Neri                               1,862.00 rent                 2,052.00        250.00           0.00 6/23/2022     4/22/2025                               0.00 
+
+                                                                                                              ugarbr                   5.00 
+                                                                                                              xrecurr                -103.00 
+                                                                                                              Total               1,954.00 
+
+0353          61096S1                475.00 t0676388       Jonathan Gresham                           1,555.00 ugarbr                  5.00         250.00           0.00 8/9/2024      8/8/2025                                0.00 
+
+                                                                                                              rent                  1,550.00 
+                                                                                                              Total                1,555.00 
+
+0355          61096A1                525.00 t0103734       Kathleen Howell-Burke                      1,721.00 rent                 1,402.00         99.00           0.00 10/26/2020 
+                                                                                                                                                                                        10/25/2025                              0.00 
+                                                                                                              xrecurr                 -70.00 
+
+                                                                                                              ugarbr                   5.00 
+                                                                                                              Total               1,337.00 
+
+0357          61096B3               1,275.00 t0158205      Aaron Houston                              2,280.00 rent                1,707.00         250.00           0.00 1/16/2021     1/15/2026                               0.00 
+
+                                                                                                              ugarbr                   5.00 
+
+                                                                                                            Page 16 of 24 
+<<<
+
+                                                                                                                                                                                                 5/20/2025 11:47 AM 
+
+                                                                                       Rent Roll with Lease Charges 
+                                                                                          1901 South Charles Apartments (61096) 
+
+                                                                                                  As Of = 11/13/2024 
+
+                                                                                                 Month Year = 11/2024 
+ Unit         Unit Type              Unit Resident     Name                                     Market Charge             Amount       Resident        Other Move In      Lease         Move 
+                                                                                                                                                                                             Out            Balance 
+                                    Sq Ft                                                         Rent Code                             Deposit      Deposit              Expiration 
+
+                                                                                                      Total              1,712.00 
+
+ 0359         61096B1             1,020.00 t0668634    Benjamin Urban                          2,223.00 rent              2,213.00        99.00          0.00 6/12/2024 
+                                                                                                                                                                          8/11/2025                            0.00 
+                                                                                                      park                  150.00 
+
+                                                                                                      ugarbr                 5.00 
+                                                                                                      Total              2,368.00 
+
+ 0361         61096A1              525.00 t0725637     Kyle Golinski                           1,721.00 ugarbr               5.00         99.00          0.00 11/11/2024 11/10/2025                            0.00 
+
+                                                                                                      rent                1,399.00 
+
+                                                                                                      xrecurr               -70.00 
+                                                                                                      Total              1,334.00 
+
+ 0363         61096B2             1,052.00 t0685396    Taylor Jones                            2,222.00 ugarbr               5.00         99.00          0.00 10/16/2024 
+                                                                                                                                                                          1/15/2026                           -0.50 
+                                                                                                      rent                2,108.00 
+
+                                                                                                      xrecurr              -105.00 
+
+                                                                                                      petrent               50.00 
+                                                                                                      Total              2,058.00 
+
+0400          61096A3              710.00 VACANT       VACANT                                  1,911.00                      0.00          0.00         0.00                                                   0.00 
+
+                                                                                                      Total                  0.00 
+
+0401          61096A2              765.00 t0233136     Matthew Francis                         1,887.00 rent              1,996.00       250.00         0.00 5/17/2021 
+                                                                                                                                                                          2/16/2025                            0.00 
+                                                                                                      ugarbr                 5.00 
+                                                                                                      Total              2,001.00 
+
+0402          61096B3L            1,169.00 t0048801    David Hessler                           2,469.00 rent              1,906.00        99.00         0.00 1/26/2020    1/23/2025                            0.00 
+
+                                                                                                      park                 150.00 
+
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      xrecurr               -95.00 
+                                                                                                      Total              1,966.00 
+
+0403          61096A2L             900.00 t0618183     Jordan Summers                          1,936.00 ugarbr               5.00        250.00         0.00 3/1/2024 
+                                                                                                                                                                          5/31/2025                            0.00 
+                                                                                                      rent                1,824.00 
+
+                                                                                                      petrent               50.00 
+                                                                                                      Total              1,879.00 
+
+0404          61096B3L           1,169.00 t0615707     Robert Gay                             2,469.00 ugarbr                5.00         99.00 
+                                                                                                                                                        0.00 1/31/2024    4/29/2025                            0.00 
+                                                                                                      rent                2,445.00 
+
+                                                                                                      xrecurr              -122.00 
+
+                                                                                                      park                 150.00 
+                                                                                                      Total              2,478.00 
+
+0405          61096B3L           1,169.00 t0143134    Jennifer Foster                         2,429.00 rent               1,933.00         0.00         0.00 12/28/2020 
+                                                                                                                                                                          12/27/2025                       2,013.27 
+
+                                                                                                    Page 17 of 24 
+<<<
+
+                                                                                                                                                                                                 5/20/2025 11:47 AM 
+
+                                                                                       Rent Roll with Lease Charges 
+                                                                                          1901 South Charles Apartments (61096) 
+
+                                                                                                  As Of = 11/13/2024 
+
+                                                                                                 Month Year = 11/2024 
+ Unit         Unit Type              Unit Resident     Name                                     Market Charge             Amount       Resident        Other Move In      Lease         Move Out            Balance 
+
+                                    Sq Ft                                                         Rent Code                             Deposit      Deposit              Expiration 
+
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      Total              1,938.00 
+
+ 0406         61096B3L            1,169.00 t0475374    Nicole Workman                          2,469.00 rent              2,620.00       250.00          0.00 10/29/2022 1/28/2025                          2,772.75 
+
+                                                                                                      petrent                50.00 
+
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      Total              2,675.00 
+
+ 0407         61096B3L            1,169.00 t0669566    Matthew Kennedy                         2,429.00 ugarbr               5.00        250.00          0.00 7/5/2024    10/4/2025                            0.00 
+
+                                                                                                      rent                2,623.00 
+
+                                                                                                      park                  150.00 
+
+                                                                                                      Total              2,778.00 
+
+0408          61096A3              710.00 VACANT       VACANT                                  1,911.00                      0.00          0.00          0.00                                                  0.00 
+
+                                                                                                      Total                  0.00 
+
+0409          61096B3L            1,169.00 t0633439    John Donahoe                            2,429.00 ugarbr               5.00         99.00          0.00 4/12/2024   7/11/2025                            0.00 
+
+                                                                                                      rent                2,597.00 
+
+                                                                                                      xrecurr              -130.00 
+
+                                                                                                      petrent               50.00 
+
+                                                                                                      park                 150.00 
+
+                                                                                                      Total              2,672.00 
+
+0410          61096A3              710.00 t0475406     Shannon Kelleher                        1,896.00 rent              1,948.00        99.00          0.00 1/12/2023 
+                                                                                                                                                                          7/11/2025                            0.00 
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      xrecurr               -97.00 
+
+                                                                                                      Total              1,856.00 
+
+0411          61096B3L            1,169.00 t0215949    John Berardi                            2,429.00 rent              2,470.00        99.00         0.00 6/25/2021    3/24/2025                           66.94 
+
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      xrecurr              -124.00 
+
+                                                                                                      Total              2,351.00 
+
+0412          61096A2L             900.00 t0033765     Adanma Emeaghara                        1,976.00 rent              1,891.00       250.00         0.00 9/9/2019     3/8/2025                            24.94 
+
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      xrecurr               -95.00 
+
+                                                                                                      Total              1,801.00 
+
+0413          61096A1              525.00 t0672542     Andrew Walsworth                        1,741.00 ugarbr               5.00         99.00         0.00 6/25/2024    7/24/2025                            0.00 
+
+                                                                                                      rent                1,629.00 
+
+                                                                                                      xrecurr               -81.00 
+
+                                                                                                      Total              1,553.00 
+
+                                                                                                    Page 18 of 24 
+<<<
+
+                                                                                                                                                                                                                  5/20/2025 11:47 AM 
+
+                                                                                              Rent Roll with Lease Charges 
+                                                                                                  1901 South Charles Apartments (61096) 
+
+                                                                                                          As Of = 11/13/2024 
+
+                                                                                                         Month Year = 11/2024 
+Unit           Unit Type                Unit Resident      Name                                         Market Charge               Amount        Resident          Other Move In        Lease 
+                                                                                                                                                                                                        Move Out             Balance 
+                                       Sq Ft                                                              Rent Code                                Deposit        Deposit                Expiration 
+0414           61096A1                525.00 t0664270      Rachel Feliu                                1,801.00 ugarbr                  5.00       1,821.00           0.00 
+                                                                                                                                                                          6/21/2024      9/20/2025                           -1,208.36 
+                                                                                                               rent                  1,821.00 
+
+                                                                                                               Total               1,826.00 
+
+0415           61096A1                525.00 t0640107      Helawe Elias                                1,761.00 ugarbr                  5.00         250.00           0.00 4/19/2024 
+                                                                                                                                                                                         4/18/2025                               0.00 
+                                                                                                               rent                  1,653.00 
+
+                                                                                                               Total               1,658.00 
+
+0416           61096S1                475.00 t0576818      Indira Paddibhatla                          1,615.00 ugarbr                  5.00          99.00           0.00 10/16/2023 
+                                                                                                                                                                                         1/15/2025                               0.00 
+                                                                                                               rent                 1,534.00 
+
+                                                                                                               xrecurr                 -77.00 
+
+                                                                                                               Total               1,462.00 
+
+0417           61096B2              1,052.00 t0417053      Abigail Quinn                               2,212.00 rent                2,199.00          99.00 
+                                                                                                                                                                      0.00 6/24/2022     4/23/2025                               0.00 
+                                                                                                               park                   150.00 
+
+                                                                                                               ugarbr                   5.00 
+
+                                                                                                               xrecurr               -110.00 
+
+                                                                                                               Total               2,244.00 
+
+0418           61096A3                710.00 t0476022      Tatyana Mack                                1,896.00 rent                1,833.00          99.00 
+                                                                                                                                                                      0.00 11/11/2022    4/10/2025                             400.29 
+
+                                                                                                               ugarbr                   5.00 
+
+                                                                                                               xrecurr                -92.00 
+
+                                                                                                               Total               1,746.00 
+
+0419           61096A2L               900.00 t0618340      Hannah Kubik                                1,926.00 ugarbr                  5.00          99.00          0.00 
+                                                                                                                                                                          4/5/2024       7/4/2025       12/19/2024               0.00 
+                                                                                                               rent                 1,888.00 
+
+                                                                                                               xrecurr                -94.00 
+
+                                                                                                               Total               1,799.00 
+
+0420          61096A3                710.00 t0615248       Julianna Randazzo                          1,881.00 ugarbr                   5.00          99.00           0.00 
+                                                                                                                                                                          2/21/2024      5/20/2025                               0.00 
+                                                                                                               rent                 1,766.00 
+
+                                                                                                               Total               1,771.00 
+
+0421          61096B3L              1,169.00 t0691849      Veronica Cannon                            2,419.00 xrecurr               -105.00       1,994.00          0.00 8/15/2024 
+                                                                                                                                                                                         11/28/2024                              0.00 
+                                                                                                               ugarbr                   5.00 
+
+                                                                                                               park                   150.00 
+
+                                                                                                               rent                 2,094.00 
+
+                                                                                                               Total               2,144.00 
+
+0422          61096A2L               900.00 t0667912       ONaya Queen                                1,976.00 ugarbr                   5.00        250.00           0.00 7/30/2024 
+                                                                                                                                                                                         10/29/2025                              0.00 
+                                                                                                               rent                 1,943.00 
+
+                                                                                                               Total               1,948.00 
+
+                                                                                                            Page 19 of 24 
+<<<
+
+                                                                                                                                                                                                 5/20/2025 11:47 AM 
+
+                                                                                       Rent Roll with Lease Charges 
+                                                                                          1901 South Charles Apartments (61096) 
+                                                                                                  As Of = 11/13/2024 
+
+                                                                                                 Month Year = 11/2024 
+ Unit         Unit Type              Unit Resident     Name                                     Market Charge             Amount       Resident        Other Move In      Lease         Move Out            Balance 
+
+                                    Sq Ft                                                         Rent Code                             Deposit      Deposit              Expiration 
+ 0423         61096A2L             900.00 t0589140     Rajiv Bhonsle                           1,926.00 ugarbr                5.00       250.00          0.00 11/30/2023 2/28/2025                             0.00 
+
+                                                                                                      rent                1,946.00 
+
+                                                                                                      Total              1,951.00 
+
+ 0424         61096A2L             900.00 Im153        Cody Feltch                             1,976.00 rent              2,043.00        99.00          0.00 5/15/2018   9/11/2025                            0.00 
+
+                                                                                                      park                  150.00 
+
+                                                                                                      ugarbr                  5.00 
+
+                                                                                                      xrecurr              -102.00 
+                                                                                                      Total              2,096.00 
+
+ 0425         61096S1              475.00 t0532734     Andrew Steely                           1,565.00 ugarbr               5.00         99.00          0.00 5/16/2023   6/20/2025                            0.00 
+
+                                                                                                      rent                1,854.00 
+
+                                                                                                      xrecurr               -93.00 
+
+                                                                                                      Total              1,766.00 
+
+0426          61096A2L             765.00 t0021979     Jade George                             1,976.00 rent              1,407.00        99.00          0.00 8/15/2019   6/14/2025                          -43.54 
+
+                                                                                                      petrent               50.00 
+
+                                                                                                      ugarbr                 5.00 
+                                                                                                      Total              1,462.00 
+
+0427          61096S1              475.00 Im156        Paul Oler                               1,565.00 rent              1,303.00      1,365.00         0.00 5/24/2018   11/4/2025                           70.23 
+
+                                                                                                      ugarbr                 5.00 
+                                                                                                      Total              1,308.00 
+
+0428          61096B3L            1,169.00 Im186       Jason Lamontagne                        2,469.00 rent              1,982.00        99.00         0.00 5/28/2019    11/9/2025                            0.00 
+
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      xrecurr               -99.00 
+                                                                                                      petrent               50.00 
+
+                                                                                                      Total              1,938.00 
+
+0429          61096A1              525.00 t0417319     Nicholas Donnan                         1,716.00 rent              1,764.00      1,850.00        0.00 5/1/2022     1/31/2026                        -1,151.00 
+
+                                                                                                      ugarbr                 5.00 
+                                                                                                      Total              1,769.00 
+
+0430          61096A3              710.00 t0632495     Nicholas Perry                          1,911.00 ugarbr               5.00      2,248.00         0.00 3/29/2024    6/28/2025                        1,996.49 
+
+                                                                                                      rent                1,998.00 
+
+                                                                                                      xrecurr              -100.00 
+
+                                                                                                      Total              1,903.00 
+
+0431          61096A2L             900.00 VACANT       VACANT                                  1,926.00                      0.00          0.00         0.00                                                   0.00 
+
+                                                                                                      Total                  0.00 
+
+0432          61096A3              710.00 t0143801    Morgan Bachmann                          1,911.00 rent              1,747.00        99.00         0.00 1/9/2021     1/8/2026                             0.00 
+
+                                                                                                    Page 20 of 24 
+<<<
+
+                                                                                                                                                                                                                 5/20/2025 11:47 AM 
+
+                                                                                             Rent Roll with Lease Charges 
+                                                                                                 1901 South Charles Apartments (61096) 
+                                                                                                         As Of = 11/13/2024 
+
+                                                                                                        Month Year = 11/2024 
+Unit           Unit Type               Unit Resident       Name                                        Market Charge                Amount        Resident         Other Move In        Lease          Move Out             Balance 
+
+                                       Sq Ft                                                             Rent Code                                 Deposit        Deposit               Expiration 
+
+                                                                                                               petrent                 50.00 
+
+                                                                                                               ugarbr                   5.00 
+                                                                                                              xrecurr                 -87.00 
+
+                                                                                                               Total               1,715.00 
+
+0433           61096B3L             1,169.00 t0527563      Danielle Kasoff                            2,419.00 rent                 1,819.00         99.00           0.00 5/2/2023      12/19/2024                              0.00 
+
+                                                                                                               ugarbr                   5.00 
+
+                                                                                                              xrecurr                 -91.00 
+                                                                                                              Total                1,733.00 
+
+0434           61096B3L             1,169.00 t0047540      Alexander Flemembaum                       2,469.00 rent                 1,968.00        250.00           0.00 2/8/2020      2/7/2026                                0.00 
+
+                                                                                                              ugarbr                    5.00 
+                                                                                                              Total                1,973.00 
+
+0435           61096S1               475.00 t0069421       Ashutosh Singh                             1,565.00 rent                 1,544.00         99.00           0.00 5/23/2020     9/22/2025                               0.00 
+
+                                                                                                              ugarbr                   5.00 
+
+                                                                                                              xrecurr                 -77.00 
+                                                                                                              Total                1,472.00 
+
+0436          61096A3                710.00 t0619533       Rebecca McElhatten                         1,896.00 ugarbr                  5.00          99.00           0.00 3/1/2024      5/31/2025                               0.00 
+
+                                                                                                              rent                  1,792.00 
+
+                                                                                                              xrecurr                 -90.00 
+                                                                                                              Total                1,707.00 
+
+0437          61096A2L               900.00 t0084431       Michelle Pierre                            1,926.00 rent                 1,724.00         99.00           0.00 8/22/2020     8/21/2025                            -400.00 
+
+                                                                                                              petrent                 50.00 
+
+                                                                                                              ugarbr                   5.00 
+                                                                                                              xrecurr                 -86.00 
+
+                                                                                                              Total                1,693.00 
+
+0439          61096S1                475.00 t0146631       Hunter Vaszily                             1,585.00 rent                 1,682.00      1,089.00           0.00 1/4/2021      1/3/2026                                0.00 
+
+                                                                                                              ugarbr                   5.00 
+                                                                                                              Total               1,687.00 
+
+0441          61096B2               1,052.00 t0286893      Leslie Tillman                             2,212.00 rent                2,070.00         500.00           0.00 6/24/2021     11/26/2024                              0.00 
+
+                                                                                                              petrent                 50.00 
+
+                                                                                                              ugarbr                   5.00 
+                                                                                                              xrecurr                -105.00 
+
+                                                                                                              Total               2,020.00 
+
+0443          61096B2               1,052.00 t0619231      Kirsten Crockett                           2,212.00 ugarbr                  5.00          99.00           0.00 3/22/2024     6/21/2025                               0.00 
+
+                                                                                                              rent                 2,079.00 
+
+                                                                                                              petrent                 50.00 
+
+                                                                                                            Page 21 of 24 
+<<<
+
+                                                                                                                                                                                                 5/20/2025 11:47 AM 
+
+                                                                                      Rent Roll with Lease Charges 
+                                                                                          1901 South Charles Apartments (61096) 
+                                                                                                  As Of = 11/13/2024 
+
+                                                                                                 Month Year = 11/2024 
+ Unit         Unit Type              Unit Resident     Name                                     Market Charge             Amount       Resident        Other Move In      Lease         Move Out            Balance 
+
+                                    Sq Ft                                                         Rent Code                             Deposit      Deposit              Expiration 
+
+                                                                                                      park                  150.00 
+
+                                                                                                      xrecurr              -104.00 
+                                                                                                      Total              2,180.00 
+
+ 0445         61096S1              475.00 t0122938     Emily Zolotorow                         1,595.00 rent              1,235.00       250.00          0.00 12/6/2020   12/5/2025                            0.00 
+
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      Total              1,240.00 
+
+ 0447         61096B3L            1,169.00 t0704914    Andrew Hsu                              2,429.00 ugarbr                5.00       250.00          0.00 9/24/2024   10/23/2025                           0.00 
+
+                                                                                                      rent                2,581.00 
+
+                                                                                                      xonetime            -2,581.00 
+
+                                                                                                      Total                  5.00 
+
+0449          61096B3L            1,169.00 t0163969    Brian Ward                              2,429.00 rent              2,166.00       250.00          0.00 4/3/2021    1/2/2025                             0.00 
+
+                                                                                                      ugarbr                 5.00 
+                                                                                                      Total              2,171.00 
+
+0451          61096A2L             900.00 t0052701     Joshua Slonaker                         1,936.00 rent              1,619.00       250.00         0.00 2/24/2020 
+                                                                                                                                                                          2/23/2025                            0.00 
+                                                                                                      ugarbr                 5.00 
+                                                                                                      Total              1,624.00 
+
+0453          61096S1              475.00 VACANT       VACANT                                  1,575.00                      0.00          0.00          0.00                                                  0.00 
+
+                                                                                                      Total                  0.00 
+
+0455          61096A1              525.00 t0142942     Sarah Doran                             1,741.00 rent              1,490.00       250.00         0.00 1/2/2021     1/1/2026                            43.51 
+
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      petrent               50.00 
+                                                                                                      Total              1,545.00 
+
+0457          61096B3L            1,275.00 t0701129    Victoria Truitt                         2,429.00 ugarbr               5.00         99.00         0.00 9/18/2024    10/17/2025                           0.00 
+
+                                                                                                      rent                2,581.00 
+
+                                                                                                      xrecurr              -129.00 
+
+                                                                                                      petrent               50.00 
+
+                                                                                                      park                 150.00 
+                                                                                                      Total              2,657.00 
+
+0459          61096B3L            1,169.00 t0563273    Kimberly Claeys                        2,429.00 rent               2,586.00        99.00         0.00 9/29/2023 
+                                                                                                                                                                          12/28/2025                           0.00 
+                                                                                                      ugarbr                 5.00 
+
+                                                                                                      xrecurr              -129.00 
+                                                                                                      Total              2,462.00 
+
+0461          61096A1              525.00 t0572257     Paul Brunkhorst                         1,741.00 ugarbr               5.00         99.00         0.00 9/28/2023    12/27/2024                           0.00 
+
+                                                                                                      rent                1,659.00 
+
+                                                                                                    Page 22 of 24 
+<<<
+
+                                                                                                                                                                                                 5/20/2025 11:47 AM 
+
+                                                                                      Rent Roll with Lease Charges 
+                                                                                          1901 South Charles Apartments (61096) 
+
+                                                                                                  As Of = 11/13/2024 
+
+                                                                                                 Month Year = 11/2024 
+
+ Unit         Unit Type              Unit Resident     Name                                    Market Charge              Amount       Resident        Other Move In      Lease         Move Out           Balance 
+
+                                    Sq Ft                                                        Rent Code                              Deposit      Deposit              Expiration 
+
+                                                                                                      xrecurr               -83.00 
+
+                                                                                                      Total              1,581.00 
+
+0463          61096B2             1,052.00 t0650738    Katherine Read                          2,292.00 ugarbr               5.00         99.00          0.00 6/21/2024   9/21/2025                            0.00 
+
+                                                                                                      rent                2,127.00 
+
+                                                                                                      xrecurr              -106.00 
+
+                                                                                                      petrent               50.00 
+
+                                                                                                      Total              2,076.00 
+
+ Future Residents/Applicants 
+
+0131          61096A2              765.00 t0722730     Scott Bentley                           1,787.00                      0.00        250.00         0.00 11/18/2024   2/17/2026                          -461.44 
+
+                                                                                                      Total                  0.00 
+
+0151          61096A2              765.00 t0725669     Joshwyn Willett                         1,837.00                      0.00        250.00          0.00 11/14/2024 11/13/2025                        -2,221.50 
+
+                                                                                                      Total                  0.00 
+
+0217          61096B2             1,052.00 t0703224    Cherelle Lee                            2,157.00                      0.00        250.00          0.00 11/22/2024 2/21/2026                             0.00 
+
+                                                                                                      Total                  0.00 
+
+0313          61096A1              525.00 t0727465     John Asel                               1,721.00                      0.00        250.00          0.00 11/18/2024 2/17/2026                             0.00 
+
+                                                                                                      Total                  0.00 
+
+0315          61096A1              525.00 t0726752     Brittany Wiafe                          1,721.00                      0.00        250.00          0.00 11/15/2024 11/14/2025                            0.00 
+
+                                                                                                      Total                  0.00 
+
+0343          61096B2             1,052.00 t0725508    Lauren Franz                            2,172.00                      0.00        250.00          0.00 12/30/2024 3/29/2026                             0.00 
+
+                                                                                                      Total                  0.00 
+
+0400          61096A3              710.00 t0726884     Sarah Taylor                            1,911.00                      0.00        250.00          0.00 11/18/2024 11/17/2025                            0.00 
+
+                                                                                                      Total                  0.00 
+
+0431          61096A2L             900.00 t0725954     Emmanuel Mendoza Vega                   1,926.00                      0.00        250.00          0.00 11/15/2024 11/14/2025                        -1,028.27 
+
+                                                                                                      Total                  0.00 
+
+0453          61096S1              475.00 t0689914     Mia Moshang                             1,575.00                      0.00        250.00          0.00 11/15/2024 2/14/2026                         -2,416.14 
+
+                                                                                                      Total                  0.00 
+
+                                         Total         1901 South Charles Apartments(6109( 379,546.00                  332,477.00    74,584.00          0.00                                              9,503.78 
+
+Summary Groups                                                                                 Square        Market         Lease      Security        Other          # Of       % Unit        % Sqft      Balance 
+
+                                                                                              Footage          Rent       Charges       Deposit     Deposits         Units    Occupancy      Occupied 
+
+Current/Notice/Vacant Residents                                                              166,061.00   379,546.00    332,477.00     72,334.00         0.00          193         93.26        94.25      15,631.13 
+
+                                                                                                    Page 23 of 24 
+<<<
+
+                                                                                                                                                                                                 5/20/2025 11:47 AM 
+
+                                                                                      Rent Roll with Lease Charges 
+                                                                                          1901 South Charles Apartments (61096) 
+
+                                                                                                 As Of = 11/13/2024 
+
+                                                                                                Month Year = 11/2024 
+
+Unit          Unit Type              Unit Resident     Name                                    Market Charge              Amount      Resident         Other Move In      Lease         Move Out           Balance 
+
+                                    Sq Ft                                                        Rent Code                              Deposit      Deposit              Expiration 
+Future Residents/Applicants                                                                    6,769.00    16,807.00         0.00      2,250.00         0.00             9                                 -6,127.35 
+
+Occupied Units                                                                               156,516.00   355,467.00                                                   180         93.26        94.25 
+
+Total Non Rev Units                                                                               0.00          0.00                                                     0          0.00         0.00 
+
+Total Vacant Units                                                                             9,545.00    24,079.00                                                    13          6.73         5.74 
+
+Totals:                                                                                     166,061.00   379,546.00    332,477.00    74,584.00          0.00          193        100.00        100.00     9,503.78 
+
+Summary of Charges by Charge Code 
+
+(Current/Notice Residents Only) 
+
+ Charge Code                                   Amount 
+rent                                            343137 
+
+ugarbr                                             895 
+
+xrecurr                                          -10118 
+
+xonetime                                          -9787 
+petrent                                           2350 
+
+park                                              5850 
+
+parkpub                                            150 
+Total                                       332,477.00 
+
+                                                                                                    Page 24 of 24 
+<<<

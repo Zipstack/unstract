@@ -1,0 +1,15 @@
+[project]
+name = "rentroll-service"
+version = "0.1.0"
+description = "A Flask service for rent roll extraction"
+authors = [{ name = "Zipstack Inc.", email = "devsupport@zipstack.com" }]
+requires-python = ">=3.12"
+dependencies = [
+    "flask[async]>=2.3.0",
+    "gunicorn>=21.2.0",
+    "python-dotenv>=1.0.0",
+    "autogen-ext[openai,azure,anthropic]>=0.6.0",
+    "autogen-core>=0.6.0",
+    "autogen-agentchat>=0.6.0",
+    "json-repair~=0.42.0",
+]
