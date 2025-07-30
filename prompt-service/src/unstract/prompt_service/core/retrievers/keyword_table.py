@@ -27,26 +27,22 @@ class KeywordTableRetriever(BaseRetriever):
             # Get documents from vector index for keyword indexing
             vector_store_index: VectorStoreIndex = self.vector_db.get_vector_store_index()
             
-            # Get all nodes for the document
-            all_retriever = vector_store_index.as_retriever(
-                similarity_top_k=1000,  # Get all nodes
-                filters=MetadataFilters(
-                    filters=[
-                        ExactMatchFilter(key="doc_id", value=self.doc_id),
-                    ],
-                ),
-            )
+            # Get all document nodes from the docstore for keyword indexing
+            docstore = vector_store_index.docstore
+            all_nodes = []
             
-            # Retrieve all nodes to build keyword index
-            all_nodes = all_retriever.retrieve("")
+            # Get all nodes for this document
+            for node_id, node in docstore.docs.items():
+                if hasattr(node, 'metadata') and node.metadata.get('doc_id') == self.doc_id:
+                    all_nodes.append(node)
             
             if not all_nodes:
                 logger.warning(f"No nodes found for doc_id: {self.doc_id}")
                 return set()
             
-            # Create KeywordTableIndex from nodes
+            # Create KeywordTableIndex from document nodes
             keyword_index = KeywordTableIndex(
-                nodes=[node.node for node in all_nodes],
+                nodes=all_nodes,
                 show_progress=False,
             )
             

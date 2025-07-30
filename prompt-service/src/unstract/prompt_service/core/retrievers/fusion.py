@@ -31,24 +31,40 @@ class FusionRetriever(BaseRetriever):
             # Get the vector store index
             vector_store_index: VectorStoreIndex = self.vector_db.get_vector_store_index()
 
-            # Create base retriever with metadata filters
-            base_retriever = vector_store_index.as_retriever(
+            # Create multiple retrievers with different parameters for true fusion
+            filters = MetadataFilters(
+                filters=[
+                    ExactMatchFilter(key="doc_id", value=self.doc_id),
+                ],
+            )
+            
+            # Retriever 1: Standard similarity search
+            retriever_1 = vector_store_index.as_retriever(
                 similarity_top_k=self.top_k,
-                filters=MetadataFilters(
-                    filters=[
-                        ExactMatchFilter(key="doc_id", value=self.doc_id),
-                    ],
-                ),
+                filters=filters,
+            )
+            
+            # Retriever 2: Broader search with more candidates  
+            retriever_2 = vector_store_index.as_retriever(
+                similarity_top_k=self.top_k * 2,
+                filters=filters,
+            )
+            
+            # Retriever 3: Focused search with fewer candidates
+            retriever_3 = vector_store_index.as_retriever(
+                similarity_top_k=max(1, self.top_k // 2),
+                filters=filters,
             )
 
-            # Create LlamaIndex QueryFusionRetriever
+            # Create LlamaIndex QueryFusionRetriever with multiple retrievers
             fusion_retriever = QueryFusionRetriever(
-                [base_retriever],  # List of retrievers to use for fusion
+                [retriever_1, retriever_2, retriever_3],  # Multiple retrievers for fusion
                 similarity_top_k=self.top_k,
-                num_queries=4,  # Number of query variations to generate
+                num_queries=4,  # Generate multiple query variations
+                mode="simple",  # Use simple fusion mode (reciprocal rank fusion)
                 use_async=False,
                 verbose=False,
-                llm=self.llm,  # Use the LLM to generate query variations
+                llm=self.llm,  # LLM generates query variations
             )
 
             # Retrieve nodes using fusion technique
