@@ -45,6 +45,10 @@ function InputOutput() {
       return;
     }
 
+    if (!sessionDetails?.orgId) {
+      return;
+    }
+
     setConnectorType(type);
 
     const endpointType = CONNECTOR_TYPE_MAP[type]?.toUpperCase();
@@ -81,7 +85,7 @@ function InputOutput() {
       .finally(() => {
         setReloadList(false);
       });
-  }, [currentPath, reloadList]);
+  }, [currentPath, reloadList, sessionDetails]);
 
   const getItem = (label, key, icon, children, type) => {
     return {

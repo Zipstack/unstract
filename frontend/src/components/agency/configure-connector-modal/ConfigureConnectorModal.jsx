@@ -44,6 +44,20 @@ function ConfigureConnectorModal({
       setActiveKey("1"); // default value
     }
   }, [open, connectorMetadata]);
+
+  // Auto-select the configured connector when modal opens
+  useEffect(() => {
+    if (open && connDetails?.connector_id && filteredList?.length > 0) {
+      const configuredConnector = filteredList.find(
+        (item) => item.key === connDetails.connector_id
+      );
+
+      if (configuredConnector) {
+        setSelectedId(connDetails.connector_id);
+        setSelectedItemName(configuredConnector.label);
+      }
+    }
+  }, [open, connDetails, filteredList]);
   const { setPostHogCustomEvent, posthogConnectorEventText } =
     usePostHogEvents();
 
