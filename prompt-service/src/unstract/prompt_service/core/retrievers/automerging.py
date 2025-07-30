@@ -1,7 +1,6 @@
 import logging
 
 from llama_index.core import VectorStoreIndex
-from llama_index.core.postprocessor import SentenceTransformerRerank
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
 
 from unstract.prompt_service.core.retrievers.base_retriever import BaseRetriever
@@ -12,14 +11,14 @@ logger = logging.getLogger(__name__)
 
 class AutomergingRetriever(BaseRetriever):
     """Automerging retrieval using enhanced vector retrieval with reranking.
-    
+
     Since full AutoMergingRetriever requires hierarchical document structure,
     we use an enhanced retrieval approach that gets more candidates and reranks them.
     """
 
     def retrieve(self) -> set[str]:
         """Retrieve text chunks using enhanced retrieval with reranking.
-        
+
         Returns:
             set[str]: A set of text chunks retrieved from the database.
         """
@@ -43,11 +42,11 @@ class AutomergingRetriever(BaseRetriever):
 
             # Retrieve initial nodes
             nodes = retriever.retrieve(self.prompt)
-            
+
             # If we have nodes and an LLM, we can do additional processing
             if nodes and len(nodes) > self.top_k:
                 # Sort by score and take top results
-                nodes = sorted(nodes, key=lambda x: x.score, reverse=True)[:self.top_k]
+                nodes = sorted(nodes, key=lambda x: x.score, reverse=True)[: self.top_k]
 
             # Extract unique text chunks
             chunks: set[str] = set()
@@ -60,7 +59,9 @@ class AutomergingRetriever(BaseRetriever):
                         f"Ignored: {node.node_id} with score {node.score}"
                     )
 
-            logger.info(f"Successfully retrieved {len(chunks)} chunks using enhanced retrieval.")
+            logger.info(
+                f"Successfully retrieved {len(chunks)} chunks using enhanced retrieval."
+            )
             return chunks
 
         except (ValueError, AttributeError, KeyError, ImportError) as e:
