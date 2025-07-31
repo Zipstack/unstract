@@ -687,8 +687,6 @@ prompting/
 # Claude
 CLAUDE.md
 .claude/*
-.mcp.json
-CONTRIBUTION_GUIDE.md
 
 # Windsurf
 .qodo
