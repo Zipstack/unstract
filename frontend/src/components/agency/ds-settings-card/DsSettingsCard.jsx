@@ -200,10 +200,6 @@ function DsSettingsCard({ type, endpointDetails, message }) {
       return;
     }
 
-    if (!sessionDetails?.orgId) {
-      return;
-    }
-
     setFormDataConfig(endpointDetails.configuration || {});
     const requestOptions = {
       method: "GET",
@@ -222,14 +218,10 @@ function DsSettingsCard({ type, endpointDetails, message }) {
       .finally(() => {
         setIsSpecConfigLoading(false);
       });
-  }, [connType, listOfConnectors, sessionDetails]);
+  }, [connType, listOfConnectors]);
 
   useEffect(() => {
     if (!type) {
-      return;
-    }
-
-    if (!sessionDetails?.orgId) {
       return;
     }
 
@@ -265,7 +257,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
         setAlertDetails(handleException(err));
       })
       .finally(() => {});
-  }, [type, sessionDetails]);
+  }, [type]);
 
   const sourceIcon = (src) => {
     return <Image src={src} height={25} width={25} preview={false} />;
