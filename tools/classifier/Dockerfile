@@ -4,7 +4,7 @@ LABEL maintainer="Zipstack Inc."
 
 
 # Install dependencies for unstructured library's partition
-RUN apt-get update && apt-get --no-install-recommends -y install libmagic-dev poppler-utils\
+RUN apt-get update && apt-get --no-install-recommends -y install libmagic-dev poppler-utils dumb-init\
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
