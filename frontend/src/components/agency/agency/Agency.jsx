@@ -28,6 +28,7 @@ import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import useRequestUrl from "../../../hooks/useRequestUrl";
 import { CreateApiDeploymentModal } from "../../deployments/create-api-deployment-modal/CreateApiDeploymentModal.jsx";
 import { EtlTaskDeploy } from "../../pipelines-or-deployments/etl-task-deploy/EtlTaskDeploy.jsx";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
@@ -60,6 +61,7 @@ function Agency() {
   } = workflowStore;
   const { sessionDetails } = useSessionStore();
   const { orgName } = sessionDetails;
+  const { getUrl } = useRequestUrl();
   const axiosPrivate = useAxiosPrivate();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
@@ -192,7 +194,7 @@ function Agency() {
   const getWfEndpointDetails = (signal) => {
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/${projectId}/endpoint/`,
+      url: getUrl(`workflow/${projectId}/endpoint/`),
       signal,
     };
     return axiosPrivate(requestOptions)
@@ -223,7 +225,7 @@ function Agency() {
   const canUpdateWorkflow = (signal) => {
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/${projectId}/can-update/`,
+      url: getUrl(`workflow/${projectId}/can-update/`),
       signal,
     };
     return axiosPrivate(requestOptions)
@@ -249,7 +251,7 @@ function Agency() {
   const getExportedTools = (signal) => {
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/tool/`,
+      url: getUrl(`tool/`),
       signal,
     };
     return axiosPrivate(requestOptions)
@@ -738,7 +740,7 @@ function Agency() {
     }
     const requestOptions = {
       method: "POST",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/execute/`,
+      url: getUrl(`workflow/execute/`),
       headers: header,
       data: body,
     };
@@ -829,7 +831,7 @@ function Agency() {
 
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/${workflowId}/clear-cache/`,
+      url: getUrl(`workflow/${workflowId}/clear-cache/`),
     };
 
     axiosPrivate(requestOptions)
@@ -863,7 +865,7 @@ function Agency() {
           for (const existingTool of details.tool_instances) {
             const deleteOptions = {
               method: "DELETE",
-              url: `/api/v1/unstract/${sessionDetails?.orgId}/tool_instance/${existingTool.id}/`,
+              url: getUrl(`tool_instance/${existingTool.id}/`),
               headers: {
                 "X-CSRFToken": sessionDetails?.csrfToken,
               },
@@ -886,7 +888,7 @@ function Agency() {
 
         const requestOptions = {
           method: "POST",
-          url: `/api/v1/unstract/${sessionDetails?.orgId}/tool_instance/`,
+          url: getUrl(`tool_instance/`),
           headers: {
             "X-CSRFToken": sessionDetails?.csrfToken,
             "Content-Type": "application/json",
@@ -934,7 +936,7 @@ function Agency() {
 
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/${workflowId}/clear-file-marker/`,
+      url: getUrl(`workflow/${workflowId}/clear-file-marker/`),
     };
 
     axiosPrivate(requestOptions)
