@@ -283,48 +283,48 @@ def prompt_processor() -> Any:
                             "Successfully pushed token usage data to audit service"
                         )
                     except Exception as e:
-                        # Don't let usage tracking failures affect the main flow
-                        app.logger.warning(f"Failed to track token usage: {str(e)}")
+                        app.logger.error(f"Failed to track token usage: {str(e)}")
                     app.logger.info("Rent roll extraction completed successfully")
                     return response
                 except Exception as e:
                     app.logger.error(f"Failed to process rent roll: {str(e)}")
-                    # Continue with regular table extraction as fallback
-            try:
-                structured_output = AnswerPromptService.extract_table(
-                    output=output,
-                    structured_output=structured_output,
-                    llm=llm,
-                    execution_source=execution_source,
-                    prompt=prompt_text,
-                )
-                metadata = UsageHelper.query_usage_metadata(
-                    token=platform_key, metadata=metadata
-                )
-                response = {
-                    PSKeys.METADATA: metadata,
-                    PSKeys.OUTPUT: structured_output,
-                    PSKeys.METRICS: metrics,
-                }
-                return response
-            except APIError as api_error:
-                app.logger.error(
-                    "Failed to extract table for the prompt %s: %s",
-                    output[PSKeys.NAME],
-                    str(api_error),
-                )
-                publish_log(
-                    log_events_id,
-                    {
-                        "tool_id": tool_id,
-                        "prompt_key": prompt_name,
-                        "doc_name": doc_name,
-                    },
-                    LogLevel.ERROR,
-                    RunLevel.TABLE_EXTRACTION,
-                    "Error while extracting table for the prompt",
-                )
-                raise api_error
+                    raise e
+            if document_type != "rent_rolls":
+                try:
+                    structured_output = AnswerPromptService.extract_table(
+                        output=output,
+                        structured_output=structured_output,
+                        llm=llm,
+                        execution_source=execution_source,
+                        prompt=prompt_text,
+                    )
+                    metadata = UsageHelper.query_usage_metadata(
+                        token=platform_key, metadata=metadata
+                    )
+                    response = {
+                        PSKeys.METADATA: metadata,
+                        PSKeys.OUTPUT: structured_output,
+                        PSKeys.METRICS: metrics,
+                    }
+                    return response
+                except APIError as api_error:
+                    app.logger.error(
+                        "Failed to extract table for the prompt %s: %s",
+                        output[PSKeys.NAME],
+                        str(api_error),
+                    )
+                    publish_log(
+                        log_events_id,
+                        {
+                            "tool_id": tool_id,
+                            "prompt_key": prompt_name,
+                            "doc_name": doc_name,
+                        },
+                        LogLevel.ERROR,
+                        RunLevel.TABLE_EXTRACTION,
+                        "Error while extracting table for the prompt",
+                    )
+                    raise api_error
         elif output[PSKeys.TYPE] == PSKeys.LINE_ITEM:
             try:
                 structured_output = AnswerPromptService.extract_line_item(
