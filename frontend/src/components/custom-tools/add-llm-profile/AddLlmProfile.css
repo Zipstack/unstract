@@ -19,6 +19,10 @@
   align-items: center;
   min-height: 32px;
   transition: all 0.2s ease-in-out !important;
+  width: 100%;
+  font-family: inherit;
+  font-size: inherit;
+  text-align: left;
 }
 
 .retrieval-strategy-selector:hover {

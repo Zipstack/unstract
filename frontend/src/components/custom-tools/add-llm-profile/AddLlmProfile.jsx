@@ -70,6 +70,28 @@ function AddLlmProfile({
     };
   }, []);
 
+  // Load retrieval strategies when tool_id is available (only once)
+  useEffect(() => {
+    if (details?.tool_id && !hasLoadedFromApi) {
+      const loadStrategies = async () => {
+        try {
+          const strategies = await getStrategies(details.tool_id);
+          const items = strategies.map((strategy) => ({
+            value: strategy.key,
+            label: strategy.title,
+          }));
+          setRetrievalItems(items);
+          setHasLoadedFromApi(true);
+        } catch (error) {
+          console.error("Error loading retrieval strategies:", error);
+          setHasLoadedFromApi(true);
+        }
+      };
+
+      loadStrategies();
+    }
+  }, [details?.tool_id, hasLoadedFromApi]); // getStrategies intentionally omitted to prevent infinite re-renders
+
   useEffect(() => {
     if (editLlmProfileId) {
       return;
@@ -256,17 +278,10 @@ function AddLlmProfile({
             }
             help={getBackendErrorDetail("retrieval_strategy", backendErrors)}
           >
-            <div
+            <button
+              type="button"
               className="retrieval-strategy-selector"
               onClick={handleRetrievalModalOpen}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  handleRetrievalModalOpen();
-                }
-              }}
-              role="button"
-              tabIndex={0}
               aria-label="Select retrieval strategy"
               aria-expanded={isRetrievalModalVisible}
               aria-haspopup="dialog"
@@ -281,7 +296,7 @@ function AddLlmProfile({
                 {formDetails.retrieval_strategy
                   ? retrievalItems.find(
                       (item) => item.value === formDetails.retrieval_strategy
-                    )?.label || formDetails.retrieval_strategy
+                    )?.label || "Select retrieval strategy"
                   : "Select retrieval strategy"}
               </span>
               <div className="retrieval-strategy-actions">
@@ -291,7 +306,7 @@ function AddLlmProfile({
                 />
                 <DownOutlined className="retrieval-strategy-dropdown-icon" />
               </div>
-            </div>
+            </button>
           </Form.Item>
           <Form.Item
             label="Matching count limit (similarity top-k)"
@@ -432,35 +447,7 @@ function AddLlmProfile({
     return tokenSize;
   }
 
-  const handleRetrievalModalOpen = async () => {
-    // Fetch retrieval strategies from API only once when modal is first opened
-    if (details?.tool_id && !hasLoadedFromApi) {
-      try {
-        console.log(
-          "Calling get_retrieval_strategies API for tool:",
-          details.tool_id
-        );
-        const strategies = await getStrategies(details.tool_id);
-        console.log("Received strategies from API:", strategies);
-
-        const items = strategies.map((strategy) => ({
-          value: strategy.key,
-          label: strategy.title,
-        }));
-        console.log("Transformed items:", items);
-
-        setRetrievalItems(items);
-        setHasLoadedFromApi(true);
-      } catch (error) {
-        console.error("Error loading retrieval strategies:", error);
-        // Show error message but don't fall back to hardcoded values
-        setAlertDetails({
-          type: "error",
-          content: "Failed to load retrieval strategies. Please try again.",
-        });
-        setHasLoadedFromApi(true); // Mark as loaded to prevent infinite retries
-      }
-    }
+  const handleRetrievalModalOpen = () => {
     setIsRetrievalModalVisible(true);
   };
 
