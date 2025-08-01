@@ -1,65 +1,65 @@
 /* Styles for Steps */
 
 .wf-steps-layout {
-    height: 100%;
-    background-color: #F8FBFF;
-    border-radius: 8px;
-    border: 1px solid #D4D4D4;
-    overflow-y: hidden;
-    display: flex;
-    flex-direction: column;
+  height: 100%;
+  background-color: #f8fbff;
+  border-radius: 8px;
+  border: 1px solid #d4d4d4;
+  overflow-y: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .content-center-body-2 {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
 }
 
 .content-center-body-3 {
-    text-align: center;
+  text-align: center;
 }
 
 .content-center-desc {
-    font-size: 12px;
-    color: #484848;
+  font-size: 12px;
+  color: #484848;
 }
 
 .wf-steps-ds {
-    padding: 8px;
+  padding: 8px;
 }
 
 .wf-steps-div {
-    margin: 0px;
-    border-color: #D4D4D4;
+  margin: 0px;
+  border-color: #d4d4d4;
 }
 
 .ds-set-card-row {
-    background-color: #DAE3EC;
-    min-height: 70px;
+  background-color: #dae3ec;
+  min-height: 70px;
 }
 
 .ds-set-card-col1 {
-    border-right: 1px solid #D4D4D4;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+  border-right: 1px solid #d4d4d4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .ds-set-card-col2 {
-    padding: 8px;
-    border-right: 1px solid #D4D4D4;
+  padding: 8px;
+  border-right: 1px solid #d4d4d4;
 }
 
 .ds-set-card-col3 {
-    padding: 8px;
+  padding: 8px;
 }
 
 .ds-set-icon-size {
-    font-size: 25px;
+  font-size: 25px;
 }
 
 .ds-set-card-select {
-    width: 120px;
+  width: 120px;
 }

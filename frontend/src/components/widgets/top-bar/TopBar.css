@@ -6,13 +6,13 @@
   height: 60px;
 }
 
-.invite-user-search{
+.invite-user-search {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.topbar-title{
+.topbar-title {
   font-weight: 600;
   font-size: 18px;
   display: inline;

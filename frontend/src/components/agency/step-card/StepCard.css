@@ -1,48 +1,48 @@
 /* Styles for Workflow */
 
 .wf-step-card-layout {
-    border: 1px solid #D4D4D4;
-    border-radius: 8px;
-    border-style: solid;
+  border: 1px solid #d4d4d4;
+  border-radius: 8px;
+  border-style: solid;
 }
 
 .wf-step-card-status {
-    font-size: 12px;
+  font-size: 12px;
 }
 
 .wf-step-card-progress {
-    padding: 0px;
+  padding: 0px;
 }
 
 .ant-progress-inner {
-    height: 30px !important;
-    width: 30px !important;
+  height: 30px !important;
+  width: 30px !important;
 }
-.card-col{
-    border-radius: 8px 0px 0px 8px;
-    background-color: #F8FBFF;
-    border: 1px solid;
-    border-color: transparent #D4D4D4 transparent transparent;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 5px;
+.card-col {
+  border-radius: 8px 0px 0px 8px;
+  background-color: #f8fbff;
+  border: 1px solid;
+  border-color: transparent #d4d4d4 transparent transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px;
 }
-.wf-steps-container{
-    height: 100%;
+.wf-steps-container {
+  height: 100%;
 }
 
 .wf-steps-list {
-    flex: 1;
-    overflow-y: auto;
+  flex: 1;
+  overflow-y: auto;
 }
 
 .wf-steps-list-2 {
-    padding: 8px;
-    height: 100%;
+  padding: 8px;
+  height: 100%;
 }
 
 .wf-steps-empty-state {
-    font-size: 12px;
-    color: #484848;
+  font-size: 12px;
+  color: #484848;
 }
