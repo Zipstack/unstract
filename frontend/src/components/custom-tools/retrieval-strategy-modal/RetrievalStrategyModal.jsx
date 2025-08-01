@@ -46,6 +46,13 @@ const RetrievalStrategyModal = ({
   const [selectedStrategy, setSelectedStrategy] = useState(
     currentStrategy || "simple"
   );
+
+  // Update selectedStrategy when currentStrategy prop changes or modal opens
+  useEffect(() => {
+    if (visible && currentStrategy) {
+      setSelectedStrategy(currentStrategy);
+    }
+  }, [currentStrategy, visible]);
   const { id } = useParams();
   const {
     strategies,
