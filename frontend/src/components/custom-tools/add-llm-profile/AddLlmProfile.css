@@ -1,19 +1,63 @@
 /* Styles for AddLlmProfile */
 
 .add-llm-profile-row {
-    width: 100%;
+  width: 100%;
+}
+
+.add-llm-profile-panel {
+  margin-bottom: 16px;
 }
 
 .retrieval-strategy-selector {
-    transition: all 0.2s ease-in-out !important;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  padding: 4px 11px;
+  cursor: pointer;
+  background-color: #fff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 32px;
+  transition: all 0.2s ease-in-out !important;
 }
 
 .retrieval-strategy-selector:hover {
-    border-color: #40a9ff !important;
-    box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.1);
+  border-color: #40a9ff !important;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.1);
 }
 
 .retrieval-strategy-selector:active {
-    border-color: #1890ff !important;
-    box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.15);
+  border-color: #1890ff !important;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.15);
+}
+
+.retrieval-strategy-text {
+  flex: 1;
+  user-select: none;
+}
+
+.retrieval-strategy-text--selected {
+  color: #000;
+}
+
+.retrieval-strategy-text--placeholder {
+  color: #bfbfbf;
+}
+
+.retrieval-strategy-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.retrieval-strategy-settings-icon {
+  color: #1890ff;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.retrieval-strategy-dropdown-icon {
+  color: #bfbfbf;
+  font-size: 10px;
+  cursor: pointer;
 }

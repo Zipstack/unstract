@@ -87,12 +87,6 @@ class RetrievalService:
             RetrievalStrategy.AUTOMERGING.value: AutomergingRetriever,
         }
 
-        # Legacy support for old constant values
-        if retrieval_type == PSKeys.SIMPLE:
-            retrieval_type = RetrievalStrategy.SIMPLE.value
-        elif retrieval_type == PSKeys.SUBQUESTION:
-            retrieval_type = RetrievalStrategy.SUBQUESTION.value
-
         # Get the appropriate retriever class
         retriever_class = retriever_map.get(retrieval_type)
         if not retriever_class:

@@ -61,6 +61,7 @@ class ProfileManager(BaseModel):
         choices=RetrievalStrategy.choices,
         blank=True,
         db_comment="Field to store the retrieval strategy for prompts",
+        default=RetrievalStrategy.SIMPLE,
     )
     similarity_top_k = models.IntegerField(
         blank=True,

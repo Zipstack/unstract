@@ -374,8 +374,6 @@ def prompt_processor() -> Any:
 
             # Get all valid retrieval strategies
             valid_strategies = {strategy.value for strategy in RetrievalStrategy}
-            # Add legacy support
-            valid_strategies.update({PSKeys.SIMPLE, PSKeys.SUBQUESTION})
 
             if retrieval_strategy in valid_strategies:
                 app.logger.info(f"[{tool_id}] Performing retrieval for : {file_path}")

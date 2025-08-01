@@ -30,6 +30,7 @@ import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import "./AddLlmProfile.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import RetrievalStrategyModal from "../retrieval-strategy-modal/RetrievalStrategyModal";
+import { useRetrievalStrategies } from "../../../hooks/useRetrievalStrategies";
 
 function AddLlmProfile({
   editLlmProfileId,
@@ -42,6 +43,7 @@ function AddLlmProfile({
   const [resetForm, setResetForm] = useState(false);
   const [backendErrors, setBackendErrors] = useState(null);
   const [retrievalItems, setRetrievalItems] = useState([]);
+  const [hasLoadedFromApi, setHasLoadedFromApi] = useState(false);
   const [llmItems, setLlmItems] = useState([]);
   const [vectorDbItems, setVectorDbItems] = useState([]);
   const [embeddingItems, setEmbeddingItems] = useState([]);
@@ -58,29 +60,10 @@ function AddLlmProfile({
   const { token } = theme.useToken();
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
-  const panelStyle = {
-    marginBottom: 16,
-  };
+  const { getStrategies } = useRetrievalStrategies();
 
   useEffect(() => {
     setAdaptorProfilesDropdown();
-
-    // Define all available retrieval strategies (matching backend validation)
-    const allStrategies = {
-      simple: "Simple Vector Retrieval",
-      fusion: "Fusion Retrieval (RAG Fusion)",
-      subquestion: "Sub-Question Retrieval",
-      recursive: "Recursive Retrieval",
-      router: "Router-based Retrieval",
-      keyword_table: "Keyword Table Retrieval",
-      automerging: "Auto-Merging Retrieval",
-    };
-
-    const items = Object.keys(allStrategies).map((key) => ({
-      value: key,
-      label: allStrategies[key],
-    }));
-    setRetrievalItems(items);
 
     return () => {
       setEditLlmProfileId(null);
@@ -256,11 +239,11 @@ function AddLlmProfile({
       });
   };
 
-  const getItems = (panelStyle) => [
+  const getItems = () => [
     {
       key: "1",
       label: "Advanced Settings",
-      style: panelStyle,
+      className: "add-llm-profile-panel",
       children: (
         <div>
           <Form.Item
@@ -275,26 +258,25 @@ function AddLlmProfile({
           >
             <div
               className="retrieval-strategy-selector"
-              onClick={() => setIsRetrievalModalVisible(true)}
-              style={{
-                border: "1px solid #d9d9d9",
-                borderRadius: "6px",
-                padding: "4px 11px",
-                cursor: "pointer",
-                backgroundColor: "#fff",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                minHeight: "32px",
-                transition: "all 0.2s",
+              onClick={handleRetrievalModalOpen}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  handleRetrievalModalOpen();
+                }
               }}
+              role="button"
+              tabIndex={0}
+              aria-label="Select retrieval strategy"
+              aria-expanded={isRetrievalModalVisible}
+              aria-haspopup="dialog"
             >
               <span
-                style={{
-                  color: formDetails.retrieval_strategy ? "#000" : "#bfbfbf",
-                  flex: 1,
-                  userSelect: "none",
-                }}
+                className={`retrieval-strategy-text ${
+                  formDetails.retrieval_strategy
+                    ? "retrieval-strategy-text--selected"
+                    : "retrieval-strategy-text--placeholder"
+                }`}
               >
                 {formDetails.retrieval_strategy
                   ? retrievalItems.find(
@@ -302,22 +284,12 @@ function AddLlmProfile({
                     )?.label || formDetails.retrieval_strategy
                   : "Select retrieval strategy"}
               </span>
-              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <div className="retrieval-strategy-actions">
                 <SettingOutlined
-                  style={{
-                    color: "#1890ff",
-                    fontSize: "12px",
-                    cursor: "pointer",
-                  }}
+                  className="retrieval-strategy-settings-icon"
                   title="Configure retrieval strategy"
                 />
-                <DownOutlined
-                  style={{
-                    color: "#bfbfbf",
-                    fontSize: "10px",
-                    cursor: "pointer",
-                  }}
-                />
+                <DownOutlined className="retrieval-strategy-dropdown-icon" />
               </div>
             </div>
           </Form.Item>
@@ -459,6 +431,38 @@ function AddLlmProfile({
     const tokenSize = (chunkSize / 4 / 1024).toFixed(1);
     return tokenSize;
   }
+
+  const handleRetrievalModalOpen = async () => {
+    // Fetch retrieval strategies from API only once when modal is first opened
+    if (details?.tool_id && !hasLoadedFromApi) {
+      try {
+        console.log(
+          "Calling get_retrieval_strategies API for tool:",
+          details.tool_id
+        );
+        const strategies = await getStrategies(details.tool_id);
+        console.log("Received strategies from API:", strategies);
+
+        const items = strategies.map((strategy) => ({
+          value: strategy.key,
+          label: strategy.title,
+        }));
+        console.log("Transformed items:", items);
+
+        setRetrievalItems(items);
+        setHasLoadedFromApi(true);
+      } catch (error) {
+        console.error("Error loading retrieval strategies:", error);
+        // Show error message but don't fall back to hardcoded values
+        setAlertDetails({
+          type: "error",
+          content: "Failed to load retrieval strategies. Please try again.",
+        });
+        setHasLoadedFromApi(true); // Mark as loaded to prevent infinite retries
+      }
+    }
+    setIsRetrievalModalVisible(true);
+  };
 
   const handleRetrievalStrategySelect = (strategy) => {
     const strategyLabel =
@@ -659,7 +663,7 @@ function AddLlmProfile({
               style={{
                 background: token.colorBgContainer,
               }}
-              items={getItems(panelStyle)}
+              items={getItems()}
               activeKey={activeKey && "1"}
               onChange={handleCollapse}
             />
