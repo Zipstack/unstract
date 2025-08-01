@@ -13,7 +13,11 @@ from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from workflow_manager.workflow_v2.constants import WorkflowKey
 
 from tool_instance_v2.constants import JsonSchemaKey
-from tool_instance_v2.exceptions import ToolSettingValidationError
+from tool_instance_v2.exceptions import (
+    AdapterResolutionError,
+    OrphanedAdapterError,
+    ToolSettingValidationError,
+)
 from tool_instance_v2.models import ToolInstance
 from tool_instance_v2.tool_processor import ToolProcessor
 from unstract.sdk.adapters.enums import AdapterTypes
@@ -69,6 +73,9 @@ class ToolInstanceHelper:
     ) -> None:
         """Update the metadata dictionary with adapter properties.
 
+        Handles both legacy metadata (adapter names) and new metadata (adapter IDs).
+        Automatically converts adapter names to IDs for consistency.
+
         Parameters:
             metadata (dict[str, Any]):
                 The metadata dictionary to be updated with adapter properties.
@@ -81,17 +88,45 @@ class ToolInstanceHelper:
 
         Returns:
             None
+
+        Raises:
+            AdapterResolutionError: When adapter cannot be resolved.
+            OrphanedAdapterError: When adapter ID is invalid or adapter doesn't exist.
         """
         if adapter_key in metadata:
-            adapter_name = metadata[adapter_key]
-            adapter = AdapterProcessor.get_adapter_by_name_and_type(
-                adapter_type=adapter_type, adapter_name=adapter_name
-            )
-            adapter_id = str(adapter.id) if adapter else None
-            metadata_key_for_id = adapter_property.get(
-                AdapterPropertyKey.ADAPTER_ID_KEY, AdapterPropertyKey.ADAPTER_ID
-            )
-            metadata[metadata_key_for_id] = adapter_id
+            adapter_value = metadata[adapter_key]
+            adapter_id = None
+
+            # Check if the value is already an adapter ID (UUID format)
+            if ToolInstanceHelper.is_uuid_format(adapter_value):
+                # It's already an adapter ID - validate it exists
+                logger.debug(f"Adapter value '{adapter_value}' is already in UUID format")
+                try:
+                    from adapter_processor_v2.models import AdapterInstance
+
+                    adapter = AdapterInstance.objects.get(
+                        id=adapter_value, adapter_type=adapter_type.value
+                    )
+                    adapter_id = str(adapter.id)
+                    metadata_key_for_id = adapter_property.get(
+                        AdapterPropertyKey.ADAPTER_ID_KEY, AdapterPropertyKey.ADAPTER_ID
+                    )
+                    metadata[metadata_key_for_id] = adapter_id
+                except AdapterInstance.DoesNotExist:
+                    error_msg = f"Adapter ID {adapter_value} not found or wrong type {adapter_type}"
+                    logger.error(error_msg)
+                    raise OrphanedAdapterError(
+                        adapter_name=adapter_value, tool_instance_id="Unknown"
+                    )
+            else:
+                adapter = AdapterProcessor.get_adapter_by_name_and_type(
+                    adapter_type=adapter_type, adapter_name=adapter_value
+                )
+                adapter_id = str(adapter.id)
+                metadata_key_for_id = adapter_property.get(
+                    AdapterPropertyKey.ADAPTER_ID_KEY, AdapterPropertyKey.ADAPTER_ID
+                )
+                metadata[metadata_key_for_id] = adapter_id
 
     @staticmethod
     def update_metadata_with_adapter_instances(
@@ -189,7 +224,7 @@ class ToolInstanceHelper:
             metadata_key_for_id = adapter_property.get(
                 AdapterPropertyKey.ADAPTER_ID_KEY, AdapterPropertyKey.ADAPTER_ID
             )
-            metadata[adapter_key] = adapter.adapter_name
+            metadata[adapter_key] = str(adapter.id)
             metadata[metadata_key_for_id] = str(adapter.id)
 
     @staticmethod
@@ -250,6 +285,195 @@ class ToolInstanceHelper:
             tool_instance = ToolInstance.objects.get(pk=tool_instance_id)
             tool_instance.step = step + 1
             tool_instance.save()
+
+    @staticmethod
+    def is_uuid_format(value: str) -> bool:
+        """Check if a string is in UUID format."""
+        if not value or not isinstance(value, str):
+            return False
+        try:
+            uuid.UUID(value)
+            return True
+        except ValueError:
+            return False
+
+    @staticmethod
+    def has_adapter_ids_in_metadata(metadata: dict[str, Any], tool_uid: str) -> bool:
+        """Check if metadata already uses adapter IDs instead of names."""
+        tool: Tool = ToolProcessor.get_tool_by_uid(tool_uid=tool_uid)
+        schema: Spec = ToolUtils.get_json_schema_for_tool(tool)
+
+        # Get all adapter keys for this tool
+        adapter_keys = set()
+        adapter_keys.update(schema.get_llm_adapter_properties().keys())
+        adapter_keys.update(schema.get_embedding_adapter_properties().keys())
+        adapter_keys.update(schema.get_vector_db_adapter_properties().keys())
+        adapter_keys.update(schema.get_text_extractor_adapter_properties().keys())
+        adapter_keys.update(schema.get_ocr_adapter_properties().keys())
+
+        # Check if any adapter value is in UUID format (indicates already migrated)
+        for key in adapter_keys:
+            if key in metadata and metadata[key]:
+                if ToolInstanceHelper.is_uuid_format(metadata[key]):
+                    return True  # Found at least one UUID, assume migrated
+
+        return False  # No UUIDs found, still using names
+
+    @staticmethod
+    def get_available_adapter_names_by_type(
+        adapter_type: AdapterTypes, user: User = None
+    ) -> list[str]:
+        """Get list of available adapter names for a given type."""
+        try:
+            if user:
+                adapters = AdapterProcessor.get_adapters_by_type(adapter_type, user)
+            else:
+                # Get all adapters if no user context (fallback)
+                from adapter_processor_v2.models import AdapterInstance
+
+                adapters = AdapterInstance.objects.filter(adapter_type=adapter_type.value)
+            return [adapter.adapter_name for adapter in adapters]
+        except Exception as e:
+            logger.warning(
+                f"Could not fetch available adapters for type {adapter_type}: {e}"
+            )
+            return []
+
+    @staticmethod
+    def _migrate_adapter_keys_for_type(
+        metadata: dict[str, Any],
+        adapter_keys: dict[str, Any],
+        adapter_type: AdapterTypes,
+        tool_name: str = None,
+        user: User = None,
+    ) -> tuple[dict[str, Any], bool]:
+        """Helper method to migrate adapter names to IDs for a specific adapter type."""
+        needs_update = False
+
+        for adapter_key in adapter_keys.keys():
+            if (
+                adapter_key in metadata
+                and metadata[adapter_key]
+                and not ToolInstanceHelper.is_uuid_format(metadata[adapter_key])
+            ):
+                adapter_name = metadata[adapter_key]
+
+                try:
+                    adapter = AdapterProcessor.get_adapter_by_name_and_type(
+                        adapter_type=adapter_type, adapter_name=adapter_name
+                    )
+
+                    if adapter:
+                        logger.info(
+                            f"Migrating {adapter_type.value} adapter '{adapter_name}' to ID '{adapter.id}'"
+                        )
+                        metadata[adapter_key] = str(adapter.id)
+                        needs_update = True
+                    else:
+                        # Adapter not found - throw descriptive error
+                        available_adapters = (
+                            ToolInstanceHelper.get_available_adapter_names_by_type(
+                                adapter_type, user
+                            )
+                        )
+                        raise AdapterResolutionError(
+                            adapter_name=adapter_name,
+                            adapter_type=adapter_type.value,
+                            available_adapters=available_adapters,
+                            tool_name=tool_name,
+                        )
+
+                except Exception as e:
+                    if isinstance(e, AdapterResolutionError):
+                        raise  # Re-raise our custom error
+                    else:
+                        # Unexpected error during adapter lookup
+                        logger.error(
+                            f"Unexpected error resolving adapter '{adapter_name}': {e}"
+                        )
+                        available_adapters = (
+                            ToolInstanceHelper.get_available_adapter_names_by_type(
+                                adapter_type, user
+                            )
+                        )
+                        raise AdapterResolutionError(
+                            adapter_name=adapter_name,
+                            adapter_type=adapter_type.value,
+                            available_adapters=available_adapters,
+                            tool_name=tool_name,
+                        )
+
+        return metadata, needs_update
+
+    @staticmethod
+    def ensure_adapter_ids_in_metadata(
+        tool_instance: ToolInstance, user: User = None
+    ) -> dict[str, Any]:
+        """Lazy migration: convert adapter names to IDs if needed and update database."""
+        metadata = tool_instance.metadata.copy()
+
+        # Check if already migrated
+        if ToolInstanceHelper.has_adapter_ids_in_metadata(
+            metadata, tool_instance.tool_id
+        ):
+            return metadata
+
+        logger.info(f"Performing lazy migration for tool instance {tool_instance.id}")
+
+        # Get tool schema and name for error messages
+        tool: Tool = ToolProcessor.get_tool_by_uid(tool_uid=tool_instance.tool_id)
+        schema: Spec = ToolUtils.get_json_schema_for_tool(tool)
+        tool_name = tool.properties.display_name or "Unknown Tool"
+
+        overall_needs_update = False
+
+        try:
+            # Migrate each adapter type
+            adapter_types_to_migrate = [
+                (schema.get_llm_adapter_properties(), AdapterTypes.LLM),
+                (schema.get_embedding_adapter_properties(), AdapterTypes.EMBEDDING),
+                (schema.get_vector_db_adapter_properties(), AdapterTypes.VECTOR_DB),
+                (schema.get_text_extractor_adapter_properties(), AdapterTypes.X2TEXT),
+                (schema.get_ocr_adapter_properties(), AdapterTypes.OCR),
+            ]
+
+            for adapter_properties, adapter_type in adapter_types_to_migrate:
+                if adapter_properties:  # Only process if this tool uses this adapter type
+                    metadata, needs_update = (
+                        ToolInstanceHelper._migrate_adapter_keys_for_type(
+                            metadata=metadata,
+                            adapter_keys=adapter_properties,
+                            adapter_type=adapter_type,
+                            tool_name=tool_name,
+                            user=user,
+                        )
+                    )
+                    overall_needs_update = overall_needs_update or needs_update
+
+            # Update database if changes were made
+            if overall_needs_update:
+                tool_instance.metadata = metadata
+                tool_instance.save()
+                logger.info(
+                    f"Successfully migrated tool instance {tool_instance.id} to use adapter IDs"
+                )
+
+            return metadata
+
+        except (AdapterResolutionError, OrphanedAdapterError) as e:
+            # Re-raise adapter-specific errors with full context
+            logger.error(f"Failed to migrate tool instance {tool_instance.id}: {e}")
+            raise
+        except Exception as e:
+            # Catch-all for unexpected errors
+            logger.error(
+                f"Unexpected error during migration of tool instance {tool_instance.id}: {e}"
+            )
+            raise OrphanedAdapterError(
+                adapter_name="Unknown",
+                tool_instance_id=str(tool_instance.id),
+                tool_name=tool_name,
+            )
 
     @staticmethod
     def validate_tool_settings(
