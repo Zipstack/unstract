@@ -25,8 +25,6 @@ class PromptServiceConstants:
     IS_ASSERT = "is_assert"
     ASSERTION_FAILURE_PROMPT = "assertion_failure_prompt"
     RETRIEVAL_STRATEGY = "retrieval-strategy"
-    SIMPLE = "simple"
-    SUBQUESTION = "subquestion"
     TYPE = "type"
     NUMBER = "number"
     EMAIL = "email"
@@ -146,6 +144,18 @@ class VariableType(str, Enum):
 
     STATIC = "STATIC"
     DYNAMIC = "DYNAMIC"
+
+
+class RetrievalStrategy(str, Enum):
+    """Available retrieval strategies for prompt service."""
+
+    SIMPLE = "simple"
+    SUBQUESTION = "subquestion"
+    FUSION = "fusion"
+    RECURSIVE = "recursive"
+    ROUTER = "router"
+    KEYWORD_TABLE = "keyword_table"
+    AUTOMERGING = "automerging"
 
 
 class VariableConstants:
