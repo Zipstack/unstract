@@ -63,6 +63,7 @@ function Header({
     setApiDeploymentConfirmModalVisible,
   ] = useState(false);
   const [existingApiDeployments, setExistingApiDeployments] = useState([]);
+  const [isApiDeploymentLoading, setIsApiDeploymentLoading] = useState(false);
 
   const handleExport = (
     selectedUsers,
@@ -256,10 +257,11 @@ function Header({
     }
 
     // Check for existing API deployments before proceeding
+    setIsApiDeploymentLoading(true);
     const path = `/api/v1/unstract/${sessionDetails.orgId}`;
     const requestOptions = {
       method: "GET",
-      url: `${path}/api/deployment/`,
+      url: `${path}/api/deployment/by-prompt-studio-tool/?tool_id=${details?.tool_id}`,
     };
     axiosPrivate(requestOptions)
       .then((response) => {
@@ -273,6 +275,9 @@ function Header({
         );
         // If check fails, still allow proceeding
         setOpenCreateApiDeploymentModal(true);
+      })
+      .finally(() => {
+        setIsApiDeploymentLoading(false);
       });
   };
 
@@ -305,13 +310,19 @@ function Header({
           </Tooltip>
         </div>
         {CloneButton && <CloneButton setOpenCloneModal={setOpenCloneModal} />}
-        {PromptShareButton && (
-          <PromptShareButton setOpenShareModal={setOpenShareModal} />
-        )}
         <div className="custom-tools-header-v-divider" />
         <Dropdown
           menu={{
             items: [
+              ...(PromptShareButton
+                ? [
+                    {
+                      key: "public-share",
+                      label: "Create / Manage Public Sharing",
+                      onClick: () => setOpenShareModal(true),
+                    },
+                  ]
+                : []),
               {
                 key: "export-tool",
                 label: "Export as Tool",
@@ -321,11 +332,6 @@ function Header({
                 key: "export-json",
                 label: "Export as JSON",
                 onClick: handleExportProject,
-              },
-              {
-                key: "create-api-deployment",
-                label: "Create API Deployment",
-                onClick: handleCreateApiDeployment,
               },
             ],
           }}
@@ -342,6 +348,18 @@ function Header({
             Export
           </CustomButton>
         </Dropdown>
+        <div>
+          <CustomButton
+            type="primary"
+            loading={isApiDeploymentLoading}
+            disabled={isPublicSource}
+            icon={<ExportToolIcon />}
+            className="export-text"
+            onClick={handleCreateApiDeployment}
+          >
+            Deploy as API
+          </CustomButton>
+        </div>
         <ExportTool
           allUsers={userList}
           open={openExportToolModal}
