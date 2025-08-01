@@ -778,6 +778,15 @@ class DestinationConnector(BaseConnector):
             q_name = self._get_review_queue_name()
             whisper_hash = meta_data.get("whisper-hash") if meta_data else None
 
+            # Validate required fields before creating QueueResult
+            if not file_name or not str(self.workflow_id):
+                logger.error(
+                    f"Missing required fields for queue result: file_name={file_name}, workflow_id={self.workflow_id}"
+                )
+                raise ValueError(
+                    "File name and workflow ID are required for queue operations"
+                )
+
             queue_result = QueueResult(
                 file=file_name,
                 status=QueueResultStatus.SUCCESS,
@@ -789,6 +798,12 @@ class DestinationConnector(BaseConnector):
             ).to_dict()
 
             queue_result_json = json.dumps(queue_result)
+
+            # Validate the JSON is not empty before enqueuing
+            if not queue_result_json or queue_result_json.strip() == "":
+                logger.error(f"Attempted to enqueue empty JSON for file {file_name}")
+                raise ValueError("Cannot enqueue empty JSON message")
+
             conn = QueueUtils.get_queue_inst()
             conn.enqueue(queue_name=q_name, message=queue_result_json)
             logger.info(f"Pushed {file_name} to queue {q_name} with file content")
@@ -811,6 +826,15 @@ class DestinationConnector(BaseConnector):
                 whisper_hash = meta_data.get("whisper-hash")
             else:
                 whisper_hash = None
+            # Validate required fields before creating QueueResult
+            if not file_name or not str(self.workflow_id):
+                logger.error(
+                    f"Missing required fields for TTL queue result: file_name={file_name}, workflow_id={self.workflow_id}"
+                )
+                raise ValueError(
+                    "File name and workflow ID are required for queue operations"
+                )
+
             # Create QueueResult with TTL metadata
             queue_result_obj = QueueResult(
                 file=file_name,
@@ -823,17 +847,22 @@ class DestinationConnector(BaseConnector):
             )
 
             # Add TTL metadata based on HITLSettings
-            queue_result_obj.original_ttl_seconds = WorkflowUtil.get_hitl_ttl_seconds(
-                workflow
-            )
+            queue_result_obj.ttl_seconds = WorkflowUtil.get_hitl_ttl_seconds(workflow)
 
             queue_result = queue_result_obj.to_dict()
             queue_result_json = json.dumps(queue_result)
 
+            # Validate the JSON is not empty before enqueuing
+            if not queue_result_json or queue_result_json.strip() == "":
+                logger.error(
+                    f"Attempted to enqueue empty JSON with TTL for file {file_name}"
+                )
+                raise ValueError("Cannot enqueue empty JSON message")
+
             conn = QueueUtils.get_queue_inst()
 
             # Use the TTL metadata that was already set in the QueueResult object
-            ttl_seconds = queue_result_obj.original_ttl_seconds
+            ttl_seconds = queue_result_obj.ttl_seconds
 
             conn.enqueue_with_ttl(
                 queue_name=q_name, message=queue_result_json, ttl_seconds=ttl_seconds
