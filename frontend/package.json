@@ -62,7 +62,10 @@
     "eject": "react-scripts eject",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
-    "lint:changed": "git diff --name-only --diff-filter=ACMR | grep '\\.jsx\\?$' | xargs -r eslint || echo 'No JS/JSX files changed'"
+    "prettier": "prettier --check src/",
+    "prettier:fix": "prettier --write src/",
+    "lint:all": "npm run lint:fix && npm run prettier:fix",
+    "lint:changed": "(git diff --name-only --diff-filter=ACMR; git ls-files --others --exclude-standard) | grep '\\.jsx\\?$' | sed 's|^frontend/||' | sort -u | xargs -r sh -c 'eslint --fix \"$@\" && prettier --write \"$@\"' _ || echo 'No JS/JSX files changed'"
   },
   "eslintConfig": {
     "extends": [
