@@ -44,6 +44,9 @@ from prompt_studio.prompt_studio_core_v2.exceptions import (
     ToolDeleteError,
 )
 from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import PromptStudioHelper
+from prompt_studio.prompt_studio_core_v2.retrieval_strategies import (
+    get_retrieval_strategy_metadata,
+)
 from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManager
 from prompt_studio.prompt_studio_document_manager_v2.prompt_studio_document_helper import (  # noqa: E501
     PromptStudioDocumentHelper,
@@ -69,9 +72,6 @@ from .serializers import (
     PromptStudioIndexSerializer,
     SharedUserListSerializer,
 )
-from prompt_studio.prompt_studio_core_v2.retrieval_strategies import (
-                get_retrieval_strategy_metadata,
-            )
 
 logger = logging.getLogger(__name__)
 

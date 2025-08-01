@@ -108,7 +108,9 @@ class RouterRetriever(BaseRetriever):
 
             vector_store_index: VectorStoreIndex = self.vector_db.get_vector_store_index()
             filters = self._create_metadata_filters()
-            vector_query_engine = self._create_base_query_engine(vector_store_index, filters)
+            vector_query_engine = self._create_base_query_engine(
+                vector_store_index, filters
+            )
 
             if not self.llm:
                 return set()
