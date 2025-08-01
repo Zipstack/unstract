@@ -89,6 +89,13 @@ function apiDeploymentsService() {
       };
       return axiosPrivate(options);
     },
+    getDeploymentsByWorkflowId: (workflowId) => {
+      options = {
+        method: "GET",
+        url: `${path}/api/deployment/?workflow=${workflowId}`,
+      };
+      return axiosPrivate(options);
+    },
   };
 }
 

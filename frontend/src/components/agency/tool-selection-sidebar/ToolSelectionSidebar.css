@@ -1,0 +1,185 @@
+/* Tool Selection Sidebar Overlay */
+.tool-selection-sidebar-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 1000;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Main Sidebar Container */
+.tool-selection-sidebar {
+  width: 400px;
+  height: 100vh;
+  background: white;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  animation: slideInRight 0.3s ease-out;
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* Header Section */
+.tool-selection-header {
+  padding: 24px;
+}
+
+.tool-search-input {
+  width: 100%;
+}
+
+/* Content Section */
+.tool-selection-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 24px;
+}
+
+/* Tool List Items */
+.tool-list-item {
+  margin-bottom: 12px;
+  cursor: pointer;
+  padding: 0 !important;
+  border: none !important;
+}
+
+.tool-list-item.selected .tool-card {
+  border: 1px solid #0958d9;
+  background: #eff6ff;
+}
+
+.tool-card {
+  width: 100%;
+  transition: all 0.2s ease;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  box-shadow: none;
+  margin: 0 !important;
+}
+
+.tool-card:hover {
+  border-color: #d9d9d9;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.tool-card-content {
+  padding: 0;
+}
+
+.tool-info {
+  padding: 20px;
+}
+
+.tool-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.tool-icon {
+  font-size: 20px;
+  color: #262626;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.tool-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.tool-name {
+  display: block;
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: #262626;
+  line-height: 1.3;
+}
+
+.tool-description {
+  display: block;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #6b7280;
+  word-wrap: break-word;
+  margin-bottom: 0;
+}
+
+/* Tool Meta Information */
+.tool-meta {
+  margin-bottom: 12px;
+}
+
+.tool-author {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.author-icon {
+  color: #9ca3af;
+  font-size: 14px;
+}
+
+.author-text {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.time-text {
+  font-size: 14px;
+  color: #9ca3af;
+  margin-left: 8px;
+}
+
+/* Tool Category */
+.tool-category {
+  margin-top: 0;
+}
+
+.tool-category-tag {
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 16px;
+  background: #f3f4f6;
+  color: #374151;
+  border: none;
+  font-weight: 500;
+}
+
+/* Footer Section */
+.tool-selection-footer {
+  padding: 16px 24px;
+  border-top: 1px solid #f0f0f0;
+  background: #fafafa;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .tool-selection-sidebar {
+    width: 100vw;
+  }
+}
+
+/* Empty State */
+.tool-selection-content .ant-list-empty-text {
+  padding: 40px 20px;
+  text-align: center;
+  color: #8c8c8c;
+}

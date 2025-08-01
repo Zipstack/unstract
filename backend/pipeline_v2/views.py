@@ -46,6 +46,12 @@ class PipelineViewSet(viewsets.ModelViewSet):
         pipeline_type = self.request.query_params.get(PipelineConstants.TYPE)
         if pipeline_type is not None:
             queryset = queryset.filter(pipeline_type=pipeline_type)
+
+        # Filter by workflow ID if provided
+        workflow_filter = self.request.query_params.get("workflow", None)
+        if workflow_filter:
+            queryset = queryset.filter(workflow_id=workflow_filter)
+
         return queryset
 
     def get_serializer_class(self) -> serializers.Serializer:

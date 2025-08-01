@@ -1,6 +1,7 @@
 import { Form, Input, Modal, Select } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData.js";
 import { useAlertStore } from "../../../store/alert-store";
 import { apiDeploymentsService } from "../../deployments/api-deployment/api-deployments-service.js";
@@ -26,6 +27,7 @@ const CreateApiDeploymentModal = ({
   workflowId,
   workflowEndpointList,
   setDeploymentName,
+  onDeploymentCreated,
 }) => {
   const workflowStore = useWorkflowStore();
   const { updateWorkflow } = workflowStore;
@@ -117,6 +119,11 @@ const CreateApiDeploymentModal = ({
           // Update - can update workflow endpoint status in store
           updateWorkflow({ allowChangeEndpoint: false });
           setDeploymentName(body.display_name);
+
+          // Call the callback to refresh deployment info
+          if (onDeploymentCreated) {
+            onDeploymentCreated();
+          }
         } else {
           updateTableData();
           setSelectedRow(res?.data);
@@ -289,6 +296,7 @@ CreateApiDeploymentModal.propTypes = {
   workflowId: PropTypes.string,
   workflowEndpointList: PropTypes.object,
   setDeploymentName: PropTypes.func,
+  onDeploymentCreated: PropTypes.func,
 };
 
 export { CreateApiDeploymentModal };

@@ -130,7 +130,14 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
     permission_classes = [IsOwner]
 
     def get_queryset(self) -> QuerySet | None:
-        return APIDeployment.objects.filter(created_by=self.request.user)
+        queryset = APIDeployment.objects.filter(created_by=self.request.user)
+
+        # Filter by workflow ID if provided
+        workflow_filter = self.request.query_params.get("workflow", None)
+        if workflow_filter:
+            queryset = queryset.filter(workflow_id=workflow_filter)
+
+        return queryset
 
     def get_serializer_class(self) -> serializers.Serializer:
         if self.action in ["list"]:
