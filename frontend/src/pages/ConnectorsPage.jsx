@@ -171,6 +171,7 @@ function ConnectorsPage() {
             type="Connector"
             isEmpty={!connectors.length}
             centered
+            isClickable={false}
           />
         </div>
       </div>

@@ -107,7 +107,7 @@ function SharePermission({
                   <Popconfirm
                     key={`${item.id}-delete`}
                     title="Revoke Access"
-                    description={`Are you sure you want to revoke access to ${item?.email}?`}
+                    description={`Are you sure you want to revoke access to '${item?.email}'?`}
                     okText="Yes"
                     cancelText="No"
                     icon={<QuestionCircleOutlined />}
