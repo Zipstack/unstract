@@ -10,7 +10,7 @@ import "./ConnectorsPage.css";
 import { ToolNavBar } from "../components/navigations/tool-nav-bar/ToolNavBar";
 import { ViewTools } from "../components/custom-tools/view-tools/ViewTools";
 import { SharePermission } from "../components/widgets/share-permission/SharePermission";
-import { AddConnectorModal } from "../components/connectors/add-connector-modal/AddConnectorModal";
+import { AddSourceModal } from "../components/input-output/add-source-modal/AddSourceModal";
 
 function ConnectorsPage() {
   const [connectors, setConnectors] = useState([]);
@@ -173,11 +173,13 @@ function ConnectorsPage() {
           />
         </div>
       </div>
-      <AddConnectorModal
+      <AddSourceModal
         open={modalVisible}
-        onCancel={() => setModalVisible(false)}
-        onSave={handleConnectorSaved}
-        connectorData={editingConnector}
+        setOpen={setModalVisible}
+        sourceType="connectors"
+        addNewItem={handleConnectorSaved}
+        editItemId={editingConnector?.id}
+        setEditItemId={setEditingConnector}
       />
       <SharePermission
         open={shareModalVisible}

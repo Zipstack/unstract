@@ -122,9 +122,9 @@ function ConnectorListModal({
             </Typography.Text>
           </div>
         ) : (
-          <Row gutter={[16, 16]} justify="start">
+          <Row gutter={[24, 24]} justify="start">
             {filteredConnectors.map((connector) => (
-              <Col key={connector.id}>
+              <Col key={connector.id} xs={24} sm={12} md={8} lg={6} xl={6}>
                 <ConnectorCard
                   connector={connector}
                   onSelect={handleConnectorSelect}

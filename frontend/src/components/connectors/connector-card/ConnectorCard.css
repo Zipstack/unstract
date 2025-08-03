@@ -1,11 +1,4 @@
-.connector-card {
-  width: 150px;
-  height: 120px;
-  cursor: pointer;
-  transition: all 0.3s;
-  position: relative;
-}
-
+/* Additional styles for ConnectorCard that extend DataSourceCard */
 .connector-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
@@ -14,47 +7,6 @@
 .connector-card.selected {
   border-color: #1890ff;
   box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
-}
-
-.connector-card.disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.connector-card .cover-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  position: relative;
-}
-
-.connector-card .disabled-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(255, 255, 255, 0.8);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1;
-  border-radius: 4px;
-}
-
-.connector-card .cover-img {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 60px;
-  margin-bottom: 8px;
-}
-
-.connector-card .connector-card-name {
-  text-align: center;
-  padding: 0 8px;
 }
 
 .display-flex-center {

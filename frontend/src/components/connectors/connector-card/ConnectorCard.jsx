@@ -1,6 +1,7 @@
 import { Card, Image, Typography } from "antd";
 import PropTypes from "prop-types";
 
+import "../../input-output/data-source-card/DataSourceCard.css";
 import "./ConnectorCard.css";
 
 function ConnectorCard({ connector, onSelect, isSelected = false }) {
@@ -17,9 +18,9 @@ function ConnectorCard({ connector, onSelect, isSelected = false }) {
       size="small"
       type="inner"
       bordered={true}
-      className={`connector-card ${connector?.isDisabled ? "disabled" : ""} ${
-        isSelected ? "selected" : ""
-      }`}
+      className={`ds-card connector-card ${
+        connector?.isDisabled ? "disabled" : ""
+      } ${isSelected ? "selected" : ""}`}
       onClick={handleSelect}
     >
       <div className="cover-container">
@@ -37,7 +38,7 @@ function ConnectorCard({ connector, onSelect, isSelected = false }) {
             fallback="/api/static/default-connector-icon.svg" // Fallback icon
           />
         </div>
-        <div className="connector-card-name display-flex-center">
+        <div className="ds-card-name display-flex-center">
           <Typography.Text ellipsis={{ tooltip: connector?.name }}>
             {connector?.name}
           </Typography.Text>

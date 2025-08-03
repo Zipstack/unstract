@@ -1,7 +1,6 @@
 import { Col, Row } from "antd";
 import PropTypes from "prop-types";
 import { createRef, useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
 
 import { sourceTypes } from "../../../helpers/GetStaticData.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -13,6 +12,7 @@ import { OAuthDs } from "../../oauth-ds/oauth-ds/OAuthDs.jsx";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import "./ConfigureDs.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
+import useRequestUrl from "../../../hooks/useRequestUrl";
 
 function ConfigureDs({
   spec,
@@ -31,7 +31,6 @@ function ConfigureDs({
   metadata,
   selectedSourceName,
   connType,
-  formDataConfig,
 }) {
   const formRef = createRef(null);
   const axiosPrivate = useAxiosPrivate();
@@ -50,8 +49,7 @@ function ConfigureDs({
     posthogConnectorAddedEventText,
     setPostHogCustomEvent,
   } = usePostHogEvents();
-
-  const { id } = useParams();
+  const { getUrl } = useRequestUrl();
 
   useEffect(() => {
     if (isTcSuccessful) {
@@ -95,25 +93,25 @@ function ConfigureDs({
     }
 
     let body = {};
-    let url = `/api/v1/unstract/${sessionDetails?.orgId}/`;
+    let url;
 
-    if (sourceType === Object.keys(sourceTypes)[0]) {
+    if (sourceType === "connectors") {
       const connectorMetadata = { ...updatedFormData };
       delete connectorMetadata.connectorName;
       body = {
         connector_id: selectedSourceId,
         connector_metadata: connectorMetadata,
       };
-      url += "test_connectors/";
+      url = getUrl("test_connectors/");
     } else {
       const adapterMetadata = { ...updatedFormData };
       delete adapterMetadata.adapterName;
       body = {
         adapter_id: selectedSourceId,
         adapter_metadata: adapterMetadata,
-        adapter_type: type.toUpperCase(),
+        adapter_type: type?.toUpperCase(),
       };
-      url += "test_adapters/";
+      url = getUrl("test_adapters/");
 
       try {
         setPostHogCustomEvent(posthogTcEventText[type], {
@@ -178,9 +176,9 @@ function ConfigureDs({
     }
 
     let body = {};
-    let url = `/api/v1/unstract/${sessionDetails?.orgId}/`;
+    let url;
 
-    if (sourceType === Object.keys(sourceTypes)[0]) {
+    if (sourceType === "connectors") {
       const connectorMetadata = { ...formData };
       const connectorName = connectorMetadata?.connectorName;
       delete connectorMetadata.connectorName;
@@ -190,20 +188,20 @@ function ConfigureDs({
         connector_metadata: connectorMetadata,
         connector_name: connectorName,
         created_by: sessionDetails?.id,
-        workflow: id,
-        connector_type: type.toUpperCase(),
       };
 
-      url += "connector/";
+      url = getUrl("connector/");
 
       try {
-        setPostHogCustomEvent(
-          posthogConnectorAddedEventText[`${connType}:${type}`],
-          {
+        // TODO: Correct the connector related posthog events
+        // For workflow connectors, use the old format
+        const eventKey = `${connType.toUpperCase()}:${type.toLowerCase()}`;
+        if (posthogConnectorAddedEventText[eventKey]) {
+          setPostHogCustomEvent(posthogConnectorAddedEventText[eventKey], {
             info: `Clicked on 'Submit' button`,
             connector_name: selectedSourceName,
-          }
-        );
+          });
+        }
       } catch (err) {
         // If an error occurs while setting custom posthog event, ignore it and continue
       }
@@ -214,10 +212,10 @@ function ConfigureDs({
       body = {
         adapter_id: selectedSourceId,
         adapter_metadata: adapterMetadata,
-        adapter_type: type.toUpperCase(),
+        adapter_type: type?.toUpperCase(),
         adapter_name: adapterName,
       };
-      url += "adapter/";
+      url = getUrl("adapter/");
 
       try {
         setPostHogCustomEvent(posthogSubmitEventText[type], {
@@ -232,7 +230,7 @@ function ConfigureDs({
     let method = "POST";
     if (editItemId?.length) {
       method = "PUT";
-      url += `${editItemId}/`;
+      url = `${url}${editItemId}/`;
     }
 
     if (oAuthProvider?.length > 0) {
@@ -254,17 +252,8 @@ function ConfigureDs({
     axiosPrivate(requestOptions)
       .then((res) => {
         const data = res?.data;
-        if (sourceTypes.connectors.includes(type)) {
-          handleUpdate(
-            {
-              connector_instance_id: data?.id,
-              configuration: formDataConfig,
-            },
-            true
-          );
-          setIsTcSuccessful(false);
-          return;
-        }
+
+        // For centralized connectors or adapters
         if (data) {
           addNewItem(data, !!editItemId);
         }
@@ -361,7 +350,6 @@ ConfigureDs.propTypes = {
   metadata: PropTypes.object,
   selectedSourceName: PropTypes.string.isRequired,
   connType: PropTypes.string,
-  formDataConfig: PropTypes.object,
 };
 
 export { ConfigureDs };
