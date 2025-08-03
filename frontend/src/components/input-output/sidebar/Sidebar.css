@@ -1,16 +1,16 @@
 .sidebar-layout {
-    margin: 5px;
+  margin: 5px;
 }
 
 .sidebar-menu {
-    margin-top: 10px;
-    background-color: transparent;
+  margin-top: 10px;
+  background-color: transparent;
 }
 
 .sidebar-menu .ant-menu-item {
-    padding: 5px !important;
+  padding: 5px !important;
 }
 
 .sidebar-menu .ant-menu-title-content {
-    margin-left: 5px;
+  margin-left: 5px;
 }

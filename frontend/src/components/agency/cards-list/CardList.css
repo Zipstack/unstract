@@ -1,30 +1,30 @@
 .card-row {
-    height: 100%;
+  height: 100%;
 }
-.card-col-div{
-    width: 100%;
+.card-col-div {
+  width: 100%;
 }
-.card-typography{
-    font-size: 12px;
-    font-weight: bold;
+.card-typography {
+  font-size: 12px;
+  font-weight: bold;
 }
-.card-col-details{
-    padding: 10px 10px 0px;
-    border-radius: 0px 6px 6px 0px;
+.card-col-details {
+  padding: 10px 10px 0px;
+  border-radius: 0px 6px 6px 0px;
 }
 .wf-step-card-layout .active {
-    background-color: #DAE3EC;
+  background-color: #dae3ec;
 }
-.card-body > .ant-card-body{
-    padding: 0;
-    cursor: pointer;
+.card-body > .ant-card-body {
+  padding: 0;
+  cursor: pointer;
 }
 .step-name {
-    padding-left: 10px;
+  padding-left: 10px;
 }
 .tool-active {
-    border: 1px solid #3E7DC0;
+  border: 1px solid #3e7dc0;
 }
 .tool-dragging {
-    background-color: #DAE3EC;
+  background-color: #dae3ec;
 }

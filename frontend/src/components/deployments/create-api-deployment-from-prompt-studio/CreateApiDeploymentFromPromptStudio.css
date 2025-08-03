@@ -42,7 +42,10 @@
   text-align: left;
 }
 
-.create-api-deployment-from-prompt-studio-modal .success-content .ant-typography h4 {
+.create-api-deployment-from-prompt-studio-modal
+  .success-content
+  .ant-typography
+  h4 {
   text-align: center;
   margin-bottom: 24px;
   color: #52c41a;
@@ -54,7 +57,9 @@
   font-weight: 500;
 }
 
-.create-api-deployment-from-prompt-studio-modal .success-content .ant-btn:hover {
+.create-api-deployment-from-prompt-studio-modal
+  .success-content
+  .ant-btn:hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   transition: all 0.3s ease;

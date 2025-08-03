@@ -1,14 +1,14 @@
 .input-layout {
-    height: 100%;
+  height: 100%;
 }
 
 .input-sidebar {
-    background-color: var(--page-bg-3);
-    padding: 12px;
+  background-color: var(--page-bg-3);
+  padding: 12px;
 }
 
 .input-main {
-    padding: 12px;
-    height: 100%;
-    background-color: var(--white);
+  padding: 12px;
+  height: 100%;
+  background-color: var(--white);
 }

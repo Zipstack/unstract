@@ -1,13 +1,13 @@
 /* Styles for DocumentParser */
 
 .doc-parser-layout {
-    height: 100%;
+  height: 100%;
 }
 
 .doc-parser-pad-top {
-    padding-top: 6px;
+  padding-top: 6px;
 }
 
 .doc-parser-pad-bottom {
-    padding-bottom: 6px;
+  padding-bottom: 6px;
 }

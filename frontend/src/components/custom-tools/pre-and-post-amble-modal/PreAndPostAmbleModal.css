@@ -1,91 +1,89 @@
 /* Styles for PreAndPostAmbleModal */
 
 .pre-post-amble-modal .ant-modal-content {
-    padding: 0px;
+  padding: 0px;
 }
 
 .pre-post-amble-body {
-    padding: 20px;
+  padding: 20px;
 }
 
 .pre-post-amble-body-space {
-    width: 100%;
+  width: 100%;
 }
 
 .pre-post-amble-title {
-    font-size: 16px;
+  font-size: 16px;
 }
 
 .pre-post-amble-footer {
-    background-color: #F6F8FB;
-    border-radius: 0px 0px 10px 10px;
-    padding: 16px;
+  background-color: #f6f8fb;
+  border-radius: 0px 0px 10px 10px;
+  padding: 16px;
 }
 
 /* Text area container and expand button styles */
 .text-area-container {
-    position: relative;
+  position: relative;
 }
 
 .text-area-wrapper {
-    position: relative;
-    margin-bottom: 5px;
+  position: relative;
+  margin-bottom: 5px;
 }
 
 /* Fix for text area resizing issues */
 .text-area-wrapper .ant-input-textarea-show-count::after {
-    content: none !important; /* Remove character count if present */
+  content: none !important; /* Remove character count if present */
 }
 
 .expand-button {
-    position: absolute;
-    top: 5px;
-    right: 5px;
-    z-index: 2;
-    background: rgba(255, 255, 255, 0.8);
-    border-radius: 4px;
-    padding: 2px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  z-index: 2;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 4px;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .expand-button:hover {
-    background: rgba(240, 240, 240, 0.9);
+  background: rgba(240, 240, 240, 0.9);
 }
 
 /* Ensure text area retains its size between sessions */
 .text-area-wrapper .ant-input {
-    transition: height 0.2s;
-    min-height: 80px; /* Approx 4 rows */
-    max-height: 600px; /* Limit height and enable scrolling */
-    overflow-y: auto; /* Enable vertical scrolling */
+  transition: height 0.2s;
+  min-height: 80px; /* Approx 4 rows */
+  max-height: 600px; /* Limit height and enable scrolling */
+  overflow-y: auto; /* Enable vertical scrolling */
 }
 
 /* Modal styles */
 .expanded-modal-body {
-    padding: 20px;
+  padding: 20px;
 }
 
 .expanded-modal-body .ant-modal-body {
-    padding: 0;
-    overflow-y: auto;
+  padding: 0;
+  overflow-y: auto;
 }
 
-
-
 .expanded-textarea {
-    width: 100%;
-    margin-bottom: 20px;
-    height: auto !important; /* Let content determine height */
-    min-height: 80vh !important; /* Minimum height */
-    overflow-y: auto !important; /* Enable scrolling when needed */
-    resize: none !important; /* Prevent manual resizing */
-    transition: none !important; /* Disable transitions to prevent jumping */
+  width: 100%;
+  margin-bottom: 20px;
+  height: auto !important; /* Let content determine height */
+  min-height: 80vh !important; /* Minimum height */
+  overflow-y: auto !important; /* Enable scrolling when needed */
+  resize: none !important; /* Prevent manual resizing */
+  transition: none !important; /* Disable transitions to prevent jumping */
 }
 
 .modal-footer {
-    display: flex;
-    justify-content: flex-end;
+  display: flex;
+  justify-content: flex-end;
 }

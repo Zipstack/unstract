@@ -1,12 +1,12 @@
 .pl-5 {
-    padding-left: 5px;
+  padding-left: 5px;
 }
 
 .logs-label-row {
-    padding: 0px;
-    flex: none;
+  padding: 0px;
+  flex: none;
 }
 
 .logs-label-col {
-    border-right: 1px solid #C9C9C9;
+  border-right: 1px solid #c9c9c9;
 }
