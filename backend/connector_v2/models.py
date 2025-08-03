@@ -23,7 +23,19 @@ logger = logging.getLogger(__name__)
 
 
 class ConnectorInstanceModelManager(DefaultOrganizationManagerMixin, models.Manager):
-    pass
+    def get_queryset(self) -> models.QuerySet:
+        return super().get_queryset()
+
+    def for_user(self, user: User) -> models.QuerySet:
+        return (
+            self.get_queryset()
+            .filter(
+                models.Q(created_by=user)
+                | models.Q(shared_users=user)
+                | models.Q(shared_to_org=True)
+            )
+            .distinct("id")
+        )
 
 
 class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
@@ -71,6 +83,17 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
         related_name="connectors_modified",
         null=True,
         blank=True,
+    )
+
+    shared_to_org = models.BooleanField(
+        default=False,
+        db_comment="Is the connector shared to entire org",
+    )
+
+    # Introduced field to establish M2M relation between users and connectors.
+    # This will introduce intermediary table which relates both the models.
+    shared_users = models.ManyToManyField(
+        User, related_name="shared_connectors", blank=True
     )
 
     # Manager

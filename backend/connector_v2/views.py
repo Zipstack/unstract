@@ -8,6 +8,7 @@ from connector_auth_v2.pipeline.common import ConnectorAuthHelper
 from connector_processor.exceptions import OAuthTimeOut
 from django.db import IntegrityError
 from django.db.models import QuerySet
+from permissions.permission import IsOwner
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
@@ -26,6 +27,9 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
     serializer_class = ConnectorInstanceSerializer
 
+    def get_permissions(self) -> list[Any]:
+        return [IsOwner()]
+
     def get_queryset(self) -> QuerySet | None:
         filter_args = FilterHelper.build_filter_args(
             self.request,
@@ -35,9 +39,11 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
             CIKey.CONNECTOR_MODE,
         )
         if filter_args:
-            queryset = ConnectorInstance.objects.filter(**filter_args)
+            queryset = ConnectorInstance.objects.for_user(self.request.user).filter(
+                **filter_args
+            )
         else:
-            queryset = ConnectorInstance.objects.all()
+            queryset = ConnectorInstance.objects.for_user(self.request.user)
         return queryset
 
     def _get_connector_metadata(self, connector_id: str) -> dict[str, str] | None:

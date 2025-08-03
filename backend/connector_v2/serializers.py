@@ -79,6 +79,5 @@ class ConnectorInstanceSerializer(AuditSerializer):
             rep[CIKey.CONNECTOR_METADATA] = {}
         if SerializerUtils.check_context_for_GET_or_POST(context=self.context):
             rep.pop(CIKey.CONNECTOR_AUTH)
-            rep[ConnectorKeys.ICON] = self.get_icon(instance)
 
         return rep

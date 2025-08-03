@@ -20,6 +20,8 @@ function ConnectorsPage() {
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [sharingConnector, setSharingConnector] = useState(null);
   const [userList, setUserList] = useState([]);
+  const [isPermissionEdit, setIsPermissionEdit] = useState(false);
+  const [isShareLoading, setIsShareLoading] = useState(false);
 
   const axiosPrivate = useAxiosPrivate();
   const { sessionDetails } = useSessionStore();
@@ -37,7 +39,6 @@ function ConnectorsPage() {
       const response = await axiosPrivate.get(
         `/api/v1/unstract/${sessionDetails?.orgId}/connector/`
       );
-      // Backend should return connectors with icon field
       setConnectors(response.data || []);
     } catch (error) {
       setAlertDetails(handleException(error, "Failed to load connectors"));
@@ -93,25 +94,23 @@ function ConnectorsPage() {
     }
   };
 
-  const handleShareConnector = async (_event, connector) => {
-    try {
-      const response = await axiosPrivate.get(
-        `/api/v1/unstract/${sessionDetails?.orgId}/connector/users/${connector.id}/`
-      );
-      setSharingConnector(response.data);
-      setShareModalVisible(true);
-    } catch (error) {
-      setAlertDetails(
-        handleException(error, "Failed to load connector details")
-      );
-    }
+  const handleShareConnector = (_event, connector, isEdit) => {
+    setSharingConnector(connector);
+    setIsPermissionEdit(isEdit);
+    setShareModalVisible(true);
   };
 
-  const handleShareSave = async (userIds, connector) => {
+  const handleShareSave = async (userIds, connector, shareWithEveryone) => {
+    setIsShareLoading(true);
     try {
+      const updateData = {
+        shared_users: userIds,
+        shared_to_org: shareWithEveryone || false,
+      };
+
       await axiosPrivate.patch(
         `/api/v1/unstract/${sessionDetails?.orgId}/connector/${connector.id}/`,
-        { shared_users: userIds },
+        updateData,
         {
           headers: {
             "X-CSRFToken": sessionDetails?.csrfToken,
@@ -125,6 +124,8 @@ function ConnectorsPage() {
       });
     } catch (error) {
       setAlertDetails(handleException(error, "Failed to update sharing"));
+    } finally {
+      setIsShareLoading(false);
     }
   };
 
@@ -187,6 +188,9 @@ function ConnectorsPage() {
         adapter={sharingConnector}
         allUsers={userList}
         onApply={handleShareSave}
+        permissionEdit={isPermissionEdit}
+        loading={isShareLoading}
+        isSharableToOrg={true}
       />
     </div>
   );

@@ -87,9 +87,13 @@ function SharePermission({
     sharedWithContent = (
       <List
         dataSource={selectedUsers.map((userId) => {
-          const user = allUsers.find(
-            (u) => u?.id.toString() === userId.toString()
-          );
+          const user = allUsers.find((u) => {
+            if (u?.id !== undefined) {
+              return u?.id.toString() === userId.toString();
+            } else {
+              return u?.toString() === userId.toString();
+            }
+          });
           return {
             id: user?.id,
             email: user?.email,
@@ -102,8 +106,8 @@ function SharePermission({
                 <div onClick={(event) => event.stopPropagation()} role="none">
                   <Popconfirm
                     key={`${item.id}-delete`}
-                    title="Delete the User"
-                    description={`Are you sure to remove ${item?.email}?`}
+                    title="Revoke Access"
+                    description={`Are you sure you want to revoke access to ${item?.email}?`}
                     okText="Yes"
                     cancelText="No"
                     icon={<QuestionCircleOutlined />}
