@@ -20,6 +20,7 @@ from unstract.connectors.connectorkit import Connectorkit
 from unstract.connectors.enums import ConnectorMode
 from unstract.connectors.exceptions import ConnectorError, FSAccessDeniedError
 from unstract.connectors.filesystems.ucs import UnstractCloudStorage
+from unstract.connectors.queues.redis import RedisQueue
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,8 @@ class ConnectorProcessor:
         """Function to return list of all supported connectors except PCS."""
         supported_connectors = []
         updated_connectors = []
+        # Connectors that are marked active but not supported explicitly
+        unsupported_connectors = [RedisQueue.get_id()]
 
         if type == ConnectorKeys.INPUT:
             updated_connectors = fetch_connectors_by_key_value(
@@ -85,18 +88,18 @@ class ConnectorProcessor:
             connector_kit = Connectorkit()
             updated_connectors = connector_kit.get_connectors_list(mode=connector_mode)
 
-        for each_connector in updated_connectors:
+        for connector in updated_connectors:
+            if connector.get(ConnectorKeys.ID) in unsupported_connectors:
+                continue
             supported_connectors.append(
                 {
-                    ConnectorKeys.ID: each_connector.get(ConnectorKeys.ID),
-                    ConnectorKeys.NAME: each_connector.get(ConnectorKeys.NAME),
-                    ConnectorKeys.DESCRIPTION: each_connector.get(
-                        ConnectorKeys.DESCRIPTION
-                    ),
-                    ConnectorKeys.ICON: each_connector.get(ConnectorKeys.ICON),
-                    ConnectorKeys.CAN_READ: each_connector.get(ConnectorKeys.CAN_READ),
-                    ConnectorKeys.CAN_WRITE: each_connector.get(ConnectorKeys.CAN_WRITE),
-                    CIKey.CONNECTOR_MODE: each_connector.get(CIKey.CONNECTOR_MODE).name,
+                    ConnectorKeys.ID: connector.get(ConnectorKeys.ID),
+                    ConnectorKeys.NAME: connector.get(ConnectorKeys.NAME),
+                    ConnectorKeys.DESCRIPTION: connector.get(ConnectorKeys.DESCRIPTION),
+                    ConnectorKeys.ICON: connector.get(ConnectorKeys.ICON),
+                    ConnectorKeys.CAN_READ: connector.get(ConnectorKeys.CAN_READ),
+                    ConnectorKeys.CAN_WRITE: connector.get(ConnectorKeys.CAN_WRITE),
+                    CIKey.CONNECTOR_MODE: connector.get(CIKey.CONNECTOR_MODE).name,
                 }
             )
 
