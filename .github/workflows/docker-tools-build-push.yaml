@@ -75,6 +75,8 @@ jobs:
           file: ${{ steps.build-config.outputs.dockerfile }}
           platforms: linux/amd64,linux/arm64/v8
           push: true
-          tags: unstract/${{ github.event.inputs.service_name }}:${{ github.event.inputs.tag }}
+          tags: |
+            unstract/${{ github.event.inputs.service_name }}:${{ github.event.inputs.tag }}
+            unstract/${{ github.event.inputs.service_name }}:latest
           cache-from: type=gha,scope=${{ github.event.inputs.service_name }}
           cache-to: type=gha,mode=max,scope=${{ github.event.inputs.service_name }}
