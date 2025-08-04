@@ -1,5 +1,6 @@
 import PropTypes from "prop-types";
 import { createRef, useEffect, useState } from "react";
+import { Empty, Typography } from "antd";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { RjsfFormLayout } from "../../../layouts/rjsf-form-layout/RjsfFormLayout.jsx";
@@ -28,9 +29,13 @@ function ToolSettings({ spec, isSpecLoading }) {
     setFormData(metadata);
   }, [toolSettings, spec]);
 
+  const isObjectEmpty = (obj) => {
+    return obj && Object.keys(obj).length === 0;
+  };
+
   const isFormValid = () => {
     if (formRef) {
-      formRef?.current?.validateFields((errors, values) => {
+      formRef?.current?.validateFields((errors) => {
         if (errors) {
           return false;
         }
@@ -71,6 +76,31 @@ function ToolSettings({ spec, isSpecLoading }) {
         setAlertDetails(handleException(err));
       });
   };
+
+  // Show empty state for Prompt Studio tools that don't have configurable settings
+  if (
+    !isSpecLoading &&
+    (isObjectEmpty(spec) || isObjectEmpty(spec?.properties))
+  ) {
+    return (
+      <div className="tool-settings-layout">
+        <Empty
+          description={
+            <div style={{ textAlign: "center" }}>
+              <Typography.Text type="secondary">
+                This Prompt Studio tool doesn&apos;t have configurable settings.
+              </Typography.Text>
+              <br />
+              <Typography.Text type="secondary" style={{ fontSize: "12px" }}>
+                Tool configuration is managed within the Prompt Studio
+                interface.
+              </Typography.Text>
+            </div>
+          }
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="tool-settings-layout">
