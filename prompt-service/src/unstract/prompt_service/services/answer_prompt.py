@@ -1,9 +1,7 @@
-import json
 from logging import Logger
 from typing import Any
 
 from flask import current_app as app
-from json_repair import repair_json
 
 from unstract.core.flask.exceptions import APIError
 from unstract.prompt_service.constants import ExecutionSource, FileStorageKeys, RunLevel
@@ -11,6 +9,9 @@ from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.exceptions import RateLimitError
 from unstract.prompt_service.helpers.plugin import PluginManager
 from unstract.prompt_service.utils.env_loader import get_env_or_die
+from unstract.prompt_service.utils.json_repair_helper import (
+    repair_json_with_best_structure,
+)
 from unstract.prompt_service.utils.log import publish_log
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError
@@ -245,20 +246,8 @@ class AnswerPromptService:
         if answer.lower() == "na":
             structured_output[prompt_key] = None
         else:
-            # Attempt parsing as-is (could be a valid object, array, or partial JSON)
-            a = repair_json(json_str=answer, return_objects=True, ensure_ascii=False)
-
-            # Attempt parsing with array wrap (useful for multiple comma-separated objects like {}, {}, {})
-            b = repair_json(
-                json_str="[" + answer, return_objects=True, ensure_ascii=False
-            )
-
-            # Heuristic: if wrapping only added '[' and ']', len(b) - len(a) >= 2 → original was valid, use 'a'
-            # Otherwise, fallback to 'b' which likely fixed multiple items or invalid top-level structure
-            dump_a = json.dumps(a, ensure_ascii=False)
-            dump_b = json.dumps(b, ensure_ascii=False)
-            ARRAY_WRAP_DELTA = 2  # '[' and ']'
-            parsed_data = a if len(dump_b) - len(dump_a) >= ARRAY_WRAP_DELTA else b
+            # Use the utility function to repair JSON with the best structure
+            parsed_data = repair_json_with_best_structure(answer)
 
             if isinstance(parsed_data, str):
                 err_msg = "Error parsing response (to json)\n" f"Candidate JSON: {answer}"
