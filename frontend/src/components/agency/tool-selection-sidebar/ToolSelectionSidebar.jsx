@@ -92,10 +92,11 @@ function ToolSelectionSidebar({
                     <div className="tool-info">
                       <div className="tool-header">
                         <div className="wf-tools-list">
-                          {<ToolIcon iconSrc={tool.icon} showBorder={true} /> ||
-                            tool.icon || (
-                              <FileTextOutlined className="tool-icon" />
-                            )}
+                          {tool.icon ? (
+                            <ToolIcon iconSrc={tool.icon} showBorder={true} />
+                          ) : (
+                            <FileTextOutlined className="tool-icon" />
+                          )}
                         </div>
                         <div className="tool-details">
                           <Typography.Text strong className="tool-name">
