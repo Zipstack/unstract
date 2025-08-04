@@ -84,6 +84,118 @@
   margin-right: 8px;
 }
 
+/* New styles for inline style replacement */
+.retrieval-strategy-modal__loading {
+  text-align: center;
+  padding: 40px 0;
+}
+
+.retrieval-strategy-modal__alert {
+  margin-bottom: 16px;
+}
+
+.retrieval-strategy-modal__content {
+  display: flex;
+  gap: 16px;
+}
+
+.retrieval-strategy-modal__selection {
+  flex: 1;
+}
+
+.retrieval-strategy-modal__radio-group {
+  width: 100%;
+}
+
+.retrieval-strategy-modal__radio-space {
+  width: 100%;
+}
+
+.retrieval-strategy-modal__radio-item {
+  width: 100%;
+}
+
+.retrieval-strategy-modal__radio-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.retrieval-strategy-modal__selected-indicator {
+  font-size: 12px;
+  margin-left: 8px;
+  font-weight: normal;
+}
+
+.retrieval-strategy-modal__empty-state {
+  text-align: center;
+  padding: 20px 0;
+}
+
+.retrieval-strategy-modal__details {
+  flex: 1.5;
+  padding-left: 16px;
+  border-left: 1px solid #f0f0f0;
+}
+
+.retrieval-strategy-modal__title {
+  margin-bottom: 8px;
+}
+
+.retrieval-strategy-modal__description {
+  margin-bottom: 16px;
+}
+
+.retrieval-strategy-modal__best-for {
+  margin-bottom: 16px;
+}
+
+.retrieval-strategy-modal__best-for-list {
+  margin-top: 8px;
+  margin-bottom: 0;
+}
+
+.retrieval-strategy-modal__performance {
+  margin-bottom: 16px;
+}
+
+.retrieval-strategy-modal__performance-content {
+  margin-top: 8px;
+}
+
+.retrieval-strategy-modal__performance-item {
+  margin-bottom: 8px;
+}
+
+.retrieval-strategy-modal__technical-details {
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.retrieval-strategy-modal__token-usage-low {
+  color: #52c41a;
+}
+
+.retrieval-strategy-modal__token-usage-medium {
+  color: #faad14;
+}
+
+.retrieval-strategy-modal__token-usage-high {
+  color: #ff4d4f;
+}
+
+.retrieval-strategy-modal__cost-impact-low {
+  color: #52c41a;
+}
+
+.retrieval-strategy-modal__cost-impact-medium {
+  color: #faad14;
+}
+
+.retrieval-strategy-modal__cost-impact-high {
+  color: #ff4d4f;
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .retrieval-strategy-modal {
@@ -91,11 +203,11 @@
     max-width: none !important;
   }
 
-  .retrieval-strategy-modal .ant-modal-body > div {
+  .retrieval-strategy-modal__content {
     flex-direction: column;
   }
 
-  .retrieval-strategy-modal .ant-modal-body > div > div:last-child {
+  .retrieval-strategy-modal__details {
     border-left: none;
     border-top: 1px solid #f0f0f0;
     padding-left: 0;

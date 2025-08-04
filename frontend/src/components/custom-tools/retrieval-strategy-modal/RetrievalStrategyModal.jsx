@@ -86,20 +86,28 @@ const RetrievalStrategyModal = ({
     onOk(selectedStrategy);
   };
 
-  const getTokenUsageColor = (usage) => {
-    if (usage.includes("Low")) return "#52c41a";
-    if (usage.includes("Medium")) return "#faad14";
-    if (usage.includes("Very High")) return "#ff4d4f";
-    if (usage.includes("High")) return "#ff4d4f";
-    return "#d9d9d9";
+  const getTokenUsageClassName = (usage) => {
+    if (usage.includes("Low"))
+      return "retrieval-strategy-modal__token-usage-low";
+    if (usage.includes("Medium"))
+      return "retrieval-strategy-modal__token-usage-medium";
+    if (usage.includes("Very High"))
+      return "retrieval-strategy-modal__token-usage-high";
+    if (usage.includes("High"))
+      return "retrieval-strategy-modal__token-usage-high";
+    return "";
   };
 
-  const getCostImpactColor = (impact) => {
-    if (impact.includes("Low")) return "#52c41a";
-    if (impact.includes("Medium")) return "#faad14";
-    if (impact.includes("Very High")) return "#ff4d4f";
-    if (impact.includes("High")) return "#ff4d4f";
-    return "#d9d9d9";
+  const getCostImpactClassName = (impact) => {
+    if (impact.includes("Low"))
+      return "retrieval-strategy-modal__cost-impact-low";
+    if (impact.includes("Medium"))
+      return "retrieval-strategy-modal__cost-impact-medium";
+    if (impact.includes("Very High"))
+      return "retrieval-strategy-modal__cost-impact-high";
+    if (impact.includes("High"))
+      return "retrieval-strategy-modal__cost-impact-high";
+    return "";
   };
 
   return (
@@ -126,7 +134,7 @@ const RetrievalStrategyModal = ({
       className="retrieval-strategy-modal"
     >
       {isLoadingStrategies ? (
-        <div style={{ textAlign: "center", padding: "40px 0" }}>
+        <div className="retrieval-strategy-modal__loading">
           <Spin size="large" tip="Loading strategies..." />
         </div>
       ) : (
@@ -137,42 +145,35 @@ const RetrievalStrategyModal = ({
             description="Different retrieval strategies optimize for various use cases. Consider your document types, query complexity, and performance requirements when selecting."
             type="info"
             showIcon
-            style={{ marginBottom: 16 }}
+            className="retrieval-strategy-modal__alert"
           />
 
-          <div style={{ display: "flex", gap: 16 }}>
+          <div className="retrieval-strategy-modal__content">
             {/* Strategy Selection */}
-            <div style={{ flex: 1 }}>
+            <div className="retrieval-strategy-modal__selection">
               <Radio.Group
                 value={selectedStrategy}
                 onChange={handleStrategyChange}
-                style={{ width: "100%" }}
+                className="retrieval-strategy-modal__radio-group"
               >
-                <Space direction="vertical" style={{ width: "100%" }}>
+                <Space
+                  direction="vertical"
+                  className="retrieval-strategy-modal__radio-space"
+                >
                   {strategiesWithIcons.length > 0 ? (
                     strategiesWithIcons.map((strategy) => (
                       <Radio
-                        key={strategy.key}
-                        value={strategy.key}
-                        style={{ width: "100%" }}
+                        key={strategy?.key}
+                        value={strategy?.key}
+                        className="retrieval-strategy-modal__radio-item"
                       >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                          }}
-                        >
-                          {strategy.icon}
-                          <Text strong>{strategy.title}</Text>
-                          {strategy.key === currentStrategy && (
+                        <div className="retrieval-strategy-modal__radio-content">
+                          {strategy?.icon}
+                          <Text strong>{strategy?.title}</Text>
+                          {strategy?.key === currentStrategy && (
                             <Text
                               type="success"
-                              style={{
-                                fontSize: 12,
-                                marginLeft: 8,
-                                fontWeight: "normal",
-                              }}
+                              className="retrieval-strategy-modal__selected-indicator"
                             >
                               (Selected)
                             </Text>
@@ -181,7 +182,7 @@ const RetrievalStrategyModal = ({
                       </Radio>
                     ))
                   ) : (
-                    <div style={{ textAlign: "center", padding: "20px 0" }}>
+                    <div className="retrieval-strategy-modal__empty-state">
                       <Text type="secondary">
                         No retrieval strategies available. Please try refreshing
                         the page.
@@ -193,28 +194,22 @@ const RetrievalStrategyModal = ({
             </div>
 
             {/* Strategy Details */}
-            <div
-              style={{
-                flex: 1.5,
-                paddingLeft: 16,
-                borderLeft: "1px solid #f0f0f0",
-              }}
-            >
+            <div className="retrieval-strategy-modal__details">
               {selectedDetails && (
                 <>
-                  <Title level={4} style={{ marginBottom: 8 }}>
-                    {selectedDetails.title}
+                  <Title level={4} className="retrieval-strategy-modal__title">
+                    {selectedDetails?.title}
                   </Title>
 
-                  <Paragraph style={{ marginBottom: 16 }}>
-                    {selectedDetails.description}
+                  <Paragraph className="retrieval-strategy-modal__description">
+                    {selectedDetails?.description}
                   </Paragraph>
 
-                  <div style={{ marginBottom: 16 }}>
+                  <div className="retrieval-strategy-modal__best-for">
                     <Text strong>Best For:</Text>
-                    <ul style={{ marginTop: 8, marginBottom: 0 }}>
-                      {selectedDetails.bestFor &&
-                      selectedDetails.bestFor.length > 0 ? (
+                    <ul className="retrieval-strategy-modal__best-for-list">
+                      {selectedDetails?.bestFor &&
+                      selectedDetails?.bestFor?.length > 0 ? (
                         selectedDetails.bestFor.map((item) => (
                           <li key={item}>{item}</li>
                         ))
@@ -224,33 +219,29 @@ const RetrievalStrategyModal = ({
                     </ul>
                   </div>
 
-                  <div style={{ marginBottom: 16 }}>
+                  <div className="retrieval-strategy-modal__performance">
                     <Text strong>Performance Impact:</Text>
-                    <div style={{ marginTop: 8 }}>
-                      <div style={{ marginBottom: 8 }}>
+                    <div className="retrieval-strategy-modal__performance-content">
+                      <div className="retrieval-strategy-modal__performance-item">
                         <Text>Token Usage: </Text>
                         <Text
                           strong
-                          style={{
-                            color: getTokenUsageColor(
-                              selectedDetails.tokenUsage || "Unknown"
-                            ),
-                          }}
+                          className={getTokenUsageClassName(
+                            selectedDetails?.tokenUsage || "Unknown"
+                          )}
                         >
-                          {selectedDetails.tokenUsage || "Unknown"}
+                          {selectedDetails?.tokenUsage || "Unknown"}
                         </Text>
                       </div>
                       <div>
                         <Text>Cost Impact: </Text>
                         <Text
                           strong
-                          style={{
-                            color: getCostImpactColor(
-                              selectedDetails.costImpact || "Unknown"
-                            ),
-                          }}
+                          className={getCostImpactClassName(
+                            selectedDetails?.costImpact || "Unknown"
+                          )}
                         >
-                          {selectedDetails.costImpact || "Unknown"}
+                          {selectedDetails?.costImpact || "Unknown"}
                         </Text>
                       </div>
                     </div>
@@ -260,8 +251,8 @@ const RetrievalStrategyModal = ({
 
                   <div>
                     <Text strong>Technical Details:</Text>
-                    <Paragraph style={{ marginTop: 8, fontSize: 12 }}>
-                      {selectedDetails.technicalDetails ||
+                    <Paragraph className="retrieval-strategy-modal__technical-details">
+                      {selectedDetails?.technicalDetails ||
                         "No technical details available"}
                     </Paragraph>
                   </div>

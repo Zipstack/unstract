@@ -76,10 +76,11 @@ function AddLlmProfile({
       const loadStrategies = async () => {
         try {
           const strategies = await getStrategies(details.tool_id);
-          const items = strategies.map((strategy) => ({
-            value: strategy.key,
-            label: strategy.title,
-          }));
+          const items =
+            strategies?.map((strategy) => ({
+              value: strategy?.key,
+              label: strategy?.title,
+            })) || [];
           setRetrievalItems(items);
           setHasLoadedFromApi(true);
         } catch (error) {
