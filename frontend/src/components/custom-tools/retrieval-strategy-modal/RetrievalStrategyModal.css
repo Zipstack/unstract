@@ -1,0 +1,217 @@
+.retrieval-strategy-modal .ant-modal-header {
+  border-bottom: 1px solid #f0f0f0;
+  padding: 16px 24px;
+}
+
+.retrieval-strategy-modal .ant-modal-body {
+  padding: 24px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.retrieval-strategy-modal .ant-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.retrieval-strategy-modal .ant-radio-wrapper {
+  display: flex;
+  align-items: flex-start;
+  padding: 12px;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+  transition: all 0.3s ease;
+}
+
+.retrieval-strategy-modal .ant-radio-wrapper:hover {
+  border-color: #1890ff;
+  background-color: #f6ffed;
+}
+
+.retrieval-strategy-modal .ant-radio-wrapper-checked {
+  border-color: #1890ff;
+  background-color: #e6f7ff;
+}
+
+.retrieval-strategy-modal .ant-typography h4 {
+  margin-bottom: 8px;
+  color: #262626;
+}
+
+.retrieval-strategy-modal .ant-typography p {
+  color: #595959;
+  line-height: 1.5;
+}
+
+.retrieval-strategy-modal ul {
+  padding-left: 20px;
+}
+
+.retrieval-strategy-modal ul li {
+  margin-bottom: 4px;
+  color: #595959;
+}
+
+.retrieval-strategy-modal .ant-divider {
+  margin: 16px 0;
+}
+
+.retrieval-strategy-modal .resource-impact-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.retrieval-strategy-modal .resource-impact-item .anticon {
+  color: #8c8c8c;
+}
+
+.retrieval-strategy-modal .technical-details {
+  background-color: #fafafa;
+  padding: 12px;
+  border-radius: 4px;
+  border-left: 3px solid #1890ff;
+}
+
+.retrieval-strategy-modal .strategy-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 8px;
+}
+
+/* New styles for inline style replacement */
+.retrieval-strategy-modal__loading {
+  text-align: center;
+  padding: 40px 0;
+}
+
+.retrieval-strategy-modal__alert {
+  margin-bottom: 16px;
+}
+
+.retrieval-strategy-modal__content {
+  display: flex;
+  gap: 16px;
+}
+
+.retrieval-strategy-modal__selection {
+  flex: 1;
+}
+
+.retrieval-strategy-modal__radio-group {
+  width: 100%;
+}
+
+.retrieval-strategy-modal__radio-space {
+  width: 100%;
+}
+
+.retrieval-strategy-modal__radio-item {
+  width: 100%;
+}
+
+.retrieval-strategy-modal__radio-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.retrieval-strategy-modal__selected-indicator {
+  font-size: 12px;
+  margin-left: 8px;
+  font-weight: normal;
+}
+
+.retrieval-strategy-modal__empty-state {
+  text-align: center;
+  padding: 20px 0;
+}
+
+.retrieval-strategy-modal__details {
+  flex: 1.5;
+  padding-left: 16px;
+  border-left: 1px solid #f0f0f0;
+}
+
+.retrieval-strategy-modal__title {
+  margin-bottom: 8px;
+}
+
+.retrieval-strategy-modal__description {
+  margin-bottom: 16px;
+}
+
+.retrieval-strategy-modal__best-for {
+  margin-bottom: 16px;
+}
+
+.retrieval-strategy-modal__best-for-list {
+  margin-top: 8px;
+  margin-bottom: 0;
+}
+
+.retrieval-strategy-modal__performance {
+  margin-bottom: 16px;
+}
+
+.retrieval-strategy-modal__performance-content {
+  margin-top: 8px;
+}
+
+.retrieval-strategy-modal__performance-item {
+  margin-bottom: 8px;
+}
+
+.retrieval-strategy-modal__technical-details {
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.retrieval-strategy-modal__token-usage-low {
+  color: #52c41a;
+}
+
+.retrieval-strategy-modal__token-usage-medium {
+  color: #faad14;
+}
+
+.retrieval-strategy-modal__token-usage-high {
+  color: #ff4d4f;
+}
+
+.retrieval-strategy-modal__cost-impact-low {
+  color: #52c41a;
+}
+
+.retrieval-strategy-modal__cost-impact-medium {
+  color: #faad14;
+}
+
+.retrieval-strategy-modal__cost-impact-high {
+  color: #ff4d4f;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .retrieval-strategy-modal {
+    width: 95% !important;
+    max-width: none !important;
+  }
+
+  .retrieval-strategy-modal__content {
+    flex-direction: column;
+  }
+
+  .retrieval-strategy-modal__details {
+    border-left: none;
+    border-top: 1px solid #f0f0f0;
+    padding-left: 0;
+    padding-top: 16px;
+    margin-top: 16px;
+  }
+}
