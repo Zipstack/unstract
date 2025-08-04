@@ -54,6 +54,21 @@ Your app is ready to be deployed!
 
 See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
 
+### Linting and Formatting
+
+The project includes ESLint and Prettier for code quality and formatting.
+
+**Available commands:**
+
+- `npm run lint` - Check for linting errors
+- `npm run lint:fix` - Auto-fix linting errors
+- `npm run prettier` - Check formatting issues
+- `npm run prettier:fix` - Auto-fix formatting issues
+- `npm run lint:all` - Run both ESLint and Prettier fixes on all files
+- `npm run lint:changed` - Run ESLint and Prettier only on changed files
+
+**Note:** Make sure to run `npm install` first to install the required dependencies.
+
 ## React Strict Mode
 
 *React Strict Mode* is enabled by default, which will **mount all components twice** during local development.
