@@ -44,6 +44,9 @@ from prompt_studio.prompt_studio_core_v2.exceptions import (
     ToolDeleteError,
 )
 from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import PromptStudioHelper
+from prompt_studio.prompt_studio_core_v2.retrieval_strategies import (
+    get_retrieval_strategy_metadata,
+)
 from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManager
 from prompt_studio.prompt_studio_document_manager_v2.prompt_studio_document_helper import (  # noqa: E501
     PromptStudioDocumentHelper,
@@ -166,6 +169,30 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         except Exception as e:
             logger.error(f"Error occured while fetching select fields {e}")
             return Response(select_choices, status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["get"])
+    def get_retrieval_strategies(self, request: HttpRequest, pk: Any = None) -> Response:
+        """Method to return all retrieval strategy metadata.
+
+        Returns detailed information about each retrieval strategy including
+        descriptions, use cases, performance impacts, and technical details.
+
+        Args:
+            request (HttpRequest): The HTTP request
+            pk (Any): Primary key of the tool (not used in this method)
+
+        Returns:
+            Response: Response containing retrieval strategy metadata
+        """
+        try:
+            strategies = get_retrieval_strategy_metadata()
+            return Response(strategies, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Error occurred while fetching retrieval strategies: {e}")
+            return Response(
+                {"error": "Failed to fetch retrieval strategies"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
     @action(detail=True, methods=["get"])
     def list_profiles(self, request: HttpRequest, pk: Any = None) -> Response:
