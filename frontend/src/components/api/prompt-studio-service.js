@@ -14,5 +14,16 @@ export const usePromptStudioService = () => {
     return response.data.count;
   }, [axiosPrivate, getUrl]);
 
-  return { getPromptStudioCount };
+  const getRetrievalStrategies = useCallback(
+    async (toolId) => {
+      const response = await axiosPrivate({
+        method: "GET",
+        url: getUrl(`/prompt-studio/${toolId}/get_retrieval_strategies`),
+      });
+      return response.data;
+    },
+    [axiosPrivate, getUrl]
+  );
+
+  return { getPromptStudioCount, getRetrievalStrategies };
 };
