@@ -28,9 +28,7 @@ from utils.user_context import UserContext
 from backend.celery_service import app as celery_app
 from unstract.workflow_execution.enums import LogStage
 from workflow_manager.endpoint_v2.destination import DestinationConnector
-from workflow_manager.endpoint_v2.dto import (
-    FileHash,
-)
+from workflow_manager.endpoint_v2.dto import FileHash
 from workflow_manager.endpoint_v2.result_cache_utils import ResultCacheUtils
 from workflow_manager.endpoint_v2.source import SourceConnector
 from workflow_manager.execution.dto import ExecutionCache
@@ -42,11 +40,7 @@ from workflow_manager.workflow_v2.constants import (
     WorkflowExecutionKey,
     WorkflowMessages,
 )
-from workflow_manager.workflow_v2.dto import (
-    ExecutionResponse,
-    FileBatchData,
-    FileData,
-)
+from workflow_manager.workflow_v2.dto import ExecutionResponse, FileBatchData, FileData
 from workflow_manager.workflow_v2.enums import (
     ExecutionStatus,
     SchemaEntity,
@@ -238,23 +232,16 @@ class WorkflowHelper:
         tool_instances: list[ToolInstance],
     ) -> None:
         for tool in tool_instances:
-            try:
-                # Ensure adapter IDs are resolved before validation
-                user = tool.workflow.created_by
-                migrated_metadata = ToolInstanceHelper.ensure_adapter_ids_in_metadata(
-                    tool, user=user
-                )
-                ToolInstanceHelper.validate_tool_settings(
-                    user=user,
-                    tool_uid=tool.tool_id,
-                    tool_meta=migrated_metadata,
-                )
-            except Exception as e:
-                # Re-raise with additional context for better error messages
-                logger.error(
-                    f"Failed to validate tool instance {tool.id} in workflow: {e}"
-                )
-                raise
+            # Ensure adapter IDs are resolved before validation
+            user = tool.workflow.created_by
+            migrated_metadata = ToolInstanceHelper.ensure_adapter_ids_in_metadata(
+                tool, user=user
+            )
+            ToolInstanceHelper.validate_tool_settings(
+                user=user,
+                tool_uid=tool.tool_id,
+                tool_meta=migrated_metadata,
+            )
 
     @staticmethod
     def run_workflow(

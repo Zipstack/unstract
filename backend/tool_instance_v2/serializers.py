@@ -2,6 +2,7 @@ import logging
 import uuid
 from typing import Any
 
+from adapter_processor_v2.adapter_processor import AdapterProcessor
 from prompt_studio.prompt_studio_registry_v2.constants import PromptStudioRegistryKeys
 from rest_framework.serializers import ListField, Serializer, UUIDField, ValidationError
 from workflow_manager.workflow_v2.constants import WorkflowKey
@@ -12,8 +13,11 @@ from tool_instance_v2.constants import ToolInstanceKey as TIKey
 from tool_instance_v2.constants import ToolKey
 from tool_instance_v2.exceptions import ToolDoesNotExist
 from tool_instance_v2.models import ToolInstance
+from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
 from tool_instance_v2.tool_processor import ToolProcessor
+from unstract.sdk.adapters.enums import AdapterTypes
 from unstract.tool_registry.dto import Tool
+from unstract.tool_registry.tool_utils import ToolUtils
 
 logger = logging.getLogger(__name__)
 
@@ -65,13 +69,6 @@ class ToolInstanceSerializer(AuditSerializer):
         self, metadata: dict[str, Any], tool_uid: str
     ) -> dict[str, Any]:
         """Transform adapter IDs back to names for UI display."""
-        from adapter_processor_v2.adapter_processor import AdapterProcessor
-
-        from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
-        from tool_instance_v2.tool_processor import ToolProcessor
-        from unstract.sdk.adapters.enums import AdapterTypes
-        from unstract.tool_registry.tool_utils import ToolUtils
-
         # Create a copy to avoid mutating the original metadata
         display_metadata = metadata.copy()
 
@@ -115,7 +112,7 @@ class ToolInstanceSerializer(AuditSerializer):
                         except Exception as e:
                             # If conversion fails, show user-friendly error
                             display_metadata[adapter_key] = (
-                                f"[ERROR: {adapter_value[:8]}...]"
+                                f"[{adapter_value[:8]}...] NOT FOUND"
                             )
                             logger.error(
                                 f"Could not resolve adapter ID {adapter_value} to name: {e}"
@@ -142,7 +139,7 @@ class ToolInstanceSerializer(AuditSerializer):
                                 )
                         except Exception as e:
                             # If validation fails, show error
-                            display_metadata[adapter_key] = f"[ERROR: {adapter_value}]"
+                            display_metadata[adapter_key] = f"[{adapter_value} NOT FOUND]"
                             logger.error(
                                 f"Could not validate adapter name '{adapter_value}': {e}"
                             )
