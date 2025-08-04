@@ -26,7 +26,12 @@
     },
     "retrieval_strategy":{
         "simple":"simple",
-        "subquestion":"subquestion"
+        "subquestion":"subquestion",
+        "fusion":"fusion",
+        "recursive":"recursive",
+        "router":"router",
+        "keyword_table":"keyword_table",
+        "automerging":"automerging"
     },
     "vector_store":{
         "Postgres pg_vector":"Postgres pg_vector",

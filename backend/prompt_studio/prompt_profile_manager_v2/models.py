@@ -15,6 +15,11 @@ class ProfileManager(BaseModel):
     class RetrievalStrategy(models.TextChoices):
         SIMPLE = "simple", "Simple retrieval"
         SUBQUESTION = "subquestion", "Subquestion retrieval"
+        FUSION = "fusion", "Fusion retrieval"
+        RECURSIVE = "recursive", "Recursive retrieval"
+        ROUTER = "router", "Router retrieval"
+        KEYWORD_TABLE = "keyword_table", "Keyword table retrieval"
+        AUTOMERGING = "automerging", "Auto-merging retrieval"
 
     profile_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     profile_name = models.TextField(blank=False)
@@ -56,6 +61,7 @@ class ProfileManager(BaseModel):
         choices=RetrievalStrategy.choices,
         blank=True,
         db_comment="Field to store the retrieval strategy for prompts",
+        default=RetrievalStrategy.SIMPLE,
     )
     similarity_top_k = models.IntegerField(
         blank=True,
