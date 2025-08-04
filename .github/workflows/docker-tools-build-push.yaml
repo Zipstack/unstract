@@ -17,6 +17,11 @@ on:
           - tool-structure
           - tool-text-extractor
           - tool-sidecar
+      add_latest_tag:
+        description: "Also tag as 'latest'"
+        required: false
+        default: true
+        type: boolean
 
 run-name: "[${{ inputs.service_name }}:${{ inputs.tag }}] Docker Image Build and Push (Development)"
 
@@ -67,15 +72,15 @@ jobs:
             echo "dockerfile=docker/dockerfiles/tool-sidecar.Dockerfile" >> $GITHUB_OUTPUT
           fi
 
-      # Determine tags based on input tag
+      # Determine tags based on inputs
       - name: Determine Docker tags
         id: tags
         run: |
           TAG="${{ github.event.inputs.tag }}"
           TAGS="unstract/${{ github.event.inputs.service_name }}:${TAG}"
 
-          # Add latest tag only if tag doesn't contain 'rc' or 'snapshot'
-          if [[ ! "$TAG" =~ rc ]] && [[ ! "$TAG" =~ snapshot ]]; then
+          # Add latest tag if checkbox is checked
+          if [ "${{ github.event.inputs.add_latest_tag }}" == "true" ]; then
             TAGS="${TAGS}\nunstract/${{ github.event.inputs.service_name }}:latest"
           fi
 
