@@ -98,7 +98,7 @@ class ProfileManager(BaseModel):
 
     is_summarize_llm = models.BooleanField(
         default=False,
-        db_comment="Default LLM Profile used for summarizing",
+        db_comment="DEPRECATED: Default LLM Profile used for summarizing. Use CustomTool.summarize_llm_adapter instead.",
     )
 
     class Meta:
