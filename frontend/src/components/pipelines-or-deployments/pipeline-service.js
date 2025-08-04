@@ -87,6 +87,13 @@ function pipelineService() {
       };
       return axiosPrivate(requestOptions);
     },
+    getPipelinesByWorkflowId: (workflowId) => {
+      const requestOptions = {
+        method: "GET",
+        url: `${path}/pipeline/?workflow=${workflowId}`,
+      };
+      return axiosPrivate(requestOptions);
+    },
   };
 }
 
