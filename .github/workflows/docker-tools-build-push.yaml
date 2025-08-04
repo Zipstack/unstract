@@ -67,6 +67,22 @@ jobs:
             echo "dockerfile=docker/dockerfiles/tool-sidecar.Dockerfile" >> $GITHUB_OUTPUT
           fi
 
+      # Determine tags based on input tag
+      - name: Determine Docker tags
+        id: tags
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+          TAGS="unstract/${{ github.event.inputs.service_name }}:${TAG}"
+
+          # Add latest tag only if tag doesn't contain 'rc' or 'snapshot'
+          if [[ ! "$TAG" =~ rc ]] && [[ ! "$TAG" =~ snapshot ]]; then
+            TAGS="${TAGS}\nunstract/${{ github.event.inputs.service_name }}:latest"
+          fi
+
+          echo "tags<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$TAGS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       # Build and push Docker image
       - name: Build and push ${{ github.event.inputs.service_name }}
         uses: docker/build-push-action@v5
@@ -75,8 +91,6 @@ jobs:
           file: ${{ steps.build-config.outputs.dockerfile }}
           platforms: linux/amd64,linux/arm64/v8
           push: true
-          tags: |
-            unstract/${{ github.event.inputs.service_name }}:${{ github.event.inputs.tag }}
-            unstract/${{ github.event.inputs.service_name }}:latest
+          tags: ${{ steps.tags.outputs.tags }}
           cache-from: type=gha,scope=${{ github.event.inputs.service_name }}
           cache-to: type=gha,mode=max,scope=${{ github.event.inputs.service_name }}
