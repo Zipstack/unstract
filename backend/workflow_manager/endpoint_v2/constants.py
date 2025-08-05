@@ -5,7 +5,16 @@ from fnmatch import fnmatch
 class TableColumns:
     CREATED_BY = "created_by"
     CREATED_AT = "created_at"
-    PERMANENT_COLUMNS = ["created_by", "created_at"]
+    METADATA = "metadata"
+    ERROR_MESSAGE = "error_message"
+    STATUS = "status"
+    PERMANENT_COLUMNS = [
+        "created_by",
+        "created_at",
+        "metadata",
+        "error_message",
+        "status",
+    ]
 
 
 class DBConnectionClass:
