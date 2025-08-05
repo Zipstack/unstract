@@ -38,6 +38,7 @@ function ConfigureDs({
   const [isTcSuccessful, setIsTcSuccessful] = useState(false);
   const [isTcLoading, setIsTcLoading] = useState(false);
   const [isSubmitApiLoading, setIsSubmitApiLoading] = useState(false);
+
   const [cacheKey, setCacheKey] = useState("");
   const [status, setStatus] = useState("");
   const { sessionDetails } = useSessionStore();
@@ -52,6 +53,51 @@ function ConfigureDs({
   } = usePostHogEvents();
 
   const { id } = useParams();
+
+  // Map connector type to proper role for OAuth isolation
+  const connectorRole = type === "input" ? "SOURCE" : "DESTINATION";
+
+  const oauthCacheKey = `oauth-cachekey-${id}-${connectorRole}-${selectedSourceId}`;
+  const oauthStatusKey = `oauth-status-${id}-${connectorRole}-${selectedSourceId}`;
+
+  // Initialize OAuth state from localStorage after keys are available
+  useEffect(() => {
+    if (!oAuthProvider?.length) {
+      return;
+    }
+
+    // Initialize cache key
+    const storedCacheKey = localStorage.getItem(oauthCacheKey);
+    if (storedCacheKey) {
+      setCacheKey(storedCacheKey);
+    }
+
+    // Initialize status from connector-specific key only
+    const storedStatus = localStorage.getItem(oauthStatusKey);
+    if (storedStatus) {
+      setStatus(storedStatus);
+    }
+  }, [oauthCacheKey, oauthStatusKey, oAuthProvider, selectedSourceId]);
+
+  // Wrapper functions to persist OAuth state to localStorage
+  const handleSetCacheKey = (key) => {
+    // Only handle OAuth operations for OAuth-enabled connectors
+    if (!oAuthProvider?.length) {
+      return;
+    }
+    setCacheKey(key);
+    localStorage.setItem(oauthCacheKey, key);
+  };
+
+  const handleSetStatus = (newStatus) => {
+    // Only handle OAuth operations for OAuth-enabled connectors
+    if (!oAuthProvider?.length) {
+      return;
+    }
+    setStatus(newStatus);
+    // Store only in connector-specific location to prevent contamination
+    localStorage.setItem(oauthStatusKey, newStatus);
+  };
 
   useEffect(() => {
     if (isTcSuccessful) {
@@ -69,6 +115,44 @@ function ConfigureDs({
     // Set formData based on the condition
     setFormData(metadata);
   }, [selectedSourceId]);
+
+  // Clear OAuth state when switching to a different connector
+  useEffect(() => {
+    // Reset test connection success when switching connectors
+    setIsTcSuccessful(false);
+
+    // Reset local state only if current connector doesn't have stored OAuth credentials
+    const hasStoredOAuthState =
+      localStorage.getItem(oauthStatusKey) ||
+      localStorage.getItem(oauthCacheKey);
+    if (oAuthProvider?.length > 0 && !hasStoredOAuthState) {
+      setStatus("");
+      setCacheKey("");
+    }
+  }, [selectedSourceId, id, connectorRole, oauthStatusKey, oauthCacheKey]);
+
+  // Restore OAuth state when returning to a connector with stored credentials
+  useEffect(() => {
+    if (oAuthProvider?.length > 0) {
+      const storedStatus = localStorage.getItem(oauthStatusKey);
+      const storedCacheKey = localStorage.getItem(oauthCacheKey);
+
+      // Always restore stored credentials when switching to this connector
+      if (storedStatus) {
+        setStatus(storedStatus);
+      }
+      if (storedCacheKey) {
+        setCacheKey(storedCacheKey);
+      }
+    }
+  }, [
+    selectedSourceId,
+    id,
+    connectorRole,
+    oAuthProvider,
+    oauthStatusKey,
+    oauthCacheKey,
+  ]);
 
   const isFormValid = () => {
     if (formRef) {
@@ -89,7 +173,8 @@ function ConfigureDs({
     if (oAuthProvider?.length && (status !== "success" || !cacheKey?.length)) {
       setAlertDetails({
         type: "error",
-        content: "Invalid OAuth",
+        content:
+          "OAuth authentication required. Please sign in with Google first.",
       });
       return;
     }
@@ -277,6 +362,10 @@ function ConfigureDs({
         if (sourceType === Object.keys(sourceTypes)[1] && method === "POST") {
           updateSession(type);
         }
+
+        // Keep OAuth state after successful submission for potential re-use
+        // OAuth state will be cleared only when switching to different connectors
+
         setOpen(false);
       })
       .catch((err) => {
@@ -302,8 +391,11 @@ function ConfigureDs({
       {!isLoading && oAuthProvider?.length > 0 && (
         <OAuthDs
           oAuthProvider={oAuthProvider}
-          setCacheKey={setCacheKey}
-          setStatus={setStatus}
+          setCacheKey={handleSetCacheKey}
+          setStatus={handleSetStatus}
+          selectedSourceId={selectedSourceId}
+          workflowId={id}
+          connType={connectorRole}
         />
       )}
       <RjsfFormLayout
