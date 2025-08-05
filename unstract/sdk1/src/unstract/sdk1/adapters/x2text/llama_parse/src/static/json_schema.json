@@ -1,0 +1,45 @@
+{
+    "title": "Llama Parse Text Extractor",
+    "type": "object",
+    "required": [
+      "api_key"
+    ],
+    "properties": {
+      "adapter_name": {
+        "type": "string",
+        "title": "Name",
+        "default": "",
+        "description": "Provide a unique name for this adapter instance. Example: llama-parse-1"
+      },
+        "api_key": {
+            "type": "string",
+            "title": "API Key",
+            "format": "password",
+            "default": "",
+            "description": "Provide the token (API Key) of the Llama Parse server"
+        },
+      "url": {
+        "type": "string",
+        "title": "URL",
+        "format": "url",
+        "default": "https://api.cloud.llamaindex.ai",
+        "description": "Provide the Base URL of llama Parse server."
+      },
+      "result_type": {
+        "type": "string",
+        "title": "Result Type",
+        "enum": [
+          "text",
+          "markdown"
+        ],
+        "default": "text",
+        "description": "Choose the type of result - `markdown` or `text`."
+      },
+      "verbose": {
+        "type": "boolean",
+        "title": "Verbose",
+        "default": true,
+        "description": "If set, verbose result is included."
+      }
+    }
+  }

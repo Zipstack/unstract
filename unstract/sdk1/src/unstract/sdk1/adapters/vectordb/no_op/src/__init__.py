@@ -1,4 +1,4 @@
-from unstract.sdk.adapters.vectordb.no_op.src.no_op_vectordb import NoOpVectorDB
+from unstract.sdk1.adapters.vectordb.no_op.src.no_op_vectordb import NoOpVectorDB
 
 metadata = {
     "name": NoOpVectorDB.__name__,

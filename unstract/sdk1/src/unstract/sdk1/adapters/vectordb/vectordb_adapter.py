@@ -4,9 +4,10 @@ from typing import Any
 from llama_index.core.schema import BaseNode
 from llama_index.core.vector_stores import SimpleVectorStore
 from llama_index.core.vector_stores.types import BasePydanticVectorStore, VectorStore
-from unstract.sdk.adapters.base import Adapter
-from unstract.sdk.adapters.enums import AdapterTypes
-from unstract.sdk.exceptions import VectorDBError
+
+from unstract.sdk1.adapters.base import Adapter
+from unstract.sdk1.adapters.enums import AdapterTypes
+from unstract.sdk1.exceptions import VectorDBError
 
 
 class VectorDBAdapter(Adapter, ABC):

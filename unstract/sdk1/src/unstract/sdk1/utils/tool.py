@@ -8,8 +8,8 @@ from typing import Any
 
 import magic
 
-from unstract.sdk.exceptions import FileStorageError
-from unstract.sdk.file_storage import (
+from unstract.sdk1.exceptions import FileStorageError
+from unstract.sdk1.file_storage import (
     FileStorage,
     FileStorageProvider,
     SharedTemporaryFileStorage,

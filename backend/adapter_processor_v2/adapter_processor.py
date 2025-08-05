@@ -18,12 +18,12 @@ from tenant_account_v2.organization_member_service import OrganizationMemberServ
 from unstract.flags.feature_flag import check_feature_flag_status
 
 if check_feature_flag_status("sdk1"):
-    from unstract.sdk1.constants import AdapterTypes
-    from unstract.sdk1.exceptions import SdkError
-    from unstract.sdk1.llm import LLM
-    from unstract.sdk1.embedding import Embedding
     from unstract.sdk1.adapters.adapterkit import Adapterkit
     from unstract.sdk1.adapters.base import Adapter
+    from unstract.sdk1.constants import AdapterTypes
+    from unstract.sdk1.embedding import Embedding
+    from unstract.sdk1.exceptions import SdkError
+    from unstract.sdk1.llm import LLM
 else:
     from unstract.sdk.adapters.adapterkit import Adapterkit
     from unstract.sdk.adapters.base import Adapter
@@ -99,17 +99,7 @@ class AdapterProcessor:
 
     @staticmethod
     def test_adapter(adapter_id: str, adapter_metadata: dict[str, Any]) -> bool:
-        logger.info(
-            "\n!!! TEST ADAPTER !!!\n"
-            f"`sdk1` feature flag: {check_feature_flag_status("sdk1")}\n"
-            f"Adapter ID: {adapter_id}\n"
-            f"Adapter Metadata:\n"
-            f"{json.dumps(adapter_metadata, indent=2)}"
-            "\n!!! TEST ADAPTER !!!\n"
-        )
-
         if check_feature_flag_status("sdk1"):
-
             try:
                 # Get adapter type from metadata
                 adapter_type = adapter_metadata.get(AdapterKeys.ADAPTER_TYPE)

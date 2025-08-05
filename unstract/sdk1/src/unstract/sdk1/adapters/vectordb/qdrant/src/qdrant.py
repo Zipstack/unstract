@@ -6,10 +6,11 @@ from llama_index.core.vector_stores.types import BasePydanticVectorStore
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 from qdrant_client.http.exceptions import UnexpectedResponse
-from unstract.sdk.adapters.vectordb.constants import VectorDbConstants
-from unstract.sdk.adapters.vectordb.helper import VectorDBHelper
-from unstract.sdk.adapters.vectordb.vectordb_adapter import VectorDBAdapter
-from unstract.sdk.exceptions import VectorDBError
+
+from unstract.sdk1.adapters.vectordb.constants import VectorDbConstants
+from unstract.sdk1.adapters.vectordb.helper import VectorDBHelper
+from unstract.sdk1.adapters.vectordb.vectordb_adapter import VectorDBAdapter
+from unstract.sdk1.exceptions import VectorDBError
 
 logger = logging.getLogger(__name__)
 

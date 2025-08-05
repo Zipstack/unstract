@@ -1,1 +1,0 @@
-# Unstract Vertex AI Embeddings

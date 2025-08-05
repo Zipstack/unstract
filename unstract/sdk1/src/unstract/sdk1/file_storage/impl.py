@@ -8,11 +8,12 @@ import filetype
 import fsspec
 import magic
 import yaml
-from unstract.sdk.exceptions import FileOperationError
-from unstract.sdk.file_storage.constants import FileOperationParams, FileSeekPosition
-from unstract.sdk.file_storage.helper import FileStorageHelper, skip_local_cache
-from unstract.sdk.file_storage.interface import FileStorageInterface
-from unstract.sdk.file_storage.provider import FileStorageProvider
+
+from unstract.sdk1.exceptions import FileOperationError
+from unstract.sdk1.file_storage.constants import FileOperationParams, FileSeekPosition
+from unstract.sdk1.file_storage.helper import FileStorageHelper, skip_local_cache
+from unstract.sdk1.file_storage.interface import FileStorageInterface
+from unstract.sdk1.file_storage.provider import FileStorageProvider
 
 logger = logging.getLogger(__name__)
 

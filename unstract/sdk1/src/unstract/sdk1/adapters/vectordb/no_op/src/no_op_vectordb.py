@@ -4,13 +4,14 @@ from typing import Any
 
 from llama_index.core.schema import BaseNode
 from llama_index.core.vector_stores.types import VectorStore
-from unstract.sdk.adapters.exceptions import AdapterError
-from unstract.sdk.adapters.vectordb.constants import VectorDbConstants
-from unstract.sdk.adapters.vectordb.helper import VectorDBHelper
-from unstract.sdk.adapters.vectordb.no_op.src.no_op_custom_vectordb import (
+
+from unstract.sdk1.adapters.exceptions import AdapterError
+from unstract.sdk1.adapters.vectordb.constants import VectorDbConstants
+from unstract.sdk1.adapters.vectordb.helper import VectorDBHelper
+from unstract.sdk1.adapters.vectordb.no_op.src.no_op_custom_vectordb import (
     NoOpCustomVectorDB,
 )
-from unstract.sdk.adapters.vectordb.vectordb_adapter import VectorDBAdapter
+from unstract.sdk1.adapters.vectordb.vectordb_adapter import VectorDBAdapter
 
 
 class NoOpVectorDB(VectorDBAdapter):

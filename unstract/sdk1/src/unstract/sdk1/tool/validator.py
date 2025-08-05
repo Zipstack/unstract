@@ -4,10 +4,11 @@ from pathlib import Path
 from typing import Any
 
 from jsonschema import Draft202012Validator, ValidationError, validators
-from unstract.sdk.constants import MetadataKey, PropKey
-from unstract.sdk.tool.base import BaseTool
-from unstract.sdk.tool.mime_types import EXT_MIME_MAP
-from unstract.sdk.utils import Utils
+
+from unstract.sdk1.constants import MetadataKey, PropKey
+from unstract.sdk1.tool.base import BaseTool
+from unstract.sdk1.tool.mime_types import EXT_MIME_MAP
+from unstract.sdk1.utils.common import Utils
 
 
 def extend_with_default(validator_class: Any) -> Any:

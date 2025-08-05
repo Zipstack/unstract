@@ -1,8 +1,8 @@
 from qdrant_client.http.exceptions import ApiException as QdrantAPIException
 
-from unstract.sdk.adapters.vectordb.qdrant.src import Qdrant
-from unstract.sdk.adapters.vectordb.vectordb_adapter import VectorDBAdapter
-from unstract.sdk.exceptions import VectorDBError
+from unstract.sdk1.adapters.vectordb.qdrant.src import Qdrant
+from unstract.sdk1.adapters.vectordb.vectordb_adapter import VectorDBAdapter
+from unstract.sdk1.exceptions import VectorDBError
 
 
 def parse_vector_db_err(e: Exception, vector_db: VectorDBAdapter) -> VectorDBError:

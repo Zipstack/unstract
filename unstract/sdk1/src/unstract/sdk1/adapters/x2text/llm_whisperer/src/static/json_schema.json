@@ -1,0 +1,137 @@
+{
+  "title": "LLMWhisperer v1 Text Extractor",
+  "type": "object",
+  "required": [
+    "adapter_name",
+    "unstract_key",
+    "url"
+  ],
+  "description": "LLMWhisperer v1 is deprecated, use the cheaper and faster [LLMWhisperer v2](https://docs.unstract.com/llmwhisperer/llm_whisperer/faqs/v1_to_v2/) instead.",
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this adapter instance. Example: LLMWhisperer 1"
+    },
+    "url": {
+      "type": "string",
+      "title": "URL",
+      "format": "uri",
+      "default": "https://llmwhisperer-api.unstract.com",
+      "description": "Provide the URL of the LLMWhisperer service. Please note that this version of LLMWhisperer is deprecated."
+    },
+    "unstract_key": {
+      "type": "string",
+      "title": "Unstract Key",
+      "format": "password",
+      "description": "API key obtained from the [Unstract developer portal](https://unstract-api-resource.developer.azure-api.net)"
+    },
+    "mode": {
+      "type": "string",
+      "title": "Mode",
+      "enum": [
+        "native_text",
+        "low_cost",
+        "high_quality",
+        "form"
+      ],
+      "default": "form",
+      "description": "Processing mode to use, described in the [LLMWhisperer v1 documentation](https://docs.unstract.com/llmwhisperer/1.0.0/llm_whisperer/apis/llm_whisperer_text_extraction_api/#processing-modes)"
+    },
+    "output_mode": {
+      "type": "string",
+      "title": "Output Mode",
+      "enum": [
+        "line-printer",
+        "dump-text",
+        "text"
+      ],
+      "default": "line-printer",
+      "description": "Output mode to use, described in the [LLMWhisperer v1 documentation](https://docs.unstract.com/llmwhisperer/1.0.0/llm_whisperer/apis/llm_whisperer_text_extraction_api/#output-modes)"
+    },
+
+    "line_splitter_tolerance": {
+      "type": "number",
+      "title": "Line Splitter Tolerance",
+      "default": 0.4,
+      "description": "Reduce this value to split lines less often, increase to split lines more often. Useful when PDFs have multi column layout with text in each column that is not aligned."
+    },
+    "horizontal_stretch_factor": {
+      "type": "number",
+      "title": "Horizontal Stretch Factor",
+      "default": 1.0,
+      "description": "Increase this value to stretch text horizontally, decrease to compress text horizontally. Useful when multi column text merge with each other."
+    },
+    "pages_to_extract": {
+      "type": "string",
+      "title": "Page number(s) or range to extract",
+      "default": "",
+      "pattern": "^(\\s*\\d+-\\d+|\\s*\\d+-|\\s*\\d+|^$)(,\\d+-\\d+|,\\d+-|,\\d+)*$",
+      "description": "Specify the range of pages to extract (e.g., 1-5, 7, 10-12, 50-). Leave it empty to extract all pages."
+    },
+    "page_seperator": {
+      "type": "string",
+      "title": "Page separator",
+      "default": "<<< >>>",
+      "description": "Specify a pattern to separate the pages in the document (e.g., <<< {{page_no}} >>>, <<< >>>). This pattern will be inserted at the end of every page. Omit {{page_no}} if you don't want to include the page number in the separator."
+    }
+  },
+  "if": {
+    "anyOf": [
+      {
+        "properties": {
+          "mode": {
+            "const": "low_cost"
+          }
+        }
+      },
+      {
+        "properties": {
+          "mode": {
+            "const": "high_quality"
+          }
+        }
+      },
+      {
+        "properties": {
+          "mode": {
+            "const": "form"
+          }
+        }
+      }
+    ]
+  },
+  "then": {
+    "properties": {
+      "median_filter_size": {
+        "type": "integer",
+        "title": "Median Filter Size",
+        "default": 0,
+        "description": "The size of the median filter to use for pre-processing the image during OCR based extraction. Useful to eliminate scanning artifacts and low quality JPEG artifacts. Default is 0 if the value is not explicitly set. Available only in the Enterprise version."
+      },
+      "gaussian_blur_radius": {
+        "type": "number",
+        "title": "Gaussian Blur Radius",
+        "default": 0.0,
+        "description": "The radius of the gaussian blur to use for pre-processing the image during OCR based extraction. Useful to eliminate noise from the image. Default is 0.0 if the value is not explicitly set. Available only in the Enterprise version."
+      },
+      "mark_vertical_lines": {
+        "type": "boolean",
+        "title": "Mark Vertical Lines",
+        "default": false,
+        "description": "Detect vertical lines in the document and replicate the same using text (using \"|\" symbol). Use this for displaying tables with borders."
+      },
+      "mark_horizontal_lines": {
+        "type": "boolean",
+        "title": "Mark Horizontal Lines",
+        "default": false,
+        "description": "Detect horizontal lines in the document and replicate the same using text (using \"-\" symbol). Use this for displaying tables with borders and other horizontal serperators found in the document."
+      }
+    },
+    "required": [
+      "median_filter_size",
+      "gaussian_blur_radius"
+    ]
+  }
+}

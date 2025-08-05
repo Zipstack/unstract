@@ -3,9 +3,9 @@ import os
 from importlib import import_module
 from typing import Any
 
-from unstract.sdk.adapters.constants import Common
-from unstract.sdk.adapters.registry import AdapterRegistry
-from unstract.sdk.adapters.vectordb.vectordb_adapter import VectorDBAdapter
+from unstract.sdk1.adapters.constants import Common
+from unstract.sdk1.adapters.registry import AdapterRegistry
+from unstract.sdk1.adapters.vectordb.vectordb_adapter import VectorDBAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +14,7 @@ class VectorDBRegistry(AdapterRegistry):
     @staticmethod
     def register_adapters(adapters: dict[str, Any]) -> None:
         current_directory = os.path.dirname(os.path.abspath(__file__))
-        package = "unstract.sdk.adapters.vectordb"
+        package = "unstract.sdk1.adapters.vectordb"
 
         for adapter in os.listdir(current_directory):
             adapter_path = os.path.join(current_directory, adapter, Common.SRC_FOLDER)

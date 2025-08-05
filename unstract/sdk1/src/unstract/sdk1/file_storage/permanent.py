@@ -3,10 +3,11 @@ from typing import Any
 
 import filetype
 import magic
-from unstract.sdk.exceptions import FileOperationError, FileStorageError
-from unstract.sdk.file_storage.constants import FileOperationParams
-from unstract.sdk.file_storage.impl import FileStorage
-from unstract.sdk.file_storage.provider import FileStorageProvider
+
+from unstract.sdk1.exceptions import FileOperationError, FileStorageError
+from unstract.sdk1.file_storage.constants import FileOperationParams
+from unstract.sdk1.file_storage.impl import FileStorage
+from unstract.sdk1.file_storage.provider import FileStorageProvider
 
 logger = logging.getLogger(__name__)
 

@@ -1,7 +1,7 @@
 from typing import Any
 
-from unstract.sdk.exceptions import FileStorageError
-from unstract.sdk.file_storage import FileStorage, FileStorageProvider
+from unstract.sdk1.exceptions import FileStorageError
+from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
 
 
 class SharedTemporaryFileStorage(FileStorage):

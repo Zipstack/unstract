@@ -1,0 +1,145 @@
+{
+  "title": "LLMWhisperer v2 Text Extractor",
+  "type": "object",
+  "required": [
+    "adapter_name",
+    "unstract_key",
+    "url"
+  ],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "llm-whisperer-v2",
+      "description": "Provide a unique name for this adapter instance. Example: LLMWhisperer 1"
+    },
+    "url": {
+      "type": "string",
+      "title": "URL",
+      "format": "uri",
+      "default": "https://llmwhisperer-api.us-central.unstract.com",
+      "description": "Provide the base URL of the LLMWhisperer service based on your region, can be obtained from the [Unstract developer portal](https://us-central.unstract.com/landing?selectedProduct=llm-whisperer)."
+    },
+    "unstract_key": {
+      "type": "string",
+      "title": "Unstract Key",
+      "format": "password",
+      "description": "API key obtained from the [Unstract developer portal](https://us-central.unstract.com/landing?selectedProduct=llm-whisperer)"
+    },
+    "mode": {
+      "type": "string",
+      "title": "Mode",
+      "enum": [
+        "native_text",
+        "low_cost",
+        "high_quality",
+        "form",
+        "table"
+      ],
+      "default": "form",
+      "description": "Processing mode to use, described in the [LLMWhisperer documentation](https://docs.unstract.com/llmwhisperer/llm_whisperer/apis/llm_whisperer_text_extraction_api/#modes)."
+    },
+    "output_mode": {
+      "type": "string",
+      "title": "Output Mode",
+      "enum": [
+        "layout_preserving",
+        "text"
+      ],
+      "default": "layout_preserving",
+      "description": "Output format, described in the [LLMWhisperer documentation](https://docs.unstract.com/llmwhisperer/llm_whisperer/apis/llm_whisperer_text_extraction_api/#output-modes)"
+    },
+    "line_splitter_tolerance": {
+      "type": "number",
+      "title": "Line Splitter Tolerance",
+      "default": 0.4,
+      "description": "Factor to decide when to move text to the next line when it is above or below the baseline. The default value of 0.4 signifies 40% of the average character height"
+    },
+    "line_splitter_strategy": {
+      "type": "string",
+      "title": "Line Splitter Strategy",
+      "default":"left-priority",
+      "description": "An advanced option for customizing the line splitting process."
+    },
+    "horizontal_stretch_factor": {
+      "type": "number",
+      "title": "Horizontal Stretch Factor",
+      "default": 1.0,
+      "description": "Increase this value to stretch text horizontally, decrease to compress text horizontally. Useful when multi column text merge with each other."
+    },
+    "pages_to_extract": {
+      "type": "string",
+      "title": "Page number(s) or range to extract",
+      "default": "",
+      "pattern": "^(\\s*\\d+-\\d+|\\s*\\d+-|\\s*\\d+|^$)(,\\d+-\\d+|,\\d+-|,\\d+)*$",
+      "description": "Specify the range of pages to extract (e.g., 1-5, 7, 10-12, 50-). Leave it empty to extract all pages."
+    },
+    "page_seperator": {
+      "type": "string",
+      "title": "Page separator",
+      "default": "<<<",
+      "description": "Specify a pattern to separate the pages in the document. This pattern will be inserted at the end of every page (e.g., `<<< {{page_no}} >>>`, `<<< >>>`). Omit `{{page_no}}` if you don't want to include the page number in the separator."
+    },
+    "mark_vertical_lines": {
+      "type": "boolean",
+      "title": "Mark vertical lines",
+      "default": false,
+      "description": "States whether to reproduce vertical lines in the document. Note: This parameter is not applicable if `mode` chosen is `native_text`."
+    },
+    "mark_horizontal_lines": {
+      "type": "boolean",
+      "title": "Mark horizontal lines",
+      "default": false,
+      "description": "States whether to reproduce horizontal lines in the document. Note: This parameter is not applicable if `mode` chosen is `native_text` and will not work if `mark_vertical_lines` is set to `false`."
+    },
+    "tag": {
+      "type": "string",
+      "title": "Tag",
+      "default": "default",
+      "description": "Auditing feature. Set a value which will be associated with the invocation of the adapter. This can be used for cross referencing in usage reports."
+    },
+    "use_webhook": {
+      "type": "string",
+      "title": "Webhook",
+      "default": "",
+      "description": "The webhook's name which will should be called after the conversion is complete. The name should have been registered earlier using the webhooks management endpoint"
+    },
+    "webhook_metadata": {
+      "type": "string",
+      "title": "Webhook Metadata",
+      "default": "",
+      "description": "Any metadata which should be sent to the webhook. This data is sent verbatim to the callback endpoint."
+    }
+  },
+  "if": {
+    "anyOf": [
+      {
+        "properties": {
+          "mode": {
+            "const": "low_cost"
+          }
+        }
+      }
+    ]
+  },
+  "then": {
+    "properties": {
+      "median_filter_size": {
+        "type": "integer",
+        "title": "Median Filter Size",
+        "default": 0,
+        "description": "The size of the median filter to use for pre-processing the image during OCR based extraction. Useful to eliminate scanning artifacts and low quality JPEG artifacts. Default is 0 if the value is not explicitly set. Available only in the Enterprise version."
+      },
+      "gaussian_blur_radius": {
+        "type": "number",
+        "title": "Gaussian Blur Radius",
+        "default": 0.0,
+        "description": "The radius of the gaussian blur to use for pre-processing the image during OCR based extraction. Useful to eliminate noise from the image. Default is 0.0 if the value is not explicitly set. Available only in the Enterprise version."
+      }
+    },
+    "required": [
+      "median_filter_size",
+      "gaussian_blur_radius"
+    ]
+  }
+}

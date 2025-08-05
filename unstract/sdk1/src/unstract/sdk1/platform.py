@@ -92,7 +92,7 @@ class PlatformHelper:
 
     @classmethod
     def _get_adapter_configuration(
-        cls, adapter_instance_id: str,
+        cls, tool: BaseTool, adapter_instance_id: str,
     ) -> dict[str, Any]:
         """Get Adapter
             1. Get the adapter config from platform service
@@ -104,9 +104,13 @@ class PlatformHelper:
         Returns:
             dict[str, Any]: Config stored for the adapter
         """
-        url = f"{self.base_url}/adapter_instance"
+        platform_host = tool.get_env_or_die(ToolEnv.PLATFORM_HOST)
+        platform_port = tool.get_env_or_die(ToolEnv.PLATFORM_PORT)
+        bearer_token = tool.get_env_or_die(ToolEnv.PLATFORM_API_KEY)
+
+        url = f"{cls.get_platform_base_url(platform_host, platform_port)}/adapter_instance"
         query_params = {AdapterKeys.ADAPTER_INSTANCE_ID: adapter_instance_id}
-        headers = {"Authorization": f"Bearer {self.bearer_token}"}
+        headers = {"Authorization": f"Bearer {bearer_token}"}
         try:
             response = requests.get(url, headers=headers, params=query_params)
             response.raise_for_status()
@@ -117,7 +121,7 @@ class PlatformHelper:
             adapter_type = adapter_data.pop("adapter_type", "")
             provider = adapter_data.get("adapter_id", "").split("|")[0]
             # TODO: Print metadata after redacting sensitive information
-            self.tool.stream_log(
+            tool.stream_log(
                 f"Retrieved config for '{adapter_instance_id}', type: "
                 f"'{adapter_type}', provider: '{provider}', name: '{adapter_name}'",
                 level=LogLevel.DEBUG,
@@ -161,14 +165,12 @@ class PlatformHelper:
             adapter_metadata_config = tool.get_env_or_die(adapter_instance_id)
             adapter_metadata = json.loads(adapter_metadata_config)
             return adapter_metadata
-        platform_host = tool.get_env_or_die(ToolEnv.PLATFORM_HOST)
-        platform_port = tool.get_env_or_die(ToolEnv.PLATFORM_PORT)
 
         tool.stream_log(
             f"Retrieving config from DB for '{adapter_instance_id}'",
             level=LogLevel.DEBUG,
         )
-        return self._get_adapter_configuration(adapter_instance_id)
+        return cls._get_adapter_configuration(tool, adapter_instance_id)
 
     def _get_headers(self, headers: dict[str, str] | None = None) -> dict[str, str]:
         """Get default headers for requests.

@@ -1,6 +1,6 @@
-from unstract.sdk.tool.base import BaseTool
-from unstract.sdk.tool.executor import ToolExecutor
-from unstract.sdk.tool.parser import ToolArgsParser
+from unstract.sdk1.tool.base import BaseTool
+from unstract.sdk1.tool.executor import ToolExecutor
+from unstract.sdk1.tool.parser import ToolArgsParser
 
 
 class ToolEntrypoint:

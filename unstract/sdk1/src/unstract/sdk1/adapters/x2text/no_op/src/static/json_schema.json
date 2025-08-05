@@ -1,0 +1,23 @@
+{
+  "title": "No Op Text Extractor",
+  "type": "object",
+  "required": [
+    "adapter_name",
+    "wait_time"
+  ],
+  "description": "No Op Text Extractor does not perform any operation, its used to test the performance of the system in the absence of 3rd party induced latencies",
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this No Op adapter instance. Example: no-op-instance-1"
+    },
+    "wait_time": {
+      "type": "number",
+      "title": "Wait time  (in seconds)",
+      "default": "0",
+      "description": "Provide the time to wait (in seconds) before returning the response"
+    }
+  }
+}

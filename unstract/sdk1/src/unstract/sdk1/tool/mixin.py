@@ -1,8 +1,8 @@
 import logging
 from typing import Any
 
-from unstract.sdk.file_storage import FileStorage, FileStorageProvider
-from unstract.sdk.utils import ToolUtils
+from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
+from unstract.sdk1.utils.tool import ToolUtils
 
 logger = logging.getLogger(__name__)
 

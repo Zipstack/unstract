@@ -9,8 +9,9 @@ from llama_index.core import (
 )
 from llama_index.core.llms import MockLLM
 from llama_index.core.vector_stores.types import BasePydanticVectorStore
-from unstract.sdk.adapters.vectordb.constants import VectorDbConstants
-from unstract.sdk.exceptions import VectorDBError
+
+from unstract.sdk1.adapters.vectordb.constants import VectorDbConstants
+from unstract.sdk1.exceptions import VectorDBError
 
 logger = logging.getLogger(__name__)
 

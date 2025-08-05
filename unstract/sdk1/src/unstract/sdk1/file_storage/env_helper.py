@@ -2,12 +2,12 @@ import json
 import logging
 import os
 
-from unstract.sdk.exceptions import FileStorageError
-from unstract.sdk.file_storage.constants import CredentialKeyword, StorageType
-from unstract.sdk.file_storage.impl import FileStorage
-from unstract.sdk.file_storage.permanent import PermanentFileStorage
-from unstract.sdk.file_storage.provider import FileStorageProvider
-from unstract.sdk.file_storage.shared_temporary import SharedTemporaryFileStorage
+from unstract.sdk1.exceptions import FileStorageError
+from unstract.sdk1.file_storage.constants import CredentialKeyword, StorageType
+from unstract.sdk1.file_storage.impl import FileStorage
+from unstract.sdk1.file_storage.permanent import PermanentFileStorage
+from unstract.sdk1.file_storage.provider import FileStorageProvider
+from unstract.sdk1.file_storage.shared_temporary import SharedTemporaryFileStorage
 
 logger = logging.getLogger(__name__)
 

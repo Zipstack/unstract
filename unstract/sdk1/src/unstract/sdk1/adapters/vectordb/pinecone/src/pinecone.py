@@ -5,12 +5,14 @@ from typing import Any
 from llama_index.core.schema import BaseNode
 from llama_index.core.vector_stores.types import BasePydanticVectorStore
 from llama_index.vector_stores.pinecone import PineconeVectorStore
-from pinecone import NotFoundException, PodSpec, ServerlessSpec
+from pinecone import NotFoundException
 from pinecone import Pinecone as LLamaIndexPinecone
-from unstract.sdk.adapters.exceptions import AdapterError
-from unstract.sdk.adapters.vectordb.constants import VectorDbConstants
-from unstract.sdk.adapters.vectordb.helper import VectorDBHelper
-from unstract.sdk.adapters.vectordb.vectordb_adapter import VectorDBAdapter
+from pinecone import PodSpec, ServerlessSpec
+
+from unstract.sdk1.adapters.exceptions import AdapterError
+from unstract.sdk1.adapters.vectordb.constants import VectorDbConstants
+from unstract.sdk1.adapters.vectordb.helper import VectorDBHelper
+from unstract.sdk1.adapters.vectordb.vectordb_adapter import VectorDBAdapter
 
 logger = logging.getLogger(__name__)
 
