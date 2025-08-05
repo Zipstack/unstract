@@ -2,11 +2,11 @@ import { Col, Modal, Row, Tabs, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
+import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import { ManageFiles } from "../../input-output/manage-files/ManageFiles";
+import { ConfigureFormsLayout } from "../configure-forms-layout/ConfigureFormsLayout";
 import { ListOfConnectors } from "../list-of-connectors/ListOfConnectors";
 import "./ConfigureConnectorModal.css";
-import { ConfigureFormsLayout } from "../configure-forms-layout/ConfigureFormsLayout";
-import { ManageFiles } from "../../input-output/manage-files/ManageFiles";
-import usePostHogEvents from "../../../hooks/usePostHogEvents";
 
 let DBRules;
 
@@ -94,7 +94,11 @@ function ConfigureConnectorModal({
     const updatedTabItems = tabItems.map((item) => {
       if (item?.key === "2") {
         item.visible = connType === "FILESYSTEM";
-      } else if (item?.key === "MANUALREVIEW") {
+        item.disabled =
+          !connectorId ||
+          connDetails?.connector_id !== selectedId ||
+          connType === "DATABASE";
+      } else if (item.key === "MANUALREVIEW") {
         item.disabled =
           !connectorId || connDetails?.connector_id !== selectedId;
         item.visible = connType === "DATABASE" || connType === "MANUALREVIEW";
@@ -104,7 +108,7 @@ function ConfigureConnectorModal({
       return item;
     });
     setTabItems(updatedTabItems);
-  }, [open]);
+  }, [open, selectedId, connType, connectorId, connDetails]);
 
   useEffect(() => {
     const updatedTabItems = tabItems.map((item) => {
