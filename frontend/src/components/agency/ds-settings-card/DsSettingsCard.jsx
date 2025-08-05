@@ -1,17 +1,7 @@
-import {
-  Button,
-  Col,
-  Image,
-  Row,
-  Select,
-  Space,
-  Tooltip,
-  Typography,
-} from "antd";
+import { Button, Col, Row, Select, Space, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
-import { getMenuItem } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -22,31 +12,15 @@ import { ConfigureConnectorModal } from "../configure-connector-modal/ConfigureC
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import "./DsSettingsCard.css";
 
-const disabledIdsByType = {
-  FILE_SYSTEM: [
-    "box|4d94d237-ce4b-45d8-8f34-ddeefc37c0bf",
-    "http|6fdea346-86e4-4383-9a21-132db7c9a576",
-  ],
-};
-
-const needToRemove = {
-  FILE_SYSTEM: ["pcs|b8cd25cd-4452-4d54-bd5e-e7d71459b702"],
-};
-
 function DsSettingsCard({ connType, endpointDetails, message }) {
   const workflowStore = useWorkflowStore();
   const { source, destination, allowChangeEndpoint, details } = workflowStore;
   const [options, setOptions] = useState({});
   const [openModal, setOpenModal] = useState(false);
 
-  const [listOfConnectors, setListOfConnectors] = useState([]);
-  const [filteredList, setFilteredList] = useState([]);
-
   const [connMode, setConnMode] = useState(null);
 
   const [connDetails, setConnDetails] = useState({});
-  const [specConfig, setSpecConfig] = useState({});
-  const [isSpecConfigLoading, setIsSpecConfigLoading] = useState(false);
   const [formDataConfig, setFormDataConfig] = useState({});
 
   const [inputOptions, setInputOptions] = useState([
@@ -123,6 +97,13 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
     }
   }, [source, destination]);
 
+  // Set formDataConfig from endpointDetails configuration
+  useEffect(() => {
+    if (endpointDetails?.configuration) {
+      setFormDataConfig(endpointDetails.configuration);
+    }
+  }, [endpointDetails?.configuration]);
+
   useEffect(() => {
     if (endpointDetails?.connection_type !== connMode) {
       setConnMode(endpointDetails?.connection_type);
@@ -138,106 +119,7 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
       setConnDetails(endpointDetails.connector_instance);
       return;
     }
-
-    // Fallback for legacy connector_instance ID format (string)
-    if (typeof endpointDetails?.connector_instance === "string") {
-      // Only call getSourceDetails if we haven't already loaded this connector
-      if (connDetails?.id !== endpointDetails?.connector_instance) {
-        getSourceDetails();
-      }
-      return;
-    }
   }, [endpointDetails]);
-
-  useEffect(() => {
-    const menuItems = [];
-    [...listOfConnectors].forEach((item) => {
-      if (
-        endpointDetails?.connection_type &&
-        item?.connector_mode.split("_").join("") !==
-          endpointDetails?.connection_type
-      ) {
-        return;
-      }
-      menuItems.push(
-        getMenuItem(
-          item?.name,
-          item?.id,
-          sourceIcon(item?.icon),
-          undefined,
-          undefined,
-          item?.isDisabled
-        )
-      );
-    });
-    setFilteredList(menuItems);
-
-    if (!endpointDetails?.id) {
-      return;
-    }
-
-    setFormDataConfig(endpointDetails.configuration || {});
-    const requestOptions = {
-      method: "GET",
-      url: getUrl(`workflow/endpoint/${endpointDetails?.id}/settings/`),
-    };
-
-    setIsSpecConfigLoading(true);
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const data = res?.data;
-        setSpecConfig(data?.schema || {});
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err, "Failed to load the spec"));
-      })
-      .finally(() => {
-        setIsSpecConfigLoading(false);
-      });
-  }, [connMode, listOfConnectors]);
-
-  useEffect(() => {
-    if (!connType) {
-      return;
-    }
-
-    const requestOptions = {
-      method: "GET",
-      url: getUrl(`supported_connectors/?type=${connType.toUpperCase()}`),
-    };
-
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        let data = res?.data;
-        // Remove items specified in needToRemove from data
-        Object.keys(needToRemove).forEach((mode) => {
-          const idsToRemove = needToRemove[mode];
-          data = data.filter(
-            (source) =>
-              !(
-                source.connector_mode === mode &&
-                idsToRemove.includes(source.id)
-              )
-          );
-        });
-
-        const updatedSources = data?.map((source) => ({
-          ...source,
-          isDisabled: disabledIdsByType[source?.connector_mode]?.includes(
-            source?.id
-          ),
-        }));
-        setListOfConnectors(updatedSources || []);
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
-      })
-      .finally(() => {});
-  }, [connType]);
-
-  const sourceIcon = (src) => {
-    return <Image src={src} height={25} width={25} preview={false} />;
-  };
 
   const clearDestination = (updatedData) => {
     const requestOptions = {
@@ -272,7 +154,7 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
     }
   };
 
-  const handleUpdate = (updatedData, showSuccess) => {
+  const handleEndpointUpdate = (updatedData, showSuccess) => {
     const requestOptions = {
       method: "PATCH",
       url: getUrl(`workflow/endpoint/${endpointDetails?.id}/`),
@@ -301,22 +183,6 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to update"));
-      });
-  };
-
-  const getSourceDetails = () => {
-    const requestOptions = {
-      method: "GET",
-      url: getUrl(`connector/${endpointDetails?.connector_instance}/`),
-    };
-
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const data = res?.data;
-        setConnDetails(data);
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
       });
   };
 
@@ -350,7 +216,7 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
                   value={endpointDetails?.connection_type || undefined}
                   disabled={!allowChangeEndpoint}
                   onChange={(value) => {
-                    handleUpdate({
+                    handleEndpointUpdate({
                       connection_type: value,
                       connector_instance_id: null,
                     });
@@ -390,12 +256,10 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
         open={openModal}
         setOpen={setOpenModal}
         connType={connType}
-        handleUpdate={handleUpdate}
-        filteredList={filteredList}
-        specConfig={specConfig}
+        handleEndpointUpdate={handleEndpointUpdate}
+        endpointDetails={endpointDetails}
         formDataConfig={formDataConfig}
         setFormDataConfig={setFormDataConfig}
-        isSpecConfigLoading={isSpecConfigLoading}
         connDetails={connDetails}
         setConnDetails={setConnDetails}
         connMode={connMode}

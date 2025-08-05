@@ -30,12 +30,10 @@ function ConfigureConnectorModal({
   connType,
   connMode,
   workflowDetails,
-  handleUpdate,
-  filteredList,
-  specConfig,
+  handleEndpointUpdate,
+  endpointDetails,
   formDataConfig,
   setFormDataConfig,
-  isSpecConfigLoading,
 }) {
   const [availableConnectors, setAvailableConnectors] = useState([]);
   const [addNewOption, setAddNewOption] = useState(null);
@@ -49,6 +47,8 @@ function ConfigureConnectorModal({
       visible: true,
     },
   ]);
+  const [specConfig, setSpecConfig] = useState({});
+  const [isSpecConfigLoading, setIsSpecConfigLoading] = useState(false);
 
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -92,6 +92,30 @@ function ConfigureConnectorModal({
       // The component will remain null if it is not available
     }
   }, [connMode, connDetails?.id]);
+
+  const fetchEndpointConfigSchema = () => {
+    if (!endpointDetails?.id) {
+      return;
+    }
+
+    const requestOptions = {
+      method: "GET",
+      url: getUrl(`workflow/endpoint/${endpointDetails.id}/settings/`),
+    };
+
+    setIsSpecConfigLoading(true);
+    axiosPrivate(requestOptions)
+      .then((res) => {
+        const data = res?.data;
+        setSpecConfig(data?.schema || {});
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err, "Failed to load the spec"));
+      })
+      .finally(() => {
+        setIsSpecConfigLoading(false);
+      });
+  };
 
   const fetchAvailableConnectors = (connectionType) => {
     if (!connectionType || connectionType === "API") {
@@ -165,7 +189,11 @@ function ConfigureConnectorModal({
           // If an error occurs while setting custom posthog event, ignore it and continue
         }
       }
-      // TODO: Call PATCH /endpoint API to update its connector
+
+      // Update endpoint with the selected connector
+      handleEndpointUpdate({
+        connector_instance_id: selectedConnector.connector.id,
+      });
     }
   };
 
@@ -192,6 +220,7 @@ function ConfigureConnectorModal({
   useEffect(() => {
     if (open) {
       fetchAvailableConnectors(connMode);
+      fetchEndpointConfigSchema();
     }
   }, [open, connMode]);
 
@@ -323,7 +352,7 @@ function ConfigureConnectorModal({
                         {item.key === "1" && (
                           <ConfigurationLayout title="Configuration Settings">
                             <ConfigureFormsLayout
-                              handleUpdate={handleUpdate}
+                              handleUpdate={handleEndpointUpdate}
                               specConfig={specConfig}
                               formDataConfig={formDataConfig}
                               setFormDataConfig={setFormDataConfig}
@@ -355,7 +384,7 @@ function ConfigureConnectorModal({
                   >
                     <ConfigurationLayout title="Configuration Settings">
                       <ConfigureFormsLayout
-                        handleUpdate={handleUpdate}
+                        handleUpdate={handleEndpointUpdate}
                         specConfig={specConfig}
                         formDataConfig={formDataConfig}
                         setFormDataConfig={setFormDataConfig}
@@ -409,12 +438,10 @@ ConfigureConnectorModal.propTypes = {
   connType: PropTypes.string.isRequired,
   connMode: PropTypes.string.isRequired,
   workflowDetails: PropTypes.object.isRequired,
-  handleUpdate: PropTypes.func.isRequired,
-  filteredList: PropTypes.array,
-  specConfig: PropTypes.object,
+  handleEndpointUpdate: PropTypes.func.isRequired,
+  endpointDetails: PropTypes.object,
   formDataConfig: PropTypes.object,
   setFormDataConfig: PropTypes.func.isRequired,
-  isSpecConfigLoading: PropTypes.bool.isRequired,
 };
 
 export { ConfigureConnectorModal };
