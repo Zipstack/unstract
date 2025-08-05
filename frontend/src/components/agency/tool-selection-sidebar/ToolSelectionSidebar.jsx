@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 
 import "./ToolSelectionSidebar.css";
+import { ToolIcon } from "../tool-icon/ToolIcon";
 
 function ToolSelectionSidebar({
   visible,
@@ -90,9 +91,13 @@ function ToolSelectionSidebar({
                   <div className="tool-card-content">
                     <div className="tool-info">
                       <div className="tool-header">
-                        {tool.icon || (
-                          <FileTextOutlined className="tool-icon" />
-                        )}
+                        <div className="wf-tools-list">
+                          {tool.icon ? (
+                            <ToolIcon iconSrc={tool.icon} showBorder={true} />
+                          ) : (
+                            <FileTextOutlined className="tool-icon" />
+                          )}
+                        </div>
                         <div className="tool-details">
                           <Typography.Text strong className="tool-name">
                             {tool.name}
