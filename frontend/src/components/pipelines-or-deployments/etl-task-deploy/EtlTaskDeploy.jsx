@@ -395,7 +395,7 @@ EtlTaskDeploy.propTypes = {
   open: PropTypes.bool.isRequired,
   setOpen: PropTypes.func.isRequired,
   type: PropTypes.string.isRequired,
-  title: PropTypes.string.isRequired,
+  title: PropTypes.string,
   setTableData: PropTypes.func,
   workflowId: PropTypes.string,
   isEdit: PropTypes.bool,

@@ -5,6 +5,7 @@
     display: flex;
     flex-direction: column;
     overflow-y: hidden;
+    overflow-x: hidden;
 }
 
 .conn-modal-row {
@@ -93,4 +94,104 @@
 
 .conn-modal-col .ant-tabs-nav {
     margin: 0px;
+}
+
+/* Styles for connector selection dropdown */
+.connector-selection-section {
+    padding: 8px 0;
+    margin-bottom: 12px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.connector-selection-dropdown .ant-select-selector {
+    height: 40px;
+    padding: 4px 11px 4px 8px;
+    display: flex;
+    align-items: center;
+}
+
+.connector-selection-dropdown .ant-select-arrow {
+    right: 8px;
+}
+
+/* Styles for sticky "Add New Connector" option */
+.connector-dropdown-add-new {
+    border-top: 1px solid #f0f0f0;
+    padding: 8px 12px;
+    cursor: pointer;
+    background-color: #fafafa;
+    transition: background-color 0.2s;
+}
+
+.connector-dropdown-add-new:hover {
+    background-color: #f0f0f0;
+}
+
+/* Unified content area styling */
+.config-content-area {
+    padding: 16px;
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.config-content-area--database {
+    height: calc(800px - 180px);
+}
+
+.config-content-area--form-only {
+    border-right: 1px solid #f0f0f0;
+}
+
+.file-browser-section {
+    padding: 16px;
+    height: 100%;
+    overflow-y: auto;
+    background-color: #fafafa;
+}
+
+.file-browser-section h4 {
+    margin-bottom: 16px;
+    color: #1890ff;
+}
+
+/* Placeholder styles for empty state */
+.connector-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 400px;
+    color: #8c8c8c;
+}
+
+.connector-placeholder-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    color: #bfbfbf;
+}
+
+.connector-placeholder-text {
+    font-size: 16px;
+    color: #8c8c8c;
+    text-align: center;
+}
+
+/* Reduce gap between tab and content for DATABASE modals */
+.database-tabs .ant-tabs-nav {
+    margin-bottom: 8px !important;
+}
+
+/* Removed flex properties from tabs to allow natural scrolling */
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+    .config-content-area,
+    .file-browser-section {
+        padding: 12px;
+    }
+
+    .config-content-area--database {
+        height: calc(800px - 160px); /* Slightly less height on smaller screens */
+    }
 }

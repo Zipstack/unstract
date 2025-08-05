@@ -1054,7 +1054,7 @@ function Agency() {
                 })()}
                 title="Configure Source Connector"
                 description="Select and configure your data input connector"
-                type={sourceTypes.connectors[0]}
+                connType={sourceTypes.connectors[0]}
                 endpointDetails={source}
                 message={sourceMsg}
               />
@@ -1070,9 +1070,9 @@ function Agency() {
                   );
                   return status.configured ? "✓" : "2";
                 })()}
-                title="Configure Output Destination"
+                title="Configure Destination Connector"
                 description="Select and configure your data output connector"
-                type={sourceTypes.connectors[1]}
+                connType={sourceTypes.connectors[1]}
                 endpointDetails={destination}
                 message={destinationMsg}
               />

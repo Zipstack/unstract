@@ -16,6 +16,8 @@ from utils.filtering import FilterHelper
 
 from backend.constants import RequestKey
 from connector_v2.constants import ConnectorInstanceKey as CIKey
+from unstract.connectors.connectorkit import Connectorkit
+from unstract.connectors.enums import ConnectorMode
 
 from .models import ConnectorInstance
 from .serializers import ConnectorInstanceSerializer
@@ -31,19 +33,35 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
         return [IsOwner()]
 
     def get_queryset(self) -> QuerySet | None:
+        queryset = ConnectorInstance.objects.for_user(self.request.user)
+
         filter_args = FilterHelper.build_filter_args(
             self.request,
             RequestKey.WORKFLOW,
             RequestKey.CREATED_BY,
             CIKey.CONNECTOR_TYPE,
-            CIKey.CONNECTOR_MODE,
         )
         if filter_args:
-            queryset = ConnectorInstance.objects.for_user(self.request.user).filter(
-                **filter_args
-            )
-        else:
-            queryset = ConnectorInstance.objects.for_user(self.request.user)
+            queryset = queryset.filter(**filter_args)
+
+        # Filter by connector_mode
+        connector_mode_param = self.request.query_params.get("connector_mode")
+        if connector_mode_param:
+            try:
+                connector_mode = ConnectorMode(connector_mode_param)
+                connectors = Connectorkit().get_connectors_list(mode=connector_mode)
+                connector_ids = [conn.get("id") for conn in connectors if conn.get("id")]
+
+                if connector_ids:
+                    queryset = queryset.filter(connector_id__in=connector_ids)
+                else:
+                    queryset = queryset.none()
+            except ValueError:
+                logger.warning(
+                    f"Invalid connector_mode parameter: {connector_mode_param}"
+                )
+                queryset = queryset.none()
+
         return queryset
 
     def _get_connector_metadata(self, connector_id: str) -> dict[str, str] | None:

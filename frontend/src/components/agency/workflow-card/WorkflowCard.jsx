@@ -9,7 +9,7 @@ function WorkflowCard({
   number,
   title,
   description,
-  type,
+  connType,
   endpointDetails,
   message,
   customContent,
@@ -33,7 +33,7 @@ function WorkflowCard({
           <div className="workflow-card-content">
             {customContent || (
               <DsSettingsCard
-                type={type}
+                connType={connType}
                 endpointDetails={endpointDetails}
                 message={message}
               />
@@ -49,7 +49,7 @@ WorkflowCard.propTypes = {
   number: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
   title: PropTypes.string.isRequired,
   description: PropTypes.string.isRequired,
-  type: PropTypes.string,
+  connType: PropTypes.string,
   endpointDetails: PropTypes.object,
   message: PropTypes.string,
   customContent: PropTypes.node,

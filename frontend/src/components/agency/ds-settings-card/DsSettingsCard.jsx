@@ -33,7 +33,7 @@ const needToRemove = {
   FILE_SYSTEM: ["pcs|b8cd25cd-4452-4d54-bd5e-e7d71459b702"],
 };
 
-function DsSettingsCard({ type, endpointDetails, message }) {
+function DsSettingsCard({ connType, endpointDetails, message }) {
   const workflowStore = useWorkflowStore();
   const { source, destination, allowChangeEndpoint, details } = workflowStore;
   const [options, setOptions] = useState({});
@@ -42,14 +42,13 @@ function DsSettingsCard({ type, endpointDetails, message }) {
   const [listOfConnectors, setListOfConnectors] = useState([]);
   const [filteredList, setFilteredList] = useState([]);
 
-  const [connType, setConnType] = useState(null);
+  const [connMode, setConnMode] = useState(null);
 
   const [connDetails, setConnDetails] = useState({});
   const [specConfig, setSpecConfig] = useState({});
   const [isSpecConfigLoading, setIsSpecConfigLoading] = useState(false);
   const [formDataConfig, setFormDataConfig] = useState({});
-  const [selectedId, setSelectedId] = useState("");
-  const [selectedItemName, setSelectedItemName] = useState("");
+
   const [inputOptions, setInputOptions] = useState([
     {
       value: "API",
@@ -76,10 +75,10 @@ function DsSettingsCard({ type, endpointDetails, message }) {
   const setUpdatedInputoptions = (inputOption) => {
     setInputOptions((prevInputOptions) => {
       // Check if inputOption already exists in prevInputOptions
+      // Return previous state unchanged if it does or create new array
       if (prevInputOptions.some((opt) => opt.value === inputOption.value)) {
-        return prevInputOptions; // Return previous state unchanged
+        return prevInputOptions;
       } else {
-        // Create a new array with the existing options and the new option
         const updatedInputOptions = [...prevInputOptions, inputOption];
         return updatedInputOptions;
       }
@@ -99,7 +98,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
   }, []);
 
   useEffect(() => {
-    if (type === "output") {
+    if (connType === "output") {
       if (source?.connection_type === "") {
         // Clear options when source is blank
         setOptions({});
@@ -114,7 +113,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
       }
     }
 
-    if (type === "input") {
+    if (connType === "input") {
       // Remove Database from Source Dropdown
       const filteredOptions = inputOptions.filter(
         (option) =>
@@ -125,8 +124,8 @@ function DsSettingsCard({ type, endpointDetails, message }) {
   }, [source, destination]);
 
   useEffect(() => {
-    if (endpointDetails?.connection_type !== connType) {
-      setConnType(endpointDetails?.connection_type);
+    if (endpointDetails?.connection_type !== connMode) {
+      setConnMode(endpointDetails?.connection_type);
     }
 
     if (!endpointDetails?.connector_instance) {
@@ -136,12 +135,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
 
     // Use connector_instance data directly from endpointDetails if it's an object
     if (typeof endpointDetails?.connector_instance === "object") {
-      const connectorData = endpointDetails.connector_instance;
-      connectorData.connector_metadata = connectorData.connector_metadata || {};
-      connectorData.connector_metadata.connectorName =
-        connectorData?.connector_name || "";
-      setConnDetails(connectorData);
-      setSelectedId(connectorData?.connector_id);
+      setConnDetails(endpointDetails.connector_instance);
       return;
     }
 
@@ -176,7 +170,6 @@ function DsSettingsCard({ type, endpointDetails, message }) {
         )
       );
     });
-    setSelectedId("");
     setFilteredList(menuItems);
 
     if (!endpointDetails?.id) {
@@ -201,16 +194,16 @@ function DsSettingsCard({ type, endpointDetails, message }) {
       .finally(() => {
         setIsSpecConfigLoading(false);
       });
-  }, [connType, listOfConnectors]);
+  }, [connMode, listOfConnectors]);
 
   useEffect(() => {
-    if (!type) {
+    if (!connType) {
       return;
     }
 
     const requestOptions = {
       method: "GET",
-      url: getUrl(`supported_connectors/?type=${type.toUpperCase()}`),
+      url: getUrl(`supported_connectors/?type=${connType.toUpperCase()}`),
     };
 
     axiosPrivate(requestOptions)
@@ -240,7 +233,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
         setAlertDetails(handleException(err));
       })
       .finally(() => {});
-  }, [type]);
+  }, [connType]);
 
   const sourceIcon = (src) => {
     return <Image src={src} height={25} width={25} preview={false} />;
@@ -271,7 +264,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
 
   const updateDestination = () => {
     // Clear destination dropdown & data when input is switched
-    if (type === "input") {
+    if (connType === "input") {
       clearDestination({
         connection_type: "",
         connector_instance_id: null,
@@ -293,7 +286,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
       .then((res) => {
         const data = res?.data || {};
         const updatedData = {};
-        if (type === "input") {
+        if (connType === "input") {
           updatedData["source"] = data;
         } else {
           updatedData["destination"] = data;
@@ -320,10 +313,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
     axiosPrivate(requestOptions)
       .then((res) => {
         const data = res?.data;
-        data["connector_metadata"]["connectorName"] =
-          data?.connector_name || "";
         setConnDetails(data);
-        setSelectedId(data?.connector_id);
       })
       .catch((err) => {
         setAlertDetails(handleException(err));
@@ -375,8 +365,8 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                   onClick={() => setOpenModal(true)}
                   disabled={
                     !endpointDetails?.connection_type ||
-                    connType === "API" ||
-                    connType === "APPDEPLOYMENT" ||
+                    connMode === "API" ||
+                    connMode === "APPDEPLOYMENT" ||
                     !allowChangeEndpoint
                   }
                 >
@@ -399,21 +389,16 @@ function DsSettingsCard({ type, endpointDetails, message }) {
       <ConfigureConnectorModal
         open={openModal}
         setOpen={setOpenModal}
-        type={type}
-        selectedId={selectedId}
-        setSelectedId={setSelectedId}
+        connType={connType}
         handleUpdate={handleUpdate}
         filteredList={filteredList}
-        connectorMetadata={connDetails?.connector_metadata}
-        connectorId={connDetails?.id}
         specConfig={specConfig}
         formDataConfig={formDataConfig}
         setFormDataConfig={setFormDataConfig}
         isSpecConfigLoading={isSpecConfigLoading}
         connDetails={connDetails}
-        connType={connType}
-        selectedItemName={selectedItemName}
-        setSelectedItemName={setSelectedItemName}
+        setConnDetails={setConnDetails}
+        connMode={connMode}
         workflowDetails={details}
       />
     </>
@@ -421,7 +406,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
 }
 
 DsSettingsCard.propTypes = {
-  type: PropTypes.string.isRequired,
+  connType: PropTypes.string.isRequired,
   endpointDetails: PropTypes.object.isRequired,
   message: PropTypes.string,
 };
