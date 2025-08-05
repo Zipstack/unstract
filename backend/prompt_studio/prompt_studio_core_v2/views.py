@@ -32,7 +32,6 @@ from prompt_studio.prompt_profile_manager_v2.serializers import ProfileManagerSe
 from prompt_studio.prompt_studio_core_v2.constants import (
     FileViewTypes,
     ToolStudioErrors,
-    ToolStudioKeys,
     ToolStudioPromptKeys,
 )
 from prompt_studio.prompt_studio_core_v2.document_indexing_service import (
@@ -43,7 +42,11 @@ from prompt_studio.prompt_studio_core_v2.exceptions import (
     MaxProfilesReachedError,
     ToolDeleteError,
 )
+from prompt_studio.prompt_studio_core_v2.migration_utils import SummarizeMigrationUtils
 from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import PromptStudioHelper
+from prompt_studio.prompt_studio_core_v2.retrieval_strategies import (
+    get_retrieval_strategy_metadata,
+)
 from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManager
 from prompt_studio.prompt_studio_document_manager_v2.prompt_studio_document_helper import (  # noqa: E501
     PromptStudioDocumentHelper,
@@ -91,6 +94,15 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
     def get_queryset(self) -> QuerySet | None:
         return CustomTool.objects.for_user(self.request.user)
 
+    def get_object(self):
+        """Override get_object to trigger lazy migration when accessing tools."""
+        instance = super().get_object()
+
+        # Trigger lazy migration if needed (safe, with locking)
+        SummarizeMigrationUtils.migrate_tool_to_adapter_based(instance)
+
+        return instance
+
     def create(self, request: HttpRequest) -> Response:
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -136,19 +148,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
     def partial_update(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
-        summarize_llm_profile_id = request.data.get(
-            ToolStudioKeys.SUMMARIZE_LLM_PROFILE, None
-        )
-        if summarize_llm_profile_id:
-            prompt_tool = self.get_object()
-
-            ProfileManager.objects.filter(prompt_studio_tool=prompt_tool).update(
-                is_summarize_llm=False
-            )
-            profile_manager = ProfileManager.objects.get(pk=summarize_llm_profile_id)
-            profile_manager.is_summarize_llm = True
-            profile_manager.save()
-
         return super().partial_update(request, *args, **kwargs)
 
     @action(detail=True, methods=["get"])
@@ -166,6 +165,30 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         except Exception as e:
             logger.error(f"Error occured while fetching select fields {e}")
             return Response(select_choices, status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["get"])
+    def get_retrieval_strategies(self, request: HttpRequest, pk: Any = None) -> Response:
+        """Method to return all retrieval strategy metadata.
+
+        Returns detailed information about each retrieval strategy including
+        descriptions, use cases, performance impacts, and technical details.
+
+        Args:
+            request (HttpRequest): The HTTP request
+            pk (Any): Primary key of the tool (not used in this method)
+
+        Returns:
+            Response: Response containing retrieval strategy metadata
+        """
+        try:
+            strategies = get_retrieval_strategy_metadata()
+            return Response(strategies, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Error occurred while fetching retrieval strategies: {e}")
+            return Response(
+                {"error": "Failed to fetch retrieval strategies"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
     @action(detail=True, methods=["get"])
     def list_profiles(self, request: HttpRequest, pk: Any = None) -> Response:
