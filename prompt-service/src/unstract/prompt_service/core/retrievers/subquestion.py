@@ -51,6 +51,9 @@ class SubquestionRetriever(BaseRetriever):
             logger.info(f"Successfully retrieved {len(chunks)} chunks.")
             return chunks
 
-        except Exception as e:
+        except (ValueError, AttributeError, KeyError, ImportError) as e:
             logger.error(f"Error during retrieving chunks {self.doc_id}: {e}")
             raise RetrievalError(str(e)) from e
+        except Exception as e:
+            logger.error(f"Unexpected error during retrieving chunks {self.doc_id}: {e}")
+            raise RetrievalError(f"Unexpected error: {str(e)}") from e
