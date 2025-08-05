@@ -56,3 +56,19 @@ class NoActiveAPIKeyError(APIException):
         if detail is None:
             detail = f"No active API keys configured for {deployment_name}"
         super().__init__(detail, code)
+
+
+class PresignedURLFetchError(APIException):
+    status_code = 400
+    default_detail = "Failed to fetch file from presigned URL"
+
+    def __init__(
+        self,
+        detail: str | None = None,
+        code: str | None = None,
+        url: str = "",
+        error_message: str = "",
+    ):
+        if detail is None:
+            detail = f"Failed to fetch file from URL: {url}. Error: {error_message}"
+        super().__init__(detail, code)
