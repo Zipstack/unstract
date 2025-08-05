@@ -37,8 +37,7 @@ class FileValidator:
         "Allowed extensions are: '%(allowed_extensions)s.'"
     )
     mime_message = _(
-        "MIME type '%(mimetype)s' is not valid. "
-        "Allowed types are: %(allowed_mimetypes)s."
+        "MIME type '%(mimetype)s' is not valid. Allowed types are: %(allowed_mimetypes)s."
     )
     min_size_message = _(
         "The current file %(size)s, which is too small. "
