@@ -105,7 +105,6 @@ function Agency() {
           getWfEndpointDetails(signal),
           canUpdateWorkflow(signal),
           getExportedTools(signal),
-          fetchDeploymentInfo(signal),
         ]);
 
         if (!signal.aborted) {
@@ -1268,6 +1267,7 @@ function Agency() {
           workflowId={details?.id}
           setDeploymentName={setDeploymentName}
           onDeploymentCreated={fetchDeploymentInfo}
+          title="Deploy ETL"
         />
 
         <EtlTaskDeploy
@@ -1277,6 +1277,7 @@ function Agency() {
           workflowId={details?.id}
           setDeploymentName={setDeploymentName}
           onDeploymentCreated={fetchDeploymentInfo}
+          title="Deploy Task"
         />
 
         {/* Tool Selection Sidebar */}
