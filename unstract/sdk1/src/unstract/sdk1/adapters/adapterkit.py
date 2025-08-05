@@ -20,13 +20,6 @@ logger = logging.getLogger(__name__)
 @singleton
 class Adapterkit:
     def __init__(self) -> None:
-        print("************************")
-        print("EMBEDDING ADAPTERS:", embedding_adapters)
-        print("LLM ADAPTERS:", llm_adapters)
-        print("VECTORDB ADAPTERS:", vectordb_adapters)
-        print("X2TEXT ADAPTERS:", x2text_adapters)
-        print("OCR ADAPTERS:", ocr_adapters)
-        print("************************")
         self._adapters: AdapterDict = (
             embedding_adapters
             | llm_adapters
