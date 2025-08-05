@@ -54,6 +54,11 @@ function Workflows() {
   const projectListRef = useRef();
   const filterViewRef = useRef(PROJECT_FILTER_OPTIONS[0].value);
   const [backendErrors, setBackendErrors] = useState(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [selectedWorkflow, setSelectedWorkflow] = useState();
+  const [sharePermissionEdit, setSharePermissionEdit] = useState(false);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [allUsers, setAllUsers] = useState([]);
 
   const { setAlertDetails } = useAlertStore();
   const sessionDetails = useSessionStore((state) => state?.sessionDetails);
@@ -178,6 +183,64 @@ function Workflows() {
     setEditProject();
   }
 
+  const handleShare = async (event, workflow, isEdit) => {
+    event.stopPropagation();
+    setSelectedWorkflow(workflow);
+    setSharePermissionEdit(isEdit);
+    setShareLoading(true);
+
+    try {
+      const [usersResponse, sharedUsersResponse] = await Promise.all([
+        projectApiService.getAllUsers(),
+        projectApiService.getSharedUsers(workflow.id),
+      ]);
+
+      const userList =
+        usersResponse?.data?.members?.map((member) => ({
+          id: member.id,
+          email: member.email,
+        })) || [];
+
+      // Pass the complete user list - SharePermission component will handle filtering
+      setAllUsers(userList);
+      setSelectedWorkflow(sharedUsersResponse.data);
+      setShareOpen(true);
+    } catch (error) {
+      console.error("Error fetching sharing data:", error);
+      setAlertDetails({
+        type: "error",
+        content: "Unable to fetch sharing information",
+      });
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
+  const onShare = async (selectedUsers, workflow, shareWithEveryone) => {
+    setShareLoading(true);
+    try {
+      await projectApiService.updateSharing(
+        workflow.id,
+        selectedUsers,
+        shareWithEveryone
+      );
+      setShareOpen(false);
+      setAlertDetails({
+        type: "success",
+        content: "Workflow sharing updated successfully",
+      });
+      getProjectList(); // Refresh the list
+    } catch (error) {
+      console.error("Error updating sharing:", error);
+      setAlertDetails({
+        type: "error",
+        content: "Unable to update workflow sharing",
+      });
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
   const handleNewWorkflowBtnClick = () => {
     showNewProject();
     toggleModal(true);
@@ -252,6 +315,7 @@ function Workflows() {
               setOpenAddTool={toggleModal}
               handleEdit={updateProject}
               handleDelete={deleteProject}
+              handleShare={handleShare}
               titleProp="workflow_name"
               descriptionProp="description"
               idProp="id"
@@ -271,6 +335,21 @@ function Workflows() {
               openModal={openModal}
               backendErrors={backendErrors}
               setBackendErrors={setBackendErrors}
+            />
+          )}
+          {shareOpen && selectedWorkflow && (
+            <LazyLoader
+              component={() =>
+                import("../../widgets/share-permission/SharePermission.jsx")
+              }
+              componentName={"SharePermission"}
+              open={shareOpen}
+              setOpen={setShareOpen}
+              adapter={selectedWorkflow}
+              permissionEdit={sharePermissionEdit}
+              loading={shareLoading}
+              allUsers={allUsers}
+              onApply={onShare}
             />
           )}
         </div>

@@ -85,6 +85,34 @@ function workflowService() {
       };
       return axiosPrivate(options);
     },
+    getSharedUsers: (id) => {
+      options = {
+        url: `${path}/workflow/${id}/users/`,
+        method: "GET",
+      };
+      return axiosPrivate(options);
+    },
+    updateSharing: (id, sharedUsers, shareWithEveryone) => {
+      options = {
+        url: `${path}/workflow/${id}/`,
+        method: "PATCH",
+        headers: {
+          "X-CSRFToken": csrfToken,
+        },
+        data: {
+          shared_users: sharedUsers,
+          shared_to_org: shareWithEveryone,
+        },
+      };
+      return axiosPrivate(options);
+    },
+    getAllUsers: () => {
+      options = {
+        url: `${path}/users/`,
+        method: "GET",
+      };
+      return axiosPrivate(options);
+    },
   };
 }
 
