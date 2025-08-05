@@ -97,6 +97,51 @@ function ConfigureDs({
     localStorage.setItem(oauthStatusKey, newStatus);
   };
 
+  // Map connector type to proper role for OAuth isolation
+  const connectorRole = type === "input" ? "SOURCE" : "DESTINATION";
+
+  const oauthCacheKey = `oauth-cachekey-${id}-${connectorRole}-${selectedSourceId}`;
+  const oauthStatusKey = `oauth-status-${id}-${connectorRole}-${selectedSourceId}`;
+
+  // Initialize OAuth state from localStorage after keys are available
+  useEffect(() => {
+    if (!oAuthProvider?.length) {
+      return;
+    }
+
+    // Initialize cache key
+    const storedCacheKey = localStorage.getItem(oauthCacheKey);
+    if (storedCacheKey) {
+      setCacheKey(storedCacheKey);
+    }
+
+    // Initialize status from connector-specific key only
+    const storedStatus = localStorage.getItem(oauthStatusKey);
+    if (storedStatus) {
+      setStatus(storedStatus);
+    }
+  }, [oauthCacheKey, oauthStatusKey, oAuthProvider, selectedSourceId]);
+
+  // Wrapper functions to persist OAuth state to localStorage
+  const handleSetCacheKey = (key) => {
+    // Only handle OAuth operations for OAuth-enabled connectors
+    if (!oAuthProvider?.length) {
+      return;
+    }
+    setCacheKey(key);
+    localStorage.setItem(oauthCacheKey, key);
+  };
+
+  const handleSetStatus = (newStatus) => {
+    // Only handle OAuth operations for OAuth-enabled connectors
+    if (!oAuthProvider?.length) {
+      return;
+    }
+    setStatus(newStatus);
+    // Store only in connector-specific location to prevent contamination
+    localStorage.setItem(oauthStatusKey, newStatus);
+  };
+
   useEffect(() => {
     if (isTcSuccessful) {
       setIsTcSuccessful(false);
