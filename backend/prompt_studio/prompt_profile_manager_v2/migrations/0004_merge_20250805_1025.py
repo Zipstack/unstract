@@ -4,11 +4,9 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('prompt_profile_manager_v2', '0002_alter_profilemanager_is_summarize_llm'),
-        ('prompt_profile_manager_v2', '0003_alter_profilemanager_retrieval_strategy'),
+        ("prompt_profile_manager_v2", "0002_alter_profilemanager_is_summarize_llm"),
+        ("prompt_profile_manager_v2", "0003_alter_profilemanager_retrieval_strategy"),
     ]
 
-    operations = [
-    ]
+    operations = []
