@@ -1,4 +1,13 @@
-import { Button, Col, Row, Select, Space, Tooltip, Typography } from "antd";
+import {
+  Button,
+  Col,
+  Row,
+  Select,
+  Space,
+  Tooltip,
+  Typography,
+  Image,
+} from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
@@ -241,6 +250,27 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
               </Tooltip>
             </Space>
           </SpaceWrapper>
+          {connDetails?.id && (
+            <div className="ds-connector-info-wrapper">
+              <Space className="ds-connector-info">
+                {connDetails?.icon && (
+                  <Image
+                    src={connDetails.icon}
+                    width={20}
+                    height={20}
+                    preview={false}
+                    alt="connector-icon"
+                  />
+                )}
+                <Typography.Text
+                  className="ds-connector-name"
+                  ellipsis={{ tooltip: true }}
+                >
+                  {connDetails?.connector_name || "Unnamed Connector"}
+                </Typography.Text>
+              </Space>
+            </div>
+          )}
         </Col>
         <Col span={8} className="ds-set-card-col3">
           <Typography.Paragraph

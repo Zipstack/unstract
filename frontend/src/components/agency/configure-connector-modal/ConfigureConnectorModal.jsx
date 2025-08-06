@@ -9,7 +9,6 @@ import useRequestUrl from "../../../hooks/useRequestUrl";
 import { AddSourceModal } from "../../input-output/add-source-modal/AddSourceModal";
 import { ManageFiles } from "../../input-output/manage-files/ManageFiles";
 import { ConfigureFormsLayout } from "../configure-forms-layout/ConfigureFormsLayout";
-import { ConfigurationLayout } from "../shared/ConfigurationLayout";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import "./ConfigureConnectorModal.css";
@@ -237,7 +236,6 @@ function ConfigureConnectorModal({
         <Typography.Text className="modal-header" strong>
           Configure Connector
         </Typography.Text>
-        <div className="conn-modal-gap" />
 
         {/* Connector Selection Dropdown */}
         <div className="connector-selection-section">
@@ -341,6 +339,7 @@ function ConfigureConnectorModal({
               <Tabs
                 activeKey={activeTabKey}
                 onChange={onTabChange}
+                className="conn-modal-col"
                 items={tabItems
                   .filter((item) => item.visible !== false)
                   .map((item) => ({
@@ -348,22 +347,20 @@ function ConfigureConnectorModal({
                     label: item.label,
                     disabled: item.disabled,
                     children: (
-                      <div className="config-content-area config-content-area--database">
+                      <>
                         {item.key === "1" && (
-                          <ConfigurationLayout title="Configuration Settings">
-                            <ConfigureFormsLayout
-                              handleUpdate={handleEndpointUpdate}
-                              specConfig={specConfig}
-                              formDataConfig={formDataConfig}
-                              setFormDataConfig={setFormDataConfig}
-                              isSpecConfigLoading={isSpecConfigLoading}
-                            />
-                          </ConfigurationLayout>
+                          <ConfigureFormsLayout
+                            handleUpdate={handleEndpointUpdate}
+                            specConfig={specConfig}
+                            formDataConfig={formDataConfig}
+                            setFormDataConfig={setFormDataConfig}
+                            isSpecConfigLoading={isSpecConfigLoading}
+                          />
                         )}
                         {item.key === "MANUALREVIEW" && DBRules && (
                           <DBRules workflowDetails={workflowDetails} />
                         )}
-                      </div>
+                      </>
                     ),
                   }))}
               />
@@ -371,26 +368,15 @@ function ConfigureConnectorModal({
               /* Other connector types: Show existing layout */
               <Row className="conn-modal-row" gutter={24}>
                 {/* Left side - Configuration Form */}
-                <Col
-                  span={connMode === "FILESYSTEM" && connDetails?.id ? 12 : 24}
-                  className="conn-modal-col"
-                >
-                  <div
-                    className={`config-content-area ${
-                      connMode === "FILESYSTEM" && connDetails?.id
-                        ? "config-content-area--form-only"
-                        : ""
-                    }`}
-                  >
-                    <ConfigurationLayout title="Configuration Settings">
-                      <ConfigureFormsLayout
-                        handleUpdate={handleEndpointUpdate}
-                        specConfig={specConfig}
-                        formDataConfig={formDataConfig}
-                        setFormDataConfig={setFormDataConfig}
-                        isSpecConfigLoading={isSpecConfigLoading}
-                      />
-                    </ConfigurationLayout>
+                <Col span={12} className="conn-modal-col">
+                  <div className="conn-modal-fs-config">
+                    <ConfigureFormsLayout
+                      handleUpdate={handleEndpointUpdate}
+                      specConfig={specConfig}
+                      formDataConfig={formDataConfig}
+                      setFormDataConfig={setFormDataConfig}
+                      isSpecConfigLoading={isSpecConfigLoading}
+                    />
                   </div>
                 </Col>
 
@@ -398,10 +384,7 @@ function ConfigureConnectorModal({
                 {connMode === "FILESYSTEM" && connDetails?.id && (
                   <Col span={12} className="conn-modal-col">
                     <div className="file-browser-section">
-                      <Typography.Text
-                        strong
-                        style={{ display: "block", marginBottom: 16 }}
-                      >
+                      <Typography.Text strong style={{ display: "block" }}>
                         Browse Files & Folders
                       </Typography.Text>
                       <ManageFiles selectedItem={connDetails?.id} />

@@ -1,7 +1,9 @@
 /* Styles for ConfigureConnectorModal */
 
 .conn-modal-body {
-    height: 800px;
+    height: 80vh; /* 80% of viewport height */
+    max-height: 800px; /* Cap at 800px for large screens */
+    min-height: 400px; /* Minimum height for usability */
     display: flex;
     flex-direction: column;
     overflow-y: hidden;
@@ -26,13 +28,8 @@
     background-color: var(--page-bg-3);
 }
 
-.conn-modal-tab-body {
-    flex: 1;
-    overflow-y: hidden;
-}
-
-.conn-modal-gap {
-    margin-bottom: 8px;
+.conn-modal-col .ant-tabs-nav {
+    margin: 0px;
 }
 
 .conn-modal-menu {
@@ -50,57 +47,13 @@
     padding: 4px 20px 0px 20px;
 }
 
-.conn-modal-form-right {
-    padding: 12px 12px 0px 0px;
-    padding-right: 20px;
-    border-right: 1px solid #D4D4D4;
-    height: 100%;
-}
-
-.conn-modal-form-left {
-    padding: 12px 0px 0px 12px;
-    padding-left: 20px;
-    height: 100%;
-}
-
-.conn-modal-flex {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    overflow-y: hidden;
-}
-
-.conn-modal-flex-1 {
-    flex: 1;
-    overflow-y: auto;
-}
-
 .form-right {
     padding: 8px 8px 0px 0px;
 }
 
-.sidebar-menu {
-    margin-top: 10px;
-    background-color: transparent;
-}
-
-.sidebar-menu .ant-menu-item {
-    padding: 5px !important;
-}
-
-.sidebar-menu .ant-menu-title-content {
-    margin-left: 5px;
-}
-
-.conn-modal-col .ant-tabs-nav {
-    margin: 0px;
-}
-
 /* Styles for connector selection dropdown */
 .connector-selection-section {
-    padding: 8px 0;
-    margin-bottom: 12px;
-    border-bottom: 1px solid #f0f0f0;
+    padding: 16px 8px;
 }
 
 .connector-selection-dropdown .ant-select-selector {
@@ -114,7 +67,6 @@
     right: 8px;
 }
 
-/* Styles for sticky "Add New Connector" option */
 .connector-dropdown-add-new {
     border-top: 1px solid #f0f0f0;
     padding: 8px 12px;
@@ -127,32 +79,15 @@
     background-color: #f0f0f0;
 }
 
-/* Unified content area styling */
-.config-content-area {
-    padding: 16px;
-    height: 100%;
-    overflow-y: auto;
-    overflow-x: hidden;
-}
-
-.config-content-area--database {
-    height: calc(800px - 180px);
-}
-
-.config-content-area--form-only {
+.conn-modal-fs-config {
     border-right: 1px solid #f0f0f0;
+    overflow-y: hidden;
 }
 
 .file-browser-section {
     padding: 16px;
     height: 100%;
     overflow-y: auto;
-    background-color: #fafafa;
-}
-
-.file-browser-section h4 {
-    margin-bottom: 16px;
-    color: #1890ff;
 }
 
 /* Placeholder styles for empty state */
@@ -177,21 +112,23 @@
     text-align: center;
 }
 
-/* Reduce gap between tab and content for DATABASE modals */
-.database-tabs .ant-tabs-nav {
-    margin-bottom: 8px !important;
+
+/* Responsive adjustments for different screen sizes */
+@media (max-height: 900px) {
+    .conn-modal-body {
+        height: 75vh; /* Reduce height on smaller screens */
+    }
 }
 
-/* Removed flex properties from tabs to allow natural scrolling */
+@media (max-height: 768px) {
+    .conn-modal-body {
+        height: 60vh; /* Further reduce for very small screens */
+        min-height: 350px; /* Adjust minimum height */
+    }
+}
 
-/* Responsive adjustments */
 @media (max-width: 1200px) {
-    .config-content-area,
     .file-browser-section {
         padding: 12px;
-    }
-
-    .config-content-area--database {
-        height: calc(800px - 160px); /* Slightly less height on smaller screens */
     }
 }
