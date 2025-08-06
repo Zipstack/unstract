@@ -778,15 +778,6 @@ class DestinationConnector(BaseConnector):
             q_name = self._get_review_queue_name()
             whisper_hash = meta_data.get("whisper-hash") if meta_data else None
 
-            # Validate required fields before creating QueueResult
-            if not file_name or not str(self.workflow_id):
-                logger.error(
-                    f"Missing required fields for queue result: file_name={file_name}, workflow_id={self.workflow_id}"
-                )
-                raise ValueError(
-                    "File name and workflow ID are required for queue operations"
-                )
-
             queue_result = QueueResult(
                 file=file_name,
                 status=QueueResultStatus.SUCCESS,
@@ -798,11 +789,6 @@ class DestinationConnector(BaseConnector):
             ).to_dict()
 
             queue_result_json = json.dumps(queue_result)
-
-            # Validate the JSON is not empty before enqueuing
-            if not queue_result_json or queue_result_json.strip() == "":
-                logger.error(f"Attempted to enqueue empty JSON for file {file_name}")
-                raise ValueError("Cannot enqueue empty JSON message")
 
             conn = QueueUtils.get_queue_inst()
             conn.enqueue(queue_name=q_name, message=queue_result_json)
@@ -826,14 +812,6 @@ class DestinationConnector(BaseConnector):
                 whisper_hash = meta_data.get("whisper-hash")
             else:
                 whisper_hash = None
-            # Validate required fields before creating QueueResult
-            if not file_name or not str(self.workflow_id):
-                logger.error(
-                    f"Missing required fields for TTL queue result: file_name={file_name}, workflow_id={self.workflow_id}"
-                )
-                raise ValueError(
-                    "File name and workflow ID are required for queue operations"
-                )
 
             # Create QueueResult with TTL metadata
             queue_result_obj = QueueResult(
