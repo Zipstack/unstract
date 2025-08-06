@@ -13,7 +13,14 @@ import "./FileSystem.css";
 const { DirectoryTree } = Tree;
 const { Text } = Typography;
 
-function FileExplorer({ selectedItem = "", data = [], loadingData, error }) {
+function FileExplorer({
+  selectedConnector = "",
+  data = [],
+  loadingData,
+  error,
+  onFolderSelect,
+  selectedFolderPath,
+}) {
   const inpService = inputService();
 
   const [tree, setTree] = useState([]);
@@ -32,7 +39,14 @@ function FileExplorer({ selectedItem = "", data = [], loadingData, error }) {
     // Clear selected items/keys when the data source is changed.
     setExpandedKeys([]);
     setSelectedKeys([]);
-  }, [selectedItem]);
+  }, [selectedConnector]);
+
+  useEffect(() => {
+    // Clear tree selection when selectedFolderPath is cleared
+    if (!selectedFolderPath) {
+      setSelectedKeys([]);
+    }
+  }, [selectedFolderPath]);
 
   function onLoadData({ key, children }) {
     return new Promise((resolve) => {
@@ -50,7 +64,7 @@ function FileExplorer({ selectedItem = "", data = [], loadingData, error }) {
 
   function getAndUpdateFiles(path) {
     return inpService
-      .getFileList(selectedItem, path)
+      .getFileList(selectedConnector, path)
       .then((res) => {
         let newTree = tree;
         if (path) {
@@ -63,7 +77,7 @@ function FileExplorer({ selectedItem = "", data = [], loadingData, error }) {
       })
       .catch(() => {
         console.error(
-          `Unable to get files on "${selectedItem}" for the folder "${path}"`
+          `Unable to get files on "${selectedConnector}" for the folder "${path}"`
         );
       });
   }
@@ -72,8 +86,16 @@ function FileExplorer({ selectedItem = "", data = [], loadingData, error }) {
     setSelectedKeys(selectedKeys);
     if (event.node.isLeaf) {
       uploadPathRef.current = "";
+      // Call the folder selection callback for files (disabled state)
+      if (onFolderSelect) {
+        onFolderSelect(event.node.key, "file");
+      }
     } else {
       uploadPathRef.current = event.node.key;
+      // Call the folder selection callback for folders (enabled state)
+      if (onFolderSelect) {
+        onFolderSelect(event.node.key, "folder");
+      }
     }
   }
 
@@ -186,10 +208,12 @@ function transformTree(tree) {
 }
 
 FileExplorer.propTypes = {
-  selectedItem: PropTypes.string,
+  selectedConnector: PropTypes.string,
   data: PropTypes.array,
   loadingData: PropTypes.bool,
   error: PropTypes.bool,
+  onFolderSelect: PropTypes.func,
+  selectedFolderPath: PropTypes.string,
 };
 
 export { FileExplorer };

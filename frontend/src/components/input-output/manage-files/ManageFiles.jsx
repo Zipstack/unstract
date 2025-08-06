@@ -4,7 +4,11 @@ import PropTypes from "prop-types";
 import { inputService } from "../../input-output/input-output/input-service.js";
 import { FileExplorer } from "../file-system/FileSystem.jsx";
 
-function ManageFiles({ selectedItem }) {
+function ManageFiles({
+  selectedConnector,
+  onFolderSelect,
+  selectedFolderPath,
+}) {
   const inpService = inputService();
 
   const [files, setFiles] = useState([]);
@@ -13,10 +17,10 @@ function ManageFiles({ selectedItem }) {
 
   useEffect(() => {
     setFiles([]);
-    if (!selectedItem) return;
+    if (!selectedConnector) return;
     setLoadingData(true);
     inpService
-      .getFileList(selectedItem)
+      .getFileList(selectedConnector)
       .then((res) => {
         setFiles(res.data);
         setError(false);
@@ -27,20 +31,24 @@ function ManageFiles({ selectedItem }) {
       .finally(() => {
         setLoadingData(false);
       });
-  }, [selectedItem]);
+  }, [selectedConnector]);
 
   return (
     <FileExplorer
-      selectedItem={selectedItem}
+      selectedConnector={selectedConnector}
       data={files}
       loadingData={loadingData}
       error={error}
+      onFolderSelect={onFolderSelect}
+      selectedFolderPath={selectedFolderPath}
     />
   );
 }
 
 ManageFiles.propTypes = {
-  selectedItem: PropTypes.string,
+  selectedConnector: PropTypes.string,
+  onFolderSelect: PropTypes.func,
+  selectedFolderPath: PropTypes.string,
 };
 
 export { ManageFiles };

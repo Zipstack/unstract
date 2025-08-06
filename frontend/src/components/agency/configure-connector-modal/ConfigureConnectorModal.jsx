@@ -11,6 +11,7 @@ import { ManageFiles } from "../../input-output/manage-files/ManageFiles";
 import { ConfigureFormsLayout } from "../configure-forms-layout/ConfigureFormsLayout";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import "./ConfigureConnectorModal.css";
 
 let DBRules;
@@ -48,6 +49,8 @@ function ConfigureConnectorModal({
   ]);
   const [specConfig, setSpecConfig] = useState({});
   const [isSpecConfigLoading, setIsSpecConfigLoading] = useState(false);
+  const [selectedFolderPath, setSelectedFolderPath] = useState("");
+  const [isFolderSelected, setIsFolderSelected] = useState(false);
 
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -213,6 +216,28 @@ function ConfigureConnectorModal({
       // Update connDetails to select the new connector
       setConnDetails(newConnectorData);
     }
+  };
+
+  const handleFolderSelect = (folderPath, itemType) => {
+    setSelectedFolderPath(folderPath);
+    setIsFolderSelected(itemType === "folder");
+  };
+
+  const handleAddFolder = () => {
+    if (!selectedFolderPath) return;
+
+    const currentFolders = formDataConfig?.folders || [];
+
+    // Avoid duplicates
+    if (!currentFolders.includes(selectedFolderPath)) {
+      setFormDataConfig((prev) => ({
+        ...prev,
+        folders: [...currentFolders, selectedFolderPath],
+      }));
+    }
+
+    setSelectedFolderPath("");
+    setIsFolderSelected(false);
   };
 
   // Fetch available connectors when modal opens and connection type is available
@@ -384,10 +409,32 @@ function ConfigureConnectorModal({
                 {connMode === "FILESYSTEM" && connDetails?.id && (
                   <Col span={12} className="conn-modal-col">
                     <div className="file-browser-section">
-                      <Typography.Text strong style={{ display: "block" }}>
-                        Browse Files & Folders
-                      </Typography.Text>
-                      <ManageFiles selectedItem={connDetails?.id} />
+                      <div className="file-browser-header">
+                        <div className="file-browser-content">
+                          <Typography.Text strong style={{ display: "block" }}>
+                            Select Folder to Process
+                          </Typography.Text>
+                          <Typography.Text
+                            type="secondary"
+                            className="field-description"
+                          >
+                            Browse and select a folder to add to processing
+                          </Typography.Text>
+                        </div>
+                        <CustomButton
+                          type="primary"
+                          size="small"
+                          disabled={!isFolderSelected}
+                          onClick={handleAddFolder}
+                        >
+                          Add Folder
+                        </CustomButton>
+                      </div>
+                      <ManageFiles
+                        selectedConnector={connDetails?.id}
+                        onFolderSelect={handleFolderSelect}
+                        selectedFolderPath={selectedFolderPath}
+                      />
                     </div>
                   </Col>
                 )}
