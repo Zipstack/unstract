@@ -5,6 +5,65 @@ import PropTypes from "prop-types";
 import { DsSettingsCard } from "../ds-settings-card/DsSettingsCard";
 import "./WorkflowCard.css";
 
+// Constants for connector types
+const CONNECTOR_TYPES = {
+  FILESYSTEM: "FILESYSTEM",
+  DATABASE: "DATABASE",
+  MANUALREVIEW: "MANUALREVIEW",
+  APPDEPLOYMENT: "APPDEPLOYMENT",
+};
+
+// Mapping for connector type abbreviations
+const CONNECTOR_ABBREVIATIONS = {
+  [CONNECTOR_TYPES.MANUALREVIEW]: "MR",
+  [CONNECTOR_TYPES.APPDEPLOYMENT]: "AD",
+};
+
+// Helper functions to reduce complexity
+const isStringType = (value) => typeof value === "string";
+const isCompletedStatus = (number) =>
+  isStringType(number) && number.startsWith("✓");
+const isConnectorTypeStatus = (number) =>
+  isStringType(number) && Object.values(CONNECTOR_TYPES).includes(number);
+const isFileSystemOrDatabase = (number) =>
+  number === CONNECTOR_TYPES.FILESYSTEM || number === CONNECTOR_TYPES.DATABASE;
+
+// Render connector icon
+const renderConnectorIcon = (connectorIcon) => (
+  <Image
+    src={connectorIcon}
+    height={20}
+    width={20}
+    preview={false}
+    className="connector-icon"
+  />
+);
+
+// Render connector badge
+const renderConnectorBadge = (number, stepNumber) => {
+  const displayText = isFileSystemOrDatabase(number)
+    ? stepNumber
+    : CONNECTOR_ABBREVIATIONS[number] || number;
+
+  return <span className="connector-type-badge">{displayText}</span>;
+};
+
+// Main function to render the number display
+const renderNumberDisplay = (number, connectorIcon, stepNumber) => {
+  if (isCompletedStatus(number)) {
+    return <CheckOutlined />;
+  }
+
+  if (isConnectorTypeStatus(number)) {
+    const hasIcon = connectorIcon && isFileSystemOrDatabase(number);
+    return hasIcon
+      ? renderConnectorIcon(connectorIcon)
+      : renderConnectorBadge(number, stepNumber);
+  }
+
+  return number;
+};
+
 function WorkflowCard({
   number,
   title,
@@ -15,52 +74,20 @@ function WorkflowCard({
   customContent,
   connectorIcon,
 }) {
-  // Check if step is completed (number starts with ✓ or number is a specific completed indicator)
-  const isCompleted = typeof number === "string" && number.startsWith("✓");
-
-  // Check if showing connector type instead of number
-  const isConnectorType =
-    typeof number === "string" &&
-    ["FILESYSTEM", "DATABASE", "MANUALREVIEW", "APPDEPLOYMENT"].includes(
-      number
-    );
-
-  // Determine the step number for fallback
+  const isCompleted = isCompletedStatus(number);
+  const isConnectorType = isConnectorTypeStatus(number);
   const stepNumber = title.includes("Source") ? "1" : "2";
+  const showCompletedStyle = isCompleted || isConnectorType;
 
   return (
     <div className="workflow-card">
       <div className="workflow-card-header">
         <div
           className={`workflow-card-number ${
-            isCompleted || isConnectorType ? "completed" : ""
+            showCompletedStyle ? "completed" : ""
           }`}
         >
-          {isCompleted ? (
-            <CheckOutlined />
-          ) : isConnectorType &&
-            connectorIcon &&
-            (number === "FILESYSTEM" || number === "DATABASE") ? (
-            <Image
-              src={connectorIcon}
-              height={20}
-              width={20}
-              preview={false}
-              className="connector-icon"
-            />
-          ) : isConnectorType ? (
-            <span className="connector-type-badge">
-              {number === "FILESYSTEM" || number === "DATABASE"
-                ? stepNumber
-                : number === "MANUALREVIEW"
-                ? "MR"
-                : number === "APPDEPLOYMENT"
-                ? "AD"
-                : number}
-            </span>
-          ) : (
-            number
-          )}
+          {renderNumberDisplay(number, connectorIcon, stepNumber)}
         </div>
         <Flex vertical>
           <div className="workflow-card-info">
