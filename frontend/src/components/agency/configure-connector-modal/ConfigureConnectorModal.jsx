@@ -231,7 +231,7 @@ ConfigureConnectorModal.propTypes = {
   setSelectedId: PropTypes.func.isRequired,
   handleUpdate: PropTypes.func.isRequired,
   filteredList: PropTypes.array,
-  connectorMetadata: PropTypes.any,
+  connectorMetadata: PropTypes.object,
   specConfig: PropTypes.object,
   formDataConfig: PropTypes.object,
   setFormDataConfig: PropTypes.func.isRequired,

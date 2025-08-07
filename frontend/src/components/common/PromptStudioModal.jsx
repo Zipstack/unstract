@@ -69,4 +69,5 @@ PromptStudioModal.propTypes = {
 
 PromptStudioModal.defaultProps = {
   onClose: null,
+  showModal: false,
 };
