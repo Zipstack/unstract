@@ -10,7 +10,7 @@ from datetime import date, datetime, time
 from typing import Any
 from uuid import UUID
 
-from unstract.core.data_models import FileHashData
+from unstract.core.data_models import FileHash, FileHashData
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,11 @@ class TypeConverter:
                     result[file_name] = TypeConverter.dict_to_file_hash_data(file_data)
                 elif isinstance(file_data, FileHashData):
                     result[file_name] = file_data
+                elif isinstance(file_data, FileHash):
+                    # Convert FileHash to FileHashData
+                    result[file_name] = TypeConverter.file_hash_to_file_hash_data(
+                        file_data
+                    )
                 else:
                     logger.error(
                         f"Unsupported file data type for '{file_name}': {type(file_data)}"
@@ -120,6 +125,35 @@ class TypeConverter:
                 connector_metadata=file_dict.get("connector_metadata", {}),
                 connector_id=file_dict.get("connector_id"),
             )
+
+    @staticmethod
+    def file_hash_to_file_hash_data(file_hash: FileHash) -> FileHashData:
+        """Convert FileHash object to FileHashData object.
+
+        Args:
+            file_hash: FileHash object to convert
+
+        Returns:
+            FileHashData object with the same data
+        """
+        return FileHashData(
+            file_name=file_hash.file_name,
+            file_path=file_hash.file_path,
+            file_hash=file_hash.file_hash or "",
+            file_size=file_hash.file_size or 0,
+            mime_type=file_hash.mime_type or "",
+            provider_file_uuid=file_hash.provider_file_uuid,
+            fs_metadata=file_hash.fs_metadata or {},
+            source_connection_type=file_hash.source_connection_type,
+            file_destination=str(file_hash.file_destination)
+            if file_hash.file_destination
+            else None,
+            is_executed=file_hash.is_executed,
+            file_number=file_hash.file_number,
+            # FileHash doesn't have these fields, use defaults
+            connector_metadata={},
+            connector_id=None,
+        )
 
     @staticmethod
     def serialize_uuid(uuid_value: Any) -> str | None:

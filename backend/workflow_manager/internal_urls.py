@@ -1,128 +1,144 @@
 """Internal API URLs for Workflow Manager
-URL patterns for workflow execution internal APIs.
+
+URLs for internal APIs that workers use to communicate with Django backend.
+These handle only database operations while business logic remains in workers.
 """
 
-from django.urls import include, path
-from rest_framework.routers import DefaultRouter
+from django.urls import path
 
-from .internal_views import (
-    BatchStatusUpdateAPIView,
-    ExecutionFinalizationAPIView,
-    FileBatchCreateAPIView,
-    FileCountIncrementAPIView,
-    FileHistoryBatchCheckView,
-    FileHistoryCreateView,
-    PipelineStatusUpdateAPIView,
-    PipelineTypeAPIView,
-    ToolExecutionInternalAPIView,
-    WorkflowDefinitionAPIView,
-    WorkflowEndpointAPIView,
-    WorkflowExecuteFileAPIView,
-    WorkflowExecutionCleanupAPIView,
-    WorkflowExecutionInternalViewSet,
-    WorkflowExecutionMetricsAPIView,
-    WorkflowFileExecutionAPIView,
-    WorkflowSourceFilesAPIView,
-)
+from . import internal_api_views, internal_views
 
-# Create router for workflow execution viewsets
-router = DefaultRouter()
-router.register(
-    r"", WorkflowExecutionInternalViewSet, basename="workflow-execution-internal"
-)
+app_name = "workflow_manager_internal"
 
 urlpatterns = [
-    # File batch creation
+    # Workflow execution endpoints
     path(
-        "file-batch/", FileBatchCreateAPIView.as_view(), name="workflow-file-batch-create"
+        "execution/<str:execution_id>/",
+        internal_api_views.get_workflow_execution_data,
+        name="get_workflow_execution_data",
     ),
-    # Tool execution endpoints
     path(
-        "tool-execution/workflow/<uuid:workflow_id>/instances/",
-        ToolExecutionInternalAPIView.as_view(),
-        name="tool-execution-instances",
+        "execution/create/",
+        internal_api_views.create_workflow_execution,
+        name="create_workflow_execution",
     ),
-    # Execution finalization
     path(
-        "execution/finalize/<uuid:execution_id>/",
-        ExecutionFinalizationAPIView.as_view(),
-        name="execution-finalize",
+        "execution/status/",
+        internal_api_views.update_workflow_execution_status,
+        name="update_workflow_execution_status",
     ),
-    # Workflow file execution operations
+    # Tool instance endpoints
     path(
-        "file-execution/",
-        WorkflowFileExecutionAPIView.as_view(),
-        name="workflow-file-execution",
+        "workflow/<str:workflow_id>/tool-instances/",
+        internal_api_views.get_tool_instances_by_workflow,
+        name="get_tool_instances_by_workflow",
     ),
-    # Execute workflow for file
+    # Workflow compilation
     path(
-        "execute-file/",
-        WorkflowExecuteFileAPIView.as_view(),
-        name="workflow-execute-file",
+        "workflow/compile/",
+        internal_api_views.compile_workflow,
+        name="compile_workflow",
     ),
-    # Workflow endpoint operations (for connection type detection)
+    # File batch processing
     path(
-        "<uuid:workflow_id>/endpoint/",
-        WorkflowEndpointAPIView.as_view(),
-        name="workflow-endpoint",
+        "file-batch/submit/",
+        internal_api_views.submit_file_batch_for_processing,
+        name="submit_file_batch_for_processing",
     ),
-    # Workflow source files
+    # Workflow definition and type detection (using sophisticated class-based views)
     path(
-        "<uuid:workflow_id>/source-files/",
-        WorkflowSourceFilesAPIView.as_view(),
-        name="workflow-source-files",
+        "workflow/<str:workflow_id>/",
+        internal_views.WorkflowDefinitionAPIView.as_view(),
+        name="get_workflow_definition",
     ),
-    # File count increments (for ExecutionCacheUtils functionality)
     path(
-        "increment-files/",
-        FileCountIncrementAPIView.as_view(),
-        name="file-count-increment",
+        "<str:workflow_id>/endpoint/",
+        internal_views.WorkflowEndpointAPIView.as_view(),
+        name="get_workflow_endpoints",
     ),
-    # Pipeline status updates
     path(
-        "pipeline/<uuid:pipeline_id>/status/",
-        PipelineStatusUpdateAPIView.as_view(),
-        name="pipeline-status-update",
+        "pipeline-type/<str:pipeline_id>/",
+        internal_views.PipelineTypeAPIView.as_view(),
+        name="get_pipeline_type",
     ),
-    # Workflow definition
-    path(
-        "workflow/<uuid:workflow_id>/",
-        WorkflowDefinitionAPIView.as_view(),
-        name="workflow-definition",
-    ),
-    # Pipeline type resolution
-    path(
-        "pipeline-type/<uuid:pipeline_id>/",
-        PipelineTypeAPIView.as_view(),
-        name="pipeline-type",
-    ),
-    # Batch operations
+    # Batch operations (using sophisticated class-based views)
     path(
         "batch-status-update/",
-        BatchStatusUpdateAPIView.as_view(),
-        name="batch-status-update",
+        internal_views.BatchStatusUpdateAPIView.as_view(),
+        name="batch_update_execution_status",
     ),
     path(
-        "execution-cleanup/",
-        WorkflowExecutionCleanupAPIView.as_view(),
-        name="execution-cleanup",
+        "file-batch/",
+        internal_views.FileBatchCreateAPIView.as_view(),
+        name="create_file_batch",
     ),
+    # File management (using sophisticated class-based views)
     path(
-        "execution-metrics/",
-        WorkflowExecutionMetricsAPIView.as_view(),
-        name="execution-metrics",
-    ),
-    # File history operations
-    path(
-        "file-history/batch-check/",
-        FileHistoryBatchCheckView.as_view(),
-        name="file-history-batch-check",
+        "increment-files/",
+        internal_views.FileCountIncrementAPIView.as_view(),
+        name="increment_files",
     ),
     path(
         "file-history/create/",
-        FileHistoryCreateView.as_view(),
-        name="file-history-create",
+        internal_views.FileHistoryCreateView.as_view(),
+        name="create_file_history_entry",
     ),
-    # Workflow execution CRUD (via router)
-    path("", include(router.urls)),
+    path(
+        "file-history/check-batch/",
+        internal_views.FileHistoryBatchCheckView.as_view(),
+        name="check_file_history_batch",
+    ),
+    # Additional endpoints available in internal_views.py
+    path(
+        "source-files/<str:workflow_id>/",
+        internal_views.WorkflowSourceFilesAPIView.as_view(),
+        name="get_workflow_source_files",
+    ),
+    path(
+        "execution/finalize/<str:execution_id>/",
+        internal_views.ExecutionFinalizationAPIView.as_view(),
+        name="finalize_execution",
+    ),
+    path(
+        "execution/cleanup/",
+        internal_views.WorkflowExecutionCleanupAPIView.as_view(),
+        name="cleanup_executions",
+    ),
+    path(
+        "execution/metrics/",
+        internal_views.WorkflowExecutionMetricsAPIView.as_view(),
+        name="get_execution_metrics",
+    ),
+    path(
+        "file-execution/",
+        internal_views.WorkflowFileExecutionAPIView.as_view(),
+        name="workflow_file_execution",
+    ),
+    path(
+        "execute-file/",
+        internal_views.WorkflowExecuteFileAPIView.as_view(),
+        name="execute_workflow_file",
+    ),
+    path(
+        "pipeline/<str:pipeline_id>/status/",
+        internal_views.PipelineStatusUpdateAPIView.as_view(),
+        name="update_pipeline_status",
+    ),
+    # Alternative execution data access
+    path(
+        "<str:execution_id>/",
+        internal_api_views.get_workflow_execution_data,
+        name="get_execution_data_alt",
+    ),
+    # File execution batch operations (using simple function views for now)
+    path(
+        "file-execution/batch-create/",
+        internal_api_views.create_file_execution_batch,
+        name="file_execution_batch_create",
+    ),
+    path(
+        "file-execution/batch-status-update/",
+        internal_api_views.update_file_execution_batch_status,
+        name="file_execution_batch_status_update",
+    ),
 ]

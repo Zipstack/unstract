@@ -39,16 +39,28 @@ class WorkflowTypeDetector:
     """
 
     @staticmethod
-    def get_pipeline_type_from_response(api_response: dict[str, Any]) -> str:
+    def get_pipeline_type_from_response(api_response: Any) -> str:
         """Extract pipeline type from API response.
 
         Args:
-            api_response: Response from pipeline-type API endpoint
+            api_response: Response from pipeline-type API endpoint (dict or response object)
 
         Returns:
             Pipeline type (API, ETL, TASK, APP, or DEFAULT)
         """
-        return api_response.get("pipeline_type", PipelineTypes.ETL)
+        # Handle both new response objects and legacy dict responses
+        if hasattr(api_response, "success"):
+            # New APIResponse object
+            if not api_response.success:
+                raise Exception(
+                    f"Pipeline type API failed: {api_response.error or api_response.message}"
+                )
+            response_data = api_response.data or {}
+        else:
+            # Legacy dict response
+            response_data = api_response or {}
+
+        return response_data.get("pipeline_type", PipelineTypes.ETL)
 
     @staticmethod
     def is_api_deployment(pipeline_type: str) -> bool:
@@ -181,15 +193,28 @@ class PipelineTypeResolver:
                 pipeline_id, organization_id=org_id
             )
 
+            # Handle both new response objects and legacy dict responses
+            if hasattr(response, "success"):
+                # New APIResponse object
+                if not response.success:
+                    raise Exception(
+                        f"Pipeline type API failed: {response.error or response.message}"
+                    )
+                response_data = response.data or {}
+            else:
+                # Legacy dict response
+                response_data = response
+
             # Ensure we have the expected fields
             return {
                 "pipeline_id": str(pipeline_id),
-                "pipeline_type": response.get("pipeline_type", PipelineTypes.ETL),
-                "source": response.get("source", "unknown"),
-                "workflow_id": response.get("workflow_id"),
-                "display_name": response.get("display_name"),
-                "is_active": response.get("is_active", True),
-                "is_api_deployment": response.get("pipeline_type") == PipelineTypes.API,
+                "pipeline_type": response_data.get("pipeline_type", PipelineTypes.ETL),
+                "source": response_data.get("source", "unknown"),
+                "workflow_id": response_data.get("workflow_id"),
+                "display_name": response_data.get("display_name"),
+                "is_active": response_data.get("is_active", True),
+                "is_api_deployment": response_data.get("pipeline_type")
+                == PipelineTypes.API,
             }
 
         except Exception as e:

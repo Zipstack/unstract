@@ -14,6 +14,9 @@ import uuid
 from typing import Any
 from uuid import UUID
 
+# Manual review functionality loaded via plugin registry
+from client_plugin_registry import get_client_plugin
+
 from .clients import (
     BaseAPIClient,
     ExecutionAPIClient,
@@ -25,7 +28,14 @@ from .clients import (
 
 # Import exceptions from base client
 # Re-export exceptions for backward compatibility
+from .clients.base_client import (
+    APIRequestError,
+    AuthenticationError,
+    InternalAPIClientError,
+)
+from .clients.manual_review_stub import ManualReviewNullClient
 from .config import WorkerConfig
+from .response_models import APIResponse, ExecutionResponse
 
 # Re-export shared dataclasses for backward compatibility
 # Note: These would be imported from unstract.core.data_models in production
@@ -89,6 +99,24 @@ class InternalAPIClient:
         self.organization_client = OrganizationAPIClient(config)
         self.tool_client = ToolAPIClient(config)
 
+        # Initialize manual review client via plugin registry
+        # The registry handles both Django settings and worker-specific plugin loading
+        try:
+            plugin_instance = get_client_plugin("manual_review", config)
+            if plugin_instance:
+                self.manual_review_client = plugin_instance
+                logger.debug("Using manual review plugin from registry")
+            else:
+                self.manual_review_client = ManualReviewNullClient(config)
+                logger.debug("Manual review plugin not available, using null client")
+        except Exception as e:
+            logger.warning(f"Failed to load manual review plugin, using null client: {e}")
+            self.manual_review_client = ManualReviewNullClient(config)
+
+        logger.debug(
+            f"Manual review client type: {type(self.manual_review_client).__name__}"
+        )
+
         # Store references for direct access if needed
         self.base_url = self.base_client.base_url
         self.api_key = self.base_client.api_key
@@ -111,6 +139,10 @@ class InternalAPIClient:
         self.organization_client.close()
         self.tool_client.close()
 
+        # Close manual review client (plugin or null client)
+        if hasattr(self.manual_review_client, "close"):
+            self.manual_review_client.close()
+
     def __enter__(self):
         """Context manager entry."""
         return self
@@ -122,19 +154,19 @@ class InternalAPIClient:
     # Delegate execution client methods
     def get_workflow_execution(
         self, execution_id: str | uuid.UUID, organization_id: str | None = None
-    ) -> dict[str, Any]:
+    ) -> ExecutionResponse:
         """Get workflow execution with context."""
         return self.execution_client.get_workflow_execution(execution_id, organization_id)
 
     def get_workflow_definition(
         self, workflow_id: str | uuid.UUID, organization_id: str | None = None
-    ) -> dict[str, Any]:
+    ) -> ExecutionResponse:
         """Get workflow definition including workflow_type."""
         return self.execution_client.get_workflow_definition(workflow_id, organization_id)
 
     def get_pipeline_type(
         self, pipeline_id: str | uuid.UUID, organization_id: str | None = None
-    ) -> dict[str, Any]:
+    ) -> APIResponse:
         """Get pipeline type by checking APIDeployment and Pipeline models."""
         return self.execution_client.get_pipeline_type(pipeline_id, organization_id)
 
@@ -159,13 +191,60 @@ class InternalAPIClient:
             organization_id,
         )
 
+    def create_workflow_execution(self, execution_data: dict[str, Any]) -> dict[str, Any]:
+        """Create workflow execution."""
+        return self.execution_client.create_workflow_execution(execution_data)
+
+    def get_tool_instances_by_workflow(
+        self, workflow_id: str, organization_id: str
+    ) -> dict[str, Any]:
+        """Get tool instances for a workflow."""
+        return self.execution_client.get_tool_instances_by_workflow(
+            workflow_id, organization_id
+        )
+
+    def compile_workflow(
+        self, workflow_id: str, execution_id: str, organization_id: str
+    ) -> dict[str, Any]:
+        """Compile workflow."""
+        return self.execution_client.compile_workflow(
+            workflow_id, execution_id, organization_id
+        )
+
+    def submit_file_batch_for_processing(
+        self, batch_data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Submit file batch for processing."""
+        return self.execution_client.submit_file_batch_for_processing(batch_data)
+
     def batch_update_execution_status(
         self, updates: list[dict[str, Any]], organization_id: str | None = None
     ) -> dict[str, Any]:
         """Update multiple execution statuses in a single request."""
-        return self.execution_client.batch_update_execution_status(
+        # Validate that we have updates to process
+        if not updates:
+            return {
+                "success": True,
+                "message": "No updates provided",
+                "total_items": 0,
+                "successful_items": 0,
+                "failed_items": 0,
+            }
+
+        result = self.execution_client.batch_update_execution_status(
             updates, organization_id
         )
+
+        # Convert BatchOperationResponse to dict for consistency
+        if hasattr(result, "to_dict"):
+            response_dict = result.to_dict()
+            # Add success field for backward compatibility
+            response_dict["success"] = (
+                result.status == "SUCCESS" or result.successful_items > 0
+            )
+            return response_dict
+        else:
+            return result
 
     def create_file_batch(
         self,
@@ -197,6 +276,36 @@ class InternalAPIClient:
         return self.execution_client.update_pipeline_status(
             pipeline_id, execution_id, status, organization_id, **kwargs
         )
+
+    def batch_update_pipeline_status(
+        self, updates: list[dict[str, Any]], organization_id: str | None = None
+    ) -> dict[str, Any]:
+        """Update multiple pipeline statuses in a single request.
+
+        For now, this processes updates individually until a batch endpoint is available.
+        """
+        results = {"success": True, "updated": 0, "errors": []}
+
+        for update in updates:
+            try:
+                pipeline_id = update.pop("pipeline_id")
+                execution_id = update.pop("execution_id")
+                status = update.pop("status")
+
+                # Call individual update with remaining kwargs (last_run_time, last_run_status, etc)
+                self.update_pipeline_status(
+                    pipeline_id=pipeline_id,
+                    execution_id=execution_id,
+                    status=status,
+                    organization_id=organization_id,
+                    **update,
+                )
+                results["updated"] += 1
+            except Exception as e:
+                results["errors"].append({"pipeline_id": pipeline_id, "error": str(e)})
+                results["success"] = False
+
+        return results
 
     def finalize_workflow_execution(
         self,
@@ -419,6 +528,69 @@ class InternalAPIClient:
         """Get file history status."""
         return self.file_client.get_file_history_status(file_history_id)
 
+    def get_file_history(
+        self,
+        workflow_id: str | uuid.UUID,
+        provider_file_uuid: str | None = None,
+        file_hash: str | None = None,
+        file_path: str | None = None,
+        organization_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Get file history by provider_file_uuid or file_hash.
+
+        This unified method handles both lookup patterns:
+        1. By provider_file_uuid (for cloud storage files with unique IDs)
+        2. By file_hash (content-based deduplication)
+
+        Args:
+            workflow_id: Workflow ID to check file history for
+            provider_file_uuid: Provider file UUID to search for (cloud storage)
+            file_hash: File content hash to search for (content-based)
+            file_path: Optional file path for additional filtering
+            organization_id: Organization ID for context
+
+        Returns:
+            Dictionary with file_history data or empty dict if not found
+        """
+        # If file_hash is provided, use the existing cache key lookup
+        if file_hash and not provider_file_uuid:
+            return self.get_file_history_by_cache_key(
+                cache_key=file_hash, workflow_id=workflow_id, file_path=file_path
+            )
+
+        # Otherwise, use provider_file_uuid lookup
+        endpoint = "v1/file-history/get/"
+
+        payload = {
+            "workflow_id": str(workflow_id),
+            "provider_file_uuid": provider_file_uuid,
+            "file_path": file_path,
+            "organization_id": organization_id or self.organization_id,
+        }
+
+        try:
+            response = self.base_client._make_request(
+                method="POST",
+                endpoint=endpoint,
+                data=payload,
+                timeout=self.base_client.config.api_timeout,
+                organization_id=organization_id,
+            )
+
+            logger.debug(
+                f"File history lookup for provider_file_uuid {provider_file_uuid}: "
+                f"{'found' if response.get('file_history') else 'not found'}"
+            )
+            return response
+
+        except Exception as e:
+            logger.error(
+                f"Failed to get file history for workflow {workflow_id}, "
+                f"provider_file_uuid {provider_file_uuid}: {str(e)}"
+            )
+            # Return empty result to continue without breaking the flow
+            return {}
+
     def batch_create_file_history(
         self, file_histories: list[dict[str, Any]], organization_id: str | None = None
     ) -> dict[str, Any]:
@@ -506,10 +678,10 @@ class InternalAPIClient:
         )
 
     # Delegate tool client methods (removing duplicates)
-    def get_tool_instances_by_workflow(
+    def get_tool_instances_by_workflow_tool_client(
         self, workflow_id: str | uuid.UUID
     ) -> dict[str, Any]:
-        """Get tool instances for a workflow."""
+        """Get tool instances for a workflow using tool client."""
         # Use the tool client for consistency
         result = self.tool_client.get_tool_instances_by_workflow(workflow_id)
         return result.data if hasattr(result, "data") else result
@@ -531,7 +703,7 @@ class InternalAPIClient:
         Returns:
             Dictionary with 'processed_file_hashes' list
         """
-        endpoint = "workflow-manager/file-history/batch-check/"
+        endpoint = "workflow-manager/file-history/check-batch/"
 
         payload = {
             "workflow_id": str(workflow_id),
@@ -575,6 +747,8 @@ class InternalAPIClient:
         self.organization_client.set_organization_context(org_id)
         self.tool_client.set_organization_context(org_id)
 
+        # Note: Manual review org context handled by plugins
+
         # Update facade attributes
         self.organization_id = org_id
 
@@ -590,10 +764,14 @@ class InternalAPIClient:
         self.organization_client.clear_organization_context()
         self.tool_client.clear_organization_context()
 
+        # Note: Manual review org context clearing handled by plugins
+
         # Update facade attributes
         self.organization_id = None
 
         logger.debug("Cleared organization context on all clients")
+
+    # Manual review functionality is handled by enterprise plugins, not exposed in OSS API client
 
     # Delegate tool client methods (consolidated)
     def execute_tool(
@@ -683,3 +861,48 @@ class InternalAPIClient:
     def get_endpoint_config(self) -> dict[str, str]:
         """Get current API endpoint configuration for debugging."""
         return self.base_client.get_endpoint_config()
+
+    # Manual Review API methods (delegated to ManualReviewAPIClient)
+    def validate_manual_review_db_rule(
+        self,
+        execution_result: Any,
+        workflow_id: str | UUID,
+        file_destination: str | None = None,
+        organization_id: str | None = None,
+    ) -> bool:
+        """Validate if document should go to manual review based on DB rules."""
+        return self.manual_review_client.validate_manual_review_db_rule(
+            execution_result=execution_result,
+            workflow_id=workflow_id,
+            file_destination=file_destination,
+            organization_id=organization_id,
+        )
+
+    def enqueue_manual_review(
+        self,
+        queue_name: str,
+        message: dict[str, Any],
+        organization_id: str | None = None,
+    ) -> bool:
+        """Enqueue document for manual review."""
+        return self.manual_review_client.enqueue_manual_review(
+            queue_name=queue_name,
+            message=message,
+            organization_id=organization_id,
+        )
+
+
+# Export all classes and exceptions for backward compatibility
+__all__ = [
+    # Main facade class
+    "InternalAPIClient",
+    # Exceptions
+    "InternalAPIClientError",
+    "APIRequestError",
+    "AuthenticationError",
+    # Data models
+    "WorkflowFileExecutionData",
+    "FileHashData",
+    "FileExecutionCreateRequest",
+    "FileExecutionStatusUpdateRequest",
+]

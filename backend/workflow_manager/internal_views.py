@@ -98,52 +98,111 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             )
 
     def _get_source_config(self, execution: WorkflowExecution) -> dict:
-        """Get source configuration for execution."""
+        """Get source configuration for execution with connector instance details."""
         try:
-            # Extract source configuration based on execution type
+            workflow = execution.workflow
+            if not workflow:
+                logger.warning(f"No workflow found for execution {execution.id}")
+                return {}
+
+            # Get workflow-level source settings
+            source_settings = {}
+            workflow_type = "general_workflow"
+            is_api = False
+
             if execution.pipeline_id:
                 # ETL/Task pipeline execution
                 from pipeline_v2.models import Pipeline
 
                 try:
                     pipeline = Pipeline.objects.get(id=execution.pipeline_id)
-                    return {
-                        "type": "pipeline",
-                        "pipeline_id": str(pipeline.id),
-                        "source_settings": pipeline.workflow.source_settings or {},
-                        "is_api": False,
-                    }
+                    source_settings = pipeline.workflow.source_settings or {}
+                    workflow_type = "pipeline"
+                    is_api = False
+                    logger.debug(
+                        f"Pipeline {execution.pipeline_id} source settings: {bool(source_settings)}"
+                    )
                 except Pipeline.DoesNotExist:
                     logger.warning(
                         f"Pipeline {execution.pipeline_id} not found for execution {execution.id}"
                     )
-                    # ROOT CAUSE FIX: Don't return pipeline_id for non-existent pipelines
-                    # This prevents callback workers from attempting to update deleted pipelines
-                    return {
-                        "type": "pipeline_not_found",
-                        "source_settings": {},
-                        "is_api": False,
-                    }
+                    source_settings = workflow.source_settings or {}
+                    workflow_type = "pipeline_not_found"
             else:
-                # API deployment execution
-                if execution.workflow and hasattr(execution.workflow, "api_deployments"):
-                    api_deployment = execution.workflow.api_deployments.first()
-                    if api_deployment:
-                        return {
-                            "type": "api_deployment",
-                            "deployment_id": str(api_deployment.id),
-                            "source_settings": execution.workflow.source_settings or {},
-                            "is_api": True,
-                        }
+                # API deployment or general workflow execution
+                source_settings = workflow.source_settings or {}
+                if (
+                    workflow
+                    and hasattr(workflow, "api_deployments")
+                    and workflow.api_deployments.filter(is_active=True).exists()
+                ):
+                    workflow_type = "api_deployment"
+                    is_api = True
+                logger.debug(
+                    f"Workflow {workflow.id} source settings: {bool(source_settings)}"
+                )
 
-                # Default case - no pipeline, no api deployment
-                return {
-                    "type": "general_workflow",
-                    "source_settings": execution.workflow.source_settings or {}
-                    if execution.workflow
-                    else {},
-                    "is_api": False,
-                }
+            # Get source connector instance from workflow endpoints
+            from workflow_manager.endpoint_v2.models import WorkflowEndpoint
+
+            source_connector_data = None
+            try:
+                # Look for source endpoint with connector instance
+                source_endpoint = (
+                    WorkflowEndpoint.objects.select_related("connector_instance")
+                    .filter(
+                        workflow=workflow,
+                        endpoint_type=WorkflowEndpoint.EndpointType.SOURCE,
+                    )
+                    .first()
+                )
+
+                if source_endpoint and source_endpoint.connector_instance:
+                    source_connector_instance = source_endpoint.connector_instance
+                    source_connector_data = {
+                        "connector_id": source_connector_instance.connector_id,
+                        "connector_settings": source_connector_instance.metadata or {},
+                        "connector_name": getattr(
+                            source_connector_instance, "connector_name", ""
+                        ),
+                    }
+                    logger.debug(
+                        f"Found source connector instance: {source_connector_instance.connector_id}"
+                    )
+
+                    # Include endpoint configuration in source settings
+                    if source_endpoint.configuration:
+                        source_settings.update(source_endpoint.configuration)
+                else:
+                    logger.debug("No source connector instance found for workflow")
+
+            except Exception as source_error:
+                logger.warning(
+                    f"Failed to get source connector info for workflow {workflow.id}: {str(source_error)}"
+                )
+
+            # Build comprehensive source config
+            source_config = {
+                "type": workflow_type,
+                "source_settings": source_settings,
+                "is_api": is_api,
+            }
+
+            # Add pipeline/deployment specific info
+            if execution.pipeline_id and workflow_type != "pipeline_not_found":
+                source_config["pipeline_id"] = str(execution.pipeline_id)
+            elif workflow_type == "api_deployment":
+                api_deployment = workflow.api_deployments.first()
+                if api_deployment:
+                    source_config["deployment_id"] = str(api_deployment.id)
+
+            # Add source connector instance data if available
+            if source_connector_data:
+                source_config.update(source_connector_data)
+                logger.debug("Added source connector instance data to source config")
+
+            return source_config
+
         except Exception as e:
             logger.warning(
                 f"Failed to get source config for execution {execution.id}: {str(e)}"
@@ -242,6 +301,37 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                     f"Failed to get endpoint info for workflow {workflow.id}: {str(endpoint_error)}"
                 )
 
+            # Get source connector information for file reading in manual review
+            source_connector_data = None
+            try:
+                # Look for source endpoint with connector instance
+                source_endpoint = (
+                    WorkflowEndpoint.objects.select_related("connector_instance")
+                    .filter(
+                        workflow=workflow,
+                        endpoint_type=WorkflowEndpoint.EndpointType.SOURCE,
+                    )
+                    .first()
+                )
+
+                if source_endpoint and source_endpoint.connector_instance:
+                    source_connector_instance = source_endpoint.connector_instance
+                    source_connector_data = {
+                        "source_connector_id": source_connector_instance.connector_id,
+                        "source_connector_settings": source_connector_instance.metadata
+                        or {},
+                    }
+                    logger.debug(
+                        f"Found source connector instance: {source_connector_instance.connector_id}"
+                    )
+                else:
+                    logger.debug("No source connector instance found for workflow")
+
+            except Exception as source_error:
+                logger.warning(
+                    f"Failed to get source connector info for workflow {workflow.id}: {str(source_error)}"
+                )
+
             # Build comprehensive destination config
             destination_config = {
                 "connection_type": connection_type,
@@ -256,6 +346,13 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                 logger.debug("Added connector instance data to destination config")
             else:
                 logger.debug("No connector instance found for destination endpoint")
+
+            # Add source connector data for manual review file reading
+            if source_connector_data:
+                destination_config.update(source_connector_data)
+                logger.debug(
+                    "Added source connector data to destination config for manual review"
+                )
 
             return destination_config
 
@@ -2088,7 +2185,15 @@ class FileHistoryCreateView(APIView):
                 file_number=request.data.get("file_number"),
                 connector_metadata=request.data.get("connector_metadata", {}),
                 connector_id=request.data.get("connector_id"),
+                use_file_history=request.data.get("use_file_history", True),
             )
+
+            # Check if file history should be created based on use_file_history flag
+            if not file_hash.use_file_history:
+                logger.info(
+                    f"Skipping file history creation for {file_hash.file_name} - use_file_history=False"
+                )
+                return Response({"created": False, "reason": "use_file_history=False"})
 
             # Map string status to ExecutionStatus enum
             status_str = request.data.get("status", "COMPLETED")

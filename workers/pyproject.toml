@@ -5,12 +5,12 @@ description = "Lightweight Celery workers for Unstract platform"
 authors = [
     {name = "Unstract Team", email = "support@unstract.com"},
 ]
-readme = "README.md"
+# readme = "README.md"  # Temporarily disabled for Docker build
 license = {text = "AGPL-3.0"}
 requires-python = ">=3.12"
 dependencies = [
-    "celery[redis]>=5.3.0,<6.0.0",
-    "kombu>=5.3.0,<6.0.0",
+    "celery[amqp]>=5.3.0,<6.0.0",  # Changed from redis to amqp to match backend
+    # Removed kombu - already included in unstract-core
     "requests>=2.31.0,<3.0.0",
     "urllib3>=1.26.0",
     "pydantic>=2.0.0,<3.0.0",
@@ -18,8 +18,7 @@ dependencies = [
     "structlog>=23.1.0,<24.0.0",
     "prometheus-client>=0.17.0,<1.0.0",
     "psutil>=5.9.0,<6.0.0",
-    "flask>=2.3.0,<3.0.0",
-    "werkzeug>=2.3.0,<3.0.0",
+    # Removed flask and werkzeug - workers don't serve HTTP
     "tenacity>=8.2.0,<9.0.0",
     "pybreaker>=0.8.0,<1.0.0",
     "orjson>=3.9.0,<4.0.0",
@@ -31,7 +30,7 @@ dependencies = [
     "unstract-tool-sandbox",
     "unstract-workflow-execution",
     "unstract-filesystem",
-    "unstract-sdk[azure]>=0.73.1",
+    "unstract-sdk~=0.76.1",  # Removed [azure] extras to avoid heavy cloud deps
 ]
 
 [dependency-groups]
@@ -53,6 +52,12 @@ test = [
     "pytest-cov>=4.1.0",
     "factory-boy>=3.3.0",
     "responses>=0.23.0"
+]
+
+deploy = [
+    # Minimal production dependencies - most are already in main deps
+    # Removed gunicorn, gevent, python-json-logger, memory-profiler
+    # as workers don't need WSGI servers or heavy profiling tools
 ]
 
 [build-system]

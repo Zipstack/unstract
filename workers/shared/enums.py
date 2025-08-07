@@ -6,6 +6,9 @@ to ensure type safety and prevent hardcoded string values.
 
 from enum import Enum
 
+# Import unified ConnectionType from connectors package
+from unstract.connectors import ConnectionType as UnifiedConnectionType
+
 
 class AuthorizationType(Enum):
     """Authorization types for webhook and API requests."""
@@ -20,17 +23,8 @@ class AuthorizationType(Enum):
         return self.value
 
 
-class ConnectionType(Enum):
-    """Connection types for workflow endpoints."""
-
-    FILESYSTEM = "FILESYSTEM"
-    DATABASE = "DATABASE"
-    API = "API"
-    MANUALREVIEW = "MANUALREVIEW"
-    NONE = "NONE"
-
-    def __str__(self):
-        return self.value
+# Re-export for backward compatibility
+ConnectionType = UnifiedConnectionType
 
 
 class EndpointType(Enum):

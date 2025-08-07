@@ -7,6 +7,7 @@ Each client handles a specific domain of operations:
 - BaseAPIClient: Core HTTP functionality, session management, retry logic
 - ExecutionAPIClient: Workflow execution operations
 - FileAPIClient: File execution and file history operations
+- ManualReviewAPIClient: Manual review/HITL operations
 - WebhookAPIClient: Webhook operations
 - OrganizationAPIClient: Organization context management
 - ToolAPIClient: Tool execution operations
@@ -18,6 +19,9 @@ as a facade that delegates to these specialized clients.
 from .base_client import BaseAPIClient
 from .execution_client import ExecutionAPIClient
 from .file_client import FileAPIClient
+
+# Manual review client - use null client as default, plugin registry handles dynamic loading
+from .manual_review_stub import ManualReviewNullClient as ManualReviewAPIClient
 from .organization_client import OrganizationAPIClient
 from .tool_client import ToolAPIClient
 from .webhook_client import WebhookAPIClient
@@ -26,6 +30,7 @@ __all__ = [
     "BaseAPIClient",
     "ExecutionAPIClient",
     "FileAPIClient",
+    "ManualReviewAPIClient",
     "WebhookAPIClient",
     "OrganizationAPIClient",
     "ToolAPIClient",

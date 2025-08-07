@@ -55,6 +55,16 @@ services:
     build:
       dockerfile: docker/dockerfiles/worker-file-processing.Dockerfile
       context: ..
+  # Unified worker image (replaces all individual worker images)
+  worker-unified:
+    image: unstract/worker-unified:${VERSION}
+    build:
+      dockerfile: docker/dockerfiles/worker-unified.Dockerfile
+      context: ..
+      args:
+        MINIMAL_BUILD: ${MINIMAL_BUILD:-0}  # Set to 1 for faster dev builds
+
+  # Legacy individual worker images (kept for backward compatibility)
   worker-general:
     image: unstract/worker-general:${VERSION}
     build:

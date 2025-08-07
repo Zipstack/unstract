@@ -3,9 +3,8 @@ from typing import Any
 
 from singleton_decorator import singleton
 
-from unstract.connectors import ConnectorDict  # type: ignore
 from unstract.connectors.base import UnstractConnector
-from unstract.connectors.constants import Common
+from unstract.connectors.constants import Common, ConnectorDict
 from unstract.connectors.databases import connectors as db_connectors
 from unstract.connectors.enums import ConnectorMode
 from unstract.connectors.filesystems import connectors as fs_connectors

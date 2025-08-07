@@ -313,11 +313,7 @@ class WorkerWorkflowOrchestrator:
 
         # Create workflow DTO
         workflow_dto = WorkflowDto(
-            workflow_id=execution_context["workflow_id"],
-            workflow_name=workflow_config.get("workflow_name", ""),
-            tool_instances=tool_instances,
-            organization_id=execution_context["organization_id"],
-            execution_id=execution_context["execution_id"],
+            id=execution_context["workflow_id"],
         )
 
         logger.debug(f"Prepared workflow DTO with {len(tool_instances)} tools")
@@ -337,9 +333,14 @@ class WorkerWorkflowOrchestrator:
         """
         try:
             # Get execution context via database API
-            execution_context = self.api_client.get_workflow_execution(
+            execution_response = self.api_client.get_workflow_execution(
                 execution_id=execution_id, organization_id=organization_id
             )
+            if not execution_response.success:
+                raise Exception(
+                    f"Failed to get execution context: {execution_response.error}"
+                )
+            execution_context = execution_response.data
 
             # Get file executions for this workflow execution
             file_executions = self.api_client.get_file_executions_for_execution(

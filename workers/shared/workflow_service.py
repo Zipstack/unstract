@@ -52,12 +52,18 @@ class WorkerWorkflowExecutionService:
                 raise ValueError("API client required for workflow execution")
 
             # Get workflow execution context
-            execution_context = self.api_client.get_workflow_execution(execution_id)
+            execution_response = self.api_client.get_workflow_execution(execution_id)
+            if not execution_response.success:
+                raise Exception(
+                    f"Failed to get workflow execution: {execution_response.error}"
+                )
+            execution_context = execution_response.data
             workflow_info = execution_context.get("workflow", {})
 
             # Get tool instances for the workflow
             tool_instances_response = self.api_client.get_tool_instances_by_workflow(
-                workflow_id
+                workflow_id=workflow_id,
+                organization_id=organization_id,
             )
             tool_instances_data = tool_instances_response.get("tool_instances", [])
 
@@ -93,6 +99,7 @@ class WorkerWorkflowExecutionService:
                 file_name=file_name,
                 workflow_file_execution_id=workflow_file_execution_id,
                 execution_id=execution_id,
+                workflow_id=workflow_id,
                 file_data=file_data,
             )
 
@@ -155,6 +162,9 @@ class WorkerWorkflowExecutionService:
                     "success": True,
                     "error": None,
                     "metadata": result_metadata,
+                    "source_hash": file_data.get(
+                        "file_hash"
+                    ),  # Include computed hash for file history
                 }
 
                 # Handle destination processing for API vs ETL/TASK workflows
@@ -217,6 +227,9 @@ class WorkerWorkflowExecutionService:
                         "execution_id": execution_id,
                         "execution_time": execution_time,
                     },
+                    "source_hash": file_data.get(
+                        "file_hash"
+                    ),  # Include computed hash if available
                 }
 
         except Exception as e:
@@ -235,6 +248,9 @@ class WorkerWorkflowExecutionService:
                     "execution_id": execution_id,
                     "execution_time": execution_time,
                 },
+                "source_hash": file_data.get(
+                    "file_hash"
+                ),  # Include computed hash if available
             }
 
     def _create_worker_execution_service(
@@ -305,10 +321,8 @@ class WorkerWorkflowExecutionService:
         # Create WorkflowDto
         workflow_dto = WorkflowDto(id=workflow_id)
 
-        # Get platform service API key from environment
-        platform_service_api_key = os.getenv(
-            "PLATFORM_SERVICE_API_KEY", "default-api-key"
-        )
+        # Get platform service API key from backend API
+        platform_service_api_key = self._get_platform_service_api_key(organization_id)
 
         # Initialize WorkflowExecutionService
         execution_service = WorkflowExecutionService(
@@ -333,6 +347,7 @@ class WorkerWorkflowExecutionService:
         file_name: str,
         workflow_file_execution_id: str,
         execution_id: str,
+        workflow_id: str,
         file_data: dict[str, Any],
     ) -> bool:
         """Execute workflow using WorkflowExecutionService following backend pattern."""
@@ -355,6 +370,21 @@ class WorkerWorkflowExecutionService:
                 source_connection_type = file_data.get("source_connection_type", "")
                 connector_metadata = file_data.get("connector_metadata", {})
 
+                # Get source configuration with proper connector settings
+                source_config = self._get_source_config(workflow_id, execution_id)
+                if source_config:
+                    # Use connector settings from source config instead of file metadata
+                    source_connector_id = source_config.get("connector_id")
+                    source_config_connector_settings = source_config.get(
+                        "connector_settings", {}
+                    )
+                    logger.info(
+                        f"Retrieved source config - connector_id: {source_connector_id}"
+                    )
+                else:
+                    source_connector_id = None
+                    source_config_connector_settings = {}
+
                 import hashlib
 
                 from unstract.filesystem import FileStorageType, FileSystem
@@ -375,14 +405,24 @@ class WorkerWorkflowExecutionService:
                     # Copy file from source connector to execution directory
                     # We need to get the source file system to read the original file
                     try:
-                        # Parse connector information
-                        if "|" in source_connection_type:
-                            connector_type, _ = source_connection_type.split("|", 1)
-                        else:
-                            connector_type = source_connection_type
+                        # IMPORTANT: source_connection_type contains ConnectionType enum values (FILESYSTEM, API, etc.)
+                        # The actual connector_id (like "google_cloud_storage|UUID") comes from connector_metadata
+
+                        # Determine if this is an API file based on connection type
+                        from unstract.connectors import ConnectionType
+
+                        try:
+                            connection_type = ConnectionType.from_string(
+                                source_connection_type
+                            )
+                        except ValueError:
+                            logger.warning(
+                                f"Invalid source_connection_type: {source_connection_type}, defaulting to FILESYSTEM"
+                            )
+                            connection_type = ConnectionType.FILESYSTEM
 
                         # Handle API files differently (like backend source.py:940-943)
-                        if connector_type == "API":
+                        if connection_type.is_api:
                             logger.info(
                                 f"Handling API file copy from {file_path} to execution directory"
                             )
@@ -411,6 +451,9 @@ class WorkerWorkflowExecutionService:
                                 file_content_hash.update(file_content)
                                 computed_hash = file_content_hash.hexdigest()
 
+                                # CRITICAL FIX: Store computed hash back to file_data for file history
+                                file_data["file_hash"] = computed_hash
+
                                 # Write to both INFILE and SOURCE paths
                                 workflow_file_storage.write(
                                     path=infile_path, mode="wb", data=file_content
@@ -426,6 +469,10 @@ class WorkerWorkflowExecutionService:
                             else:
                                 # Handle empty file
                                 computed_hash = hashlib.sha256(b"").hexdigest()
+
+                                # CRITICAL FIX: Store computed hash back to file_data for file history
+                                file_data["file_hash"] = computed_hash
+
                                 logger.warning(f"API file {file_path} is empty")
 
                                 # Create empty files
@@ -442,32 +489,70 @@ class WorkerWorkflowExecutionService:
                             )
 
                         else:
-                            # Handle filesystem connectors (existing logic)
-                            # Create source file system using connector registry (following backend pattern)
+                            # Handle filesystem connectors
+                            # For FILESYSTEM type, we need to get the actual connector_id from connector_metadata
                             from unstract.connectors.constants import Common
                             from unstract.connectors.filesystems import connectors
 
                             logger.info(
                                 f"Available connectors: {list(connectors.keys())}"
                             )
-                            logger.info(f"Looking for connector_type: {connector_type}")
 
-                            # Need to find the connector by matching the type part before the pipe
-                            matching_connector_key = None
-                            for key in connectors.keys():
-                                if key.startswith(f"{connector_type}|"):
-                                    matching_connector_key = key
-                                    break
+                            # Use source configuration for connector settings (preferred)
+                            # Fall back to file metadata if source config not available
+                            if source_connector_id and source_config_connector_settings:
+                                connector_id_to_use = source_connector_id
+                                connector_settings_to_use = (
+                                    source_config_connector_settings
+                                )
+                                logger.info(
+                                    f"Using connector from source config: {connector_id_to_use}"
+                                )
+                            elif (
+                                connector_metadata
+                                and "connector_id" in connector_metadata
+                            ):
+                                connector_id_to_use = connector_metadata["connector_id"]
+                                connector_settings_to_use = connector_metadata  # This likely won't have auth tokens
+                                logger.warning(
+                                    f"Using connector_id from file metadata (may lack auth): {connector_id_to_use}"
+                                )
+                            elif file_data.get("connector_id"):
+                                connector_id_to_use = file_data["connector_id"]
+                                connector_settings_to_use = file_data.get(
+                                    "connector_settings", {}
+                                )
+                                logger.warning(
+                                    f"Using connector_id from file_data (may lack auth): {connector_id_to_use}"
+                                )
+                            else:
+                                # This is the error case - we have FILESYSTEM type but no connector_id
+                                logger.error(
+                                    f"No connector_id found for FILESYSTEM type. "
+                                    f"source_config available: {source_config is not None}, "
+                                    f"connector_metadata: {connector_metadata}, "
+                                    f"file_data keys: {list(file_data.keys())}"
+                                )
+                                connector_id_to_use = None
+                                connector_settings_to_use = {}
+
+                            matching_connector_key = connector_id_to_use
 
                             # Get source filesystem using the same pattern as backend base_connector.py
-                            if matching_connector_key:
+                            if (
+                                matching_connector_key
+                                and matching_connector_key in connectors
+                            ):
                                 logger.info(
                                     f"Found matching connector: {matching_connector_key}"
                                 )
                                 connector_class = connectors[matching_connector_key][
                                     Common.METADATA
                                 ][Common.CONNECTOR]
-                                source_connector = connector_class(connector_metadata)
+                                # Use connector settings with auth tokens from source config
+                                source_connector = connector_class(
+                                    connector_settings_to_use
+                                )
                                 source_fs = source_connector.get_fsspec_fs()
 
                                 # Read source file and compute hash using chunked approach (matching backend)
@@ -534,23 +619,38 @@ class WorkerWorkflowExecutionService:
                                     computed_hash = hashlib.sha256(
                                         placeholder_bytes
                                     ).hexdigest()
+
+                                    # CRITICAL FIX: Store computed hash back to file_data for file history
+                                    file_data["file_hash"] = computed_hash
+
                                     logger.info(
                                         f"Created placeholder content for empty file. Hash: {computed_hash}"
                                     )
                                 else:
                                     # Use computed hash for non-empty files
                                     computed_hash = file_content_hash.hexdigest()
+
+                                    # CRITICAL FIX: Store computed hash back to file_data for file history
+                                    file_data["file_hash"] = computed_hash
+
                                     logger.info(
                                         f"File copy complete with hash: {computed_hash}"
                                     )
 
                             else:
-                                available_types = [
-                                    key.split("|")[0] for key in connectors.keys()
-                                ]
-                                raise ValueError(
-                                    f"Unsupported connector type: {connector_type}. Available types: {available_types}"
-                                )
+                                available_connectors = list(connectors.keys())
+                                if connector_id_to_use:
+                                    raise ValueError(
+                                        f"Connector not found in registry: {connector_id_to_use}. "
+                                        f"Available connectors: {available_connectors}"
+                                    )
+                                else:
+                                    # This is the case where we have FILESYSTEM type but no connector_id
+                                    raise ValueError(
+                                        f"No connector_id provided for {connection_type.value} connection type. "
+                                        f"Please ensure connector_id is included in file metadata. "
+                                        f"Available connectors: {available_connectors}"
+                                    )
 
                     except Exception as copy_error:
                         logger.error(
@@ -573,6 +673,10 @@ class WorkerWorkflowExecutionService:
                                     data=placeholder_bytes,
                                 )
                                 computed_hash = hashlib.md5(placeholder_bytes).hexdigest()
+
+                                # CRITICAL FIX: Store computed hash back to file_data for file history
+                                file_data["file_hash"] = computed_hash
+
                                 logger.warning(
                                     f"Created placeholder INFILE due to copy error for {file_name}"
                                 )
@@ -976,6 +1080,17 @@ class WorkerWorkflowExecutionService:
                 )
                 return None
 
+            # Get source configuration to populate source connector settings
+            source_config = self._get_source_config(workflow_id, execution_id)
+            if source_config:
+                # Add source connector information to destination config for manual review
+                source_connector_info = self._extract_source_connector_info(source_config)
+                if source_connector_info:
+                    destination_config.update(source_connector_info)
+                    logger.info(
+                        f"Added source connector info to destination config: {source_connector_info.get('source_connector_id', 'none')}"
+                    )
+
             # Import destination connector
             from .workflow.destination_connector import (
                 DestinationConfig,
@@ -984,7 +1099,9 @@ class WorkerWorkflowExecutionService:
 
             # Create destination config object (matching backend DestinationConnector.from_config)
             dest_config = DestinationConfig.from_dict(destination_config)
-            logger.info(f"Created destination config: {dest_config.connection_type}")
+            logger.info(
+                f"Created destination config: {dest_config.connection_type} with source connector: {dest_config.source_connector_id}"
+            )
 
             # Create destination connector (matching backend pattern)
             destination = WorkerDestinationConnector.from_config(None, dest_config)
@@ -1002,6 +1119,9 @@ class WorkerWorkflowExecutionService:
                 fs_metadata=file_data.get("fs_metadata", {}),
                 source_connection_type=file_data.get("source_connection_type", ""),
                 file_destination=file_data.get("file_destination", "destination"),
+                is_manualreview_required=file_data.get(
+                    "is_manualreview_required", False
+                ),  # CRITICAL: Add manual review flag
                 is_executed=True,  # Mark as executed since workflow is complete
                 file_number=file_data.get("file_number", 1),
                 connector_metadata=file_data.get("connector_metadata", {}),
@@ -1024,11 +1144,21 @@ class WorkerWorkflowExecutionService:
             processing_error = None  # No processing error since workflow succeeded
 
             if not processing_error:
+                # CRITICAL: Log file destination routing decision
+                if file_hash.file_destination == "MANUALREVIEW":
+                    logger.info(
+                        f"🔄 File {file_hash.file_name} marked for MANUAL REVIEW - sending to queue"
+                    )
+                else:
+                    logger.info(
+                        f"📤 File {file_hash.file_name} marked for DESTINATION processing - sending to database"
+                    )
+
                 # DEBUG: Log what we're about to pass to destination
                 logger.info(
-                    f"DEBUG: About to call destination.handle_output with tool_execution_result type: {type(workflow_result)}"
+                    f"DEBUG: About to call destination.handle_output with file_destination='{file_hash.file_destination}', is_manualreview_required={file_hash.is_manualreview_required}"
                 )
-                logger.info(f"DEBUG: tool_execution_result value: {workflow_result}")
+                logger.info(f"DEBUG: tool_execution_result type: {type(workflow_result)}")
 
                 # Process final output through destination (exact backend signature + workers-specific params)
                 output_result = destination.handle_output(
@@ -1110,7 +1240,12 @@ class WorkerWorkflowExecutionService:
         """Get destination configuration for the workflow via API."""
         try:
             # Get workflow execution context which includes destination config
-            execution_context = self.api_client.get_workflow_execution(execution_id)
+            execution_response = self.api_client.get_workflow_execution(execution_id)
+            if not execution_response.success:
+                raise Exception(
+                    f"Failed to get execution context: {execution_response.error}"
+                )
+            execution_context = execution_response.data
             destination_config = execution_context.get("destination_config", {})
 
             if not destination_config:
@@ -1129,6 +1264,114 @@ class WorkerWorkflowExecutionService:
                 f"Failed to get destination config for workflow {workflow_id}: {e}"
             )
             return None
+
+    def _get_source_config(
+        self, workflow_id: str, execution_id: str
+    ) -> dict[str, Any] | None:
+        """Get source configuration for the workflow via API."""
+        try:
+            # Get workflow execution context which includes source config
+            execution_response = self.api_client.get_workflow_execution(execution_id)
+            if not execution_response.success:
+                raise Exception(
+                    f"Failed to get execution context: {execution_response.error}"
+                )
+            execution_context = execution_response.data
+            source_config = execution_context.get("source_config", {})
+
+            if not source_config:
+                logger.warning(
+                    f"No source config found in execution context for workflow {workflow_id}"
+                )
+                return None
+
+            logger.info(
+                f"Retrieved source config for workflow {workflow_id}: {source_config.get('type', 'unknown')}"
+            )
+            return source_config
+
+        except Exception as e:
+            logger.error(f"Failed to get source config for workflow {workflow_id}: {e}")
+            return None
+
+    def _extract_source_connector_info(
+        self, source_config: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Extract source connector information from source config for destination connector use."""
+        try:
+            # With updated backend, source config now includes connector instance details directly
+            connector_id = source_config.get("connector_id")
+            connector_settings = source_config.get("connector_settings")
+
+            if connector_id and connector_settings:
+                logger.info(f"Extracted source connector info: {connector_id}")
+                return {
+                    "source_connector_id": connector_id,
+                    "source_connector_settings": connector_settings,
+                }
+            else:
+                # Fallback: check in source_settings for older format
+                source_settings = source_config.get("source_settings", {})
+                fallback_connector_id = source_settings.get("connector_id")
+                fallback_connector_settings = source_settings.get(
+                    "connector_settings"
+                ) or source_settings.get("metadata")
+
+                if fallback_connector_id and fallback_connector_settings:
+                    logger.info(
+                        f"Extracted source connector info from source_settings: {fallback_connector_id}"
+                    )
+                    return {
+                        "source_connector_id": fallback_connector_id,
+                        "source_connector_settings": fallback_connector_settings,
+                    }
+
+                logger.debug(
+                    f"No source connector info found in source config. Available keys: {list(source_config.keys())}"
+                )
+                return None
+
+        except Exception as e:
+            logger.error(f"Failed to extract source connector info: {e}")
+            return None
+
+    def _get_platform_service_api_key(self, organization_id: str) -> str:
+        """Get platform service API key from backend API.
+
+        Args:
+            organization_id: Organization ID
+
+        Returns:
+            Platform service API key
+        """
+        try:
+            # Call the internal API to get the platform key using X-Organization-ID header
+            response = self.api_client._make_request(
+                method="GET",
+                endpoint="v1/platform-settings/platform-key/",
+                organization_id=organization_id,  # This will be passed as X-Organization-ID header
+            )
+
+            if response and "platform_key" in response:
+                logger.info(
+                    f"Successfully retrieved platform key for org {organization_id}"
+                )
+                return response["platform_key"]
+            else:
+                logger.error(
+                    f"No platform key found for org {organization_id} in API response"
+                )
+                raise Exception(
+                    f"No active platform key found for organization {organization_id}"
+                )
+
+        except Exception as e:
+            logger.error(
+                f"Failed to get platform key from API for org {organization_id}: {e}"
+            )
+            raise Exception(
+                f"Unable to retrieve platform service API key for organization {organization_id}: {e}"
+            )
 
 
 # Simple helper classes that might be referenced elsewhere
@@ -1218,8 +1461,6 @@ class WorkerResultCacheUtils:
     """Worker result caching utilities matching backend ResultCacheUtils pattern."""
 
     def __init__(self):
-        import os
-
         self.expire_time = int(
             os.getenv("EXECUTION_RESULT_TTL_SECONDS", "86400")
         )  # 24 hours default

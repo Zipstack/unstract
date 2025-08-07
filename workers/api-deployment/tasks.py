@@ -8,20 +8,21 @@ import time
 from typing import Any
 from uuid import UUID
 
-from worker import app
+# Import shared worker infrastructure
+from shared.api_client import InternalAPIClient
+from shared.config import WorkerConfig
+
+# Import from shared worker modules
+from shared.constants import Account
+from shared.local_context import StateStore
+from shared.logging_utils import WorkerLogger, log_context, monitor_performance
+from shared.retry_utils import retry
 
 # Import shared data models for type safety
 from unstract.core.data_models import ExecutionStatus, FileHashData
 
-# Import shared worker infrastructure
-from workers.shared.api_client import InternalAPIClient
-from workers.shared.config import WorkerConfig
-
-# Import from shared worker modules
-from workers.shared.constants import Account
-from workers.shared.local_context import StateStore
-from workers.shared.logging_utils import WorkerLogger, log_context, monitor_performance
-from workers.shared.retry_utils import retry
+# Import from local worker module (avoid circular import)
+from .worker import app
 
 logger = WorkerLogger.get_logger(__name__)
 
@@ -295,7 +296,20 @@ def _run_workflow_api(
             scheduled=scheduled,
             execution_mode=execution_mode_str,
             use_file_history=use_file_history,
+            api_client=api_client,
+            total_files=total_files,
         )
+
+        # Calculate manual review decisions for this specific batch
+        if file_data.get("manual_review_config", {}).get("review_required", False):
+            file_decisions = _calculate_manual_review_decisions_for_batch_api(
+                batch=batch, manual_review_config=file_data["manual_review_config"]
+            )
+            # Update the file_data with batch-specific decisions
+            file_data["manual_review_config"]["file_decisions"] = file_decisions
+            logger.info(
+                f"Calculated manual review decisions for API batch: {sum(file_decisions)}/{len(file_decisions)} files selected"
+            )
 
         # Create batch data exactly matching Django FileBatchData structure
         batch_data = _create_batch_data(files=batch, file_data=file_data)
@@ -434,6 +448,41 @@ def _get_file_batches(input_files: dict[str, FileHashData] | list[dict]) -> list
     return batches
 
 
+def _calculate_q_file_no_list_api(
+    manual_review_config: dict, total_files: int
+) -> list[int]:
+    """Get pre-calculated file numbers for manual review queue for API deployments.
+
+    This uses the pre-calculated q_file_no_list from the ManualReviewAPIClient
+    which matches the Django backend WorkflowUtil.get_q_no_list() logic.
+
+    Args:
+        manual_review_config: Manual review configuration with pre-calculated list
+        total_files: Total number of files (not used, kept for compatibility)
+
+    Returns:
+        List of file numbers (1-indexed) that should go to manual review
+    """
+    if not manual_review_config:
+        return []
+
+    # Use pre-calculated list from the client if available
+    q_file_no_list = manual_review_config.get("q_file_no_list", [])
+    if q_file_no_list:
+        return q_file_no_list
+
+    # Fallback to percentage calculation if pre-calculated list is not available
+    percentage = manual_review_config.get("review_percentage", 0)
+    if percentage <= 0 or total_files <= 0:
+        return []
+
+    # Match Django backend _mrq_files() logic exactly as fallback
+    import random
+
+    num_to_select = max(1, int(total_files * (percentage / 100)))
+    return list(set(random.sample(range(1, total_files + 1), num_to_select)))
+
+
 def _create_file_data(
     workflow_id: str,
     execution_id: str,
@@ -442,6 +491,8 @@ def _create_file_data(
     scheduled: bool,
     execution_mode: str | None,
     use_file_history: bool,
+    api_client: InternalAPIClient,
+    total_files: int = 0,
 ) -> dict[str, Any]:
     """Create file data matching Django FileData structure exactly.
 
@@ -453,10 +504,34 @@ def _create_file_data(
         scheduled: Whether scheduled execution
         execution_mode: Execution mode string
         use_file_history: Whether to use file history
+        api_client: API client for fetching manual review rules
 
     Returns:
-        File data dictionary matching Django FileData
+        File data dictionary matching Django FileData with manual review config
     """
+    # Initialize manual review config with defaults
+    manual_review_config = {
+        "review_required": False,
+        "review_percentage": 0,
+        "rule_logic": None,
+        "rule_json": None,
+    }
+
+    # ARCHITECTURE FIX: Skip manual review DB rules for API deployments
+    # API deployments handle manual review through different mechanisms (if supported)
+    # The DB rules endpoint is designed for ETL workflows, not API deployments
+    logger.info(
+        "API deployment workflow detected - skipping manual review DB rules lookup"
+    )
+
+    # For future: API deployments could support manual review through other mechanisms
+    # such as workflow-specific configuration or query parameters passed in the API request
+    logger.info(
+        f"No manual review rules configured for API deployment workflow {workflow_id}"
+    )
+
+    # Keep the default manual_review_config (review_required=False, percentage=0)
+
     return {
         "workflow_id": str(workflow_id),
         "execution_id": str(execution_id),
@@ -466,7 +541,10 @@ def _create_file_data(
         "execution_mode": execution_mode,
         "use_file_history": use_file_history,
         "single_step": False,  # API deployments are always complete execution
-        "q_file_no_list": [],  # Empty for API deployments
+        "q_file_no_list": _calculate_q_file_no_list_api(
+            manual_review_config, total_files
+        ),
+        "manual_review_config": manual_review_config,  # Add manual review configuration
     }
 
 
@@ -505,6 +583,64 @@ def _get_callback_queue_name_api() -> str:
     """
     # For API deployments, use api_file_processing_callback queue
     return "api_file_processing_callback"
+
+
+def _calculate_manual_review_decisions_for_batch_api(
+    batch: list, manual_review_config: dict
+) -> list[bool]:
+    """Calculate manual review decisions for files in this API batch.
+
+    Args:
+        batch: List of (file_name, file_hash) tuples
+        manual_review_config: Manual review configuration with percentage, etc.
+
+    Returns:
+        List of boolean decisions for each file in the batch
+    """
+    try:
+        percentage = manual_review_config.get("review_percentage", 0)
+
+        if percentage <= 0:
+            return [False] * len(batch)
+
+        # Calculate target count (at least 1 if percentage > 0)
+        target_count = max(1, (len(batch) * percentage) // 100)
+
+        if target_count >= len(batch):
+            return [True] * len(batch)
+
+        # Create deterministic selection based on file hashes
+        import hashlib
+
+        file_scores = []
+
+        for i, (file_name, file_hash) in enumerate(batch):
+            # For API batches, file_hash should be a dict with file info
+            file_path = ""
+            if isinstance(file_hash, dict):
+                file_path = file_hash.get("file_path", "")
+
+            # Use file name + path for consistent hashing
+            hash_input = f"{file_name}:{file_path}"
+            score = int(hashlib.sha256(hash_input.encode()).hexdigest()[:8], 16)
+            file_scores.append((score, i))  # Store index instead of file object
+
+        # Sort by score and select top N files
+        file_scores.sort(key=lambda x: x[0])
+        selected_indices = {item[1] for item in file_scores[:target_count]}
+
+        # Create boolean list for this batch
+        decisions = [i in selected_indices for i in range(len(batch))]
+
+        logger.info(
+            f"API manual review batch calculation: {len(batch)} files, {percentage}% = {target_count} files, selected indices: {sorted(selected_indices)}"
+        )
+
+        return decisions
+
+    except Exception as e:
+        logger.error(f"Error calculating manual review decisions for API batch: {e}")
+        return [False] * len(batch)
 
 
 def _create_file_batches_api(
@@ -618,7 +754,7 @@ def _orchestrate_file_processing_chord(
             )
 
             # Import file processing task
-            from worker import app as celery_app
+            from .worker import app as celery_app
 
             # Create task signature for file processing
             task_signature = celery_app.signature(
@@ -696,7 +832,12 @@ def api_deployment_status_check(
                 api_client.set_organization_context(organization_id)
 
                 # Get execution status
-                execution_context = api_client.get_workflow_execution(execution_id)
+                execution_response = api_client.get_workflow_execution(execution_id)
+                if not execution_response.success:
+                    raise Exception(
+                        f"Failed to get execution context: {execution_response.error}"
+                    )
+                execution_context = execution_response.data
                 execution_data = execution_context.get("execution", {})
 
                 status_info = {

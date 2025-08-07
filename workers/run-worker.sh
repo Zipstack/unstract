@@ -108,6 +108,7 @@ ENVIRONMENT:
     - CELERY_BROKER_BASE_URL
     - DB_HOST, DB_USER, DB_PASSWORD, DB_NAME (for PostgreSQL result backend)
 
+    Plugin availability is detected dynamically via plugin registry.
     See sample.env for full configuration options.
 
 HEALTH CHECKS:

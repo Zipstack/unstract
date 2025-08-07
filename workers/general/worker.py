@@ -8,10 +8,10 @@ import os
 from celery import Celery
 
 # Use singleton API client to eliminate repeated initialization logs
-from workers.shared.api_client_singleton import get_singleton_api_client
-from workers.shared.config import WorkerConfig
-from workers.shared.health import HealthChecker, HealthServer
-from workers.shared.logging_utils import WorkerLogger
+from shared.api_client_singleton import get_singleton_api_client
+from shared.config import WorkerConfig
+from shared.health import HealthChecker, HealthServer
+from shared.logging_utils import WorkerLogger
 
 # Configure worker-specific logging
 WorkerLogger.configure(
@@ -66,7 +66,7 @@ celery_config = {
     **config.get_celery_config(),
     # Task discovery
     "imports": [
-        "tasks",
+        "general.tasks",
     ],
 }
 

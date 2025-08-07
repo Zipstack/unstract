@@ -1002,25 +1002,32 @@ def get_file_history_internal(request):
     try:
         workflow_id = request.data.get("workflow_id")
         provider_file_uuid = request.data.get("provider_file_uuid")
+        file_hash = request.data.get("file_hash")  # Also accept file_hash (cache_key)
         file_path = request.data.get("file_path")
         organization_id = request.data.get("organization_id")
 
-        if not all([workflow_id, provider_file_uuid, file_path, organization_id]):
+        # Must have either provider_file_uuid or file_hash
+        if (
+            not workflow_id
+            or not organization_id
+            or (not provider_file_uuid and not file_hash)
+        ):
             return Response(
                 {
                     "error": "Missing required parameters",
                     "required": [
                         "workflow_id",
-                        "provider_file_uuid",
-                        "file_path",
                         "organization_id",
+                        "either provider_file_uuid or file_hash",
                     ],
+                    "optional": ["file_path"],
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         logger.info(
-            f"Getting file history for workflow {workflow_id}, provider_uuid: {provider_file_uuid}, file_path: {file_path}"
+            f"Getting file history for workflow {workflow_id}, provider_uuid: {provider_file_uuid}, "
+            f"file_hash: {file_hash}, file_path: {file_path}"
         )
         logger.info(f"Organization ID from request: {organization_id}")
 
@@ -1042,10 +1049,15 @@ def get_file_history_internal(request):
         from workflow_manager.workflow_v2.file_history_helper import FileHistoryHelper
 
         logger.info(
-            f"Calling FileHistoryHelper.get_file_history with workflow={workflow.id}, provider_file_uuid={provider_file_uuid}, file_path={file_path}"
+            f"Calling FileHistoryHelper.get_file_history with workflow={workflow.id}, "
+            f"cache_key={file_hash}, provider_file_uuid={provider_file_uuid}, file_path={file_path}"
         )
+        # Pass file_hash as cache_key to FileHistoryHelper
         file_history = FileHistoryHelper.get_file_history(
-            workflow=workflow, provider_file_uuid=provider_file_uuid, file_path=file_path
+            workflow=workflow,
+            cache_key=file_hash,  # Use file_hash as cache_key
+            provider_file_uuid=provider_file_uuid,
+            file_path=file_path,
         )
         logger.info(f"FileHistoryHelper returned: {file_history}")
 
@@ -1062,8 +1074,8 @@ def get_file_history_internal(request):
                 "created_at": file_history.created_at.isoformat()
                 if file_history.created_at
                 else None,
-                "completed_at": file_history.completed_at.isoformat()
-                if file_history.completed_at
+                "completed_at": file_history.modified_at.isoformat()
+                if file_history.modified_at
                 else None,
             }
 

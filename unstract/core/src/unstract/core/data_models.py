@@ -14,6 +14,166 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+# File Operation Data Models
+@dataclass
+class FileHash:
+    """Represents a file with its metadata and hash information.
+
+    This is the canonical representation of a file in the Unstract platform,
+    used by both backend Django services and worker processes.
+    """
+
+    file_path: str
+    file_name: str
+    source_connection_type: str
+    file_hash: str | None = None
+    file_size: int | None = None
+    provider_file_uuid: str | None = None
+    mime_type: str | None = None
+    fs_metadata: dict[str, Any] | None = None
+    file_destination: tuple[str, str] | None = None  # Destination for MRQ routing
+    is_executed: bool = False
+    file_number: int | None = None
+    is_manualreview_required: bool = False  # Whether this file requires manual review
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary representation."""
+        return {
+            "file_path": self.file_path,
+            "file_hash": self.file_hash,
+            "file_name": self.file_name,
+            "source_connection_type": self.source_connection_type,
+            "file_destination": self.file_destination,
+            "is_executed": self.is_executed,
+            "file_size": self.file_size,
+            "mime_type": self.mime_type,
+            "provider_file_uuid": self.provider_file_uuid,
+            "fs_metadata": self.fs_metadata,
+            "file_number": self.file_number,
+            "is_manualreview_required": self.is_manualreview_required,
+        }
+
+    def to_json(self) -> dict[str, Any]:
+        """Alias for to_dict() for backward compatibility."""
+        return self.to_dict()
+
+    def to_serialized_json(self) -> str:
+        """Serialize the FileHash instance to a JSON string."""
+        import json
+
+        return json.dumps(serialize_dataclass_to_dict(self))
+
+    @staticmethod
+    def from_json(json_str_or_dict: Any) -> "FileHash":
+        """Deserialize a JSON string or dictionary to a FileHash instance."""
+        import json
+
+        if isinstance(json_str_or_dict, dict):
+            data = json_str_or_dict
+        elif isinstance(json_str_or_dict, str):
+            data = json.loads(json_str_or_dict)
+        else:
+            raise ValueError(f"Expected dict or str, got {type(json_str_or_dict)}")
+
+        # Handle file_destination as tuple if it's a list
+        if (
+            isinstance(data.get("file_destination"), list)
+            and len(data["file_destination"]) == 2
+        ):
+            data["file_destination"] = tuple(data["file_destination"])
+
+        return FileHash(**data)
+
+
+class SourceConnectionType(str, Enum):
+    """Types of source connections supported."""
+
+    FILESYSTEM = "FILESYSTEM"
+    API = "API"
+
+
+class FileListingResult:
+    """Result of listing files from a source."""
+
+    def __init__(
+        self,
+        files: dict[str, FileHash],
+        total_count: int,
+        connection_type: str,
+        is_api: bool = False,
+        used_file_history: bool = False,
+    ):
+        self.files = files
+        self.total_count = total_count
+        self.connection_type = connection_type
+        self.is_api = is_api
+        self.used_file_history = used_file_history
+
+
+# File Operation Constants
+class FileOperationConstants:
+    """Constants for file operations."""
+
+    READ_CHUNK_SIZE = 4194304  # 4MB chunks for file reading
+    MAX_RECURSIVE_DEPTH = 20  # Maximum directory traversal depth
+    DEFAULT_MAX_FILES = 100  # Default maximum files to process
+
+    # File pattern defaults
+    DEFAULT_FILE_PATTERNS = ["*"]
+    ALL_FILES_PATTERN = "*"
+
+    # Common MIME types
+    MIME_TYPE_PDF = "application/pdf"
+    MIME_TYPE_TEXT = "text/plain"
+    MIME_TYPE_JSON = "application/json"
+    MIME_TYPE_CSV = "text/csv"
+
+
+class SourceKey:
+    """Unified keys used in source configuration across backend and workers.
+
+    This class provides both camelCase (backend) and snake_case (core) naming conventions
+    to ensure compatibility across different parts of the system.
+    """
+
+    # Snake case (core/workers preferred)
+    FILE_EXTENSIONS = "file_extensions"
+    PROCESS_SUB_DIRECTORIES = "process_sub_directories"
+    MAX_FILES = "max_files"
+    FOLDERS = "folders"
+    USE_FILE_HISTORY = "use_file_history"
+
+    # CamelCase (backend compatibility)
+    FILE_EXTENSIONS_CAMEL = "fileExtensions"
+    PROCESS_SUB_DIRECTORIES_CAMEL = "processSubDirectories"
+    MAX_FILES_CAMEL = "maxFiles"
+
+    @classmethod
+    def get_file_extensions(cls, config: dict) -> list:
+        """Get file extensions from config using both naming conventions."""
+        return list(
+            config.get(cls.FILE_EXTENSIONS) or config.get(cls.FILE_EXTENSIONS_CAMEL, [])
+        )
+
+    @classmethod
+    def get_process_sub_directories(cls, config: dict) -> bool:
+        """Get process subdirectories setting from config using both naming conventions."""
+        return bool(
+            config.get(cls.PROCESS_SUB_DIRECTORIES)
+            or config.get(cls.PROCESS_SUB_DIRECTORIES_CAMEL, False)
+        )
+
+    @classmethod
+    def get_max_files(cls, config: dict, default: int = 100) -> int:
+        """Get max files setting from config using both naming conventions."""
+        return int(config.get(cls.MAX_FILES) or config.get(cls.MAX_FILES_CAMEL, default))
+
+    @classmethod
+    def get_folders(cls, config: dict) -> list:
+        """Get folders setting from config."""
+        return list(config.get(cls.FOLDERS, ["/"]))
+
+
 def serialize_dataclass_to_dict(obj) -> dict[str, Any]:
     """Helper function to serialize dataclass objects to JSON-compatible dictionaries.
 
@@ -191,6 +351,8 @@ class FileHashData:
         default_factory=dict
     )  # Connector credentials and settings
     connector_id: str | None = None  # Full connector ID from registry
+    use_file_history: bool = False  # Whether to create file history entries for this file
+    is_manualreview_required: bool = False  # Whether this file requires manual review
 
     def __post_init__(self):
         """Validate required fields."""
@@ -329,6 +491,8 @@ class FileHashData:
             file_number=data.get("file_number"),
             connector_metadata=data.get("connector_metadata", {}),
             connector_id=data.get("connector_id"),
+            use_file_history=data.get("use_file_history", False),
+            is_manualreview_required=data.get("is_manualreview_required", False),
         )
 
         # If no hash is provided, leave it empty - hash computation requires content or file_path
@@ -648,6 +812,11 @@ class DestinationConfig:
     # Additional fields for worker compatibility
     connector_settings: dict[str, Any] = field(default_factory=dict)
     connector_name: str | None = None
+    # Source connector fields for manual review and file reading
+    source_connector_id: str | None = None
+    source_connector_settings: dict[str, Any] = field(default_factory=dict)
+    # HITL queue name for API deployments
+    hitl_queue_name: str | None = None
 
     def __post_init__(self):
         """Post-initialization to handle automatic API detection."""
@@ -695,6 +864,9 @@ class DestinationConfig:
             use_file_history=data.get("use_file_history", True),
             connector_settings=data.get("connector_settings", {}),
             connector_name=data.get("connector_name"),
+            source_connector_id=data.get("source_connector_id"),
+            source_connector_settings=data.get("source_connector_settings", {}),
+            hitl_queue_name=data.get("hitl_queue_name"),
         )
 
 
@@ -713,6 +885,15 @@ class WorkerFileData:
     q_file_no_list: list[int]
     source_config: dict[str, Any] = field(default_factory=dict)
     destination_config: dict[str, Any] = field(default_factory=dict)
+    manual_review_config: dict[str, Any] = field(
+        default_factory=lambda: {
+            "review_required": False,
+            "review_percentage": 0,
+            "rule_logic": None,
+            "rule_json": None,
+            "file_decisions": [],  # Pre-calculated boolean decisions for each file
+        }
+    )
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "WorkerFileData":

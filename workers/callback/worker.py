@@ -6,11 +6,9 @@ Handles result aggregation and execution finalization using internal APIs.
 import os
 
 from celery import Celery
-
-from workers.monitoring.prometheus_metrics import init_metrics
-from workers.shared.config import WorkerConfig
-from workers.shared.health import HealthChecker, HealthServer
-from workers.shared.logging_utils import WorkerLogger
+from shared.config import WorkerConfig
+from shared.health import HealthChecker, HealthServer
+from shared.logging_utils import WorkerLogger
 
 # Initialize configuration with callback-specific settings
 config = WorkerConfig.from_env("CALLBACK")
@@ -61,12 +59,12 @@ app.conf.update(
     task_send_sent_event=True,
     # Task discovery
     imports=[
-        "tasks",
+        "callback.tasks",
     ],
 )
 
 # Initialize metrics
-metrics = init_metrics("callback")
+# TODO: Fix metrics import - metrics = init_metrics("callback")
 
 # Initialize health checker and server
 

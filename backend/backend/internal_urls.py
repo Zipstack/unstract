@@ -1,5 +1,9 @@
 """Internal API URL Configuration
 Base URL configuration for internal service-to-service APIs.
+
+This file uses a registry system to dynamically load internal URLs based on
+Django settings. Cloud features are automatically included when cloud settings
+are active, without requiring code changes to this file.
 """
 
 from django.conf import settings
@@ -7,50 +11,78 @@ from django.http import JsonResponse
 from django.urls import include, path
 from django.views.decorators.http import require_http_methods
 
+from .internal_url_registry import (
+    get_cloud_url_documentation,
+    get_cloud_url_patterns,
+    get_internal_url_documentation,
+    get_internal_url_patterns,
+    initialize_internal_urls_from_settings,
+)
+
 
 @require_http_methods(["GET"])
 def internal_api_root(request):
     """Internal API root endpoint with comprehensive documentation."""
+    # Initialize dynamic URLs from settings
+    initialize_internal_urls_from_settings()
+
+    # Get dynamic endpoint documentation
+    dynamic_endpoints = get_internal_url_documentation()
+
+    # Get cloud endpoint documentation if available
+    cloud_endpoints = get_cloud_url_documentation()
+
+    base_endpoints = {
+        # Health & Utilities
+        "health": "/internal/v1/health/",
+        # Workflow Execution APIs (workflow_manager app)
+        "workflow_execution": "/internal/v1/workflow/",
+        "workflow_execution_detail": "/internal/v1/workflow/{id}/",
+        "workflow_execution_status": "/internal/v1/workflow/{id}/status/",
+        "file_batch_create": "/internal/v1/workflow/file-batch/",
+        "file_execution": "/internal/v1/file-execution/",
+        "file_execution_status": "/internal/v1/file-execution/{id}/status/",
+        # Tool Execution APIs (tool_instance_v2 app)
+        "tool_execution": "/internal/v1/tool-execution/",
+        "tool_execution_execute": "/internal/v1/tool-execution/{id}/execute/",
+        "tool_execution_status": "/internal/v1/tool-execution/status/{execution_id}/",
+        "tool_instances_by_workflow": "/internal/v1/tool-execution/workflow/{workflow_id}/instances/",
+        # File History APIs (workflow_manager.workflow_v2 app)
+        "file_history_by_cache_key": "/internal/v1/file-history/cache-key/{cache_key}/",
+        "file_history_create": "/internal/v1/file-history/create/",
+        "file_history_status": "/internal/v1/file-history/status/{file_history_id}/",
+        # Execution Finalization APIs (workflow_manager.execution app)
+        "execution_finalize": "/internal/v1/execution/finalize/{execution_id}/",
+        "execution_cleanup": "/internal/v1/execution/cleanup/",
+        "execution_finalization_status": "/internal/v1/execution/finalization-status/{execution_id}/",
+        # Webhook APIs (notification_v2 app)
+        "webhook_config": "/internal/v1/webhook/",
+        "webhook_send": "/internal/v1/webhook/send/",
+        "webhook_batch": "/internal/v1/webhook/batch/",
+        "webhook_test": "/internal/v1/webhook/test/",
+        "webhook_status": "/internal/v1/webhook/status/{task_id}/",
+        # Organization Context (account_v2 app)
+        "organization": "/internal/v1/organization/{org_id}/",
+        # Platform Settings APIs
+        "platform_key": "/internal/v1/platform-settings/platform-key/",
+    }
+
+    # Merge all endpoints (base + dynamic + cloud)
+    all_endpoints = {**base_endpoints, **dynamic_endpoints, **cloud_endpoints}
+
     return JsonResponse(
         {
             "message": "Unstract Internal API",
             "version": "1.0.0",
             "description": "Internal service-to-service API for Celery workers",
             "documentation": "https://docs.unstract.com/internal-api",
-            "endpoints": {
-                "v1": {
-                    # Health & Utilities
-                    "health": "/internal/v1/health/",
-                    # Workflow Execution APIs (workflow_manager app)
-                    "workflow_execution": "/internal/v1/workflow/",
-                    "workflow_execution_detail": "/internal/v1/workflow/{id}/",
-                    "workflow_execution_status": "/internal/v1/workflow/{id}/status/",
-                    "file_batch_create": "/internal/v1/workflow/file-batch/",
-                    "file_execution": "/internal/v1/file-execution/",
-                    "file_execution_status": "/internal/v1/file-execution/{id}/status/",
-                    # Tool Execution APIs (tool_instance_v2 app)
-                    "tool_execution": "/internal/v1/tool-execution/",
-                    "tool_execution_execute": "/internal/v1/tool-execution/{id}/execute/",
-                    "tool_execution_status": "/internal/v1/tool-execution/status/{execution_id}/",
-                    "tool_instances_by_workflow": "/internal/v1/tool-execution/workflow/{workflow_id}/instances/",
-                    # File History APIs (workflow_manager.workflow_v2 app)
-                    "file_history_by_cache_key": "/internal/v1/file-history/cache-key/{cache_key}/",
-                    "file_history_create": "/internal/v1/file-history/create/",
-                    "file_history_status": "/internal/v1/file-history/status/{file_history_id}/",
-                    # Execution Finalization APIs (workflow_manager.execution app)
-                    "execution_finalize": "/internal/v1/execution/finalize/{execution_id}/",
-                    "execution_cleanup": "/internal/v1/execution/cleanup/",
-                    "execution_finalization_status": "/internal/v1/execution/finalization-status/{execution_id}/",
-                    # Webhook APIs (notification_v2 app)
-                    "webhook_config": "/internal/v1/webhook/",
-                    "webhook_send": "/internal/v1/webhook/send/",
-                    "webhook_batch": "/internal/v1/webhook/batch/",
-                    "webhook_test": "/internal/v1/webhook/test/",
-                    "webhook_status": "/internal/v1/webhook/status/{task_id}/",
-                    # Organization Context (account_v2 app)
-                    "organization": "/internal/v1/organization/{org_id}/",
-                }
+            "features": {
+                "registered_modules": list(dynamic_endpoints.keys())
+                if dynamic_endpoints
+                else [],
+                "cloud_modules": list(cloud_endpoints.keys()) if cloud_endpoints else [],
             },
+            "endpoints": {"v1": all_endpoints},
             "authentication": {
                 "type": "Bearer Token",
                 "header": "Authorization: Bearer <internal_service_api_key>",
@@ -170,8 +202,8 @@ def test_middleware_debug(request):
     )
 
 
-# Internal API URL patterns
-urlpatterns = [
+# Base internal API URL patterns
+base_urlpatterns = [
     # Internal API root
     path("", internal_api_root, name="internal_api_root"),
     # Debug endpoint
@@ -193,4 +225,32 @@ urlpatterns = [
     ),
     path("v1/execution/", include("workflow_manager.execution.internal_urls")),
     path("v1/webhook/", include("notification_v2.internal_urls")),
+    # Platform settings APIs
+    path("v1/platform-settings/", include("platform_settings_v2.internal_urls")),
+    # Workflow manager APIs
+    path("v1/workflow-manager/", include("workflow_manager.internal_urls")),
 ]
+
+
+def get_urlpatterns():
+    """Get URL patterns including dynamically registered and cloud modules.
+
+    This function ensures that URLs are loaded fresh each time, allowing
+    cloud deployments to automatically include additional URLs without
+    code changes to this file.
+    """
+    # Initialize dynamic URLs from settings
+    initialize_internal_urls_from_settings()
+
+    # Get dynamic URL patterns from registry
+    dynamic_patterns = get_internal_url_patterns()
+
+    # Get cloud URL patterns if available
+    cloud_patterns = get_cloud_url_patterns()
+
+    # Combine all patterns: base + dynamic + cloud
+    return base_urlpatterns + dynamic_patterns + cloud_patterns
+
+
+# URL patterns - will include dynamic patterns based on settings
+urlpatterns = get_urlpatterns()

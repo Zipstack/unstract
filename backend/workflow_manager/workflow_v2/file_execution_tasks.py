@@ -195,6 +195,12 @@ class FileExecutionTasks:
                 q_file_no_list,
                 file_hash,
             )
+            # Set manual review requirement based on file destination
+            if hasattr(file_hash, "is_manualreview_required"):
+                file_hash.is_manualreview_required = (
+                    file_hash.file_destination
+                    == WorkflowEndpoint.ConnectionType.MANUALREVIEW
+                )
             logger.info(f"File hash for file {file_name}: {file_hash.to_json()}")
 
             file_execution_result = FileExecutionTasks._process_file(

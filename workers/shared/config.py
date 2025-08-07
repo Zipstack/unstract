@@ -48,18 +48,76 @@ class WorkerConfig:
         default_factory=lambda: os.getenv("CELERY_BROKER_PASS", "")
     )
 
-    # Database Configuration (for PostgreSQL result backend like backend)
-    db_host: str = field(default_factory=lambda: os.getenv("DB_HOST", "localhost"))
-    db_port: str = field(default_factory=lambda: os.getenv("DB_PORT", "5432"))
-    db_name: str = field(default_factory=lambda: os.getenv("DB_NAME", "unstract_db"))
-    db_user: str = field(default_factory=lambda: os.getenv("DB_USER", "unstract_dev"))
-    db_password: str = field(
-        default_factory=lambda: os.getenv("DB_PASSWORD", "unstract_pass")
+    # Celery Backend Database Configuration (with CELERY_BACKEND_ prefix)
+    celery_backend_db_host: str = field(
+        default_factory=lambda: os.getenv(
+            "CELERY_BACKEND_DB_HOST", os.getenv("DB_HOST", "localhost")
+        )  # Fallback to main DB config
+    )
+    celery_backend_db_port: str = field(
+        default_factory=lambda: os.getenv(
+            "CELERY_BACKEND_DB_PORT", os.getenv("DB_PORT", "5432")
+        )
+    )
+    celery_backend_db_name: str = field(
+        default_factory=lambda: os.getenv(
+            "CELERY_BACKEND_DB_NAME", os.getenv("DB_NAME", "unstract_db")
+        )
+    )
+    celery_backend_db_user: str = field(
+        default_factory=lambda: os.getenv(
+            "CELERY_BACKEND_DB_USER", os.getenv("DB_USER", "unstract_dev")
+        )
+    )
+    celery_backend_db_password: str = field(
+        default_factory=lambda: os.getenv(
+            "CELERY_BACKEND_DB_PASSWORD", os.getenv("DB_PASSWORD", "unstract_pass")
+        )
+    )
+    celery_backend_db_schema: str = field(
+        default_factory=lambda: os.getenv("CELERY_BACKEND_DB_SCHEMA", "public")
+    )
+
+    # Redis Cache Configuration (separate from Celery broker)
+    cache_redis_enabled: bool = field(
+        default_factory=lambda: os.getenv("CACHE_REDIS_ENABLED", "true").lower() == "true"
+    )
+    cache_redis_host: str = field(
+        default_factory=lambda: os.getenv(
+            "CACHE_REDIS_HOST",
+            # Try to extract from Celery broker URL, fallback to localhost
+            os.getenv("CELERY_BROKER_BASE_URL", "redis://localhost:6379//")
+            .split("//")[1]
+            .split(":")[0]
+            if "redis://" in os.getenv("CELERY_BROKER_BASE_URL", "")
+            else "localhost",
+        )
+    )
+    cache_redis_port: int = field(
+        default_factory=lambda: int(os.getenv("CACHE_REDIS_PORT", "6379"))
+    )
+    cache_redis_db: int = field(
+        default_factory=lambda: int(
+            os.getenv("CACHE_REDIS_DB", "1")
+        )  # Default to DB 1 (separate from Celery)
+    )
+    cache_redis_password: str = field(
+        default_factory=lambda: os.getenv("CACHE_REDIS_PASSWORD", "")
+    )
+    cache_redis_username: str = field(
+        default_factory=lambda: os.getenv("CACHE_REDIS_USERNAME", "")
+    )
+    cache_redis_ssl: bool = field(
+        default_factory=lambda: os.getenv("CACHE_REDIS_SSL", "false").lower() == "true"
+    )
+    cache_redis_ssl_cert_reqs: str = field(
+        default_factory=lambda: os.getenv("CACHE_REDIS_SSL_CERT_REQS", "required")
     )
 
     # Computed URLs (built from components like backend does)
     celery_broker_url: str = field(init=False)
     celery_result_backend: str = field(init=False)
+    cache_redis_url: str = field(init=False)
 
     # Worker Identity
     worker_name: str = field(
@@ -167,15 +225,56 @@ class WorkerConfig:
             # Fallback to default Redis
             self.celery_broker_url = "redis://localhost:6379/0"
 
-        # Build PostgreSQL result backend (matches backend/celery_config.py exactly)
+        # Build PostgreSQL result backend with configurable schema support
         from urllib.parse import quote_plus
 
         self.celery_result_backend = (
-            f"db+postgresql://{self.db_user}:{quote_plus(self.db_password)}"
-            f"@{self.db_host}:{self.db_port}/{self.db_name}"
+            f"db+postgresql://{self.celery_backend_db_user}:{quote_plus(self.celery_backend_db_password)}"
+            f"@{self.celery_backend_db_host}:{self.celery_backend_db_port}/"
+            f"{self.celery_backend_db_name}"
         )
 
+        # Add schema parameter if not using default 'public' schema
+        if self.celery_backend_db_schema != "public":
+            self.celery_result_backend += (
+                f"?options=-csearch_path%3D{self.celery_backend_db_schema}"
+            )
+
+        # Build Redis cache URL for separate cache instance
+        self._build_cache_redis_url()
+
         self.validate()
+
+    def _build_cache_redis_url(self):
+        """Build Redis cache URL from configuration components."""
+        if not self.cache_redis_enabled:
+            self.cache_redis_url = ""
+            return
+
+        # Build Redis URL with all authentication and SSL options
+        scheme = "rediss" if self.cache_redis_ssl else "redis"
+
+        # Build authentication part
+        auth_part = ""
+        if self.cache_redis_username and self.cache_redis_password:
+            auth_part = f"{self.cache_redis_username}:{self.cache_redis_password}@"
+        elif self.cache_redis_password:
+            auth_part = f":{self.cache_redis_password}@"
+
+        # Build base URL
+        self.cache_redis_url = (
+            f"{scheme}://{auth_part}{self.cache_redis_host}:{self.cache_redis_port}/"
+            f"{self.cache_redis_db}"
+        )
+
+        # Add SSL parameters if needed
+        if self.cache_redis_ssl:
+            ssl_params = []
+            if self.cache_redis_ssl_cert_reqs != "required":
+                ssl_params.append(f"ssl_cert_reqs={self.cache_redis_ssl_cert_reqs}")
+
+            if ssl_params:
+                self.cache_redis_url += "?" + "&".join(ssl_params)
 
     def validate(self):
         """Validate configuration values."""
@@ -192,7 +291,18 @@ class WorkerConfig:
             errors.append("CELERY_BROKER_BASE_URL is required")
 
         if not self.celery_result_backend:
-            errors.append("Database configuration is required for result backend")
+            errors.append(
+                "Celery backend database configuration is required for result backend"
+            )
+
+        # Cache Redis validation
+        if self.cache_redis_enabled:
+            if not self.cache_redis_host:
+                errors.append("CACHE_REDIS_HOST is required when cache is enabled")
+            if self.cache_redis_port <= 0:
+                errors.append("CACHE_REDIS_PORT must be positive")
+            if self.cache_redis_db < 0:
+                errors.append("CACHE_REDIS_DB must be non-negative")
 
         # Numeric validations
         if self.api_timeout <= 0:
@@ -311,10 +421,38 @@ class WorkerConfig:
             "celery_broker_pass",
             "celery_broker_url",
             "celery_result_backend",
-            "db_password",
+            "celery_backend_db_password",
+            "cache_redis_password",
+            "cache_redis_url",
         ]
         for field_name in sensitive_fields:
             if field_name in safe_dict and safe_dict[field_name]:
                 safe_dict[field_name] = "*" * 8
 
         return f"WorkerConfig({safe_dict})"
+
+    def get_cache_redis_config(self) -> dict[str, Any]:
+        """Get Redis cache-specific configuration for cache manager.
+
+        Returns:
+            Dictionary with Redis cache configuration
+        """
+        if not self.cache_redis_enabled:
+            return {"enabled": False}
+
+        config = {
+            "enabled": True,
+            "host": self.cache_redis_host,
+            "port": self.cache_redis_port,
+            "db": self.cache_redis_db,
+            "url": self.cache_redis_url,
+            "ssl": self.cache_redis_ssl,
+        }
+
+        # Add authentication if configured
+        if self.cache_redis_password:
+            config["password"] = self.cache_redis_password
+        if self.cache_redis_username:
+            config["username"] = self.cache_redis_username
+
+        return config

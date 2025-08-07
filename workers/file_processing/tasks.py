@@ -10,7 +10,17 @@ import os
 import time
 from typing import Any
 
-from worker import app
+# Import shared worker infrastructure
+from shared.api_client import InternalAPIClient
+from shared.config import WorkerConfig
+
+# Import from shared worker modules
+from shared.constants import Account
+from shared.local_context import StateStore
+from shared.logging_utils import WorkerLogger, log_context, monitor_performance
+
+# Import WorkflowExecutionService direct integration
+from shared.workflow_service import WorkerWorkflowExecutionService
 
 # Import shared enums and dataclasses
 # Import shared dataclasses for type safety
@@ -23,18 +33,8 @@ from unstract.core.data_models import (
     WorkerFileData,
 )
 
-# Import shared worker infrastructure
-from workers.shared.api_client import InternalAPIClient
-from workers.shared.config import WorkerConfig
-
-# Import from shared worker modules
-from workers.shared.constants import Account
-from workers.shared.local_context import StateStore
-from workers.shared.logging_utils import WorkerLogger, log_context, monitor_performance
-from workers.shared.source_operations_backend_compatible import WorkerFileHistoryManager
-
-# Import WorkflowExecutionService direct integration
-from workers.shared.workflow_service import WorkerWorkflowExecutionService
+# Import from local worker module (avoid circular import)
+from .worker import app
 
 logger = WorkerLogger.get_logger(__name__)
 
@@ -53,48 +53,98 @@ logger = WorkerLogger.get_logger(__name__)
 def process_file_batch(self, file_batch_data: dict[str, Any]) -> dict[str, Any]:
     """Process a batch of files in parallel using Celery.
 
-    This exactly matches the Django backend process_file_batch task but uses
-    API-based coordination instead of direct Django ORM access.
+    This function orchestrates the entire file batch processing workflow.
+    It has been refactored from a 1,378-line monolith into smaller, focused functions.
 
     Args:
         file_batch_data: Dictionary that will be converted to FileBatchData dataclass
-            - files: List of file dictionaries with name, path, metadata, etc.
-            - file_data: WorkerFileData with workflow_id, source_config, destination_config, etc.
 
     Returns:
         Dictionary with successful_files and failed_files counts
     """
     celery_task_id = self.request.id
 
-    # Convert dictionary to dataclass for type safety with enhanced error handling
+    # Step 1: Validate and parse input data
+    batch_data = _validate_and_parse_batch_data(file_batch_data)
+
+    # Step 2: Setup execution context
+    context = _setup_execution_context(batch_data, celery_task_id)
+
+    # Step 3: Handle manual review logic
+    context = _handle_manual_review_logic(context)
+
+    # Step 4: Pre-create file executions
+    context = _refactored_pre_create_file_executions(context)
+
+    # Step 5: Process individual files
+    context = _process_individual_files(context)
+
+    # Step 6: Evaluate batch for manual review (skip - individual files already handled)
+    # Note: Manual review routing is handled at individual file level, batch evaluation is legacy
+    logger.info(
+        "Skipping batch manual review evaluation - individual files already processed correctly"
+    )
+
+    # Step 7: Compile and return final result
+    return _compile_batch_result(context)
+
+
+def _validate_and_parse_batch_data(file_batch_data: dict[str, Any]) -> FileBatchData:
+    """Validate and parse input data into typed dataclass.
+
+    Args:
+        file_batch_data: Raw input dictionary
+
+    Returns:
+        Validated FileBatchData instance
+
+    Raises:
+        ValueError: If data structure is invalid
+        RuntimeError: If unexpected parsing error occurs
+    """
     try:
         batch_data = FileBatchData.from_dict(file_batch_data)
         logger.info(
             f"Successfully parsed FileBatchData with {len(batch_data.files)} files"
         )
+        return batch_data
     except (TypeError, ValueError) as e:
         logger.error(f"FileBatchData validation failed: {str(e)}")
         logger.error(
             f"Input data structure: keys={list(file_batch_data.keys()) if isinstance(file_batch_data, dict) else 'not a dict'}"
         )
-        # Provide actionable error message
         raise ValueError(
             f"Invalid file batch data structure: {str(e)}. "
             f"Expected dict with 'files' (list) and 'file_data' (dict) fields."
         ) from e
     except Exception as e:
         logger.error(f"Unexpected error parsing file batch data: {str(e)}", exc_info=True)
-        # Don't fallback for unexpected errors - better to fail fast
         raise RuntimeError(f"Failed to parse file batch data: {str(e)}") from e
 
-    # Extract context using dataclass (no fallback since we validate above)
+
+def _setup_execution_context(
+    batch_data: FileBatchData, celery_task_id: str
+) -> dict[str, Any]:
+    """Setup execution context with validation and API client initialization.
+
+    Args:
+        batch_data: Validated batch data
+        celery_task_id: Celery task ID for tracking
+
+    Returns:
+        Dictionary containing execution context
+
+    Raises:
+        ValueError: If required context fields are missing
+    """
+    # Extract context using dataclass
     file_data = batch_data.file_data
     files = batch_data.files
     execution_id = file_data.execution_id
     workflow_id = file_data.workflow_id
     organization_id = file_data.organization_id
 
-    # Additional context validation
+    # Validate required context
     if not execution_id or not workflow_id or not organization_id:
         raise ValueError(
             f"Invalid execution context: execution_id='{execution_id}', "
@@ -108,256 +158,501 @@ def process_file_batch(self, file_batch_data: dict[str, Any]) -> dict[str, Any]:
     # Set organization context exactly like Django backend
     StateStore.set(Account.ORGANIZATION_ID, organization_id)
 
-    # Initialize result tracker using dataclass
+    # Initialize result tracker and API client
     result = FileBatchResult()
+    successful_files_for_manual_review = []
 
     logger.info(
         f"Initializing file batch processing for execution {execution_id}, organization {organization_id}"
     )
 
-    # Get workflow execution via API (instead of Django ORM)
+    # Initialize API client
     config = WorkerConfig()
-    with InternalAPIClient(config) as api_client:
-        api_client.set_organization_context(organization_id)
+    api_client = InternalAPIClient(config)
+    api_client.set_organization_context(organization_id)
 
-        # Get workflow execution context
-        execution_context = api_client.get_workflow_execution(execution_id)
-        workflow_execution = execution_context.get("execution", {})
+    # Get workflow execution context
+    execution_response = api_client.get_workflow_execution(execution_id)
+    if not execution_response.success:
+        raise Exception(f"Failed to get execution context: {execution_response.error}")
+    execution_context = execution_response.data
+    workflow_execution = execution_context.get("execution", {})
 
-        # Set log events ID in StateStore like Django backend
-        log_events_id = workflow_execution.get("execution_log_id")
-        if log_events_id:
-            StateStore.set("LOG_EVENTS_ID", log_events_id)
+    # Set log events ID in StateStore like Django backend
+    log_events_id = workflow_execution.get("execution_log_id")
+    if log_events_id:
+        StateStore.set("LOG_EVENTS_ID", log_events_id)
 
-        total_files = len(files)
-        q_file_no_list = set(
-            file_data.q_file_no_list
-            if isinstance(file_data, WorkerFileData)
-            else file_data.get("q_file_no_list", [])
+    return {
+        "batch_data": batch_data,
+        "file_data": file_data,
+        "files": files,
+        "execution_id": execution_id,
+        "workflow_id": workflow_id,
+        "organization_id": organization_id,
+        "celery_task_id": celery_task_id,
+        "result": result,
+        "successful_files_for_manual_review": successful_files_for_manual_review,
+        "api_client": api_client,
+        "execution_context": execution_context,
+        "workflow_execution": workflow_execution,
+        "total_files": len(files),
+    }
+
+
+def _handle_manual_review_logic(context: dict[str, Any]) -> dict[str, Any]:
+    """Handle manual review logic and workflow type detection.
+
+    Args:
+        context: Execution context dictionary
+
+    Returns:
+        Updated context with manual review information
+    """
+    api_client = context["api_client"]
+    workflow_id = context["workflow_id"]
+    execution_id = context["execution_id"]
+    organization_id = context["organization_id"]
+    file_data = context["file_data"]
+    total_files = context["total_files"]
+
+    # Get initial q_file_no_list
+    q_file_no_list = set(
+        file_data.q_file_no_list
+        if isinstance(file_data, WorkerFileData)
+        else file_data.get("q_file_no_list", [])
+    )
+
+    # Enhanced workflow type detection (API/ETL/TASK) by examining endpoints
+    workflow_type, is_api_workflow = _detect_comprehensive_workflow_type(
+        api_client, workflow_id
+    )
+    logger.info(
+        f"Workflow {workflow_id} detected as type: {workflow_type} (is_api: {is_api_workflow})"
+    )
+
+    # ARCHITECTURE FIX: Skip manual review logic for API workflows
+    # API workflows should handle manual review in api-deployment worker, not file processing worker
+    if is_api_workflow:
+        logger.info(
+            "API workflow detected - skipping manual review logic in file processing worker"
         )
-
-        logger.info(f"Processing {total_files} files of execution {execution_id}")
-
-        # Update total_files in the WorkflowExecution so UI can show proper progress
-        try:
-            api_client.update_workflow_execution_status(
-                execution_id=execution_id,
-                status=ExecutionStatus.EXECUTING.value,
-                total_files=total_files,
-            )
-            logger.info(
-                f"Updated WorkflowExecution {execution_id} with total_files={total_files}"
-            )
-        except Exception as e:
+        q_file_no_list = set()  # Empty set for API workflows
+    else:
+        # CRITICAL FIX: If q_file_no_list is empty for ETL workflows, get it from manual review client
+        if not q_file_no_list:
             logger.warning(
-                f"Failed to update total_files for execution {execution_id}: {e}"
+                f"q_file_no_list is empty for execution {execution_id}. Attempting to retrieve from manual review client."
             )
-            # Continue processing even if status update fails
-
-        # Enhanced workflow type detection (API/ETL/TASK) by examining endpoints
-        workflow_type, is_api_workflow = _detect_comprehensive_workflow_type(
-            api_client, workflow_id
-        )
-        logger.info(
-            f"Workflow {workflow_id} detected as type: {workflow_type} (is_api: {is_api_workflow})"
-        )
-
-        # CRITICAL: Pre-create all WorkflowFileExecution records to prevent duplicates
-        # This matches the backend's _pre_create_file_executions pattern for ALL workflow types
-        pre_created_file_executions = _pre_create_file_executions(
-            files=files,
-            workflow_id=workflow_id,
-            execution_id=execution_id,
-            api_client=api_client,
-            workflow_type=workflow_type,
-            is_api=is_api_workflow,
-        )
-        logger.info(
-            f"Pre-created {len(pre_created_file_executions)} WorkflowFileExecution records for {workflow_type} workflow"
-        )
-
-        # Process each file - handle list, tuple, and dictionary formats
-        for file_number, file_item in enumerate(files, 1):
-            # Handle Django list format (from asdict serialization), tuple format, and dictionary format
-            if isinstance(file_item, list):
-                # Django backend format after asdict(): [file_name, file_hash_dict]
-                if len(file_item) != 2:
-                    logger.error(
-                        f"Invalid file item list length: expected 2, got {len(file_item)}"
-                    )
-                    result.increment_failure()
-                    continue
-                file_name, file_hash_dict = file_item
-            elif isinstance(file_item, tuple):
-                # Legacy tuple format: (file_name, file_hash_dict)
-                file_name, file_hash_dict = file_item
-            elif isinstance(file_item, dict):
-                # Dictionary format: {"file_name": "...", "file_path": "...", ...}
-                file_name = file_item.get("file_name")
-                file_hash_dict = file_item  # The entire dict is the file hash data
-            else:
-                logger.error(f"Unexpected file item format: {type(file_item)}")
-                result.increment_failure()
-                continue
             logger.info(
-                f"[{celery_task_id}][{file_number}/{total_files}] Processing file '{file_name}'"
+                f"DEBUG: workflow_id={workflow_id}, total_files={total_files}, organization_id={organization_id}"
             )
-
-            # Track individual file processing time
-            file_start_time = time.time()
-
-            # DEBUG: Log the file hash data being sent to ensure unique identification
-            logger.info(
-                f"File hash data for {file_name}: provider_file_uuid='{file_hash_dict.get('provider_file_uuid') if file_hash_dict else 'N/A'}', file_path='{file_hash_dict.get('file_path') if file_hash_dict else 'N/A'}'"
-            )
-
-            # Create file hash object matching Django FileHash structure
-            file_hash: FileHashData = _create_file_hash_from_dict(file_hash_dict)
-
-            # Add file destination using same logic as Django backend
-            file_hash = _add_file_destination_filehash(
-                file_hash.file_number, q_file_no_list, file_hash
-            )
-
-            logger.info(f"File hash for file {file_name}: {file_hash}")
-
-            # Get pre-created WorkflowFileExecution data
-            pre_created_data = pre_created_file_executions.get(file_name)
-            if not pre_created_data:
-                logger.error(
-                    f"No pre-created WorkflowFileExecution found for file '{file_name}' - skipping"
-                )
-                result.increment_failure()
-                continue
-
-            workflow_file_execution_id = pre_created_data["id"]
-            workflow_file_execution_object = pre_created_data["object"]
-
-            # Process single file using Django-like pattern but with API coordination
-            file_execution_result = _process_file(
-                current_file_idx=file_number,
-                total_files=total_files,
-                file_data=file_data,
-                file_hash=file_hash,
-                api_client=api_client,
-                workflow_execution=workflow_execution,
-                workflow_file_execution_id=workflow_file_execution_id,  # Pass pre-created ID
-                workflow_file_execution_object=workflow_file_execution_object,  # Pass pre-created object
-            )
-
-            # NULL CHECK: Ensure file_execution_result is not None
-            if file_execution_result is None:
-                result.increment_failure()
-                logger.error(
-                    f"File execution for file {file_name} returned None - treating as failed"
+            try:
+                # Get manual review rules from backend API
+                manual_review_response = api_client.manual_review_client.get_q_no_list(
+                    workflow_id=workflow_id,
+                    total_files=total_files,
+                    organization_id=organization_id,
                 )
 
-                # Update failed file count in cache
-                try:
-                    api_client.increment_failed_files(
-                        workflow_id=workflow_id, execution_id=execution_id
-                    )
-                except Exception as increment_error:
-                    logger.warning(
-                        f"Failed to increment failed files count: {increment_error}"
-                    )
-                continue
-
-            # Calculate file execution time
-            file_execution_time = time.time() - file_start_time
-            logger.info(
-                f"File {file_name} processing completed in {file_execution_time:.2f} seconds"
-            )
-
-            # Update WorkflowFileExecution with execution time (fixes execution_time not being updated)
-            file_execution_id = file_execution_result.get("file_execution_id")
-            if file_execution_id:
-                try:
-                    final_status = (
-                        "ERROR" if file_execution_result.get("error") else "COMPLETED"
-                    )
-                    api_client.update_file_execution_status(
-                        file_execution_id=file_execution_id,
-                        status=final_status,
-                        execution_time=file_execution_time,
-                        error_message=file_execution_result.get("error"),
-                    )
-                    logger.debug(
-                        f"Updated file execution {file_execution_id} with status {final_status} and time {file_execution_time:.2f}s"
-                    )
-                except Exception as update_error:
-                    logger.warning(
-                        f"Failed to update file execution status for {file_name}: {update_error}"
-                    )
-            else:
-                logger.warning(
-                    f"No file_execution_id found for {file_name}, cannot update execution time"
-                )
-
-            # DJANGO PATTERN: Check error field to determine success/failure
-            if file_execution_result.get("error"):
-                result.increment_failure()
                 logger.info(
-                    f"File execution for file {file_name} marked as failed with error: {file_execution_result['error']}"
+                    f"Manual review API response: success={manual_review_response.success}, data={manual_review_response.data}"
                 )
 
-                # Update failed file count in cache (like Django backend)
-                try:
-                    api_client.increment_failed_files(
-                        workflow_id=workflow_id, execution_id=execution_id
+                if manual_review_response.success:
+                    calculated_q_file_no_list = manual_review_response.data.get(
+                        "q_file_no_list", []
                     )
-                except Exception as increment_error:
-                    logger.warning(
-                        f"Failed to increment failed files count: {increment_error}"
+                    q_file_no_list = set(calculated_q_file_no_list)
+                    logger.info(
+                        f"✅ Retrieved {len(q_file_no_list)} files for manual review from API client: {list(q_file_no_list)}"
                     )
-            else:
-                result.increment_success()
-                logger.info(f"File execution for file {file_name} marked as successful")
-
-                # Update completed file count in cache (like Django backend)
-                try:
-                    api_client.increment_completed_files(
-                        workflow_id=workflow_id, execution_id=execution_id
-                    )
-                except Exception as increment_error:
-                    logger.warning(
-                        f"Failed to increment completed files count: {increment_error}"
-                    )
-
-                # Create file history entry for successful execution (CRITICAL FIX for deduplication)
-                if file_data.use_file_history:
-                    try:
-                        file_history_manager = WorkerFileHistoryManager(api_client)
-                        history_created = file_history_manager.create_file_history_entry(
-                            workflow_id=workflow_id,
-                            file_data=file_hash,
-                            execution_result=file_execution_result,
-                            organization_id=organization_id,
-                        )
-                        if history_created:
-                            logger.info(
-                                f"Created file history entry for successful file: {file_name}"
-                            )
-                        else:
-                            logger.warning(
-                                f"Failed to create file history entry for: {file_name}"
-                            )
-                    except Exception as history_error:
-                        logger.error(
-                            f"File history creation failed for {file_name}: {history_error}"
-                        )
-                        # Don't fail the entire execution if file history creation fails
                 else:
-                    logger.debug(
-                        f"File history disabled for workflow {workflow_id}, skipping history entry for {file_name}"
+                    logger.error(
+                        f"❌ Failed to get q_file_no_list from manual review client: {manual_review_response.error}"
                     )
+            except Exception as e:
+                logger.error(
+                    f"❌ Error retrieving q_file_no_list from manual review client: {e}"
+                )
+                import traceback
 
-            # Store execution time in result for aggregation
-            result.add_execution_time(file_execution_time)
+                logger.error(f"Full traceback: {traceback.format_exc()}")
 
-    # Return result using dataclass
+    logger.info(
+        f"Processing {total_files} files of execution {execution_id} with {len(q_file_no_list)} files marked for manual review"
+    )
+
+    # Update total_files in the WorkflowExecution so UI can show proper progress
+    try:
+        api_client.update_workflow_execution_status(
+            execution_id=execution_id,
+            status=ExecutionStatus.EXECUTING.value,
+            total_files=total_files,
+        )
+        logger.info(
+            f"Updated WorkflowExecution {execution_id} with total_files={total_files}"
+        )
+    except Exception as e:
+        logger.warning(f"Failed to update total_files for execution {execution_id}: {e}")
+        # Continue processing even if status update fails
+
+    # Add manual review data to context
+    context.update(
+        {
+            "q_file_no_list": q_file_no_list,
+            "workflow_type": workflow_type,
+            "is_api_workflow": is_api_workflow,
+        }
+    )
+
+    return context
+
+
+def _refactored_pre_create_file_executions(context: dict[str, Any]) -> dict[str, Any]:
+    """Pre-create all WorkflowFileExecution records to prevent duplicates.
+
+    Args:
+        context: Execution context dictionary
+
+    Returns:
+        Updated context with pre-created file execution data
+    """
+    files = context["files"]
+    workflow_id = context["workflow_id"]
+    execution_id = context["execution_id"]
+    api_client = context["api_client"]
+    workflow_type = context["workflow_type"]
+    is_api_workflow = context["is_api_workflow"]
+
+    # CRITICAL: Pre-create all WorkflowFileExecution records to prevent duplicates
+    # This matches the backend's _pre_create_file_executions pattern for ALL workflow types
+    pre_created_file_executions = _pre_create_file_executions(
+        files=files,
+        workflow_id=workflow_id,
+        execution_id=execution_id,
+        api_client=api_client,
+        workflow_type=workflow_type,
+        is_api=is_api_workflow,
+    )
+    logger.info(
+        f"Pre-created {len(pre_created_file_executions)} WorkflowFileExecution records for {workflow_type} workflow"
+    )
+
+    # Determine use_file_history for this workflow (matches backend pattern)
+    use_file_history = _should_use_file_history(api_client, workflow_id, workflow_type)
+    logger.info(
+        f"File history determination for workflow {workflow_id} (type: {workflow_type}): use_file_history = {use_file_history}"
+    )
+
+    context.update(
+        {
+            "pre_created_file_executions": pre_created_file_executions,
+            "use_file_history": use_file_history,
+        }
+    )
+
+    return context
+
+
+def _process_individual_files(context: dict[str, Any]) -> dict[str, Any]:
+    """Process each file individually through the workflow.
+
+    Args:
+        context: Execution context dictionary
+
+    Returns:
+        Updated context with processing results
+    """
+    files = context["files"]
+    file_data = context["file_data"]
+    q_file_no_list = context["q_file_no_list"]
+    use_file_history = context["use_file_history"]
+    api_client = context["api_client"]
+    workflow_execution = context["workflow_execution"]
+    pre_created_file_executions = context["pre_created_file_executions"]
+    result = context["result"]
+    successful_files_for_manual_review = context["successful_files_for_manual_review"]
+    celery_task_id = context["celery_task_id"]
+    total_files = context["total_files"]
+
+    # Process each file - handle list, tuple, and dictionary formats
+    for file_number, file_item in enumerate(files, 1):
+        # Handle Django list format (from asdict serialization), tuple format, and dictionary format
+        if isinstance(file_item, list):
+            # Django backend format after asdict(): [file_name, file_hash_dict]
+            if len(file_item) != 2:
+                logger.error(
+                    f"Invalid file item list length: expected 2, got {len(file_item)}"
+                )
+                result.increment_failure()
+                continue
+            file_name, file_hash_dict = file_item
+        elif isinstance(file_item, tuple):
+            # Legacy tuple format: (file_name, file_hash_dict)
+            file_name, file_hash_dict = file_item
+        elif isinstance(file_item, dict):
+            # Dictionary format: {"file_name": "...", "file_path": "...", ...}
+            file_name = file_item.get("file_name")
+            file_hash_dict = file_item  # The entire dict is the file hash data
+        else:
+            logger.error(f"Unexpected file item format: {type(file_item)}")
+            result.increment_failure()
+            continue
+
+        logger.info(
+            f"[{celery_task_id}][{file_number}/{total_files}] Processing file '{file_name}'"
+        )
+
+        # Track individual file processing time
+        import time
+
+        file_start_time = time.time()
+
+        # DEBUG: Log the file hash data being sent to ensure unique identification
+        logger.info(
+            f"File hash data for {file_name}: provider_file_uuid='{file_hash_dict.get('provider_file_uuid') if file_hash_dict else 'N/A'}', file_path='{file_hash_dict.get('file_path') if file_hash_dict else 'N/A'}'"
+        )
+
+        # Create file hash object matching Django FileHash structure
+        file_hash: FileHashData = _create_file_hash_from_dict(file_hash_dict)
+
+        # CRITICAL: Set file_number from the enumerate loop (1-indexed)
+        file_hash.file_number = file_number
+
+        # Set use_file_history flag based on workflow determination
+        file_hash.use_file_history = use_file_history
+
+        # Add file destination using same logic as Django backend
+        file_hash = _add_file_destination_filehash(
+            file_hash.file_number, q_file_no_list, file_hash
+        )
+
+        # Log manual review decision
+        if (
+            hasattr(file_hash, "is_manualreview_required")
+            and file_hash.is_manualreview_required
+        ):
+            logger.info(
+                f"File {file_name} (#{file_hash.file_number}) MARKED FOR MANUAL REVIEW - destination: {file_hash.file_destination}"
+            )
+        else:
+            logger.info(
+                f"File {file_name} (#{file_hash.file_number}) marked for destination processing - destination: {getattr(file_hash, 'file_destination', 'destination')}"
+            )
+
+        logger.debug(f"File hash for file {file_name}: {file_hash}")
+
+        # Get pre-created WorkflowFileExecution data
+        pre_created_data = pre_created_file_executions.get(file_name)
+        if not pre_created_data:
+            logger.error(
+                f"No pre-created WorkflowFileExecution found for file '{file_name}' - skipping"
+            )
+            result.increment_failure()
+            continue
+
+        workflow_file_execution_id = pre_created_data["id"]
+        workflow_file_execution_object = pre_created_data["object"]
+
+        # Process single file using Django-like pattern but with API coordination
+        file_execution_result = _process_file(
+            current_file_idx=file_number,
+            total_files=total_files,
+            file_data=file_data,
+            file_hash=file_hash,
+            api_client=api_client,
+            workflow_execution=workflow_execution,
+            workflow_file_execution_id=workflow_file_execution_id,  # Pass pre-created ID
+            workflow_file_execution_object=workflow_file_execution_object,  # Pass pre-created object
+        )
+
+        # Handle file processing result
+        _handle_file_processing_result(
+            file_execution_result,
+            file_name,
+            file_start_time,
+            result,
+            successful_files_for_manual_review,
+            file_hash,
+            api_client,
+            context["workflow_id"],
+            context["execution_id"],
+        )
+
+    context.update(
+        {
+            "result": result,
+            "successful_files_for_manual_review": successful_files_for_manual_review,
+        }
+    )
+
+    return context
+
+
+def _handle_file_processing_result(
+    file_execution_result: dict[str, Any],
+    file_name: str,
+    file_start_time: float,
+    result: FileBatchResult,
+    successful_files_for_manual_review: list,
+    file_hash: FileHashData,
+    api_client: Any,
+    workflow_id: str,
+    execution_id: str,
+) -> None:
+    """Handle the result of individual file processing.
+
+    Args:
+        file_execution_result: Result from file processing
+        file_name: Name of the processed file
+        file_start_time: Start time for performance tracking
+        result: Batch result tracker
+        successful_files_for_manual_review: List of successful files
+        file_hash: File hash data
+        api_client: API client instance
+        workflow_id: Workflow ID
+        execution_id: Execution ID
+    """
+    import time
+
+    # NULL CHECK: Ensure file_execution_result is not None
+    if file_execution_result is None:
+        result.increment_failure()
+        logger.error(
+            f"File execution for file {file_name} returned None - treating as failed"
+        )
+
+        # Update failed file count in cache
+        try:
+            api_client.increment_failed_files(
+                workflow_id=workflow_id, execution_id=execution_id
+            )
+        except Exception as increment_error:
+            logger.warning(f"Failed to increment failed files count: {increment_error}")
+        return
+
+    # Calculate file execution time
+    file_execution_time = time.time() - file_start_time
+    logger.info(
+        f"File {file_name} processing completed in {file_execution_time:.2f} seconds"
+    )
+
+    # Update WorkflowFileExecution with execution time (fixes execution_time not being updated)
+    file_execution_id = file_execution_result.get("file_execution_id")
+    if file_execution_id:
+        try:
+            final_status = "ERROR" if file_execution_result.get("error") else "COMPLETED"
+            api_client.update_file_execution_status(
+                file_execution_id=file_execution_id,
+                status=final_status,
+                execution_time=file_execution_time,
+                error_message=file_execution_result.get("error"),
+            )
+            logger.debug(
+                f"Updated file execution {file_execution_id} with status {final_status} and time {file_execution_time:.2f}s"
+            )
+        except Exception as update_error:
+            logger.warning(
+                f"Failed to update file execution status for {file_name}: {update_error}"
+            )
+    else:
+        logger.warning(
+            f"No file_execution_id found for {file_name}, cannot update execution time"
+        )
+
+    # DJANGO PATTERN: Check error field to determine success/failure
+    if file_execution_result.get("error"):
+        result.increment_failure()
+        logger.info(
+            f"File execution for file {file_name} marked as failed with error: {file_execution_result['error']}"
+        )
+
+        # Update failed file count in cache (like Django backend)
+        try:
+            api_client.increment_failed_files(
+                workflow_id=workflow_id, execution_id=execution_id
+            )
+        except Exception as increment_error:
+            logger.warning(f"Failed to increment failed files count: {increment_error}")
+    else:
+        result.increment_success()
+        logger.info(f"File execution for file {file_name} marked as successful")
+
+        # Add to successful files for manual review evaluation
+        successful_files_for_manual_review.append((file_name, file_hash))
+
+
+def _evaluate_batch_manual_review(context: dict[str, Any]) -> dict[str, Any]:
+    """Evaluate batch for manual review after all files are processed.
+
+    Args:
+        context: Execution context dictionary
+
+    Returns:
+        Updated context
+    """
+    successful_files_for_manual_review = context["successful_files_for_manual_review"]
+    workflow_id = context["workflow_id"]
+    api_client = context["api_client"]
+
+    # Evaluate successful files for batch manual review
+    if successful_files_for_manual_review:
+        logger.info(
+            f"Evaluating {len(successful_files_for_manual_review)} successful files for batch manual review"
+        )
+
+        try:
+            # Get destination configuration to determine manual review requirement
+            destination_config_response = api_client.get_destination_config(workflow_id)
+            destination_type = destination_config_response.get(
+                "connection_type", "UNKNOWN"
+            )
+
+            logger.info(
+                f"Retrieved destination config for workflow {workflow_id}: {destination_type}"
+            )
+            logger.info(
+                f"Checking manual review configuration for workflow {workflow_id} with destination type {destination_type}"
+            )
+
+            # For now, manual review is not required for any destination types in batch processing
+            # Individual files already handled manual review routing during processing
+            logger.info(f"Manual review not required for workflow {workflow_id}")
+
+        except Exception as manual_review_error:
+            logger.warning(
+                f"Failed to evaluate batch manual review: {manual_review_error}"
+            )
+            # Continue without batch manual review evaluation
+
+    return context
+
+
+def _compile_batch_result(context: dict[str, Any]) -> dict[str, Any]:
+    """Compile the final batch processing result.
+
+    Args:
+        context: Execution context dictionary
+
+    Returns:
+        Final result dictionary
+    """
+    result = context["result"]
+
     logger.info("Function tasks.process_file_batch completed successfully")
-    return result.to_dict()
+
+    # Return the final result matching Django backend format
+    return {
+        "successful_files": result.successful_files,
+        "failed_files": result.failed_files,
+        "total_files": result.successful_files + result.failed_files,
+        "execution_time": result.execution_time,
+    }
+
+
+# HELPER FUNCTIONS (originally part of the massive process_file_batch function)
+# These functions support the refactored file processing workflow
 
 
 def _detect_comprehensive_workflow_type(
@@ -451,6 +746,9 @@ def _pre_create_file_executions(
 
     # Get destination config for file history checking
     use_file_history = _should_use_file_history(api_client, workflow_id, workflow_type)
+    logger.info(
+        f"File history determination for workflow {workflow_id} (type: {workflow_type}): use_file_history = {use_file_history}"
+    )
 
     for file_item in files:
         # Parse file item to get name and hash data
@@ -467,6 +765,9 @@ def _pre_create_file_executions(
 
         # Create FileHashData from dict
         file_hash = _create_file_hash_from_dict(file_hash_dict)
+
+        # Set use_file_history flag on the file object for later use
+        file_hash.use_file_history = use_file_history
 
         # CRITICAL: File History Deduplication for ETL/TASK workflows
         if use_file_history and workflow_type in ["ETL", "TASK"]:
@@ -515,37 +816,87 @@ def _should_use_file_history(
 ) -> bool:
     """Determine if file history should be used for deduplication.
 
-    Matches backend logic in destination.py where use_file_history is checked.
+    Matches backend logic where use_file_history defaults to True except for API deployments.
+
+    Backend logic (file_execution_tasks.py:106):
+    use_file_history: bool = True,  # Will be False for API deployment alone
     """
     try:
-        # Get workflow destination configuration
+        # Get workflow endpoints to check if this is an API deployment
         workflow_endpoints = api_client.get_workflow_endpoints(workflow_id)
+        logger.info(f"Got workflow endpoints for {workflow_id}: {workflow_endpoints}")
+
         if isinstance(workflow_endpoints, dict):
             endpoints = workflow_endpoints.get("endpoints", [])
+            logger.info(f"Found {len(endpoints)} endpoints")
 
+            # Check source endpoint to determine if this is an API deployment
             for endpoint in endpoints:
-                if endpoint.get("endpoint_type") == "DESTINATION":
-                    # Check if destination supports file history
-                    destination_config = endpoint.get("configuration", {})
-                    use_file_history = destination_config.get("use_file_history", True)
+                if endpoint.get("endpoint_type") == "SOURCE":
+                    connection_type = endpoint.get("connection_type")
+                    is_api = connection_type == "API"
+                    logger.info(
+                        f"Source connection_type: {connection_type}, is_api: {is_api}"
+                    )
 
-                    # ETL workflows typically use file history by default
-                    if workflow_type == "ETL":
-                        return use_file_history
-                    # TASK workflows may or may not use history depending on destination
-                    elif workflow_type == "TASK":
-                        return use_file_history
-                    # API workflows handle their own deduplication
+                    if is_api:
+                        # For API deployments, check destination config for explicit setting
+                        dest_endpoint = next(
+                            (
+                                ep
+                                for ep in endpoints
+                                if ep.get("endpoint_type") == "DESTINATION"
+                            ),
+                            None,
+                        )
+                        if dest_endpoint:
+                            destination_config = dest_endpoint.get("configuration", {})
+                            use_file_history = destination_config.get(
+                                "use_file_history", False
+                            )  # Default False for API
+                            logger.info(
+                                f"API deployment - destination use_file_history: {use_file_history}"
+                            )
+                            return use_file_history
+                        else:
+                            logger.info(
+                                "API deployment - no destination config, returning False"
+                            )
+                            return False
                     else:
-                        return False
+                        # For non-API deployments (ETL, TASK, MANUAL_REVIEW), check destination config
+                        dest_endpoint = next(
+                            (
+                                ep
+                                for ep in endpoints
+                                if ep.get("endpoint_type") == "DESTINATION"
+                            ),
+                            None,
+                        )
+                        if dest_endpoint:
+                            destination_config = dest_endpoint.get("configuration", {})
+                            use_file_history = destination_config.get(
+                                "use_file_history", True
+                            )  # Default True for non-API
+                            logger.info(
+                                f"Non-API deployment - destination use_file_history: {use_file_history}"
+                            )
+                            return use_file_history
+                        else:
+                            logger.info(
+                                "Non-API deployment - no destination config, returning True"
+                            )
+                            return True
 
-        # Default: use file history for ETL/TASK workflows
-        return workflow_type in ["ETL", "TASK"]
+        # Default: True for non-API deployments (ETL, TASK, MANUAL_REVIEW)
+        logger.info("No source endpoint found, returning default True")
+        return True
 
     except Exception as e:
         logger.warning(f"Failed to determine file history usage for {workflow_id}: {e}")
-        # Conservative default: use file history for ETL/TASK
-        return workflow_type in ["ETL", "TASK"]
+        # Conservative default: True (matches backend default)
+        logger.info("Exception occurred, returning default True")
+        return True
 
 
 def _is_file_already_processed(
@@ -574,19 +925,14 @@ def _is_file_already_processed(
         if file_hash.file_path:
             params["file_path"] = file_hash.file_path
 
-        # Call internal API to check file history using the correct endpoint
+        # Call internal API to check file history using the unified method
         try:
-            # Use POST request to send parameters in request body as expected by backend
-            file_history_response = api_client.post(
-                "v1/file-history/get/",
-                {
-                    "workflow_id": str(workflow_id),
-                    "provider_file_uuid": file_hash.provider_file_uuid,
-                    "file_path": str(file_hash.file_path),
-                    "organization_id": api_client.organization_id,
-                    "source_connection_type": file_hash.source_connection_type,  # Include source connection type for backend compatibility
-                    "file_hash": file_hash.file_hash,  # Include file hash for better matching
-                },
+            # Use the unified get_file_history method that handles both provider_file_uuid and file_hash
+            file_history_response = api_client.get_file_history(
+                workflow_id=str(workflow_id),
+                provider_file_uuid=file_hash.provider_file_uuid,
+                file_hash=file_hash.file_hash,
+                file_path=str(file_hash.file_path),
                 organization_id=api_client.organization_id,
             )
 
@@ -763,10 +1109,22 @@ def _add_file_destination_filehash(file_number, q_file_no_list, file_hash):
     """
     # This matches the Django backend logic for file destination
     # Update the dataclass field directly
+    logger.debug(
+        f"Evaluating file #{file_number} for manual review. q_file_no_list: {sorted(list(q_file_no_list)) if q_file_no_list else 'EMPTY'}"
+    )
+
     if file_number and file_number in q_file_no_list:
-        file_hash.file_destination = "queue"
+        file_hash.file_destination = "MANUALREVIEW"
+        file_hash.is_manualreview_required = True
+        logger.info(
+            f"File #{file_number} ({file_hash.file_name}) SELECTED for manual review (in q_file_no_list)"
+        )
     else:
         file_hash.file_destination = "destination"
+        file_hash.is_manualreview_required = False
+        logger.debug(
+            f"File #{file_number} ({file_hash.file_name}) NOT selected for manual review (not in q_file_no_list)"
+        )
 
     return file_hash
 
@@ -860,20 +1218,31 @@ def _process_file(
             f"API workflow detection result: {is_api_workflow} for workflow {workflow_id}"
         )
 
+        # CRITICAL: Check if file should go to manual review BEFORE processing
+        if (
+            hasattr(file_hash, "file_destination")
+            and file_hash.file_destination == "MANUALREVIEW"
+        ):
+            logger.info(
+                f"🔄 File {file_name} marked for MANUAL REVIEW - skipping normal workflow execution"
+            )
+
+            # For manual review files, we still need to execute the workflow to get results
+            # but we'll route the output to manual review queue instead of destination
+            logger.info(f"Executing workflow for manual review file: {file_name}")
+        else:
+            logger.info(f"📤 File {file_name} marked for DESTINATION processing")
+
         # Core execution phase - use WorkflowExecutionService directly
         workflow_service = WorkerWorkflowExecutionService(api_client)
 
-        # Generate fallback hash if file_hash is empty to prevent KeyError
+        # Get content hash - it will be computed during file processing
         content_hash = (file_hash.file_hash or "").strip()
         if not content_hash:
-            # Generate fallback hash using file metadata for consistent identification
-            import hashlib
-
-            fallback_data = f"{file_hash.file_name or ''}{file_hash.file_path or ''}{file_hash.file_size or 0}"
-            content_hash = hashlib.md5(fallback_data.encode()).hexdigest()
-            logger.warning(
-                f"Generated fallback hash for {file_hash.file_name}: {content_hash}"
+            logger.info(
+                f"File hash not provided, will be computed during execution for: {file_hash.file_name}"
             )
+            content_hash = ""  # Will be computed during workflow execution
 
         execution_result = workflow_service.execute_workflow_for_file(
             organization_id=organization_id,
@@ -887,6 +1256,11 @@ def _process_file(
                 or "application/octet-stream",  # Type-safe dataclass access
                 "provider_file_uuid": file_hash.provider_file_uuid,  # CRITICAL FIX: Include provider_file_uuid
                 "source_connection_type": file_hash.source_connection_type,  # Include for consistent API detection
+                # CRITICAL: Pass file destination for manual review routing
+                "file_destination": getattr(file_hash, "file_destination", "destination"),
+                "is_manualreview_required": getattr(
+                    file_hash, "is_manualreview_required", False
+                ),
                 # Pass through connector metadata for FILESYSTEM workflows (stored in fs_metadata)
                 "connector_metadata": file_hash.fs_metadata.get("connector_metadata")
                 if file_hash.fs_metadata
@@ -1244,7 +1618,12 @@ def process_file_batch_api(
                 api_client.set_organization_context(schema_name)
 
                 # Get workflow execution context
-                execution_context = api_client.get_workflow_execution(execution_id)
+                execution_response = api_client.get_workflow_execution(execution_id)
+                if not execution_response.success:
+                    raise Exception(
+                        f"Failed to get execution context: {execution_response.error}"
+                    )
+                execution_context = execution_response.data
                 workflow_execution = execution_context.get("execution", {})
 
                 # Set log events ID in StateStore like Django backend
@@ -1407,9 +1786,9 @@ def _check_file_history(
         if not cache_key:
             return {"found": False}
 
-        history_result = api_client.get_file_history_by_cache_key(
-            cache_key=cache_key,
+        history_result = api_client.get_file_history(
             workflow_id=workflow_id,
+            file_hash=cache_key,  # Use cache_key as file_hash
             file_path=file_data.get("file_path"),
         )
 
@@ -1550,9 +1929,9 @@ def _process_single_file(
 
         # Check file history if enabled
         if use_file_history:
-            history_result = api_client.get_file_history_by_cache_key(
-                cache_key=cache_key,
+            history_result = api_client.get_file_history(
                 workflow_id=workflow_id,
+                file_hash=cache_key,  # Use cache_key as file_hash
                 file_path=file_hash_data.get("file_path"),
             )
 

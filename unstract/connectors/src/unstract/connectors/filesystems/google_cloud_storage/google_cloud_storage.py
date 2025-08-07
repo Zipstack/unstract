@@ -99,6 +99,55 @@ class GoogleCloudStorageFS(UnstractFileSystem):
         logger.error(f"[GCS] File hash not found for the metadata: {metadata}")
         return None
 
+    @staticmethod
+    def get_connector_root_dir(input_dir: str, **kwargs) -> str:
+        """Get the correct root directory for GCS operations.
+
+        This method handles GCS-specific path resolution, including:
+        - Bucket name extraction from paths
+        - Proper path formatting for GCS operations
+        - Compatibility with different path formats
+
+        Args:
+            input_dir: Input directory path (may include bucket name)
+            root_path: Root path configured for the connector
+
+        Returns:
+            str: Properly formatted GCS path
+        """
+        # For GCS, paths might be passed as "bucket-name/folder-path"
+        # But fsspec GCS expects just "folder-path" without bucket prefix
+
+        root_path = kwargs.get("root_path", "")
+
+        # If root_path is set, it should already contain the bucket
+        if root_path:
+            # Remove leading/trailing slashes
+            root_path = root_path.strip("/")
+            input_dir = input_dir.strip("/")
+
+            # If input_dir is just "/", use root_path
+            if not input_dir or input_dir == "/":
+                return root_path
+
+            # Combine paths
+            return f"{root_path}/{input_dir}"
+
+        # If no root_path, clean up the input_dir
+        input_dir = input_dir.strip("/")
+
+        # Check if input_dir contains bucket name (has no slashes or is bucket/path format)
+        if "/" in input_dir:
+            # This might be "bucket/path" format
+            parts = input_dir.split("/", 1)
+            if len(parts) == 2:
+                bucket_name, folder_path = parts
+                # For GCS, we typically need the full path including bucket
+                return input_dir
+
+        # Return as-is if it's just a folder name or bucket name
+        return input_dir
+
     def is_dir_by_metadata(self, metadata: dict[str, Any]) -> bool:
         """Check if the given path is a directory.
 

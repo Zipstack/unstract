@@ -9,27 +9,28 @@ import time
 from typing import Any
 
 import requests
-from worker import app, config
+
+# Import shared worker infrastructure
+from shared.api_client import InternalAPIClient
+from shared.logging_utils import WorkerLogger, log_context, monitor_performance
+from shared.retry_utils import ResilientExecutor, circuit_breaker
+from shared.source_connector import WorkerSourceConnector
+from shared.type_utils import FileDataValidator, TypeConverter
+from shared.workflow_execution_service import WorkerWorkflowExecutionService
 
 # Import shared data models for type safety
 from unstract.core.data_models import (
     ExecutionStatus,
     FileBatchData,
-    FileHashData,
+    FileHash,
     WorkerFileData,
 )
 
 # Import common workflow utilities
 from unstract.core.workflow_utils import PipelineTypeResolver, WorkflowTypeDetector
 
-# Import shared worker infrastructure
-from workers.shared.api_client import InternalAPIClient
-from workers.shared.logging_utils import WorkerLogger, log_context, monitor_performance
-from workers.shared.retry_utils import ResilientExecutor, circuit_breaker
-from workers.shared.source_operations_backend_compatible import (
-    WorkerSourceConnector,
-)
-from workers.shared.type_utils import FileDataValidator, TypeConverter
+# Import from local worker module (avoid circular import)
+from .worker import app, config
 
 logger = WorkerLogger.get_logger(__name__)
 
@@ -151,7 +152,7 @@ def async_execute_bin_general(
     schema_name: str,
     workflow_id: str,
     execution_id: str,
-    hash_values_of_files: dict[str, FileHashData],
+    hash_values_of_files: dict[str, FileHash],
     scheduled: bool = False,
     execution_mode: tuple | None = None,
     pipeline_id: str | None = None,
@@ -198,7 +199,12 @@ def async_execute_bin_general(
                 api_client.set_organization_context(schema_name)
 
                 # Get workflow execution context
-                execution_context = api_client.get_workflow_execution(execution_id)
+                execution_response = api_client.get_workflow_execution(execution_id)
+                if not execution_response.success:
+                    raise Exception(
+                        f"Failed to get execution context: {execution_response.error}"
+                    )
+                execution_context = execution_response.data
                 logger.info(f"Retrieved execution context for {execution_id}")
 
                 # Update execution status to in progress
@@ -281,7 +287,7 @@ def async_execute_bin_general(
 def _process_file_batches_general(
     api_client: InternalAPIClient,
     execution_id: str,
-    hash_values_of_files: dict[str, FileHashData],
+    hash_values_of_files: dict[str, FileHash],
     pipeline_id: str | None = None,
 ) -> list:
     """Process file batches for general workflow execution.
@@ -300,35 +306,35 @@ def _process_file_batches_general(
     )
 
     try:
-        # Convert FileHashData objects to file data format expected by API
+        # Convert FileHash objects to file data format expected by API
         files_data = []
         for file_key, file_hash_data in hash_values_of_files.items():
             # TRACE: Log incoming file data
-            logger.info(f"Processing FileHashData for file '{file_key}'")
-            logger.info(f"  FileHashData: {file_hash_data}")
+            logger.info(f"Processing FileHash for file '{file_key}'")
+            logger.info(f"  FileHash: {file_hash_data}")
 
-            # Validate that we have a FileHashData object
-            if not isinstance(file_hash_data, FileHashData):
+            # Validate that we have a FileHash object
+            if not isinstance(file_hash_data, FileHash):
                 logger.error(
-                    f"Expected FileHashData object for '{file_key}', got {type(file_hash_data)}"
+                    f"Expected FileHash object for '{file_key}', got {type(file_hash_data)}"
                 )
                 # Try to convert from dict if possible
                 if isinstance(file_hash_data, dict):
                     try:
-                        file_hash_data = FileHashData.from_dict(file_hash_data)
+                        file_hash_data = FileHash.from_dict(file_hash_data)
                         logger.info(
-                            f"Successfully converted dict to FileHashData for '{file_key}'"
+                            f"Successfully converted dict to FileHash for '{file_key}'"
                         )
                     except Exception as e:
                         logger.error(
-                            f"Failed to convert dict to FileHashData for '{file_key}': {e}"
+                            f"Failed to convert dict to FileHash for '{file_key}': {e}"
                         )
                         continue
                 else:
                     logger.error(f"Cannot process file '{file_key}' - invalid data type")
                     continue
 
-            # Use FileHashData to_dict method for consistent data structure
+            # Use FileHash to_dict method for consistent data structure
             file_data = file_hash_data.to_dict()
 
             # TRACE: Log final file data
@@ -420,7 +426,34 @@ def _execute_general_workflow(
         # 3. Orchestrate file processing through file_processing workers
         # 4. Aggregate results through callback workers
 
-        # Get source files using backend-compatible operations with proper API vs ETL/TASK differentiation
+        # Initialize workflow execution service with migrated business logic
+        workflow_service = WorkerWorkflowExecutionService(
+            api_client=api_client,
+            workflow_id=workflow_id,
+            organization_id=organization_id,
+            pipeline_id=pipeline_id,
+            single_step=False,  # General workflows are complete execution
+            scheduled=scheduled,
+            execution_id=execution_id,
+            use_file_history=use_file_history,
+        )
+
+        # Create or get workflow execution
+        if not execution_id:
+            execution_id = workflow_service.create_workflow_execution()
+            logger.info(f"Created new workflow execution: {execution_id}")
+
+        # Compile workflow
+        compilation_success = workflow_service.compile_workflow()
+        if not compilation_success:
+            logger.error("Workflow compilation failed")
+            workflow_service.update_execution_status(
+                status=ExecutionStatus.ERROR,
+                error="Workflow compilation failed",
+            )
+            return
+
+        # Get source files using backend-compatible operations
         source_connector = WorkerSourceConnector(
             api_client=api_client,
             workflow_id=workflow_id,
@@ -429,16 +462,17 @@ def _execute_general_workflow(
             use_file_history=use_file_history,
         )
 
-        # List files from source using the exact same logic as backend SourceConnector.list_files_from_source()
-        file_listing_result = source_connector.list_files_from_source()
+        # List files from source
+        source_files, total_files = source_connector.list_files_from_source()
 
-        source_files = file_listing_result.files  # Dict[str, FileHashData]
-        total_files = file_listing_result.total_count
-        connection_type = file_listing_result.connection_type
-        is_api = file_listing_result.is_api
+        # Get connection type from endpoint config
+        connection_type = source_connector.endpoint_config.get(
+            "connection_type", "FILESYSTEM"
+        )
+        is_api = connection_type == "API"
 
         logger.info(
-            f"Listed {total_files} files from {connection_type} source (API: {is_api}, file_history: {file_listing_result.used_file_history})"
+            f"Listed {total_files} files from {connection_type} source (API: {is_api}, file_history: {use_file_history})"
         )
 
         # Update total_files immediately so UI can show proper progress (fixes race condition)
@@ -452,9 +486,11 @@ def _execute_general_workflow(
 
         if not source_files:
             logger.info(f"Execution {execution_id} no files to process")
-            # Complete immediately with no files
-            api_client.update_workflow_execution_status(
-                execution_id=execution_id, status=ExecutionStatus.COMPLETED.value
+            # Complete immediately with no files using workflow service
+            workflow_service.update_execution_status(
+                status=ExecutionStatus.COMPLETED,
+                completed_files=0,
+                failed_files=0,
             )
 
             # Update pipeline status if needed
@@ -479,17 +515,38 @@ def _execute_general_workflow(
                 "is_general_workflow": True,
             }
 
-        # Orchestrate file processing using the same pattern as API worker
-        orchestration_result = _orchestrate_file_processing_general(
-            api_client=api_client,
-            workflow_id=workflow_id,
-            execution_id=execution_id,
-            source_files=source_files,
-            pipeline_id=pipeline_id,
-            scheduled=scheduled,
-            execution_mode=execution_mode,
-            use_file_history=use_file_history,
-        )
+        # Orchestrate file processing using chord pattern
+        try:
+            # Use orchestration method that creates chord and returns immediately
+            orchestration_result = _orchestrate_file_processing_general(
+                api_client=api_client,
+                workflow_id=workflow_id,
+                execution_id=execution_id,
+                source_files=source_files,
+                pipeline_id=pipeline_id,
+                scheduled=scheduled,
+                execution_mode=execution_mode,
+                use_file_history=use_file_history,
+            )
+
+            # The orchestration result contains the chord_id and batch information
+            # Pipeline status will be updated by the callback worker
+            logger.info(
+                f"General workflow orchestration completed in {time.time() - start_time:.2f}s"
+            )
+
+        except Exception as e:
+            logger.error(f"Workflow execution failed: {e}")
+            workflow_service.update_execution_status(
+                status=ExecutionStatus.ERROR,
+                error=str(e),
+            )
+
+            orchestration_result = {
+                "status": "error",
+                "success": False,
+                "error": str(e),
+            }
 
         execution_time = time.time() - start_time
         orchestration_result["execution_time"] = execution_time
@@ -509,7 +566,7 @@ def _orchestrate_file_processing_general(
     api_client: InternalAPIClient,
     workflow_id: str,
     execution_id: str,
-    source_files: dict[str, FileHashData],
+    source_files: dict[str, FileHash],
     pipeline_id: str | None,
     scheduled: bool,
     execution_mode: tuple | None,
@@ -558,9 +615,14 @@ def _orchestrate_file_processing_general(
         print(f"Use file history: {use_file_history}")
         print(f"Batches -------------------->>>: {batches}")
 
-        for batch_idx, batch in enumerate(batches):
-            # Create file data exactly matching Django FileData structure
-            file_data = _create_file_data_general(
+        # Calculate manual review configuration ONCE for all files before batching
+        from shared.manual_review_factory import get_manual_review_service
+
+        manual_review_service = get_manual_review_service(
+            api_client, api_client.organization_id
+        )
+        global_file_data = (
+            manual_review_service.create_workflow_file_data_with_manual_review(
                 workflow_id=workflow_id,
                 execution_id=execution_id,
                 organization_id=api_client.organization_id,
@@ -568,6 +630,42 @@ def _orchestrate_file_processing_general(
                 scheduled=scheduled,
                 execution_mode=execution_mode_str,
                 use_file_history=use_file_history,
+                total_files=len(source_files),
+            )
+        )
+
+        # Pre-calculate file decisions for ALL files based on total count - not per batch!
+        q_file_no_list = global_file_data.manual_review_config.get("q_file_no_list", [])
+        logger.info(
+            f"Pre-calculated manual review selection: {len(q_file_no_list)} files selected from {len(source_files)} total files for manual review"
+        )
+
+        for batch_idx, batch in enumerate(batches):
+            # Create file data using the pre-calculated global configuration
+            file_data = (
+                manual_review_service.create_workflow_file_data_with_manual_review(
+                    workflow_id=workflow_id,
+                    execution_id=execution_id,
+                    organization_id=api_client.organization_id,
+                    pipeline_id=pipeline_id,
+                    scheduled=scheduled,
+                    execution_mode=execution_mode_str,
+                    use_file_history=use_file_history,
+                    total_files=len(source_files),
+                )
+            )
+
+            # Calculate batch-specific decisions based on the global q_file_no_list
+            file_decisions = []
+            for file_name, file_hash in batch:
+                file_number = file_hash.get("file_number", 0)
+                is_selected = file_number in q_file_no_list
+                file_decisions.append(is_selected)
+
+            # Update the file_data with batch-specific decisions
+            file_data.manual_review_config["file_decisions"] = file_decisions
+            logger.info(
+                f"Calculated manual review decisions for batch {batch_idx + 1}: {sum(file_decisions)}/{len(file_decisions)} files selected"
             )
 
             # Create batch data exactly matching Django FileBatchData structure
@@ -633,13 +731,17 @@ def _orchestrate_file_processing_general(
                 f"Passing pipeline_id {pipeline_id} to callback for proper status updates"
             )
 
-        result = chord(batch_tasks)(
-            app.signature(
-                "process_batch_callback",  # Use same task name as Django
-                kwargs=callback_kwargs,  # Pass execution_id and pipeline_id as kwargs
-                queue=file_processing_callback_queue,
-            )
+        # Create callback signature exactly matching the working API deployment pattern
+        # Import to ensure we have the right app context
+        from .worker import app as celery_app
+
+        callback_signature = celery_app.signature(
+            "process_batch_callback",
+            kwargs=callback_kwargs,  # Pass execution_id and pipeline_id as kwargs
+            queue=file_processing_callback_queue,
         )
+
+        result = chord(batch_tasks)(callback_signature)
 
         if not result:
             exception = f"Failed to queue execution task {execution_id}"
@@ -672,7 +774,7 @@ def _orchestrate_file_processing_general(
         raise
 
 
-def _get_file_batches_general(input_files: dict[str, FileHashData] | list[dict]) -> list:
+def _get_file_batches_general(input_files: dict[str, FileHash] | list[dict]) -> list:
     """Get file batches using the exact same logic as Django backend.
 
     This matches WorkflowHelper.get_file_batches() exactly.
@@ -704,7 +806,7 @@ def _get_file_batches_general(input_files: dict[str, FileHashData] | list[dict])
         for error in errors:
             logger.warning(f"Validation error: {error}")
 
-    # Convert FileHashData objects to serializable format for batching
+    # Convert FileHash objects to serializable format for batching
     json_serializable_files = {}
     for file_name, file_hash_data in standardized_files.items():
         try:
@@ -719,6 +821,9 @@ def _get_file_batches_general(input_files: dict[str, FileHashData] | list[dict])
 
     # Calculate how many items per batch (exact Django logic)
     num_files = len(file_items)
+    if num_files == 0:
+        return []  # No files to batch
+
     num_batches = min(BATCH_SIZE, num_files)
     items_per_batch = math.ceil(num_files / num_batches)
 
@@ -732,44 +837,17 @@ def _get_file_batches_general(input_files: dict[str, FileHashData] | list[dict])
     return batches
 
 
-def _create_file_data_general(
-    workflow_id: str,
-    execution_id: str,
-    organization_id: str,
-    pipeline_id: str | None,
-    scheduled: bool,
-    execution_mode: str | None,
-    use_file_history: bool,
-) -> WorkerFileData:
-    """Create file data matching Django FileData structure exactly for general workflows.
+# Manual review logic moved to plugins/manual_review/workflow_service.py
 
-    Args:
-        workflow_id: Workflow ID
-        execution_id: Execution ID
-        organization_id: Organization ID
-        pipeline_id: Pipeline ID
-        scheduled: Whether scheduled execution
-        execution_mode: Execution mode string
-        use_file_history: Whether to use file history
 
-    Returns:
-        File data dictionary matching Django FileData
-    """
-    return WorkerFileData(
-        workflow_id=str(workflow_id),
-        execution_id=str(execution_id),
-        organization_id=str(organization_id),
-        pipeline_id=str(pipeline_id) if pipeline_id else "",
-        scheduled=scheduled,
-        execution_mode=execution_mode or "SYNC",
-        use_file_history=use_file_history,
-        single_step=False,  # General workflows are complete execution
-        q_file_no_list=[],  # Empty for general workflows
-    )
+# This function has been moved to plugins/manual_review/workflow_service.py
+
+
+# This function has been moved to plugins/manual_review/workflow_service.py
 
 
 def _create_batch_data_general(
-    files: list, file_data: WorkerFileData, source_files: dict[str, FileHashData] = None
+    files: list, file_data: WorkerFileData, source_files: dict[str, FileHash] = None
 ) -> FileBatchData:
     """Create batch data matching Django FileBatchData structure exactly.
 
@@ -802,9 +880,9 @@ def _create_batch_data_general(
 
             # DEBUG: Log source file data lookup
             if source_file_data:
-                if isinstance(source_file_data, FileHashData):
+                if isinstance(source_file_data, FileHash):
                     logger.info(
-                        f"  Found FileHashData for '{file_name}': provider_file_uuid='{source_file_data.provider_file_uuid}'"
+                        f"  Found FileHash for '{file_name}': provider_file_uuid='{source_file_data.provider_file_uuid}'"
                     )
                     source_dict = source_file_data.to_dict()
                 elif isinstance(source_file_data, dict):
@@ -1281,7 +1359,7 @@ def async_execute_bin_api(
     schema_name: str,
     workflow_id: str,
     execution_id: str,
-    hash_values_of_files: dict[str, FileHashData],
+    hash_values_of_files: dict[str, FileHash],
     scheduled: bool = False,
     execution_mode: Any | None = None,
     pipeline_id: str | None = None,
@@ -1414,7 +1492,7 @@ def _handle_api_deployment_workflow(
     schema_name: str,
     workflow_id: str,
     execution_id: str,
-    hash_values_of_files: dict[str, FileHashData],
+    hash_values_of_files: dict[str, FileHash],
     pipeline_id: str | None,
     scheduled: bool,
     execution_mode: Any | None,
@@ -1431,30 +1509,35 @@ def _handle_api_deployment_workflow(
         )
 
         # Get workflow execution context
-        execution_context = api_client.get_workflow_execution(execution_id)
+        execution_response = api_client.get_workflow_execution(execution_id)
+        if not execution_response.success:
+            raise Exception(
+                f"Failed to get execution context: {execution_response.error}"
+            )
+        execution_context = execution_response.data
         logger.info(f"Retrieved execution context for API deployment {execution_id}")
 
         # For API deployments, process files with is_api=True flag
         file_batch_results = []
         if hash_values_of_files:
-            # Convert FileHashData objects to file data format for API deployment
+            # Convert FileHash objects to file data format for API deployment
             files_data = []
             for file_key, file_hash_data in hash_values_of_files.items():
-                # Validate that we have a FileHashData object
-                if not isinstance(file_hash_data, FileHashData):
+                # Validate that we have a FileHash object
+                if not isinstance(file_hash_data, FileHash):
                     logger.error(
-                        f"Expected FileHashData object for API deployment '{file_key}', got {type(file_hash_data)}"
+                        f"Expected FileHash object for API deployment '{file_key}', got {type(file_hash_data)}"
                     )
                     # Try to convert from dict if possible
                     if isinstance(file_hash_data, dict):
                         try:
-                            file_hash_data = FileHashData.from_dict(file_hash_data)
+                            file_hash_data = FileHash.from_dict(file_hash_data)
                             logger.info(
-                                f"Successfully converted dict to FileHashData for API deployment '{file_key}'"
+                                f"Successfully converted dict to FileHash for API deployment '{file_key}'"
                             )
                         except Exception as e:
                             logger.error(
-                                f"Failed to convert dict to FileHashData for API deployment '{file_key}': {e}"
+                                f"Failed to convert dict to FileHash for API deployment '{file_key}': {e}"
                             )
                             continue
                     else:
@@ -1463,7 +1546,7 @@ def _handle_api_deployment_workflow(
                         )
                         continue
 
-                # Use FileHashData to_dict method for consistent data structure
+                # Use FileHash to_dict method for consistent data structure
                 file_data = file_hash_data.to_dict()
                 files_data.append(file_data)
 
@@ -1536,7 +1619,7 @@ def _handle_general_workflow_execution(
     schema_name: str,
     workflow_id: str,
     execution_id: str,
-    hash_values_of_files: dict[str, FileHashData],
+    hash_values_of_files: dict[str, FileHash],
     pipeline_id: str | None,
     scheduled: bool,
     execution_mode: Any | None,
@@ -1554,7 +1637,10 @@ def _handle_general_workflow_execution(
     )
 
     # Get workflow execution context
-    execution_context = api_client.get_workflow_execution(execution_id)
+    execution_response = api_client.get_workflow_execution(execution_id)
+    if not execution_response.success:
+        raise Exception(f"Failed to get execution context: {execution_response.error}")
+    execution_context = execution_response.data
     logger.info(f"Retrieved execution context for {execution_id}")
 
     # Process file batches using existing working function

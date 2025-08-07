@@ -244,11 +244,10 @@ services:
   # ====================================================================
 
   worker-api-deployment-new:
-    image: unstract/worker-api-deployment:${VERSION}
+    image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-api-deployment-new
     restart: unless-stopped
-    entrypoint: /app/workers/api-deployment/.venv/bin/python
-    command: "entrypoint.py worker --loglevel=info -Q celery_api_deployments --autoscale=${WORKER_API_DEPLOYMENT_AUTOSCALE:-4,1}"
+    command: ["api-deployment"]
     ports:
       - "8085:8090"
     env_file:
@@ -267,13 +266,15 @@ services:
       - HEALTH_PORT=8090
     labels:
       - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
 
   worker-callback-new:
-    image: unstract/worker-callback:${VERSION}
+    image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-callback-new
     restart: unless-stopped
-    entrypoint: /app/workers/callback/.venv/bin/python
-    command: "entrypoint.py worker --loglevel=info -Q file_processing_callback,api_file_processing_callback --autoscale=${WORKER_CALLBACK_AUTOSCALE:-4,1}"
+    command: ["callback"]
     ports:
       - "8086:8083"
     env_file:
@@ -291,13 +292,15 @@ services:
       - CALLBACK_METRICS_PORT=8083
     labels:
       - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
 
   worker-file-processing-new:
-    image: unstract/worker-file-processing:${VERSION}
+    image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-file-processing-new
     restart: unless-stopped
-    entrypoint: /app/workers/file_processing/.venv/bin/python
-    command: "entrypoint.py worker --loglevel=info -Q file_processing,api_file_processing --autoscale=${WORKER_FILE_PROCESSING_AUTOSCALE:-4,1}"
+    command: ["file-processing"]
     ports:
       - "8087:8082"
     env_file:
@@ -311,8 +314,13 @@ services:
       - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-worker-file-processing-new
       - WORKER_TYPE=file_processing
+      - WORKER_MODE=oss
       - WORKER_NAME=file-processing-worker-new
       - FILE_PROCESSING_METRICS_PORT=8082
+      # OSS Configuration - Enterprise features disabled
+      - MANUAL_REVIEW_ENABLED=false
+      - ENTERPRISE_FEATURES_ENABLED=false
+      - PLUGIN_REGISTRY_MODE=oss
     labels:
       - traefik.enable=false
     volumes:
@@ -320,11 +328,10 @@ services:
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
 
   worker-general-new:
-    image: unstract/worker-general:${VERSION}
+    image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-general-new
     restart: unless-stopped
-    entrypoint: /app/workers/general/.venv/bin/python
-    command: "entrypoint.py worker --loglevel=info -Q celery --autoscale=${WORKER_GENERAL_AUTOSCALE:-4,1}"
+    command: ["general"]
     ports:
       - "8088:8082"
     env_file:
@@ -343,6 +350,9 @@ services:
       - HEALTH_PORT=8082
     labels:
       - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
 
 volumes:
   prompt_studio_data:

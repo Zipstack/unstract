@@ -18,13 +18,15 @@ from shared.constants import Account
 from shared.local_context import StateStore
 from shared.logging_utils import WorkerLogger, log_context, monitor_performance
 from shared.retry_utils import circuit_breaker
-from worker import app
 
 # Import shared data models for type safety
 from unstract.core.data_models import ExecutionStatus, FileHashData
 
 # Import common workflow utilities
 from unstract.core.workflow_utils import PipelineTypeResolver
+
+# Import from local worker module (avoid circular import)
+from .worker import app
 
 logger = WorkerLogger.get_logger(__name__)
 

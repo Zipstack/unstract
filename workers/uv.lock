@@ -459,15 +459,6 @@ wheels = [
 ]
 
 [[package]]
-name = "blinker"
-version = "1.9.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/21/28/9b3f50ce0e048515135495f198351908d99540d69bfdc8c1d15b73dc55ce/blinker-1.9.0.tar.gz", hash = "sha256:b4ce2265a7abece45e7cc896e98dbebe6cead56bcf805a3d23136d145f5445bf", size = 22460, upload-time = "2024-11-08T17:25:47.436Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/10/cb/f2ad4230dc2eb1a74edf38f1a38b9b52277f75bef262d8908e60d957e13c/blinker-1.9.0-py3-none-any.whl", hash = "sha256:ba0efaa9080b619ff2f3459d1d500c57bddea4a6b424b60a91141db6fd2f08bc", size = 8458, upload-time = "2024-11-08T17:25:46.184Z" },
-]
-
-[[package]]
 name = "boto3"
 version = "1.36.1"
 source = { registry = "https://pypi.org/simple" }
@@ -556,11 +547,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/bb/7d/6c289f407d219ba36d8b384b42489ebdd0c84ce9c413875a8aae0c85f35b/celery-5.5.3.tar.gz", hash = "sha256:6c972ae7968c2b5281227f01c3a3f984037d21c5129d07bf3550cc2afc6b10a5", size = 1667144, upload-time = "2025-06-01T11:08:12.563Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c9/af/0dcccc7fdcdf170f9a1585e5e96b6fb0ba1749ef6be8c89a6202284759bd/celery-5.5.3-py3-none-any.whl", hash = "sha256:0b5761a07057acee94694464ca482416b959568904c9dfa41ce8413a7d65d525", size = 438775, upload-time = "2025-06-01T11:08:09.94Z" },
-]
-
-[package.optional-dependencies]
-redis = [
-    { name = "kombu", extra = ["redis"] },
 ]
 
 [[package]]
@@ -953,22 +939,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/9b/af/fbfe3c4b5a657d79e5c47a2827a362f9e1b763336a52f926126aa6dc7123/flake8-7.3.0.tar.gz", hash = "sha256:fe044858146b9fc69b551a4b490d69cf960fcb78ad1edcb84e7fbb1b4a8e3872", size = 48326, upload-time = "2025-06-20T19:31:35.838Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9f/56/13ab06b4f93ca7cac71078fbe37fcea175d3216f31f85c3168a6bbd0bb9a/flake8-7.3.0-py2.py3-none-any.whl", hash = "sha256:b9696257b9ce8beb888cdbe31cf885c90d31928fe202be0889a7cdafad32f01e", size = 57922, upload-time = "2025-06-20T19:31:34.425Z" },
-]
-
-[[package]]
-name = "flask"
-version = "2.3.3"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "blinker" },
-    { name = "click" },
-    { name = "itsdangerous" },
-    { name = "jinja2" },
-    { name = "werkzeug" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/46/b7/4ace17e37abd9c21715dea5ee11774a25e404c486a7893fa18e764326ead/flask-2.3.3.tar.gz", hash = "sha256:09c347a92aa7ff4a8e7f3206795f30d826654baf38b873d0744cd571ca609efc", size = 672756, upload-time = "2023-08-21T19:52:35.012Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/fd/56/26f0be8adc2b4257df20c1c4260ddd0aa396cf8e75d90ab2f7ff99bc34f9/flask-2.3.3-py3-none-any.whl", hash = "sha256:f69fcd559dc907ed196ab9df0e48471709175e696d6e698dd4dbe940f96ce66b", size = 96112, upload-time = "2023-08-21T19:52:33.115Z" },
 ]
 
 [[package]]
@@ -1622,6 +1592,15 @@ wheels = [
 ]
 
 [[package]]
+name = "invoke"
+version = "2.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f9/42/127e6d792884ab860defc3f4d80a8f9812e48ace584ffc5a346de58cdc6c/invoke-2.2.0.tar.gz", hash = "sha256:ee6cbb101af1a859c7fe84f2a264c059020b0cb7fe3535f9424300ab568f6bd5", size = 299835, upload-time = "2023-07-12T18:05:17.998Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0a/66/7f8c48009c72d73bc6bbe6eb87ac838d6a526146f7dab14af671121eb379/invoke-2.2.0-py3-none-any.whl", hash = "sha256:6ea924cc53d4f78e3d98bc436b08069a03077e6f85ad1ddaa8a116d7dad15820", size = 160274, upload-time = "2023-07-12T18:05:16.294Z" },
+]
+
+[[package]]
 name = "isodate"
 version = "0.7.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1637,15 +1616,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/b8/21/1e2a441f74a653a144224d7d21afe8f4169e6c7c20bb13aec3a2dc3815e0/isort-6.0.1.tar.gz", hash = "sha256:1cb5df28dfbc742e490c5e41bad6da41b805b0a8be7bc93cd0fb2a8a890ac450", size = 821955, upload-time = "2025-02-26T21:13:16.955Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c1/11/114d0a5f4dabbdcedc1125dee0888514c3c3b16d3e9facad87ed96fad97c/isort-6.0.1-py3-none-any.whl", hash = "sha256:2dc5d7f65c9678d94c88dfc29161a320eec67328bc97aad576874cb4be1e9615", size = 94186, upload-time = "2025-02-26T21:13:14.911Z" },
-]
-
-[[package]]
-name = "itsdangerous"
-version = "2.2.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/9c/cb/8ac0172223afbccb63986cc25049b154ecfb5e85932587206f42317be31d/itsdangerous-2.2.0.tar.gz", hash = "sha256:e0050c0b7da1eea53ffaf149c0cfbb5c6e2e2b69c4bef22c81fa6eb73e5f6173", size = 54410, upload-time = "2024-04-16T21:28:15.614Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/04/96/92447566d16df59b2a776c0fb82dbc4d9e07cd95062562af01e408583fc4/itsdangerous-2.2.0-py3-none-any.whl", hash = "sha256:c6242fc49e35958c8b15141343aa660db5fc54d4f13a1db01a3f5891b98700ef", size = 16234, upload-time = "2024-04-16T21:28:14.499Z" },
 ]
 
 [[package]]
@@ -1775,11 +1745,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/0f/d3/5ff936d8319ac86b9c409f1501b07c426e6ad41966fedace9ef1b966e23f/kombu-5.5.4.tar.gz", hash = "sha256:886600168275ebeada93b888e831352fe578168342f0d1d5833d88ba0d847363", size = 461992, upload-time = "2025-06-01T10:19:22.281Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ef/70/a07dcf4f62598c8ad579df241af55ced65bed76e42e45d3c368a6d82dbc1/kombu-5.5.4-py3-none-any.whl", hash = "sha256:a12ed0557c238897d8e518f1d1fdf84bd1516c5e305af2dacd85c2015115feb8", size = 210034, upload-time = "2025-06-01T10:19:20.436Z" },
-]
-
-[package.optional-dependencies]
-redis = [
-    { name = "redis" },
 ]
 
 [[package]]
@@ -2743,16 +2708,17 @@ wheels = [
 
 [[package]]
 name = "paramiko"
-version = "3.5.1"
+version = "4.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bcrypt" },
     { name = "cryptography" },
+    { name = "invoke" },
     { name = "pynacl" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7d/15/ad6ce226e8138315f2451c2aeea985bf35ee910afb477bae7477dc3a8f3b/paramiko-3.5.1.tar.gz", hash = "sha256:b2c665bc45b2b215bd7d7f039901b14b067da00f3a11e6640995fd58f2664822", size = 1566110, upload-time = "2025-02-04T02:37:59.783Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1f/e7/81fdcbc7f190cdb058cffc9431587eb289833bdd633e2002455ca9bb13d4/paramiko-4.0.0.tar.gz", hash = "sha256:6a25f07b380cc9c9a88d2b920ad37167ac4667f8d9886ccebd8f90f654b5d69f", size = 1630743, upload-time = "2025-08-04T01:02:03.711Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/15/f8/c7bd0ef12954a81a1d3cea60a13946bd9a49a0036a5927770c461eade7ae/paramiko-3.5.1-py3-none-any.whl", hash = "sha256:43b9a0501fc2b5e70680388d9346cf252cfb7d00b0667c39e80eb43a408b8f61", size = 227298, upload-time = "2025-02-04T02:37:57.672Z" },
+    { url = "https://files.pythonhosted.org/packages/a9/90/a744336f5af32c433bd09af7854599682a383b37cfd78f7de263de6ad6cb/paramiko-4.0.0-py3-none-any.whl", hash = "sha256:0e20e00ac666503bf0b4eda3b6d833465a2b7aff2e2b3d79a8bba5ef144ee3b9", size = 223932, upload-time = "2025-08-04T01:02:02.029Z" },
 ]
 
 [[package]]
@@ -4160,6 +4126,7 @@ dependencies = [
     { name = "s3fs", extra = ["boto3"] },
     { name = "singleton-decorator" },
     { name = "snowflake-connector-python", extra = ["pandas"] },
+    { name = "unstract-core" },
 ]
 
 [package.metadata]
@@ -4182,6 +4149,7 @@ requires-dist = [
     { name = "s3fs", extras = ["boto3"], specifier = "==2024.10.0" },
     { name = "singleton-decorator", specifier = "~=1.0.0" },
     { name = "snowflake-connector-python", extras = ["pandas"], specifier = "~=3.14.0" },
+    { name = "unstract-core" },
 ]
 
 [[package]]
@@ -4214,7 +4182,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "unstract-sdk", specifier = "~=0.73.0" }]
+requires-dist = [{ name = "unstract-sdk", specifier = "~=0.76.1" }]
 
 [[package]]
 name = "unstract-flags"
@@ -4233,7 +4201,7 @@ requires-dist = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.73.1"
+version = "0.76.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filetype" },
@@ -4272,14 +4240,9 @@ dependencies = [
     { name = "tiktoken" },
     { name = "transformers" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/88/bb/60a8cc6d352ca204e04bf33a85d9b9961415833e0f314b2cbbcd42c5a631/unstract_sdk-0.73.1.tar.gz", hash = "sha256:294d0206bc43c09bc8c884a77ab78794301de0dab3ff6a1fe68f9c5235f72251", size = 2376089, upload-time = "2025-06-18T11:36:42.528Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/91/ea/038da8c278e811ec9a5263c856d157a8a4ce57a10052c507edfb192afc60/unstract_sdk-0.76.1.tar.gz", hash = "sha256:05ecdf1a1b4cdfaa2414a0a31f42bb8ba9c895980b4ff891dceca25a5b4e0407", size = 2376403, upload-time = "2025-07-15T14:52:32.069Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d8/38/4696fe06d95fd62153dd7a270332e3bfc76a4ffc7e57c0b9135459666317/unstract_sdk-0.73.1-py3-none-any.whl", hash = "sha256:527c4904a8a4500db5ebba0ee3db216069d8093d064187c1e09eecde42402ef9", size = 266247, upload-time = "2025-06-18T11:36:40.956Z" },
-]
-
-[package.optional-dependencies]
-azure = [
-    { name = "adlfs" },
+    { url = "https://files.pythonhosted.org/packages/fa/dc/b39d10ae577d61820546977064231cf4ae454b189fef2a25328fe873b1c6/unstract_sdk-0.76.1-py3-none-any.whl", hash = "sha256:3ddbacc1d5705a06c368225b5884797d0b406e31f5ae5a08e01c80873f6787d1", size = 266606, upload-time = "2025-07-15T14:52:30.808Z" },
 ]
 
 [[package]]
@@ -4298,10 +4261,10 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "docker", specifier = "~=6.1.3" },
-    { name = "jsonschema", specifier = "~=4.18.2" },
+    { name = "jsonschema", specifier = ">=4.18.6,<5.0" },
     { name = "pyyaml", specifier = "~=6.0.1" },
     { name = "unstract-flags", editable = "../unstract/flags" },
-    { name = "unstract-sdk", specifier = "~=0.73.0" },
+    { name = "unstract-sdk", specifier = "~=0.76.1" },
     { name = "unstract-tool-sandbox", editable = "../unstract/tool-sandbox" },
 ]
 
@@ -4325,9 +4288,7 @@ name = "unstract-workers"
 version = "1.0.0"
 source = { editable = "." }
 dependencies = [
-    { name = "celery", extra = ["redis"] },
-    { name = "flask" },
-    { name = "kombu" },
+    { name = "celery" },
     { name = "orjson" },
     { name = "prometheus-client" },
     { name = "psutil" },
@@ -4342,12 +4303,11 @@ dependencies = [
     { name = "unstract-core" },
     { name = "unstract-filesystem" },
     { name = "unstract-flags" },
-    { name = "unstract-sdk", extra = ["azure"] },
+    { name = "unstract-sdk" },
     { name = "unstract-tool-registry" },
     { name = "unstract-tool-sandbox" },
     { name = "unstract-workflow-execution" },
     { name = "urllib3" },
-    { name = "werkzeug" },
 ]
 
 [package.dev-dependencies]
@@ -4372,9 +4332,7 @@ test = [
 
 [package.metadata]
 requires-dist = [
-    { name = "celery", extras = ["redis"], specifier = ">=5.3.0,<6.0.0" },
-    { name = "flask", specifier = ">=2.3.0,<3.0.0" },
-    { name = "kombu", specifier = ">=5.3.0,<6.0.0" },
+    { name = "celery", extras = ["amqp"], specifier = ">=5.3.0,<6.0.0" },
     { name = "orjson", specifier = ">=3.9.0,<4.0.0" },
     { name = "prometheus-client", specifier = ">=0.17.0,<1.0.0" },
     { name = "psutil", specifier = ">=5.9.0,<6.0.0" },
@@ -4389,15 +4347,15 @@ requires-dist = [
     { name = "unstract-core", editable = "../unstract/core" },
     { name = "unstract-filesystem", editable = "../unstract/filesystem" },
     { name = "unstract-flags", editable = "../unstract/flags" },
-    { name = "unstract-sdk", extras = ["azure"], specifier = ">=0.73.1" },
+    { name = "unstract-sdk", specifier = "~=0.76.1" },
     { name = "unstract-tool-registry", editable = "../unstract/tool-registry" },
     { name = "unstract-tool-sandbox", editable = "../unstract/tool-sandbox" },
     { name = "unstract-workflow-execution", editable = "../unstract/workflow-execution" },
     { name = "urllib3", specifier = ">=1.26.0" },
-    { name = "werkzeug", specifier = ">=2.3.0,<3.0.0" },
 ]
 
 [package.metadata.requires-dev]
+deploy = []
 dev = [
     { name = "black", specifier = ">=23.7.0" },
     { name = "flake8", specifier = ">=6.0.0" },
@@ -4540,18 +4498,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/17/b1/1ffdb2680c64e9c3921d99db460546194c40d4acbef999a18c37aa4d58a3/websockets-14.2-cp313-cp313-win32.whl", hash = "sha256:a9e72fb63e5f3feacdcf5b4ff53199ec8c18d66e325c34ee4c551ca748623bbc", size = 163974, upload-time = "2025-01-19T21:00:08.698Z" },
     { url = "https://files.pythonhosted.org/packages/14/13/8b7fc4cb551b9cfd9890f0fd66e53c18a06240319915533b033a56a3d520/websockets-14.2-cp313-cp313-win_amd64.whl", hash = "sha256:b439ea828c4ba99bb3176dc8d9b933392a2413c0f6b149fdcba48393f573377f", size = 164420, upload-time = "2025-01-19T21:00:10.182Z" },
     { url = "https://files.pythonhosted.org/packages/7b/c8/d529f8a32ce40d98309f4470780631e971a5a842b60aec864833b3615786/websockets-14.2-py3-none-any.whl", hash = "sha256:7a6ceec4ea84469f15cf15807a747e9efe57e369c384fa86e022b3bea679b79b", size = 157416, upload-time = "2025-01-19T21:00:54.843Z" },
-]
-
-[[package]]
-name = "werkzeug"
-version = "2.3.8"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "markupsafe" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/3d/4b/d746f1000782c89d6c97df9df43ba8f4d126038608843d3560ae88d201b5/werkzeug-2.3.8.tar.gz", hash = "sha256:554b257c74bbeb7a0d254160a4f8ffe185243f52a52035060b761ca62d977f03", size = 819747, upload-time = "2023-11-08T18:37:03.303Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/fd/21/0a674dfe66e9df9072c46269c882e9f901d36d987d8ea50ead033a9c1e01/werkzeug-2.3.8-py3-none-any.whl", hash = "sha256:bba1f19f8ec89d4d607a3bd62f1904bd2e609472d93cd85e9d4e178f472c3748", size = 242332, upload-time = "2023-11-08T18:37:01.088Z" },
 ]
 
 [[package]]

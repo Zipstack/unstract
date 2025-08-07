@@ -236,9 +236,16 @@ class BatchOperationRequest:
     parallel_processing: bool = True
 
     def to_dict(self) -> dict[str, Any]:
+        # Use 'updates' field name for status update operations to match backend API
+        items_field_name = (
+            "updates"
+            if self.operation_type == BatchOperationType.STATUS_UPDATE
+            else "items"
+        )
+
         return {
             "operation_type": self.operation_type.value,
-            "items": self.items,
+            items_field_name: self.items,
             "organization_id": self.organization_id,
             "batch_size": self.batch_size,
             "parallel_processing": self.parallel_processing,

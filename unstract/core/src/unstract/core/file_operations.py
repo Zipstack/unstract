@@ -16,13 +16,46 @@ import os
 from pathlib import Path
 from typing import Any
 
-from .data_models import FileHashData
+from .data_models import FileHash, FileHashData, FileOperationConstants
 
 logger = logging.getLogger(__name__)
 
 
 class FileOperations:
     """Common file operations shared between backend and workers"""
+
+    @staticmethod
+    def compute_file_content_hash_from_fsspec(source_fs, file_path: str) -> str:
+        """Generate a hash value from the file content using fsspec filesystem.
+
+        This matches the exact implementation from backend source.py:745
+
+        Args:
+            source_fs: The file system object (fsspec compatible)
+            file_path: The path of the file
+
+        Returns:
+            str: The SHA256 hash value of the file content
+        """
+        file_content_hash = hashlib.sha256()
+        source = (
+            source_fs.get_fsspec_fs()
+            if hasattr(source_fs, "get_fsspec_fs")
+            else source_fs
+        )
+
+        try:
+            with source.open(file_path, "rb") as remote_file:
+                while chunk := remote_file.read(FileOperationConstants.READ_CHUNK_SIZE):
+                    file_content_hash.update(chunk)
+            return file_content_hash.hexdigest()
+        except Exception as e:
+            logger.warning(f"Failed to compute content hash for {file_path}: {e}")
+            # Return a fallback hash based on file path and current time
+            import time
+
+            fallback_string = f"{file_path}:{time.time()}"
+            return hashlib.sha256(fallback_string.encode()).hexdigest()
 
     @staticmethod
     def compute_file_hash(file_path: str, chunk_size: int = 8192) -> str:
@@ -70,8 +103,224 @@ class FileOperations:
             return "application/octet-stream"
 
     @staticmethod
+    def create_file_hash_from_backend_logic(
+        file_path: str,
+        source_fs,
+        source_connection_type: str,
+        file_size: int,
+        fs_metadata: dict[str, Any],
+        compute_content_hash: bool = False,
+    ) -> FileHash:
+        """Create FileHash object matching backend source.py:352 _create_file_hash.
+
+        Args:
+            file_path: Path to the file
+            source_fs: File system object (UnstractFileSystem)
+            source_connection_type: Type of source connection (FILESYSTEM/API)
+            file_size: Size of the file in bytes
+            fs_metadata: Metadata from fsspec
+            compute_content_hash: Whether to compute file content hash (only for API deployments)
+
+        Returns:
+            FileHash: Populated FileHash object
+        """
+        # Only compute content hash for API deployments or when explicitly requested
+        file_hash = None
+        if compute_content_hash:
+            file_hash = FileOperations.compute_file_content_hash_from_fsspec(
+                source_fs, file_path
+            )
+
+        # Extract file name from path
+        file_name = os.path.basename(file_path)
+
+        # Get provider-specific file UUID (this is the primary identifier for ETL/TASK)
+        provider_file_uuid = None
+        # Use the correct method name - check the source_fs interface
+        if hasattr(source_fs, "get_file_system_uuid"):
+            provider_file_uuid = source_fs.get_file_system_uuid(
+                file_path=file_path, metadata=fs_metadata
+            )
+        elif hasattr(source_fs, "extract_metadata_file_hash"):
+            provider_file_uuid = source_fs.extract_metadata_file_hash(fs_metadata)
+
+        # Detect MIME type if possible
+        mime_type = fs_metadata.get("ContentType") or fs_metadata.get("content_type")
+
+        return FileHash(
+            file_path=file_path,
+            file_name=file_name,
+            source_connection_type=source_connection_type,
+            file_hash=file_hash,  # None for ETL/TASK, computed for API deployments
+            file_size=file_size,
+            provider_file_uuid=provider_file_uuid,
+            mime_type=mime_type,
+            fs_metadata=fs_metadata,
+        )
+
+    @staticmethod
+    def process_file_fs_directory(
+        fs_metadata_list: list[dict[str, Any]],
+        count: int,
+        limit: int,
+        unique_file_paths: set[str],
+        matched_files: dict[str, FileHash],
+        patterns: list[str],
+        source_fs,
+        source_connection_type: str,
+        dirs: list[str],
+        workflow_log=None,
+        connector_id: str | None = None,
+    ) -> int:
+        """Process directory items matching backend source.py:326 _process_file_fs_directory.
+
+        Args:
+            fs_metadata_list: List of file metadata from fsspec listdir
+            count: Current count of matched files
+            limit: Maximum number of files to process
+            unique_file_paths: Set of already seen file paths
+            matched_files: Dictionary to populate with matched files
+            patterns: File patterns to match
+            source_fs: File system object
+            source_connection_type: Type of source connection
+            dirs: List of directories from fsspec walk
+            workflow_log: Optional workflow logger
+
+        Returns:
+            int: Updated count of matched files
+        """
+        for fs_metadata in fs_metadata_list:
+            if count >= limit:
+                msg = f"Maximum limit of '{limit}' files to process reached"
+                if workflow_log:
+                    workflow_log.publish_log(msg)
+                logger.info(msg)
+                break
+
+            file_path = fs_metadata.get("name")
+            file_size = fs_metadata.get("size", 0)
+
+            if not file_path or FileOperations._is_directory_backend_compatible(
+                source_fs, file_path, fs_metadata, dirs
+            ):
+                continue
+
+            # Add connector_id to fs_metadata if provided
+            if connector_id:
+                fs_metadata = fs_metadata.copy()  # Don't modify original
+                fs_metadata["connector_id"] = connector_id
+
+            file_hash = FileOperations.create_file_hash_from_backend_logic(
+                file_path=file_path,
+                source_fs=source_fs,
+                source_connection_type=source_connection_type,
+                file_size=file_size,
+                fs_metadata=fs_metadata,
+                compute_content_hash=False,  # ETL/TASK: Only use provider_file_uuid for deduplication
+            )
+
+            if FileOperations._should_skip_file_backend_compatible(file_hash, patterns):
+                continue
+
+            # Skip duplicate files
+            if FileOperations._is_duplicate_backend_compatible(
+                file_hash, unique_file_paths
+            ):
+                msg = f"Skipping execution of duplicate file '{file_path}'"
+                if workflow_log:
+                    workflow_log.publish_log(msg)
+                logger.info(msg)
+                continue
+
+            FileOperations._update_unique_file_paths_backend_compatible(
+                file_hash, unique_file_paths
+            )
+
+            matched_files[file_path] = file_hash
+            count += 1
+
+        return count
+
+    @staticmethod
+    def _is_directory_backend_compatible(
+        source_fs, file_path: str, metadata: dict, dirs: list
+    ) -> bool:
+        """Check if path is directory matching backend logic."""
+        try:
+            # Check if basename is in dirs list from walk
+            if os.path.basename(file_path) in dirs:
+                return True
+
+            # Try fsspec isdir
+            fs_fsspec = (
+                source_fs.get_fsspec_fs()
+                if hasattr(source_fs, "get_fsspec_fs")
+                else source_fs
+            )
+            try:
+                if fs_fsspec.isdir(file_path):
+                    return True
+            except Exception:
+                pass
+
+            # Check metadata type
+            file_type = metadata.get("type", "").lower()
+            if file_type in ["directory", "dir", "folder"]:
+                return True
+
+            return False
+
+        except Exception:
+            return False
+
+    @staticmethod
+    def _should_skip_file_backend_compatible(
+        file_hash: FileHash, patterns: list[str]
+    ) -> bool:
+        """Check if file should be skipped based on patterns."""
+        if not patterns or patterns == ["*"]:
+            return False
+
+        import fnmatch
+
+        file_name = file_hash.file_name
+
+        for pattern in patterns:
+            if fnmatch.fnmatch(file_name, pattern):
+                return False
+
+        return True
+
+    @staticmethod
+    def _is_duplicate_backend_compatible(
+        file_hash: FileHash, unique_file_paths: set[str]
+    ) -> bool:
+        """Check if file is duplicate."""
+        return file_hash.file_path in unique_file_paths
+
+    @staticmethod
+    def _update_unique_file_paths_backend_compatible(
+        file_hash: FileHash, unique_file_paths: set
+    ) -> None:
+        """Update unique file paths."""
+        unique_file_paths.add(file_hash.file_path)
+
+    @staticmethod
+    def valid_file_patterns(required_patterns: list[str]) -> list[str]:
+        """Get valid file patterns matching backend logic."""
+        if not required_patterns:
+            return ["*"]
+
+        valid_patterns = [p for p in required_patterns if p and p.strip()]
+
+        if not valid_patterns:
+            return ["*"]
+
+        return valid_patterns
+
+    @staticmethod
     def validate_file_compatibility(
-        file_data: FileHashData, workflow_config: dict[str, Any]
+        file_data: FileHash, workflow_config: dict[str, Any]
     ) -> dict[str, Any]:
         """Validate file against workflow requirements.
 

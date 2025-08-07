@@ -554,6 +554,41 @@ SOCIAL_AUTH_GOOGLE_OAUTH2_AUTH_EXTRA_ARGUMENTS = {
 SOCIAL_AUTH_GOOGLE_OAUTH2_USE_UNIQUE_USER_ID = True
 
 
+# ============================================================================
+# INTERNAL URL MODULES CONFIGURATION
+# ============================================================================
+# This configuration defines which internal URL modules should be loaded.
+# Cloud deployments can extend this in their settings to add cloud-specific modules.
+
+INTERNAL_URL_MODULES = {
+    # OSS modules only - no manual review or other cloud features
+    # Note: Additional modules will be added by cloud.py settings when active
+}
+
+
+# ============================================================================
+# WORKERS PLUGIN CONFIGURATION
+# ============================================================================
+# This configuration defines which worker plugins should be available.
+# Cloud deployments can extend this to include cloud-specific plugins.
+
+WORKERS_PLUGIN_MODULES = {
+    # OSS plugins only - cloud plugins added by cloud.py
+    # Note: Plugin loading is controlled by cloud.py in cloud deployments
+}
+
+# ============================================================================
+# WORKERS CLIENT PLUGIN CONFIGURATION
+# ============================================================================
+# This configuration defines which API client plugins should be available.
+# Cloud deployments can extend this to include cloud-specific client plugins.
+
+WORKERS_CLIENT_PLUGINS = {
+    # OSS client plugins only - cloud client plugins added by cloud.py
+    # Note: Client plugin loading is controlled by cloud.py in cloud deployments
+}
+
+
 # Always keep this line at the bottom of the file.
 if missing_settings:
     ERROR_MESSAGE = "Below required settings are missing.\n" + ",\n".join(

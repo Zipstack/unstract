@@ -8,7 +8,7 @@ import os
 from celery import Celery
 
 # Import shared worker infrastructure
-from workers.shared import HealthChecker, HealthServer, WorkerConfig, WorkerLogger
+from shared import HealthChecker, HealthServer, WorkerConfig, WorkerLogger
 
 # Configure worker-specific logging to match Django backend
 WorkerLogger.configure(
@@ -43,7 +43,7 @@ celery_config.update(
         },
         # Task discovery
         "imports": [
-            "tasks",
+            "api-deployment.tasks",
         ],
     }
 )
@@ -61,7 +61,7 @@ def check_api_deployment_health():
 
     try:
         # Check if we can access API deployment specific resources
-        from workers.shared.api_client_singleton import get_singleton_api_client
+        from shared.api_client_singleton import get_singleton_api_client
 
         client = get_singleton_api_client(config)
         # Simply check if API client is available (avoid making actual calls)
