@@ -6,7 +6,7 @@ workflow_endpoint_list = WorkflowEndpointViewSet.as_view(
 )
 endpoint_list = WorkflowEndpointViewSet.as_view({"get": "list"})
 workflow_endpoint_detail = WorkflowEndpointViewSet.as_view(
-    {"get": "retrieve", "put": "update"}
+    {"get": "retrieve", "put": "update", "patch": "partial_update"}
 )
 endpoint_settings_detail = WorkflowEndpointViewSet.as_view(
     {"get": WorkflowEndpointViewSet.get_settings.__name__}

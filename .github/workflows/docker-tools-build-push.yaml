@@ -17,6 +17,11 @@ on:
           - tool-structure
           - tool-text-extractor
           - tool-sidecar
+      add_latest_tag:
+        description: "Also tag as 'latest'"
+        required: false
+        default: true
+        type: boolean
 
 run-name: "[${{ inputs.service_name }}:${{ inputs.tag }}] Docker Image Build and Push (Development)"
 
@@ -67,6 +72,22 @@ jobs:
             echo "dockerfile=docker/dockerfiles/tool-sidecar.Dockerfile" >> $GITHUB_OUTPUT
           fi
 
+      # Determine tags based on inputs
+      - name: Determine Docker tags
+        id: tags
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+          TAGS="unstract/${{ github.event.inputs.service_name }}:${TAG}"
+
+          # Add latest tag if checkbox is checked
+          if [ "${{ github.event.inputs.add_latest_tag }}" == "true" ]; then
+            TAGS="${TAGS}\nunstract/${{ github.event.inputs.service_name }}:latest"
+          fi
+
+          echo "tags<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$TAGS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       # Build and push Docker image
       - name: Build and push ${{ github.event.inputs.service_name }}
         uses: docker/build-push-action@v5
@@ -75,6 +96,6 @@ jobs:
           file: ${{ steps.build-config.outputs.dockerfile }}
           platforms: linux/amd64,linux/arm64/v8
           push: true
-          tags: unstract/${{ github.event.inputs.service_name }}:${{ github.event.inputs.tag }}
+          tags: ${{ steps.tags.outputs.tags }}
           cache-from: type=gha,scope=${{ github.event.inputs.service_name }}
           cache-to: type=gha,mode=max,scope=${{ github.event.inputs.service_name }}

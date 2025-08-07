@@ -139,12 +139,7 @@ const CreateApiDeploymentFromPromptStudio = ({
             fetchToolFunctionName();
           }, 1000); // Wait 1 second for export to complete
         } catch (exportErr) {
-          setAlertDetails({
-            type: "error",
-            content: `Failed to export tool to organization: ${
-              exportErr.response?.data?.message || exportErr.message
-            }`,
-          });
+          setAlertDetails(handleException(exportErr));
           setToolSchema(null);
         }
       } else {
@@ -155,12 +150,7 @@ const CreateApiDeploymentFromPromptStudio = ({
         setToolSchema(null);
       }
     } catch (err) {
-      setAlertDetails({
-        type: "error",
-        content: `Failed to fetch tool list: ${
-          err.response?.data?.message || err.message
-        }`,
-      });
+      setAlertDetails(handleException(err));
       setToolSchema(null);
     }
   };
@@ -185,12 +175,7 @@ const CreateApiDeploymentFromPromptStudio = ({
     } catch (err) {
       // If tool schema fetch fails, it means the tool doesn't have configurable settings
       // This is common for prompt studio tools that may not be in the tool registry
-      setAlertDetails({
-        type: "error",
-        content: `Tool schema not available: ${
-          err.response?.data?.message || err.message
-        }`,
-      });
+      setAlertDetails(handleException(err));
       setToolSchema(null);
     } finally {
       setIsSchemaLoading(false);
@@ -233,7 +218,9 @@ const CreateApiDeploymentFromPromptStudio = ({
       // Validate deployment details form
       form
         .validateFields()
-        .then(() => {
+        .then((values) => {
+          // Update deployment details with the latest form values
+          setDeploymentDetails(values);
           setCurrentStep(1);
         })
         .catch(() => {
@@ -390,9 +377,16 @@ const CreateApiDeploymentFromPromptStudio = ({
       });
 
       // Step 6: Create API deployment
+      // Get the latest form values to ensure we have the most up-to-date data
+      const currentFormValues = form.getFieldsValue();
+      const finalDeploymentDetails = {
+        ...deploymentDetails,
+        ...currentFormValues,
+      };
+
       const apiDeploymentResponse =
         await apiDeploymentsApiService.createApiDeployment({
-          ...deploymentDetails,
+          ...finalDeploymentDetails,
           workflow: workflowId,
         });
 
@@ -460,14 +454,13 @@ const CreateApiDeploymentFromPromptStudio = ({
     // Update each endpoint to set connection_type to API
     for (const endpoint of endpoints) {
       await axiosPrivate({
-        method: "PUT",
+        method: "PATCH",
         url: getUrl(`workflow/endpoint/${endpoint.id}/`),
         headers: {
           "X-CSRFToken": sessionDetails?.csrfToken,
           "Content-Type": "application/json",
         },
         data: {
-          ...endpoint,
           connection_type: "API",
           configuration: endpoint.configuration || {},
         },
