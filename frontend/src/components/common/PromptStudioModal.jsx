@@ -1,6 +1,7 @@
 import { Button, Modal } from "antd";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
+
 import { useSessionStore } from "../../store/session-store";
 import "./PromptStudioModal.css";
 
@@ -63,7 +64,7 @@ export function PromptStudioModal({ onClose, showModal }) {
 
 PromptStudioModal.propTypes = {
   onClose: PropTypes.func,
-  showModal: PropTypes.bool.isRequired,
+  showModal: PropTypes.bool,
 };
 
 PromptStudioModal.defaultProps = {
