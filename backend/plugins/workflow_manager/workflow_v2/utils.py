@@ -91,5 +91,7 @@ class WorkflowUtil:
 
         Returns:
             Optional[int]: TTL in seconds if custom TTL is set, None for unlimited TTL.
+            For OSS version, always returns None (unlimited TTL).
         """
-        raise NotImplementedError("TTL retrieval not yet implemented")
+        # TTL feature is cloud-only, return None for unlimited TTL in OSS
+        return None
