@@ -7,6 +7,7 @@ import { Document, Folder } from "../../../assets";
 import { formatBytes } from "../../../helpers/GetStaticData";
 import { inputService } from "../../input-output/input-output/input-service.js";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 import "./FileSystem.css";
 
@@ -18,10 +19,12 @@ function FileExplorer({
   data = [],
   loadingData,
   error,
+  setError,
   onFolderSelect,
   selectedFolderPath,
 }) {
   const inpService = inputService();
+  const handleException = useExceptionHandler();
 
   const [tree, setTree] = useState([]);
   const [expandedKeys, setExpandedKeys] = useState([]);
@@ -39,6 +42,9 @@ function FileExplorer({
     // Clear selected items/keys when the data source is changed.
     setExpandedKeys([]);
     setSelectedKeys([]);
+    if (setError) {
+      setError("");
+    }
   }, [selectedConnector]);
 
   useEffect(() => {
@@ -63,6 +69,9 @@ function FileExplorer({
   }
 
   function getAndUpdateFiles(path) {
+    if (setError) {
+      setError("");
+    }
     return inpService
       .getFileList(selectedConnector, path)
       .then((res) => {
@@ -75,10 +84,16 @@ function FileExplorer({
         }
         updateTree(newTree);
       })
-      .catch(() => {
-        console.error(
-          `Unable to get files on "${selectedConnector}" for the folder "${path}"`
+      .catch((err) => {
+        const errorDetails = handleException(
+          err,
+          `Error loading files from "${path || "root"}"`
         );
+        console.error(errorDetails.content);
+        if (setError) {
+          setError(errorDetails.content);
+        }
+        throw err;
       });
   }
 
@@ -148,7 +163,7 @@ function FileExplorer({
       )}
       {error && (
         <div className="center">
-          <Text>Error loading the data</Text>
+          <Text>{error}</Text>
         </div>
       )}
     </div>
@@ -211,7 +226,8 @@ FileExplorer.propTypes = {
   selectedConnector: PropTypes.string,
   data: PropTypes.array,
   loadingData: PropTypes.bool,
-  error: PropTypes.bool,
+  error: PropTypes.string,
+  setError: PropTypes.func,
   onFolderSelect: PropTypes.func,
   selectedFolderPath: PropTypes.string,
 };

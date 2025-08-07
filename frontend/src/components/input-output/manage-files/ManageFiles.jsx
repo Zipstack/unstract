@@ -3,6 +3,7 @@ import PropTypes from "prop-types";
 
 import { inputService } from "../../input-output/input-output/input-service.js";
 import { FileExplorer } from "../file-system/FileSystem.jsx";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 function ManageFiles({
   selectedConnector,
@@ -10,10 +11,11 @@ function ManageFiles({
   selectedFolderPath,
 }) {
   const inpService = inputService();
+  const handleException = useExceptionHandler();
 
   const [files, setFiles] = useState([]);
   const [loadingData, setLoadingData] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     setFiles([]);
@@ -23,10 +25,11 @@ function ManageFiles({
       .getFileList(selectedConnector)
       .then((res) => {
         setFiles(res.data);
-        setError(false);
+        setError("");
       })
-      .catch(() => {
-        setError(true);
+      .catch((err) => {
+        const errorDetails = handleException(err, "Error loading files");
+        setError(errorDetails.content);
       })
       .finally(() => {
         setLoadingData(false);
@@ -39,6 +42,7 @@ function ManageFiles({
       data={files}
       loadingData={loadingData}
       error={error}
+      setError={setError}
       onFolderSelect={onFolderSelect}
       selectedFolderPath={selectedFolderPath}
     />

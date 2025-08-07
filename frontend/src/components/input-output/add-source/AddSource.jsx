@@ -37,10 +37,6 @@ function AddSource({
   addNewItem,
   editItemId,
   metadata,
-  handleUpdate,
-  connDetails,
-  connType,
-  formDataConfig,
 }) {
   const [spec, setSpec] = useState({});
   const [formData, setFormData] = useState({});
@@ -170,12 +166,8 @@ function AddSource({
       type={type}
       editItemId={editItemId}
       sourceType={sourceType}
-      handleUpdate={handleUpdate}
-      connDetails={connDetails}
       metadata={metadata}
       selectedSourceName={selectedSourceName}
-      connType={connType}
-      formDataConfig={formDataConfig}
     />
   );
 }
@@ -192,10 +184,6 @@ AddSource.propTypes = {
   addNewItem: PropTypes.func,
   editItemId: PropTypes.string,
   metadata: PropTypes.object,
-  handleUpdate: PropTypes.func,
-  connDetails: PropTypes.object,
-  connType: PropTypes.string,
-  formDataConfig: PropTypes.object,
 };
 
 export { AddSource };

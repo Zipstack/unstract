@@ -26,11 +26,8 @@ function ConfigureDs({
   type,
   editItemId,
   sourceType,
-  handleUpdate,
-  connDetails,
   metadata,
   selectedSourceName,
-  connType,
 }) {
   const formRef = createRef(null);
   const axiosPrivate = useAxiosPrivate();
@@ -52,56 +49,8 @@ function ConfigureDs({
   } = usePostHogEvents();
   const { getUrl } = useRequestUrl();
 
-  // Map connector type to proper role for OAuth isolation
-  const connectorRole = type === "input" ? "SOURCE" : "DESTINATION";
-
-  const oauthCacheKey = `oauth-cachekey-${id}-${connectorRole}-${selectedSourceId}`;
-  const oauthStatusKey = `oauth-status-${id}-${connectorRole}-${selectedSourceId}`;
-
-  // Initialize OAuth state from localStorage after keys are available
-  useEffect(() => {
-    if (!oAuthProvider?.length) {
-      return;
-    }
-
-    // Initialize cache key
-    const storedCacheKey = localStorage.getItem(oauthCacheKey);
-    if (storedCacheKey) {
-      setCacheKey(storedCacheKey);
-    }
-
-    // Initialize status from connector-specific key only
-    const storedStatus = localStorage.getItem(oauthStatusKey);
-    if (storedStatus) {
-      setStatus(storedStatus);
-    }
-  }, [oauthCacheKey, oauthStatusKey, oAuthProvider, selectedSourceId]);
-
-  // Wrapper functions to persist OAuth state to localStorage
-  const handleSetCacheKey = (key) => {
-    // Only handle OAuth operations for OAuth-enabled connectors
-    if (!oAuthProvider?.length) {
-      return;
-    }
-    setCacheKey(key);
-    localStorage.setItem(oauthCacheKey, key);
-  };
-
-  const handleSetStatus = (newStatus) => {
-    // Only handle OAuth operations for OAuth-enabled connectors
-    if (!oAuthProvider?.length) {
-      return;
-    }
-    setStatus(newStatus);
-    // Store only in connector-specific location to prevent contamination
-    localStorage.setItem(oauthStatusKey, newStatus);
-  };
-
-  // Map connector type to proper role for OAuth isolation
-  const connectorRole = type === "input" ? "SOURCE" : "DESTINATION";
-
-  const oauthCacheKey = `oauth-cachekey-${id}-${connectorRole}-${selectedSourceId}`;
-  const oauthStatusKey = `oauth-status-${id}-${connectorRole}-${selectedSourceId}`;
+  const oauthCacheKey = `oauth-cachekey-${selectedSourceId}`;
+  const oauthStatusKey = `oauth-status-${selectedSourceId}`;
 
   // Initialize OAuth state from localStorage after keys are available
   useEffect(() => {
@@ -149,13 +98,7 @@ function ConfigureDs({
   }, [formData]);
 
   useEffect(() => {
-    const { connector_id: connectorId } = connDetails || {};
-
-    // Check if connectorId matches selectedSourceId and metadata is available
-    const shouldSetMetadata = connectorId === selectedSourceId && metadata;
-    if (!shouldSetMetadata) return;
-
-    // Set formData based on the condition
+    if (!metadata) return;
     setFormData(metadata);
   }, [selectedSourceId]);
 
@@ -172,7 +115,7 @@ function ConfigureDs({
       setStatus("");
       setCacheKey("");
     }
-  }, [selectedSourceId, id, connectorRole, oauthStatusKey, oauthCacheKey]);
+  }, [selectedSourceId, oauthStatusKey, oauthCacheKey]);
 
   // Restore OAuth state when returning to a connector with stored credentials
   useEffect(() => {
@@ -188,14 +131,7 @@ function ConfigureDs({
         setCacheKey(storedCacheKey);
       }
     }
-  }, [
-    selectedSourceId,
-    id,
-    connectorRole,
-    oAuthProvider,
-    oauthStatusKey,
-    oauthCacheKey,
-  ]);
+  }, [selectedSourceId, oAuthProvider, oauthStatusKey, oauthCacheKey]);
 
   const isFormValid = () => {
     if (formRef) {
@@ -323,9 +259,7 @@ function ConfigureDs({
       url = getUrl("connector/");
 
       try {
-        // TODO: Correct the connector related posthog events
-        // For workflow connectors, use the old format
-        const eventKey = `${connType.toUpperCase()}:${type.toLowerCase()}`;
+        const eventKey = `${type.toUpperCase()}`;
         if (posthogConnectorAddedEventText[eventKey]) {
           setPostHogCustomEvent(posthogConnectorAddedEventText[eventKey], {
             info: `Clicked on 'Submit' button`,
@@ -428,8 +362,6 @@ function ConfigureDs({
           setCacheKey={handleSetCacheKey}
           setStatus={handleSetStatus}
           selectedSourceId={selectedSourceId}
-          workflowId={id}
-          connType={connectorRole}
         />
       )}
       <RjsfFormLayout
@@ -482,11 +414,8 @@ ConfigureDs.propTypes = {
   type: PropTypes.string,
   editItemId: PropTypes.string,
   sourceType: PropTypes.string.isRequired,
-  handleUpdate: PropTypes.func,
-  connDetails: PropTypes.object,
   metadata: PropTypes.object,
   selectedSourceName: PropTypes.string.isRequired,
-  connType: PropTypes.string,
 };
 
 export { ConfigureDs };
