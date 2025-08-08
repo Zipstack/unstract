@@ -789,6 +789,7 @@ class DestinationConnector(BaseConnector):
             ).to_dict()
 
             queue_result_json = json.dumps(queue_result)
+
             conn = QueueUtils.get_queue_inst()
             conn.enqueue(queue_name=q_name, message=queue_result_json)
             logger.info(f"Pushed {file_name} to queue {q_name} with file content")
@@ -811,7 +812,9 @@ class DestinationConnector(BaseConnector):
                 whisper_hash = meta_data.get("whisper-hash")
             else:
                 whisper_hash = None
-            queue_result = QueueResult(
+
+            # Create QueueResult with TTL metadata
+            queue_result_obj = QueueResult(
                 file=file_name,
                 status=QueueResultStatus.SUCCESS,
                 result=result,
@@ -819,38 +822,27 @@ class DestinationConnector(BaseConnector):
                 file_content=file_content_base64,
                 whisper_hash=whisper_hash,
                 file_execution_id=file_execution_id,
-            ).to_dict()
-            # Convert the result dictionary to a JSON string
+            )
+
+            # Add TTL metadata based on HITLSettings
+            queue_result_obj.ttl_seconds = WorkflowUtil.get_hitl_ttl_seconds(workflow)
+
+            queue_result = queue_result_obj.to_dict()
             queue_result_json = json.dumps(queue_result)
+
+            # Validate the JSON is not empty before enqueuing
+            if not queue_result_json or queue_result_json.strip() == "":
+                logger.error(
+                    f"Attempted to enqueue empty JSON with TTL for file {file_name}"
+                )
+                raise ValueError("Cannot enqueue empty JSON message")
+
             conn = QueueUtils.get_queue_inst()
-            # Enqueue the JSON string
-            conn.enqueue(queue_name=q_name, message=queue_result_json)
+
+            # Use the TTL metadata that was already set in the QueueResult object
+            ttl_seconds = queue_result_obj.ttl_seconds
+
+            conn.enqueue_with_ttl(
+                queue_name=q_name, message=queue_result_json, ttl_seconds=ttl_seconds
+            )
             logger.info(f"Pushed {file_name} to queue {q_name} with file content")
-
-    def _read_file_content_for_queue(self, input_file_path: str, file_name: str) -> str:
-        """Read and encode file content for queue message.
-
-        Args:
-            input_file_path: Path to the file to read
-            file_name: Name of the file for logging purposes
-
-        Returns:
-            Base64 encoded file content
-
-        Raises:
-            APIException: If file cannot be read or doesn't exist
-        """
-        try:
-            file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
-            file_storage = file_system.get_file_storage()
-
-            if not file_storage.exists(input_file_path):
-                raise APIException(f"File not found: {input_file_path}")
-
-            file_bytes = file_storage.read(input_file_path, mode="rb")
-            if isinstance(file_bytes, str):
-                file_bytes = file_bytes.encode("utf-8")
-            return base64.b64encode(file_bytes).decode("utf-8")
-        except Exception as e:
-            logger.error(f"Failed to read file content for {file_name}: {e}")
-            raise APIException(f"Failed to read file content for queue: {e}")
