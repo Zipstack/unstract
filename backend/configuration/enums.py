@@ -64,7 +64,9 @@ class ConfigKey(Enum):
     def cast_value(self, raw_value: Any):
         converters = {
             ConfigType.INT: int,
-            ConfigType.BOOL: lambda v: v.lower() in ("true", "1"),
+            ConfigType.BOOL: lambda v: v.lower() in ("true", "1")
+            if isinstance(v, str)
+            else bool(v),
             ConfigType.JSON: json.loads,
             ConfigType.STRING: str,
         }
