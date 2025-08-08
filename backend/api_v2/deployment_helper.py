@@ -2,6 +2,7 @@ import logging
 from typing import Any
 from urllib.parse import urlencode
 
+from configuration.models import Configuration
 from django.conf import settings
 from django.core.files.uploadedfile import UploadedFile
 from rest_framework.request import Request
@@ -204,7 +205,18 @@ class DeploymentHelper(BaseAPIKeyValidator):
             result.status_api = DeploymentHelper.construct_status_endpoint(
                 api_endpoint=api.api_endpoint, execution_id=execution_id
             )
-            if not settings.ENABLE_HIGHLIGHT_API_DEPLOYMENT:
+            # Check if highlight data should be removed using configuration registry
+            organization = api.organization if api else None
+            try:
+                enable_highlight = Configuration.get_value_by_organization(
+                    config_key="ENABLE_HIGHLIGHT_API_DEPLOYMENT",
+                    organization=organization,
+                )
+            except ValueError:
+                # Key not found in registry (OSS deployment), fall back to settings
+                enable_highlight = settings.ENABLE_HIGHLIGHT_API_DEPLOYMENT
+
+            if not enable_highlight:
                 result.remove_result_metadata_keys(["highlight_data"])
             if not include_metadata:
                 result.remove_result_metadata_keys()
