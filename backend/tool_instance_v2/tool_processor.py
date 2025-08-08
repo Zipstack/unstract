@@ -63,6 +63,22 @@ class ToolProcessor:
         return schema_json
 
     @staticmethod
+    def _update_schema_for_adapter_type(
+        schema: Spec, keys: list[str], adapter_type: AdapterTypes, user: User
+    ) -> None:
+        """Helper method to update schema properties for a specific adapter type."""
+        if not keys:
+            return
+
+        adapters = AdapterProcessor.get_adapters_by_type(adapter_type, user=user)
+        adapter_ids = [str(adapter.id) for adapter in adapters]
+        adapter_names = [adapter.adapter_name for adapter in adapters]
+
+        for key in keys:
+            schema.properties[key]["enum"] = adapter_ids
+            schema.properties[key]["enumNames"] = adapter_names
+
+    @staticmethod
     def update_schema_with_adapter_configurations(schema: Spec, user: User) -> None:
         """Updates the JSON schema with the available adapter configurations
         for the LLM, embedding, and vector DB adapters.
@@ -79,41 +95,21 @@ class ToolProcessor:
         x2text_keys = schema.get_text_extractor_adapter_properties_keys()
         ocr_keys = schema.get_ocr_adapter_properties_keys()
 
-        if llm_keys:
-            adapters = AdapterProcessor.get_adapters_by_type(AdapterTypes.LLM, user=user)
-            for key in llm_keys:
-                adapter_names = map(lambda adapter: str(adapter.adapter_name), adapters)
-                schema.properties[key]["enum"] = list(adapter_names)
-
-        if embedding_keys:
-            adapters = AdapterProcessor.get_adapters_by_type(
-                AdapterTypes.EMBEDDING, user=user
-            )
-            for key in embedding_keys:
-                adapter_names = map(lambda adapter: str(adapter.adapter_name), adapters)
-                schema.properties[key]["enum"] = list(adapter_names)
-
-        if vector_db_keys:
-            adapters = AdapterProcessor.get_adapters_by_type(
-                AdapterTypes.VECTOR_DB, user=user
-            )
-            for key in vector_db_keys:
-                adapter_names = map(lambda adapter: str(adapter.adapter_name), adapters)
-                schema.properties[key]["enum"] = list(adapter_names)
-
-        if x2text_keys:
-            adapters = AdapterProcessor.get_adapters_by_type(
-                AdapterTypes.X2TEXT, user=user
-            )
-            for key in x2text_keys:
-                adapter_names = map(lambda adapter: str(adapter.adapter_name), adapters)
-                schema.properties[key]["enum"] = list(adapter_names)
-
-        if ocr_keys:
-            adapters = AdapterProcessor.get_adapters_by_type(AdapterTypes.OCR, user=user)
-            for key in ocr_keys:
-                adapter_names = map(lambda adapter: str(adapter.adapter_name), adapters)
-                schema.properties[key]["enum"] = list(adapter_names)
+        ToolProcessor._update_schema_for_adapter_type(
+            schema, llm_keys, AdapterTypes.LLM, user
+        )
+        ToolProcessor._update_schema_for_adapter_type(
+            schema, embedding_keys, AdapterTypes.EMBEDDING, user
+        )
+        ToolProcessor._update_schema_for_adapter_type(
+            schema, vector_db_keys, AdapterTypes.VECTOR_DB, user
+        )
+        ToolProcessor._update_schema_for_adapter_type(
+            schema, x2text_keys, AdapterTypes.X2TEXT, user
+        )
+        ToolProcessor._update_schema_for_adapter_type(
+            schema, ocr_keys, AdapterTypes.OCR, user
+        )
 
     @staticmethod
     def get_tool_list(user: User) -> list[dict[str, Any]]:
