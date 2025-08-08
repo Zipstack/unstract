@@ -60,7 +60,8 @@ class IndexingService:
             )
             if check_feature_flag_status("sdk1"):
                 embedding = Embedding(
-                    adapter_id=instance_identifiers.embedding_instance_id,
+                    adapter_instance_id=instance_identifiers.embedding_instance_id,
+                    tool=util,
                     kwargs={
                         **processing_options.usage_kwargs,
                     }

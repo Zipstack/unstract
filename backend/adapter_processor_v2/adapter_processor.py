@@ -101,22 +101,32 @@ class AdapterProcessor:
     def test_adapter(adapter_id: str, adapter_metadata: dict[str, Any]) -> bool:
         if check_feature_flag_status("sdk1"):
             try:
-                # Get adapter type from metadata
                 adapter_type = adapter_metadata.get(AdapterKeys.ADAPTER_TYPE)
                 
                 if adapter_type == AdapterKeys.EMBEDDING:
                     embedding = Embedding(adapter_id=adapter_id, adapter_metadata=adapter_metadata)
-                    test_embedding = embedding.get_query_embedding("test")
-                    return len(test_embedding) > 0
+                    return embedding.test_connection()
                 elif adapter_type == AdapterKeys.LLM:
-                    # For LLM and other adapter types, create LLM instance
                     llm = LLM(adapter_id=adapter_id, adapter_metadata=adapter_metadata)
                     return llm.test_connection()
                 else:
                     adapter_class = Adapterkit().get_adapter_class_by_adapter_id(adapter_id)
+
+                    if adapter_metadata.pop(AdapterKeys.ADAPTER_TYPE) == AdapterKeys.X2TEXT:
+                        if (
+                            adapter_metadata.get(AdapterKeys.PLATFORM_PROVIDED_UNSTRUCT_KEY)
+                            and add_unstract_key
+                        ):
+                            adapter_metadata = add_unstract_key(adapter_metadata)
+                        adapter_metadata[X2TextConstants.X2TEXT_HOST] = settings.X2TEXT_HOST
+                        adapter_metadata[X2TextConstants.X2TEXT_PORT] = settings.X2TEXT_PORT
+                        platform_key = PlatformAuthenticationService.get_active_platform_key()
+                        adapter_metadata[X2TextConstants.PLATFORM_SERVICE_API_KEY] = str(
+                            platform_key.key
+                        )
+
                     adapter_instance = adapter_class(adapter_metadata)
                     return adapter_instance.test_connection()
-                    
             except SdkError as e:
                 raise TestAdapterError(
                     e, adapter_name=adapter_metadata[AdapterKeys.ADAPTER_NAME]

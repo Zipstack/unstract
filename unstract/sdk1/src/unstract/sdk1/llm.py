@@ -11,6 +11,8 @@ from pydantic import ValidationError
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
 from unstract.sdk1.exceptions import LLMError, SdkError
+from unstract.sdk1.platform import PlatformHelper
+from unstract.sdk1.tool.base import BaseTool
 
 logger = logging.getLogger(__name__)
 
@@ -25,26 +27,41 @@ class LLM:
         self,
         adapter_id: str = "",
         adapter_metadata: Dict[str, Any] = {},
+        adapter_instance_id: str = "",
+        tool: BaseTool = None,
         default_system_prompt: str = "",
         kwargs: dict[str, Any] = {}
     ) -> None:
+        llm_config = None
+
         try:
-            self.adapter = adapters[adapter_id][Common.MODULE]
+            if adapter_instance_id:
+                if not tool:
+                    raise SdkError("Broken LLM adapter tool binding: " + adapter_instance_id)
+
+                llm_config = PlatformHelper.get_adapter_config(tool, adapter_instance_id)
+
+                self._adapter_id = llm_config[Common.ADAPTER_ID]
+            else:
+                self._adapter_id = adapter_id
+
+            if llm_config:
+                self._adapter_metadata = llm_config[Common.ADAPTER_METADATA]
+            elif adapter_metadata:
+                self._adapter_metadata = adapter_metadata
+            else:
+                self._adapter_metadata = adapters[self._adapter_id][Common.METADATA]
+
+            self.adapter = adapters[self._adapter_id][Common.MODULE]
         except KeyError:
-            raise SdkError("LLM adapter not supported: " + adapter_id)
+            raise SdkError("LLM adapter not supported: " + self._adapter_id)
 
         self._default_system_prompt = default_system_prompt or _MSG_SYSTEM
         self._last_usage: Optional[dict[str, Any]] = None
 
-        self._adapter_id = adapter_id
-        if adapter_metadata:
-            self._adapter_metadata = adapter_metadata
-        else:
-            self._adapter_metadata = adapters[adapter_id][Common.METADATA]
-
         try:
             self.kwargs = kwargs
-            self.kwargs.update(self.adapter.validate(adapter_metadata))
+            self.kwargs.update(self.adapter.validate(self._adapter_metadata))
 
             # REF: https://docs.litellm.ai/docs/completion/input#translated-openai-params
             # supported = get_supported_openai_params(model=self.kwargs["model"], custom_llm_provider=self.provider)

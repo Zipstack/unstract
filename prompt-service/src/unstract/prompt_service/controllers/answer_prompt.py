@@ -153,7 +153,8 @@ def prompt_processor() -> Any:
             usage_kwargs = {"run_id": run_id, "execution_id": execution_id}
             if check_feature_flag_status("sdk1"):
                 llm = LLM(
-                    adapter_id=output[PSKeys.LLM],
+                    adapter_instance_id=output[PSKeys.LLM],
+                    tool=util,
                     kwargs={
                         **usage_kwargs,
                         PSKeys.LLM_USAGE_REASON: PSKeys.EXTRACTION,
@@ -162,7 +163,8 @@ def prompt_processor() -> Any:
                 )
 
                 embedding = Embedding(
-                    adapter_id=output[PSKeys.EMBEDDING],
+                    adapter_instance_id=output[PSKeys.EMBEDDING],
+                    tool=util,
                     kwargs={
                         **usage_kwargs,
                     }
@@ -573,8 +575,8 @@ def prompt_processor() -> Any:
                         )
                         if check_feature_flag_status("sdk1"):
                             challenge_llm = LLM(
-                                adapter_id=tool_settings[PSKeys.CHALLENGE_LLM],
-                                adapter_metadata={},    # TODO
+                                adapter_instance_id=tool_settings[PSKeys.CHALLENGE_LLM],
+                                tool=util,
                                 kwargs={
                                     **usage_kwargs,
                                     PSKeys.LLM_USAGE_REASON: PSKeys.CHALLENGE,
