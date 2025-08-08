@@ -102,8 +102,22 @@ run_worker() {
         worker_instance_name="${worker_type}-worker-prod-01"
     fi
 
-    # Get queues for this worker
+    # Get queues for this worker - allow environment override
     local queues="${WORKER_QUEUES[$worker_type]}"
+    case "$worker_type" in
+        "api_deployment")
+            queues="${CELERY_QUEUES_API_DEPLOYMENT:-$queues}"
+            ;;
+        "general")
+            queues="${CELERY_QUEUES_GENERAL:-$queues}"
+            ;;
+        "file_processing")
+            queues="${CELERY_QUEUES_FILE_PROCESSING:-$queues}"
+            ;;
+        "callback")
+            queues="${CELERY_QUEUES_CALLBACK:-$queues}"
+            ;;
+    esac
 
     # Get health port
     local health_port="${WORKER_HEALTH_PORTS[$worker_type]}"
@@ -152,13 +166,35 @@ run_worker() {
     print_status $BLUE "Health Port: $health_port"
     print_status $BLUE "Autoscale: $autoscale"
 
-    # Use pre-installed Celery from Docker image
-    # The virtual environment is already set up at /app/.venv during build
-    exec /app/.venv/bin/celery -A worker worker \
-        --loglevel="${LOG_LEVEL:-info}" \
-        --queues="$queues" \
-        --hostname="${worker_instance_name}@%h" \
-        --autoscale="$autoscale"
+    # Build Celery command with configurable options
+    local celery_cmd="/app/.venv/bin/celery -A worker worker"
+    local celery_args="--loglevel=${LOG_LEVEL:-info} --queues=$queues --hostname=${worker_instance_name}@%h --autoscale=$autoscale"
+
+    # Add optional pool type configuration
+    if [[ -n "$CELERY_POOL" ]]; then
+        celery_args="$celery_args --pool=$CELERY_POOL"
+    fi
+
+    # Add optional prefetch multiplier
+    if [[ -n "$CELERY_PREFETCH_MULTIPLIER" ]]; then
+        celery_args="$celery_args --prefetch-multiplier=$CELERY_PREFETCH_MULTIPLIER"
+    fi
+
+    # Add optional concurrency override (takes precedence over autoscale)
+    if [[ -n "$CELERY_CONCURRENCY" ]]; then
+        # Remove autoscale and use fixed concurrency
+        celery_args="${celery_args/--autoscale=$autoscale/--concurrency=$CELERY_CONCURRENCY}"
+    fi
+
+    # Add any additional custom Celery arguments
+    if [[ -n "$CELERY_EXTRA_ARGS" ]]; then
+        celery_args="$celery_args $CELERY_EXTRA_ARGS"
+    fi
+
+    print_status $BLUE "Final Celery command: $celery_cmd $celery_args"
+
+    # Execute the command
+    exec $celery_cmd $celery_args
 }
 
 # Main execution
