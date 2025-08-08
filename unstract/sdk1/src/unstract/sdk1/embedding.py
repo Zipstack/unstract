@@ -21,8 +21,8 @@ class Embedding:
 
     def __init__(
         self,
-        adapter_id: str,
-        adapter_metadata: dict[str, Any],
+        adapter_id: str = "",
+        adapter_metadata: dict[str, Any] = {},
         adapter_instance_id: str = "",
         tool: BaseTool = None,
         kwargs: dict[str, Any] = {},
