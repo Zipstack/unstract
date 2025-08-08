@@ -17,3 +17,16 @@
 .workflow-card-content > div {
   width: 100%;
 }
+
+/* Connector type badge styling */
+.connector-type-badge {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* Connector icon styling */
+.workflow-card-number .connector-icon {
+  display: block;
+  object-fit: contain;
+}
