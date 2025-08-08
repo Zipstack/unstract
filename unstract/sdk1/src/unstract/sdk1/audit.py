@@ -128,7 +128,7 @@ class Audit(StreamMixin):
         platform_port = self.get_env_or_die(ToolEnv.PLATFORM_PORT)
         run_id = kwargs.get("run_id", "")
         file_name = kwargs.get("file_name", "")
-        base_url = SdkHelper.get_platform_base_url(
+        base_url = PlatformHelper.get_platform_base_url(
             platform_host=platform_host, platform_port=platform_port
         )
         bearer_token = platform_api_key
