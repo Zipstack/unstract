@@ -61,7 +61,6 @@ class IndexingService:
             if check_feature_flag_status("sdk1"):
                 embedding = Embedding(
                     adapter_id=instance_identifiers.embedding_instance_id,
-                    adapter_metadata={},    # TODO
                     kwargs={
                         **processing_options.usage_kwargs,
                     }

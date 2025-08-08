@@ -154,7 +154,6 @@ def prompt_processor() -> Any:
             if check_feature_flag_status("sdk1"):
                 llm = LLM(
                     adapter_id=output[PSKeys.LLM],
-                    adapter_metadata={},    # TODO
                     kwargs={
                         **usage_kwargs,
                         PSKeys.LLM_USAGE_REASON: PSKeys.EXTRACTION,
@@ -164,7 +163,6 @@ def prompt_processor() -> Any:
 
                 embedding = Embedding(
                     adapter_id=output[PSKeys.EMBEDDING],
-                    adapter_metadata={},    # TODO
                     kwargs={
                         **usage_kwargs,
                     }

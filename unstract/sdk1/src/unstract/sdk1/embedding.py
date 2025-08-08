@@ -23,15 +23,18 @@ class Embedding:
         adapter_metadata: dict[str, Any],
         kwargs: dict[str, Any] = {},
     ) -> None:
-        self._adapter_id = adapter_id
-        self._adapter_metadata = adapter_metadata
-
-        self.kwargs: dict[str, Any] = kwargs
-
         try:
             self.adapter = adapters[adapter_id][Common.MODULE]
         except KeyError:
             raise SdkError("Embedding adapter not supported: " + adapter_id)
+
+        self._adapter_id = adapter_id
+        if adapter_metadata:
+            self._adapter_metadata = adapter_metadata
+        else:
+            self._adapter_metadata = adapters[adapter_id][Common.METADATA]
+
+        self.kwargs: dict[str, Any] = kwargs
 
         try:
             self.kwargs.update(self.adapter.validate(adapter_metadata))

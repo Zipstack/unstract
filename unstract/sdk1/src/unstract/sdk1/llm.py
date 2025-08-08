@@ -25,21 +25,26 @@ class LLM:
         self,
         adapter_id: str = "",
         adapter_metadata: Dict[str, Any] = {},
-        default_system_prompt: str = ""
+        default_system_prompt: str = "",
+        kwargs: dict[str, Any] = {}
     ) -> None:
-        self._default_system_prompt = default_system_prompt or _MSG_SYSTEM
-        self._last_usage: Optional[dict[str, Any]] = None
-
-        self._adapter_id = adapter_id
-        self._adapter_metadata = adapter_metadata
-
         try:
             self.adapter = adapters[adapter_id][Common.MODULE]
         except KeyError:
             raise SdkError("LLM adapter not supported: " + adapter_id)
 
+        self._default_system_prompt = default_system_prompt or _MSG_SYSTEM
+        self._last_usage: Optional[dict[str, Any]] = None
+
+        self._adapter_id = adapter_id
+        if adapter_metadata:
+            self._adapter_metadata = adapter_metadata
+        else:
+            self._adapter_metadata = adapters[adapter_id][Common.METADATA]
+
         try:
-            self.kwargs: dict[str, Any] = self.adapter.validate(adapter_metadata)
+            self.kwargs = kwargs
+            self.kwargs.update(self.adapter.validate(adapter_metadata))
 
             # REF: https://docs.litellm.ai/docs/completion/input#translated-openai-params
             # supported = get_supported_openai_params(model=self.kwargs["model"], custom_llm_provider=self.provider)
