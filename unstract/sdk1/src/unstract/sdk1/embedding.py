@@ -86,6 +86,26 @@ class Embedding:
 
         return [data.embedding for data in resp["data"]]
 
+    async def get_aembedding(self, text: str) -> list[float]:
+        """Return async embedding vector for query string."""
+        kwargs = self.kwargs.copy()
+        model = kwargs.pop("model")
+        del kwargs["temperature"]
+
+        resp = await litellm.aembedding(model=model, input=[text], **kwargs)
+
+        return resp["data"][0]["embedding"]
+
+    async def get_aembeddings(self, texts: list[str]) -> list[list[float]]:
+        """Return async embedding vectors for list of query strings."""
+        kwargs = self.kwargs.copy()
+        model = kwargs.pop("model")
+        del kwargs["temperature"]
+
+        resp = await litellm.aembedding(model=model, input=texts, **kwargs)
+
+        return [data.embedding for data in resp["data"]]
+
     def test_connection(self) -> bool:
         """Test connection to the embedding provider."""
         return self._length > 0
@@ -140,6 +160,18 @@ class EmbeddingCompat(BaseEmbedding):
 
     def get_query_embedding(self, query: str) -> list[float]:
         return self._get_query_embedding(query)
+
+    async def _aget_query_embedding(self, query: str) -> list[float]:
+        return await self._embedding_instance.get_aembedding(query)
+
+    async def _aget_text_embedding(self, text: str) -> list[float]:
+        return await self._embedding_instance.get_aembedding(text)
+
+    async def _aget_text_embeddings(self, texts: list[str]) -> list[list[float]]:
+        return await self._embedding_instance.get_aembeddings(texts)
+    
+    async def get_aquery_embedding(self, query: str) -> list[float]:
+        return await self._aget_query_embedding(query)
 
     def test_connection(self) -> bool:
         return self._embedding_instance.test_connection()
