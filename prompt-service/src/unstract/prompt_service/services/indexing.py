@@ -13,7 +13,7 @@ from unstract.prompt_service.helpers.prompt_ide_base_tool import PromptServiceBa
 from unstract.prompt_service.utils.file_utils import FileUtils
 
 if check_feature_flag_status("sdk1"):
-    from unstract.sdk1.embedding import Embedding
+    from unstract.sdk1.embedding import EmbeddingCompat
     from unstract.sdk1.utils.indexing import IndexingUtils
     from unstract.sdk1.vector_db import VectorDB
 else:
@@ -59,7 +59,7 @@ class IndexingService:
                 fs=fs_instance,
             )
             if check_feature_flag_status("sdk1"):
-                embedding = Embedding(
+                embedding = EmbeddingCompat(
                     adapter_instance_id=instance_identifiers.embedding_instance_id,
                     tool=util,
                     kwargs={

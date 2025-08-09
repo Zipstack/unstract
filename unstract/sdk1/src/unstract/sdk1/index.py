@@ -23,7 +23,7 @@ from unstract.sdk1.adapters.x2text.dto import TextExtractionResult
 from unstract.sdk1.adapters.x2text.llm_whisperer.src import LLMWhisperer
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import LLMWhispererV2
 from unstract.sdk1.constants import LogLevel
-from unstract.sdk1.embedding import Embedding
+from unstract.sdk1.embedding import EmbeddingCompat
 from unstract.sdk1.exceptions import IndexingError, SdkError, VectorDBError, X2TextError
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
 from unstract.sdk1.platform import PlatformHelper
@@ -61,7 +61,7 @@ class Index:
         doc_id: str,
         usage_kwargs: dict[Any, Any] = {},
     ):
-        embedding = Embedding(
+        embedding = EmbeddingCompat(
             tool=self.tool,
             adapter_instance_id=embedding_instance_id,
             usage_kwargs=usage_kwargs,
@@ -263,7 +263,7 @@ class Index:
             fs=fs,
         )
         self.tool.stream_log(f"Checking if doc_id {doc_id} exists")
-        embedding = Embedding(
+        embedding = EmbeddingCompat(
             tool=self.tool,
             adapter_instance_id=embedding_instance_id,
             usage_kwargs=usage_kwargs,
@@ -363,7 +363,7 @@ class Index:
     def index_to_vector_db(
         self,
         vector_db: VectorDB,
-        embedding: Embedding,
+        embedding: EmbeddingCompat,
         chunk_size: int,
         chunk_overlap: int,
         text_to_idx: str,
@@ -407,7 +407,7 @@ class Index:
                 parser = SentenceSplitter.from_defaults(
                     chunk_size=len(documents[0].text) + 10,
                     chunk_overlap=0,
-                    callback_manager=embedding.get_callback_manager(),
+                    callback_manager=embedding.callback_manager,
                 )
                 nodes = parser.get_nodes_from_documents(documents, show_progress=True)
                 node = nodes[0]

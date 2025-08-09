@@ -21,7 +21,7 @@ if check_feature_flag_status("sdk1"):
     from unstract.sdk1.adapters.adapterkit import Adapterkit
     from unstract.sdk1.adapters.base import Adapter
     from unstract.sdk1.constants import AdapterTypes
-    from unstract.sdk1.embedding import Embedding
+    from unstract.sdk1.embedding import EmbeddingCompat
     from unstract.sdk1.exceptions import SdkError
     from unstract.sdk1.llm import LLM
 else:
@@ -104,7 +104,7 @@ class AdapterProcessor:
                 adapter_type = adapter_metadata.get(AdapterKeys.ADAPTER_TYPE)
                 
                 if adapter_type == AdapterKeys.EMBEDDING:
-                    embedding = Embedding(adapter_id=adapter_id, adapter_metadata=adapter_metadata)
+                    embedding = EmbeddingCompat(adapter_id=adapter_id, adapter_metadata=adapter_metadata)
                     return embedding.test_connection()
                 elif adapter_type == AdapterKeys.LLM:
                     llm = LLM(adapter_id=adapter_id, adapter_metadata=adapter_metadata)

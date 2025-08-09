@@ -111,8 +111,8 @@ class UnstractClassifier(BaseTool):
         try:
             if check_feature_flag_status("sdk1"):
                 llm = LLM(
-                    adapter_id=llm_adapter_instance_id,
-                    adapter_metadata=settings[Common.ADAPTER_METADATA],
+                    adapter_instance_id=llm_adapter_instance_id,
+                    tool=self,
                     kwargs=usage_kwargs,
                 )
             else:

@@ -116,6 +116,11 @@ class BaseParameters(BaseModel):
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
         pass
 
+    @staticmethod
+    @abstractmethod
+    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+        pass
+
 class OpenAIParameters(BaseParameters):
     """See https://docs.litellm.ai/docs/providers/openai/"""
     api_key: str
@@ -124,9 +129,13 @@ class OpenAIParameters(BaseParameters):
 
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
-        adapter_metadata["model"] = f"openai/{adapter_metadata.get('model', '')}"
+        adapter_metadata["model"] = OpenAIParameters.validate_model(adapter_metadata)
 
         return OpenAIParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+        return f"openai/{adapter_metadata.get('model', '')}"
 
 class AzureOpenAIParameters(BaseParameters):
     """See https://docs.litellm.ai/docs/providers/azure/#completion---using-azure_ad_token-api_base-api_version"""
@@ -137,10 +146,14 @@ class AzureOpenAIParameters(BaseParameters):
 
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
-        adapter_metadata["model"] = f"azure/{adapter_metadata.get('deployment_name', '')}"
+        adapter_metadata["model"] = AzureOpenAIParameters.validate_model(adapter_metadata)
         adapter_metadata["api_base"] = adapter_metadata.get('azure_endpoint', '').split("?")[0]
 
         return AzureOpenAIParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+        return f"azure/{adapter_metadata.get('model', '')}"
 
 class VertexAIParameters(BaseParameters):
     """See https://docs.litellm.ai/docs/providers/vertex"""
@@ -150,7 +163,7 @@ class VertexAIParameters(BaseParameters):
 
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
-        adapter_metadata["model"] = f"vertex_ai/{adapter_metadata.get('model', '')}"
+        adapter_metadata["model"] = VertexAIParameters.validate_model(adapter_metadata)
         adapter_metadata["vertex_credentials"] = adapter_metadata.get('json_credentials', '')
         adapter_metadata["vertex_project"] = adapter_metadata.get('project', '')
 
@@ -180,6 +193,10 @@ class VertexAIParameters(BaseParameters):
 
         return VertexAIParameters(**adapter_metadata).model_dump()
 
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+        return f"vertex_ai/{adapter_metadata.get('model', '')}"
+
 class AWSBedrockParameters(BaseParameters):
     """See https://docs.litellm.ai/docs/providers/bedrock"""
     aws_access_key_id: Optional[str]
@@ -188,10 +205,14 @@ class AWSBedrockParameters(BaseParameters):
 
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
-        adapter_metadata["model"] = f"bedrock/{adapter_metadata.get('model', '')}"
+        adapter_metadata["model"] = AWSBedrockParameters.validate_model(adapter_metadata)
         adapter_metadata["aws_region_name"] = adapter_metadata.get('region_name', '')
 
         return AWSBedrockParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+        return f"bedrock/{adapter_metadata.get('model', '')}"
 
 class AnthropicParameters(BaseParameters):
     """See https://docs.litellm.ai/docs/providers/anthropic"""
@@ -199,9 +220,13 @@ class AnthropicParameters(BaseParameters):
 
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
-        adapter_metadata["model"] = f"anthropic/{adapter_metadata.get('model', '')}"
+        adapter_metadata["model"] = AnthropicParameters.validate_model(adapter_metadata)
 
         return AnthropicParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+        return f"anthropic/{adapter_metadata.get('model', '')}"
 
 class AnyscaleParameters(BaseParameters):
     """See https://docs.litellm.ai/docs/providers/anyscale"""
@@ -209,9 +234,13 @@ class AnyscaleParameters(BaseParameters):
 
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
-        adapter_metadata["model"] = f"anyscale/{adapter_metadata.get('model', '')}"
+        adapter_metadata["model"] = AnyscaleParameters.validate_model(adapter_metadata)
 
         return AnyscaleParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+        return f"anyscale/{adapter_metadata.get('model', '')}"
 
 class MistralParameters(BaseParameters):
     """See https://docs.litellm.ai/docs/providers/mistral"""
@@ -219,9 +248,13 @@ class MistralParameters(BaseParameters):
 
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
-        adapter_metadata["model"] = f"mistral/{adapter_metadata.get('model', '')}"
+        adapter_metadata["model"] = MistralParameters.validate_model(adapter_metadata)
 
         return MistralParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+        return f"mistral/{adapter_metadata.get('model', '')}"
 
 class OllamaParameters(BaseParameters):
     """See https://docs.litellm.ai/docs/providers/ollama"""
@@ -229,7 +262,11 @@ class OllamaParameters(BaseParameters):
 
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
-        adapter_metadata["model"] = f"ollama_chat/{adapter_metadata.get('model', '')}"
+        adapter_metadata["model"] = OllamaParameters.validate_model(adapter_metadata)
         # adapter_metadata["api_base"] = adapter_metadata.get("base_url", "")
 
         return OllamaParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+        return f"ollama_chat/{adapter_metadata.get('model', '')}"

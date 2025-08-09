@@ -20,9 +20,9 @@ from unstract.flags.feature_flag import check_feature_flag_status
 
 if check_feature_flag_status("sdk1"):
     from unstract.sdk1.constants import AdapterTypes
-    from unstract.sdk.adapters.adapterkit import Adapterkit
     from unstract.sdk1.exceptions import SdkError
     from unstract.sdk1.llm import LLM
+    from unstract.sdk.adapters.adapterkit import Adapterkit
 else:
     from unstract.sdk.adapters.adapterkit import Adapterkit
     from unstract.sdk.adapters.enums import AdapterTypes
@@ -168,10 +168,9 @@ class AdapterInstance(DefaultOrganizationMixin, BaseModel):
         # Get the adapter_instance
         if check_feature_flag_status("sdk1"):
             try:
-                llm = LLM(adapter_id=self.adapter_id, adapter_metadata=self.adapter_metadata)
-                return llm.get_context_window_size()
+                return LLM.get_context_window_size(self.adapter_id, self.metadata)
             except SdkError as e:
-                logger.warning(f"Unable to retrieve context window size - {e}")
+                logger.warning(f"Unable to retrieve context window size: {e}")
         else:
             try:
                 adapter_class = Adapterkit().get_adapter_class_by_adapter_id(self.adapter_id)

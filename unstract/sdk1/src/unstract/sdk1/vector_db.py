@@ -17,7 +17,7 @@ from unstract.sdk1.adapters.vectordb import adapters
 from unstract.sdk1.adapters.vectordb.constants import VectorDbConstants
 from unstract.sdk1.adapters.vectordb.exceptions import parse_vector_db_err
 from unstract.sdk1.constants import Common, LogLevel, ToolEnv
-from unstract.sdk1.embedding import Embedding
+from unstract.sdk1.embedding import EmbeddingCompat
 from unstract.sdk1.exceptions import SdkError, VectorDBError
 from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.tool.base import BaseTool
@@ -40,7 +40,7 @@ class VectorDB:
         self,
         tool: BaseTool,
         adapter_instance_id: str | None = None,
-        embedding: Embedding | None = None,
+        embedding: EmbeddingCompat | None = None,
     ):
         self._tool = tool
         self._adapter_instance_id = adapter_instance_id
@@ -49,7 +49,7 @@ class VectorDB:
         self._embedding_dimension = VectorDB.DEFAULT_EMBEDDING_DIMENSION
         self._initialise(embedding)
 
-    def _initialise(self, embedding: Embedding | None = None):
+    def _initialise(self, embedding: EmbeddingCompat | None = None):
         if embedding:
             self._embedding_instance = embedding._embedding_instance
             self._embedding_dimension = embedding._length

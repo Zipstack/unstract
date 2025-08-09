@@ -29,7 +29,7 @@ from unstract.prompt_service.utils.log import publish_log
 if check_feature_flag_status("sdk1"):
     from unstract.sdk1.adapters.llm.no_op.src.no_op_custom_llm import NoOpCustomLLM
     from unstract.sdk1.constants import LogLevel
-    from unstract.sdk1.embedding import Embedding
+    from unstract.sdk1.embedding import EmbeddingCompat
     from unstract.sdk1.exceptions import SdkError
     from unstract.sdk1.index import Index
     from unstract.sdk1.llm import LLM
@@ -162,7 +162,7 @@ def prompt_processor() -> Any:
                     }
                 )
 
-                embedding = Embedding(
+                embedding = EmbeddingCompat(
                     adapter_instance_id=output[PSKeys.EMBEDDING],
                     tool=util,
                     kwargs={

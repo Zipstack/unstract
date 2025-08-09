@@ -1,11 +1,12 @@
 import logging
 import re
 from collections.abc import Generator
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 import litellm
 
 # from litellm import get_supported_openai_params
+from litellm import get_max_tokens
 from pydantic import ValidationError
 
 from unstract.sdk1.adapters.constants import Common
@@ -16,17 +17,23 @@ from unstract.sdk1.tool.base import BaseTool
 
 logger = logging.getLogger(__name__)
 
-_MSG_SYSTEM = "You are a helpful assistant."
+# litellm._turn_on_debug()
 
 class LLM:
     """Unified LLM interface powered by LiteLLM.
     Internally invokes Unstract LLM adapters.
+
+    Accepts either of the following pairs for init:
+    - adapter ID and metadata       (e.g. test connection)
+    - adapter instance ID and tool  (e.g. edit adapter)
     """
+    SYSTEM_PROMPT = "You are a helpful assistant."
+    MAX_TOKENS_DEFAULT = 4096
 
     def __init__(
         self,
         adapter_id: str = "",
-        adapter_metadata: Dict[str, Any] = {},
+        adapter_metadata: dict[str, Any] = {},
         adapter_instance_id: str = "",
         tool: BaseTool = None,
         default_system_prompt: str = "",
@@ -38,25 +45,25 @@ class LLM:
             if adapter_instance_id:
                 if not tool:
                     raise SdkError("Broken LLM adapter tool binding: " + adapter_instance_id)
-
                 llm_config = PlatformHelper.get_adapter_config(tool, adapter_instance_id)
 
+            if llm_config:
                 self._adapter_id = llm_config[Common.ADAPTER_ID]
+                self._adapter_metadata = llm_config[Common.ADAPTER_METADATA]
+                self._adapter_instance_id = adapter_instance_id
+                self._tool = tool
             else:
                 self._adapter_id = adapter_id
-
-            if llm_config:
-                self._adapter_metadata = llm_config[Common.ADAPTER_METADATA]
-            elif adapter_metadata:
-                self._adapter_metadata = adapter_metadata
-            else:
-                self._adapter_metadata = adapters[self._adapter_id][Common.METADATA]
+                if adapter_metadata:
+                    self._adapter_metadata = adapter_metadata
+                else:
+                    self._adapter_metadata = adapters[self._adapter_id][Common.METADATA]
 
             self.adapter = adapters[self._adapter_id][Common.MODULE]
         except KeyError:
             raise SdkError("LLM adapter not supported: " + self._adapter_id)
 
-        self._default_system_prompt = default_system_prompt or _MSG_SYSTEM
+        self._default_system_prompt = default_system_prompt or self.SYSTEM_PROMPT
         self._last_usage: Optional[dict[str, Any]] = None
 
         try:
@@ -74,12 +81,6 @@ class LLM:
     def test_connection(self) -> bool:
         """Test connection to the LLM provider."""
         try:
-            # if hasattr(self, "model") and self.model not in O1_MODELS:
-            #     completion_kwargs["temperature"] = 0.003
-
-            # if hasattr(self, "thinking_dict") and self.thinking_dict is not None:
-            #     completion_kwargs["temperature"] = 1
-
             response = self.complete("What is the capital of Tamilnadu?")
             text = response["choices"][0]["message"]["content"]
 
@@ -98,15 +99,20 @@ class LLM:
             logger.error("Failed to test connection for LLM: %s", e)
             raise e
 
-    def complete(self, prompt: str, **kwargs: Any) -> Dict[str, Any]:
+    def complete(self, prompt: str, **kwargs: Any) -> dict[str, Any]:
         """Return a standard chat completion dict."""
-        messages: List[Dict[str, str]] = [
+        messages: list[dict[str, str]] = [
             {"role": "system", "content": self._default_system_prompt},
             {"role": "user", "content": prompt},
         ]
         logger.info("[sdk1.LLM] Invoking %s with %s", self.adapter.get_provider(), messages)
         
         combined_kwargs = {**self.kwargs, **kwargs}
+        # if hasattr(self, "model") and self.model not in O1_MODELS:
+        #     completion_kwargs["temperature"] = 0.003
+
+        # if hasattr(self, "thinking_dict") and self.thinking_dict is not None:
+        #     completion_kwargs["temperature"] = 1
 
         response: dict[str, Any] = litellm.completion(
             messages=messages,
@@ -145,7 +151,7 @@ class LLM:
                 callback_manager.on_stream(text)
             yield text
 
-    async def acomplete(self, prompt: str, **kwargs: Any) -> Dict[str, Any]:
+    async def acomplete(self, prompt: str, **kwargs: Any) -> dict[str, Any]:
         """Asynchronous chat completion (wrapper around ``litellm.acompletion``)."""
         messages = [
             {"role": "system", "content": self._default_system_prompt},
@@ -165,5 +171,16 @@ class LLM:
         """Return usage dict if present (provider specific)."""
         return self._last_usage
 
-    def get_context_window_size(self):
-        return self.get_max_tokens(self.kwargs["model"])
+    @classmethod
+    def get_context_window_size(cls, adapter_id: str, adapter_metadata: dict[str, Any]) -> int:
+        try:
+            model = adapters[adapter_id][Common.MODULE].validate_model(adapter_metadata)
+            return get_max_tokens(model)
+        except Exception as e:
+            logger.warning(f"Failed to get context window size for {adapter_id}: {e}")
+            return cls.MAX_TOKENS_DEFAULT
+
+    @classmethod
+    def get_max_tokens(cls, adapter_id: str, adapter_metadata: dict[str, Any]) -> int:
+        return cls.get_context_window_size(adapter_id, adapter_metadata)
+
