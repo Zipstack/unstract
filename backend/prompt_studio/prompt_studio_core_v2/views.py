@@ -8,7 +8,6 @@ from account_v2.custom_exceptions import DuplicateData
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
-from unstract.flags.feature_flag import check_feature_flag_status
 from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
 from permissions.permission import IsOwner, IsOwnerOrSharedUser
@@ -62,6 +61,8 @@ from tool_instance_v2.models import ToolInstance
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
+
+from unstract.flags.feature_flag import check_feature_flag_status
 
 if check_feature_flag_status("sdk1"):
     from unstract.sdk1.utils.common import Utils as CommonUtils
@@ -250,8 +251,8 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
         # Generate a run_id
-        if FeatureFlagHelper.check_flag_status('sdk1'):
-            run_id = Utils.generate_uuid()
+        if check_feature_flag_status('sdk1'):
+            run_id = CommonUtils.generate_uuid()
         else:
             run_id = CommonUtils.generate_uuid()
         is_summary = tool.summarize_context
@@ -329,8 +330,8 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         run_id: str = request.data.get(ToolStudioPromptKeys.RUN_ID)
         if not run_id:
             # Generate a run_id
-            if FeatureFlagHelper.check_flag_status('sdk1'):
-                run_id = Utils.generate_uuid()
+            if check_feature_flag_status('sdk1'):
+                run_id = CommonUtils.generate_uuid()
             else:
                 run_id = CommonUtils.generate_uuid()
         response: dict[str, Any] = PromptStudioHelper.prompt_responder(
