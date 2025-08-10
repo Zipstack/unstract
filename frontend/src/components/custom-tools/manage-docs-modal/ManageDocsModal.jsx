@@ -160,7 +160,12 @@ function ManageDocsModal({
   useEffect(() => {
     setRawLlmProfile(defaultLlmProfile);
     setSummarizeLlmProfile(details?.summarize_llm_profile);
-    setSummarizeLlmAdapter(details?.summarize_llm_adapter);
+    setSummarizeLlmAdapter(
+      details?.summarize_llm_adapter?.adapter_id ??
+        details?.summarize_llm_adapter?.id ??
+        details?.summarize_llm_adapter ??
+        null
+    );
   }, [defaultLlmProfile, details]);
 
   useEffect(() => {
@@ -318,21 +323,23 @@ function ManageDocsModal({
     return llmProfileName?.profile_name || "No LLM Profile Selected";
   };
 
-  const isSummarizationConfigured = () => {
-    return !!(summarizeLlmAdapter || summarizeLlmProfile);
-  };
+  const isSummarizationConfigured = () =>
+    !!(summarizeLlmAdapter || summarizeLlmProfile);
 
-  const isSummarizationEnabled = () => {
-    return isSummarizationConfigured() && details?.summarize_context;
-  };
+  const isSummarizationEnabled = () =>
+    isSummarizationConfigured() && details?.summarize_context;
 
   const getSummarizeLlmDisplayName = () => {
     // Check if new adapter approach is used
     if (summarizeLlmAdapter) {
+      const selectedAdapterId =
+        typeof summarizeLlmAdapter === "object"
+          ? summarizeLlmAdapter?.adapter_id ?? summarizeLlmAdapter?.id
+          : summarizeLlmAdapter;
       const adapter = adapters?.find(
         (item) =>
-          item?.adapter_id === summarizeLlmAdapter ||
-          item?.id === summarizeLlmAdapter
+          item?.adapter_id === selectedAdapterId ||
+          item?.id === selectedAdapterId
       );
       return adapter?.adapter_name || adapter?.name || "No adapter selected";
     }

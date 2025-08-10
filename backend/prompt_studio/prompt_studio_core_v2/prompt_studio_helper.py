@@ -498,30 +498,18 @@ class PromptStudioHelper:
             # Trigger migration if needed
             SummarizeMigrationUtils.migrate_tool_to_adapter_based(tool)
 
-            # Get default profile for other adapters
-            default_profile = ProfileManager.get_default_llm_profile(tool)
-            summary_profile = (
-                default_profile  # Constructed profile for summarization, not stored in DB
-            )
-
+            # Validate that summarization is properly configured
             if not tool.summarize_llm_adapter:
-                # Fallback to old approach if no adapter
+                # Fallback to old approach if no adapter - just validate it exists
                 try:
-                    profile_manager: ProfileManager = ProfileManager.objects.get(
+                    ProfileManager.objects.get(
                         prompt_studio_tool=tool, is_summarize_llm=True
                     )
-                    summary_profile = profile_manager
                 except ProfileManager.DoesNotExist:
                     logger.warning(
                         f"No summarize profile found for tool {tool.tool_id}, using default profile"
                     )
 
-            PromptStudioIndexHelper.handle_index_manager(
-                document_id=document_id,
-                is_summary=True,
-                profile_manager=summary_profile,
-                doc_id=doc_id,
-            )
             return summarize_file_path
 
     @staticmethod
