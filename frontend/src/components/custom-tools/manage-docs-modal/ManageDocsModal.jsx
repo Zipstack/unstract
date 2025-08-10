@@ -396,35 +396,33 @@ function ManageDocsModal({
     columns.splice(2, 0, {
       title: (
         <Space className="w-100">
-          <Typography.Text>Summarize View</Typography.Text>
-          <Space size={4}>
-            <Typography.Text type="secondary">
-              {"(" + getSummarizeLlmDisplayName() + ")"}
-            </Typography.Text>
-            {isSummarizationConfigured() && (
-              <Tooltip
-                title={
+          <Typography.Text>Summary View</Typography.Text>
+          <Typography.Text type="secondary">
+            {"(" + getSummarizeLlmDisplayName() + ")"}
+          </Typography.Text>
+          {isSummarizeDataLoading && <SpinnerLoader />}
+          {isSummarizationConfigured() && (
+            <Tooltip
+              title={
+                isSummarizationEnabled()
+                  ? "Summarization enabled"
+                  : "Summarization disabled"
+              }
+            >
+              <span
+                className={`summarization-status-circle ${
+                  isSummarizationEnabled()
+                    ? "summarization-status-enabled"
+                    : "summarization-status-disabled"
+                }`}
+                aria-label={
                   isSummarizationEnabled()
                     ? "Summarization enabled"
                     : "Summarization disabled"
                 }
-              >
-                <span
-                  className={`summarization-status-circle ${
-                    isSummarizationEnabled()
-                      ? "summarization-status-enabled"
-                      : "summarization-status-disabled"
-                  }`}
-                  aria-label={
-                    isSummarizationEnabled()
-                      ? "Summarization enabled"
-                      : "Summarization disabled"
-                  }
-                />
-              </Tooltip>
-            )}
-          </Space>
-          {isSummarizeDataLoading && <SpinnerLoader />}
+              />
+            </Tooltip>
+          )}
         </Space>
       ),
       dataIndex: "summary",
