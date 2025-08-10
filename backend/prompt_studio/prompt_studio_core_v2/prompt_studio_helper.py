@@ -349,7 +349,9 @@ class PromptStudioHelper:
 
         # Always get the default profile first
         default_profile = ProfileManager.get_default_llm_profile(tool)
-        summary_profile = default_profile  # Initialize summary_profile with default
+        summary_profile = (
+            default_profile  # Constructed profile for summarization, not stored in DB
+        )
 
         # Check if summarization is enabled and handle accordingly
         if tool.summarize_context:
@@ -498,7 +500,9 @@ class PromptStudioHelper:
 
             # Get default profile for other adapters
             default_profile = ProfileManager.get_default_llm_profile(tool)
-            summary_profile = default_profile
+            summary_profile = (
+                default_profile  # Constructed profile for summarization, not stored in DB
+            )
 
             if not tool.summarize_llm_adapter:
                 # Fallback to old approach if no adapter
