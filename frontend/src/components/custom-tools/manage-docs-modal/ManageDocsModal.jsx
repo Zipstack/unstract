@@ -99,7 +99,7 @@ function ManageDocsModal({
     summarizeIndexStatus,
     isSinglePassExtractLoading,
     isPublicSource,
-    adapters,
+    adapters = [],
   } = useCustomToolStore();
   const { messages } = useSocketCustomToolStore();
   const axiosPrivate = useAxiosPrivate();
@@ -329,12 +329,12 @@ function ManageDocsModal({
   const getSummarizeLlmDisplayName = () => {
     // Check if new adapter approach is used
     if (summarizeLlmAdapter) {
-      const adapter = adapters.find(
+      const adapter = adapters?.find(
         (item) =>
           item?.adapter_id === summarizeLlmAdapter ||
           item?.id === summarizeLlmAdapter
       );
-      return adapter?.adapter_name || adapter?.name || "Unknown Adapter";
+      return adapter?.adapter_name || adapter?.name || "No adapter selected";
     }
 
     // Fall back to profile approach
@@ -403,6 +403,12 @@ function ManageDocsModal({
                 }
               >
                 <div
+                  role="img"
+                  aria-label={
+                    isSummarizationEnabled()
+                      ? "Summarization enabled"
+                      : "Summarization disabled"
+                  }
                   style={{
                     width: 8,
                     height: 8,

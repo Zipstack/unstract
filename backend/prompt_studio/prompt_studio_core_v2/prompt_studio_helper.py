@@ -349,6 +349,7 @@ class PromptStudioHelper:
 
         # Always get the default profile first
         default_profile = ProfileManager.get_default_llm_profile(tool)
+        summary_profile = default_profile  # Initialize summary_profile with default
 
         # Check if summarization is enabled and handle accordingly
         if tool.summarize_context:
@@ -358,7 +359,7 @@ class PromptStudioHelper:
             if tool.summarize_llm_adapter:
                 # For summarization with adapter-based approach, we'll use the default profile
                 # but override the LLM when needed in the summarization process
-                pass
+                summary_profile = default_profile
             else:
                 # Fallback to old profile-based approach
                 try:
@@ -366,13 +367,13 @@ class PromptStudioHelper:
                         prompt_studio_tool=tool, is_summarize_llm=True
                     )
                     profile_manager.chunk_size = 0
-                    default_profile = profile_manager
+                    summary_profile = profile_manager
                 except ProfileManager.DoesNotExist:
                     # If no summarize profile exists, continue with default profile
                     logger.warning(
                         f"No summarize profile found for tool {tool_id}, using default profile"
                     )
-                    pass
+                    summary_profile = default_profile
 
         if not tool:
             logger.error(f"No tool instance found for the ID {tool_id}")
@@ -383,6 +384,11 @@ class PromptStudioHelper:
         # Need to check the user who created profile manager
         # has access to adapters configured in profile manager
         PromptStudioHelper.validate_profile_manager_owner_access(default_profile)
+
+        # Also validate summary profile if it's different from default
+        if tool.summarize_context and summary_profile != default_profile:
+            PromptStudioHelper.validate_adapter_status(summary_profile)
+            PromptStudioHelper.validate_profile_manager_owner_access(summary_profile)
 
         fs_instance = EnvHelper.get_storage(
             storage_type=StorageType.PERMANENT,
@@ -415,11 +421,11 @@ class PromptStudioHelper:
                 file_name, org_id, document_id, run_id, tool, doc_id
             )
             summarize_doc_id = IndexingUtils.generate_index_key(
-                vector_db=str(default_profile.vector_store.id),
-                embedding=str(default_profile.embedding_model.id),
-                x2text=str(default_profile.x2text.id),
+                vector_db=str(summary_profile.vector_store.id),
+                embedding=str(summary_profile.embedding_model.id),
+                x2text=str(summary_profile.x2text.id),
                 chunk_size="0",  # Summarization always uses chunk_size=0
-                chunk_overlap=str(default_profile.chunk_overlap),
+                chunk_overlap=str(summary_profile.chunk_overlap),
                 file_path=summarize_file_path,
                 fs=fs_instance,
                 tool=util,
@@ -427,7 +433,7 @@ class PromptStudioHelper:
             PromptStudioIndexHelper.handle_index_manager(
                 document_id=document_id,
                 is_summary=True,
-                profile_manager=default_profile,
+                profile_manager=summary_profile,
                 doc_id=summarize_doc_id,
             )
         start_time = time.time()
