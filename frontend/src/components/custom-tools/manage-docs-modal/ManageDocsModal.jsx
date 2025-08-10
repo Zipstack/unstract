@@ -75,6 +75,7 @@ function ManageDocsModal({
   const [rawLlmProfile, setRawLlmProfile] = useState(null);
   const [isRawDataLoading, setIsRawDataLoading] = useState(false);
   const [summarizeLlmProfile, setSummarizeLlmProfile] = useState(null);
+  const [summarizeLlmAdapter, setSummarizeLlmAdapter] = useState(null);
   const [isSummarizeDataLoading, setIsSummarizeDataLoading] = useState(false);
   const [indexMessages, setIndexMessages] = useState({});
   const [isModalVisible, setIsModalVisible] = useState(false);
@@ -98,6 +99,7 @@ function ManageDocsModal({
     summarizeIndexStatus,
     isSinglePassExtractLoading,
     isPublicSource,
+    adapters,
   } = useCustomToolStore();
   const { messages } = useSocketCustomToolStore();
   const axiosPrivate = useAxiosPrivate();
@@ -158,6 +160,7 @@ function ManageDocsModal({
   useEffect(() => {
     setRawLlmProfile(defaultLlmProfile);
     setSummarizeLlmProfile(details?.summarize_llm_profile);
+    setSummarizeLlmAdapter(details?.summarize_llm_adapter);
   }, [defaultLlmProfile, details]);
 
   useEffect(() => {
@@ -172,8 +175,19 @@ function ManageDocsModal({
       return;
     }
 
-    handleGetIndexStatus(summarizeLlmProfile, indexTypes.summarize);
-  }, [indexDocs, summarizeLlmProfile, open]);
+    // For index status, we always need a profile ID, not adapter ID
+    // If using new adapter approach, use default profile for index status
+    // If using old approach, use the summarize profile
+    const summarizeProfileId =
+      summarizeLlmProfile || (summarizeLlmAdapter ? defaultLlmProfile : null);
+    handleGetIndexStatus(summarizeProfileId, indexTypes.summarize);
+  }, [
+    indexDocs,
+    summarizeLlmAdapter,
+    summarizeLlmProfile,
+    defaultLlmProfile,
+    open,
+  ]);
 
   useEffect(() => {
     // Reverse the array to have the latest logs at the beginning
@@ -304,6 +318,33 @@ function ManageDocsModal({
     return llmProfileName?.profile_name || "No LLM Profile Selected";
   };
 
+  const isSummarizationConfigured = () => {
+    return !!(summarizeLlmAdapter || summarizeLlmProfile);
+  };
+
+  const isSummarizationEnabled = () => {
+    return isSummarizationConfigured() && details?.summarize_context;
+  };
+
+  const getSummarizeLlmDisplayName = () => {
+    // Check if new adapter approach is used
+    if (summarizeLlmAdapter) {
+      const adapter = adapters.find(
+        (item) =>
+          item?.adapter_id === summarizeLlmAdapter ||
+          item?.id === summarizeLlmAdapter
+      );
+      return adapter?.adapter_name || adapter?.name || "Unknown Adapter";
+    }
+
+    // Fall back to profile approach
+    if (summarizeLlmProfile) {
+      return getLlmProfileName(summarizeLlmProfile);
+    }
+
+    return "Summarization Not Configured";
+  };
+
   const columns = [
     {
       title: "Document Variants",
@@ -347,10 +388,36 @@ function ManageDocsModal({
   if (SummarizeStatusTitle) {
     columns.splice(2, 0, {
       title: (
-        <SummarizeStatusTitle
-          profileName={"(" + getLlmProfileName(summarizeLlmProfile) + ")"}
-          isLoading={isSummarizeDataLoading}
-        />
+        <Space className="w-100">
+          <Typography.Text>Summarize View</Typography.Text>
+          <Space size={4}>
+            <Typography.Text type="secondary">
+              {"(" + getSummarizeLlmDisplayName() + ")"}
+            </Typography.Text>
+            {isSummarizationConfigured() && (
+              <Tooltip
+                title={
+                  isSummarizationEnabled()
+                    ? "Summarization enabled"
+                    : "Summarization disabled"
+                }
+              >
+                <div
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    backgroundColor: isSummarizationEnabled()
+                      ? "#52c41a"
+                      : "#ff4d4f",
+                    display: "inline-block",
+                  }}
+                />
+              </Tooltip>
+            )}
+          </Space>
+          {isSummarizeDataLoading && <SpinnerLoader />}
+        </Space>
       ),
       dataIndex: "summary",
       key: "summary",
@@ -470,6 +537,9 @@ function ManageDocsModal({
     indexDocs,
     messages,
     isSinglePassExtractLoading,
+    adapters,
+    summarizeLlmAdapter,
+    summarizeLlmProfile,
   ]);
 
   const beforeUpload = (file) => {
