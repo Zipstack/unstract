@@ -142,7 +142,7 @@ class EmbeddingCompat(BaseEmbedding):
             platform_api_key = self._embedding_instance._tool.get_env_or_die(ToolEnv.PLATFORM_API_KEY)
             CallbackManager.set_callback(
                 platform_api_key=platform_api_key,
-                model=self._embedding_instance,
+                model=self,
                 kwargs={
                     **self._embedding_instance.kwargs,
                     "adapter_instance_id": self._embedding_instance._adapter_instance_id,
