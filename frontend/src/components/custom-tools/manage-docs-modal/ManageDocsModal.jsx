@@ -409,22 +409,17 @@ function ManageDocsModal({
                     : "Summarization disabled"
                 }
               >
-                <div
-                  role="img"
+                <span
+                  className={`summarization-status-circle ${
+                    isSummarizationEnabled()
+                      ? "summarization-status-enabled"
+                      : "summarization-status-disabled"
+                  }`}
                   aria-label={
                     isSummarizationEnabled()
                       ? "Summarization enabled"
                       : "Summarization disabled"
                   }
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: "50%",
-                    backgroundColor: isSummarizationEnabled()
-                      ? "#52c41a"
-                      : "#ff4d4f",
-                    display: "inline-block",
-                  }}
                 />
               </Tooltip>
             )}
