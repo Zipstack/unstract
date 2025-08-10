@@ -498,7 +498,7 @@ class PromptStudioHelper:
 
             # Get default profile for other adapters
             default_profile = ProfileManager.get_default_llm_profile(tool)
-            summary_profile_for_index = default_profile
+            summary_profile = default_profile
 
             if not tool.summarize_llm_adapter:
                 # Fallback to old approach if no adapter
@@ -506,7 +506,7 @@ class PromptStudioHelper:
                     profile_manager: ProfileManager = ProfileManager.objects.get(
                         prompt_studio_tool=tool, is_summarize_llm=True
                     )
-                    summary_profile_for_index = profile_manager
+                    summary_profile = profile_manager
                 except ProfileManager.DoesNotExist:
                     logger.warning(
                         f"No summarize profile found for tool {tool.tool_id}, using default profile"
@@ -515,7 +515,7 @@ class PromptStudioHelper:
             PromptStudioIndexHelper.handle_index_manager(
                 document_id=document_id,
                 is_summary=True,
-                profile_manager=summary_profile_for_index,
+                profile_manager=summary_profile,
                 doc_id=doc_id,
             )
             return summarize_file_path
