@@ -218,10 +218,12 @@ class BaseAPIClient:
         for attempt in range(max_retries + 1):
             try:
                 is_retry = attempt > 0
-                log_level = logging.WARNING if is_retry else logging.DEBUG
+                log_level = (
+                    logging.WARNING if is_retry else logging.INFO
+                )  # Changed to INFO for debugging
                 logger.log(
                     log_level,
-                    f"Making {method} request to {url} (attempt {attempt + 1}/{max_retries + 1})",
+                    f"DEBUG: Making {method} request to {url} (attempt {attempt + 1}/{max_retries + 1})",
                 )
 
                 # Prepare request kwargs
@@ -233,12 +235,25 @@ class BaseAPIClient:
                 if current_org_id:
                     headers["X-Organization-ID"] = current_org_id
                     if attempt == 0:  # Only log on first attempt
-                        logger.debug(
-                            f"Including organization header: X-Organization-ID={current_org_id}"
+                        logger.info(
+                            f"DEBUG: Including organization header: X-Organization-ID={current_org_id}"
+                        )
+                else:
+                    if attempt == 0:  # Only log on first attempt
+                        logger.warning(
+                            f"DEBUG: NO organization header - current_org_id={current_org_id}, "
+                            f"organization_id param={organization_id}, self.organization_id={self.organization_id}"
                         )
 
                 if headers:
                     kwargs["headers"] = headers
+                    if attempt == 0:  # Only log on first attempt
+                        logger.info(
+                            f"DEBUG: Request headers being sent: {list(headers.keys())}"
+                        )
+                else:
+                    if attempt == 0:  # Only log on first attempt
+                        logger.warning("DEBUG: NO custom headers being sent")
 
                 # Serialize request data
                 if data is not None:
@@ -252,9 +267,10 @@ class BaseAPIClient:
                 response = self.session.request(method, url, **kwargs)
 
                 # Enhanced response logging
-                logger.debug(
-                    f"Response: {response.status_code} {response.reason} "
-                    f"(Content-Length: {response.headers.get('Content-Length', 'unknown')})"
+                logger.info(
+                    f"DEBUG: Response: {response.status_code} {response.reason} "
+                    f"(Content-Length: {response.headers.get('Content-Length', 'unknown')}) "
+                    f"URL: {url}"
                 )
 
                 # Handle authentication errors (don't retry)
@@ -485,9 +501,29 @@ class BaseAPIClient:
     # Organization context management
     def set_organization_context(self, org_id: str):
         """Set organization context for subsequent requests."""
+        logger.info(
+            f"DEBUG: set_organization_context called with org_id='{org_id}' (type: {type(org_id).__name__})"
+        )
+
+        if org_id is None or str(org_id).lower() == "none":
+            logger.error(
+                f"DEBUG: Attempted to set organization context with invalid value: '{org_id}' - skipping header"
+            )
+            self.organization_id = None
+            # Don't set the header if org_id is None
+            if "X-Organization-ID" in self.session.headers:
+                del self.session.headers["X-Organization-ID"]
+                logger.info("DEBUG: Removed X-Organization-ID header from session")
+            return
+
         self.organization_id = org_id
         self.session.headers["X-Organization-ID"] = org_id
-        logger.debug(f"Set organization context to {org_id}")
+        logger.info(
+            f"DEBUG: Set organization context to '{org_id}' - header added to session"
+        )
+        logger.info(
+            f"DEBUG: Session headers now include: {list(self.session.headers.keys())}"
+        )
 
     def clear_organization_context(self):
         """Clear organization context."""

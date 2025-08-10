@@ -78,18 +78,57 @@ def async_execute_bin_api(
         organization_id=schema_name,
         pipeline_id=pipeline_id,
     ):
+        # DEBUG: Log all task parameters for debugging K8s vs local differences
         logger.info(
             f"Starting API deployment execution for workflow {workflow_id}, execution {execution_id}"
         )
+        logger.info(
+            f"DEBUG: Task received parameters - schema_name='{schema_name}' (type: {type(schema_name).__name__})"
+        )
+        logger.info(
+            f"DEBUG: Task parameters - workflow_id={workflow_id}, execution_id={execution_id}"
+        )
+        logger.info(
+            f"DEBUG: Task parameters - pipeline_id={pipeline_id}, scheduled={scheduled}"
+        )
+        logger.info(
+            f"DEBUG: Task parameters - files_count={len(hash_values_of_files) if hash_values_of_files else 0}"
+        )
 
         try:
+            # DEBUG: Verify schema_name before using it
+            if (
+                schema_name is None
+                or schema_name == ""
+                or str(schema_name).lower() == "none"
+            ):
+                logger.error(
+                    f"CRITICAL: Invalid schema_name received: '{schema_name}' - this will cause organization context issues!"
+                )
+            else:
+                logger.info(f"DEBUG: Valid schema_name received: '{schema_name}'")
+
             # Set organization context in StateStore (matching Django pattern)
             StateStore.set(Account.ORGANIZATION_ID, schema_name)
+            logger.info(f"DEBUG: Set StateStore organization_id to: '{schema_name}'")
 
             # Initialize API client with organization context
             config = WorkerConfig()
+            logger.info(
+                f"DEBUG: Worker config - internal_api_base_url: '{config.internal_api_base_url}'"
+            )
+            logger.info(
+                f"DEBUG: Worker config - internal_api_key present: {bool(config.internal_api_key)}"
+            )
+
             with InternalAPIClient(config) as api_client:
+                logger.info(
+                    f"DEBUG: Before set_organization_context - schema_name: '{schema_name}'"
+                )
                 api_client.set_organization_context(schema_name)
+                logger.info(
+                    "DEBUG: After set_organization_context - organization set on API client"
+                )
 
                 # Get workflow execution context
                 api_client.get_workflow_execution(execution_id)
@@ -168,18 +207,57 @@ def async_execute_bin(
         organization_id=schema_name,
         pipeline_id=pipeline_id,
     ):
+        # DEBUG: Log all task parameters for debugging K8s vs local differences
         logger.info(
-            f"Starting API deployment execution for workflow {workflow_id}, execution {execution_id}"
+            f"Starting API deployment execution for workflow {workflow_id}, execution {execution_id} [async_execute_bin alias]"
+        )
+        logger.info(
+            f"DEBUG: Task received parameters - schema_name='{schema_name}' (type: {type(schema_name).__name__})"
+        )
+        logger.info(
+            f"DEBUG: Task parameters - workflow_id={workflow_id}, execution_id={execution_id}"
+        )
+        logger.info(
+            f"DEBUG: Task parameters - pipeline_id={pipeline_id}, scheduled={scheduled}"
+        )
+        logger.info(
+            f"DEBUG: Task parameters - files_count={len(hash_values_of_files) if hash_values_of_files else 0}"
         )
 
         try:
+            # DEBUG: Verify schema_name before using it
+            if (
+                schema_name is None
+                or schema_name == ""
+                or str(schema_name).lower() == "none"
+            ):
+                logger.error(
+                    f"CRITICAL: Invalid schema_name received: '{schema_name}' - this will cause organization context issues!"
+                )
+            else:
+                logger.info(f"DEBUG: Valid schema_name received: '{schema_name}'")
+
             # Set organization context in StateStore (matching Django pattern)
             StateStore.set(Account.ORGANIZATION_ID, schema_name)
+            logger.info(f"DEBUG: Set StateStore organization_id to: '{schema_name}'")
 
             # Initialize API client with organization context
             config = WorkerConfig()
+            logger.info(
+                f"DEBUG: Worker config - internal_api_base_url: '{config.internal_api_base_url}'"
+            )
+            logger.info(
+                f"DEBUG: Worker config - internal_api_key present: {bool(config.internal_api_key)}"
+            )
+
             with InternalAPIClient(config) as api_client:
+                logger.info(
+                    f"DEBUG: Before set_organization_context - schema_name: '{schema_name}'"
+                )
                 api_client.set_organization_context(schema_name)
+                logger.info(
+                    "DEBUG: After set_organization_context - organization set on API client"
+                )
 
                 # Get workflow execution context
                 api_client.get_workflow_execution(execution_id)

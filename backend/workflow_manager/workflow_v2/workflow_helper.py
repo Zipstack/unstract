@@ -451,26 +451,50 @@ class WorkflowHelper:
                 key: value.to_json() for key, value in hash_values_of_files.items()
             }
             org_schema = UserContext.get_organization_identifier()
+            logger.info(
+                f"DEBUG: UserContext.get_organization_identifier() returned: '{org_schema}' (type: {type(org_schema).__name__})"
+            )
 
             # If no organization context from user (e.g., API deployments), get it from workflow
             if not org_schema:
+                logger.info(
+                    f"DEBUG: No org_schema from UserContext, trying to get from workflow {workflow_id}"
+                )
                 try:
                     workflow = Workflow.objects.get(id=workflow_id)
                     if workflow.organization:
                         org_schema = workflow.organization.organization_id
                         logger.info(
-                            f"Retrieved organization {org_schema} from workflow {workflow_id}"
+                            f"DEBUG: Retrieved organization {org_schema} from workflow {workflow_id}"
+                        )
+                    else:
+                        logger.error(
+                            f"DEBUG: Workflow {workflow_id} has no organization!"
                         )
                 except Workflow.DoesNotExist:
                     logger.error(
-                        f"Workflow {workflow_id} not found for organization resolution"
+                        f"DEBUG: Workflow {workflow_id} not found for organization resolution"
                     )
                 except Exception as e:
                     logger.error(
-                        f"Failed to get organization from workflow {workflow_id}: {e}"
+                        f"DEBUG: Failed to get organization from workflow {workflow_id}: {e}"
                     )
+            else:
+                logger.info(f"DEBUG: Using org_schema from UserContext: '{org_schema}'")
+
+            # Final validation of organization context
+            if org_schema is None or str(org_schema).lower() == "none":
+                logger.error(
+                    f"CRITICAL: Final org_schema is invalid: '{org_schema}' - this will cause worker failures!"
+                )
+            else:
+                logger.info(f"DEBUG: Final org_schema for task dispatch: '{org_schema}'")
 
             log_events_id = StateStore.get(Common.LOG_EVENTS_ID)
+            logger.info(
+                f"DEBUG: Dispatching async_execute_bin task with schema_name='{org_schema}'"
+            )
+
             async_execution: AsyncResult = celery_app.send_task(
                 "async_execute_bin",
                 args=[
