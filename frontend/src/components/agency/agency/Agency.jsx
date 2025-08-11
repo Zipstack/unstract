@@ -403,7 +403,10 @@ function Agency() {
   // Get available deployment options based on source and destination types
   const getDeploymentOptions = () => {
     // If both source and destination are API, only show API option
-    if (source?.connection_type === "API" && destination?.connection_type === "API") {
+    if (
+      source?.connection_type === "API" &&
+      destination?.connection_type === "API"
+    ) {
       return [
         {
           value: "API",

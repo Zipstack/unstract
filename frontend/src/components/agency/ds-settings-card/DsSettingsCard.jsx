@@ -1,21 +1,8 @@
-import {
-  Button,
-  Col,
-  Image,
-  Row,
-  Select,
-  Space,
-  Tooltip,
-  Typography,
-} from "antd";
-import {
-  CheckCircleTwoTone,
-  ExclamationCircleOutlined,
-} from "@ant-design/icons";
+import { Button, Col, Image, Row, Select, Space, Tooltip } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
-import { getMenuItem, titleCase } from "../../../helpers/GetStaticData";
+import { getMenuItem } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -349,11 +336,6 @@ function DsSettingsCard({ type, endpointDetails, message }) {
       return true;
     }
 
-    // For filesystem connectors, connector_instance is not required
-    if (endpointDetails?.connection_type === "FILESYSTEM") {
-      return true;
-    }
-
     // For other connection types (Database, etc.), check if connector instance is configured
     // connector_instance represents the actual configured connector with credentials
     return !!endpointDetails?.connector_instance;
@@ -411,49 +393,6 @@ function DsSettingsCard({ type, endpointDetails, message }) {
               </Tooltip>
             </Space>
           </SpaceWrapper>
-        </Col>
-        <Col span={8} className="ds-set-card-col3">
-          <div className="display-flex-align-center">
-            {connDetails?.connector_name ? (
-              <Space>
-                <Image
-                  src={connDetails?.icon}
-                  height={20}
-                  width={20}
-                  preview={false}
-                />
-                <Typography.Text className="font-size-12">
-                  {connDetails?.connector_name}
-                </Typography.Text>
-              </Space>
-            ) : (
-              <>
-                {connType === "API" || connType === "APPDEPLOYMENT" ? (
-                  <Typography.Text
-                    className="font-size-12 display-flex-align-center"
-                    ellipsis={{ rows: 1, expandable: false }}
-                    type="secondary"
-                  >
-                    <CheckCircleTwoTone twoToneColor="#52c41a" />
-                    <span style={{ marginLeft: "5px" }}>
-                      {titleCase(type)} set to {connType} successfully
-                    </span>
-                  </Typography.Text>
-                ) : (
-                  <Typography.Text
-                    className="font-size-12 display-flex-align-center"
-                    ellipsis={{ rows: 1, expandable: false }}
-                    type="secondary"
-                  >
-                    <ExclamationCircleOutlined />
-                    <span style={{ marginLeft: "5px" }}>
-                      Connector not configured
-                    </span>
-                  </Typography.Text>
-                )}
-              </>
-            )}
-          </div>
         </Col>
       </Row>
       <ConfigureConnectorModal
