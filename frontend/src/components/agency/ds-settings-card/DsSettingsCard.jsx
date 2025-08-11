@@ -338,6 +338,48 @@ function DsSettingsCard({ type, endpointDetails, message }) {
     return "";
   };
 
+  // Check if connector is configured
+  const isConnectorConfigured = () => {
+    // For API connections, just having an endpoint is sufficient
+    if (endpointDetails?.connection_type === "API") {
+      return true;
+    }
+
+    // For filesystem connectors, they are automatically configured
+    if (endpointDetails?.connection_type === "FILESYSTEM") {
+      return true;
+    }
+
+    // For other connection types, check if connector instance is configured
+    return !!(endpointDetails?.connector_instance);
+  };
+
+  // Get configure button text based on configuration status
+  const getConfigureButtonText = () => {
+    if (!endpointDetails?.connection_type) {
+      return "Configure";
+    }
+
+    return isConnectorConfigured() ? "Configured" : "Configure";
+  };
+
+  // Get configuration status text
+  const getConfigurationStatusText = () => {
+    if (!endpointDetails?.connection_type) {
+      return "Connector not configured";
+    }
+
+    if (endpointDetails?.connection_type === "API") {
+      return "API configured";
+    }
+
+    if (endpointDetails?.connection_type === "FILESYSTEM") {
+      return "File System configured";
+    }
+
+    return isConnectorConfigured() ? "Connector configured" : "Connector not configured";
+  };
+
   return (
     <>
       <Row className="ds-set-card-row">
@@ -376,7 +418,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                     connType === "APPDEPLOYMENT"
                   }
                 >
-                  Configure
+                  {getConfigureButtonText()}
                 </Button>
               </Tooltip>
             </Space>
@@ -388,7 +430,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
             className="font-size-12"
             type="secondary"
           >
-            {message}
+            {message || getConfigurationStatusText()}
           </Typography.Paragraph>
         </Col>
       </Row>

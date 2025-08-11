@@ -400,6 +400,63 @@ function Agency() {
     return `Deploy as ${type}`;
   };
 
+  // Get available deployment options based on source and destination types
+  const getDeploymentOptions = () => {
+    // If both source and destination are API, only show API option
+    if (source?.connection_type === "API" && destination?.connection_type === "API") {
+      return [
+        {
+          value: "API",
+          label: getDeploymentStatusText("API"),
+          disabled: false,
+        },
+      ];
+    }
+
+    // If source is FILESYSTEM, determine options based on destination
+    if (source?.connection_type === "FILESYSTEM") {
+      const options = [];
+
+      // If destination is Database → show ETL only
+      if (destination?.connection_type === "DATABASE") {
+        options.push({
+          value: "ETL",
+          label: getDeploymentStatusText("ETL"),
+          disabled: false,
+        });
+      }
+      // If destination is FileSystem → show TASK only
+      else if (destination?.connection_type === "FILESYSTEM") {
+        options.push({
+          value: "TASK",
+          label: getDeploymentStatusText("TASK"),
+          disabled: false,
+        });
+      }
+      // If destination is API → show API only
+      else if (destination?.connection_type === "API") {
+        options.push({
+          value: "API",
+          label: getDeploymentStatusText("API"),
+          disabled: false,
+        });
+      }
+      // For other destinations like MANUALREVIEW, show ETL
+      else if (destination?.connection_type === "MANUALREVIEW") {
+        options.push({
+          value: "ETL",
+          label: getDeploymentStatusText("ETL"),
+          disabled: false,
+        });
+      }
+
+      return options;
+    }
+
+    // Default case - return empty array if no valid combination
+    return [];
+  };
+
   // Generate deployment alert message content
   const generateDeploymentMessage = () => {
     if (deploymentInfo) {
@@ -1162,28 +1219,7 @@ function Agency() {
                         !source?.connection_type ||
                         !destination?.connection_type
                       }
-                      options={
-                        apiOpsPresent
-                          ? [
-                              {
-                                value: "API",
-                                label: getDeploymentStatusText("API"),
-                                disabled: false,
-                              },
-                            ]
-                          : [
-                              {
-                                value: "ETL",
-                                label: getDeploymentStatusText("ETL"),
-                                disabled: false,
-                              },
-                              {
-                                value: "TASK",
-                                label: getDeploymentStatusText("TASK"),
-                                disabled: false,
-                              },
-                            ]
-                      }
+                      options={getDeploymentOptions()}
                     />
                     <Button
                       type="primary"
