@@ -364,27 +364,6 @@ function DsSettingsCard({ type, endpointDetails, message }) {
     return isConnectorConfigured() ? "Configured" : "Configure";
   };
 
-  // Get configuration status text
-  const getConfigurationStatusText = () => {
-    if (!endpointDetails?.connection_type) {
-      return "Select connector type";
-    }
-
-    // For API and FileSystem, they are always considered configured once selected
-    if (endpointDetails?.connection_type === "API") {
-      return "API endpoint ready";
-    }
-
-    if (endpointDetails?.connection_type === "FILESYSTEM") {
-      return "File System ready";
-    }
-
-    // For Database and other connectors, check if credentials are configured
-    return isConnectorConfigured()
-      ? `${endpointDetails?.connector_name || "Connector"} configured`
-      : "Configure connector credentials";
-  };
-
   return (
     <>
       <Row className="ds-set-card-row">
@@ -435,7 +414,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
             className="font-size-12"
             type="secondary"
           >
-            {message || getConfigurationStatusText()}
+            {message}
           </Typography.Paragraph>
         </Col>
       </Row>
