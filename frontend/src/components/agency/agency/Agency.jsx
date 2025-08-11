@@ -12,6 +12,8 @@ import {
   BugOutlined,
   SettingOutlined,
   PlayCircleOutlined,
+  ClearOutlined,
+  HistoryOutlined,
 } from "@ant-design/icons";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -1031,10 +1033,12 @@ function Agency() {
     {
       key: "clear-cache",
       label: "Clear Cache",
+      icon: <ClearOutlined />,
     },
     {
       key: "clear-history",
       label: "Clear Processed File History",
+      icon: <HistoryOutlined />,
     },
   ];
 

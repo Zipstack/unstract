@@ -1,4 +1,13 @@
-import { Button, Col, Image, Row, Select, Space, Tooltip } from "antd";
+import {
+  Button,
+  Col,
+  Image,
+  Row,
+  Select,
+  Space,
+  Tooltip,
+  Typography,
+} from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
@@ -355,6 +364,15 @@ function DsSettingsCard({ type, endpointDetails, message }) {
       <Row className="ds-set-card-row">
         <Col span={12} className="ds-set-card-col2">
           <SpaceWrapper>
+            {message && (
+              <Typography.Paragraph
+                ellipsis={{ rows: 2, expandable: false }}
+                className="font-size-12 ds-set-card-message"
+                type="secondary"
+              >
+                {message}
+              </Typography.Paragraph>
+            )}
             <Space>
               <Tooltip
                 title={
