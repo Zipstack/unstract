@@ -421,7 +421,10 @@ function Agency() {
       const options = [];
 
       // If destination is Database or ManualReview → show ETL only
-      if (destination?.connection_type === "DATABASE" || destination?.connection_type === "MANUALREVIEW") {
+      if (
+        destination?.connection_type === "DATABASE" ||
+        destination?.connection_type === "MANUALREVIEW"
+      ) {
         options.push({
           value: "ETL",
           label: getDeploymentStatusText("ETL"),
