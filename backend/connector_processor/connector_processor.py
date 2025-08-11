@@ -91,6 +91,7 @@ class ConnectorProcessor:
         for connector in updated_connectors:
             if connector.get(ConnectorKeys.ID) in unsupported_connectors:
                 continue
+            mode = connector.get(CIKey.CONNECTOR_MODE)
             supported_connectors.append(
                 {
                     ConnectorKeys.ID: connector.get(ConnectorKeys.ID),
@@ -99,7 +100,7 @@ class ConnectorProcessor:
                     ConnectorKeys.ICON: connector.get(ConnectorKeys.ICON),
                     ConnectorKeys.CAN_READ: connector.get(ConnectorKeys.CAN_READ),
                     ConnectorKeys.CAN_WRITE: connector.get(ConnectorKeys.CAN_WRITE),
-                    CIKey.CONNECTOR_MODE: connector.get(CIKey.CONNECTOR_MODE).name,
+                    CIKey.CONNECTOR_MODE: getattr(mode, "value", None),
                 }
             )
 

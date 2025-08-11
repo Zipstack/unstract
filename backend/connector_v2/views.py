@@ -8,7 +8,7 @@ from connector_auth_v2.pipeline.common import ConnectorAuthHelper
 from connector_processor.exceptions import OAuthTimeOut
 from django.db import IntegrityError
 from django.db.models import QuerySet
-from permissions.permission import IsOwner
+from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
@@ -30,7 +30,10 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
     serializer_class = ConnectorInstanceSerializer
 
     def get_permissions(self) -> list[Any]:
-        return [IsOwner()]
+        if self.action == "destroy":
+            return [IsOwner()]
+
+        return [IsOwnerOrSharedUserOrSharedToOrg()]
 
     def get_queryset(self) -> QuerySet | None:
         queryset = ConnectorInstance.objects.for_user(self.request.user)
