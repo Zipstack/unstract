@@ -28,6 +28,10 @@ RUN apt-get update \
 # Install uv package manager
 COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /uvx /bin/
 
+# Create non-root user early to avoid ownership issues
+RUN groupadd -r worker && useradd -r -g worker worker && \
+    mkdir -p /home/worker && chown -R worker:worker /home/worker
+
 # Create working directory
 WORKDIR ${APP_HOME}
 
@@ -59,22 +63,16 @@ FROM ext-dependencies AS production
 # Copy application code (this layer changes most frequently)
 COPY ${BUILD_CONTEXT_PATH}/ ./
 
-# Ensure the symlink exists
-RUN ln -sf /unstract /app/../unstract 2>/dev/null || true
+# Ensure the symlink exists and install project (as root to avoid permission issues)
+RUN ln -sf /unstract /app/../unstract 2>/dev/null || true; \
+    uv pip install --no-deps -e .; \
+    chmod +x ./run-worker.sh ./run-worker-docker.sh 2>/dev/null || true; \
+    touch requirements.txt; \
+    chown -R worker:worker ./run-worker.sh ./run-worker-docker.sh 2>/dev/null || true
 
-# Install the application with --locked for FAST builds and setup
-# Removed --group deploy since it's empty anyway
-RUN uv sync --locked --no-dev && \
-    chmod +x ./run-worker.sh ./run-worker-docker.sh 2>/dev/null || true && \
-    touch requirements.txt
-
-# Create non-root user for security
-RUN groupadd -r worker && useradd -r -g worker worker && \
-    chown -R worker:worker /app && \
-    mkdir -p /home/worker && chown -R worker:worker /home/worker
-
-# Switch to non-root user
+# Switch to worker user
 USER worker
+
 
 # Default command - runs the Docker-optimized worker script
 ENTRYPOINT ["/app/run-worker-docker.sh"]

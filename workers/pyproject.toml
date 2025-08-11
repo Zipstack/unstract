@@ -9,20 +9,21 @@ authors = [
 license = {text = "AGPL-3.0"}
 requires-python = ">=3.12"
 dependencies = [
-    "celery[amqp]>=5.3.0,<6.0.0",  # Changed from redis to amqp to match backend
-    # Removed kombu - already included in unstract-core
-    "requests>=2.31.0,<3.0.0",
-    "urllib3>=1.26.0",
-    "pydantic>=2.0.0,<3.0.0",
-    "pydantic-settings>=2.0.0,<3.0.0",
-    "structlog>=23.1.0,<24.0.0",
-    "prometheus-client>=0.17.0,<1.0.0",
-    "psutil>=5.9.0,<6.0.0",
-    # Removed flask and werkzeug - workers don't serve HTTP
-    "tenacity>=8.2.0,<9.0.0",
-    "pybreaker>=0.8.0,<1.0.0",
-    "orjson>=3.9.0,<4.0.0",
-    "python-dateutil>=2.8.0,<3.0.0",
+    # Worker runtime
+    "celery>=5.5.3",  # Latest stable version - AMQP support built into core
+
+    # HTTP clients and utilities (merged from shared package)
+    "requests>=2.31.0,<3.0.0",  # HTTP client for internal API calls
+    "urllib3>=1.26.0",  # HTTP utilities and retry strategies
+    "httpx>=0.27.0,<0.28.0",  # Async HTTP client
+    "python-dotenv>=1.0.0,<2.0.0",  # Environment variable loading
+
+    # Monitoring and system utilities
+    "prometheus-client>=0.17.0,<1.0.0",  # Metrics collection
+    "psutil>=5.9.0,<6.0.0",  # System resource monitoring
+
+    # Essential Unstract packages - with Azure support for connectors
+    "unstract-sdk[azure]~=0.76.1",  # Core SDK with Azure connector support
     "unstract-connectors",
     "unstract-core",
     "unstract-flags",
@@ -30,7 +31,13 @@ dependencies = [
     "unstract-tool-sandbox",
     "unstract-workflow-execution",
     "unstract-filesystem",
-    "unstract-sdk~=0.76.1",  # Removed [azure] extras to avoid heavy cloud deps
+    # Removed unused dependencies:
+    # - pydantic/pydantic-settings: Using dataclasses instead
+    # - structlog: Custom structured logging implemented
+    # - tenacity: Custom retry logic implemented
+    # - pybreaker: Custom circuit breaker implemented
+    # - orjson: Standard json module used
+    # - python-dateutil: Standard datetime module sufficient
 ]
 
 [dependency-groups]
@@ -120,8 +127,6 @@ module = [
     "celery.*",
     "kombu.*",
     "prometheus_client.*",
-    "pybreaker.*",
-    "tenacity.*",
     "psutil.*"
 ]
 ignore_missing_imports = true
