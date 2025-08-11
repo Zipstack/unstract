@@ -113,7 +113,7 @@ class DeploymentExecution(views.APIView):
             # Check if highlight data should be removed using configuration registry
             api_deployment = deployment_execution_dto.api
             organization = api_deployment.organization if api_deployment else None
-
+            enable_highlight = False  # Safe default if the key is unavailable (e.g., OSS)
             # Check if the configuration key exists (Cloud deployment) or use settings (OSS)
             from configuration.config_registry import ConfigurationRegistry
 

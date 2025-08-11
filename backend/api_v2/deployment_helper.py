@@ -206,6 +206,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
             )
             # Check if highlight data should be removed using configuration registry
             organization = api.organization if api else None
+            enable_highlight = False  # Safe default if the key is unavailable (e.g., OSS)
             from configuration.config_registry import ConfigurationRegistry
 
             if ConfigurationRegistry.is_config_key_available(
