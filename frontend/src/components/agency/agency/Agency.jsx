@@ -420,8 +420,8 @@ function Agency() {
     if (source?.connection_type === "FILESYSTEM") {
       const options = [];
 
-      // If destination is Database → show ETL only
-      if (destination?.connection_type === "DATABASE") {
+      // If destination is Database or ManualReview → show ETL only
+      if (destination?.connection_type === "DATABASE" || destination?.connection_type === "MANUALREVIEW") {
         options.push({
           value: "ETL",
           label: getDeploymentStatusText("ETL"),
@@ -441,14 +441,6 @@ function Agency() {
         options.push({
           value: "API",
           label: getDeploymentStatusText("API"),
-          disabled: false,
-        });
-      }
-      // For other destinations like MANUALREVIEW, show ETL
-      else if (destination?.connection_type === "MANUALREVIEW") {
-        options.push({
-          value: "ETL",
-          label: getDeploymentStatusText("ETL"),
           disabled: false,
         });
       }
