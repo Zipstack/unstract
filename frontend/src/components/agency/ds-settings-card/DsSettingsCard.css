@@ -6,11 +6,11 @@
   z-index: 20;
 }
 
-.ds-set-card-select{
+.ds-set-card-select {
   width: 200px !important;
 }
 
-.ds-set-card-btn{
+.ds-set-card-btn {
   align-self: flex-end;
 }
 
@@ -27,4 +27,8 @@
 
 .ds-connector-name {
   max-width: 100%;
+}
+
+.ds-set-card-message {
+  margin-bottom: 0px !important;
 }
