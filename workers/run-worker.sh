@@ -252,6 +252,7 @@ run_worker() {
 
     # Set worker-specific environment variables
     export WORKER_NAME="${worker_type}-worker"
+    export WORKER_TYPE="$(echo "$worker_type" | tr '-' '_')"  # Convert hyphens to underscores for Python module names
     export LOG_LEVEL="${log_level:-INFO}"
 
     # Set health port if specified

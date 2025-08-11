@@ -11,12 +11,36 @@ from typing import Any
 from shared.api_client import InternalAPIClient
 from shared.logging_utils import WorkerLogger
 
+from unstract.core.data_models import WorkerFileData
+
 logger = WorkerLogger.get_logger(__name__)
+
+
+def _safe_get_file_data_attr(
+    file_data: WorkerFileData | dict[str, Any], attr_name: str, default: Any = None
+) -> Any:
+    """Safely get attribute from either WorkerFileData dataclass or dictionary.
+
+    Args:
+        file_data: Either WorkerFileData dataclass or dictionary
+        attr_name: Attribute name to get
+        default: Default value if attribute not found
+
+    Returns:
+        Attribute value or default
+    """
+    if isinstance(file_data, WorkerFileData):
+        return getattr(file_data, attr_name, default)
+    elif isinstance(file_data, dict):
+        return file_data.get(attr_name, default)
+    else:
+        logger.warning(f"Unexpected file_data type: {type(file_data)}, returning default")
+        return default
 
 
 def _initialize_execution_context_api(
     api_client: InternalAPIClient,
-    file_data: dict[str, Any],
+    file_data: WorkerFileData | dict[str, Any],
     file_hash: dict[str, Any],
     workflow_execution: dict[str, Any],
 ) -> dict[str, Any] | None:
@@ -35,11 +59,8 @@ def _initialize_execution_context_api(
         Execution context dictionary or None if failed
     """
     try:
-        # Handle both WorkerFileData object and dictionary access
-        if hasattr(file_data, "execution_id"):
-            execution_id = file_data.execution_id
-        else:
-            execution_id = file_data["execution_id"]
+        # Handle both WorkerFileData object and dictionary access using type-safe helper
+        execution_id = _safe_get_file_data_attr(file_data, "execution_id")
 
         # Get workflow info from execution context (already available)
         workflow = workflow_execution.get("workflow", {})
@@ -75,7 +96,7 @@ def _initialize_execution_context_api(
 
 
 def _create_source_config_api(
-    file_data: dict[str, Any], file_execution_id: str
+    file_data: WorkerFileData | dict[str, Any], file_execution_id: str
 ) -> dict[str, Any]:
     """Create source config matching Django SourceConfig structure.
 
@@ -88,19 +109,15 @@ def _create_source_config_api(
     """
     return {
         "file_execution_id": file_execution_id,
-        "workflow_id": getattr(file_data, "workflow_id", None)
-        or file_data.get("workflow_id"),
-        "execution_id": getattr(file_data, "execution_id", None)
-        or file_data.get("execution_id"),
-        "organization_id": getattr(file_data, "organization_id", None)
-        or file_data.get("organization_id"),
-        "use_file_history": getattr(file_data, "use_file_history", None)
-        or file_data.get("use_file_history", True),
+        "workflow_id": _safe_get_file_data_attr(file_data, "workflow_id"),
+        "execution_id": _safe_get_file_data_attr(file_data, "execution_id"),
+        "organization_id": _safe_get_file_data_attr(file_data, "organization_id"),
+        "use_file_history": _safe_get_file_data_attr(file_data, "use_file_history", True),
     }
 
 
 def _create_destination_config_api(
-    file_data: dict[str, Any], file_execution_id: str
+    file_data: WorkerFileData | dict[str, Any], file_execution_id: str
 ) -> dict[str, Any]:
     """Create destination config matching Django DestinationConfig structure.
 
@@ -113,14 +130,10 @@ def _create_destination_config_api(
     """
     return {
         "file_execution_id": file_execution_id,
-        "workflow_id": getattr(file_data, "workflow_id", None)
-        or file_data.get("workflow_id"),
-        "execution_id": getattr(file_data, "execution_id", None)
-        or file_data.get("execution_id"),
-        "organization_id": getattr(file_data, "organization_id", None)
-        or file_data.get("organization_id"),
-        "use_file_history": getattr(file_data, "use_file_history", None)
-        or file_data.get("use_file_history", True),
+        "workflow_id": _safe_get_file_data_attr(file_data, "workflow_id"),
+        "execution_id": _safe_get_file_data_attr(file_data, "execution_id"),
+        "organization_id": _safe_get_file_data_attr(file_data, "organization_id"),
+        "use_file_history": _safe_get_file_data_attr(file_data, "use_file_history", True),
     }
 
 

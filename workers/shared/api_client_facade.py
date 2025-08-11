@@ -597,34 +597,7 @@ class InternalAPIClient:
         """Create multiple file history records in a single batch request."""
         return self.file_client.batch_create_file_history(file_histories, organization_id)
 
-    def create_file_history_entry(self, history_data: dict[str, Any]) -> dict[str, Any]:
-        """Create a file history entry via internal API.
-
-        Args:
-            history_data: Dictionary containing file history data
-
-        Returns:
-            Creation result dictionary
-        """
-        endpoint = "workflow-manager/file-history/create/"
-
-        try:
-            response = self.base_client._make_request(
-                method="POST",
-                endpoint=endpoint,
-                data=history_data,
-                timeout=self.base_client.config.api_timeout,
-            )
-
-            logger.debug(
-                f"Created file history entry for file {history_data.get('file_name', 'unknown')}"
-            )
-            return response
-
-        except Exception as e:
-            logger.error(f"Failed to create file history entry: {str(e)}")
-            # Return empty result to continue without breaking the flow
-            return {"created": False, "error": str(e)}
+    # Removed: create_file_history_entry - now using FileAPIClient.create_file_history with v1 endpoint
 
     # Delegate webhook client methods
     def send_webhook(

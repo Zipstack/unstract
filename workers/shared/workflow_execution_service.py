@@ -387,9 +387,19 @@ class WorkerWorkflowExecutionService(WorkflowExecutionService):
         Returns:
             List of file batch data structured for FileBatchData
         """
+        # Check file history if enabled and filter already processed files
+        files_to_process = source_files
+        if self.use_file_history:
+            files_to_process = self._check_file_history_batch(source_files)
+            if len(files_to_process) != len(source_files):
+                skipped_count = len(source_files) - len(files_to_process)
+                logger.info(
+                    f"File history check: skipping {skipped_count} already processed files, processing {len(files_to_process)} new files"
+                )
+
         # Convert FileHash objects to batch format
         files_list = []
-        for file_path, file_hash in source_files.items():
+        for file_path, file_hash in files_to_process.items():
             files_list.append(
                 {
                     "file_name": file_hash.file_name,
@@ -452,6 +462,79 @@ class WorkerWorkflowExecutionService(WorkflowExecutionService):
                 )
 
         return batch_results
+
+    def _check_file_history_batch(
+        self, source_files: dict[str, FileHash]
+    ) -> dict[str, FileHash]:
+        """Check file history for batch and filter out already processed files.
+
+        This implements the same logic as backend's _check_processing_history method
+        to avoid reprocessing files that were already completed successfully.
+
+        Args:
+            source_files: Dictionary of source files to check
+
+        Returns:
+            Dictionary of files that need to be processed (excludes already completed)
+        """
+        if not self.use_file_history or not source_files:
+            return source_files
+
+        try:
+            # Extract file hashes for batch check
+            file_hashes = []
+            hash_to_file = {}
+
+            for file_path, file_hash in source_files.items():
+                if file_hash.file_hash:
+                    file_hashes.append(file_hash.file_hash)
+                    hash_to_file[file_hash.file_hash] = (file_path, file_hash)
+
+            if not file_hashes:
+                logger.info(
+                    "No file hashes available for history check, processing all files"
+                )
+                return source_files
+
+            # Check which files were already processed successfully
+            response = self.api_client.check_file_history_batch(
+                workflow_id=self.workflow_id,
+                file_hashes=file_hashes,
+                organization_id=self.organization_id,
+            )
+
+            processed_hashes = set(response.get("processed_file_hashes", []))
+
+            # Filter out already processed files
+            files_to_process = {}
+            skipped_files = []
+
+            for file_hash_str in file_hashes:
+                file_path, file_hash = hash_to_file[file_hash_str]
+
+                if file_hash_str in processed_hashes:
+                    skipped_files.append(file_hash.file_name)
+                    logger.info(
+                        f"Skipping already processed file: {file_hash.file_name} (hash: {file_hash_str[:16]}...)"
+                    )
+                else:
+                    files_to_process[file_path] = file_hash
+
+            # Add files without hashes (will be processed normally)
+            for file_path, file_hash in source_files.items():
+                if not file_hash.file_hash and file_path not in files_to_process:
+                    files_to_process[file_path] = file_hash
+
+            if skipped_files:
+                logger.info(
+                    f"File history check completed: skipped {len(skipped_files)} files, processing {len(files_to_process)} files"
+                )
+
+            return files_to_process
+
+        except Exception as e:
+            logger.warning(f"File history check failed, processing all files: {e}")
+            return source_files
 
     def _aggregate_batch_results(
         self, batch_results: list[dict[str, Any]]

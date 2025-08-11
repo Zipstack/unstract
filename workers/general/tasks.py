@@ -23,6 +23,7 @@ from unstract.core.data_models import (
     ExecutionStatus,
     FileBatchData,
     FileHash,
+    FileHashData,
     WorkerFileData,
 )
 
@@ -321,9 +322,9 @@ def _process_file_batches_general(
                 # Try to convert from dict if possible
                 if isinstance(file_hash_data, dict):
                     try:
-                        file_hash_data = FileHash.from_dict(file_hash_data)
+                        file_hash_data = FileHashData.from_dict(file_hash_data)
                         logger.info(
-                            f"Successfully converted dict to FileHash for '{file_key}'"
+                            f"Successfully converted dict to FileHashData for '{file_key}'"
                         )
                     except Exception as e:
                         logger.error(
@@ -1531,9 +1532,9 @@ def _handle_api_deployment_workflow(
                     # Try to convert from dict if possible
                     if isinstance(file_hash_data, dict):
                         try:
-                            file_hash_data = FileHash.from_dict(file_hash_data)
+                            file_hash_data = FileHashData.from_dict(file_hash_data)
                             logger.info(
-                                f"Successfully converted dict to FileHash for API deployment '{file_key}'"
+                                f"Successfully converted dict to FileHashData for API deployment '{file_key}'"
                             )
                         except Exception as e:
                             logger.error(

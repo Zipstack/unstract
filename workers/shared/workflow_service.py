@@ -1215,23 +1215,29 @@ class WorkerWorkflowExecutionService:
         output_result,
         processing_error,
     ) -> bool:
-        """Determine if file history should be created (matching backend logic).
+        """Determine if file history should be created.
 
-        This matches backend FileExecutionTasks._should_create_file_history.
+        File history creation rules:
+        - API workflows: Create WITH results only when use_file_history=True
+        - ETL/TASK/MANUAL_REVIEW workflows: Always create WITHOUT results (for tracking)
         """
-        # Don't create history if there was a processing error
-        if processing_error:
-            return False
-
-        # Don't create history if destination doesn't use file history
-        if not destination.use_file_history:
-            return False
-
-        # Don't create duplicate history if it already exists
+        # Don't create if already exists
         if file_history:
             return False
 
-        # Create history for successful processing
+        # Don't create if there's a processing error
+        if processing_error:
+            return False
+
+        # For API workflows, only create if use_file_history is enabled
+        if destination.is_api and not destination.use_file_history:
+            return False
+
+        # For API workflows, only create if there's a valid output result
+        if destination.is_api and not output_result:
+            return False
+
+        # Backend logic line 1074: return True
         return True
 
     def _get_destination_config(
@@ -1404,28 +1410,86 @@ class WorkerFileHistoryHelper:
                 f"Creating file history entry for {file_hash.file_name} (status: {status})"
             )
 
-            # For now, this is a placeholder implementation
-            # In full implementation, this would:
-            # 1. Create a FileHistory entry via API
-            # 2. Store the result and metadata for deduplication
-            # 3. Enable file history-based skipping for future runs
+            # Get API client from global context
+            from .api_client_facade import InternalAPIClient
+            from .config import WorkerConfig
+            from .constants import Account
+            from .local_context import StateStore
 
-            # TODO: Implement actual file history creation via API
-            # api_client.create_file_history({
-            #     'workflow_id': workflow['id'],
-            #     'file_hash': file_hash.file_hash,
-            #     'file_path': file_hash.file_path,
-            #     'status': status,
-            #     'result': result,
-            #     'metadata': metadata,
-            #     'is_api': is_api
-            # })
+            config = WorkerConfig()
+            with InternalAPIClient(config) as api_client:
+                # Set organization context from StateStore or workflow data
+                org_id = StateStore.get(Account.ORGANIZATION_ID) or workflow.get(
+                    "organization", {}
+                ).get("id")
+                if org_id:
+                    api_client.set_organization_context(org_id)
+                # Create file history entry via API
+                import json
 
-            logger.debug(f"File history entry created for {file_hash.file_name}")
-            return True
+                # Properly serialize result and metadata as JSON
+                result_json = ""
+                if result is not None:
+                    try:
+                        if hasattr(result, "to_json"):
+                            result_json = json.dumps(result.to_json())
+                        elif hasattr(result, "dict"):
+                            result_json = json.dumps(result.dict())
+                        elif isinstance(result, (dict, list)):
+                            result_json = json.dumps(result)
+                        else:
+                            result_json = json.dumps(str(result))
+                    except Exception as e:
+                        logger.warning(f"Failed to serialize result as JSON: {e}")
+                        result_json = str(result)
+
+                metadata_json = ""
+                if metadata is not None:
+                    try:
+                        if isinstance(metadata, (dict, list)):
+                            metadata_json = json.dumps(metadata)
+                        else:
+                            metadata_json = json.dumps(str(metadata))
+                    except Exception as e:
+                        logger.warning(f"Failed to serialize metadata as JSON: {e}")
+                        metadata_json = str(metadata)
+
+                # Use the new v1 endpoint instead of legacy workflow-manager endpoint
+                # For ETL/TASK workflows, don't store results - only store metadata for tracking
+                file_history_result = result_json if is_api else ""
+                file_history_metadata = metadata_json if is_api else ""
+
+                response = api_client.create_file_history(
+                    workflow_id=workflow["id"],
+                    file_name=file_hash.file_name,
+                    file_path=file_hash.file_path if not is_api else None,
+                    result=file_history_result,
+                    metadata=file_history_metadata,
+                    status=status,
+                    error="",
+                    provider_file_uuid=getattr(file_hash, "provider_file_uuid", None),
+                    is_api=is_api,
+                    file_size=getattr(file_hash, "file_size", 0),
+                    file_hash=file_hash.file_hash,
+                    mime_type=getattr(file_hash, "mime_type", ""),
+                )
+
+                if response.success:
+                    logger.info(
+                        f"Successfully created file history entry for {file_hash.file_name}"
+                    )
+                    return True
+                else:
+                    logger.warning(
+                        f"Failed to create file history entry: {response.error}"
+                    )
+                    return False
 
         except Exception as e:
-            logger.error(f"Failed to create file history for {file_hash.file_name}: {e}")
+            logger.error(
+                f"Failed to create file history entry for {file_hash.file_name}: {e}"
+            )
+            # Don't re-raise - file history creation failure shouldn't stop the workflow
             return False
 
 

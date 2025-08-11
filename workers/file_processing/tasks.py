@@ -183,6 +183,27 @@ def _setup_execution_context(
     if log_events_id:
         StateStore.set("LOG_EVENTS_ID", log_events_id)
 
+    # Get use_file_history from execution parameters (passed from API request)
+    # This is the correct behavior - use_file_history should come from the API request, not workflow config
+    # file_data is a WorkerFileData dataclass, so we can access use_file_history directly
+    try:
+        use_file_history = file_data.use_file_history
+        logger.info(
+            f"File history from execution parameters for workflow {workflow_id}: use_file_history = {use_file_history}"
+        )
+    except AttributeError as e:
+        logger.warning(
+            f"Failed to access use_file_history from dataclass, trying dict access: {e}"
+        )
+        # Fallback to dict access for backward compatibility
+        if hasattr(file_data, "get"):
+            use_file_history = file_data.get("use_file_history", True)
+        else:
+            use_file_history = getattr(file_data, "use_file_history", True)
+        logger.info(
+            f"File history from fallback access for workflow {workflow_id}: use_file_history = {use_file_history}"
+        )
+
     return {
         "batch_data": batch_data,
         "file_data": file_data,
@@ -197,6 +218,7 @@ def _setup_execution_context(
         "execution_context": execution_context,
         "workflow_execution": workflow_execution,
         "total_files": len(files),
+        "use_file_history": use_file_history,  # Add to initial context
     }
 
 
@@ -334,21 +356,15 @@ def _refactored_pre_create_file_executions(context: dict[str, Any]) -> dict[str,
         api_client=api_client,
         workflow_type=workflow_type,
         is_api=is_api_workflow,
+        use_file_history=context["use_file_history"],
     )
     logger.info(
         f"Pre-created {len(pre_created_file_executions)} WorkflowFileExecution records for {workflow_type} workflow"
     )
 
-    # Determine use_file_history for this workflow (matches backend pattern)
-    use_file_history = _should_use_file_history(api_client, workflow_id, workflow_type)
-    logger.info(
-        f"File history determination for workflow {workflow_id} (type: {workflow_type}): use_file_history = {use_file_history}"
-    )
-
     context.update(
         {
             "pre_created_file_executions": pre_created_file_executions,
-            "use_file_history": use_file_history,
         }
     )
 
@@ -724,6 +740,7 @@ def _pre_create_file_executions(
     api_client: InternalAPIClient,
     workflow_type: str,
     is_api: bool = False,
+    use_file_history: bool = True,
 ) -> dict[str, Any]:
     """Pre-create WorkflowFileExecution records with PENDING status to prevent race conditions.
 
@@ -744,10 +761,9 @@ def _pre_create_file_executions(
     pre_created_data = {}
     skipped_files = []
 
-    # Get destination config for file history checking
-    use_file_history = _should_use_file_history(api_client, workflow_id, workflow_type)
+    # Use the file history flag passed from execution parameters
     logger.info(
-        f"File history determination for workflow {workflow_id} (type: {workflow_type}): use_file_history = {use_file_history}"
+        f"Using file history parameter for workflow {workflow_id} (type: {workflow_type}): use_file_history = {use_file_history}"
     )
 
     for file_item in files:
@@ -1155,6 +1171,7 @@ def _process_file(
     Returns:
         File execution result
     """
+    # Ensure json module is available in function scope
     # Handle both WorkerFileData object and dictionary access for backward compatibility
     if hasattr(file_data, "execution_id"):
         execution_id = file_data.execution_id
@@ -1170,6 +1187,56 @@ def _process_file(
         # Use dataclass attribute access for type-safe access
         file_name = file_hash.file_name or "unknown"
         logger.info(f"[Execution {execution_id}] Processing file: '{file_name}'")
+
+        # CHECK IF FILE IS ALREADY EXECUTED (CACHED)
+        if getattr(file_hash, "is_executed", False):
+            logger.info(
+                f"File {file_name} is already executed (cached), fetching from file_history"
+            )
+
+            try:
+                # Get cached result from file_history
+                cache_key = file_hash.file_hash
+                if cache_key:
+                    history_result = api_client.get_file_history_by_cache_key(
+                        cache_key=cache_key,
+                        workflow_id=workflow_id,
+                        file_path=file_hash.file_path,
+                    )
+
+                    if history_result.get("found") and history_result.get("result"):
+                        logger.info(f"✓ Retrieved cached result for {file_name}")
+
+                        # Parse cached JSON result
+                        cached_result = json.loads(history_result.get("result", "{}"))
+                        cached_metadata = json.loads(history_result.get("metadata", "{}"))
+
+                        # Create and update workflow file execution with cached result
+                        api_client.update_file_execution_status(
+                            file_execution_id=workflow_file_execution_id,
+                            status=ExecutionStatus.COMPLETED.value,
+                            result=cached_result,
+                            metadata=cached_metadata,
+                        )
+
+                        # Return cached result in expected format
+                        return {
+                            "file": file_name,
+                            "file_execution_id": workflow_file_execution_id,
+                            "error": None,
+                            "result": cached_result,
+                            "metadata": cached_metadata,
+                            "from_cache": True,
+                        }
+
+                else:
+                    logger.warning(f"No cache key available for cached file {file_name}")
+
+            except Exception as cache_error:
+                logger.error(
+                    f"Failed to retrieve cached result for {file_name}: {cache_error}"
+                )
+                # Fall through to normal processing if cache retrieval fails
 
         # Debug: Log the file hash data being sent to ensure unique identification
         logger.info(
@@ -1210,6 +1277,100 @@ def _process_file(
                 "result": getattr(workflow_file_execution, "result", None),
                 "metadata": getattr(workflow_file_execution, "metadata", None),
             }
+
+        # CHECK FILE HISTORY BEFORE PROCESSING (if use_file_history enabled)
+        if file_hash.use_file_history:
+            logger.info(
+                f"Checking file history for {file_name} with use_file_history=True"
+            )
+            try:
+                # Use the file hash (content hash) as cache key for file history lookup
+                cache_key = file_hash.file_hash
+                if cache_key:
+                    # For API workflows, don't pass file_path since execution paths are unique per execution
+                    # API files use pattern: unstract/api/org_*/workflow_*/execution_*/filename
+                    is_api_path = file_hash.file_path and "/api/" in file_hash.file_path
+                    lookup_file_path = None if is_api_path else file_hash.file_path
+
+                    history_result = api_client.get_file_history_by_cache_key(
+                        cache_key=cache_key,
+                        workflow_id=workflow_id,
+                        file_path=lookup_file_path,
+                    )
+
+                    if history_result.get("found") and history_result.get("file_history"):
+                        logger.info(
+                            f"✓ File {file_name} found in history - returning cached result"
+                        )
+                        file_history_data = history_result["file_history"]
+                        logger.info(
+                            f"DEBUG: Cached result: {file_history_data.get('result')}"
+                        )
+
+                        # Parse JSON strings from file history back to objects
+                        try:
+                            result_data = (
+                                json.loads(file_history_data.get("result", "{}"))
+                                if file_history_data.get("result")
+                                else None
+                            )
+                            metadata_data = (
+                                json.loads(file_history_data.get("metadata", "{}"))
+                                if file_history_data.get("metadata")
+                                else {"from_cache": True}
+                            )
+                        except (json.JSONDecodeError, TypeError) as e:
+                            logger.warning(f"Failed to parse JSON from file history: {e}")
+                            result_data = file_history_data.get("result")
+                            metadata_data = file_history_data.get(
+                                "metadata", {"from_cache": True}
+                            )
+
+                        # Prepare the cached result for return
+                        cached_file_result = {
+                            "file": file_name,
+                            "file_execution_id": workflow_file_execution_id,
+                            "error": None,
+                            "result": result_data,
+                            "metadata": metadata_data,
+                            "from_file_history": True,
+                        }
+
+                        # CRITICAL: Cache the result for API response (matching normal processing flow)
+                        try:
+                            workflow_service = WorkerWorkflowExecutionService()
+                            workflow_id = workflow_execution.get("workflow_id")
+                            execution_id = workflow_execution.get("id")
+
+                            if workflow_id and execution_id and is_api_path:
+                                workflow_service.cache_api_result(
+                                    workflow_id=workflow_id,
+                                    execution_id=execution_id,
+                                    result=cached_file_result,
+                                    is_api=True,
+                                )
+                                logger.info(
+                                    f"Successfully cached file history result for execution {execution_id}"
+                                )
+                        except Exception as cache_error:
+                            logger.warning(
+                                f"Failed to cache file history result: {cache_error}"
+                            )
+                            # Don't fail - caching is not critical
+
+                        return cached_file_result
+                    else:
+                        logger.info(
+                            f"File {file_name} not found in history - proceeding with processing"
+                        )
+                else:
+                    logger.warning(
+                        f"No file hash available for {file_name} - skipping file history check"
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"File history check failed for {file_name}: {e} - proceeding with processing"
+                )
 
         # Determine if this is an API workflow for result caching
         # Use the same comprehensive detection logic as workflow_service.detect_connection_type()
@@ -1279,6 +1440,69 @@ def _process_file(
 
         # execution_result is already in Django FileExecutionResult format
         # Just return it directly (has file, file_execution_id, error, result, metadata)
+        # CREATE FILE HISTORY ENTRY AFTER SUCCESSFUL PROCESSING
+        # API workflows: Only when use_file_history=True (WITH results)
+        # ETL/TASK workflows: Always (WITHOUT results, for tracking)
+        should_create_history = (
+            (
+                is_api_workflow and file_hash.use_file_history
+            )  # API with use_file_history=True
+            or (not is_api_workflow)  # All non-API workflows (ETL/TASK)
+        )
+
+        if should_create_history and not execution_result.get("error"):
+            logger.info(
+                f"Creating file history entry for {file_name} after successful processing"
+            )
+            try:
+                # Prepare the result data for file history storage
+                # API workflows: Store results and metadata
+                # ETL/TASK workflows: Don't store results, only basic tracking info
+                if is_api_workflow:
+                    result_data = execution_result.get("result", {})
+                    metadata = execution_result.get("metadata", {})
+                    result_json = json.dumps(result_data) if result_data else "{}"
+                    metadata_json = json.dumps(metadata) if metadata else "{}"
+                else:
+                    # For ETL/TASK workflows, don't store results - only track that file was processed
+                    result_json = ""
+                    metadata_json = ""
+
+                # Create file history entry using the API client
+                history_response = api_client.create_file_history(
+                    workflow_id=workflow_id,
+                    file_name=file_name,
+                    file_path=file_hash.file_path,
+                    result=result_json,
+                    metadata=metadata_json,
+                    status="SUCCESS",  # Since we checked no error above
+                    error=None,
+                    provider_file_uuid=file_hash.provider_file_uuid,
+                    is_api=is_api_workflow,
+                    file_size=getattr(file_hash, "file_size", 0),
+                    file_hash=file_hash.file_hash,
+                    mime_type=getattr(file_hash, "mime_type", ""),
+                )
+
+                if history_response.success:
+                    logger.info(
+                        f"✓ Successfully created file history entry for {file_name}"
+                    )
+                else:
+                    logger.warning(
+                        f"Failed to create file history entry for {file_name}: {history_response.error}"
+                    )
+
+            except Exception as e:
+                logger.error(
+                    f"Exception while creating file history entry for {file_name}: {e}"
+                )
+                # Don't fail the entire execution if file history creation fails
+        elif file_hash.use_file_history and execution_result.get("error"):
+            logger.info(
+                f"Skipping file history creation for {file_name} due to processing error: {execution_result.get('error')}"
+            )
+
         return execution_result
 
     except Exception as e:

@@ -600,25 +600,7 @@ class ExecutionAPIClient(BaseAPIClient):
             logger.error(f"Failed to get destination config: {str(e)}")
             return {"type": "none", "error": str(e)}
 
-    def create_file_history_entry(self, history_data: dict[str, Any]) -> dict[str, Any]:
-        """Create file history entry for deduplication.
-
-        Args:
-            history_data: File history data including workflow_id, cache_key, etc.
-
-        Returns:
-            Creation response
-        """
-        try:
-            # Use the internal workflow-manager file-history endpoint
-            response = self.post("workflow-manager/file-history/create/", history_data)
-            logger.debug(
-                f"Created file history entry for {history_data.get('file_name', 'unknown')}"
-            )
-            return response
-        except Exception as e:
-            logger.error(f"Failed to create file history entry: {str(e)}")
-            return {"created": False, "error": str(e)}
+    # Removed: create_file_history_entry - now using FileAPIClient.create_file_history with v1 endpoint
 
     def check_file_history_batch(
         self, workflow_id: str, file_hashes: list[str], organization_id: str

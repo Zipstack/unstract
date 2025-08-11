@@ -24,6 +24,8 @@ from unstract.core.data_models import ExecutionStatus, FileHashData
 # Import from local worker module (avoid circular import)
 from .worker import app
 
+# Note: FileExecutionResult removed - file worker now handles all result caching
+
 logger = WorkerLogger.get_logger(__name__)
 
 
@@ -42,7 +44,9 @@ def async_execute_bin_api(
     schema_name: str,
     workflow_id: str,
     execution_id: str,
-    hash_values_of_files: dict[str, FileHashData],
+    hash_values_of_files: dict[
+        str, dict | FileHashData
+    ],  # Backend sends dicts, we convert to FileHashData
     scheduled: bool = False,
     execution_mode: tuple | None = None,
     pipeline_id: str | None = None,
@@ -78,6 +82,28 @@ def async_execute_bin_api(
         organization_id=schema_name,
         pipeline_id=pipeline_id,
     ):
+        # Convert hash_values_of_files from dicts to FileHashData objects if needed
+        # Backend sends file_hash_in_str which contains .to_json() results (dicts)
+        converted_files = {}
+        for file_key, file_data in (hash_values_of_files or {}).items():
+            if isinstance(file_data, dict):
+                # Convert dict back to FileHashData object
+                try:
+                    converted_files[file_key] = FileHashData.from_dict(file_data)
+                except Exception as e:
+                    logger.warning(f"Failed to convert file data for {file_key}: {e}")
+                    continue
+            elif isinstance(file_data, FileHashData):
+                # Already correct type
+                converted_files[file_key] = file_data
+            else:
+                logger.warning(
+                    f"Unexpected file data type for {file_key}: {type(file_data)}"
+                )
+                continue
+
+        hash_values_of_files = converted_files
+
         # DEBUG: Log all task parameters for debugging K8s vs local differences
         logger.info(
             f"Starting API deployment execution for workflow {workflow_id}, execution {execution_id}"
@@ -185,7 +211,9 @@ def async_execute_bin(
     schema_name: str,
     workflow_id: str,
     execution_id: str,
-    hash_values_of_files: dict[str, FileHashData],
+    hash_values_of_files: dict[
+        str, dict | FileHashData
+    ],  # Backend sends dicts, we convert to FileHashData
     scheduled: bool = False,
     execution_mode: tuple | None = None,
     pipeline_id: str | None = None,
@@ -207,6 +235,28 @@ def async_execute_bin(
         organization_id=schema_name,
         pipeline_id=pipeline_id,
     ):
+        # Convert hash_values_of_files from dicts to FileHashData objects if needed
+        # Backend sends file_hash_in_str which contains .to_json() results (dicts)
+        converted_files = {}
+        for file_key, file_data in (hash_values_of_files or {}).items():
+            if isinstance(file_data, dict):
+                # Convert dict back to FileHashData object
+                try:
+                    converted_files[file_key] = FileHashData.from_dict(file_data)
+                except Exception as e:
+                    logger.warning(f"Failed to convert file data for {file_key}: {e}")
+                    continue
+            elif isinstance(file_data, FileHashData):
+                # Already correct type
+                converted_files[file_key] = file_data
+            else:
+                logger.warning(
+                    f"Unexpected file data type for {file_key}: {type(file_data)}"
+                )
+                continue
+
+        hash_values_of_files = converted_files
+
         # DEBUG: Log all task parameters for debugging K8s vs local differences
         logger.info(
             f"Starting API deployment execution for workflow {workflow_id}, execution {execution_id} [async_execute_bin alias]"
@@ -303,7 +353,7 @@ def _run_workflow_api(
     schema_name: str,
     workflow_id: str,
     execution_id: str,
-    hash_values_of_files: dict[str, FileHashData],
+    hash_values_of_files: dict[str, FileHashData],  # Already converted in task
     scheduled: bool,
     execution_mode: tuple | None,
     pipeline_id: str | None,
@@ -350,8 +400,46 @@ def _run_workflow_api(
             "message": "No files to process",
         }
 
+    # Check file history if enabled - get both files to process and cached results
+    files_to_process = hash_values_of_files
+    cached_results = {}
+    if use_file_history:
+        files_to_process, cached_results = _check_file_history_api(
+            api_client=api_client,
+            workflow_id=workflow_id,
+            hash_values_of_files=hash_values_of_files,
+            execution_id=execution_id,
+        )
+
+        # Mark cached files as executed and send ALL files to file worker
+        if cached_results:
+            logger.info(
+                f"Marking {len(cached_results)} files as already executed (cached)"
+            )
+            for file_hash_str, cached_result in cached_results.items():
+                # Find the corresponding FileHashData object and mark it as executed
+                for hash_data in hash_values_of_files.values():
+                    if hash_data.file_hash == file_hash_str:
+                        hash_data.is_executed = True
+                        logger.info(
+                            f"Marked file {hash_data.file_name} as is_executed=True"
+                        )
+                        break
+
+    # Send ALL files to file worker (both cached and non-cached)
+    # File worker will handle cached files by checking is_executed flag
+    files_to_send = hash_values_of_files  # Send all files, not just non-cached ones
+    total_files = len(files_to_send)
+    cached_count = len(cached_results)
+    if use_file_history:
+        logger.info(
+            f"Sending {total_files} files to file worker: {cached_count} cached, {total_files - cached_count} to process"
+        )
+    else:
+        logger.info(f"Sending {total_files} files to file worker (file history disabled)")
+
     # Get file batches using the exact same logic as Django backend
-    batches = _get_file_batches(hash_values_of_files)
+    batches = _get_file_batches(files_to_send)
     logger.info(
         f"Execution {execution_id} processing {total_files} files in {len(batches)} batches"
     )
@@ -434,9 +522,13 @@ def _run_workflow_api(
             "workflow_id": workflow_id,
             "task_id": task_id,
             "files_processed": total_files,
+            "files_from_cache": len(cached_results),
             "batches_created": len(batches),
             "chord_id": result.id,
-            "message": "File processing orchestrated, waiting for completion",
+            "cached_results": list(cached_results.keys())
+            if cached_results
+            else [],  # Include cache info
+            "message": f"File processing orchestrated: {total_files} files processing, {len(cached_results)} from cache",
         }
 
     except Exception as e:
@@ -984,3 +1076,127 @@ def api_deployment_cleanup(
                 f"Cleanup failed for API deployment execution {execution_id}: {e}"
             )
             raise
+
+
+def _check_file_history_api(
+    api_client: InternalAPIClient,
+    workflow_id: str,
+    hash_values_of_files: dict[str, FileHashData],  # Already converted from dicts
+    execution_id: str,
+) -> tuple[dict[str, FileHashData], dict[str, dict]]:
+    """Check file history for API deployment and return both files to process and cached results.
+
+    This implements the same logic as backend's _check_processing_history method.
+    When use_file_history=True:
+    - Files with existing successful results are returned as cached results
+    - Files without history are returned for processing
+
+    Args:
+        api_client: Internal API client
+        workflow_id: Workflow ID
+        hash_values_of_files: Dictionary of files to check
+        execution_id: Execution ID for logging
+
+    Returns:
+        Tuple of:
+        - Dictionary of files that need to be processed (excludes already completed)
+        - Dictionary of cached results from file history (file_hash -> result details)
+    """
+    try:
+        # Extract file hashes for batch check
+        file_hashes = []
+        hash_to_file = {}
+
+        for file_key, file_hash_data in hash_values_of_files.items():
+            # Handle both FileHashData objects and dict formats
+            if isinstance(file_hash_data, FileHashData):
+                file_hash = file_hash_data.file_hash
+            elif isinstance(file_hash_data, dict):
+                file_hash = file_hash_data.get("file_hash")
+            else:
+                logger.warning(f"Unexpected file data type: {type(file_hash_data)}")
+                continue
+
+            if file_hash:
+                file_hashes.append(file_hash)
+                hash_to_file[file_hash] = (file_key, file_hash_data)
+
+        if not file_hashes:
+            logger.info(
+                f"No file hashes available for history check in execution {execution_id}, processing all files"
+            )
+            return hash_values_of_files
+
+        logger.info(
+            f"Checking file history for {len(file_hashes)} files in execution {execution_id}"
+        )
+
+        # Check which files were already processed successfully
+        response = api_client.check_file_history_batch(
+            workflow_id=workflow_id,
+            file_hashes=file_hashes,
+            organization_id=None,  # Will use the organization from api_client context
+        )
+
+        processed_hashes = set(response.get("processed_file_hashes", []))
+        file_history_details = response.get("file_history_details", {})
+        logger.info(
+            f"File history check found {len(processed_hashes)} already processed files"
+        )
+
+        # Separate files into: to process vs cached results
+        files_to_process = {}
+        cached_results = {}
+        skipped_files = []
+
+        for file_hash_str in file_hashes:
+            file_key, file_hash_data = hash_to_file[file_hash_str]
+
+            if file_hash_str in processed_hashes:
+                # Get file name for logging
+                if isinstance(file_hash_data, FileHashData):
+                    file_name = file_hash_data.file_name
+                elif isinstance(file_hash_data, dict):
+                    file_name = file_hash_data.get("file_name", file_key)
+                else:
+                    file_name = file_key
+
+                # Store cached result details
+                if file_hash_str in file_history_details:
+                    cached_results[file_hash_str] = {
+                        "file_name": file_name,
+                        "file_key": file_key,
+                        "file_hash_data": file_hash_data,
+                        **file_history_details[file_hash_str],  # result, metadata, etc.
+                    }
+
+                skipped_files.append(file_name)
+                logger.info(
+                    f"Using cached result for file: {file_name} (hash: {file_hash_str[:16]}...)"
+                )
+            else:
+                files_to_process[file_key] = file_hash_data
+
+        # Add files without hashes (will be processed normally)
+        for file_key, file_hash_data in hash_values_of_files.items():
+            if isinstance(file_hash_data, FileHashData):
+                has_hash = bool(file_hash_data.file_hash)
+            elif isinstance(file_hash_data, dict):
+                has_hash = bool(file_hash_data.get("file_hash"))
+            else:
+                has_hash = False
+
+            if not has_hash and file_key not in files_to_process:
+                files_to_process[file_key] = file_hash_data
+
+        logger.info(
+            f"File history check completed for execution {execution_id}: {len(cached_results)} cached results, processing {len(files_to_process)} files"
+        )
+
+        return files_to_process, cached_results
+
+    except Exception as e:
+        logger.warning(
+            f"File history check failed for execution {execution_id}, processing all files: {e}"
+        )
+        return hash_values_of_files, {}

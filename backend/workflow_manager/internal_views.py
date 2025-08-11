@@ -2090,15 +2090,41 @@ class FileHistoryBatchCheckView(APIView):
                 file_history_queryset, request, "workflow__organization"
             )
 
-            processed_hashes = file_history_queryset.values_list("cache_key", flat=True)
+            # Get full file history details for cached results
+            file_histories = file_history_queryset.values(
+                "cache_key",
+                "result",
+                "metadata",
+                "error",
+                "file_path",
+                "provider_file_uuid",
+            )
 
-            processed_file_hashes = list(processed_hashes)
+            # Build response with both processed hashes (for compatibility) and full details
+            processed_file_hashes = []
+            file_history_details = {}
+
+            for fh in file_histories:
+                cache_key = fh["cache_key"]
+                processed_file_hashes.append(cache_key)
+                file_history_details[cache_key] = {
+                    "result": fh["result"],
+                    "metadata": fh["metadata"],
+                    "error": fh["error"],
+                    "file_path": fh["file_path"],
+                    "provider_file_uuid": fh["provider_file_uuid"],
+                }
 
             logger.info(
                 f"File history batch check: {len(processed_file_hashes)}/{len(file_hashes)} files already processed"
             )
 
-            return Response({"processed_file_hashes": processed_file_hashes})
+            return Response(
+                {
+                    "processed_file_hashes": processed_file_hashes,  # For backward compatibility
+                    "file_history_details": file_history_details,  # Full details for cached results
+                }
+            )
 
         except Exception as e:
             logger.error(f"File history batch check failed: {str(e)}")
