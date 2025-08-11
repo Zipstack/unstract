@@ -648,6 +648,22 @@ const convertTimestampToHHMMSS = (timestamp) => {
   return `${hours}:${minutes}:${seconds}`;
 };
 
+const formatTimeDisplay = (seconds) => {
+  // Format time display for TTL or duration display
+  if (seconds <= 0) return "Expired";
+
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+
+  const parts = [];
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(`${minutes}m`);
+  if (secs > 0 || parts.length === 0) parts.push(`${secs}s`);
+
+  return parts.join(" ");
+};
+
 const UNSTRACT_ADMIN = "unstract_admin";
 
 const logsStaticContent = {
@@ -725,6 +741,7 @@ export {
   convertTimestampToHHMMSS,
   UNSTRACT_ADMIN,
   formatSecondsToHMS,
+  formatTimeDisplay,
   formattedDateTimeWithSeconds,
   logsStaticContent,
 };

@@ -197,9 +197,6 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
 
   // Generate configure button tooltip message
   const getConfigureTooltipMessage = () => {
-    if (!allowChangeEndpoint) {
-      return "Configuration disabled - Workflow is deployed";
-    }
     if (!endpointDetails?.connection_type) {
       return "Select the connector type from the dropdown";
     }
@@ -241,8 +238,7 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
                   disabled={
                     !endpointDetails?.connection_type ||
                     connMode === "API" ||
-                    connMode === "APPDEPLOYMENT" ||
-                    !allowChangeEndpoint
+                    connMode === "APPDEPLOYMENT"
                   }
                 >
                   Configure
