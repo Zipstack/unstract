@@ -81,3 +81,17 @@ class WorkflowUtil:
             and file destination.
         """
         return False
+
+    @staticmethod
+    def get_hitl_ttl_seconds(workflow: Workflow) -> Any:
+        """Get TTL in seconds for HITL settings for a workflow.
+
+        Args:
+            workflow (Workflow): The workflow to get HITL TTL settings for.
+
+        Returns:
+            Optional[int]: TTL in seconds if custom TTL is set, None for unlimited TTL.
+            For OSS version, always returns None (unlimited TTL).
+        """
+        # TTL feature is cloud-only, return None for unlimited TTL in OSS
+        return None

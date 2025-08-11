@@ -105,7 +105,6 @@ function Agency() {
           getWfEndpointDetails(signal),
           canUpdateWorkflow(signal),
           getExportedTools(signal),
-          fetchDeploymentInfo(signal),
         ]);
 
         if (!signal.aborted) {
@@ -166,14 +165,9 @@ function Agency() {
       destination?.connection_type === "API";
     setApiOpsPresent(isApiOps);
 
-    // If API ops is enabled and other deployment types were selected, reset
-    if (
-      isApiOps &&
-      selectedDeploymentType &&
-      selectedDeploymentType !== "API"
-    ) {
-      setSelectedDeploymentType(null);
-    }
+    // Clear deployment selection when connector types change
+    // This ensures user has to re-select deployment type after changing connectors
+    setSelectedDeploymentType(null);
     // Enable Deploy as Task Pipeline only when
     // destination connection_type is FILESYSTEM and Source & Destination are Configured
     setCanAddTaskPipeline(
@@ -1050,13 +1044,22 @@ function Agency() {
                     source,
                     !allowChangeEndpoint
                   );
-                  return status.configured ? "✓" : "1";
+                  // Show connector type for non-API configured connectors
+                  if (
+                    status?.configured &&
+                    source?.connection_type &&
+                    source?.connection_type !== "API"
+                  ) {
+                    return source?.connection_type;
+                  }
+                  return status?.configured ? "✓" : "1";
                 })()}
                 title="Configure Source Connector"
                 description="Select and configure your data input connector"
                 type={sourceTypes.connectors[0]}
                 endpointDetails={source}
                 message={sourceMsg}
+                connectorIcon={source?.connector_instance?.icon}
               />
             </Col>
 
@@ -1068,13 +1071,22 @@ function Agency() {
                     destination,
                     !allowChangeEndpoint
                   );
-                  return status.configured ? "✓" : "2";
+                  // Show connector type for non-API configured connectors
+                  if (
+                    status?.configured &&
+                    destination?.connection_type &&
+                    destination?.connection_type !== "API"
+                  ) {
+                    return destination?.connection_type;
+                  }
+                  return status?.configured ? "✓" : "2";
                 })()}
                 title="Configure Output Destination"
                 description="Select and configure your data output connector"
                 type={sourceTypes.connectors[1]}
                 endpointDetails={destination}
                 message={destinationMsg}
+                connectorIcon={destination?.connector_instance?.icon}
               />
             </Col>
             <Col span={12}>
@@ -1132,22 +1144,33 @@ function Agency() {
                   <div className="workflow-card-content">
                     <Select
                       className="workflow-select"
-                      placeholder="Select Deployment Type"
+                      placeholder={
+                        !source?.connection_type ||
+                        !destination?.connection_type
+                          ? "Select both connectors first"
+                          : "Select Deployment Type"
+                      }
                       value={
                         deploymentInfo
                           ? deploymentInfo.type
                           : selectedDeploymentType
                       }
                       onChange={handleDeploymentTypeChange}
-                      disabled={deploymentInfo || !allowChangeEndpoint}
-                      options={[
-                        {
-                          value: "API",
-                          label: getDeploymentStatusText("API"),
-                          disabled: false,
-                        },
-                        ...(apiOpsPresent && !deploymentInfo
-                          ? []
+                      disabled={
+                        deploymentInfo ||
+                        !allowChangeEndpoint ||
+                        !source?.connection_type ||
+                        !destination?.connection_type
+                      }
+                      options={
+                        apiOpsPresent
+                          ? [
+                              {
+                                value: "API",
+                                label: getDeploymentStatusText("API"),
+                                disabled: false,
+                              },
+                            ]
                           : [
                               {
                                 value: "ETL",
@@ -1159,15 +1182,17 @@ function Agency() {
                                 label: getDeploymentStatusText("TASK"),
                                 disabled: false,
                               },
-                            ]),
-                      ]}
+                            ]
+                      }
                     />
                     <Button
                       type="primary"
                       disabled={
                         deploymentInfo ||
                         !allowChangeEndpoint ||
-                        !selectedDeploymentType
+                        !selectedDeploymentType ||
+                        !source?.connection_type ||
+                        !destination?.connection_type
                       }
                       onClick={() =>
                         selectedDeploymentType &&
@@ -1268,6 +1293,7 @@ function Agency() {
           workflowId={details?.id}
           setDeploymentName={setDeploymentName}
           onDeploymentCreated={fetchDeploymentInfo}
+          title="Deploy ETL"
         />
 
         <EtlTaskDeploy
@@ -1277,6 +1303,7 @@ function Agency() {
           workflowId={details?.id}
           setDeploymentName={setDeploymentName}
           onDeploymentCreated={fetchDeploymentInfo}
+          title="Deploy Task"
         />
 
         {/* Tool Selection Sidebar */}
