@@ -91,6 +91,16 @@ class ExecuteWorkflowSerializer(Serializer):
         if not workflow_id:
             raise ValidationError("'workflow_id' is required.")
 
+        # Validate file count from request context
+        request = self.context.get('request')
+        if request and hasattr(request, 'FILES'):
+            files = request.FILES.getlist('files')
+            if files and len(files) > 2:
+                raise ValidationError(
+                    "Maximum 2 files are allowed for workflow execution. "
+                    f"You have uploaded {len(files)} files."
+                )
+
         return data
 
 
