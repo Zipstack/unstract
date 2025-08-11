@@ -8,10 +8,14 @@ import {
   Tooltip,
   Typography,
 } from "antd";
+import {
+  CheckCircleTwoTone,
+  ExclamationCircleOutlined,
+} from "@ant-design/icons";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
-import { getMenuItem } from "../../../helpers/GetStaticData";
+import { getMenuItem, titleCase } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -409,13 +413,47 @@ function DsSettingsCard({ type, endpointDetails, message }) {
           </SpaceWrapper>
         </Col>
         <Col span={8} className="ds-set-card-col3">
-          <Typography.Paragraph
-            ellipsis={{ rows: 2, expandable: false }}
-            className="font-size-12"
-            type="secondary"
-          >
-            {message}
-          </Typography.Paragraph>
+          <div className="display-flex-align-center">
+            {connDetails?.connector_name ? (
+              <Space>
+                <Image
+                  src={connDetails?.icon}
+                  height={20}
+                  width={20}
+                  preview={false}
+                />
+                <Typography.Text className="font-size-12">
+                  {connDetails?.connector_name}
+                </Typography.Text>
+              </Space>
+            ) : (
+              <>
+                {connType === "API" || connType === "APPDEPLOYMENT" ? (
+                  <Typography.Text
+                    className="font-size-12 display-flex-align-center"
+                    ellipsis={{ rows: 1, expandable: false }}
+                    type="secondary"
+                  >
+                    <CheckCircleTwoTone twoToneColor="#52c41a" />
+                    <span style={{ marginLeft: "5px" }}>
+                      {titleCase(type)} set to {connType} successfully
+                    </span>
+                  </Typography.Text>
+                ) : (
+                  <Typography.Text
+                    className="font-size-12 display-flex-align-center"
+                    ellipsis={{ rows: 1, expandable: false }}
+                    type="secondary"
+                  >
+                    <ExclamationCircleOutlined />
+                    <span style={{ marginLeft: "5px" }}>
+                      Connector not configured
+                    </span>
+                  </Typography.Text>
+                )}
+              </>
+            )}
+          </div>
         </Col>
       </Row>
       <ConfigureConnectorModal
