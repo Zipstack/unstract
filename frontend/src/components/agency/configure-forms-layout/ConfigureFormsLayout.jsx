@@ -6,7 +6,6 @@ import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import "./ConfigureFormsLayout.css";
 
 function ConfigureFormsLayout({
-  handleUpdate,
   specConfig,
   formDataConfig,
   setFormDataConfig,
@@ -23,7 +22,6 @@ function ConfigureFormsLayout({
   return (
     <div className="config-content-area">
       <SettingsForm
-        handleUpdate={handleUpdate}
         spec={specConfig}
         formData={formDataConfig}
         setFormData={setFormDataConfig}
@@ -34,7 +32,6 @@ function ConfigureFormsLayout({
 }
 
 ConfigureFormsLayout.propTypes = {
-  handleUpdate: PropTypes.func.isRequired,
   specConfig: PropTypes.object,
   formDataConfig: PropTypes.object,
   setFormDataConfig: PropTypes.func.isRequired,

@@ -1,7 +1,8 @@
 import { Col, Modal, Row, Typography, Select, Space, Image, Tabs } from "antd";
 import { CloudDownloadOutlined, CloudUploadOutlined } from "@ant-design/icons";
 import PropTypes from "prop-types";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { isEqual } from "lodash";
 
 import { useAlertStore } from "../../../store/alert-store";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -51,6 +52,9 @@ function ConfigureConnectorModal({
   const [isSpecConfigLoading, setIsSpecConfigLoading] = useState(false);
   const [selectedFolderPath, setSelectedFolderPath] = useState("");
   const [isFolderSelected, setIsFolderSelected] = useState(false);
+  const [initialFormDataConfig, setInitialFormDataConfig] = useState({});
+
+  const fileExplorerRef = useRef(null);
 
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -72,28 +76,9 @@ function ConfigureConnectorModal({
     });
   };
 
-  const onTabChange = (key) => {
+  const onDBConfigTabChange = (key) => {
     setActiveTabKey(key);
   };
-
-  // Load plugin tab for Human In The Loop (DATABASE connectors only)
-  useEffect(() => {
-    if (connMode !== "DATABASE") {
-      return;
-    }
-
-    try {
-      const tabOption =
-        require("../../../plugins/manual-review/connector-config-tab-mrq/ConnectorConfigTabMRQ").mrqTabs;
-      if (tabOption) {
-        tabOption["disabled"] = !connDetails?.id;
-        tabOption["visible"] = true;
-        setUpdatedTabOptions(tabOption);
-      }
-    } catch {
-      // The component will remain null if it is not available
-    }
-  }, [connMode, connDetails?.id]);
 
   const fetchEndpointConfigSchema = () => {
     if (!endpointDetails?.id) {
@@ -240,6 +225,61 @@ function ConfigureConnectorModal({
     setIsFolderSelected(false);
   };
 
+  const handleModalClose = () => {
+    const hasChanges = !isEqual(formDataConfig, initialFormDataConfig);
+
+    // Auto-save configuration only if there are actual changes
+    if (
+      connDetails?.id &&
+      Object.keys(formDataConfig).length > 0 &&
+      hasChanges
+    ) {
+      handleEndpointUpdate({ configuration: formDataConfig });
+    }
+
+    setOpen(false);
+  };
+
+  // Load plugin tab for Human In The Loop (DATABASE connectors only)
+  useEffect(() => {
+    if (connMode !== "DATABASE") {
+      return;
+    }
+
+    try {
+      const tabOption =
+        require("../../../plugins/manual-review/connector-config-tab-mrq/ConnectorConfigTabMRQ").mrqTabs;
+      if (tabOption) {
+        tabOption["disabled"] = !connDetails?.id;
+        tabOption["visible"] = true;
+        setUpdatedTabOptions(tabOption);
+      }
+    } catch {
+      // The component will remain null if it is not available
+    }
+  }, [connMode, connDetails?.id]);
+
+  // Handle click-outside to clear file selection
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        fileExplorerRef.current &&
+        !fileExplorerRef.current.contains(event.target)
+      ) {
+        setSelectedFolderPath("");
+        setIsFolderSelected(false);
+      }
+    };
+
+    if (open && connMode === "FILESYSTEM") {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [open, connMode]);
+
   // Fetch available connectors when modal opens and connection type is available
   useEffect(() => {
     if (open) {
@@ -248,10 +288,24 @@ function ConfigureConnectorModal({
     }
   }, [open, connMode]);
 
+  // Capture initial configuration when modal opens
+  useEffect(() => {
+    if (open && endpointDetails?.configuration) {
+      // Store a deep copy of the initial configuration
+      setInitialFormDataConfig(
+        JSON.parse(JSON.stringify(endpointDetails.configuration))
+      );
+    }
+    if (!open) {
+      // Reset when modal closes
+      setInitialFormDataConfig({});
+    }
+  }, [open, endpointDetails?.configuration]);
+
   return (
     <Modal
       open={open}
-      onCancel={() => setOpen(false)}
+      onCancel={handleModalClose}
       centered
       footer={null}
       width={1200}
@@ -363,7 +417,7 @@ function ConfigureConnectorModal({
             {connMode === "DATABASE" ? (
               <Tabs
                 activeKey={activeTabKey}
-                onChange={onTabChange}
+                onChange={onDBConfigTabChange}
                 className="conn-modal-col"
                 items={tabItems
                   .filter((item) => item.visible !== false)
@@ -375,7 +429,6 @@ function ConfigureConnectorModal({
                       <>
                         {item.key === "1" && (
                           <ConfigureFormsLayout
-                            handleUpdate={handleEndpointUpdate}
                             specConfig={specConfig}
                             formDataConfig={formDataConfig}
                             setFormDataConfig={setFormDataConfig}
@@ -396,7 +449,6 @@ function ConfigureConnectorModal({
                 <Col span={12} className="conn-modal-col">
                   <div className="conn-modal-fs-config">
                     <ConfigureFormsLayout
-                      handleUpdate={handleEndpointUpdate}
                       specConfig={specConfig}
                       formDataConfig={formDataConfig}
                       setFormDataConfig={setFormDataConfig}
@@ -408,7 +460,7 @@ function ConfigureConnectorModal({
                 {/* Right side - File System Browser (only for FILESYSTEM connectors) */}
                 {connMode === "FILESYSTEM" && connDetails?.id && (
                   <Col span={12} className="conn-modal-col">
-                    <div className="file-browser-section">
+                    <div className="file-browser-section" ref={fileExplorerRef}>
                       <div className="file-browser-header">
                         <div className="file-browser-content">
                           <Typography.Text strong style={{ display: "block" }}>
