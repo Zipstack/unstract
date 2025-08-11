@@ -18,3 +18,18 @@
 .manage-docs-div {
     margin: 0;
 }
+
+.summarization-status-circle {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.summarization-status-enabled {
+    background-color: #52c41a;
+}
+
+.summarization-status-disabled {
+    background-color: #ff4d4f;
+}
