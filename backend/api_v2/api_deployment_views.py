@@ -114,14 +114,22 @@ class DeploymentExecution(views.APIView):
             # Check if highlight data should be removed using configuration registry
             api_deployment = deployment_execution_dto.api
             organization = api_deployment.organization if api_deployment else None
-            try:
+
+            # Check if the configuration key exists (Cloud deployment) or use settings (OSS)
+            from configuration.config_registry import ConfigurationRegistry
+
+            if ConfigurationRegistry.is_config_key_available(
+                "ENABLE_HIGHLIGHT_API_DEPLOYMENT"
+            ):
                 enable_highlight = Configuration.get_value_by_organization(
                     config_key="ENABLE_HIGHLIGHT_API_DEPLOYMENT",
                     organization=organization,
                 )
-            except ValueError:
-                # Key not found in registry (OSS deployment), fall back to settings
-                enable_highlight = settings.ENABLE_HIGHLIGHT_API_DEPLOYMENT
+            else:
+                # OSS deployment - use settings default if available, otherwise False
+                enable_highlight = getattr(
+                    settings, "ENABLE_HIGHLIGHT_API_DEPLOYMENT", False
+                )
 
             if not enable_highlight:
                 response.remove_result_metadata_keys(["highlight_data"])

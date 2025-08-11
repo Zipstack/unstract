@@ -207,14 +207,20 @@ class DeploymentHelper(BaseAPIKeyValidator):
             )
             # Check if highlight data should be removed using configuration registry
             organization = api.organization if api else None
-            try:
+            from configuration.config_registry import ConfigurationRegistry
+
+            if ConfigurationRegistry.is_config_key_available(
+                "ENABLE_HIGHLIGHT_API_DEPLOYMENT"
+            ):
                 enable_highlight = Configuration.get_value_by_organization(
                     config_key="ENABLE_HIGHLIGHT_API_DEPLOYMENT",
                     organization=organization,
                 )
-            except ValueError:
-                # Key not found in registry (OSS deployment), fall back to settings
-                enable_highlight = settings.ENABLE_HIGHLIGHT_API_DEPLOYMENT
+            else:
+                # OSS deployment - use settings default if available, otherwise False
+                enable_highlight = getattr(
+                    settings, "ENABLE_HIGHLIGHT_API_DEPLOYMENT", False
+                )
 
             if not enable_highlight:
                 result.remove_result_metadata_keys(["highlight_data"])

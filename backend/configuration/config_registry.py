@@ -35,19 +35,25 @@ def _load_cloud_config_specs() -> dict[str, ConfigSpec]:
             logger.debug("Configuration plugin directory not found")
             return cloud_specs
 
-        # Try to import the cloud_config module
+        # Try to import the configuration plugin package
         config_package_path = (
             f"{auth_app.module.__package__}.{ConfigPluginConstants.CONFIG_PLUGIN_DIR}"
         )
-        full_module_path = f"{config_package_path}.{ConfigPluginConstants.CONFIG_MODULE}"
 
         try:
-            module = import_module(full_module_path)
-            metadata = getattr(module, ConfigPluginConstants.CONFIG_METADATA, {})
+            # Import the plugin package to get metadata from __init__.py
+            plugin_module = import_module(config_package_path)
+            metadata = getattr(plugin_module, ConfigPluginConstants.CONFIG_METADATA, {})
 
             if metadata.get(ConfigPluginConstants.METADATA_IS_ACTIVE, False):
-                # Get config specs from the module
-                config_specs = getattr(module, ConfigPluginConstants.CONFIG_SPECS, {})
+                # Import the cloud_config module to get config specs
+                full_module_path = (
+                    f"{config_package_path}.{ConfigPluginConstants.CONFIG_MODULE}"
+                )
+                config_module = import_module(full_module_path)
+                config_specs = getattr(
+                    config_module, ConfigPluginConstants.CONFIG_SPECS, {}
+                )
                 cloud_specs.update(config_specs)
                 logger.info(
                     "Loaded cloud configuration plugin: %s with %d config keys",
