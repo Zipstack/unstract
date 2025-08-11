@@ -23,6 +23,9 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 
 logger = logging.getLogger(__name__)
 
+# Maximum number of files allowed per workflow execution
+MAX_EXECUTION_FILES = 2
+
 
 class WorkflowSerializer(IntegrityErrorMixin, AuditSerializer):
     tool_instances = ToolInstanceSerializer(many=True, read_only=True)
@@ -92,14 +95,16 @@ class ExecuteWorkflowSerializer(Serializer):
             raise ValidationError({WorkflowKey.WF_ID: "This field is required."})
 
         # Validate file count from request context
-        request = self.context.get("request")
+        request = self.context.get(RequestKey.REQUEST)
         if request and hasattr(request, "FILES"):
             files = request.FILES.getlist("files")
-            if files and len(files) > 2:
-                raise ValidationError(
-                    "Maximum 2 files are allowed for workflow execution. "
-                    f"You have uploaded {len(files)} files."
-                )
+            if len(files) > MAX_EXECUTION_FILES:
+                raise ValidationError({
+                    "files": (
+                        f"Maximum {MAX_EXECUTION_FILES} files are allowed for workflow execution. "
+                        f"You have uploaded {len(files)} files."
+                    )
+                })
 
         return data
 
