@@ -340,18 +340,19 @@ function DsSettingsCard({ type, endpointDetails, message }) {
 
   // Check if connector is configured
   const isConnectorConfigured = () => {
-    // For API connections, just having an endpoint is sufficient
+    // For API connections, connector_instance is not required
     if (endpointDetails?.connection_type === "API") {
       return true;
     }
 
-    // For filesystem connectors, they are automatically configured
+    // For filesystem connectors, connector_instance is not required
     if (endpointDetails?.connection_type === "FILESYSTEM") {
       return true;
     }
 
-    // For other connection types, check if connector instance is configured
-    return !!(endpointDetails?.connector_instance);
+    // For other connection types (Database, etc.), check if connector instance is configured
+    // connector_instance represents the actual configured connector with credentials
+    return !!endpointDetails?.connector_instance;
   };
 
   // Get configure button text based on configuration status
@@ -366,18 +367,22 @@ function DsSettingsCard({ type, endpointDetails, message }) {
   // Get configuration status text
   const getConfigurationStatusText = () => {
     if (!endpointDetails?.connection_type) {
-      return "Connector not configured";
+      return "Select connector type";
     }
 
+    // For API and FileSystem, they are always considered configured once selected
     if (endpointDetails?.connection_type === "API") {
-      return "API configured";
+      return "API endpoint ready";
     }
 
     if (endpointDetails?.connection_type === "FILESYSTEM") {
-      return "File System configured";
+      return "File System ready";
     }
 
-    return isConnectorConfigured() ? "Connector configured" : "Connector not configured";
+    // For Database and other connectors, check if credentials are configured
+    return isConnectorConfigured()
+      ? `${endpointDetails?.connector_name || "Connector"} configured`
+      : "Configure connector credentials";
   };
 
   return (
