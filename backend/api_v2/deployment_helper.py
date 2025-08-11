@@ -3,7 +3,6 @@ from typing import Any
 from urllib.parse import urlencode
 
 from configuration.models import Configuration
-from django.conf import settings
 from django.core.files.uploadedfile import UploadedFile
 from rest_framework.request import Request
 from rest_framework.serializers import Serializer
@@ -216,12 +215,6 @@ class DeploymentHelper(BaseAPIKeyValidator):
                     config_key="ENABLE_HIGHLIGHT_API_DEPLOYMENT",
                     organization=organization,
                 )
-            else:
-                # OSS deployment - use settings default if available, otherwise False
-                enable_highlight = getattr(
-                    settings, "ENABLE_HIGHLIGHT_API_DEPLOYMENT", False
-                )
-
             if not enable_highlight:
                 result.remove_result_metadata_keys(["highlight_data"])
             if not include_metadata:

@@ -3,7 +3,6 @@ import logging
 from typing import Any
 
 from configuration.models import Configuration
-from django.conf import settings
 from django.db.models import QuerySet
 from django.http import HttpResponse
 from permissions.permission import IsOwner
@@ -125,12 +124,6 @@ class DeploymentExecution(views.APIView):
                     config_key="ENABLE_HIGHLIGHT_API_DEPLOYMENT",
                     organization=organization,
                 )
-            else:
-                # OSS deployment - use settings default if available, otherwise False
-                enable_highlight = getattr(
-                    settings, "ENABLE_HIGHLIGHT_API_DEPLOYMENT", False
-                )
-
             if not enable_highlight:
                 response.remove_result_metadata_keys(["highlight_data"])
             if not include_metadata:
