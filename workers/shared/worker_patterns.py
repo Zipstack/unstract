@@ -135,13 +135,42 @@ class BatchExecutionResult:
 
 
 # Worker Configuration and Constants
-class APIEndpoints:
-    """Internal API endpoints - worker implementation detail."""
 
-    WORKFLOW_EXECUTION_STATUS = "/internal/workflow-execution/{execution_id}/status/"
-    WORKFLOW_FILE_EXECUTION_CREATE = "/internal/workflow-file-execution/create/"
-    PIPELINE_STATUS = "/internal/pipeline/{pipeline_id}/status/"
-    WEBHOOK_SEND = "/internal/webhook/send/"
+# Internal API Configuration - Environment configurable
+INTERNAL_API_PREFIX = os.getenv("INTERNAL_API_PREFIX", "/internal")
+INTERNAL_API_VERSION = os.getenv("INTERNAL_API_VERSION", "v1")
+INTERNAL_API_BASE_PATH = f"{INTERNAL_API_PREFIX}/{INTERNAL_API_VERSION}"
+
+
+def build_internal_endpoint(path: str) -> str:
+    """Build a complete internal API endpoint path.
+
+    Args:
+        path: The endpoint path without the internal prefix (e.g., "health/")
+
+    Returns:
+        Complete internal API path (e.g., "/internal/v1/health/")
+    """
+    # Ensure path starts and ends with /
+    if not path.startswith("/"):
+        path = f"/{path}"
+    if not path.endswith("/"):
+        path = f"{path}/"
+
+    return f"{INTERNAL_API_BASE_PATH}{path}"
+
+
+class APIEndpoints:
+    """Internal API endpoints - worker implementation detail with environment configuration."""
+
+    WORKFLOW_EXECUTION_STATUS = build_internal_endpoint(
+        "workflow-execution/{execution_id}/status/"
+    )
+    WORKFLOW_FILE_EXECUTION_CREATE = build_internal_endpoint(
+        "workflow-file-execution/create/"
+    )
+    PIPELINE_STATUS = build_internal_endpoint("pipeline/{pipeline_id}/status/")
+    WEBHOOK_SEND = build_internal_endpoint("webhook/send/")
 
 
 class WorkerConfig:

@@ -16,6 +16,7 @@ import uuid
 from typing import Any
 from uuid import UUID
 
+from ..constants.api_endpoints import build_internal_endpoint
 from ..data_models import (
     APIResponse,
     BatchOperationRequest,
@@ -86,7 +87,7 @@ class FileAPIClient(BaseAPIClient):
             WorkflowFileExecutionData instance
         """
         # Build URL for file execution detail endpoint
-        url = f"internal/file-execution/{file_execution_id}/"
+        url = build_internal_endpoint(f"file-execution/{file_execution_id}/").lstrip("/")
 
         # Get the file execution record
         response_data = self.client.get(url, organization_id=organization_id)
@@ -487,7 +488,7 @@ class FileAPIClient(BaseAPIClient):
                     f"Creating WorkflowFileExecution with empty hash for {file_name}"
                 )
 
-            response = self.post("workflow-manager/file-execution/", data)
+            response = self.post("v1/workflow-manager/file-execution/", data)
             logger.info(
                 f"Successfully created WorkflowFileExecution for {file_name} with hash {file_hash[:8] if file_hash else 'empty'}..."
             )
@@ -519,7 +520,7 @@ class FileAPIClient(BaseAPIClient):
         )
 
         response = self.post(
-            "workflow-manager/file-execution/batch-create/",
+            "v1/workflow-manager/file-execution/batch-create/",
             batch_request.to_dict(),
             organization_id=organization_id,
         )
@@ -564,7 +565,7 @@ class FileAPIClient(BaseAPIClient):
         )
 
         response = self.post(
-            "workflow-manager/file-execution/batch-status-update/",
+            "v1/workflow-manager/file-execution/batch-status-update/",
             batch_request.to_dict(),
             organization_id=organization_id,
         )

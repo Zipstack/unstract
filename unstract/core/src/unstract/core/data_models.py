@@ -14,6 +14,22 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class OrganizationContext:
+    """Organization context for API requests."""
+
+    organization_id: str
+    tenant_id: str | None = None
+    subscription_plan: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "organization_id": self.organization_id,
+            "tenant_id": self.tenant_id,
+            "subscription_plan": self.subscription_plan,
+        }
+
+
 # File Operation Data Models
 @dataclass
 class FileHash:

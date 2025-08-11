@@ -676,7 +676,7 @@ class InternalAPIClient:
         Returns:
             Dictionary with 'processed_file_hashes' list
         """
-        endpoint = "workflow-manager/file-history/check-batch/"
+        endpoint = "v1/workflow-manager/file-history/check-batch/"
 
         payload = {
             "workflow_id": str(workflow_id),

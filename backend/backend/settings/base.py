@@ -561,8 +561,64 @@ SOCIAL_AUTH_GOOGLE_OAUTH2_USE_UNIQUE_USER_ID = True
 # Cloud deployments can extend this in their settings to add cloud-specific modules.
 
 INTERNAL_URL_MODULES = {
-    # OSS modules only - no manual review or other cloud features
-    # Note: Additional modules will be added by cloud.py settings when active
+    # Core OSS Internal API Modules
+    # These are the foundational APIs available in all deployments
+    "workflow_execution": {
+        "url_path": "v1/workflow-execution/",
+        "module_path": "workflow_manager.workflow_execution_internal_urls",
+        "enabled": True,
+        "description": "Workflow execution management APIs",
+    },
+    "workflow_manager": {
+        "url_path": "v1/workflow-manager/",
+        "module_path": "workflow_manager.internal_urls",
+        "enabled": True,
+        "description": "Workflow management and pipeline APIs",
+    },
+    "organization": {
+        "url_path": "v1/organization/",
+        "module_path": "account_v2.organization_internal_urls",
+        "enabled": True,
+        "description": "Organization context and management APIs",
+    },
+    "file_execution": {
+        "url_path": "v1/file-execution/",
+        "module_path": "workflow_manager.file_execution.internal_urls",
+        "enabled": True,
+        "description": "File execution and batch processing APIs",
+    },
+    "tool_execution": {
+        "url_path": "v1/tool-execution/",
+        "module_path": "tool_instance_v2.internal_urls",
+        "enabled": True,
+        "description": "Tool instance execution APIs",
+    },
+    "file_history": {
+        "url_path": "v1/file-history/",
+        "module_path": "workflow_manager.workflow_v2.file_history_internal_urls",
+        "enabled": True,
+        "description": "File processing history and caching APIs",
+    },
+    "execution": {
+        "url_path": "v1/execution/",
+        "module_path": "workflow_manager.execution.internal_urls",
+        "enabled": True,
+        "description": "Execution finalization and cleanup APIs",
+    },
+    "webhook": {
+        "url_path": "v1/webhook/",
+        "module_path": "notification_v2.internal_urls",
+        "enabled": True,
+        "description": "Webhook notification APIs",
+    },
+    "platform_settings": {
+        "url_path": "v1/platform-settings/",
+        "module_path": "platform_settings_v2.internal_urls",
+        "enabled": True,
+        "description": "Platform configuration and settings APIs",
+    },
+    # Note: Cloud-specific modules (manual-review, analytics, etc.)
+    # are added by cloud.py settings when active
 }
 
 

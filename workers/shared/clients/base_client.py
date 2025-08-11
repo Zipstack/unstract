@@ -58,14 +58,13 @@ class BaseAPIClient:
     """
 
     # Internal API URL patterns - can be overridden via environment variables
+    # Standardized to use v1/ prefix consistently
     API_ENDPOINTS = {
         "health": os.getenv("INTERNAL_API_HEALTH_PREFIX", "v1/health/"),
         "workflow_execution": os.getenv(
-            "INTERNAL_API_WORKFLOW_PREFIX", "api/v1/workflow-execution/"
+            "INTERNAL_API_WORKFLOW_PREFIX", "v1/workflow-execution/"
         ),
-        "organization": os.getenv(
-            "INTERNAL_API_ORGANIZATION_PREFIX", "api/v1/organization/"
-        ),
+        "organization": os.getenv("INTERNAL_API_ORGANIZATION_PREFIX", "v1/organization/"),
         "execution": os.getenv("INTERNAL_API_EXECUTION_PREFIX", "v1/execution/"),
         "tool_execution": os.getenv(
             "INTERNAL_API_TOOL_EXECUTION_PREFIX", "v1/tool-execution/"
@@ -75,6 +74,12 @@ class BaseAPIClient:
         ),
         "file_history": os.getenv("INTERNAL_API_FILE_HISTORY_PREFIX", "v1/file-history/"),
         "webhook": os.getenv("INTERNAL_API_WEBHOOK_PREFIX", "v1/webhook/"),
+        "workflow_manager": os.getenv(
+            "INTERNAL_API_WORKFLOW_MANAGER_PREFIX", "v1/workflow-manager/"
+        ),
+        "platform_settings": os.getenv(
+            "INTERNAL_API_PLATFORM_SETTINGS_PREFIX", "v1/platform-settings/"
+        ),
     }
 
     def __init__(self, config: WorkerConfig | None = None):

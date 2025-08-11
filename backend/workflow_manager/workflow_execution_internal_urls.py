@@ -10,7 +10,7 @@ from .internal_views import FileBatchCreateAPIView, WorkflowExecutionInternalVie
 # Create router for internal API viewsets
 router = DefaultRouter()
 router.register(
-    r"workflow-execution",
+    r"",
     WorkflowExecutionInternalViewSet,
     basename="workflow-execution-internal",
 )
@@ -18,7 +18,7 @@ router.register(
 urlpatterns = [
     # Workflow execution internal APIs
     path(
-        "workflow-execution/create-file-batch/",
+        "create-file-batch/",
         FileBatchCreateAPIView.as_view(),
         name="create-file-batch",
     ),

@@ -12,7 +12,9 @@ Handles:
 
 import logging
 
-from ..data_models import APIResponse, OrganizationContext
+from unstract.core.data_models import OrganizationContext
+
+from ..data_models import APIResponse
 from ..retry_utils import circuit_breaker
 from .base_client import BaseAPIClient
 

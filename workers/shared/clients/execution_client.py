@@ -87,7 +87,7 @@ class ExecutionAPIClient(BaseAPIClient):
         """
         try:
             # Use the workflow management internal API to get workflow details
-            endpoint = f"workflow-manager/workflow/{str(workflow_id)}/"
+            endpoint = f"v1/workflow-manager/workflow/{str(workflow_id)}/"
             response = self.get(endpoint, organization_id=organization_id)
             logger.info(
                 f"Retrieved workflow definition for {workflow_id}: {response.get('workflow_type', 'unknown')}"
@@ -119,7 +119,7 @@ class ExecutionAPIClient(BaseAPIClient):
         """
         try:
             # Use the internal API endpoint for pipeline type resolution
-            endpoint = f"workflow-manager/pipeline-type/{str(pipeline_id)}/"
+            endpoint = f"v1/workflow-manager/pipeline-type/{str(pipeline_id)}/"
             response = self.get(endpoint, organization_id=organization_id)
 
             pipeline_type = response.get("pipeline_type", "ETL")
@@ -252,7 +252,7 @@ class ExecutionAPIClient(BaseAPIClient):
         )
 
         response = self.post(
-            "workflow-manager/batch-status-update/",
+            "v1/workflow-manager/batch-status-update/",
             batch_request.to_dict(),
             organization_id=organization_id,
         )
@@ -301,7 +301,7 @@ class ExecutionAPIClient(BaseAPIClient):
             "is_api": is_api,
         }
         return self.post(
-            "workflow-manager/file-batch/", data, organization_id=organization_id
+            "v1/workflow-manager/file-batch/", data, organization_id=organization_id
         )
 
     def get_workflow_endpoints(
@@ -317,7 +317,7 @@ class ExecutionAPIClient(BaseAPIClient):
             Dictionary with endpoint data including 'endpoints' list and 'has_api_endpoints' flag
         """
         # Use the workflow-manager endpoint pattern
-        endpoint = f"workflow-manager/{workflow_id}/endpoint/"
+        endpoint = f"v1/workflow-manager/{workflow_id}/endpoint/"
 
         try:
             response = self._make_request(
@@ -375,7 +375,7 @@ class ExecutionAPIClient(BaseAPIClient):
 
         try:
             # Use the workflow-manager pipeline endpoint for status updates
-            endpoint = f"workflow-manager/pipeline/{pipeline_id}/status/"
+            endpoint = f"v1/workflow-manager/pipeline/{pipeline_id}/status/"
 
             response = self._make_request(
                 method="POST",
@@ -542,7 +542,7 @@ class ExecutionAPIClient(BaseAPIClient):
             "increment_type": "completed",
         }
         try:
-            response = self.post("workflow-manager/increment-files/", data)
+            response = self.post("v1/workflow-manager/increment-files/", data)
             logger.debug(f"Incremented completed files for execution {execution_id}")
             return response
         except Exception as e:
@@ -567,7 +567,7 @@ class ExecutionAPIClient(BaseAPIClient):
             "increment_type": "failed",
         }
         try:
-            response = self.post("workflow-manager/increment-files/", data)
+            response = self.post("v1/workflow-manager/increment-files/", data)
             logger.debug(f"Incremented failed files for execution {execution_id}")
             return response
         except Exception as e:
@@ -588,7 +588,7 @@ class ExecutionAPIClient(BaseAPIClient):
         """
         try:
             # Use workflow execution endpoint to get destination config
-            response = self.get(f"workflow-manager/{execution_id}/")
+            response = self.get(f"v1/workflow-manager/{execution_id}/")
             # Extract destination_config from the response
             if isinstance(response, dict) and "destination_config" in response:
                 logger.debug(f"Retrieved destination config for workflow {workflow_id}")
@@ -621,7 +621,7 @@ class ExecutionAPIClient(BaseAPIClient):
                 "file_hashes": file_hashes,
                 "organization_id": organization_id,
             }
-            response = self.post("workflow-manager/file-history/check-batch/", data)
+            response = self.post("v1/workflow-manager/file-history/check-batch/", data)
             logger.debug(f"Checked file history for {len(file_hashes)} files")
             return response
         except Exception as e:
@@ -655,7 +655,7 @@ class ExecutionAPIClient(BaseAPIClient):
             Created execution data
         """
         return self.post(
-            "workflow-manager/execution/create/",
+            "v1/workflow-manager/execution/create/",
             execution_data,
             organization_id=execution_data.get("organization_id"),
         )
@@ -673,7 +673,7 @@ class ExecutionAPIClient(BaseAPIClient):
             Tool instances data
         """
         return self.get(
-            f"workflow-manager/workflow/{workflow_id}/tool-instances/",
+            f"v1/workflow-manager/workflow/{workflow_id}/tool-instances/",
             organization_id=organization_id,
         )
 
@@ -691,7 +691,7 @@ class ExecutionAPIClient(BaseAPIClient):
             Compilation result
         """
         return self.post(
-            "workflow-manager/workflow/compile/",
+            "v1/workflow-manager/workflow/compile/",
             {
                 "workflow_id": workflow_id,
                 "execution_id": execution_id,
@@ -711,7 +711,7 @@ class ExecutionAPIClient(BaseAPIClient):
             Submission result
         """
         return self.post(
-            "workflow-manager/file-batch/submit/",
+            "v1/workflow-manager/file-batch/submit/",
             batch_data,
             organization_id=batch_data.get("organization_id"),
         )

@@ -1,17 +1,9 @@
-#!/usr/bin/env python3
 """Plugin Manager for Workers
 
-This script provides command-line tools for managing worker plugins.
-
-Usage:
-    python plugin_manager.py list                    # List all plugins
-    python plugin_manager.py info <plugin_name>      # Get plugin info
-    python plugin_manager.py validate <plugin_name>  # Validate plugin
-    python plugin_manager.py test <plugin_name>      # Test plugin
-    python plugin_manager.py install <plugin_name>   # Install plugin deps
+This module provides programmatic tools for managing worker plugins.
+CLI functionality has been removed as plugins are managed programmatically.
 """
 
-import argparse
 import json
 import sys
 from pathlib import Path
@@ -253,61 +245,3 @@ class PluginManager:
 
         except Exception as e:
             print(f"❌ Error installing dependencies: {e}")
-
-
-def main():
-    """Main CLI entry point."""
-    parser = argparse.ArgumentParser(
-        description="Worker Plugin Manager",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  python plugin_manager.py list
-  python plugin_manager.py info manual_review
-  python plugin_manager.py validate manual_review
-  python plugin_manager.py test manual_review
-  python plugin_manager.py install manual_review
-        """,
-    )
-
-    parser.add_argument(
-        "command",
-        choices=["list", "info", "validate", "test", "install"],
-        help="Command to execute",
-    )
-
-    parser.add_argument(
-        "plugin_name",
-        nargs="?",
-        help="Plugin name (required for info, validate, test, install)",
-    )
-
-    args = parser.parse_args()
-
-    # Commands that don't require plugin_name
-    if args.command == "list":
-        manager = PluginManager()
-        manager.list_plugins()
-        return
-
-    # Commands that require plugin_name
-    if not args.plugin_name:
-        print(f"Error: {args.command} command requires a plugin name")
-        parser.print_help()
-        sys.exit(1)
-
-    manager = PluginManager()
-
-    if args.command == "info":
-        manager.show_plugin_info(args.plugin_name)
-    elif args.command == "validate":
-        success = manager.validate_plugin(args.plugin_name)
-        sys.exit(0 if success else 1)
-    elif args.command == "test":
-        manager.test_plugin(args.plugin_name)
-    elif args.command == "install":
-        manager.install_plugin_deps(args.plugin_name)
-
-
-if __name__ == "__main__":
-    main()

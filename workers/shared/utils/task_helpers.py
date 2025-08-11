@@ -3,7 +3,7 @@
 Helper functions for task configuration and management.
 """
 
-from ..constants import DefaultConfig
+from ..config import DefaultConfig
 
 
 def get_task_timeout(task_name: str) -> int:

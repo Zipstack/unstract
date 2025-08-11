@@ -54,6 +54,13 @@ app.conf.update(
     # Retry configuration
     task_default_retry_delay=60,
     task_max_retries=3,
+    # Callback-specific: Reduce chord retry noise (default 1s -> 3s for callbacks)
+    result_chord_retry_interval=float(
+        os.getenv("CELERY_RESULT_CHORD_RETRY_INTERVAL", "3.0")
+    ),
+    # Worker stability
+    worker_pool_restarts=True,  # Enable worker pool restarts for stability
+    broker_connection_retry_on_startup=True,  # Retry broker connection on startup
     # Monitoring
     worker_send_task_events=True,
     task_send_sent_event=True,

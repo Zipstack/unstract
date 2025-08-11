@@ -16,6 +16,8 @@ from typing import Any
 
 from django.urls import include, path
 
+from .base_internal_endpoints import get_base_internal_api_endpoints
+
 logger = logging.getLogger(__name__)
 
 
@@ -144,6 +146,15 @@ def initialize_internal_urls_from_settings() -> None:
     logger.info(
         f"Initialized {len(registered_modules)} internal URL modules: {list(registered_modules.keys())}"
     )
+
+
+def get_base_endpoints() -> dict[str, str]:
+    """Get base internal API endpoints that are common to all deployments.
+
+    This imports from the local base_internal_endpoints module to provide
+    the single source of truth for base endpoints.
+    """
+    return get_base_internal_api_endpoints()
 
 
 def get_internal_url_documentation() -> dict[str, Any]:

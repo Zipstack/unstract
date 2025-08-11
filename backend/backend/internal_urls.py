@@ -8,10 +8,11 @@ are active, without requiring code changes to this file.
 
 from django.conf import settings
 from django.http import JsonResponse
-from django.urls import include, path
+from django.urls import path
 from django.views.decorators.http import require_http_methods
 
 from .internal_url_registry import (
+    get_base_endpoints,
     get_cloud_url_documentation,
     get_cloud_url_patterns,
     get_internal_url_documentation,
@@ -32,40 +33,8 @@ def internal_api_root(request):
     # Get cloud endpoint documentation if available
     cloud_endpoints = get_cloud_url_documentation()
 
-    base_endpoints = {
-        # Health & Utilities
-        "health": "/internal/v1/health/",
-        # Workflow Execution APIs (workflow_manager app)
-        "workflow_execution": "/internal/v1/workflow/",
-        "workflow_execution_detail": "/internal/v1/workflow/{id}/",
-        "workflow_execution_status": "/internal/v1/workflow/{id}/status/",
-        "file_batch_create": "/internal/v1/workflow/file-batch/",
-        "file_execution": "/internal/v1/file-execution/",
-        "file_execution_status": "/internal/v1/file-execution/{id}/status/",
-        # Tool Execution APIs (tool_instance_v2 app)
-        "tool_execution": "/internal/v1/tool-execution/",
-        "tool_execution_execute": "/internal/v1/tool-execution/{id}/execute/",
-        "tool_execution_status": "/internal/v1/tool-execution/status/{execution_id}/",
-        "tool_instances_by_workflow": "/internal/v1/tool-execution/workflow/{workflow_id}/instances/",
-        # File History APIs (workflow_manager.workflow_v2 app)
-        "file_history_by_cache_key": "/internal/v1/file-history/cache-key/{cache_key}/",
-        "file_history_create": "/internal/v1/file-history/create/",
-        "file_history_status": "/internal/v1/file-history/status/{file_history_id}/",
-        # Execution Finalization APIs (workflow_manager.execution app)
-        "execution_finalize": "/internal/v1/execution/finalize/{execution_id}/",
-        "execution_cleanup": "/internal/v1/execution/cleanup/",
-        "execution_finalization_status": "/internal/v1/execution/finalization-status/{execution_id}/",
-        # Webhook APIs (notification_v2 app)
-        "webhook_config": "/internal/v1/webhook/",
-        "webhook_send": "/internal/v1/webhook/send/",
-        "webhook_batch": "/internal/v1/webhook/batch/",
-        "webhook_test": "/internal/v1/webhook/test/",
-        "webhook_status": "/internal/v1/webhook/status/{task_id}/",
-        # Organization Context (account_v2 app)
-        "organization": "/internal/v1/organization/{org_id}/",
-        # Platform Settings APIs
-        "platform_key": "/internal/v1/platform-settings/platform-key/",
-    }
+    # Get base endpoints from shared configuration
+    base_endpoints = get_base_endpoints()
 
     # Merge all endpoints (base + dynamic + cloud)
     all_endpoints = {**base_endpoints, **dynamic_endpoints, **cloud_endpoints}
@@ -202,33 +171,13 @@ def test_middleware_debug(request):
     )
 
 
-# Base internal API URL patterns
+# Base internal API URL patterns - Core endpoints only
 base_urlpatterns = [
-    # Internal API root
+    # Internal API root and utilities
     path("", internal_api_root, name="internal_api_root"),
-    # Debug endpoint
     path("debug/", test_middleware_debug, name="test_middleware_debug"),
-    # Health check
     path("v1/health/", internal_health_check, name="internal_health"),
-    # Workflow execution APIs (from workflow_manager app)
-    path("api/v1/", include("workflow_manager.workflow_execution_internal_urls")),
-    # Workflow manager APIs (includes workflow endpoint detection)
-    path("workflow-manager/", include("workflow_manager.internal_urls")),
-    # Organization APIs (from account_v2 app)
-    path("api/v1/organization/", include("account_v2.organization_internal_urls")),
-    # Legacy internal APIs (keep existing ones that haven't been moved yet)
-    path("v1/file-execution/", include("workflow_manager.file_execution.internal_urls")),
-    path("v1/tool-execution/", include("tool_instance_v2.internal_urls")),
-    path(
-        "v1/file-history/",
-        include("workflow_manager.workflow_v2.file_history_internal_urls"),
-    ),
-    path("v1/execution/", include("workflow_manager.execution.internal_urls")),
-    path("v1/webhook/", include("notification_v2.internal_urls")),
-    # Platform settings APIs
-    path("v1/platform-settings/", include("platform_settings_v2.internal_urls")),
-    # Workflow manager APIs
-    path("v1/workflow-manager/", include("workflow_manager.internal_urls")),
+    # All other URLs loaded dynamically from INTERNAL_URL_MODULES settings
 ]
 
 

@@ -32,26 +32,8 @@ from .worker_base import (
     with_task_context,
 )
 
-# Export constants and configuration
-from .worker_constants import (
-    APIEndpoints,
-    CacheConfig,
-    DefaultConfig,
-    EnvVars,
-    ErrorMessages,
-    FileProcessingConfig,
-    LogMessages,
-    MonitoringConfig,
-    QueueConfig,
-    SecurityConfig,
-    get_cache_key,
-    get_task_max_retries,
-    get_task_timeout,
-    sanitize_filename,
-    validate_execution_id,
-    validate_organization_id,
-)
-
+# Note: Worker constants moved to workers/shared/ to remove Django dependency
+# These are now available directly from workers.shared.constants and workers.shared.worker_patterns
 # Export worker-specific models and enums
 from .worker_models import (
     BatchExecutionResult,
