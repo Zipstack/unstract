@@ -35,9 +35,9 @@ function ConnectorListModal({
     // Filter by connector mode
     if (mode !== "all") {
       filtered = filtered.filter((connector) => {
-        if (mode === "FILE_SYSTEM") {
+        if (mode === "FILESYSTEM") {
           return (
-            connector?.connector_mode === "FILE_SYSTEM" ||
+            connector?.connector_mode === "FILESYSTEM" ||
             connector?.can_write ||
             connector?.can_read
           ); // fallback logic
@@ -71,7 +71,7 @@ function ConnectorListModal({
       label: "All Connectors",
     },
     {
-      key: "FILE_SYSTEM",
+      key: "FILESYSTEM",
       label: "File Systems",
     },
     {

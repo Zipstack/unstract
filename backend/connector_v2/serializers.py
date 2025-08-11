@@ -9,7 +9,6 @@ from connector_processor.constants import ConnectorKeys
 from connector_processor.exceptions import OAuthTimeOut
 from rest_framework.serializers import CharField, SerializerMethodField
 from utils.fields import EncryptedBinaryFieldSerializer
-from utils.serializer_utils import SerializerUtils
 
 from backend.serializers import AuditSerializer
 from connector_v2.constants import ConnectorInstanceKey as CIKey
@@ -54,11 +53,6 @@ class ConnectorInstanceSerializer(AuditSerializer):
                 )
                 raise OAuthTimeOut
 
-        connector_mode = ConnectorProcessor.get_connector_data_with_key(
-            connector_id, CIKey.CONNECTOR_MODE
-        )
-        kwargs[CIKey.CONNECTOR_MODE] = connector_mode.value
-
         instance = super().save(**kwargs)
         return instance
 
@@ -77,7 +71,13 @@ class ConnectorInstanceSerializer(AuditSerializer):
         rep: OrderedDict[str, Any] = super().to_representation(instance)
         if instance.connector_id == UnstractCloudStorage.get_id():
             rep[CIKey.CONNECTOR_METADATA] = {}
-        if SerializerUtils.check_context_for_GET_or_POST(context=self.context):
-            rep.pop(CIKey.CONNECTOR_AUTH)
+
+        connector_mode = ConnectorProcessor.get_connector_data_with_key(
+            instance.connector_id, CIKey.CONNECTOR_MODE
+        )
+        rep[CIKey.CONNECTOR_MODE] = connector_mode.value
+
+        # Remove sensitive connector auth from the response
+        rep.pop(CIKey.CONNECTOR_AUTH)
 
         return rep

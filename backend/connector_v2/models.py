@@ -39,7 +39,6 @@ class ConnectorInstanceModelManager(DefaultOrganizationManagerMixin, models.Mana
 
 
 class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
-    # TODO: handle all cascade deletions
     class ConnectorType(models.TextChoices):
         INPUT = "INPUT", "Input"
         OUTPUT = "OUTPUT", "Output"
@@ -64,10 +63,13 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
         blank=True,
         related_name="connector_instances",
     )
+    # TODO: Remove unused connector_mode field, resolved from the ConnectorKit instead
     connector_mode = models.CharField(
         choices=ConnectorMode.choices,
         default=ConnectorMode.UNKNOWN,
         db_comment="0: UNKNOWN, 1: FILE_SYSTEM, 2: DATABASE",
+        null=True,
+        blank=True,
     )
 
     created_by = models.ForeignKey(
@@ -96,7 +98,6 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
         User, related_name="shared_connectors", blank=True
     )
 
-    # Manager
     objects = ConnectorInstanceModelManager()
 
     @staticmethod
