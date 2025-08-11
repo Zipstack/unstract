@@ -89,7 +89,7 @@ class ExecuteWorkflowSerializer(Serializer):
         workflow_id = data.get(WorkflowKey.WF_ID)
 
         if not workflow_id:
-            raise ValidationError("'workflow_id' is required.")
+            raise ValidationError({WorkflowKey.WF_ID: "This field is required."})
 
         # Validate file count from request context
         request = self.context.get('request')
