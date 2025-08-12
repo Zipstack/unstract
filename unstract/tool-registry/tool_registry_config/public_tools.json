@@ -5,7 +5,7 @@
             "schemaVersion": "0.0.1",
             "displayName": "File Classifier",
             "functionName": "classify",
-            "toolVersion": "0.0.65",
+            "toolVersion": "0.0.66",
             "description": "Classifies a file into a bin based on its contents",
             "input": {
                 "description": "File to be classified"
@@ -116,7 +116,7 @@
             "schemaVersion": "0.0.1",
             "displayName": "Text Extractor",
             "functionName": "text_extractor",
-            "toolVersion": "0.0.62",
+            "toolVersion": "0.0.63",
             "description": "The Text Extractor is a powerful tool designed to convert documents to its text form or Extract texts from documents",
             "input": {
                 "description": "Document"
