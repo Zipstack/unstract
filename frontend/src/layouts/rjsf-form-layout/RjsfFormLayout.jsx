@@ -142,7 +142,7 @@ function RjsfFormLayout({
             formData={formData}
             transformErrors={transformErrors}
             onError={() => {}}
-            onSubmit={(e) => validateAndSubmit(e.formData)}
+            onSubmit={(e) => validateAndSubmit?.(e.formData)}
             showErrorList={false}
             onChange={handleChange}
             templates={{

@@ -2,7 +2,6 @@ import { Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useMemo, useState } from "react";
 
-import { sourceTypes } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { EmptyState } from "../../widgets/empty-state/EmptyState";
@@ -33,7 +32,7 @@ function AddSource({
   selectedSourceName,
   setOpen,
   type,
-  sourceType,
+  isConnector,
   addNewItem,
   editItemId,
   metadata,
@@ -97,7 +96,7 @@ function AddSource({
     }
 
     let url;
-    if (sourceType === Object.keys(sourceTypes)[0]) {
+    if (isConnector) {
       url = getUrl(`connector_schema/?id=${selectedSourceId}`);
     } else {
       url = getUrl(`adapter_schema/?id=${selectedSourceId}`);
@@ -165,7 +164,7 @@ function AddSource({
       addNewItem={addNewItem}
       type={type}
       editItemId={editItemId}
-      sourceType={sourceType}
+      isConnector={isConnector}
       metadata={metadata}
       selectedSourceName={selectedSourceName}
     />
@@ -177,10 +176,7 @@ AddSource.propTypes = {
   selectedSourceName: PropTypes.string,
   setOpen: PropTypes.func,
   type: PropTypes.string,
-  sourceType: PropTypes.oneOf([
-    Object.keys(sourceTypes)[0],
-    Object.keys(sourceTypes)[1],
-  ]),
+  isConnector: PropTypes.bool.isRequired,
   addNewItem: PropTypes.func,
   editItemId: PropTypes.string,
   metadata: PropTypes.object,

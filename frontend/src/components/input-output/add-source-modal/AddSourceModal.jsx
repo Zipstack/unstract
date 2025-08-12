@@ -2,7 +2,6 @@ import { Modal } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
-import { sourceTypes } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { AddSource } from "../add-source/AddSource";
@@ -15,7 +14,7 @@ function AddSourceModal({
   open,
   setOpen,
   type,
-  sourceType,
+  isConnector,
   addNewItem,
   editItemId,
   setEditItemId,
@@ -77,7 +76,7 @@ function AddSourceModal({
 
   const getSourceDetails = () => {
     let url;
-    if (sourceType === Object.keys(sourceTypes)[0]) {
+    if (isConnector) {
       url = getUrl(`connector/${editItemId}/`);
     } else {
       url = getUrl(`adapter/${editItemId}/`);
@@ -92,7 +91,7 @@ function AddSourceModal({
       .then((res) => {
         setOpen(true);
         const data = res?.data;
-        if (sourceType === Object.keys(sourceTypes)[0]) {
+        if (isConnector) {
           setSelectedSourceId(data?.connector_id);
           const connectorMetadata = data?.connector_metadata;
           connectorMetadata["connectorName"] = data?.connector_name;
@@ -113,11 +112,12 @@ function AddSourceModal({
 
   const getListOfSources = () => {
     let url;
-    if (sourceType === Object.keys(sourceTypes)[0]) {
+    if (isConnector) {
       // For centralized connectors, get all connectors
       url = getUrl(`supported_connectors/`);
     } else {
-      url = getUrl(`supported_adapters/?adapter_type=${type?.toUpperCase()}`);
+      if (!type) return;
+      url = getUrl(`supported_adapters/?adapter_type=${type.toUpperCase()}`);
     }
     // API to get the list of adapters.
     const requestOptions = {
@@ -154,7 +154,7 @@ function AddSourceModal({
         setMetadata(null);
       }}
       maskClosable={false}
-      title={titles[type] || titles[sourceType]}
+      title={isConnector ? titles["connectors"] : titles[type]}
       width={selectedSourceId?.length ? 500 : 1100}
       centered
       footer={null}
@@ -166,7 +166,7 @@ function AddSourceModal({
           selectedSourceName={selectedSourceName}
           setOpen={setOpen}
           type={type}
-          sourceType={sourceType}
+          isConnector={isConnector}
           addNewItem={addNewItem}
           editItemId={editItemId}
           metadata={metadata}
@@ -189,13 +189,14 @@ AddSourceModal.propTypes = {
   open: PropTypes.bool.isRequired,
   setOpen: PropTypes.func.isRequired,
   type: PropTypes.any,
-  sourceType: PropTypes.oneOf([
-    Object.keys(sourceTypes)[0],
-    Object.keys(sourceTypes)[1],
-  ]),
+  isConnector: PropTypes.bool,
   addNewItem: PropTypes.func.isRequired,
   editItemId: PropTypes.string,
   setEditItemId: PropTypes.func.isRequired,
+};
+
+AddSourceModal.defaultProps = {
+  isConnector: false,
 };
 
 export { AddSourceModal };

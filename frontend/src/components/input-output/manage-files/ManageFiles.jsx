@@ -19,21 +19,29 @@ function ManageFiles({
 
   useEffect(() => {
     setFiles([]);
+    setError("");
     if (!selectedConnector) return;
     setLoadingData(true);
+    let cancelled = false;
     inpService
       .getFileList(selectedConnector)
       .then((res) => {
+        if (cancelled) return;
         setFiles(res.data);
         setError("");
       })
       .catch((err) => {
+        if (cancelled) return;
         const errorDetails = handleException(err, "Error loading files");
         setError(errorDetails.content);
       })
       .finally(() => {
+        if (cancelled) return;
         setLoadingData(false);
       });
+    return () => {
+      cancelled = true;
+    };
   }, [selectedConnector]);
 
   return (

@@ -24,7 +24,7 @@ import "./DsSettingsCard.css";
 function DsSettingsCard({ connType, endpointDetails, message }) {
   const workflowStore = useWorkflowStore();
   const { source, destination, allowChangeEndpoint, details } = workflowStore;
-  const [options, setOptions] = useState({});
+  const [options, setOptions] = useState([]);
   const [openModal, setOpenModal] = useState(false);
 
   const [connMode, setConnMode] = useState(null);
@@ -84,7 +84,7 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
     if (connType === "output") {
       if (source?.connection_type === "") {
         // Clear options when source is blank
-        setOptions({});
+        setOptions([]);
       } else {
         // Filter options based on source connection type
         const isAPI = source?.connection_type === "API";
@@ -131,6 +131,10 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
   }, [endpointDetails]);
 
   const clearDestination = (updatedData) => {
+    if (!destination) {
+      return;
+    }
+
     const requestOptions = {
       method: "PATCH",
       url: getUrl(`workflow/endpoint/${destination?.id}/`),

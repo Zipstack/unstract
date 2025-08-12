@@ -459,7 +459,7 @@ function ConfigureConnectorModal({
 
                 {/* Right side - File System Browser (only for FILESYSTEM connectors) */}
                 {connMode === "FILESYSTEM" && connDetails?.id && (
-                  <Col span={12} className="conn-modal-col">
+                  <Col span={12} className="conn-modal-col form-right">
                     <div className="file-browser-section" ref={fileExplorerRef}>
                       <div className="file-browser-header">
                         <div className="file-browser-content">
@@ -501,7 +501,7 @@ function ConfigureConnectorModal({
         <AddSourceModal
           open={showAddSourceModal}
           setOpen={setShowAddSourceModal}
-          sourceType="connectors"
+          isConnector={true}
           type={connType}
           addNewItem={handleConnectorCreated}
           editItemId={null}

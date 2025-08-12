@@ -2,6 +2,7 @@ import PropTypes from "prop-types";
 
 import { SettingsForm } from "../settings-form/SettingsForm";
 import { EmptyState } from "../../widgets/empty-state/EmptyState";
+import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 
 import "./ConfigureFormsLayout.css";
 
@@ -11,6 +12,16 @@ function ConfigureFormsLayout({
   setFormDataConfig,
   isSpecConfigLoading,
 }) {
+  // First check: Still loading
+  if (isSpecConfigLoading) {
+    return (
+      <div className="config-content-area">
+        <SpinnerLoader text="Loading configuration..." />
+      </div>
+    );
+  }
+
+  // Second check: Loaded but empty/failed
   if (!specConfig || Object.keys(specConfig || {})?.length === 0) {
     return (
       <div className="config-content-area">

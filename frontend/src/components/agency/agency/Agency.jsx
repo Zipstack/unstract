@@ -182,8 +182,8 @@ function Agency() {
     setCanAddETLPipeline(
       source?.connector_instance &&
         ((destination?.connection_type === "DATABASE" &&
-          destination.connector_instance) ||
-          destination.connection_type === "MANUALREVIEW")
+          destination?.connector_instance) ||
+          destination?.connection_type === "MANUALREVIEW")
     );
   }, [source, destination]);
 
@@ -587,16 +587,16 @@ function Agency() {
     }
 
     // For API connections, just having an endpoint is sufficient
-    if (endpoint.connection_type === "API") {
+    if (endpoint?.connection_type === "API") {
       return {
         configured: true,
         type: "API",
-        name: endpoint.connector_name || "API Endpoint",
+        name: endpoint?.connector_name || "API Endpoint",
       };
     }
 
     // For filesystem connectors, they are automatically configured
-    if (endpoint.connection_type === "FILESYSTEM") {
+    if (endpoint?.connection_type === "FILESYSTEM") {
       return {
         configured: true,
         type: "File System",
@@ -611,8 +611,8 @@ function Agency() {
 
     return {
       configured: true,
-      type: endpoint.connection_type,
-      name: endpoint.connector_name || "Configured",
+      type: endpoint?.connection_type,
+      name: endpoint?.connector_name || "Configured",
     };
   };
 

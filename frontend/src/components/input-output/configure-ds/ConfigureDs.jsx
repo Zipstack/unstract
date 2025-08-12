@@ -2,7 +2,6 @@ import { Col, Row } from "antd";
 import PropTypes from "prop-types";
 import { createRef, useEffect, useState } from "react";
 
-import { sourceTypes } from "../../../helpers/GetStaticData.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { RjsfFormLayout } from "../../../layouts/rjsf-form-layout/RjsfFormLayout.jsx";
@@ -25,7 +24,7 @@ function ConfigureDs({
   addNewItem,
   type,
   editItemId,
-  sourceType,
+  isConnector,
   metadata,
   selectedSourceName,
 }) {
@@ -100,7 +99,7 @@ function ConfigureDs({
   useEffect(() => {
     if (!metadata) return;
     setFormData(metadata);
-  }, [selectedSourceId]);
+  }, [selectedSourceId, metadata, setFormData]);
 
   // Clear OAuth state when switching to a different connector
   useEffect(() => {
@@ -161,7 +160,7 @@ function ConfigureDs({
     let body = {};
     let url;
 
-    if (sourceType === "connectors") {
+    if (isConnector) {
       const connectorMetadata = { ...updatedFormData };
       delete connectorMetadata.connectorName;
       body = {
@@ -244,7 +243,7 @@ function ConfigureDs({
     let body = {};
     let url;
 
-    if (sourceType === "connectors") {
+    if (isConnector) {
       const connectorMetadata = { ...formData };
       const connectorName = connectorMetadata?.connectorName;
       delete connectorMetadata.connectorName;
@@ -327,7 +326,7 @@ function ConfigureDs({
             method === "POST" ? "added" : "updated"
           } connector`,
         });
-        if (sourceType === Object.keys(sourceTypes)[1] && method === "POST") {
+        if (!isConnector && method === "POST") {
           updateSession(type);
         }
 
@@ -413,7 +412,7 @@ ConfigureDs.propTypes = {
   addNewItem: PropTypes.func,
   type: PropTypes.string,
   editItemId: PropTypes.string,
-  sourceType: PropTypes.string.isRequired,
+  isConnector: PropTypes.bool.isRequired,
   metadata: PropTypes.object,
   selectedSourceName: PropTypes.string.isRequired,
 };

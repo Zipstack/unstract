@@ -178,7 +178,7 @@ function ConnectorsPage() {
       <AddSourceModal
         open={modalVisible}
         setOpen={setModalVisible}
-        sourceType="connectors"
+        isConnector={true}
         addNewItem={handleConnectorSaved}
         editItemId={editingConnector?.id}
         setEditItemId={setEditingConnector}

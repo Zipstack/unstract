@@ -46,4 +46,15 @@ class Migration(migrations.Migration):
                 blank=True,
             ),
         ),
+        migrations.AlterField(
+            model_name="connectorinstance",
+            name="connector_mode",
+            field=models.CharField(
+                blank=True,
+                choices=[(0, "UNKNOWN"), (1, "FILE_SYSTEM"), (2, "DATABASE")],
+                db_comment="0: UNKNOWN, 1: FILE_SYSTEM, 2: DATABASE",
+                default=0,
+                null=True,
+            ),
+        ),
     ]
