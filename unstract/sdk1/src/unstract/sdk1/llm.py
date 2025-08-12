@@ -159,7 +159,7 @@ class LLM:
 
         # Post process.
         extract_json: bool = self.platform_kwargs.get("extract_json", False)
-        post_process_fn: Callable[LLMResponseCompat, bool] | None = self.platform_kwargs.get("process_text", None)
+        post_process_fn: Callable[[LLMResponseCompat, bool], dict[str, Any]] | None = self.platform_kwargs.get("process_text", None)
 
         response_text, post_processed_output = self._post_process_response(
             response_text, extract_json, post_process_fn
@@ -269,7 +269,7 @@ class LLM:
             kwargs=self.platform_kwargs
         )
 
-    def _post_process_response(self, response_text: str, extract_json: bool, post_process_fn: Callable[LLMResponseCompat, bool] | None) -> tuple[str, dict[str, Any]]:
+    def _post_process_response(self, response_text: str, extract_json: bool, post_process_fn: Callable[[LLMResponseCompat, bool], dict[str, Any]] | None) -> tuple[str, dict[str, Any]]:
         post_processed_output: dict[str, Any] = {}
 
         if extract_json:
