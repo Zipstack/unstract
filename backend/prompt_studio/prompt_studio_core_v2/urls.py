@@ -15,6 +15,9 @@ prompt_studio_detail = PromptStudioCoreView.as_view(
     }
 )
 prompt_studio_choices = PromptStudioCoreView.as_view({"get": "get_select_choices"})
+prompt_studio_retrieval_strategies = PromptStudioCoreView.as_view(
+    {"get": "get_retrieval_strategies"}
+)
 prompt_studio_profiles = PromptStudioCoreView.as_view(
     {"get": "list_profiles", "patch": "make_profile_default"}
 )
@@ -65,6 +68,11 @@ urlpatterns = format_suffix_patterns(
             "prompt-studio/select_choices/",
             prompt_studio_choices,
             name="prompt-studio-choices",
+        ),
+        path(
+            "prompt-studio/<uuid:pk>/get_retrieval_strategies/",
+            prompt_studio_retrieval_strategies,
+            name="prompt-studio-retrieval-strategies",
         ),
         path(
             "prompt-studio/prompt-studio-profile/<uuid:pk>/",

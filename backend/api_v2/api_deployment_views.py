@@ -6,11 +6,13 @@ from django.conf import settings
 from django.db.models import QuerySet
 from django.http import HttpResponse
 from permissions.permission import IsOwner
+from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from rest_framework import serializers, status, views, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import Serializer
+from tool_instance_v2.models import ToolInstance
 from utils.enums import CeleryTaskState
 from workflow_manager.workflow_v2.dto import ExecutionResponse
 
@@ -130,7 +132,14 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
     permission_classes = [IsOwner]
 
     def get_queryset(self) -> QuerySet | None:
-        return APIDeployment.objects.filter(created_by=self.request.user)
+        queryset = APIDeployment.objects.filter(created_by=self.request.user)
+
+        # Filter by workflow ID if provided
+        workflow_filter = self.request.query_params.get("workflow", None)
+        if workflow_filter:
+            queryset = queryset.filter(workflow_id=workflow_filter)
+
+        return queryset
 
     def get_serializer_class(self) -> serializers.Serializer:
         if self.action in ["list"]:
@@ -161,6 +170,43 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED,
             headers=headers,
         )
+
+    @action(detail=False, methods=["get"])
+    def by_prompt_studio_tool(self, request: Request) -> Response:
+        """Get API deployments for a specific prompt studio tool."""
+        tool_id = request.query_params.get("tool_id")
+        if not tool_id:
+            return Response(
+                {"error": "tool_id parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            # Find the prompt studio registry for this custom tool
+            registry = PromptStudioRegistry.objects.get(custom_tool__tool_id=tool_id)
+
+            # Find workflows that contain tool instances with this prompt registry ID
+            tool_instances = ToolInstance.objects.filter(
+                tool_id=str(registry.prompt_registry_id)
+            )
+            workflow_ids = tool_instances.values_list("workflow_id", flat=True).distinct()
+
+            # Get API deployments for these workflows
+            deployments = APIDeployment.objects.filter(
+                workflow_id__in=workflow_ids, created_by=request.user
+            )
+
+            serializer = APIDeploymentListSerializer(deployments, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        except PromptStudioRegistry.DoesNotExist:
+            return Response([], status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Error fetching API deployments for tool {tool_id}: {e}")
+            return Response(
+                {"error": "Failed to fetch API deployments"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
     @action(detail=True, methods=["get"])
     def download_postman_collection(
