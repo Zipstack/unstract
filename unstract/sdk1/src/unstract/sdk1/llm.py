@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+import types
 from collections.abc import Callable, Generator
 from typing import Any
 
@@ -142,9 +143,13 @@ class LLM:
         logger.info("[sdk1][LLM][complete] Invoking %s with %s", self.adapter.get_provider(), messages)
         
         combined_kwargs = {**self.kwargs, **kwargs}
+        combined_kwargs = {
+            key: value for key, value in combined_kwargs.items()
+            if not isinstance(value, (types.FunctionType, types.BuiltinFunctionType, types.LambdaType))
+        }
+
         # if hasattr(self, "model") and self.model not in O1_MODELS:
         #     completion_kwargs["temperature"] = 0.003
-
         # if hasattr(self, "thinking_dict") and self.thinking_dict is not None:
         #     completion_kwargs["temperature"] = 1
 
@@ -249,8 +254,8 @@ class LLM:
     def get_usage_reason(self):
         return self.platform_kwargs.get("llm_usage_reason")
 
-    def _record_usage(self, model: str, messages: list[dict[str, str]], usage: dict[str, int], llm_api: str):
-        prompt_tokens = token_counter(model, messages)
+    def _record_usage(self, model: str, messages: list[dict[str, str]], usage: Any, llm_api: str):
+        prompt_tokens = token_counter(model=model, messages=messages)
         all_tokens = TokenCounterCompat(
             prompt_tokens=prompt_tokens,
             completion_tokens=usage.get("completion_tokens", 0),
