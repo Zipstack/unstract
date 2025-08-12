@@ -120,12 +120,12 @@ class MSSQL(UnstractDB):
         sql_query = (
             f"ALTER TABLE {table_name} "
             f"ADD {column_name}_v2 NVARCHAR(MAX), "
-+           f"metadata NVARCHAR(MAX), "
-+           f"user_field_1 BIT DEFAULT 0, "
-+           f"user_field_2 INT DEFAULT 0, "
-+           f"user_field_3 TEXT DEFAULT NULL, "
-+           f"status NVARCHAR(10) CHECK (status IN ('ERROR', 'SUCCESS')), "
-+           f"error_message TEXT"
+            + "metadata NVARCHAR(MAX), "
+            + "user_field_1 BIT DEFAULT 0, "
+            + "user_field_2 INT DEFAULT 0, "
+            + "user_field_3 TEXT DEFAULT NULL, "
+            + "status NVARCHAR(10) CHECK (status IN ('ERROR', 'SUCCESS')), "
+            + "error_message TEXT"
         )
         return sql_query
 
