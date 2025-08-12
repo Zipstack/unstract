@@ -71,9 +71,10 @@ class LLM:
                 self._adapter_instance_id = ""
                 self._tool = None
 
+            # Retrieve the adapter class.
             self.adapter = adapters[self._adapter_id][Common.MODULE]
         except KeyError:
-            raise SdkError("LLM adapter not supported: " + self._adapter_id)
+            raise SdkError("LLM adapter not supported: " + adapter_id or adapter_instance_id)
 
         try:
             self.platform_kwargs = kwargs
@@ -156,8 +157,12 @@ class LLM:
 
         self._record_usage(self.kwargs['model'], messages, response.get("usage"), "complete")
 
+        # NOTE:
+        # The typecasting was required to stop the type checker from complaining.
+        # Improvements in readability are definitely welcome.
         extract_json: bool = cast(bool, kwargs.get("extract_json", False))
-        post_process_fn: Callable[[LLMResponseCompat, bool], dict[str, Any]] | None = cast(Callable[[LLMResponseCompat, bool], dict[str, Any]] | None, kwargs.get("process_text", None))
+        post_process_fn: Callable[[LLMResponseCompat, bool], dict[str, Any]] | None \
+            = cast(Callable[[LLMResponseCompat, bool], dict[str, Any]] | None, kwargs.get("process_text", None))
 
         response_text, post_processed_output = self._post_process_response(
             response_text, extract_json, post_process_fn
@@ -253,13 +258,13 @@ class LLM:
     def _record_usage(self, model: str, messages: list[dict[str, str]], usage: Any, llm_api: str):
         prompt_tokens = token_counter(model=model, messages=messages)
         all_tokens = TokenCounterCompat(
-            prompt_tokens=prompt_tokens,
+            prompt_tokens=usage.get("prompt_tokens", 0),
             completion_tokens=usage.get("completion_tokens", 0),
             total_tokens=usage.get("total_tokens", 0),
         )
 
-        logger.info(f"[sdk1][LLM][{llm_api}] Prompt Tokens: {prompt_tokens}")
-        logger.info(f"[sdk1][LLM][{llm_api}] LLM Usage: {usage}")
+        logger.info(f"[sdk1][LLM][{model}][{llm_api}] Prompt Tokens: {prompt_tokens}")
+        logger.info(f"[sdk1][LLM][{model}][{llm_api}] LLM Usage: {all_tokens}")
 
         Audit().push_usage_data(
             platform_api_key=self._platform_api_key,

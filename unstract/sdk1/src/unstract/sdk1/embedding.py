@@ -56,9 +56,10 @@ class Embedding:
                 self._adapter_instance_id = ""
                 self._tool = None
 
+            # Retrieve the adapter class.
             self.adapter = adapters[self._adapter_id][Common.MODULE]
         except KeyError:
-            raise SdkError("Embedding adapter not supported: " + self._adapter_id)
+            raise SdkError("Embedding adapter not supported: " + adapter_id or adapter_instance_id)
 
         try:
             self.platform_kwargs: dict[str, Any] = kwargs
