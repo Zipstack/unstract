@@ -14,6 +14,4 @@ class ExceptionHelper:
         error_code, error_details = eval(error_message)
         if isinstance(error_details, bytes):
             error_details = error_details.decode("utf-8")
-
-        # Ensure we return a stripped string regardless of original type
         return str(error_details).strip()
