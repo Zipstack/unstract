@@ -3,6 +3,7 @@ import json
 import logging
 import uuid
 from typing import Any
+from enum import Enum
 
 from utils.constants import Common
 from workflow_manager.endpoint_v2.constants import DBConnectionClass, TableColumns
@@ -59,12 +60,14 @@ class DatabaseUtils:
                 else:
                     sql_values[column] = f"{values[column]}"
             else:
-                # Handle JSON types for each database
+                # Handle JSON and Enum types for each database
                 value = values[column]
                 if isinstance(value, (dict, list)):
                     sql_values[column] = json.dumps(value)
+                elif isinstance(value, Enum):
+                    sql_values[column] = value.value
                 else:
-                    sql_values[column] = f"{value}"  # Non-JSON types handled as before
+                    sql_values[column] = f"{value}"  # Non-JSON/Enum types handled as before
         # If table has a column 'id', unstract inserts a unique value to it
         # Oracle db has column 'ID' instead of 'id'
         if any(key in column_types for key in ["id", "ID"]):

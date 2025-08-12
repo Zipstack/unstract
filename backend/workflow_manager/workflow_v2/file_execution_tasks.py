@@ -997,16 +997,16 @@ class FileExecutionTasks:
             else:
                 file_history = None
 
-            if not processing_error:
-                # Process final output through destination
-                output_result = destination.handle_output(
-                    file_name=file_hash.file_name,
-                    file_hash=file_hash,
-                    file_history=file_history,
-                    workflow=workflow,
-                    input_file_path=file_hash.file_path,
-                    file_execution_id=file_execution_id,
-                )
+            # Process final output through destination (for both success and error cases)
+            output_result = destination.handle_output(
+                file_name=file_hash.file_name,
+                file_hash=file_hash,
+                file_history=file_history,
+                workflow=workflow,
+                input_file_path=file_hash.file_path,
+                file_execution_id=file_execution_id,
+                error=processing_error,
+            )
 
             if destination.is_api:
                 execution_metadata = destination.get_metadata(file_history)

@@ -178,6 +178,7 @@ class DestinationConnector(BaseConnector):
 
         # Otherwise use existing workflow-based HITL logic
         execution_result = self.get_tool_execution_result()
+        
         if WorkflowUtil.validate_db_rule(
             execution_result, workflow, file_hash.file_destination
         ):
@@ -188,6 +189,7 @@ class DestinationConnector(BaseConnector):
                 file_execution_id=file_execution_id,
             )
             return True
+            
         return False
 
     def _push_data_to_queue(
@@ -216,6 +218,7 @@ class DestinationConnector(BaseConnector):
         workflow: Workflow,
         input_file_path: str,
         file_execution_id: str = None,
+        error: str | None = None,
     ) -> str | None:
         """Handle the output based on the connection type."""
         connection_type = self.endpoint.connection_type
@@ -223,15 +226,22 @@ class DestinationConnector(BaseConnector):
 
         if connection_type == WorkflowEndpoint.ConnectionType.FILESYSTEM:
             self.copy_output_to_output_directory()
+            
         elif connection_type == WorkflowEndpoint.ConnectionType.DATABASE:
-            if not self._should_handle_hitl(
-                file_name=file_name,
-                file_hash=file_hash,
-                workflow=workflow,
-                input_file_path=input_file_path,
-                file_execution_id=file_execution_id,
-            ):
+            # For error cases, skip HITL and directly insert error record
+            if error:
                 self.insert_into_db(input_file_path=input_file_path, error=error)
+            else:
+                # For success cases, check HITL first, then insert if not HITL
+                if not self._should_handle_hitl(
+                    file_name=file_name,
+                    file_hash=file_hash,
+                    workflow=workflow,
+                    input_file_path=input_file_path,
+                    file_execution_id=file_execution_id,
+                ):
+                    self.insert_into_db(input_file_path=input_file_path, error=error)
+                    
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
             logger.info(f"API connection type detected for file {file_name}")
             # Check for HITL (Manual Review Queue) override for API deployments
@@ -246,6 +256,7 @@ class DestinationConnector(BaseConnector):
                     f"No HITL override, getting tool execution result for {file_name}"
                 )
                 tool_execution_result = self.get_tool_execution_result(file_history)
+                
         elif connection_type == WorkflowEndpoint.ConnectionType.MANUALREVIEW:
             self._push_data_to_queue(
                 file_name,
@@ -253,6 +264,7 @@ class DestinationConnector(BaseConnector):
                 input_file_path,
                 file_execution_id,
             )
+            
         self.workflow_log.publish_log(
             message=f"File '{file_name}' processed successfully"
         )
@@ -336,7 +348,7 @@ class DestinationConnector(BaseConnector):
         data = self.get_tool_execution_result()
         metadata = self.get_combined_metadata()
 
-        # If data is None, don't execute CREATE or INSERT query
+        # If no data and no error, don't execute CREATE or INSERT query
         if not data:
             logger.info("No data obtained from tool to insert into destination DB.")
             return
@@ -383,6 +395,7 @@ class DestinationConnector(BaseConnector):
             execution_id=self.execution_id,
             error=error,
         )
+        
         engine = None
         try:
             db_class = DatabaseUtils.get_db_class(
@@ -391,6 +404,7 @@ class DestinationConnector(BaseConnector):
             )
 
             engine = db_class.get_engine()
+            
             DatabaseUtils.create_table_if_not_exists(
                 db_class=db_class,
                 engine=engine,
@@ -411,6 +425,7 @@ class DestinationConnector(BaseConnector):
                 sql_keys=list(sql_columns_and_values.keys()),
                 sql_values=list(sql_columns_and_values.values()),
             )
+            
         except ConnectorError as e:
             error_msg = f"Database connection failed for {input_file_path}: {str(e)}"
             logger.error(error_msg)

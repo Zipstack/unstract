@@ -150,7 +150,7 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
             f"user_field_2 INTEGER DEFAULT 0, "
             f"user_field_3 TEXT DEFAULT NULL, "
             f"status TEXT CHECK (status IN ('ERROR', 'SUCCESS')), "
-            f"error_messsage TEXT, "
+            f"error_message TEXT, "
         )
         return sql_query
 
@@ -163,7 +163,7 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
             f"ADD COLUMN user_field_2 INTEGER DEFAULT 0, "
             f"ADD COLUMN user_field_3 TEXT DEFAULT NULL, "
             f"ADD COLUMN status TEXT CHECK (status IN ('ERROR', 'SUCCESS')), "
-            f"ADD COLUMN error_messsage TEXT"
+            f"ADD COLUMN error_message TEXT"
         )
         return sql_query
 

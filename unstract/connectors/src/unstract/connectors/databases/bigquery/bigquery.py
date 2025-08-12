@@ -121,7 +121,7 @@ class BigQuery(UnstractDB):
             f"user_field_1 BOOL DEFAULT FALSE, "
             f"user_field_2 INT64 DEFAULT 0, "
             f"user_field_3 STRING DEFAULT NULL, "
-            f"status STRING CHECK (status IN ('ERROR', 'STATUS')), "
+            f"status STRING CHECK (status IN ('ERROR', 'SUCCESS')), "
             f"error_message STRING"
         )
         return sql_query
@@ -134,7 +134,7 @@ class BigQuery(UnstractDB):
             f"ADD COLUMN user_field_1 BOOL DEFAULT FALSE, "
             f"ADD COLUMN user_field_2 INT64 DEFAULT 0, "
             f"ADD COLUMN user_field_3 STRING DEFAULT NULL, "
-            f"ADD COLUMN status STRING CHECK (status IN ('ERROR', 'STATUS')), "
+            f"ADD COLUMN status STRING CHECK (status IN ('ERROR', 'SUCCESS')), "
             f"ADD COLUMN error_message STRING"
         )
         return sql_query
