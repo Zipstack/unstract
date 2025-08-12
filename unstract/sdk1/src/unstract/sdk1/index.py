@@ -19,7 +19,6 @@ from unstract.sdk1.adapters.vectordb.no_op.src.no_op_custom_vectordb import (
 )
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants
 from unstract.sdk1.adapters.x2text.dto import TextExtractionResult
-from unstract.sdk1.adapters.x2text.llm_whisperer.src import LLMWhisperer
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import LLMWhispererV2
 from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.embedding import EmbeddingCompat
@@ -162,10 +161,7 @@ class Index:
             usage_kwargs=usage_kwargs,
         )
         try:
-            if enable_highlight and (
-                isinstance(x2text.x2text_instance, LLMWhisperer)
-                or isinstance(x2text.x2text_instance, LLMWhispererV2)
-            ):
+            if enable_highlight and isinstance(x2text.x2text_instance, LLMWhispererV2):
                 process_response: TextExtractionResult = x2text.process(
                     input_file_path=file_path,
                     output_file_path=output_file_path,

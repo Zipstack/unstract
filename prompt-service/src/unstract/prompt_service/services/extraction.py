@@ -11,15 +11,13 @@ from unstract.prompt_service.utils.file_utils import FileUtils
 if check_feature_flag_status("sdk1"):
     from unstract.sdk1.adapters.exceptions import AdapterError
     from unstract.sdk1.adapters.x2text.constants import X2TextConstants
-    from unstract.sdk1.adapters.x2text.llm_whisperer.src import LLMWhisperer
     from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import LLMWhispererV2
-    from unstract.sdk1.utils.tool import ToolUtils
     from unstract.sdk1.utils.common import log_elapsed
+    from unstract.sdk1.utils.tool import ToolUtils
     from unstract.sdk1.x2txt import TextExtractionResult, X2Text
 else:
     from unstract.sdk.adapters.exceptions import AdapterError
     from unstract.sdk.adapters.x2text.constants import X2TextConstants
-    from unstract.sdk.adapters.x2text.llm_whisperer.src import LLMWhisperer
     from unstract.sdk.adapters.x2text.llm_whisperer_v2.src import LLMWhispererV2
     from unstract.sdk.utils import ToolUtils
     from unstract.sdk.utils.common_utils import log_elapsed
@@ -49,10 +47,7 @@ class ExtractionService:
         )
         fs = FileUtils.get_fs_instance(execution_source=execution_source)
         try:
-            if enable_highlight and (
-                isinstance(x2text.x2text_instance, LLMWhisperer)
-                or isinstance(x2text.x2text_instance, LLMWhispererV2)
-            ):
+            if enable_highlight and isinstance(x2text.x2text_instance, LLMWhispererV2):
                 process_response: TextExtractionResult = x2text.process(
                     input_file_path=file_path,
                     output_file_path=output_file_path,
