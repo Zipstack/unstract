@@ -24,7 +24,8 @@ class InvalidSyntaxException(UnstractDBConnectorException):
             f"Error creating/writing to {database}. Syntax incorrect. "
             f"Please check your table-name or schema. "
         )
-        super().__init__(detail=default_detail)
+        final_detail = f"{default_detail}Details: {detail}" if detail else default_detail
+        super().__init__(detail=final_detail)
 
 
 class InvalidSchemaException(UnstractDBConnectorException):

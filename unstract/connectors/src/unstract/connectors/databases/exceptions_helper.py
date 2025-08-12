@@ -1,20 +1,19 @@
-from typing import Any
-
-
 class ExceptionHelper:
     @staticmethod
-    def extract_byte_exception(e: Exception) -> Any:
-        """_summary_
-        Extract error details from byte_exception.
-        Used by mssql
+    def extract_byte_exception(e: Exception) -> str:
+        """Extract error details from byte_exception.
+        Used by mssql and mysql connectors.
+
         Args:
-            e (Exception): _description_
+            e (Exception): Database exception to extract details from
 
         Returns:
-            Any: _description_
+            str: Extracted and stripped error details as string
         """
         error_message = str(e)
         error_code, error_details = eval(error_message)
         if isinstance(error_details, bytes):
             error_details = error_details.decode("utf-8")
-        return error_details
+
+        # Ensure we return a stripped string regardless of original type
+        return str(error_details).strip()

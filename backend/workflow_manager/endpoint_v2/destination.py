@@ -372,6 +372,8 @@ class DestinationConnector(BaseConnector):
                 table_name=table_name,
                 values=values,
             )
+            print("### sql_columns_and_values *** ", sql_columns_and_values)
+
             DatabaseUtils.execute_write_query(
                 db_class=db_class,
                 engine=engine,
