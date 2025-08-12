@@ -95,6 +95,18 @@ class Utils:
             )
         return default_err
 
+class TokenCounterCompat:
+
+    def __init__(self, prompt_tokens: int, completion_tokens: int, total_tokens: int):
+        self.prompt_llm_token_count = prompt_tokens
+        self.completion_llm_token_count = completion_tokens
+        self.total_llm_token_count = total_tokens
+        self.total_embedding_token_count = 0
+
+class LLMResponseCompat:
+    def __init__(self, text):
+        self.text = text
+
 # Mapping from python log level to Unstract counterpart
 PY_TO_UNSTRACT_LOG_LEVEL = {
     logging.DEBUG: LogLevel.DEBUG,

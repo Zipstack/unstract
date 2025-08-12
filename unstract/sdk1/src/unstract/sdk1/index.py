@@ -3,7 +3,6 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from deprecated import deprecated
 from llama_index.core import Document
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.vector_stores import (
@@ -499,67 +498,3 @@ class Index:
 
     def clear_metrics(self):
         self._metrics = {}
-
-    @deprecated(version="0.45.0", reason="Use generate_index_key() instead")
-    def generate_file_id(
-        self,
-        tool_id: str,
-        vector_db: str,
-        embedding: str,
-        x2text: str,
-        chunk_size: str,
-        chunk_overlap: str,
-        file_path: str | None = None,
-        file_hash: str | None = None,
-    ) -> str:
-        return self.generate_index_key(
-            vector_db,
-            embedding,
-            x2text,
-            chunk_size,
-            chunk_overlap,
-            file_path,
-            file_hash,
-            fs=FileStorage(provider=FileStorageProvider.LOCAL),
-        )
-
-    @deprecated(version="0.50.0", reason="Use index() instead")
-    def index_file(
-        self,
-        tool_id: str,
-        embedding_type: str,
-        vector_db: str,
-        x2text_adapter: str,
-        file_path: str,
-        chunk_size: int,
-        chunk_overlap: int,
-        reindex: bool = False,
-        file_hash: str | None = None,
-        output_file_path: str | None = None,
-    ) -> str:
-        return self.index(
-            tool_id=tool_id,
-            embedding_instance_id=embedding_type,
-            vector_db_instance_id=vector_db,
-            x2text_instance_id=x2text_adapter,
-            file_path=file_path,
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-            reindex=reindex,
-            file_hash=file_hash,
-            output_file_path=output_file_path,
-        )
-
-    @deprecated("Deprecated class and method. Use Index and query_index() instead")
-    def get_text_from_index(
-        self, embedding_type: str, vector_db: str, doc_id: str
-    ) -> str | None:
-        return self.query_index(
-            embedding_instance_id=embedding_type,
-            vector_db_instance_id=vector_db,
-            doc_id=doc_id,
-        )
-
-
-# Legacy
-ToolIndex = Index

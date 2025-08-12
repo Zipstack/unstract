@@ -174,7 +174,10 @@ class AnswerPromptService:
                 process_text=highlight_data,
                 extract_json=prompt_type.lower() != PSKeys.TEXT,
             )
-            answer: str = completion[PSKeys.RESPONSE].text
+            if check_feature_flag_status("sdk1"):
+                answer: str = completion[PSKeys.RESPONSE][PSKeys.TEXT]
+            else:
+                answer: str = completion[PSKeys.RESPONSE].text
             highlight_data = completion.get(PSKeys.HIGHLIGHT_DATA, [])
             confidence_data = completion.get(PSKeys.CONFIDENCE_DATA)
             line_numbers = completion.get(PSKeys.LINE_NUMBERS, [])

@@ -4,8 +4,6 @@ import logging
 import os
 from typing import Any
 
-from deprecated import deprecated
-
 from unstract.sdk1.constants import Command, LogLevel, LogStage, ToolEnv
 from unstract.sdk1.exceptions import SdkError
 from unstract.sdk1.utils.common import Utils
@@ -232,71 +230,6 @@ class StreamMixin:
             "type": "UPDATE",
             "state": state,
             "message": message,
-            "emitted_at": datetime.datetime.now().isoformat(),
-            **kwargs,
-        }
-        print(json.dumps(record))
-
-    @staticmethod
-    @deprecated(version="0.4.4", reason="Unused in workflow execution")
-    def stream_cost(cost: float, cost_units: str, **kwargs: dict[str, Any]) -> None:
-        """Streams tool cost (deprecated).
-
-        Args:
-            cost (float): The cost of the tool.
-            cost_units (str): The cost units of the tool.
-            **kwargs: Additional keyword arguments to include in the record.
-
-        Returns:
-            None
-        """
-        record = {
-            "type": "COST",
-            "cost": cost,
-            "cost_units": cost_units,
-            "emitted_at": datetime.datetime.now().isoformat(),
-            **kwargs,
-        }
-        print(json.dumps(record))
-
-    @staticmethod
-    @deprecated(version="0.4.4", reason="Unused in workflow execution")
-    def stream_single_step_message(message: str, **kwargs: dict[str, Any]) -> None:
-        """Stream single step message.
-
-        Streams a single step message to stdout.
-
-        Args:
-            message (str): The single step message.
-            **kwargs: Additional keyword arguments to include in the record.
-
-        Returns:
-            None
-        """
-        record = {
-            "type": "SINGLE_STEP_MESSAGE",
-            "message": message,
-            "emitted_at": datetime.datetime.now().isoformat(),
-            **kwargs,
-        }
-        print(json.dumps(record))
-
-    @staticmethod
-    @deprecated(version="0.4.4", reason="Use `BaseTool.write_to_result()` instead")
-    def stream_result(result: dict[Any, Any], **kwargs: dict[str, Any]) -> None:
-        """Streams tool result (review if required).
-
-        Args:
-            result (dict): The result of the tool. Refer to the
-                Unstract protocol for the format of the result.
-            **kwargs: Additional keyword arguments to include in the record.
-
-        Returns:
-            None
-        """
-        record = {
-            "type": "RESULT",
-            "result": result,
             "emitted_at": datetime.datetime.now().isoformat(),
             **kwargs,
         }

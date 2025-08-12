@@ -2,11 +2,9 @@ import logging
 from collections.abc import Callable
 
 import tiktoken
-from deprecated import deprecated
 from llama_index.core.callbacks import CallbackManager as LlamaIndexCallbackManager
 from llama_index.core.callbacks import TokenCountingHandler
 from llama_index.core.embeddings import BaseEmbedding
-from llama_index.core.llms import LLM
 
 from unstract.sdk1.usage_handler import UsageHandler
 
@@ -20,41 +18,30 @@ class CallbackManager:
 
     This class supports a tokenizer, token counter,
     usage handler, and  callback manager.
-
-    Attributes:
-        None
-
-    Methods:
-        set_callback_manager: Returns a standard callback manager
-
-    Example:
-        callback_manager = CallbackManager.
-                            set_callback_manager(
-                                llm="default",
-                                embedding="default")
     """
 
     @staticmethod
     def set_callback(
         platform_api_key: str,
-        model: LLM | BaseEmbedding,
+        model: BaseEmbedding,
         kwargs,
     ) -> None:
-        """Sets the standard callback manager for the llm. This is to be called
-        explicitly whenever there is a need for the callback handling defined
-        here as handlers is to be invoked.
+        """Sets the standard callback manager for LlamaIndex embedding. This is
+        to be called explicitly to set the handlers which are invoked in the
+        callback handling.
 
         Parameters:
-            llm (LLM): The LLM type
+            platform_api_key (str)  : Platform API key
+            model (BaseEmbedding)   : LlamaIndex embedding model
 
         Returns:
-            CallbackManager type of llama index
+            None
 
         Example:
-            UNCallbackManager.set_callback_manager(
-                platform_api_key: "abc",
-                llm=llm,
-                embedding=embedding
+            set_callback(
+                platform_api_key="abc",
+                model=embedding,
+                **kwargs
             )
         """
         # Nothing to do if callback manager is already set for the instance
@@ -67,23 +54,13 @@ class CallbackManager:
 
     @staticmethod
     def get_callback_manager(
-        model: LLM | BaseEmbedding,
+        model: BaseEmbedding,
         platform_api_key: str,
         kwargs,
     ) -> LlamaIndexCallbackManager:
-        llm = None
         embedding = None
         handler_list = []
-        if isinstance(model, LLM):
-            llm = model
-            usage_handler = UsageHandler(
-                platform_api_key=platform_api_key,
-                llm_model=llm,
-                embed_model=embedding,
-                kwargs=kwargs,
-            )
-            handler_list.append(usage_handler)
-        elif isinstance(model, BaseEmbedding):
+        if isinstance(model, BaseEmbedding):
             embedding = model
             # Get a tokenizer
             tokenizer = CallbackManager.get_tokenizer(model)
@@ -91,7 +68,6 @@ class CallbackManager:
             usage_handler = UsageHandler(
                 token_counter=token_counter,
                 platform_api_key=platform_api_key,
-                llm_model=llm,
                 embed_model=embedding,
                 kwargs=kwargs,
             )
@@ -105,7 +81,7 @@ class CallbackManager:
 
     @staticmethod
     def get_tokenizer(
-        model: LLM | BaseEmbedding | None,
+        model: BaseEmbedding | None,
         fallback_tokenizer: Callable[[str], list] = tiktoken.encoding_for_model(
             "gpt-3.5-turbo"
         ).encode,
@@ -123,9 +99,7 @@ class CallbackManager:
             OSError: If an error occurs while loading the tokenizer.
         """
         try:
-            if isinstance(model, LLM):
-                model_name: str = model.metadata.model_name
-            elif isinstance(model, BaseEmbedding):
+            if isinstance(model, BaseEmbedding):
                 model_name = model.model_name
 
             tokenizer: Callable[[str], list] = tiktoken.encoding_for_model(
@@ -135,20 +109,3 @@ class CallbackManager:
         except (KeyError, ValueError) as e:
             logger.warning(str(e))
             return fallback_tokenizer
-
-    @staticmethod
-    @deprecated("Use set_callback() instead")
-    def set_callback_manager(
-        platform_api_key: str,
-        llm: LLM | None = None,
-        embedding: BaseEmbedding | None = None,
-        **kwargs,
-    ) -> LlamaIndexCallbackManager:
-        callback_manager: LlamaIndexCallbackManager = LlamaIndexCallbackManager()
-        if llm:
-            CallbackManager.set_callback(platform_api_key, model=llm, **kwargs)
-            callback_manager = llm.callback_manager
-        if embedding:
-            CallbackManager.set_callback(platform_api_key, model=embedding, **kwargs)
-            callback_manager = embedding.callback_manager
-        return callback_manager

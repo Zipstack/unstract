@@ -115,17 +115,24 @@ class UnstractClassifier(BaseTool):
                     tool=self,
                     kwargs=usage_kwargs,
                 )
+
+                max_tokens = llm.get_max_tokens(
+                    adapter_instance_id=llm_adapter_instance_id,
+                    tool=self,
+                    reserved_for_output=50 + 1000
+                )
             else:
                 llm = LLM(
                     tool=self,
                     adapter_instance_id=llm_adapter_instance_id,
                     usage_kwargs=usage_kwargs,
                 )
+
+                max_tokens = llm.get_max_tokens(reserved_for_output=50 + 1000)
         except SdkError:
             self.helper.stream_error_and_exit("Unable to get llm instance")
             return
 
-        max_tokens = llm.get_max_tokens(reserved_for_output=50 + 1000)
         max_bytes = int(max_tokens * 1.3)
         self.stream_log(f"LLM Max tokens: {max_tokens} ==> Max bytes: {max_bytes}")
         limited_text = ""

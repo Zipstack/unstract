@@ -27,7 +27,6 @@ from unstract.prompt_service.utils.file_utils import FileUtils
 from unstract.prompt_service.utils.log import publish_log
 
 if check_feature_flag_status("sdk1"):
-    from unstract.sdk1.adapters.llm.no_op.src.no_op_custom_llm import NoOpCustomLLM
     from unstract.sdk1.constants import LogLevel
     from unstract.sdk1.embedding import EmbeddingCompat
     from unstract.sdk1.exceptions import SdkError
@@ -212,7 +211,10 @@ def prompt_processor() -> Any:
             llm_config = adapter_parent_data.get("adapter_metadata")
             adapter_id = adapter_parent_data.get("adapter_id")
             adapter_prefix = adapter_id.split("|")[0]
-            llm_provider = llm._usage_kwargs.get("provider")
+            if check_feature_flag_status("sdk1"):
+                llm_provider = llm.kwargs.get("provider")
+            else:
+                llm_provider = llm._usage_kwargs.get("provider")
             llm_adapter_config = {"adapter_id": adapter_prefix}
             llm_adapter_config["provider"] = llm_provider
             if adapter_prefix == "azureopenai":
@@ -479,17 +481,20 @@ def prompt_processor() -> Any:
                             LogLevel.ERROR,
                         )
                         structured_output[output[PSKeys.NAME]] = None
-                        # No-op adapter always returns a string data and
-                        # to keep this response uniform
-                        # through all enforce types
-                        # we add this check, if not for this,
-                        # type casting to float raises
-                        # an error and we return None.
-                        if isinstance(
-                            llm.get_llm(adapter_instance_id=adapter_instance_id),
-                            NoOpCustomLLM,
-                        ):
-                            structured_output[output[PSKeys.NAME]] = answer
+                        if check_feature_flag_status("sdk1"):
+                            pass
+                        else:
+                            # No-op adapter always returns a string data and
+                            # to keep this response uniform
+                            # through all enforce types
+                            # we add this check, if not for this,
+                            # type casting to float raises
+                            # an error and we return None.
+                            if isinstance(
+                                llm.get_llm(adapter_instance_id=adapter_instance_id),
+                                NoOpCustomLLM,
+                            ):
+                                structured_output[output[PSKeys.NAME]] = answer
             elif output[PSKeys.TYPE] == PSKeys.EMAIL:
                 if answer.lower() == "na":
                     structured_output[output[PSKeys.NAME]] = None

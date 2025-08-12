@@ -2,7 +2,6 @@ import logging
 from collections.abc import Sequence
 from typing import Any
 
-from deprecated import deprecated
 from llama_index.core import StorageContext, VectorStoreIndex
 from llama_index.core.indices.base import IndexType
 from llama_index.core.node_parser import SentenceSplitter
@@ -32,8 +31,6 @@ class VectorDB:
     DEFAULT_EMBEDDING_DIMENSION = 1536
     EMBEDDING_INSTANCE_ERROR = (
         "Vector DB does not have an embedding initialised."
-        "Migrate to VectorDB instead of deprecated ToolVectorDB "
-        "and pass in an Embedding to proceed"
     )
 
     def __init__(
@@ -142,27 +139,6 @@ class VectorDB:
             **index_kwargs,
         )
 
-    @deprecated(version="0.47.0", reason="Use index_document() instead")
-    def get_vector_store_index_from_storage_context(
-        self,
-        documents: Sequence[Document],
-        storage_context: StorageContext | None = None,
-        show_progress: bool = False,
-        callback_manager=None,
-        **kwargs,
-    ) -> IndexType:
-        if not self._embedding_instance:
-            raise VectorDBError(self.EMBEDDING_INSTANCE_ERROR)
-        parser = kwargs.get("node_parser")
-        return VectorStoreIndex.from_documents(
-            documents,
-            storage_context=storage_context,
-            show_progress=show_progress,
-            embed_model=self._embedding_instance,
-            node_parser=parser,
-            callback_manager=self._embedding_instance.callback_manager,
-        )
-
     def get_vector_store_index(self, **kwargs: Any) -> VectorStoreIndex:
         if not self._embedding_instance:
             raise VectorDBError(self.EMBEDDING_INSTANCE_ERROR)
@@ -216,11 +192,3 @@ class VectorDB:
         """
         return self._vector_db_instance.class_name()
 
-    @deprecated("Use VectorDB instead of ToolVectorDB")
-    def get_vector_db(
-        self, adapter_instance_id: str, embedding_dimension: int
-    ) -> BasePydanticVectorStore | VectorStore:
-        if not self._vector_db_instance:
-            self._adapter_instance_id = adapter_instance_id
-            self._initialise()
-        return self._vector_db_instance

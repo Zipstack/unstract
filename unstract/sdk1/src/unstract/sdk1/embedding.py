@@ -53,14 +53,16 @@ class Embedding:
                     self._adapter_metadata = adapter_metadata
                 else:
                     self._adapter_metadata = adapters[self._adapter_id][Common.METADATA]
+                self._adapter_instance_id = ""
+                self._tool = None
 
             self.adapter = adapters[self._adapter_id][Common.MODULE]
         except KeyError:
             raise SdkError("Embedding adapter not supported: " + self._adapter_id)
 
-        self.kwargs: dict[str, Any] = kwargs
         try:
-            self.kwargs.update(self.adapter.validate(self._adapter_metadata))
+            self.platform_kwargs: dict[str, Any] = kwargs
+            self.kwargs: dict[str, Any] = self.adapter.validate(self._adapter_metadata)
         except ValidationError as e:
             raise SdkError("Invalid embedding adapter metadata: " + str(e))
 
@@ -144,7 +146,7 @@ class EmbeddingCompat(BaseEmbedding):
                 platform_api_key=platform_api_key,
                 model=self,
                 kwargs={
-                    **self._embedding_instance.kwargs,
+                    **self._embedding_instance.platform_kwargs,
                     "adapter_instance_id": self._embedding_instance._adapter_instance_id,
                 },
             )

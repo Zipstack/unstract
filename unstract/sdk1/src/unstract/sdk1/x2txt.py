@@ -3,7 +3,6 @@ from abc import ABCMeta
 from typing import Any
 
 import pdfplumber
-from deprecated import deprecated
 
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.x2text import adapters
@@ -12,13 +11,13 @@ from unstract.sdk1.adapters.x2text.dto import TextExtractionResult
 from unstract.sdk1.adapters.x2text.llm_whisperer.src import LLMWhisperer
 from unstract.sdk1.adapters.x2text.llm_whisperer.src.constants import WhispererConfig
 from unstract.sdk1.adapters.x2text.x2text_adapter import X2TextAdapter
+from unstract.sdk1.audit import Audit
 from unstract.sdk1.constants import LogLevel, MimeType, ToolEnv
 from unstract.sdk1.exceptions import X2TextError
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
 from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.tool.base import BaseTool
 from unstract.sdk1.utils.tool import ToolUtils
-from unstract.sdk1.audit import Audit
 
 
 class X2Text(metaclass=ABCMeta):
@@ -104,13 +103,6 @@ class X2Text(metaclass=ABCMeta):
         # The will be executed each and every time text extraction takes place
         self.push_usage_details(input_file_path, mime_type, fs=fs)
         return text_extraction_result
-
-    @deprecated("Instantiate X2Text and call process() instead")
-    def get_x2text(self, adapter_instance_id: str) -> X2TextAdapter:
-        if not self._x2text_instance:
-            self._adapter_instance_id = adapter_instance_id
-            self._initialise()
-        return self._x2text_instance
 
     def push_usage_details(
         self,

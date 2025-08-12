@@ -4,7 +4,6 @@ from collections.abc import Callable
 from typing import Any, ParamSpec, TypeVar
 
 import requests
-from deprecated import deprecated
 from requests import ConnectionError, RequestException, Response
 
 from unstract.sdk1.constants import MimeType, RequestHeader, ToolEnv
@@ -217,28 +216,3 @@ class PromptTool:
 
         response.raise_for_status()
         return response.json()
-
-    @staticmethod
-    @deprecated(
-        version="v0.71.0", reason="Use `PlatformHelper.get_prompt_studio_tool` instead"
-    )
-    def get_exported_tool(
-        tool: BaseTool, prompt_registry_id: str
-    ) -> dict[str, Any] | None:
-        """Get exported custom tool by the help of unstract DB tool.
-
-        Args:
-            prompt_registry_id (str): ID of the prompt_registry_id
-            tool (AbstractTool): Instance of AbstractTool
-        Required env variables:
-            PLATFORM_HOST: Host of platform service
-            PLATFORM_PORT: Port of platform service
-        """
-        platform_helper: PlatformHelper = PlatformHelper(
-            tool=tool,
-            platform_port=tool.get_env_or_die(ToolEnv.PLATFORM_PORT),
-            platform_host=tool.get_env_or_die(ToolEnv.PLATFORM_HOST),
-        )
-        return platform_helper.get_prompt_studio_tool(
-            prompt_registry_id=prompt_registry_id
-        )

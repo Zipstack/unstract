@@ -48,30 +48,6 @@ class ToolUtils:
             raise ValueError(f"Unsupported hash_method: {hash_method}")
 
     @staticmethod
-    def get_hash_from_file(
-        file_path: str,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
-    ) -> str:
-        """Computes the hash for a file.
-
-        Uses sha256 to compute the file hash through a buffered read.
-
-        Args:
-            file_path (str): Path to file that needs to be hashed
-
-        Returns:
-            str: SHA256 hash of the file
-        """
-        # Adding the following DeprecationWarning manually as the package "deprecated"
-        # does not support deprecation on static methods.
-        warnings.warn(
-            "`get_hash_from_file` is deprecated. "
-            "Use `FileStorage get_hash_from_file()` instead.",
-            DeprecationWarning,
-        )
-        return fs.get_hash_from_file(path=file_path)
-
-    @staticmethod
     def load_json(
         file_to_load: str,
         fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
@@ -116,34 +92,6 @@ class ToolUtils:
         """
         compact_json = json.dumps(json_to_dump, separators=(",", ":"))
         return compact_json
-
-    # ToDo: get_file_mime_type() to be removed once migrated to FileStorage
-    # FileStorage has mime_type() which could be used instead.
-    @staticmethod
-    def get_file_mime_type(
-        input_file: Path,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
-    ) -> str:
-        """Gets the file MIME type for an input file. Uses libmagic to perform
-        the same.
-
-        Args:
-            input_file (Path): Path object of the input file
-
-        Returns:
-            str: MIME type of the file
-        """
-        # Adding the following DeprecationWarning manually as the package "deprecated"
-        # does not support deprecation on static methods.
-        warnings.warn(
-            "`get_file_mime_type` is deprecated. "
-            "Use `FileStorage mime_type()` instead.",
-            DeprecationWarning,
-        )
-        input_file_mime = ""
-        sample_contents = fs.read(path=input_file, mode="rb", length=100)
-        input_file_mime = magic.from_buffer(sample_contents, mime=True)
-        return input_file_mime
 
     @staticmethod
     def get_file_size(

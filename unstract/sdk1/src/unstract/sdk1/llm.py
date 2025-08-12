@@ -1,19 +1,27 @@
 import logging
+import os
 import re
-from collections.abc import Generator
-from typing import Any, Optional
+from collections.abc import Callable, Generator
+from typing import Any
 
 import litellm
 
 # from litellm import get_supported_openai_params
-from litellm import get_max_tokens
+from litellm import get_max_tokens, token_counter
 from pydantic import ValidationError
 
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
+from unstract.sdk1.audit import Audit
+from unstract.sdk1.constants import ToolEnv
 from unstract.sdk1.exceptions import LLMError, SdkError
 from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.tool.base import BaseTool
+from unstract.sdk1.utils.common import (
+    LLMResponseCompat,
+    TokenCounterCompat,
+    capture_metrics,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +36,10 @@ class LLM:
     - adapter instance ID and tool  (e.g. edit adapter)
     """
     SYSTEM_PROMPT = "You are a helpful assistant."
-    MAX_TOKENS_DEFAULT = 4096
+    MAX_TOKENS = 4096
+    JSON_REGEX = re.compile(r"\[(?:.|\n)*\]|\{(?:.|\n)*\}")
+    JSON_CONTENT_MARKER = os.environ.get("JSON_SELECTION_MARKER", "§§§")
+    PLATFORM_API_KEY = os.environ.get(ToolEnv.PLATFORM_API_KEY, "")
 
     def __init__(
         self,
@@ -36,7 +47,7 @@ class LLM:
         adapter_metadata: dict[str, Any] = {},
         adapter_instance_id: str = "",
         tool: BaseTool = None,
-        default_system_prompt: str = "",
+        system_prompt: str = "",
         kwargs: dict[str, Any] = {}
     ) -> None:
         llm_config = None
@@ -58,17 +69,16 @@ class LLM:
                     self._adapter_metadata = adapter_metadata
                 else:
                     self._adapter_metadata = adapters[self._adapter_id][Common.METADATA]
+                self._adapter_instance_id = ""
+                self._tool = None
 
             self.adapter = adapters[self._adapter_id][Common.MODULE]
         except KeyError:
             raise SdkError("LLM adapter not supported: " + self._adapter_id)
 
-        self._default_system_prompt = default_system_prompt or self.SYSTEM_PROMPT
-        self._last_usage: Optional[dict[str, Any]] = None
-
         try:
-            self.kwargs = kwargs
-            self.kwargs.update(self.adapter.validate(self._adapter_metadata))
+            self.platform_kwargs = kwargs
+            self.kwargs = self.adapter.validate(self._adapter_metadata)
 
             # REF: https://docs.litellm.ai/docs/completion/input#translated-openai-params
             # supported = get_supported_openai_params(model=self.kwargs["model"], custom_llm_provider=self.provider)
@@ -77,6 +87,20 @@ class LLM:
             #         logger.warning("Missing supported parameter for '%s': %s", self.adapter.get_provider(), s)
         except ValidationError as e:
             raise SdkError("Invalid LLM adapter metadata: " + str(e))
+
+        self._system_prompt = system_prompt or self.SYSTEM_PROMPT
+
+        if self._tool:
+            self._platform_api_key = self._tool.get_env_or_die(ToolEnv.PLATFORM_API_KEY)
+        else:
+            self._platform_api_key = LLM.PLATFORM_API_KEY
+        if not self._platform_api_key:
+            raise SdkError(f"Missing env variable '{ToolEnv.PLATFORM_API_KEY}'")
+
+        # Metrics capture.
+        self._run_id = self.platform_kwargs.get("run_id")
+        self._capture_metrics = self.platform_kwargs.get("capture_metrics")
+        self._metrics: dict[str, Any] = {}
 
     def test_connection(self) -> bool:
         """Test connection to the LLM provider."""
@@ -99,13 +123,24 @@ class LLM:
             logger.error("Failed to test connection for LLM: %s", e)
             raise e
 
-    def complete(self, prompt: str, **kwargs: Any) -> dict[str, Any]:
-        """Return a standard chat completion dict."""
+    @capture_metrics
+    def complete(self, prompt: str, **kwargs: dict[str, Any]) -> dict[str, Any]:
+        """Return a standard chat completion dict and optioanlly captures metrics
+        if run ID is provided.
+
+        Args:
+            prompt   (str)   The input text prompt for generating the completion.
+            **kwargs (Any)   Additional arguments passed to the completion function.
+
+        Returns:
+            dict[str, Any]  : A dictionary containing the result of the completion,
+                any processed output, and the captured metrics (if applicable).
+        """
         messages: list[dict[str, str]] = [
-            {"role": "system", "content": self._default_system_prompt},
+            {"role": "system", "content": self._system_prompt},
             {"role": "user", "content": prompt},
         ]
-        logger.info("[sdk1.LLM] Invoking %s with %s", self.adapter.get_provider(), messages)
+        logger.info("[sdk1][LLM][complete] Invoking %s with %s", self.adapter.get_provider(), messages)
         
         combined_kwargs = {**self.kwargs, **kwargs}
         # if hasattr(self, "model") and self.model not in O1_MODELS:
@@ -118,11 +153,19 @@ class LLM:
             messages=messages,
             **combined_kwargs,
         )
+        response_text = response["choices"][0]["message"]["content"]
 
-        # Store usage if provider returns it
-        self._last_usage = response.get("usage")
+        self._record_usage(self.kwargs['model'], messages, response.get("usage"), "complete")
 
-        return response
+        # Post process.
+        extract_json: bool = self.platform_kwargs.get("extract_json", False)
+        post_process_fn: Callable[LLMResponseCompat, bool] | None = self.platform_kwargs.get("process_text", None)
+
+        response_text, post_processed_output = self._post_process_response(
+            response_text, extract_json, post_process_fn
+        )
+
+        return {"response": { "text": response_text}, **post_processed_output }
 
     def stream_complete(
         self,
@@ -132,7 +175,7 @@ class LLM:
     ) -> Generator[str, None, None]:
         """Yield chunks of text as they arrive from the provider."""
         messages = [
-            {"role": "system", "content": self._default_system_prompt},
+            {"role": "system", "content": self._system_prompt},
             {"role": "user", "content": prompt},
         ]
         
@@ -146,15 +189,20 @@ class LLM:
             },
             **combined_kwargs,
         ):
+            if chunk.get("usage"):
+                self._record_usage(self.kwargs['model'], messages, chunk.get("usage"), "stream_complete")
+
             text = chunk["choices"][0]["delta"].get("content", "")
+
             if callback_manager and hasattr(callback_manager, "on_stream"):
                 callback_manager.on_stream(text)
+
             yield text
 
     async def acomplete(self, prompt: str, **kwargs: Any) -> dict[str, Any]:
         """Asynchronous chat completion (wrapper around ``litellm.acompletion``)."""
         messages = [
-            {"role": "system", "content": self._default_system_prompt},
+            {"role": "system", "content": self._system_prompt},
             {"role": "user", "content": prompt},
         ]
         
@@ -164,23 +212,88 @@ class LLM:
             messages=messages,
             **combined_kwargs,
         )
-        self._last_usage = response.get("usage")
-        return response
+        response_text = response["choices"][0]["message"]["content"]
 
-    def get_usage(self) -> Optional[dict[str, Any]]:  # noqa: D401
-        """Return usage dict if present (provider specific)."""
-        return self._last_usage
+        self._record_usage(self.kwargs['model'], messages, response.get("usage"), "acomplete")
+
+        return {"response": { "text": response_text}}
+
 
     @classmethod
     def get_context_window_size(cls, adapter_id: str, adapter_metadata: dict[str, Any]) -> int:
+        """Returns the context window size of the LLM."""
         try:
             model = adapters[adapter_id][Common.MODULE].validate_model(adapter_metadata)
             return get_max_tokens(model)
         except Exception as e:
             logger.warning(f"Failed to get context window size for {adapter_id}: {e}")
-            return cls.MAX_TOKENS_DEFAULT
+            return cls.MAX_TOKENS
 
     @classmethod
-    def get_max_tokens(cls, adapter_id: str, adapter_metadata: dict[str, Any]) -> int:
-        return cls.get_context_window_size(adapter_id, adapter_metadata)
+    def get_max_tokens(cls, adapter_instance_id: str, tool: BaseTool, reserved_for_output: int = 0) -> int:
+        """Returns the maximum number of tokens limit for the LLM."""
+        try:
+            llm_config = PlatformHelper.get_adapter_config(tool, adapter_instance_id)
+            adapter_id = llm_config[Common.ADAPTER_ID]
+            adapter_metadata = llm_config[Common.ADAPTER_METADATA]
+
+            model = adapters[adapter_id][Common.MODULE].validate_model(adapter_metadata)
+
+            return get_max_tokens(model) - reserved_for_output
+        except Exception as e:
+            logger.warning(f"Failed to get context window size for {adapter_instance_id}: {e}")
+            return cls.MAX_TOKENS - reserved_for_output
+
+    def get_metrics(self):
+        return self._metrics
+
+    def get_usage_reason(self):
+        return self.platform_kwargs.get("llm_usage_reason")
+
+    def _record_usage(self, model: str, messages: list[dict[str, str]], usage: dict[str, int], llm_api: str):
+        prompt_tokens = token_counter(model, messages)
+        all_tokens = TokenCounterCompat(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=usage.get("completion_tokens", 0),
+            total_tokens=usage.get("total_tokens", 0),
+        )
+
+        logger.info(f"[sdk1][LLM][{llm_api}] Prompt Tokens: {prompt_tokens}")
+        logger.info(f"[sdk1][LLM][{llm_api}] LLM Usage: {usage}")
+
+        Audit().push_usage_data(
+            platform_api_key=self._platform_api_key,
+            token_counter=all_tokens,
+            event_type="llm",
+            model_name=model,
+            kwargs=self.platform_kwargs
+        )
+
+    def _post_process_response(self, response_text: str, extract_json: bool, post_process_fn: Callable[LLMResponseCompat, bool] | None) -> tuple[str, dict[str, Any]]:
+        post_processed_output: dict[str, Any] = {}
+
+        if extract_json:
+            start = response_text.find(LLM.JSON_CONTENT_MARKER)
+            if start != -1:
+                response_text = response_text[
+                    start + len(LLM.JSON_CONTENT_MARKER) :
+                ].lstrip()
+            end = response_text.rfind(LLM.JSON_CONTENT_MARKER)
+            if end != -1:
+                response_text = response_text[:end].rstrip()
+            match = LLM.JSON_REGEX.search(response_text)
+            if match:
+                response_text = match.group(0)
+
+        if post_process_fn:
+            try:
+                response_compat = LLMResponseCompat(response_text)
+                post_processed_output = post_process_fn(response_compat, extract_json)
+                if not isinstance(post_processed_output, dict):
+                    post_processed_output = {}
+            except Exception as e:
+                logger.error(f"[sdk1][LLM][complete] Failed to post process response: {e}")
+                post_processed_output = {}
+
+        return (response_text, post_processed_output)
 
