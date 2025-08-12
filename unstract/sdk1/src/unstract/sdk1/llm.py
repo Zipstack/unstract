@@ -1,9 +1,8 @@
 import logging
 import os
 import re
-import types
 from collections.abc import Callable, Generator
-from typing import Any
+from typing import Any, cast
 
 import litellm
 
@@ -106,13 +105,12 @@ class LLM:
         """Test connection to the LLM provider."""
         try:
             response = self.complete("What is the capital of Tamilnadu?")
-            text = response["choices"][0]["message"]["content"]
 
-            find_match = re.search("chennai", text.lower())
+            find_match = re.search("chennai", response["text"].lower())
             if find_match:
                 return True
 
-            logger.error("LLM test response: %s", text)
+            logger.error("LLM test response: %s", response["text"])
             msg = (
                 "LLM based test failed. The credentials was valid however a sane "
                 "response was not obtained from the LLM provider, please recheck "
@@ -142,11 +140,7 @@ class LLM:
         ]
         logger.info("[sdk1][LLM][complete] Invoking %s with %s", self.adapter.get_provider(), messages)
         
-        combined_kwargs = {**self.kwargs, **kwargs}
-        combined_kwargs = {
-            key: value for key, value in combined_kwargs.items()
-            if not isinstance(value, (types.FunctionType, types.BuiltinFunctionType, types.MethodType, types.LambdaType))
-        }
+        completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
 
         # if hasattr(self, "model") and self.model not in O1_MODELS:
         #     completion_kwargs["temperature"] = 0.003
@@ -155,15 +149,14 @@ class LLM:
 
         response: dict[str, Any] = litellm.completion(
             messages=messages,
-            **combined_kwargs,
+            **completion_kwargs,
         )
         response_text = response["choices"][0]["message"]["content"]
 
         self._record_usage(self.kwargs['model'], messages, response.get("usage"), "complete")
 
-        # Post process.
-        extract_json: bool = self.platform_kwargs.get("extract_json", False)
-        post_process_fn: Callable[[LLMResponseCompat, bool], dict[str, Any]] | None = self.platform_kwargs.get("process_text", None)
+        extract_json: bool = cast(bool, kwargs.get("extract_json", False))
+        post_process_fn: Callable[[LLMResponseCompat, bool], dict[str, Any]] | None = cast(Callable[[LLMResponseCompat, bool], dict[str, Any]] | None, kwargs.get("process_text", None))
 
         response_text, post_processed_output = self._post_process_response(
             response_text, extract_json, post_process_fn
@@ -183,7 +176,7 @@ class LLM:
             {"role": "user", "content": prompt},
         ]
         
-        combined_kwargs = {**self.kwargs, **kwargs}
+        completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
         
         for chunk in litellm.completion(
             messages=messages,
@@ -191,7 +184,7 @@ class LLM:
             stream_options={
                 "include_usage": True,
             },
-            **combined_kwargs,
+            **completion_kwargs,
         ):
             if chunk.get("usage"):
                 self._record_usage(self.kwargs['model'], messages, chunk.get("usage"), "stream_complete")
@@ -210,11 +203,11 @@ class LLM:
             {"role": "user", "content": prompt},
         ]
         
-        combined_kwargs = {**self.kwargs, **kwargs}
+        completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
 
         response = await litellm.acompletion(
             messages=messages,
-            **combined_kwargs,
+            **completion_kwargs,
         )
         response_text = response["choices"][0]["message"]["content"]
 
@@ -270,10 +263,15 @@ class LLM:
             token_counter=all_tokens,
             event_type="llm",
             model_name=model,
-            kwargs=self.platform_kwargs
+            kwargs={
+                "provider": self.adapter.get_provider(),
+                **self.platform_kwargs
+            }
         )
 
-    def _post_process_response(self, response_text: str, extract_json: bool, post_process_fn: Callable[[LLMResponseCompat, bool], dict[str, Any]] | None) -> tuple[str, dict[str, Any]]:
+    def _post_process_response(
+        self, response_text: str, extract_json: bool, post_process_fn: Callable[[LLMResponseCompat, bool], dict[str, Any]] | None
+    ) -> tuple[str, dict[str, Any]]:
         post_processed_output: dict[str, Any] = {}
 
         if extract_json:
@@ -293,8 +291,8 @@ class LLM:
             try:
                 response_compat = LLMResponseCompat(response_text)
                 post_processed_output = post_process_fn(response_compat, extract_json)
-                if not isinstance(post_processed_output, dict):
-                    post_processed_output = {}
+                # Needed as the text is modified in place.
+                response_text = response_compat.text
             except Exception as e:
                 logger.error(f"[sdk1][LLM][complete] Failed to post process response: {e}")
                 post_processed_output = {}
