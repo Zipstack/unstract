@@ -105,12 +105,13 @@ class LLM:
         """Test connection to the LLM provider."""
         try:
             response = self.complete("What is the capital of Tamilnadu?")
+            text = response["response"]["text"]
 
-            find_match = re.search("chennai", response["text"].lower())
+            find_match = re.search("chennai", text.lower())
             if find_match:
                 return True
 
-            logger.error("LLM test response: %s", response["text"])
+            logger.error("LLM test response: %s", text)
             msg = (
                 "LLM based test failed. The credentials was valid however a sane "
                 "response was not obtained from the LLM provider, please recheck "
@@ -123,7 +124,7 @@ class LLM:
 
     @capture_metrics
     def complete(self, prompt: str, **kwargs: dict[str, Any]) -> dict[str, Any]:
-        """Return a standard chat completion dict and optioanlly captures metrics
+        """Return a standard chat completion dict and optionally captures metrics
         if run ID is provided.
 
         Args:

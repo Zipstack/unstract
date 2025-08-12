@@ -135,7 +135,8 @@ class OpenAIParameters(BaseParameters):
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
-        return f"openai/{adapter_metadata.get('model', '')}"
+        model = adapter_metadata.get('model', '')
+        return f"openai/{model}" if "/" not in model else model
 
 class AzureOpenAIParameters(BaseParameters):
     """See https://docs.litellm.ai/docs/providers/azure/#completion---using-azure_ad_token-api_base-api_version"""
@@ -153,7 +154,8 @@ class AzureOpenAIParameters(BaseParameters):
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
-        return f"azure/{adapter_metadata.get('model', '')}"
+        model = adapter_metadata.get('model', '')
+        return f"azure/{model}" if "/" not in model else model
 
 class VertexAIParameters(BaseParameters):
     """See https://docs.litellm.ai/docs/providers/vertex"""
@@ -195,7 +197,8 @@ class VertexAIParameters(BaseParameters):
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
-        return f"vertex_ai/{adapter_metadata.get('model', '')}"
+        model = adapter_metadata.get('model', '')
+        return f"vertex_ai/{model}" if "/" not in model else model
 
 class AWSBedrockParameters(BaseParameters):
     """See https://docs.litellm.ai/docs/providers/bedrock"""
@@ -212,7 +215,8 @@ class AWSBedrockParameters(BaseParameters):
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
-        return f"bedrock/{adapter_metadata.get('model', '')}"
+        model = adapter_metadata.get('model', '')
+        return f"bedrock/{model}" if "/" not in model else model
 
 class AnthropicParameters(BaseParameters):
     """See https://docs.litellm.ai/docs/providers/anthropic"""
@@ -226,7 +230,8 @@ class AnthropicParameters(BaseParameters):
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
-        return f"anthropic/{adapter_metadata.get('model', '')}"
+        model = adapter_metadata.get('model', '')
+        return f"anthropic/{model}" if "/" not in model else model
 
 class AnyscaleParameters(BaseParameters):
     """See https://docs.litellm.ai/docs/providers/anyscale"""
@@ -240,7 +245,8 @@ class AnyscaleParameters(BaseParameters):
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
-        return f"anyscale/{adapter_metadata.get('model', '')}"
+        model = adapter_metadata.get('model', '')
+        return f"anyscale/{model}" if "/" not in model else model
 
 class MistralParameters(BaseParameters):
     """See https://docs.litellm.ai/docs/providers/mistral"""
@@ -254,7 +260,8 @@ class MistralParameters(BaseParameters):
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
-        return f"mistral/{adapter_metadata.get('model', '')}"
+        model = adapter_metadata.get('model', '')
+        return f"mistral/{model}" if "/" not in model else model
 
 class OllamaParameters(BaseParameters):
     """See https://docs.litellm.ai/docs/providers/ollama"""
@@ -263,10 +270,11 @@ class OllamaParameters(BaseParameters):
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
         adapter_metadata["model"] = OllamaParameters.validate_model(adapter_metadata)
-        # adapter_metadata["api_base"] = adapter_metadata.get("base_url", "")
+        adapter_metadata["api_base"] = adapter_metadata.get("base_url", "")
 
         return OllamaParameters(**adapter_metadata).model_dump()
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
-        return f"ollama_chat/{adapter_metadata.get('model', '')}"
+        model = adapter_metadata.get('model', '')
+        return f"ollama_chat/{model}" if "/" not in model else model
