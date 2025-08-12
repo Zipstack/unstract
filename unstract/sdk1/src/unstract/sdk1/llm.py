@@ -145,7 +145,7 @@ class LLM:
         combined_kwargs = {**self.kwargs, **kwargs}
         combined_kwargs = {
             key: value for key, value in combined_kwargs.items()
-            if not isinstance(value, (types.FunctionType, types.BuiltinFunctionType, types.LambdaType))
+            if not isinstance(value, (types.FunctionType, types.BuiltinFunctionType, types.MethodType, types.LambdaType))
         }
 
         # if hasattr(self, "model") and self.model not in O1_MODELS:
