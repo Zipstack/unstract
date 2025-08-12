@@ -142,7 +142,7 @@ class UnstractDB(UnstractConnector, ABC):
         PERMANENT_COLUMNS = [
             "created_by",
             "created_at",
-            "user_field_1", 
+            "user_field_1",
             "user_field_2",
             "user_field_3",
             "metadata",
