@@ -84,9 +84,7 @@ function ConnectorListModal({
     return (
       <div className="connector-list-loading">
         <Spin size="large" />
-        <Typography.Text
-          style={{ marginTop: 16, display: "block", textAlign: "center" }}
-        >
+        <Typography.Text className="connector-list-loading-text">
           Loading connectors...
         </Typography.Text>
       </div>

@@ -89,7 +89,6 @@ function FileExplorer({
           err,
           `Error loading files from "${path || "root"}"`
         );
-        console.error(errorDetails.content);
         if (setError) {
           setError(errorDetails.content);
         }

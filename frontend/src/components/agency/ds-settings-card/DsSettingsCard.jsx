@@ -169,7 +169,7 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
 
   const handleEndpointUpdate = (updatedData, showSuccess) => {
     if (!endpointDetails?.id) {
-      return;
+      return Promise.resolve();
     }
 
     const requestOptions = {
@@ -181,7 +181,8 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
       },
       data: updatedData,
     };
-    axiosPrivate(requestOptions)
+
+    return axiosPrivate(requestOptions)
       .then((res) => {
         const data = res?.data || {};
         const updatedData = {};
@@ -197,9 +198,11 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
             content: "Successfully updated",
           });
         }
+        return res;
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to update"));
+        throw err;
       });
   };
 

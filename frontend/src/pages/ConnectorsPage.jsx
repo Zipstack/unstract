@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
 
@@ -6,6 +6,7 @@ import { useAxiosPrivate } from "../hooks/useAxiosPrivate";
 import { useSessionStore } from "../store/session-store";
 import { useAlertStore } from "../store/alert-store";
 import { useExceptionHandler } from "../hooks/useExceptionHandler";
+import useRequestUrl from "../hooks/useRequestUrl";
 import "./ConnectorsPage.css";
 import { ToolNavBar } from "../components/navigations/tool-nav-bar/ToolNavBar";
 import { ViewTools } from "../components/custom-tools/view-tools/ViewTools";
@@ -27,6 +28,7 @@ function ConnectorsPage() {
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
+  const { getUrl } = useRequestUrl();
 
   useEffect(() => {
     fetchConnectors();
@@ -36,9 +38,7 @@ function ConnectorsPage() {
   const fetchConnectors = async () => {
     setLoading(true);
     try {
-      const response = await axiosPrivate.get(
-        `/api/v1/unstract/${sessionDetails?.orgId}/connector/`
-      );
+      const response = await axiosPrivate.get(getUrl("connector/"));
       setConnectors(response.data || []);
     } catch (error) {
       setAlertDetails(handleException(error, "Failed to load connectors"));
@@ -49,9 +49,7 @@ function ConnectorsPage() {
 
   const fetchUsers = async () => {
     try {
-      const response = await axiosPrivate.get(
-        `/api/v1/unstract/${sessionDetails?.orgId}/users/`
-      );
+      const response = await axiosPrivate.get(getUrl("users/"));
       const users = response?.data?.members || [];
       setUserList(
         users.map((user) => ({
@@ -76,14 +74,11 @@ function ConnectorsPage() {
 
   const handleDeleteConnector = async (_event, connector) => {
     try {
-      await axiosPrivate.delete(
-        `/api/v1/unstract/${sessionDetails?.orgId}/connector/${connector.id}/`,
-        {
-          headers: {
-            "X-CSRFToken": sessionDetails?.csrfToken,
-          },
-        }
-      );
+      await axiosPrivate.delete(getUrl(`connector/${connector.id}/`), {
+        headers: {
+          "X-CSRFToken": sessionDetails?.csrfToken,
+        },
+      });
       setAlertDetails({
         type: "success",
         content: "Connector deleted successfully",
@@ -109,7 +104,7 @@ function ConnectorsPage() {
       };
 
       await axiosPrivate.patch(
-        `/api/v1/unstract/${sessionDetails?.orgId}/connector/${connector.id}/`,
+        getUrl(`connector/${connector.id}/`),
         updateData,
         {
           headers: {
@@ -141,19 +136,24 @@ function ConnectorsPage() {
     });
   };
 
+  const renderCreateConnectorButtons = useCallback(
+    () => (
+      <Button
+        type="primary"
+        icon={<PlusOutlined />}
+        onClick={handleCreateConnector}
+      >
+        New Connector
+      </Button>
+    ),
+    []
+  );
+
   return (
     <div className="connectors-layout">
       <ToolNavBar
         title="Connectors"
-        CustomButtons={() => (
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={handleCreateConnector}
-          >
-            New Connector
-          </Button>
-        )}
+        CustomButtons={renderCreateConnectorButtons}
       />
       <div className="connectors-pg-layout">
         <div className="connectors-pg-body">

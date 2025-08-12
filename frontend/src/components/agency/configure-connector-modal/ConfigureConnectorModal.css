@@ -57,6 +57,11 @@
     padding: 16px 8px;
 }
 
+.connector-selection-label {
+    display: block;
+    margin-bottom: 8px;
+}
+
 .connector-selection-dropdown .ant-select-selector {
     height: 40px;
     padding: 4px 11px 4px 8px;
@@ -78,6 +83,11 @@
 
 .connector-dropdown-add-new:hover {
     background-color: #f0f0f0;
+}
+
+.connector-dropdown-menu-container {
+    max-height: 200px;
+    overflow-y: auto;
 }
 
 .conn-modal-fs-config {

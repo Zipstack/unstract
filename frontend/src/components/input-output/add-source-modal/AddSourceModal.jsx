@@ -38,16 +38,12 @@ function AddSourceModal({
 
   useEffect(() => {
     const addOrEdit = editItemId?.length ? "Edit" : "Add";
-    // TODO: Review if commented items can be removed
     setTitles({
-      // input: addOrEdit + " Data Source",
-      // output: addOrEdit + " Data Destination",
       llm: addOrEdit + " LLM",
       vector_db: addOrEdit + " Vector DB",
       embedding: addOrEdit + " Embedding",
       x2text: addOrEdit + " Text Extractor",
       connectors: addOrEdit + " Connector",
-      // adapters: addOrEdit + " Adapter",
     });
 
     if (editItemId?.length) {

@@ -1,8 +1,8 @@
 import { Col, Modal, Row, Typography, Select, Space, Image, Tabs } from "antd";
 import { CloudDownloadOutlined, CloudUploadOutlined } from "@ant-design/icons";
 import PropTypes from "prop-types";
-import { useEffect, useState, useRef } from "react";
-import { isEqual } from "lodash";
+import { useEffect, useState, useRef, useCallback } from "react";
+import { isEqual, cloneDeep } from "lodash";
 
 import { useAlertStore } from "../../../store/alert-store";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -40,6 +40,7 @@ function ConfigureConnectorModal({
   const [addNewOption, setAddNewOption] = useState(null);
   const [isLoadingConnectors, setIsLoadingConnectors] = useState(false);
   const [showAddSourceModal, setShowAddSourceModal] = useState(false);
+  const [isSavingEndpoint, setIsSavingEndpoint] = useState(false);
   const [activeTabKey, setActiveTabKey] = useState("1");
   const [tabItems, setTabItems] = useState([
     {
@@ -155,12 +156,10 @@ function ConfigureConnectorModal({
     if (value === "add_new") {
       setShowAddSourceModal(true);
     } else {
-      // Find the selected connector from availableConnectors to get its details
       const selectedConnector = availableConnectors.find(
         (conn) => conn.value === value
       );
-      if (selectedConnector && selectedConnector.connector) {
-        // Update connDetails with connector info
+      if (selectedConnector?.connector) {
         setConnDetails(selectedConnector.connector);
 
         // Track connector selection with PostHog
@@ -249,7 +248,7 @@ function ConfigureConnectorModal({
   const currentConfig =
     folderSectionConfig[connType] || folderSectionConfig.input;
 
-  const handleModalClose = () => {
+  const handleModalClose = async () => {
     const hasChanges = !isEqual(formDataConfig, initialFormDataConfig);
 
     // Auto-save configuration only if there are actual changes
@@ -258,10 +257,22 @@ function ConfigureConnectorModal({
       Object.keys(formDataConfig).length > 0 &&
       hasChanges
     ) {
-      handleEndpointUpdate({ configuration: formDataConfig });
+      setIsSavingEndpoint(true);
+      try {
+        await handleEndpointUpdate({ configuration: formDataConfig });
+        setOpen(false);
+      } catch (error) {
+        setAlertDetails({
+          type: "error",
+          content:
+            error?.message || "Failed to save configuration. Please try again.",
+        });
+      } finally {
+        setIsSavingEndpoint(false);
+      }
+    } else {
+      setOpen(false);
     }
-
-    setOpen(false);
   };
 
   // Load plugin tab for Human In The Loop (DATABASE connectors only)
@@ -316,9 +327,7 @@ function ConfigureConnectorModal({
   useEffect(() => {
     if (open && endpointDetails?.configuration) {
       // Store a deep copy of the initial configuration
-      setInitialFormDataConfig(
-        JSON.parse(JSON.stringify(endpointDetails.configuration))
-      );
+      setInitialFormDataConfig(cloneDeep(endpointDetails.configuration));
     }
     if (!open) {
       // Reset when modal closes
@@ -326,10 +335,64 @@ function ConfigureConnectorModal({
     }
   }, [open, endpointDetails?.configuration]);
 
+  // Helper function to render connector label
+  const renderConnectorLabel = (connDetails, availableConnectors) => {
+    if (!connDetails?.id) return undefined;
+
+    const selectedConnector = availableConnectors.find(
+      (conn) => conn.value === connDetails.id
+    );
+
+    return (
+      <Space>
+        {selectedConnector?.icon && !selectedConnector?.isAddNew && (
+          <Image
+            src={selectedConnector.icon}
+            width={20}
+            height={20}
+            preview={false}
+          />
+        )}
+        <span>{selectedConnector?.label}</span>
+      </Space>
+    );
+  };
+
+  // Memoized dropdown render function
+  const renderDropdown = useCallback(
+    (menu) => (
+      <>
+        <div className="connector-dropdown-menu-container">{menu}</div>
+        {addNewOption && (
+          <div
+            className="connector-dropdown-add-new"
+            onClick={() => handleConnectorSelect("add_new")}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                handleConnectorSelect("add_new");
+              }
+            }}
+            tabIndex={0}
+            role="button"
+            aria-label="Add new connector"
+          >
+            <Space>
+              <span>{addNewOption.label}</span>
+            </Space>
+          </div>
+        )}
+      </>
+    ),
+    [addNewOption, handleConnectorSelect]
+  );
+
   return (
     <Modal
       open={open}
       onCancel={handleModalClose}
+      confirmLoading={isSavingEndpoint}
+      closable={!isSavingEndpoint}
       centered
       footer={null}
       width={1200}
@@ -342,7 +405,7 @@ function ConfigureConnectorModal({
 
         {/* Connector Selection Dropdown */}
         <div className="connector-selection-section">
-          <Typography.Text strong style={{ display: "block", marginBottom: 8 }}>
+          <Typography.Text strong className="connector-selection-label">
             Select Connector
           </Typography.Text>
           <Select
@@ -358,25 +421,10 @@ function ConfigureConnectorModal({
               connDetails?.id
                 ? {
                     value: connDetails.id,
-                    label: (() => {
-                      const selectedConnector = availableConnectors.find(
-                        (conn) => conn.value === connDetails.id
-                      );
-                      return (
-                        <Space>
-                          {selectedConnector?.icon &&
-                            !selectedConnector?.isAddNew && (
-                              <Image
-                                src={selectedConnector.icon}
-                                width={20}
-                                height={20}
-                                preview={false}
-                              />
-                            )}
-                          <span>{selectedConnector?.label}</span>
-                        </Space>
-                      );
-                    })(),
+                    label: renderConnectorLabel(
+                      connDetails,
+                      availableConnectors
+                    ),
                   }
                 : undefined
             }
@@ -402,21 +450,7 @@ function ConfigureConnectorModal({
             }))}
             style={{ width: "100%" }}
             optionRender={(option) => option.label}
-            dropdownRender={(menu) => (
-              <>
-                <div style={{ maxHeight: 200, overflowY: "auto" }}>{menu}</div>
-                {addNewOption && (
-                  <div
-                    className="connector-dropdown-add-new"
-                    onClick={() => handleConnectorSelect("add_new")}
-                  >
-                    <Space>
-                      <span>{addNewOption.label}</span>
-                    </Space>
-                  </div>
-                )}
-              </>
-            )}
+            dropdownRender={renderDropdown}
           />
         </div>
 

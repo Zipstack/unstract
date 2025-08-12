@@ -149,10 +149,11 @@ function ConfigureDs({
       return;
     }
     if (oAuthProvider?.length && (status !== "success" || !cacheKey?.length)) {
+      const providerName =
+        oAuthProvider === "google-oauth2" ? "Google" : "OAuth provider";
       setAlertDetails({
         type: "error",
-        content:
-          "OAuth authentication required. Please sign in with Google first.",
+        content: `OAuth authentication required. Please sign in with ${providerName} first.`,
       });
       return;
     }

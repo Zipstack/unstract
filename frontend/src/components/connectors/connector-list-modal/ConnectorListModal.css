@@ -41,3 +41,9 @@
   min-height: 200px;
   padding: 40px;
 }
+
+.connector-list-loading-text {
+  margin-top: 16px;
+  display: block;
+  text-align: center;
+}
