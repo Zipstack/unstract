@@ -49,9 +49,9 @@ class LLM:
         system_prompt: str = "",
         kwargs: dict[str, Any] = {}
     ) -> None:
-        llm_config = None
-
         try:
+            llm_config = None
+
             if adapter_instance_id:
                 if not tool:
                     raise SdkError("Broken LLM adapter tool binding: " + adapter_instance_id)
@@ -139,8 +139,8 @@ class LLM:
             {"role": "system", "content": self._system_prompt},
             {"role": "user", "content": prompt},
         ]
-        logger.info("[sdk1][LLM][complete] Invoking %s with %s", self.adapter.get_provider(), messages)
-        
+        logger.debug(f"[sdk1][LLM]Invoking {self.adapter.get_provider()} completion API")
+
         completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
 
         # if hasattr(self, "model") and self.model not in O1_MODELS:
@@ -176,6 +176,7 @@ class LLM:
             {"role": "system", "content": self._system_prompt},
             {"role": "user", "content": prompt},
         ]
+        logger.debug(f"[sdk1][LLM]Invoking {self.adapter.get_provider()} stream completion API")
         
         completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
         
@@ -203,6 +204,7 @@ class LLM:
             {"role": "system", "content": self._system_prompt},
             {"role": "user", "content": prompt},
         ]
+        logger.debug(f"[sdk1][LLM]Invoking {self.adapter.get_provider()} async completion API")
         
         completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
 

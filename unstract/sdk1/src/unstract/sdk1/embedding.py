@@ -34,9 +34,9 @@ class Embedding:
         tool: BaseTool = None,
         kwargs: dict[str, Any] = {},
     ) -> None:
-        embedding_config = None
-
         try:
+            embedding_config = None
+
             if adapter_instance_id:
                 if not tool:
                     raise SdkError("Broken LLM adapter tool binding: " + adapter_instance_id)
