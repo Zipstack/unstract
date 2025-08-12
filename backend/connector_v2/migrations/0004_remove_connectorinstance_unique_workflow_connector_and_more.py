@@ -51,9 +51,13 @@ class Migration(migrations.Migration):
             name="connector_mode",
             field=models.CharField(
                 blank=True,
-                choices=[(0, "UNKNOWN"), (1, "FILE_SYSTEM"), (2, "DATABASE")],
+                choices=[
+                    ("UNKNOWN", "UNKNOWN"),
+                    ("FILE_SYSTEM", "FILE_SYSTEM"),
+                    ("DATABASE", "DATABASE"),
+                ],
                 db_comment="0: UNKNOWN, 1: FILE_SYSTEM, 2: DATABASE",
-                default=0,
+                default="UNKNOWN",
                 null=True,
             ),
         ),

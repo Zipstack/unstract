@@ -43,10 +43,10 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
         INPUT = "INPUT", "Input"
         OUTPUT = "OUTPUT", "Output"
 
-    class ConnectorMode(models.IntegerChoices):
-        UNKNOWN = 0, "UNKNOWN"
-        FILE_SYSTEM = 1, "FILE_SYSTEM"
-        DATABASE = 2, "DATABASE"
+    class ConnectorMode(models.TextChoices):
+        UNKNOWN = "UNKNOWN", "UNKNOWN"
+        FILE_SYSTEM = "FILE_SYSTEM", "FILE_SYSTEM"
+        DATABASE = "DATABASE", "DATABASE"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     connector_name = models.TextField(

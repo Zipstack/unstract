@@ -7,7 +7,7 @@ from connector_auth_v2.exceptions import CacheMissException, MissingParamExcepti
 from connector_auth_v2.pipeline.common import ConnectorAuthHelper
 from connector_processor.exceptions import OAuthTimeOut
 from django.db import IntegrityError
-from django.db.models import QuerySet
+from django.db.models import ProtectedError, QuerySet
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from rest_framework import status, viewsets
 from rest_framework.response import Response
@@ -19,6 +19,7 @@ from connector_v2.constants import ConnectorInstanceKey as CIKey
 from unstract.connectors.connectorkit import Connectorkit
 from unstract.connectors.enums import ConnectorMode
 
+from .exceptions import DeleteConnectorInUseError
 from .models import ConnectorInstance
 from .serializers import ConnectorInstanceSerializer
 
@@ -150,3 +151,21 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
             )
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def perform_destroy(self, instance: ConnectorInstance) -> None:
+        """Override perform_destroy to handle ProtectedError gracefully.
+
+        Args:
+            instance: The ConnectorInstance to be deleted
+
+        Raises:
+            DeleteConnectorInUseError: If the connector is being used in workflows
+        """
+        try:
+            super().perform_destroy(instance)
+        except ProtectedError:
+            logger.error(
+                f"Failed to delete connector: {instance.connector_id}"
+                f" named {instance.connector_name}"
+            )
+            raise DeleteConnectorInUseError(connector_name=instance.connector_name)

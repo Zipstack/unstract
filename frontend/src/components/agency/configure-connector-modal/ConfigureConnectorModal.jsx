@@ -211,19 +211,43 @@ function ConfigureConnectorModal({
   const handleAddFolder = () => {
     if (!selectedFolderPath) return;
 
-    const currentFolders = formDataConfig?.folders || [];
-
-    // Avoid duplicates
-    if (!currentFolders.includes(selectedFolderPath)) {
+    if (connType === "input") {
+      // SOURCE mode: Add to folders array (existing behavior)
+      const currentFolders = formDataConfig?.folders || [];
+      if (!currentFolders.includes(selectedFolderPath)) {
+        setFormDataConfig((prev) => ({
+          ...prev,
+          folders: [...currentFolders, selectedFolderPath],
+        }));
+      }
+    } else if (connType === "output") {
+      // DESTINATION mode: Set outputFolder as single value
       setFormDataConfig((prev) => ({
         ...prev,
-        folders: [...currentFolders, selectedFolderPath],
+        outputFolder: selectedFolderPath,
       }));
     }
 
     setSelectedFolderPath("");
     setIsFolderSelected(false);
   };
+
+  // Configuration for UI text based on connector type
+  const folderSectionConfig = {
+    input: {
+      title: "Select Folder to Process",
+      description: "Browse and select a folder to add to processing",
+      buttonText: "Add Folder",
+    },
+    output: {
+      title: "Select Output Folder",
+      description: "Browse and select a folder for output files",
+      buttonText: "Select Folder",
+    },
+  };
+
+  const currentConfig =
+    folderSectionConfig[connType] || folderSectionConfig.input;
 
   const handleModalClose = () => {
     const hasChanges = !isEqual(formDataConfig, initialFormDataConfig);
@@ -464,13 +488,13 @@ function ConfigureConnectorModal({
                       <div className="file-browser-header">
                         <div className="file-browser-content">
                           <Typography.Text strong style={{ display: "block" }}>
-                            Select Folder to Process
+                            {currentConfig.title}
                           </Typography.Text>
                           <Typography.Text
                             type="secondary"
                             className="field-description"
                           >
-                            Browse and select a folder to add to processing
+                            {currentConfig.description}
                           </Typography.Text>
                         </div>
                         <CustomButton
@@ -479,7 +503,7 @@ function ConfigureConnectorModal({
                           disabled={!isFolderSelected}
                           onClick={handleAddFolder}
                         >
-                          Add Folder
+                          {currentConfig.buttonText}
                         </CustomButton>
                       </div>
                       <ManageFiles

@@ -168,6 +168,10 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
   };
 
   const handleEndpointUpdate = (updatedData, showSuccess) => {
+    if (!endpointDetails?.id) {
+      return;
+    }
+
     const requestOptions = {
       method: "PATCH",
       url: getUrl(`workflow/endpoint/${endpointDetails?.id}/`),
