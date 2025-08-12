@@ -769,7 +769,6 @@ class DestinationConnector(BaseConnector):
         if not result:
             return
         connector: ConnectorInstance = self.source_endpoint.connector_instance
-
         # For API deployments, use workflow execution storage instead of connector
         if self.is_api:
             logger.debug(
@@ -800,7 +799,6 @@ class DestinationConnector(BaseConnector):
             conn.enqueue(queue_name=q_name, message=queue_result_json)
             logger.info(f"Pushed {file_name} to queue {q_name} with file content")
             return
-
         connector_settings: dict[str, Any] = connector.connector_metadata
 
         source_fs = self.get_fsspec(
@@ -852,3 +850,31 @@ class DestinationConnector(BaseConnector):
                 queue_name=q_name, message=queue_result_json, ttl_seconds=ttl_seconds
             )
             logger.info(f"Pushed {file_name} to queue {q_name} with file content")
+
+    def _read_file_content_for_queue(self, input_file_path: str, file_name: str) -> str:
+        """Read and encode file content for queue message.
+
+        Args:
+            input_file_path: Path to the file to read
+            file_name: Name of the file for logging purposes
+
+        Returns:
+            Base64 encoded file content
+
+        Raises:
+            APIException: If file cannot be read or doesn't exist
+        """
+        try:
+            file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+            file_storage = file_system.get_file_storage()
+
+            if not file_storage.exists(input_file_path):
+                raise APIException(f"File not found: {input_file_path}")
+
+            file_bytes = file_storage.read(input_file_path, mode="rb")
+            if isinstance(file_bytes, str):
+                file_bytes = file_bytes.encode("utf-8")
+            return base64.b64encode(file_bytes).decode("utf-8")
+        except Exception as e:
+            logger.error(f"Failed to read file content for {file_name}: {e}")
+            raise APIException(f"Failed to read file content for queue: {e}")

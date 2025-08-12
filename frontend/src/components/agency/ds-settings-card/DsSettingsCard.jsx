@@ -338,11 +338,41 @@ function DsSettingsCard({ type, endpointDetails, message }) {
     return "";
   };
 
+  // Check if connector is configured
+  const isConnectorConfigured = () => {
+    // For API connections, connector_instance is not required
+    if (endpointDetails?.connection_type === "API") {
+      return true;
+    }
+
+    // For other connection types (Database, etc.), check if connector instance is configured
+    // connector_instance represents the actual configured connector with credentials
+    return !!endpointDetails?.connector_instance;
+  };
+
+  // Get configure button text based on configuration status
+  const getConfigureButtonText = () => {
+    if (!endpointDetails?.connection_type) {
+      return "Configure";
+    }
+
+    return isConnectorConfigured() ? "Configured" : "Configure";
+  };
+
   return (
     <>
       <Row className="ds-set-card-row">
         <Col span={12} className="ds-set-card-col2">
           <SpaceWrapper>
+            {message && (
+              <Typography.Paragraph
+                ellipsis={{ rows: 2, expandable: false }}
+                className="font-size-12 ds-set-card-message"
+                type="secondary"
+              >
+                {message}
+              </Typography.Paragraph>
+            )}
             <Space>
               <Tooltip
                 title={
@@ -376,20 +406,11 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                     connType === "APPDEPLOYMENT"
                   }
                 >
-                  Configure
+                  {getConfigureButtonText()}
                 </Button>
               </Tooltip>
             </Space>
           </SpaceWrapper>
-        </Col>
-        <Col span={8} className="ds-set-card-col3">
-          <Typography.Paragraph
-            ellipsis={{ rows: 2, expandable: false }}
-            className="font-size-12"
-            type="secondary"
-          >
-            {message}
-          </Typography.Paragraph>
         </Col>
       </Row>
       <ConfigureConnectorModal

@@ -251,11 +251,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
         # Generate a run_id
-        if check_feature_flag_status('sdk1'):
-            run_id = CommonUtils.generate_uuid()
-        else:
-            run_id = CommonUtils.generate_uuid()
-        is_summary = tool.summarize_context
+        run_id = CommonUtils.generate_uuid()
 
         unique_id = PromptStudioHelper.index_document(
             tool_id=str(tool.tool_id),
@@ -264,7 +260,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             user_id=tool.created_by.user_id,
             document_id=document_id,
             run_id=run_id,
-            is_summary=is_summary,
         )
         if unique_id:
             return Response(
