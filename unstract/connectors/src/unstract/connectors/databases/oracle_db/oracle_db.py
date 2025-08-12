@@ -89,8 +89,8 @@ class OracleDB(UnstractDB):
             int: "NUMBER",
             float: "LONG",
             datetime.datetime: "TIMESTAMP",
-            dict: "CLOB CHECK (data IS JSON)",
-            list: "CLOB CHECK (data IS JSON)",
+            dict: "CLOB CHECK (IS JSON)",
+            list: "CLOB CHECK (IS JSON)",
         }
         return mapping.get(python_type, "CLOB")
 
@@ -119,11 +119,11 @@ class OracleDB(UnstractDB):
     def prepare_multi_column_migration(self, table_name: str, column_name: str) -> str:
         sql_query = (
             f"ALTER TABLE {table_name} "
-            f"ADD COLUMN {column_name}_v2 CLOB CHECK (data IS JSON), "
-            f"ADD COLUMN metadata CLOB CHECK (data IS JSON), "
+            f"ADD COLUMN {column_name}_v2 CLOB CHECK ({column_name}_v2 IS JSON), "
+            f"ADD COLUMN metadata CLOB CHECK (metadata IS JSON), "
             f"ADD COLUMN user_field_1 NUMBER(1) DEFAULT 0, "
             f"ADD COLUMN user_field_2 NUMBER DEFAULT 0, "
-            f"ADD COLUMN VARCHAR2(255) DEFAULT NULL, "
+            f"ADD COLUMN user_field_3 VARCHAR2(255) DEFAULT NULL, "
             f"ADD COLUMN status VARCHAR2(10) CHECK (status IN ('ERROR', 'STATUS')), "
             f"ADD COLUMN error_message VARCHAR2(32767)"
         )

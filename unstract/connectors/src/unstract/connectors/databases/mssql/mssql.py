@@ -111,7 +111,7 @@ class MSSQL(UnstractDB):
             f"user_field_1 BIT DEFAULT 0, "
             f"user_field_2 INT DEFAULT 0, "
             f"user_field_3 TEXT DEFAULT NULL, "
-            f"status NVARCHAR(10) CHECK (status IN ('ERROR', 'STATUS')), "
+            f"status NVARCHAR(10) CHECK (status IN ('ERROR', 'SUCCESS')), "
             f"error_message TEXT, "
         )
         return sql_query
@@ -119,13 +119,13 @@ class MSSQL(UnstractDB):
     def prepare_multi_column_migration(self, table_name: str, column_name: str) -> str:
         sql_query = (
             f"ALTER TABLE {table_name} "
-            f"ADD COLUMN {column_name}_v2 NVARCHAR(MAX), "
-            f"ADD COLUMN metadata NVARCHAR(MAX), "
-            f"ADD COLUMN user_field_1 BIT DEFAULT 0, "
-            f"ADD COLUMN user_field_2 INT DEFAULT 0, "
-            f"ADD COLUMN user_field_3 TEXT DEFAULT NULL, "
-            f"ADD COLUMN status NVARCHAR(10) CHECK (status IN ('ERROR', 'STATUS')), "
-            f"ADD COLUMN error_message TEXT"
+            f"ADD {column_name}_v2 NVARCHAR(MAX), "
++           f"metadata NVARCHAR(MAX), "
++           f"user_field_1 BIT DEFAULT 0, "
++           f"user_field_2 INT DEFAULT 0, "
++           f"user_field_3 TEXT DEFAULT NULL, "
++           f"status NVARCHAR(10) CHECK (status IN ('ERROR', 'SUCCESS')), "
++           f"error_message TEXT"
         )
         return sql_query
 
