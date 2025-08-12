@@ -382,7 +382,7 @@ def _process_individual_files(context: dict[str, Any]) -> dict[str, Any]:
     """
     files = context["files"]
     file_data = context["file_data"]
-    q_file_no_list = context["q_file_no_list"]
+    # q_file_no_list = context["q_file_no_list"] # ARCHITECTURE FIX: q_file_no_list is not used in file processing worker
     use_file_history = context["use_file_history"]
     api_client = context["api_client"]
     workflow_execution = context["workflow_execution"]
@@ -439,10 +439,7 @@ def _process_individual_files(context: dict[str, Any]) -> dict[str, Any]:
         # Set use_file_history flag based on workflow determination
         file_hash.use_file_history = use_file_history
 
-        # Add file destination using same logic as Django backend
-        file_hash = _add_file_destination_filehash(
-            file_hash.file_number, q_file_no_list, file_hash
-        )
+        # Manual review decision already made in batch processing - no need to recalculate
 
         # Log manual review decision
         if (
@@ -1079,6 +1076,9 @@ def _create_file_hash_from_dict(file_hash_dict: dict[str, Any]) -> FileHashData:
             file_destination=file_hash_dict.get("file_destination"),
             is_executed=file_hash_dict.get("is_executed", False),
             file_number=file_hash_dict.get("file_number"),
+            is_manualreview_required=file_hash_dict.get(
+                "is_manualreview_required", False
+            ),
         )
 
         # Log warning if file_hash is empty (fallback case)

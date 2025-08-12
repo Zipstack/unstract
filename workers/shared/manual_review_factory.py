@@ -1,8 +1,8 @@
-"""Manual Review Service Factory - OSS Compatible Version
+"""Manual Review Service Factory.
 
-This factory provides manual review services using the plugin registry pattern.
-In the OSS version, it automatically falls back to null services that provide
-safe defaults for all manual review operations.
+Simplified plugin-aware factory for manual review services.
+Uses complete service implementations from plugins when available,
+falls back to minimal OSS null service otherwise.
 """
 
 from typing import Any, Protocol
@@ -117,43 +117,70 @@ class ManualReviewNullService:
 
 
 class ManualReviewServiceFactory:
-    """Factory for creating manual review services using plugin registry."""
+    """Plugin-aware factory for manual review services."""
 
     @staticmethod
     def create_service(
         api_client: Any, organization_id: str
     ) -> ManualReviewServiceProtocol:
-        """Create appropriate manual review service based on plugin availability.
-
-        In OSS, this always returns ManualReviewNullService since enterprise
-        manual review plugins are not available.
+        """Create manual review service using plugins when available.
 
         Args:
             api_client: Internal API client
             organization_id: Organization ID
 
         Returns:
-            ManualReviewNullService for OSS compatibility
+            Enhanced service if plugin available, null service otherwise
         """
-        logger.debug(
-            "OSS version - using ManualReviewNullService (manual review disabled)"
+        # Try to get enhanced service from plugin first
+        enhanced_service = ManualReviewServiceFactory._try_plugin_service(
+            api_client, organization_id
         )
+
+        if enhanced_service:
+            logger.debug("Using enhanced manual review service from plugin")
+            return enhanced_service
+
+        # Fall back to OSS null service
+        logger.debug("Using OSS null manual review service")
         return ManualReviewNullService(api_client, organization_id)
+
+    @staticmethod
+    def _try_plugin_service(
+        api_client: Any, organization_id: str
+    ) -> ManualReviewServiceProtocol | None:
+        """Try to create enhanced service from plugins."""
+        try:
+            from client_plugin_registry import get_client_plugin, has_client_plugin
+
+            # Check for manual review service plugin
+            if has_client_plugin("manual_review"):
+                service_plugin = get_client_plugin("manual_review", api_client.config)
+                if service_plugin:
+                    # Set organization context on the service
+                    service_plugin.set_organization_context(organization_id)
+                    return service_plugin
+
+            return None
+
+        except Exception as e:
+            logger.debug(f"Plugin service creation failed: {e}")
+            return None
 
 
 # Convenience function for easy usage
 def get_manual_review_service(
     api_client: Any, organization_id: str
 ) -> ManualReviewServiceProtocol:
-    """Get the appropriate manual review service.
+    """Get the appropriate manual review service using plugin registry.
 
-    In OSS, this always returns the null service that provides safe defaults.
+    This function eliminates the need for try/except ImportError blocks.
 
     Args:
         api_client: Internal API client
         organization_id: Organization ID
 
     Returns:
-        ManualReviewNullService for OSS compatibility
+        ManualReviewService if plugin available, ManualReviewNullService otherwise
     """
     return ManualReviewServiceFactory.create_service(api_client, organization_id)

@@ -14,7 +14,6 @@ from django.views.decorators.http import require_http_methods
 from .internal_url_registry import (
     get_base_endpoints,
     get_cloud_url_documentation,
-    get_cloud_url_patterns,
     get_internal_url_documentation,
     get_internal_url_patterns,
     initialize_internal_urls_from_settings,
@@ -195,10 +194,10 @@ def get_urlpatterns():
     dynamic_patterns = get_internal_url_patterns()
 
     # Get cloud URL patterns if available
-    cloud_patterns = get_cloud_url_patterns()
+    # cloud_patterns = get_cloud_url_patterns()  # COMMENTED OUT: Redundant with INTERNAL_URL_MODULES
 
-    # Combine all patterns: base + dynamic + cloud
-    return base_urlpatterns + dynamic_patterns + cloud_patterns
+    # Combine all patterns: base + dynamic (cloud modules loaded via INTERNAL_URL_MODULES)
+    return base_urlpatterns + dynamic_patterns
 
 
 # URL patterns - will include dynamic patterns based on settings

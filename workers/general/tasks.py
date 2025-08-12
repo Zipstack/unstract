@@ -634,7 +634,7 @@ def _orchestrate_file_processing_general(
                 total_files=len(source_files),
             )
         )
-
+        print(f"Global file data: {global_file_data}")
         # Pre-calculate file decisions for ALL files based on total count - not per batch!
         q_file_no_list = global_file_data.manual_review_config.get("q_file_no_list", [])
         logger.info(
@@ -863,8 +863,14 @@ def _create_batch_data_general(
     # Create enhanced files list with proper metadata handling
     enhanced_files = []
 
+    # Extract manual review decisions from file_data
+    manual_review_decisions = file_data.manual_review_config.get("file_decisions", [])
+    logger.info(
+        f"BATCH_DATA: Applying manual review decisions: {manual_review_decisions}"
+    )
+
     if source_files:
-        for file_name, file_hash in files:
+        for file_index, (file_name, file_hash) in enumerate(files):
             # DEBUG: Log file metadata mapping to detect collisions
             logger.info(f"BATCH_DATA: Processing file '{file_name}' in batch creation")
             logger.info(
@@ -961,6 +967,27 @@ def _create_batch_data_general(
                     f"  No source file data or enhanced_file_hash is not dict for '{file_name}'"
                 )
 
+            # CRITICAL FIX: Apply manual review decision to this file using GLOBAL file number
+            # Use the original file_number from the file hash, not the batch-local file_index
+            original_file_number = enhanced_file_hash.get(
+                "file_number", file_index + 1
+            )  # fallback to batch index + 1
+            global_q_file_no_list = file_data.manual_review_config.get(
+                "q_file_no_list", []
+            )
+
+            is_manual_review_required = original_file_number in global_q_file_no_list
+
+            # Set manual review fields in file hash
+            enhanced_file_hash["is_manualreview_required"] = is_manual_review_required
+            enhanced_file_hash["file_destination"] = (
+                "MANUALREVIEW" if is_manual_review_required else "destination"
+            )
+
+            logger.info(
+                f"  MANUAL REVIEW: File #{original_file_number} '{file_name}' (batch_index={file_index}) -> is_manualreview_required={is_manual_review_required}, global_q_file_no_list={global_q_file_no_list}"
+            )
+
             # DEBUG: Show final file_hash state
             logger.info(f"  Final file_hash for '{file_name}':")
             logger.info(
@@ -968,6 +995,12 @@ def _create_batch_data_general(
             )
             logger.info(f"    file_path: '{enhanced_file_hash.get('file_path')}'")
             logger.info(f"    file_name: '{enhanced_file_hash.get('file_name')}'")
+            logger.info(
+                f"    is_manualreview_required: '{enhanced_file_hash.get('is_manualreview_required')}'"
+            )
+            logger.info(
+                f"    file_destination: '{enhanced_file_hash.get('file_destination')}'"
+            )
             if enhanced_file_hash.get("connector_id"):
                 logger.info(
                     f"    connector_id: '{enhanced_file_hash.get('connector_id')}'"
@@ -975,8 +1008,35 @@ def _create_batch_data_general(
 
             enhanced_files.append((file_name, enhanced_file_hash))
     else:
-        # No source files, use original files
-        enhanced_files = files
+        # No source files, use original files but still apply manual review decisions
+        for file_index, (file_name, file_hash) in enumerate(files):
+            # Ensure file_hash is a dictionary we can modify
+            if isinstance(file_hash, dict):
+                enhanced_file_hash = file_hash.copy()
+            else:
+                enhanced_file_hash = {}
+
+            # CRITICAL FIX: Apply manual review decision to this file using GLOBAL file number
+            # Use the original file_number from the file hash, not the batch-local file_index
+            original_file_number = enhanced_file_hash.get(
+                "file_number", file_index + 1
+            )  # fallback to batch index + 1
+            global_q_file_no_list = file_data.manual_review_config.get(
+                "q_file_no_list", []
+            )
+
+            is_manual_review_required = original_file_number in global_q_file_no_list
+
+            # Set manual review fields in file hash
+            enhanced_file_hash["is_manualreview_required"] = is_manual_review_required
+            enhanced_file_hash["file_destination"] = (
+                "MANUALREVIEW" if is_manual_review_required else "destination"
+            )
+
+            logger.info(
+                f"  MANUAL REVIEW (no source): File #{original_file_number} '{file_name}' (batch_index={file_index}) -> is_manualreview_required={is_manual_review_required}, global_q_file_no_list={global_q_file_no_list}"
+            )
+            enhanced_files.append((file_name, enhanced_file_hash))
 
     # Create FileBatchData object
     return FileBatchData(files=enhanced_files, file_data=file_data)

@@ -1,4 +1,4 @@
-"""Internal URL Registry System
+"""Internal URL Registry System.
 
 This registry system allows dynamic loading of internal URLs based on settings
 configuration, similar to how Django apps are loaded. This provides clean
@@ -16,7 +16,7 @@ from typing import Any
 
 from django.urls import include, path
 
-from .base_internal_endpoints import get_base_internal_api_endpoints
+from backend.base_internal_endpoints import get_base_internal_api_endpoints
 
 logger = logging.getLogger(__name__)
 
@@ -104,8 +104,8 @@ def initialize_internal_urls_from_settings() -> None:
     """Initialize internal URLs based on Django settings.
 
     This function reads INTERNAL_URL_MODULES from settings and registers
-    them with the registry. This allows cloud deployments to automatically
-    include additional URLs without code changes.
+    them with the registry. This allows cloud deployments to
+    automatically include additional URLs without code changes.
     """
     from django.conf import settings
 
@@ -151,8 +151,9 @@ def initialize_internal_urls_from_settings() -> None:
 def get_base_endpoints() -> dict[str, str]:
     """Get base internal API endpoints that are common to all deployments.
 
-    This imports from the local base_internal_endpoints module to provide
-    the single source of truth for base endpoints.
+    This imports from the OSS backend base_internal_endpoints module to
+    ensure consistency and avoid duplication. OSS serves as the
+    foundation for cloud.
     """
     return get_base_internal_api_endpoints()
 

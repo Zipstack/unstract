@@ -41,42 +41,53 @@ class ClientPluginRegistry:
     def initialize_from_settings(self):
         """Initialize plugins from Django settings configuration."""
         if self._initialized:
+            logger.info("DEBUG: Plugin registry already initialized")
             return
 
+        logger.info("DEBUG: Initializing plugin registry from settings")
         try:
             from django.conf import settings
 
+            logger.info("DEBUG: Successfully imported Django settings")
+
             client_plugins = getattr(settings, "WORKERS_CLIENT_PLUGINS", {})
+            logger.info(f"DEBUG: Found WORKERS_CLIENT_PLUGINS: {client_plugins}")
 
             for plugin_name, plugin_config in client_plugins.items():
+                logger.info(f"DEBUG: Processing plugin '{plugin_name}': {plugin_config}")
                 if not plugin_config.get("enabled", False):
+                    logger.info(f"DEBUG: Plugin '{plugin_name}' is disabled, skipping")
                     continue
 
                 try:
                     self._load_plugin_from_config(plugin_name, plugin_config)
-                    logger.debug(f"Loaded client plugin: {plugin_name}")
+                    logger.info(
+                        f"DEBUG: Successfully loaded client plugin: {plugin_name}"
+                    )
                 except Exception as e:
                     logger.warning(f"Failed to load client plugin {plugin_name}: {e}")
 
-        except ImportError:
+        except ImportError as ie:
             # Django not available - try worker-specific initialization
-            logger.debug(
-                "Django not available, trying worker-specific plugin initialization"
+            logger.info(
+                f"DEBUG: Django not available (ImportError: {ie}), trying worker-specific plugin initialization"
             )
             self._initialize_worker_plugins()
         except Exception as e:
             logger.warning(f"Failed to initialize client plugins from settings: {e}")
+            import traceback
 
+            logger.warning(f"Full traceback: {traceback.format_exc()}")
+
+        logger.info(
+            f"DEBUG: Plugin registry initialization complete. Final plugins: {list(self._plugins.keys())}"
+        )
         self._initialized = True
 
     def _initialize_worker_plugins(self):
         """Initialize plugins for workers environment (no Django dependencies)."""
-        # Define worker-specific plugin configuration
-        worker_plugins = {
-            # Manual review plugin not available in OSS version
-            # Enterprise plugins are available in unstract-cloud
-            # Add other worker plugins here as needed
-        }
+        # Auto-discover plugins from plugin directories
+        worker_plugins = self._discover_worker_plugins()
 
         for plugin_name, plugin_config in worker_plugins.items():
             if not plugin_config.get("enabled", False):
@@ -87,6 +98,65 @@ class ClientPluginRegistry:
                 logger.debug(f"Loaded worker client plugin: {plugin_name}")
             except Exception as e:
                 logger.debug(f"Failed to load worker client plugin {plugin_name}: {e}")
+
+    def _discover_worker_plugins(self) -> dict[str, dict[str, Any]]:
+        """Auto-discover plugins from plugin directories."""
+        import importlib.util
+        import os
+
+        discovered_plugins = {}
+
+        # Get plugins directory
+        workers_dir = os.path.dirname(__file__)
+        plugins_dir = os.path.join(workers_dir, "plugins")
+
+        if not os.path.exists(plugins_dir):
+            logger.debug(f"Plugins directory not found: {plugins_dir}")
+            return discovered_plugins
+
+        logger.debug(f"Scanning for plugins in: {plugins_dir}")
+
+        # Scan plugin directories
+        for item in os.listdir(plugins_dir):
+            plugin_path = os.path.join(plugins_dir, item)
+
+            # Skip files, only process directories
+            if not os.path.isdir(plugin_path):
+                continue
+
+            # Skip __pycache__ and other system directories
+            if item.startswith("__") or item.startswith("."):
+                continue
+
+            init_file = os.path.join(plugin_path, "__init__.py")
+            if not os.path.exists(init_file):
+                logger.debug(f"Skipping {item}: no __init__.py found")
+                continue
+
+            try:
+                # Load the plugin's __init__.py to check for CLIENT_PLUGIN_CONFIG
+                spec = importlib.util.spec_from_file_location(
+                    f"plugins.{item}", init_file
+                )
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+
+                # Check if the plugin has CLIENT_PLUGIN_CONFIG
+                if hasattr(module, "CLIENT_PLUGIN_CONFIG"):
+                    config = module.CLIENT_PLUGIN_CONFIG
+                    # Use directory name as plugin name (standard convention)
+                    discovered_plugins[item] = config
+                    logger.debug(f"Discovered plugin: {item} with config: {config}")
+                else:
+                    logger.debug(f"Plugin {item} has no CLIENT_PLUGIN_CONFIG, skipping")
+
+            except Exception as e:
+                logger.debug(f"Failed to load plugin {item}: {e}")
+
+        logger.debug(
+            f"Discovered {len(discovered_plugins)} plugins: {list(discovered_plugins.keys())}"
+        )
+        return discovered_plugins
 
     def _load_plugin_from_config_worker(self, plugin_name: str, config: dict[str, Any]):
         """Load a plugin from configuration for workers (handles relative imports better)."""
@@ -207,6 +277,9 @@ class ClientPluginRegistry:
     def has_plugin(self, name: str) -> bool:
         """Check if a plugin is available."""
         self.initialize_from_settings()
+        logger.info(f"DEBUG: Checking plugin availability for '{name}'")
+        logger.info(f"DEBUG: Available plugins: {list(self._plugins.keys())}")
+        logger.info(f"DEBUG: Plugin '{name}' in registry: {name in self._plugins}")
         return name in self._plugins
 
     def list_available_plugins(self) -> list[dict[str, Any]]:

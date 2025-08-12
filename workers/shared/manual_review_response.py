@@ -1,77 +1,53 @@
-"""Manual Review Response Models - OSS Compatible Version
+"""Manual Review Response Classes.
 
-This module provides response models for manual review operations that work
-in both OSS and enterprise versions. The OSS version provides safe defaults.
+Consistent response formats for manual review operations. Extends the
+base response system for consistency.
 """
 
 from dataclasses import dataclass
 from typing import Any
 
+from .response_models import APIResponse
+
 
 @dataclass
-class ManualReviewResponse:
-    """Response model for manual review operations.
+class ManualReviewResponse(APIResponse):
+    """Consistent response format for manual review operations.
 
-    This class provides a consistent interface for manual review responses
-    that works in both OSS and enterprise versions.
+    Extends APIResponse to maintain consistency with the overall
+    response system.
     """
-
-    success: bool
-    data: dict[str, Any] | None = None
-    message: str | None = None
-    error: str | None = None
-    status_code: int = 200
 
     @classmethod
     def success_response(
-        cls,
-        data: dict[str, Any] | None = None,
-        message: str | None = None,
-        status_code: int = 200,
+        cls, data: dict[str, Any], message: str | None = None, status_code: int = 200
     ) -> "ManualReviewResponse":
-        """Create a successful response.
-
-        Args:
-            data: Response data
-            message: Success message
-            status_code: HTTP status code
-
-        Returns:
-            ManualReviewResponse indicating success
-        """
+        """Create a successful manual review response."""
         return cls(success=True, data=data, message=message, status_code=status_code)
 
     @classmethod
     def error_response(
-        cls, error: str, data: dict[str, Any] | None = None, status_code: int = 400
+        cls, error: str, message: str | None = None, status_code: int = 400
     ) -> "ManualReviewResponse":
-        """Create an error response.
+        """Create an error manual review response."""
+        return cls(success=False, error=error, message=message, status_code=status_code)
 
-        Args:
-            error: Error message
-            data: Error data
-            status_code: HTTP status code
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary format for backward compatibility."""
+        result = {
+            "success": self.success,
+        }
 
-        Returns:
-            ManualReviewResponse indicating error
-        """
-        return cls(success=False, data=data, error=error, status_code=status_code)
+        if self.data is not None:
+            result["data"] = self.data
 
-    @classmethod
-    def not_available_response(
-        cls, message: str = "Manual review not available in OSS version"
-    ) -> "ManualReviewResponse":
-        """Create a response indicating feature is not available in OSS.
+        if self.error is not None:
+            result["error"] = self.error
 
-        Args:
-            message: Message explaining unavailability
+        if self.message is not None:
+            result["message"] = self.message
 
-        Returns:
-            ManualReviewResponse indicating feature unavailable
-        """
-        return cls(
-            success=True,  # Still successful, just feature not available
-            data={"feature_available": False},
-            message=message,
-            status_code=200,
-        )
+        if self.status_code is not None:
+            result["status_code"] = self.status_code
+
+        return result

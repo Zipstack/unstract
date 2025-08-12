@@ -21,10 +21,10 @@ logger = logging.getLogger(__name__)
 class ManualReviewNullClient:
     """Null object implementation for manual review functionality in OSS.
 
-    This class provides safe, no-op implementations of all manual review methods,
-    allowing the OSS version to function without manual review capabilities.
-    All methods return appropriate default values that indicate manual review
-    is not available or not required.
+    This class provides safe, no-op implementations of all manual review
+    methods, allowing the OSS version to function without manual review
+    capabilities. All methods return appropriate default values that
+    indicate manual review is not available or not required.
     """
 
     def __init__(self, config: Any = None):
@@ -49,7 +49,8 @@ class ManualReviewNullClient:
     def get_q_no_list(
         self, workflow_id: str, total_files: int, organization_id: str | None = None
     ) -> ManualReviewResponse:
-        """Get queue file numbers for manual review (returns empty list in OSS).
+        """Get queue file numbers for manual review (returns empty list in
+        OSS).
 
         Args:
             workflow_id: Workflow ID
@@ -62,8 +63,9 @@ class ManualReviewNullClient:
         logger.debug(
             f"ManualReviewNullClient: get_q_no_list called for workflow {workflow_id} - returning empty list"
         )
-        return ManualReviewResponse.not_available_response(
-            message="Manual review not available in OSS - no files selected for review"
+        return ManualReviewResponse.success_response(
+            data={"q_file_no_list": []},
+            message="Manual review not available in OSS - no files selected for review",
         )
 
     def get_db_rules_data(
@@ -81,9 +83,111 @@ class ManualReviewNullClient:
         logger.debug(
             f"ManualReviewNullClient: get_db_rules_data called for workflow {workflow_id} - returning no rules"
         )
-        return ManualReviewResponse.not_available_response(
-            message="Manual review not available in OSS - no rules configured"
+        return ManualReviewResponse.success_response(
+            data={"rules": [], "percentage": 0, "review_required": False},
+            message="Manual review not available in OSS - no rules configured",
         )
+
+    def enqueue_manual_review(self, *args, **kwargs) -> dict[str, Any]:
+        """Enqueue item for manual review (no-op in OSS).
+
+        Returns:
+            Dictionary indicating manual review is not available
+        """
+        logger.debug(
+            "ManualReviewNullClient: enqueue_manual_review called - not available in OSS"
+        )
+        return {
+            "success": False,
+            "message": "Manual review not available in OSS version",
+            "queue_name": None,
+        }
+
+    def dequeue_manual_review(self, *args, **kwargs) -> dict[str, Any]:
+        """Dequeue item from manual review (no-op in OSS).
+
+        Returns:
+            Dictionary indicating no items available for review
+        """
+        logger.debug(
+            "ManualReviewNullClient: dequeue_manual_review called - not available in OSS"
+        )
+        return {
+            "success": False,
+            "message": "Manual review not available in OSS version",
+            "item": None,
+        }
+
+    def validate_manual_review_db_rule(self, *args, **kwargs) -> dict[str, Any]:
+        """Validate manual review database rule (no-op in OSS).
+
+        Returns:
+            Dictionary indicating validation is not available
+        """
+        logger.debug(
+            "ManualReviewNullClient: validate_manual_review_db_rule called - not available in OSS"
+        )
+        return {
+            "valid": False,
+            "message": "Manual review validation not available in OSS version",
+        }
+
+    def get_hitl_settings(
+        self, workflow_id: str, organization_id: str | None = None
+    ) -> dict[str, Any]:
+        """Get HITL settings for workflow (returns disabled in OSS).
+
+        Args:
+            workflow_id: Workflow ID
+            organization_id: Organization ID
+
+        Returns:
+            Dictionary indicating HITL is disabled
+        """
+        logger.debug(
+            f"ManualReviewNullClient: get_hitl_settings called for workflow {workflow_id} - returning disabled"
+        )
+        return {
+            "enabled": False,
+            "percentage": 0,
+            "auto_approval": False,
+            "message": "HITL settings not available in OSS version",
+        }
+
+    def get_manual_review_workflows(
+        self, connection_type: str = "MANUALREVIEW", organization_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Get workflows configured for manual review (returns empty list in
+        OSS).
+
+        Args:
+            connection_type: Connection type filter
+            organization_id: Organization ID
+
+        Returns:
+            Empty list indicating no workflows have manual review
+        """
+        logger.debug(
+            "ManualReviewNullClient: get_manual_review_workflows called - returning empty list"
+        )
+        return []
+
+    def get_queue_statistics(self, *args, **kwargs) -> dict[str, Any]:
+        """Get manual review queue statistics (returns empty stats in OSS).
+
+        Returns:
+            Dictionary with empty queue statistics
+        """
+        logger.debug(
+            "ManualReviewNullClient: get_queue_statistics called - returning empty stats"
+        )
+        return {
+            "total_queues": 0,
+            "total_items": 0,
+            "pending_review": 0,
+            "pending_approval": 0,
+            "message": "Queue statistics not available in OSS version",
+        }
 
     def close(self) -> None:
         """Close the client (no-op in null implementation)."""
@@ -112,9 +216,11 @@ class ManualReviewNullClient:
         )
 
         def safe_default(*args, **kwargs):
-            return ManualReviewResponse.not_available_response(
-                message=f"Manual review method '{name}' not available in OSS version"
-            )
+            return {
+                "success": False,
+                "message": f"Manual review method '{name}' not available in OSS version",
+                "data": None,
+            }
 
         return safe_default
 
