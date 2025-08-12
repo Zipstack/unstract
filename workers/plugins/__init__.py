@@ -22,7 +22,7 @@ Usage:
 """
 
 # Import the new settings-based registry system
-from ..plugin_registry import (
+from plugin_registry import (
     get_plugin,
     get_plugin_config,
     initialize_plugins,
