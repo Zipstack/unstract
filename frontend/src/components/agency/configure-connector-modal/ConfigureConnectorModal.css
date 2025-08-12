@@ -62,6 +62,10 @@
     margin-bottom: 8px;
 }
 
+.connector-selection-dropdown {
+    width: 100%;
+}
+
 .connector-selection-dropdown .ant-select-selector {
     height: 40px;
     padding: 4px 11px 4px 8px;
@@ -79,9 +83,24 @@
     cursor: pointer;
     background-color: #fafafa;
     transition: background-color 0.2s;
+
+    /* Button reset styles */
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    width: 100%;
+    text-align: left;
+    font-family: inherit;
+    font-size: inherit;
 }
 
 .connector-dropdown-add-new:hover {
+    background-color: #f0f0f0;
+}
+
+.connector-dropdown-add-new:focus {
+    outline: 2px solid #1890ff;
+    outline-offset: -2px;
     background-color: #f0f0f0;
 }
 

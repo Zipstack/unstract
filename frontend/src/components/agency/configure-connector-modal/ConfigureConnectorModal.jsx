@@ -364,23 +364,16 @@ function ConfigureConnectorModal({
       <>
         <div className="connector-dropdown-menu-container">{menu}</div>
         {addNewOption && (
-          <div
+          <button
             className="connector-dropdown-add-new"
             onClick={() => handleConnectorSelect("add_new")}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                handleConnectorSelect("add_new");
-              }
-            }}
-            tabIndex={0}
-            role="button"
+            type="button"
             aria-label="Add new connector"
           >
             <Space>
               <span>{addNewOption.label}</span>
             </Space>
-          </div>
+          </button>
         )}
       </>
     ),
@@ -448,7 +441,6 @@ function ConfigureConnectorModal({
               ),
               data: conn,
             }))}
-            style={{ width: "100%" }}
             optionRender={(option) => option.label}
             dropdownRender={renderDropdown}
           />
