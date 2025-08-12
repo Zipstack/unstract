@@ -39,7 +39,6 @@ class LLM:
     MAX_TOKENS = 4096
     JSON_REGEX = re.compile(r"\[(?:.|\n)*\]|\{(?:.|\n)*\}")
     JSON_CONTENT_MARKER = os.environ.get("JSON_SELECTION_MARKER", "§§§")
-    PLATFORM_API_KEY = os.environ.get(ToolEnv.PLATFORM_API_KEY, "")
 
     def __init__(
         self,
@@ -92,10 +91,10 @@ class LLM:
 
         if self._tool:
             self._platform_api_key = self._tool.get_env_or_die(ToolEnv.PLATFORM_API_KEY)
+            if not self._platform_api_key:
+                raise SdkError(f"Missing env variable '{ToolEnv.PLATFORM_API_KEY}'")
         else:
-            self._platform_api_key = LLM.PLATFORM_API_KEY
-        if not self._platform_api_key:
-            raise SdkError(f"Missing env variable '{ToolEnv.PLATFORM_API_KEY}'")
+            self._platform_api_key = os.environ.get(ToolEnv.PLATFORM_API_KEY, "")
 
         # Metrics capture.
         self._run_id = self.platform_kwargs.get("run_id")
