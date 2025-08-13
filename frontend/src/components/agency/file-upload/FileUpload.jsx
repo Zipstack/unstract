@@ -3,7 +3,7 @@ import { Modal, Upload, Button, message } from "antd";
 import { UploadOutlined } from "@ant-design/icons";
 import {
   MAX_WORKFLOW_EXECUTION_FILES,
-  WORKFLOW_VALIDATION_MESSAGES
+  WORKFLOW_VALIDATION_MESSAGES,
 } from "./WfConstants.js";
 
 const FileUpload = ({
