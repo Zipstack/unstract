@@ -1,6 +1,7 @@
 import logging
 from typing import Any
 
+from django.conf import settings
 from rest_framework.serializers import (
     CharField,
     ChoiceField,
@@ -22,9 +23,6 @@ from workflow_manager.workflow_v2.models.execution_log import ExecutionLog
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 logger = logging.getLogger(__name__)
-
-# Maximum number of files allowed per workflow execution
-MAX_EXECUTION_FILES = 2
 
 
 class WorkflowSerializer(IntegrityErrorMixin, AuditSerializer):
@@ -68,7 +66,7 @@ class WorkflowSerializer(IntegrityErrorMixin, AuditSerializer):
 
 
 class ExecuteWorkflowSerializer(Serializer):
-    workflow_id = UUIDField(required=False)
+    workflow_id = UUIDField(required=True)
     execution_action = ChoiceField(
         choices=Workflow.ExecutionAction.choices, required=False
     )
@@ -89,24 +87,17 @@ class ExecuteWorkflowSerializer(Serializer):
         return validated_data.get(WorkflowKey.EXECUTION_ACTION)
 
     def validate(self, data: dict[str, str | None]) -> dict[str, str | None]:
-        workflow_id = data.get(WorkflowKey.WF_ID)
-
-        if not workflow_id:
-            raise ValidationError({WorkflowKey.WF_ID: "This field is required."})
-
         # Validate file count from request context
         request = self.context.get(RequestKey.REQUEST)
         if request and hasattr(request, "FILES"):
             files = request.FILES.getlist("files")
-            if len(files) > MAX_EXECUTION_FILES:
-                raise ValidationError(
-                    {
-                        "files": (
-                            f"Maximum {MAX_EXECUTION_FILES} files are allowed for workflow execution. "
-                            f"You have uploaded {len(files)} files."
-                        )
-                    }
-                )
+            if len(files) > settings.MAX_WORKFLOW_EXECUTION_FILES:
+                raise ValidationError({
+                    "files": (
+                        f"Maximum {settings.MAX_WORKFLOW_EXECUTION_FILES} files are allowed for workflow execution. "
+                        f"You have uploaded '{len(files)}' files."
+                    )
+                })
 
         return data
 
