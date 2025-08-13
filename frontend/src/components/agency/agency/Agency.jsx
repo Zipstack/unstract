@@ -1103,14 +1103,6 @@ function Agency() {
                     source,
                     !allowChangeEndpoint
                   );
-                  // Show connector type for non-API configured connectors
-                  if (
-                    status?.configured &&
-                    source?.connection_type &&
-                    source?.connection_type !== "API"
-                  ) {
-                    return source?.connection_type;
-                  }
                   return status?.configured ? "✓" : "1";
                 })()}
                 title="Configure Source Connector"
@@ -1118,7 +1110,6 @@ function Agency() {
                 connType={sourceTypes.connectors[0]}
                 endpointDetails={source}
                 message={sourceMsg}
-                connectorIcon={source?.connector_instance?.icon}
               />
             </Col>
 
@@ -1130,14 +1121,6 @@ function Agency() {
                     destination,
                     !allowChangeEndpoint
                   );
-                  // Show connector type for non-API configured connectors
-                  if (
-                    status?.configured &&
-                    destination?.connection_type &&
-                    destination?.connection_type !== "API"
-                  ) {
-                    return destination?.connection_type;
-                  }
                   return status?.configured ? "✓" : "2";
                 })()}
                 title="Configure Destination Connector"
@@ -1145,7 +1128,6 @@ function Agency() {
                 connType={sourceTypes.connectors[1]}
                 endpointDetails={destination}
                 message={destinationMsg}
-                connectorIcon={destination?.connector_instance?.icon}
               />
             </Col>
             <Col span={12}>

@@ -214,27 +214,6 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
     return "";
   };
 
-  // Check if connector is configured
-  const isConnectorConfigured = () => {
-    // For API connections, connector_instance is not required
-    if (endpointDetails?.connection_type === "API") {
-      return true;
-    }
-
-    // For other connection types (Database, etc.), check if connector instance is configured
-    // connector_instance represents the actual configured connector with credentials
-    return !!endpointDetails?.connector_instance;
-  };
-
-  // Get configure button text based on configuration status
-  const getConfigureButtonText = () => {
-    if (!endpointDetails?.connection_type) {
-      return "Configure";
-    }
-
-    return isConnectorConfigured() ? "Configured" : "Configure";
-  };
-
   return (
     <>
       <Row className="ds-set-card-row">
@@ -282,7 +261,7 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
                     connMode === "APPDEPLOYMENT"
                   }
                 >
-                  {getConfigureButtonText()}
+                  Configure
                 </Button>
               </Tooltip>
             </Space>
