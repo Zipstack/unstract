@@ -98,7 +98,8 @@ class ExecuteWorkflowSerializer(Serializer):
                             f"Maximum {settings.MAX_WORKFLOW_EXECUTION_FILES} files are allowed for workflow execution. "
                             f"You have uploaded '{len(files)}' files."
                         )
-                    }
+                    },
+                    code="max_file_limit_exceeded",
                 )
 
         return data
