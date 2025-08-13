@@ -2,7 +2,7 @@ import json
 import logging
 from typing import Any
 
-from django.conf import settings
+from configuration.models import Configuration
 from django.db.models import QuerySet
 from django.http import HttpResponse
 from permissions.permission import IsOwner
@@ -110,7 +110,21 @@ class DeploymentExecution(views.APIView):
         response_status = status.HTTP_422_UNPROCESSABLE_ENTITY
         if response.execution_status == CeleryTaskState.COMPLETED.value:
             response_status = status.HTTP_200_OK
-            if not settings.ENABLE_HIGHLIGHT_API_DEPLOYMENT:
+            # Check if highlight data should be removed using configuration registry
+            api_deployment = deployment_execution_dto.api
+            organization = api_deployment.organization if api_deployment else None
+            enable_highlight = False  # Safe default if the key is unavailable (e.g., OSS)
+            # Check if the configuration key exists (Cloud deployment) or use settings (OSS)
+            from configuration.config_registry import ConfigurationRegistry
+
+            if ConfigurationRegistry.is_config_key_available(
+                "ENABLE_HIGHLIGHT_API_DEPLOYMENT"
+            ):
+                enable_highlight = Configuration.get_value_by_organization(
+                    config_key="ENABLE_HIGHLIGHT_API_DEPLOYMENT",
+                    organization=organization,
+                )
+            if not enable_highlight:
                 response.remove_result_metadata_keys(["highlight_data"])
             if not include_metadata:
                 response.remove_result_metadata_keys()
