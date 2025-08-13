@@ -54,6 +54,7 @@ function ConfigureConnectorModal({
   const [selectedFolderPath, setSelectedFolderPath] = useState("");
   const [isFolderSelected, setIsFolderSelected] = useState(false);
   const [initialFormDataConfig, setInitialFormDataConfig] = useState({});
+  const [initialConnectorId, setInitialConnectorId] = useState(null);
 
   const fileExplorerRef = useRef(null);
 
@@ -175,11 +176,6 @@ function ConfigureConnectorModal({
           // If an error occurs while setting custom posthog event, ignore it and continue
         }
       }
-
-      // Update endpoint with the selected connector
-      handleEndpointUpdate({
-        connector_instance_id: selectedConnector.connector.id,
-      });
     }
   };
 
@@ -197,8 +193,8 @@ function ConfigureConnectorModal({
       // Simply add the new connector to the existing list
       setAvailableConnectors((prev) => [...prev, newConnectorOption]);
 
-      // Update connDetails to select the new connector
-      setConnDetails(newConnectorData);
+      // Select the new connector
+      handleConnectorSelect(newConnectorData.id);
     }
   };
 
@@ -249,23 +245,30 @@ function ConfigureConnectorModal({
     folderSectionConfig[connType] || folderSectionConfig.input;
 
   const handleModalClose = async () => {
-    const hasChanges = !isEqual(formDataConfig, initialFormDataConfig);
+    const hasConfigChanges = !isEqual(formDataConfig, initialFormDataConfig);
+    const hasConnectorChanged = connDetails?.id !== initialConnectorId;
+    const hasChanges = hasConfigChanges || hasConnectorChanged;
 
-    // Auto-save configuration only if there are actual changes
-    if (
-      connDetails?.id &&
-      Object.keys(formDataConfig).length > 0 &&
-      hasChanges
-    ) {
+    // Auto-save if there are actual changes
+    if (hasChanges && connDetails?.id) {
       setIsSavingEndpoint(true);
       try {
-        await handleEndpointUpdate({ configuration: formDataConfig });
+        const updatePayload = {};
+        if (hasConnectorChanged) {
+          updatePayload.connector_instance_id = connDetails.id;
+        }
+        if (hasConfigChanges && Object.keys(formDataConfig).length > 0) {
+          updatePayload.configuration = formDataConfig;
+        }
+        if (Object.keys(updatePayload).length > 0) {
+          await handleEndpointUpdate(updatePayload);
+        }
         setOpen(false);
       } catch (error) {
         setAlertDetails({
           type: "error",
           content:
-            error?.message || "Failed to save configuration. Please try again.",
+            error?.message || "Failed to save changes. Please try again.",
         });
       } finally {
         setIsSavingEndpoint(false);
@@ -323,17 +326,24 @@ function ConfigureConnectorModal({
     }
   }, [open, connMode]);
 
-  // Capture initial configuration when modal opens
+  // Capture initial configuration and connector when modal opens
   useEffect(() => {
-    if (open && endpointDetails?.configuration) {
+    if (open) {
       // Store a deep copy of the initial configuration
-      setInitialFormDataConfig(cloneDeep(endpointDetails.configuration));
-    }
-    if (!open) {
+      if (endpointDetails?.configuration) {
+        setInitialFormDataConfig(cloneDeep(endpointDetails.configuration));
+      }
+      setInitialConnectorId(endpointDetails?.connector_instance?.id || null);
+    } else {
       // Reset when modal closes
       setInitialFormDataConfig({});
+      setInitialConnectorId(null);
     }
-  }, [open, endpointDetails?.configuration]);
+  }, [
+    open,
+    endpointDetails?.configuration,
+    endpointDetails?.connector_instance,
+  ]);
 
   // Helper function to render connector label
   const renderConnectorLabel = (connDetails, availableConnectors) => {
