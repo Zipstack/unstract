@@ -272,11 +272,44 @@ function Agency() {
     }
 
     try {
-      // Fetch API deployments and pipelines in parallel
-      const [apiDeployments, pipelines] = await Promise.all([
-        apiDeploymentService.getDeploymentsByWorkflowId(projectId),
-        pipelineServiceInstance.getPipelinesByWorkflowId(projectId),
-      ]);
+      // Determine which APIs to call based on connector configuration
+      const shouldFetchApiDeployments =
+        source?.connection_type === "API" &&
+        destination?.connection_type === "API";
+
+      const shouldFetchPipelines =
+        source?.connection_type === "FILESYSTEM" &&
+        (destination?.connection_type === "DATABASE" ||
+          destination?.connection_type === "FILESYSTEM" ||
+          destination?.connection_type === "MANUALREVIEW");
+
+      // If no valid deployment configuration, set null and return
+      if (!shouldFetchApiDeployments && !shouldFetchPipelines) {
+        if (!signal?.aborted) {
+          setDeploymentInfo(null);
+        }
+        return;
+      }
+
+      // Fetch only the relevant deployment types
+      const promises = [];
+      if (shouldFetchApiDeployments) {
+        promises.push(
+          apiDeploymentService.getDeploymentsByWorkflowId(projectId)
+        );
+      } else {
+        promises.push(Promise.resolve({ data: [] }));
+      }
+
+      if (shouldFetchPipelines) {
+        promises.push(
+          pipelineServiceInstance.getPipelinesByWorkflowId(projectId)
+        );
+      } else {
+        promises.push(Promise.resolve({ data: [] }));
+      }
+
+      const [apiDeployments, pipelines] = await Promise.all(promises);
 
       // Check if request was aborted before setting state
       if (signal?.aborted) {
@@ -655,6 +688,7 @@ function Agency() {
   }, [details?.tool_instances, details?.id]);
 
   // Refresh deployment info when allowChangeEndpoint changes (indicates deployment status change)
+  // Also refresh when source/destination connector types change since API calls are now conditional
   useEffect(() => {
     if (projectId) {
       const abortController = new AbortController();
@@ -664,7 +698,12 @@ function Agency() {
         abortController.abort();
       };
     }
-  }, [allowChangeEndpoint, projectId]);
+  }, [
+    allowChangeEndpoint,
+    projectId,
+    source?.connection_type,
+    destination?.connection_type,
+  ]);
 
   // Update progress whenever relevant state changes
   useEffect(() => {
