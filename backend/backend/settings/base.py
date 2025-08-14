@@ -108,6 +108,15 @@ DB_PASSWORD = os.environ.get("DB_PASSWORD", "unstract_pass")
 DB_PORT = os.environ.get("DB_PORT", 5432)
 DB_SCHEMA = os.environ.get("DB_SCHEMA", "unstract")
 
+# Celery Result Backend Database Configuration
+# Allow separate DB configuration for Celery result backend
+# Falls back to main DB settings if not specified
+CELERY_DB_HOST = os.environ.get("CELERY_DB_HOST", DB_HOST)
+CELERY_DB_USER = os.environ.get("CELERY_DB_USER", DB_USER)
+CELERY_DB_PASSWORD = os.environ.get("CELERY_DB_PASSWORD", DB_PASSWORD)
+CELERY_DB_NAME = os.environ.get("CELERY_DB_NAME", DB_NAME)
+CELERY_DB_PORT = os.environ.get("CELERY_DB_PORT", DB_PORT)
+
 DEFAULT_ORGANIZATION = "default_org"
 FLIPT_BASE_URL = os.environ.get("FLIPT_BASE_URL", "http://localhost:9005")
 PLATFORM_HOST = os.environ.get("PLATFORM_SERVICE_HOST", "http://localhost")

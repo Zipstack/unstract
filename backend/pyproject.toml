@@ -16,6 +16,7 @@ dependencies = [
     "Authlib==1.2.1",              # For Auth plugins
     "boto3~=1.34.0",               # For Unstract-cloud-storage
     "celery[amqp]>=5.3.4",         # For Celery
+    "gevent>=24.10.3",             # For Celery gevent pool
     "flower>=2.0.1",               # Celery Monitoring
     "cron-descriptor==1.4.0",      # For cron string description
     "cryptography>=41.0.7",
@@ -110,31 +111,31 @@ cmd = "uv run manage.py migrate"
 help = "Performs DB migrations for Unstract backend"
 
 [tool.poe.tasks.worker]
-cmd = "celery -A backend worker --loglevel=info -Q celery --autoscale 4,1"
+shell = "CELERY_POOL=gevent celery -A backend worker --loglevel=info -Q celery --pool=gevent --autoscale 4,1"
 help = "Runs the Unstract default worker"
 
 [tool.poe.tasks.worker-logging]
-cmd = "celery -A backend worker --loglevel=info -Q celery_periodic_logs,celery_log_task_queue --autoscale 4,1"
+shell = "CELERY_POOL=gevent celery -A backend worker --loglevel=info -Q celery_periodic_logs,celery_log_task_queue --pool=gevent --autoscale 4,1"
 help = "Runs the Unstract log management worker"
 
 [tool.poe.tasks.worker-api-deployment]
-cmd = "celery -A backend worker --loglevel=info -Q celery_api_deployments --autoscale 4,1"
+shell = "CELERY_POOL=gevent celery -A backend worker --loglevel=info -Q celery_api_deployments --pool=gevent --autoscale 4,1"
 help = "Runs the Unstract API deployment worker"
 
 [tool.poe.tasks.worker-file-processing]
-cmd = "celery -A backend.workers.file_processing worker --loglevel=info -Q file_processing --autoscale 4,1"
+shell = "CELERY_POOL=gevent celery -A backend.workers.file_processing worker --loglevel=info -Q file_processing --pool=gevent --autoscale 4,1"
 help = "Runs the Unstract file processing worker"
 
 [tool.poe.tasks.worker-api-file-processing]
-cmd = "celery -A backend.workers.file_processing worker --loglevel=info -Q api_file_processing --autoscale 4,1"
+shell = "CELERY_POOL=gevent celery -A backend.workers.file_processing worker --loglevel=info -Q api_file_processing --pool=gevent --autoscale 4,1"
 help = "Runs the Unstract file processing api worker"
 
 [tool.poe.tasks.worker-file-processing-callback]
-cmd = "celery -A backend.workers.file_processing_callback worker --loglevel=info -Q file_processing_callback --autoscale 4,1"
+shell = "CELERY_POOL=gevent celery -A backend.workers.file_processing_callback worker --loglevel=info -Q file_processing_callback --pool=gevent --autoscale 4,1"
 help = "Runs the Unstract file processing callback worker"
 
 [tool.poe.tasks.worker-api-file-processing-callback]
-cmd = "celery -A backend.workers.file_processing_callback worker --loglevel=info -Q api_file_processing_callback --autoscale 4,1"
+shell = "CELERY_POOL=gevent celery -A backend.workers.file_processing_callback worker --loglevel=info -Q api_file_processing_callback --pool=gevent --autoscale 4,1"
 help = "Runs the Unstract api file processing callback worker"
 
 [tool.poe.tasks.flower]
