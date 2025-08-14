@@ -125,9 +125,9 @@ function ConfigureConnectorModal({
 
         // Separate regular connectors from "Add new connector" option
         const regularConnectors = connectors.map((conn) => ({
-          value: conn.id,
-          label: conn.connector_name,
-          icon: conn.icon,
+          value: conn?.id,
+          label: conn?.connector_name,
+          icon: conn?.icon,
           connector: conn,
         }));
 
