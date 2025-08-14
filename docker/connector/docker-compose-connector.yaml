@@ -22,14 +22,21 @@ services:
       - mysql_data:/var/lib/mysql
 
   mssql:
-    image: mcr.microsoft.com/mssql/server:2022-preview-ubuntu-22.04
+    image: mcr.microsoft.com/mssql/server:2022-latest
     container_name: unstract-mssql
+    user: "0:0"
     env_file:
       - .env
     ports:
       - "1433:1433"
     volumes:
       - mssql_data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U SA -P $$MSSQL_SA_PASSWORD -C -Q 'SELECT 1'"]
+      interval: 10s
+      retries: 10
+      start_period: 10s
+      timeout: 3s
 
   sftp:
     image: atmoz/sftp:debian
