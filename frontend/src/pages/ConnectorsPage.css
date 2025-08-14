@@ -1,0 +1,22 @@
+.connectors-layout {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.connectors-pg-layout {
+  background-color: var(--page-bg-2);
+  padding: 12px;
+  height: 100%;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.connectors-pg-body {
+  background-color: var(--white);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+}

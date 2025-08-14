@@ -137,13 +137,17 @@ const EtlTaskDeploy = ({
   };
 
   useEffect(() => {
-    if (type === "app") {
-      getWorkflowList();
-    } else {
-      getWorkflows();
+    // Only fetch workflow list when workflowId is not provided
+    // If workflowId exists, the workflow dropdown is hidden and list fetching is unnecessary
+    if (!workflowId) {
+      if (type === "app") {
+        getWorkflowList();
+      } else {
+        getWorkflows();
+      }
     }
     fetchCount();
-  }, [type, fetchCount]);
+  }, [type, fetchCount, workflowId]);
 
   const clearFormDetails = () => {
     setFormDetails({ ...defaultFromDetails });

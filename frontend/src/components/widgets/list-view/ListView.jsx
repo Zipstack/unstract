@@ -115,7 +115,7 @@ function ListView({
           {handleShare && (
             <ShareAltOutlined
               key={`${item.id}-share`}
-              className="action-icon-buttons"
+              className="action-icon-buttons share-icon"
               onClick={(event) => handleShareClick(event, item, true)}
             />
           )}

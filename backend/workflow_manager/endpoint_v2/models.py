@@ -53,7 +53,7 @@ class WorkflowEndpoint(BaseModel):
 
     connector_instance = models.ForeignKey(
         ConnectorInstance,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         db_index=True,
         null=True,
         db_comment="Foreign key from ConnectorInstance model",

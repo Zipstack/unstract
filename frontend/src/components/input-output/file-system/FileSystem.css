@@ -1,12 +1,11 @@
 .storageExplorer {
   height: 100%;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .explorerTree {
   height: calc(100% - 66px);
   overflow: auto;
-  padding-inline: 8px;
   padding-block: 8px;
   margin-block-start: 4px;
 }
@@ -21,7 +20,6 @@
   display: inline-grid;
   grid-template-columns: 1fr auto auto;
   column-gap: 20px;
-  margin-inline-start: 2px;
 }
 
 .toolBar {
