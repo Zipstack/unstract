@@ -1,3 +1,11 @@
+# CRITICAL: Apply gevent patches first, before any other imports
+try:
+    from backend.gevent_init import apply_gevent_patches
+
+    apply_gevent_patches()
+except ImportError:
+    pass  # gevent not available
+
 import os
 
 from kombu import Queue

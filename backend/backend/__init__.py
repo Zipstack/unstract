@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+# Check if gevent patches were applied early
 def should_apply_gevent():
     """Determine if we should apply gevent patches.
 
@@ -33,10 +34,7 @@ if should_apply_gevent():
     import logging
 
     logger = logging.getLogger(__name__)
-    logger.info("APPLIED GEVENT MONKEY PATCHES - Celery worker detected")
-    from gevent import monkey
-
-    monkey.patch_all()
+    logger.info("Gevent patches should be applied via gevent_init module")
 
     # CRITICAL: Patch Unstract SDK to use our pure boto3 implementation
     def patch_unstract_sdk_for_gevent():
