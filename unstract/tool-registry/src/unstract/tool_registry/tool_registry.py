@@ -2,8 +2,14 @@ import logging
 import os
 from typing import Any
 
-from unstract.sdk.exceptions import FileStorageError
-from unstract.sdk.file_storage import EnvHelper, FileStorage, StorageType
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.exceptions import FileStorageError
+    from unstract.sdk1.file_storage import EnvHelper, FileStorage, StorageType
+else:
+    from unstract.sdk.exceptions import FileStorageError
+    from unstract.sdk.file_storage import EnvHelper, FileStorage, StorageType
 from unstract.tool_registry.constants import PropKey, ToolJsonField, ToolKey
 from unstract.tool_registry.dto import Tool
 from unstract.tool_registry.exceptions import InvalidToolURLException

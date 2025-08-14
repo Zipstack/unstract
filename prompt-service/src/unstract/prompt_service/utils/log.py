@@ -1,6 +1,11 @@
 from unstract.core.pubsub_helper import LogPublisher
+from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.prompt_service.constants import RunLevel
-from unstract.sdk.constants import LogLevel
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.constants import LogLevel
+else:
+    from unstract.sdk.constants import LogLevel
 
 
 def publish_log(

@@ -1,0 +1,23 @@
+{
+  "title": "Unstructured IO Community Text Extractor",
+  "type": "object",
+  "required": [
+    "adapter_name",
+    "url"
+  ],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this adapter instance. Example: Unstructured IO 1"
+    },
+    "url": {
+      "type": "string",
+      "title": "URL",
+      "format": "uri",
+      "default": "http://unstract-unstructured-io:8000/general/v0/general",
+      "description": "Provide the URL of Unstructured IO server."
+    }
+  }
+}

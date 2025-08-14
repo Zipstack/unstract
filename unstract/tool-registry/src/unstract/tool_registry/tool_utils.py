@@ -3,8 +3,15 @@ import logging
 import re
 from typing import Any
 
-from unstract.sdk.adapters.enums import AdapterTypes
-from unstract.sdk.file_storage import FileStorage, FileStorageProvider
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.constants import AdapterTypes
+    from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
+else:
+    from unstract.sdk.adapters.enums import AdapterTypes
+    from unstract.sdk.file_storage import FileStorage, FileStorageProvider
+
 from unstract.tool_registry.constants import AdapterPropertyKey, Tools
 from unstract.tool_registry.dto import AdapterProperties, Spec, Tool, ToolMeta
 from unstract.tool_registry.exceptions import InvalidToolURLException, RegistryNotFound

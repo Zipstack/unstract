@@ -67,12 +67,22 @@ from prompt_studio.prompt_studio_output_manager_v2.output_manager_helper import 
 )
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from unstract.core.pubsub_helper import LogPublisher
-from unstract.sdk.constants import LogLevel
-from unstract.sdk.exceptions import IndexingError, SdkError
-from unstract.sdk.file_storage.constants import StorageType
-from unstract.sdk.file_storage.env_helper import EnvHelper
-from unstract.sdk.prompt import PromptTool
-from unstract.sdk.utils.indexing_utils import IndexingUtils
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.constants import LogLevel
+    from unstract.sdk1.exceptions import IndexingError, SdkError
+    from unstract.sdk1.file_storage.constants import StorageType
+    from unstract.sdk1.file_storage.env_helper import EnvHelper
+    from unstract.sdk1.prompt import PromptTool
+    from unstract.sdk1.utils.indexing import IndexingUtils
+else:
+    from unstract.sdk.constants import LogLevel
+    from unstract.sdk.exceptions import IndexingError, SdkError
+    from unstract.sdk.file_storage.constants import StorageType
+    from unstract.sdk.file_storage.env_helper import EnvHelper
+    from unstract.sdk.prompt import PromptTool
+    from unstract.sdk.utils.indexing_utils import IndexingUtils
 
 logger = logging.getLogger(__name__)
 
@@ -408,6 +418,7 @@ class PromptStudioHelper:
             fs=fs_instance,
             tool=util,
         )
+
         extracted_text = PromptStudioHelper.dynamic_extractor(
             profile_manager=default_profile,
             file_path=file_path,
@@ -836,6 +847,7 @@ class PromptStudioHelper:
             storage_type=StorageType.PERMANENT,
             env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
         )
+        util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
         file_path = doc_path
         directory, filename = os.path.split(doc_path)
         doc_path = os.path.join(
@@ -843,7 +855,6 @@ class PromptStudioHelper:
         )
         is_summary = tool.summarize_as_source
         logger.info(f"Summary status : {is_summary}")
-        util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
         logger.info(
             f"Passing file_path for fetching answer "
             f"{file_path} : extraction path {doc_path}"
@@ -1198,7 +1209,6 @@ class PromptStudioHelper:
         # has access to adapters configured in profile manager
         PromptStudioHelper.validate_profile_manager_owner_access(default_profile)
         default_profile.chunk_size = 0  # To retrive full context
-        util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
         if prompt_grammar:
             for word, synonyms in prompt_grammar.items():
                 grammar.append({TSPKeys.WORD: word, TSPKeys.SYNONYMS: synonyms})
@@ -1210,6 +1220,7 @@ class PromptStudioHelper:
             storage_type=StorageType.PERMANENT,
             env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
         )
+        util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
         directory, filename = os.path.split(input_file_path)
         file_path = os.path.join(
             directory, "extract", os.path.splitext(filename)[0] + ".txt"

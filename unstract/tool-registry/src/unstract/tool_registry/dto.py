@@ -1,7 +1,13 @@
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from unstract.sdk.adapters.enums import AdapterTypes
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.constants import AdapterTypes
+else:
+    from unstract.sdk.adapters.enums import AdapterTypes
+
 from unstract.tool_registry.constants import AdapterPropertyKey
 
 
