@@ -5,13 +5,12 @@ from typing import Any
 import weaviate
 from llama_index.core.vector_stores.types import BasePydanticVectorStore
 from llama_index.vector_stores.weaviate import WeaviateVectorStore
-from weaviate.classes.init import Auth
-from weaviate.exceptions import UnexpectedStatusCodeException
-
 from unstract.sdk1.adapters.exceptions import AdapterError
 from unstract.sdk1.adapters.vectordb.constants import VectorDbConstants
 from unstract.sdk1.adapters.vectordb.helper import VectorDBHelper
 from unstract.sdk1.adapters.vectordb.vectordb_adapter import VectorDBAdapter
+from weaviate.classes.init import Auth
+from weaviate.exceptions import UnexpectedStatusCodeException
 
 logger = logging.getLogger(__name__)
 

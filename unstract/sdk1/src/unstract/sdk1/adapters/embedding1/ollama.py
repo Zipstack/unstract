@@ -38,4 +38,3 @@ class OllamaEmbeddingAdapter(OllamaParameters, BaseAdapter):
     @staticmethod
     def get_adapter_type() -> AdapterTypes:
         return AdapterTypes.EMBEDDING
-

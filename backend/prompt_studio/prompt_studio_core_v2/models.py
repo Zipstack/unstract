@@ -6,7 +6,6 @@ from account_v2.models import User
 from adapter_processor_v2.models import AdapterInstance
 from django.db import models
 from django.db.models import QuerySet
-from prompt_studio.prompt_studio_core_v2.constants import DefaultPrompts
 from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.models.base_model import BaseModel
@@ -15,6 +14,7 @@ from utils.models.organization_mixin import (
     DefaultOrganizationMixin,
 )
 
+from prompt_studio.prompt_studio_core_v2.constants import DefaultPrompts
 from unstract.flags.feature_flag import check_feature_flag_status
 
 if check_feature_flag_status("sdk1"):

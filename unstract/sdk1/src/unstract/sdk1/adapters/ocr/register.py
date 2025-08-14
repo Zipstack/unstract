@@ -26,9 +26,7 @@ class OCRRegistry(AdapterRegistry):
             logger.warning("No ocr adapter found.")
 
     @staticmethod
-    def _build_adapter_list(
-        adapter: str, package: str, adapters: dict[str, Any]
-    ) -> None:
+    def _build_adapter_list(adapter: str, package: str, adapters: dict[str, Any]) -> None:
         try:
             full_module_path = f"{package}.{adapter}.{Common.SRC_FOLDER}"
             module = import_module(full_module_path)

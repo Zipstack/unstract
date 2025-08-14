@@ -21,6 +21,7 @@ class AdapterTypes(Enum):
     OCR = "OCR"
     X2TEXT = "X2TEXT"
 
+
 from enum import Enum
 
 

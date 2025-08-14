@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Any
 
 from jsonschema import Draft202012Validator, ValidationError, validators
-
 from unstract.sdk1.constants import MetadataKey, PropKey
 from unstract.sdk1.tool.base import BaseTool
 from unstract.sdk1.tool.mime_types import EXT_MIME_MAP
@@ -49,7 +48,8 @@ DefaultsGeneratingValidator = extend_with_default(Draft202012Validator)
 
 class ToolValidator:
     """Class to validate a tool and its configuration before its executed with
-    an input."""
+    an input.
+    """
 
     def __init__(self, tool: BaseTool) -> None:
         self.tool = tool

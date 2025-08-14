@@ -41,7 +41,8 @@ class MetricsMixin:
 
     def set_start_time(self, ttl=86400):
         """Store the current timestamp in Redis when the instance is
-        created."""
+        created.
+        """
         if self.redis_client is None:
             logger.error("Redis client is not initialized. Cannot set start time.")
             return

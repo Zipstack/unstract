@@ -2,15 +2,15 @@ import json
 from typing import Any
 
 from account_v2.serializer import UserSerializer
-from adapter_processor_v2.adapter_processor import AdapterProcessor
-from adapter_processor_v2.constants import AdapterKeys
-from backend.constants import FieldLengthConstants as FLC
-from backend.serializers import AuditSerializer
 from cryptography.fernet import Fernet
 from django.conf import settings
 from rest_framework import serializers
 from rest_framework.serializers import ModelSerializer
 
+from adapter_processor_v2.adapter_processor import AdapterProcessor
+from adapter_processor_v2.constants import AdapterKeys
+from backend.constants import FieldLengthConstants as FLC
+from backend.serializers import AuditSerializer
 from unstract.flags.feature_flag import check_feature_flag_status
 
 if check_feature_flag_status("sdk1"):
@@ -76,7 +76,7 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
         rep[AdapterKeys.ADAPTER_METADATA] = adapter_metadata
         # Retrieve context window if adapter is a LLM
         # For other adapter types, context_window is not relevant.
-        
+
         if instance.adapter_type == AdapterTypes.LLM.value:
             adapter_metadata[AdapterKeys.ADAPTER_CONTEXT_WINDOW_SIZE] = (
                 instance.get_context_window_size()
@@ -84,7 +84,7 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
 
         rep[common.ICON] = AdapterProcessor.get_adapter_data_with_key(
             instance.adapter_id, common.ICON
-        )            
+        )
         rep[AdapterKeys.ADAPTER_CREATED_BY] = instance.created_by.email
 
         return rep

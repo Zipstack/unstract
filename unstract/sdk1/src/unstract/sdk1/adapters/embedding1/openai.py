@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from unstract.sdk1.adapters.base1 import BaseAdapter, OpenAIParameters
@@ -18,7 +17,7 @@ class OpenAIEmbeddingAdapter(OpenAIParameters, BaseAdapter):
             "adapter": OpenAIEmbeddingAdapter,
             "description": "OpenAI embedding adapter",
             "is_active": True,
-    }
+        }
 
     @staticmethod
     def get_name() -> str:

@@ -12,12 +12,12 @@ class AnyscaleLLMAdapter(AnyscaleParameters, BaseAdapter):
     @staticmethod
     def get_metadata() -> dict[str, Any]:
         return {
-        "name": "Anyscale",
-        "version": "1.0.0",
-        "adapter": AnyscaleLLMAdapter,
-        "description": "Anyscale LLM adapter",
-        "is_active": True,
-    }
+            "name": "Anyscale",
+            "version": "1.0.0",
+            "adapter": AnyscaleLLMAdapter,
+            "description": "Anyscale LLM adapter",
+            "is_active": True,
+        }
 
     @staticmethod
     def get_name() -> str:
@@ -38,4 +38,3 @@ class AnyscaleLLMAdapter(AnyscaleParameters, BaseAdapter):
     @staticmethod
     def get_adapter_type() -> AdapterTypes:
         return AdapterTypes.LLM
-

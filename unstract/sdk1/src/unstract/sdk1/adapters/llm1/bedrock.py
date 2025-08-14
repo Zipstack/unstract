@@ -17,7 +17,7 @@ class AWSBedrockLLMAdapter(AWSBedrockParameters, BaseAdapter):
             "adapter": AWSBedrockLLMAdapter,
             "description": "AWSBedrock LLM adapter",
             "is_active": True,
-    }
+        }
 
     @staticmethod
     def get_name() -> str:
@@ -38,4 +38,3 @@ class AWSBedrockLLMAdapter(AWSBedrockParameters, BaseAdapter):
     @staticmethod
     def get_adapter_type() -> AdapterTypes:
         return AdapterTypes.LLM
-

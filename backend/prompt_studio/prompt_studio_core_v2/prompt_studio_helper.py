@@ -12,6 +12,11 @@ from adapter_processor_v2.constants import AdapterKeys
 from adapter_processor_v2.models import AdapterInstance
 from django.conf import settings
 from django.db.models.manager import BaseManager
+from rest_framework.request import Request
+from utils.file_storage.constants import FileStorageKeys
+from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
+from utils.local_context import StateStore
+
 from prompt_studio.modifier_loader import ModifierConfig
 from prompt_studio.modifier_loader import load_plugins as load_modifier_plugins
 from prompt_studio.processor_loader import get_plugin_class_by_name
@@ -20,10 +25,14 @@ from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_profile_manager_v2.profile_manager_helper import (
     ProfileManagerHelper,
 )
-from prompt_studio.prompt_studio_core_v2.constants import DefaultValues, ExecutionSource
+from prompt_studio.prompt_studio_core_v2.constants import (
+    DefaultValues,
+    ExecutionSource,
+    IndexingStatus,
+    LogLevels,
+    ToolStudioPromptKeys,
+)
 from prompt_studio.prompt_studio_core_v2.constants import IndexingConstants as IKeys
-from prompt_studio.prompt_studio_core_v2.constants import IndexingStatus, LogLevels
-from prompt_studio.prompt_studio_core_v2.constants import ToolStudioPromptKeys
 from prompt_studio.prompt_studio_core_v2.constants import (
     ToolStudioPromptKeys as TSPKeys,
 )
@@ -57,11 +66,6 @@ from prompt_studio.prompt_studio_output_manager_v2.output_manager_helper import 
     OutputManagerHelper,
 )
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
-from rest_framework.request import Request
-from utils.file_storage.constants import FileStorageKeys
-from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
-from utils.local_context import StateStore
-
 from unstract.core.pubsub_helper import LogPublisher
 from unstract.flags.feature_flag import check_feature_flag_status
 
@@ -437,7 +441,7 @@ class PromptStudioHelper:
                 chunk_overlap=str(summary_profile.chunk_overlap),
                 file_path=summarize_file_path,
                 fs=fs_instance,
-                tool=util
+                tool=util,
             )
             PromptStudioIndexHelper.handle_index_manager(
                 document_id=document_id,
@@ -1163,14 +1167,9 @@ class PromptStudioHelper:
                 org_id=org_id, user_id=user_id, doc_id_key=doc_id_key, doc_id=doc_id
             )
             return {"status": IndexingStatus.COMPLETED_STATUS.value, "output": doc_id}
-        except (
-            IndexingError,
-            IndexingAPIError,
-            SdkError
-        ) as e:
+        except (IndexingError, IndexingAPIError, SdkError) as e:
             msg = str(e)
-            if isinstance(e, SdkError) and \
-                hasattr(e.actual_err, "response"):
+            if isinstance(e, SdkError) and hasattr(e.actual_err, "response"):
                 msg = e.actual_err.response.json().get("error", str(e))
 
             msg = f"Error while indexing '{filename}'. {msg}"
@@ -1235,8 +1234,8 @@ class PromptStudioHelper:
             file_path=input_file_path,
             file_hash=None,
             fs=fs_instance,
-                tool=util,
-            )
+            tool=util,
+        )
         PromptStudioHelper.dynamic_extractor(
             profile_manager=default_profile,
             file_path=input_file_path,

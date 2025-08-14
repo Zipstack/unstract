@@ -19,10 +19,10 @@ from utils.models.organization_mixin import (
 from unstract.flags.feature_flag import check_feature_flag_status
 
 if check_feature_flag_status("sdk1"):
+    from unstract.sdk.adapters.adapterkit import Adapterkit
     from unstract.sdk1.constants import AdapterTypes
     from unstract.sdk1.exceptions import SdkError
     from unstract.sdk1.llm import LLM
-    from unstract.sdk.adapters.adapterkit import Adapterkit
 else:
     from unstract.sdk.adapters.adapterkit import Adapterkit
     from unstract.sdk.adapters.enums import AdapterTypes
@@ -173,7 +173,9 @@ class AdapterInstance(DefaultOrganizationMixin, BaseModel):
                 logger.warning(f"Unable to retrieve context window size: {e}")
         else:
             try:
-                adapter_class = Adapterkit().get_adapter_class_by_adapter_id(self.adapter_id)
+                adapter_class = Adapterkit().get_adapter_class_by_adapter_id(
+                    self.adapter_id
+                )
                 adapter_instance = adapter_class(self.metadata)
                 return adapter_instance.get_context_window_size()
             except AdapterError as e:

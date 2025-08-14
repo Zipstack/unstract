@@ -4,6 +4,7 @@
 Multiple extensions can be mapped to the same MIME type Through
 http://svn.apache.org/repos/asf/httpd/httpd/trunk/docs/conf/mime.types
 """
+
 EXT_MIME_MAP = {
     "123": "application/vnd.lotus-1-2-3",
     "3dml": "text/vnd.in3d.3dml",

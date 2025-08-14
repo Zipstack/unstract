@@ -12,4 +12,11 @@ adapters: dict[str, dict[str, Any]] = {}
 
 register_adapters(adapters, AdapterTypes.EMBEDDING.name)
 
-__all__ = ["adapters", "AzureOpenAIEmbeddingAdapter", "AWSBedrockEmbeddingAdapter", "OpenAIEmbeddingAdapter", "VertexAIEmbeddingAdapter", "OllamaEmbeddingAdapter"]
+__all__ = [
+    "adapters",
+    "AzureOpenAIEmbeddingAdapter",
+    "AWSBedrockEmbeddingAdapter",
+    "OpenAIEmbeddingAdapter",
+    "VertexAIEmbeddingAdapter",
+    "OllamaEmbeddingAdapter",
+]

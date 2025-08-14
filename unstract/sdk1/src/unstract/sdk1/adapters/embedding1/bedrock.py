@@ -38,4 +38,3 @@ class AWSBedrockEmbeddingAdapter(AWSBedrockParameters, BaseAdapter):
     @staticmethod
     def get_adapter_type() -> AdapterTypes:
         return AdapterTypes.EMBEDDING
-

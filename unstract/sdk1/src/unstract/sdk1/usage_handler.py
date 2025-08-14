@@ -3,7 +3,6 @@ from typing import Any
 from llama_index.core.callbacks import CBEventType, TokenCountingHandler
 from llama_index.core.callbacks.base_handler import BaseCallbackHandler
 from llama_index.core.embeddings import BaseEmbedding
-
 from unstract.sdk1.audit import Audit
 from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.tool.stream import StreamMixin

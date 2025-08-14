@@ -5,7 +5,6 @@ import logging
 import os
 from typing import Any
 
-from backend.exceptions import UnstractFSException
 from connector_v2.models import ConnectorInstance
 from plugins.workflow_manager.workflow_v2.utils import WorkflowUtil
 from rest_framework.exceptions import APIException
@@ -34,6 +33,7 @@ from workflow_manager.utils.workflow_log import WorkflowLog
 from workflow_manager.workflow_v2.models.file_history import FileHistory
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
+from backend.exceptions import UnstractFSException
 from unstract.connectors.exceptions import ConnectorError
 from unstract.filesystem import FileStorageType, FileSystem
 from unstract.flags.feature_flag import check_feature_flag_status

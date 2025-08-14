@@ -12,12 +12,12 @@ class VertexAIEmbeddingAdapter(VertexAIParameters, BaseAdapter):
     @staticmethod
     def get_metadata() -> dict[str, Any]:
         return {
-        "name": "VertexAI",
-        "version": "1.0.0",
-        "adapter": VertexAIEmbeddingAdapter,
-        "description": "VertexAI embedding adapter",
-        "is_active": True,
-    }
+            "name": "VertexAI",
+            "version": "1.0.0",
+            "adapter": VertexAIEmbeddingAdapter,
+            "description": "VertexAI embedding adapter",
+            "is_active": True,
+        }
 
     @staticmethod
     def get_name() -> str:
@@ -38,4 +38,3 @@ class VertexAIEmbeddingAdapter(VertexAIParameters, BaseAdapter):
     @staticmethod
     def get_adapter_type() -> AdapterTypes:
         return AdapterTypes.EMBEDDING
-

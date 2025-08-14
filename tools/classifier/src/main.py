@@ -1,14 +1,15 @@
 import sys
 from typing import Any
 
-from helper import ClassifierHelper  # type: ignore
-from helper import ReservedBins
+from helper import (
+    ClassifierHelper,  # type: ignore
+    ReservedBins,
+)
 
 from unstract.flags.feature_flag import check_feature_flag_status
 
 if check_feature_flag_status("sdk1"):
     from unstract.sdk1.constants import (
-        Common,
         LogLevel,
         LogState,
         MetadataKey,
@@ -119,7 +120,7 @@ class UnstractClassifier(BaseTool):
                 max_tokens = llm.get_max_tokens(
                     adapter_instance_id=llm_adapter_instance_id,
                     tool=self,
-                    reserved_for_output=50 + 1000
+                    reserved_for_output=50 + 1000,
                 )
             else:
                 llm = LLM(

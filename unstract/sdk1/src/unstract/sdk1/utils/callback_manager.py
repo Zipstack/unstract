@@ -5,7 +5,6 @@ import tiktoken
 from llama_index.core.callbacks import CallbackManager as LlamaIndexCallbackManager
 from llama_index.core.callbacks import TokenCountingHandler
 from llama_index.core.embeddings import BaseEmbedding
-
 from unstract.sdk1.usage_handler import UsageHandler
 
 logger = logging.getLogger(__name__)

@@ -2,7 +2,6 @@ import logging
 from typing import Any
 
 from singleton_decorator import singleton
-
 from unstract.sdk1.adapters import AdapterDict
 from unstract.sdk1.adapters.base import Adapter
 from unstract.sdk1.adapters.constants import Common

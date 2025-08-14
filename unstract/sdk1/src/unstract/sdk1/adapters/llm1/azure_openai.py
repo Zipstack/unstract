@@ -17,7 +17,7 @@ class AzureOpenAILLMAdapter(AzureOpenAIParameters, BaseAdapter):
             "adapter": AzureOpenAILLMAdapter,
             "description": "AzureOpenAI LLM adapter",
             "is_active": True,
-    }
+        }
 
     @staticmethod
     def get_name() -> str:

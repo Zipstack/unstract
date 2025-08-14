@@ -3,18 +3,18 @@ import logging
 from typing import Any
 
 from account_v2.models import User
-from adapter_processor_v2.constants import AdapterKeys, AllowedDomains
-from adapter_processor_v2.exceptions import (
-    InternalServiceError,
-    InValidAdapterId,
-    TestAdapterError,
-)
 from cryptography.fernet import Fernet
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 from platform_settings_v2.platform_auth_service import PlatformAuthenticationService
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 
+from adapter_processor_v2.constants import AdapterKeys, AllowedDomains
+from adapter_processor_v2.exceptions import (
+    InternalServiceError,
+    InValidAdapterId,
+    TestAdapterError,
+)
 from unstract.flags.feature_flag import check_feature_flag_status
 
 if check_feature_flag_status("sdk1"):
@@ -102,25 +102,40 @@ class AdapterProcessor:
         if check_feature_flag_status("sdk1"):
             try:
                 adapter_type = adapter_metadata.get(AdapterKeys.ADAPTER_TYPE)
-                
+
                 if adapter_type == AdapterKeys.EMBEDDING:
-                    embedding = EmbeddingCompat(adapter_id=adapter_id, adapter_metadata=adapter_metadata)
+                    embedding = EmbeddingCompat(
+                        adapter_id=adapter_id, adapter_metadata=adapter_metadata
+                    )
                     return embedding.test_connection()
                 elif adapter_type == AdapterKeys.LLM:
                     llm = LLM(adapter_id=adapter_id, adapter_metadata=adapter_metadata)
                     return llm.test_connection()
                 else:
-                    adapter_class = Adapterkit().get_adapter_class_by_adapter_id(adapter_id)
+                    adapter_class = Adapterkit().get_adapter_class_by_adapter_id(
+                        adapter_id
+                    )
 
-                    if adapter_metadata.pop(AdapterKeys.ADAPTER_TYPE) == AdapterKeys.X2TEXT:
+                    if (
+                        adapter_metadata.pop(AdapterKeys.ADAPTER_TYPE)
+                        == AdapterKeys.X2TEXT
+                    ):
                         if (
-                            adapter_metadata.get(AdapterKeys.PLATFORM_PROVIDED_UNSTRUCT_KEY)
+                            adapter_metadata.get(
+                                AdapterKeys.PLATFORM_PROVIDED_UNSTRUCT_KEY
+                            )
                             and add_unstract_key
                         ):
                             adapter_metadata = add_unstract_key(adapter_metadata)
-                        adapter_metadata[X2TextConstants.X2TEXT_HOST] = settings.X2TEXT_HOST
-                        adapter_metadata[X2TextConstants.X2TEXT_PORT] = settings.X2TEXT_PORT
-                        platform_key = PlatformAuthenticationService.get_active_platform_key()
+                        adapter_metadata[X2TextConstants.X2TEXT_HOST] = (
+                            settings.X2TEXT_HOST
+                        )
+                        adapter_metadata[X2TextConstants.X2TEXT_PORT] = (
+                            settings.X2TEXT_PORT
+                        )
+                        platform_key = (
+                            PlatformAuthenticationService.get_active_platform_key()
+                        )
                         adapter_metadata[X2TextConstants.PLATFORM_SERVICE_API_KEY] = str(
                             platform_key.key
                         )

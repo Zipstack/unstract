@@ -5,7 +5,6 @@ from typing import Any
 import requests
 from requests import ConnectionError, RequestException, Response
 from requests.exceptions import ConnectionError, HTTPError
-
 from unstract.sdk1.constants import (
     AdapterKeys,
     LogLevel,
@@ -28,6 +27,7 @@ class PlatformHelper:
     Notes:
         - PLATFORM_SERVICE_API_KEY environment variable is required.
     """
+
     def __init__(
         self,
         tool: BaseTool,
@@ -92,7 +92,9 @@ class PlatformHelper:
 
     @classmethod
     def _get_adapter_configuration(
-        cls, tool: BaseTool, adapter_instance_id: str,
+        cls,
+        tool: BaseTool,
+        adapter_instance_id: str,
     ) -> dict[str, Any]:
         """Get Adapter
             1. Get the adapter config from platform service
@@ -108,7 +110,9 @@ class PlatformHelper:
         platform_port = tool.get_env_or_die(ToolEnv.PLATFORM_PORT)
         bearer_token = tool.get_env_or_die(ToolEnv.PLATFORM_API_KEY)
 
-        url = f"{cls.get_platform_base_url(platform_host, platform_port)}/adapter_instance"
+        url = (
+            f"{cls.get_platform_base_url(platform_host, platform_port)}/adapter_instance"
+        )
         query_params = {AdapterKeys.ADAPTER_INSTANCE_ID: adapter_instance_id}
         headers = {"Authorization": f"Bearer {bearer_token}"}
         try:
@@ -300,4 +304,3 @@ class PlatformHelper:
             headers=None,
             method="GET",
         )
-        

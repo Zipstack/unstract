@@ -5,7 +5,6 @@ from typing import Any
 import litellm
 from llama_index.core.embeddings import BaseEmbedding
 from pydantic import ValidationError
-
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.embedding1 import adapters
 from unstract.sdk1.constants import ToolEnv
@@ -39,8 +38,12 @@ class Embedding:
 
             if adapter_instance_id:
                 if not tool:
-                    raise SdkError("Broken LLM adapter tool binding: " + adapter_instance_id)
-                embedding_config = PlatformHelper.get_adapter_config(tool, adapter_instance_id)
+                    raise SdkError(
+                        "Broken LLM adapter tool binding: " + adapter_instance_id
+                    )
+                embedding_config = PlatformHelper.get_adapter_config(
+                    tool, adapter_instance_id
+                )
 
             if embedding_config:
                 self._adapter_id = embedding_config[Common.ADAPTER_ID]
@@ -59,7 +62,9 @@ class Embedding:
             # Retrieve the adapter class.
             self.adapter = adapters[self._adapter_id][Common.MODULE]
         except KeyError:
-            raise SdkError("Embedding adapter not supported: " + adapter_id or adapter_instance_id)
+            raise SdkError(
+                "Embedding adapter not supported: " + adapter_id or adapter_instance_id
+            )
 
         try:
             self.platform_kwargs: dict[str, Any] = kwargs
@@ -123,7 +128,7 @@ class EmbeddingCompat(BaseEmbedding):
         adapter_metadata: dict[str, Any] = {},
         adapter_instance_id: str = "",
         tool: BaseTool = None,
-        kwargs: dict[str, Any] = {}
+        kwargs: dict[str, Any] = {},
     ):
         super().__init__(**kwargs)
 
@@ -133,7 +138,7 @@ class EmbeddingCompat(BaseEmbedding):
             adapter_metadata=adapter_metadata,
             adapter_instance_id=adapter_instance_id,
             tool=tool,
-            kwargs=kwargs
+            kwargs=kwargs,
         )
         self._length = self._embedding_instance._length
 
@@ -141,8 +146,12 @@ class EmbeddingCompat(BaseEmbedding):
         self.model_name = self._embedding_instance.kwargs.get("model", "")
         self.callback_manager = None
 
-        if not PlatformHelper.is_public_adapter(adapter_id=self._embedding_instance._adapter_instance_id):
-            platform_api_key = self._embedding_instance._tool.get_env_or_die(ToolEnv.PLATFORM_API_KEY)
+        if not PlatformHelper.is_public_adapter(
+            adapter_id=self._embedding_instance._adapter_instance_id
+        ):
+            platform_api_key = self._embedding_instance._tool.get_env_or_die(
+                ToolEnv.PLATFORM_API_KEY
+            )
             CallbackManager.set_callback(
                 platform_api_key=platform_api_key,
                 model=self,
@@ -154,10 +163,10 @@ class EmbeddingCompat(BaseEmbedding):
 
     def _get_query_embedding(self, query: str) -> list[float]:
         return self._embedding_instance.get_embedding(query)
-    
+
     def _get_text_embedding(self, text: str) -> list[float]:
         return self._embedding_instance.get_embedding(text)
-    
+
     def _get_text_embeddings(self, texts: list[str]) -> list[list[float]]:
         return self._embedding_instance.get_embeddings(texts)
 
@@ -172,7 +181,7 @@ class EmbeddingCompat(BaseEmbedding):
 
     async def _aget_text_embeddings(self, texts: list[str]) -> list[list[float]]:
         return await self._embedding_instance.get_aembeddings(texts)
-    
+
     async def get_aquery_embedding(self, query: str) -> list[float]:
         return await self._aget_query_embedding(query)
 

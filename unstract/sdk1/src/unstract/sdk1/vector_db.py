@@ -11,7 +11,6 @@ from llama_index.core.vector_stores.types import (
     VectorStore,
     VectorStoreQueryResult,
 )
-
 from unstract.sdk1.adapters.vectordb import adapters
 from unstract.sdk1.adapters.vectordb.constants import VectorDbConstants
 from unstract.sdk1.adapters.vectordb.exceptions import parse_vector_db_err
@@ -29,9 +28,7 @@ class VectorDB:
 
     vector_db_adapters = adapters
     DEFAULT_EMBEDDING_DIMENSION = 1536
-    EMBEDDING_INSTANCE_ERROR = (
-        "Vector DB does not have an embedding initialised."
-    )
+    EMBEDDING_INSTANCE_ERROR = "Vector DB does not have an embedding initialised."
 
     def __init__(
         self,
@@ -191,4 +188,3 @@ class VectorDB:
                 Class name
         """
         return self._vector_db_instance.class_name()
-

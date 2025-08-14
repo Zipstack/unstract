@@ -7,7 +7,6 @@ from typing import Any
 import requests
 from requests import Response
 from requests.exceptions import ConnectionError, HTTPError, Timeout
-
 from unstract.llmwhisperer.client_v2 import (
     LLMWhispererClientException,
     LLMWhispererClientV2,

@@ -3,7 +3,6 @@ from abc import ABCMeta
 from typing import Any
 
 import pdfplumber
-
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.x2text import adapters
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants
@@ -63,7 +62,9 @@ class X2Text(metaclass=ABCMeta):
                     X2TextConstants.X2TEXT_PORT
                 )
 
-                if not PlatformHelper.is_public_adapter(adapter_id=self._adapter_instance_id):
+                if not PlatformHelper.is_public_adapter(
+                    adapter_id=self._adapter_instance_id
+                ):
                     x2text_metadata[X2TextConstants.PLATFORM_SERVICE_API_KEY] = (
                         self._tool.get_env_or_die(
                             X2TextConstants.PLATFORM_SERVICE_API_KEY

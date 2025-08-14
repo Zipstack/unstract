@@ -12,12 +12,12 @@ class AnthropicLLMAdapter(AnthropicParameters, BaseAdapter):
     @staticmethod
     def get_metadata() -> dict[str, Any]:
         return {
-        "name": "Anthropic",
-        "version": "1.0.0",
-        "adapter": AnthropicLLMAdapter,
-        "description": "Anthropic LLM adapter",
-        "is_active": True,
-    }
+            "name": "Anthropic",
+            "version": "1.0.0",
+            "adapter": AnthropicLLMAdapter,
+            "description": "Anthropic LLM adapter",
+            "is_active": True,
+        }
 
     @staticmethod
     def get_name() -> str:
@@ -38,4 +38,3 @@ class AnthropicLLMAdapter(AnthropicParameters, BaseAdapter):
     @staticmethod
     def get_adapter_type() -> AdapterTypes:
         return AdapterTypes.LLM
-

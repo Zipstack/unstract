@@ -1,12 +1,9 @@
 import json
 import logging
 import os
-import warnings
 from hashlib import md5, sha256
 from pathlib import Path
 from typing import Any
-
-import magic
 
 from unstract.sdk1.exceptions import FileStorageError
 from unstract.sdk1.file_storage import (
@@ -168,7 +165,8 @@ class ToolUtils:
         var_name: str, default: str = "minio"
     ) -> FileStorageProvider:
         """Retrieve the file storage provider based on an environment
-        variable."""
+        variable.
+        """
         provider_name = os.environ.get(var_name, default).upper()
         try:
             # Attempt to map the provider name to an enum value, case-insensitively
@@ -186,7 +184,8 @@ class ToolUtils:
     @staticmethod
     def get_filestorage_credentials(var_name: str) -> dict[str, Any]:
         """Retrieve the file storage credentials based on an environment
-        variable."""
+        variable.
+        """
         credentials = os.environ.get(var_name, "{}")
         try:
             return json.loads(credentials)

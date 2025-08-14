@@ -6,12 +6,12 @@ from account_v2.models import User
 from django.db import models
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
-from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
-from prompt_studio.prompt_studio_core_v2.prompt_ide_base_tool import PromptIdeBaseTool
-from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManager
 from utils.models.base_model import BaseModel
 from utils.user_context import UserContext
 
+from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
+from prompt_studio.prompt_studio_core_v2.prompt_ide_base_tool import PromptIdeBaseTool
+from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManager
 from unstract.flags.feature_flag import check_feature_flag_status
 
 if check_feature_flag_status("sdk1"):
@@ -108,10 +108,7 @@ class IndexManager(BaseModel):
 
 def delete_from_vector_db(index_ids_history, vector_db_instance_id):
     organization_identifier = UserContext.get_organization_identifier()
-    util = PromptIdeBaseTool(
-        log_level=LogLevel.INFO,
-        org_id=organization_identifier
-    )
+    util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=organization_identifier)
     vector_db = VectorDB(
         tool=util,
         adapter_instance_id=vector_db_instance_id,

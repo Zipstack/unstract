@@ -64,7 +64,7 @@ class IndexingService:
                     tool=util,
                     kwargs={
                         **processing_options.usage_kwargs,
-                    }
+                    },
                 )
             else:
                 embedding = Embedding(

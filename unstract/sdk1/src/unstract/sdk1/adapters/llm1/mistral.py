@@ -38,4 +38,3 @@ class MistralLLMAdapter(MistralParameters, BaseAdapter):
     @staticmethod
     def get_adapter_type() -> AdapterTypes:
         return AdapterTypes.LLM
-

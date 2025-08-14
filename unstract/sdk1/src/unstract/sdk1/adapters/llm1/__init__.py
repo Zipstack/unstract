@@ -23,5 +23,5 @@ __all__ = [
     "BedrockLLMAdapter",
     "OllamaLLMAdapter",
     "OpenAILLMAdapter",
-    "VertexAILLMAdapter"
+    "VertexAILLMAdapter",
 ]

@@ -12,12 +12,12 @@ class AzureOpenAIEmbeddingAdapter(AzureOpenAIParameters, BaseAdapter):
     @staticmethod
     def get_metadata() -> dict[str, Any]:
         return {
-        "name": "AzureOpenAI",
-        "version": "1.0.0",
-        "adapter": AzureOpenAIEmbeddingAdapter,
-        "description": "AzureOpenAI embedding adapter",
-        "is_active": True,
-    }
+            "name": "AzureOpenAI",
+            "version": "1.0.0",
+            "adapter": AzureOpenAIEmbeddingAdapter,
+            "description": "AzureOpenAI embedding adapter",
+            "is_active": True,
+        }
 
     @staticmethod
     def get_name() -> str:
@@ -38,4 +38,3 @@ class AzureOpenAIEmbeddingAdapter(AzureOpenAIParameters, BaseAdapter):
     @staticmethod
     def get_adapter_type() -> AdapterTypes:
         return AdapterTypes.EMBEDDING
-

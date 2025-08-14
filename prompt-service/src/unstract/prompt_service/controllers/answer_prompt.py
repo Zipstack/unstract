@@ -2,9 +2,8 @@
 
 from typing import Any
 
-from flask import Blueprint
+from flask import Blueprint, request
 from flask import current_app as app
-from flask import request
 
 from unstract.core.flask.exceptions import APIError
 from unstract.flags.feature_flag import check_feature_flag_status
@@ -158,7 +157,7 @@ def prompt_processor() -> Any:
                         **usage_kwargs,
                         PSKeys.LLM_USAGE_REASON: PSKeys.EXTRACTION,
                         PSKeys.CAPTURE_METRICS: True,
-                    }
+                    },
                 )
 
                 embedding = EmbeddingCompat(
@@ -166,7 +165,7 @@ def prompt_processor() -> Any:
                     tool=util,
                     kwargs={
                         **usage_kwargs,
-                    }
+                    },
                 )
             else:
                 llm = LLM(
@@ -585,7 +584,7 @@ def prompt_processor() -> Any:
                                 kwargs={
                                     **usage_kwargs,
                                     PSKeys.LLM_USAGE_REASON: PSKeys.CHALLENGE,
-                                    PSKeys.CAPTURE_METRICS: True
+                                    PSKeys.CAPTURE_METRICS: True,
                                 },
                             )
                         else:

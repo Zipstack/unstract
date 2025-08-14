@@ -5,9 +5,8 @@ from flask import current_app as app
 
 from unstract.core.flask.exceptions import APIError
 from unstract.flags.feature_flag import check_feature_flag_status
-from unstract.prompt_service.constants import ExecutionSource, FileStorageKeys
+from unstract.prompt_service.constants import ExecutionSource, FileStorageKeys, RunLevel
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
-from unstract.prompt_service.constants import RunLevel
 from unstract.prompt_service.exceptions import RateLimitError
 from unstract.prompt_service.helpers.plugin import PluginManager
 from unstract.prompt_service.utils.env_loader import get_env_or_die

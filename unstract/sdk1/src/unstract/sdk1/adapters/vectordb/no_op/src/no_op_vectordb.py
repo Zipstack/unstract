@@ -4,7 +4,6 @@ from typing import Any
 
 from llama_index.core.schema import BaseNode
 from llama_index.core.vector_stores.types import VectorStore
-
 from unstract.sdk1.adapters.exceptions import AdapterError
 from unstract.sdk1.adapters.vectordb.constants import VectorDbConstants
 from unstract.sdk1.adapters.vectordb.helper import VectorDBHelper

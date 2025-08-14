@@ -21,7 +21,7 @@ class VertexAILLMAdapter(VertexAIParameters, BaseAdapter):
             "adapter": VertexAILLMAdapter,
             "description": "VertexAI LLM adapter",
             "is_active": True,
-    }
+        }
 
     @staticmethod
     def get_name() -> str:
@@ -42,4 +42,3 @@ class VertexAILLMAdapter(VertexAIParameters, BaseAdapter):
     @staticmethod
     def get_adapter_type() -> AdapterTypes:
         return AdapterTypes.LLM
-
