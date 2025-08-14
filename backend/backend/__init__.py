@@ -34,7 +34,7 @@ if should_apply_gevent():
     import logging
 
     logger = logging.getLogger(__name__)
-    logger.info("Gevent patches should be applied via gevent_init module")
+    logger.info("Using Celery's native gevent pool - no manual monkey patching needed")
 
     # CRITICAL: Patch Unstract SDK to use our pure boto3 implementation
     def patch_unstract_sdk_for_gevent():
