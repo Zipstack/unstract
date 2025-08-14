@@ -49,6 +49,9 @@ class MySQL(UnstractDB, MysqlHandler):
     def can_read() -> bool:
         return True
 
+    def get_string_type(self) -> str:
+        return "longtext"
+
     def get_engine(self) -> Connection:  # type: ignore[type-arg]
         con = pymysql.connect(
             host=self.host,
@@ -61,6 +64,41 @@ class MySQL(UnstractDB, MysqlHandler):
 
     def sql_to_db_mapping(self, value: str) -> str:
         return str(MysqlHandler.sql_to_db_mapping(value=value))
+
+    def get_create_table_base_query(self, table: str) -> str:
+        """Function to create a base create table sql query with MySQL specific types.
+
+        Args:
+            table (str): db-connector table name
+
+        Returns:
+            str: generates a create sql base query with the constant columns
+        """
+        sql_query = (
+            f"CREATE TABLE IF NOT EXISTS {table} "
+            f"(id LONGTEXT, "
+            f"created_by LONGTEXT, created_at TIMESTAMP, "
+            f"metadata JSON, "
+            f"user_field_1 BOOLEAN DEFAULT FALSE, "
+            f"user_field_2 BIGINT DEFAULT 0, "
+            f"user_field_3 LONGTEXT DEFAULT NULL, "
+            f"status ENUM('ERROR', 'SUCCESS'), "
+            f"error_message LONGTEXT, "
+        )
+        return sql_query
+
+    def prepare_multi_column_migration(self, table_name: str, column_name: str) -> str:
+        sql_query = (
+            f"ALTER TABLE {table_name} "
+            f"ADD COLUMN {column_name}_v2 JSON, "
+            f"ADD COLUMN metadata JSON, "
+            f"ADD COLUMN user_field_1 BOOLEAN DEFAULT FALSE, "
+            f"ADD COLUMN user_field_2 BIGINT DEFAULT 0, "
+            f"ADD COLUMN user_field_3 LONGTEXT DEFAULT NULL, "
+            f"ADD COLUMN status ENUM('ERROR', 'SUCCESS'), "
+            f"ADD COLUMN error_message LONGTEXT"
+        )
+        return sql_query
 
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any

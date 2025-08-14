@@ -59,6 +59,9 @@ class BigQuery(UnstractDB):
     def can_read() -> bool:
         return True
 
+    def get_string_type(self) -> str:
+        return "string"
+
     def get_engine(self) -> Client:
         return bigquery.Client.from_service_account_info(  # type: ignore
             info=self.json_credentials
@@ -88,6 +91,8 @@ class BigQuery(UnstractDB):
             int: "INT64",
             float: "FLOAT64",
             datetime.datetime: "TIMESTAMP",
+            dict: "JSON",
+            list: "JSON",
         }
         return mapping.get(python_type, "string")
 
@@ -110,8 +115,27 @@ class BigQuery(UnstractDB):
             )
         sql_query = (
             f"CREATE TABLE IF NOT EXISTS {table} "
-            f"(id string,"
-            f"created_by string, created_at TIMESTAMP, "
+            f"(id STRING,"
+            f"created_by STRING, created_at TIMESTAMP, "
+            f"metadata JSON, "
+            f"user_field_1 BOOL DEFAULT FALSE, "
+            f"user_field_2 INT64 DEFAULT 0, "
+            f"user_field_3 STRING DEFAULT NULL, "
+            f"status STRING CHECK (status IN ('ERROR', 'SUCCESS')), "
+            f"error_message STRING"
+        )
+        return sql_query
+
+    def prepare_multi_column_migration(self, table_name: str, column_name: str) -> str:
+        sql_query = (
+            f"ALTER TABLE {table_name} "
+            f"ADD COLUMN {column_name}_v2 JSON, "
+            f"ADD COLUMN metadata JSON, "
+            f"ADD COLUMN user_field_1 BOOL DEFAULT FALSE, "
+            f"ADD COLUMN user_field_2 INT64 DEFAULT 0, "
+            f"ADD COLUMN user_field_3 STRING DEFAULT NULL, "
+            f"ADD COLUMN status STRING CHECK (status IN ('ERROR', 'SUCCESS')), "
+            f"ADD COLUMN error_message STRING"
         )
         return sql_query
 
