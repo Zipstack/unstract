@@ -105,14 +105,14 @@ class MSSQL(UnstractDB):
             f"IF NOT EXISTS ("
             f"SELECT * FROM sysobjects WHERE name='{table}' and xtype='U')"
             f" CREATE TABLE {table} "
-            f"(id TEXT ,"
-            f"created_by TEXT, created_at DATETIMEOFFSET, "
+            f"(id NVARCHAR(MAX), "
+            f"created_by NVARCHAR(MAX), created_at DATETIMEOFFSET, "
             f"metadata NVARCHAR(MAX), "
             f"user_field_1 BIT DEFAULT 0, "
             f"user_field_2 INT DEFAULT 0, "
-            f"user_field_3 TEXT DEFAULT NULL, "
+            f"user_field_3 NVARCHAR(MAX) DEFAULT NULL, "
             f"status NVARCHAR(10) CHECK (status IN ('ERROR', 'SUCCESS')), "
-            f"error_message TEXT, "
+            f"error_message NVARCHAR(MAX))"
         )
         return sql_query
 
@@ -123,9 +123,9 @@ class MSSQL(UnstractDB):
             + "metadata NVARCHAR(MAX), "
             + "user_field_1 BIT DEFAULT 0, "
             + "user_field_2 INT DEFAULT 0, "
-            + "user_field_3 TEXT DEFAULT NULL, "
+            + "user_field_3 NVARCHAR(MAX) DEFAULT NULL, "
             + "status NVARCHAR(10) CHECK (status IN ('ERROR', 'SUCCESS')), "
-            + "error_message TEXT"
+            + "error_message NVARCHAR(MAX)"
         )
         return sql_query
 

@@ -102,7 +102,7 @@ class SnowflakeDB(UnstractDB):
             f"user_field_1 BOOLEAN DEFAULT FALSE, "
             f"user_field_2 INT DEFAULT 0, "
             f"user_field_3 TEXT DEFAULT NULL, "
-            f"status VARCHAR CHECK (status IN ('ERROR', 'STATUS')), "
+            f"status VARCHAR CHECK (status IN ('ERROR', 'SUCCESS')), "
             f"error_message VARCHAR, "
         )
         return sql_query
@@ -115,7 +115,7 @@ class SnowflakeDB(UnstractDB):
             f"ADD COLUMN user_field_1 BOOLEAN DEFAULT FALSE, "
             f"ADD COLUMN user_field_2 INT DEFAULT 0, "
             f"ADD COLUMN user_field_3 TEXT DEFAULT NULL, "
-            f"ADD COLUMN status VARCHAR CHECK (status IN ('ERROR', 'STATUS')), "
+            f"ADD COLUMN status VARCHAR CHECK (status IN ('ERROR', 'SUCCESS')), "
             f"ADD COLUMN error_message VARCHAR"
         )
         return sql_query

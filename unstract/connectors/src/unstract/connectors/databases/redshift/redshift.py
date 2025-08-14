@@ -87,7 +87,7 @@ class Redshift(UnstractDB, PsycoPgHandler):
             f"user_field_1 BOOLEAN DEFAULT FALSE, "
             f"user_field_2 INTEGER DEFAULT 0, "
             f"user_field_3 VARCHAR(65535) DEFAULT NULL, "
-            f"status VARCHAR(10) CHECK (status IN ('ERROR', 'STATUS')), "
+            f"status VARCHAR(10) CHECK (status IN ('ERROR', 'SUCCESS')), "
             f"error_message VARCHAR(65535), "
         )
         return sql_query
@@ -100,7 +100,7 @@ class Redshift(UnstractDB, PsycoPgHandler):
             f"ADD COLUMN user_field_1 BOOLEAN DEFAULT FALSE, "
             f"ADD COLUMN user_field_2 INTEGER DEFAULT 0, "
             f"ADD COLUMN user_field_3 VARCHAR(65535) DEFAULT NULL, "
-            f"ADD COLUMN status VARCHAR(10) CHECK (status IN ('ERROR', 'STATUS')), "
+            f"ADD COLUMN status VARCHAR(10) CHECK (status IN ('ERROR', 'SUCCESS')), "
             f"ADD COLUMN error_message VARCHAR(65535)"
         )
         return sql_query
