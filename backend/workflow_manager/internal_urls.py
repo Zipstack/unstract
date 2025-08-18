@@ -61,6 +61,11 @@ urlpatterns = [
         internal_views.PipelineTypeAPIView.as_view(),
         name="get_pipeline_type",
     ),
+    path(
+        "pipeline-name/<str:pipeline_id>/",
+        internal_views.PipelineNameAPIView.as_view(),
+        name="get_pipeline_name",
+    ),
     # Batch operations (using sophisticated class-based views)
     path(
         "batch-status-update/",

@@ -29,6 +29,12 @@ declare -A WORKERS=(
     ["file"]="file_processing"
     ["file-processing"]="file_processing"
     ["callback"]="callback"
+    ["log"]="log_consumer"
+    ["log-consumer"]="log_consumer"
+    ["logs"]="log_consumer"
+    ["notification"]="notification"
+    ["notifications"]="notification"
+    ["notify"]="notification"
     ["all"]="all"
 )
 
@@ -38,6 +44,8 @@ declare -A WORKER_QUEUES=(
     ["general"]="celery"
     ["file_processing"]="file_processing,api_file_processing"
     ["callback"]="file_processing_callback,api_file_processing_callback"
+    ["log_consumer"]="celery_log_task_queue"
+    ["notification"]="notifications,notifications_webhook,notifications_email,notifications_sms,notifications_priority"
 )
 
 # Worker health ports
@@ -46,6 +54,8 @@ declare -A WORKER_HEALTH_PORTS=(
     ["general"]="8081"
     ["file_processing"]="8082"
     ["callback"]="8083"
+    ["log_consumer"]="8084"
+    ["notification"]="8085"
 )
 
 # Function to display usage
@@ -60,6 +70,8 @@ WORKER_TYPE:
     general               Run general worker (webhooks, background tasks)
     file, file-processing Run file processing worker
     callback              Run callback worker
+    log, log-consumer     Run log consumer worker
+    notification, notify  Run notification worker
     all                   Run all workers (in separate processes)
 
 OPTIONS:
@@ -117,6 +129,8 @@ HEALTH CHECKS:
     - General: http://localhost:8081/health
     - File Processing: http://localhost:8082/health
     - Callback: http://localhost:8083/health
+    - Log Consumer: http://localhost:8084/health
+    - Notification: http://localhost:8085/health
 
 EOF
 }
@@ -208,7 +222,7 @@ show_status() {
     print_status $BLUE "Worker Status:"
     echo "=============="
 
-    for worker in api-deployment general file_processing callback; do
+    for worker in api-deployment general file_processing callback log_consumer notification; do
         local worker_dir="$WORKERS_DIR/$worker"
         local health_port="${WORKER_HEALTH_PORTS[$worker]}"
         local pids=$(get_worker_pids "$worker")
@@ -270,6 +284,12 @@ run_worker() {
             "callback")
                 export CALLBACK_HEALTH_PORT="$health_port"
                 ;;
+            "log_consumer")
+                export LOG_CONSUMER_HEALTH_PORT="$health_port"
+                ;;
+            "notification")
+                export NOTIFICATION_HEALTH_PORT="$health_port"
+                ;;
         esac
     fi
 
@@ -310,6 +330,12 @@ run_worker() {
                 cmd_args+=("--autoscale=8,2")
                 ;;
             "callback")
+                cmd_args+=("--autoscale=4,4")
+                ;;
+            "log_consumer")
+                cmd_args+=("--autoscale=2,1")
+                ;;
+            "notification")
                 cmd_args+=("--autoscale=4,1")
                 ;;
         esac
@@ -345,7 +371,7 @@ run_all_workers() {
     print_status $GREEN "Starting all workers..."
 
     # Always run all workers in background when using "all"
-    for worker in api-deployment general file_processing callback; do
+    for worker in api-deployment general file_processing callback log_consumer notification; do
         print_status $BLUE "Starting $worker worker in background..."
 
         # Run each worker in background

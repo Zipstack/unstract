@@ -2251,3 +2251,124 @@ class FileHistoryCreateView(APIView):
                 {"error": "File history creation failed", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+
+class PipelineNameAPIView(APIView):
+    """Internal API endpoint for fetching pipeline names from models.
+
+    This endpoint fetches the actual pipeline name from Pipeline.pipeline_name
+    or APIDeployment.api_name based on the pipeline ID.
+
+    Used by callback workers to get correct pipeline names for notifications.
+    """
+
+    def get(self, request, pipeline_id):
+        """Fetch pipeline name from Pipeline or APIDeployment model."""
+        try:
+            from api_v2.models import APIDeployment
+            from pipeline_v2.models import Pipeline
+
+            organization_id = getattr(request, "organization_id", None)
+            if organization_id:
+                StateStore.set(Account.ORGANIZATION_ID, organization_id)
+            logger.info(
+                f"DEBUG: Fetching pipeline name for {pipeline_id}, org: {organization_id}"
+            )
+
+            # First check if this is an API deployment
+            try:
+                api_deployment = APIDeployment.objects.get(id=pipeline_id)
+                logger.info(
+                    f"DEBUG: Found API deployment {pipeline_id}: name='{api_deployment.api_name}'"
+                )
+                # Verify organization access
+                if (
+                    organization_id
+                    and str(api_deployment.organization.organization_id)
+                    != organization_id
+                ):
+                    logger.warning(
+                        f"API deployment {pipeline_id} not found in organization {organization_id}"
+                    )
+                    return Response(
+                        {"error": "API deployment not found in organization"},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+
+                logger.info(
+                    f"Found API deployment {pipeline_id}: name='{api_deployment.api_name}'"
+                )
+                return Response(
+                    {
+                        "pipeline_id": str(pipeline_id),
+                        "pipeline_name": api_deployment.api_name,
+                        "pipeline_type": "API",
+                        "source": "api_deployment",
+                        "display_name": api_deployment.display_name,
+                    }
+                )
+
+            except APIDeployment.DoesNotExist:
+                logger.info(
+                    f"DEBUG: Pipeline {pipeline_id} not found in APIDeployment model, checking Pipeline model"
+                )
+                pass
+
+            # Check Pipeline model
+            try:
+                pipeline = Pipeline.objects.get(id=pipeline_id)
+
+                # Verify organization access
+                if (
+                    organization_id
+                    and str(pipeline.organization.organization_id) != organization_id
+                ):
+                    logger.warning(
+                        f"Pipeline {pipeline_id} not found in organization {organization_id}"
+                    )
+                    return Response(
+                        {"error": "Pipeline not found in organization"},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+
+                logger.info(
+                    f"Found Pipeline {pipeline_id}: name='{pipeline.pipeline_name}', type='{pipeline.pipeline_type}'"
+                )
+                return Response(
+                    {
+                        "pipeline_id": str(pipeline_id),
+                        "pipeline_name": pipeline.pipeline_name,
+                        "pipeline_type": pipeline.pipeline_type,
+                        "source": "pipeline",
+                        "workflow_id": str(pipeline.workflow_id)
+                        if pipeline.workflow
+                        else None,
+                    }
+                )
+
+            except Pipeline.DoesNotExist:
+                logger.warning(
+                    f"Pipeline {pipeline_id} not found in Pipeline model either"
+                )
+                pass
+
+            # Not found in either model
+            return Response(
+                {
+                    "error": "Pipeline not found",
+                    "detail": f"Pipeline {pipeline_id} not found in APIDeployment or Pipeline models",
+                    "pipeline_id": str(pipeline_id),
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        except Exception as e:
+            logger.error(f"Error fetching pipeline name for {pipeline_id}: {str(e)}")
+            return Response(
+                {
+                    "error": "Failed to fetch pipeline name",
+                    "detail": str(e),
+                    "pipeline_id": str(pipeline_id),
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )

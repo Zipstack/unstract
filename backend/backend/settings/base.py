@@ -575,6 +575,12 @@ INTERNAL_URL_MODULES = {
         "enabled": True,
         "description": "Workflow management and pipeline APIs",
     },
+    "pipeline": {
+        "url_path": "v1/pipeline/",
+        "module_path": "pipeline_v2.internal_urls",
+        "enabled": True,
+        "description": "Pipeline APIs",
+    },
     "organization": {
         "url_path": "v1/organization/",
         "module_path": "account_v2.organization_internal_urls",
@@ -610,6 +616,12 @@ INTERNAL_URL_MODULES = {
         "module_path": "notification_v2.internal_urls",
         "enabled": True,
         "description": "Webhook notification APIs",
+    },
+    "api_deployments": {
+        "url_path": "v1/api-deployments/",
+        "module_path": "api_v2.internal_urls",
+        "enabled": True,
+        "description": "API deployment data APIs for type-aware worker optimization",
     },
     "platform_settings": {
         "url_path": "v1/platform-settings/",

@@ -38,7 +38,7 @@ logger = WorkerLogger.get_logger(__name__)
 
 @app.task(
     bind=True,
-    name="send_webhook_notification",
+    name="send_webhook_via_internal_api",  # Renamed to avoid conflict with notification worker
     autoretry_for=(requests.exceptions.RequestException,),
     max_retries=5,
     retry_backoff=True,
@@ -47,7 +47,7 @@ logger = WorkerLogger.get_logger(__name__)
 )
 @monitor_performance
 @circuit_breaker(failure_threshold=10, recovery_timeout=120.0)
-def send_webhook_notification(
+def send_webhook_via_internal_api(
     self,
     url: str,
     payload: Any,
@@ -56,10 +56,10 @@ def send_webhook_notification(
     max_retries: int | None = None,
     retry_delay: int = 10,
 ) -> dict[str, Any]:
-    """Lightweight webhook notification task using internal APIs.
+    """Webhook notification task that uses internal APIs for routing.
 
-    This replaces the original send_webhook_notification task,
-    using the internal webhook API for better tracking and monitoring.
+    This task routes webhook notifications through the internal API system,
+    which then delegates to the dedicated notification worker.
 
     Args:
         url: Webhook URL to send notification to
@@ -404,12 +404,14 @@ def _execute_general_workflow(
         workflow_id = execution_data.get("workflow_id") or workflow_definition.get(
             "workflow_id"
         )
-        organization_id = execution_data.get("organization_id") or execution_context.get(
-            "organization_id"
+        organization_id = (
+            execution_data.get("organization_id")
+            or execution_context.get("organization_id")
+            or execution_context.get("organization_context", {}).get("organization_id")
         )
 
         logger.info(
-            f"Starting real workflow execution for workflow {workflow_id}, execution {execution_id}"
+            f"Starting real workflow execution for workflow {workflow_id}, execution {execution_id}, organization_id={organization_id}"
         )
 
         # Get workflow endpoints to determine connection type
@@ -431,7 +433,7 @@ def _execute_general_workflow(
         workflow_service = WorkerWorkflowExecutionService(
             api_client=api_client,
             workflow_id=workflow_id,
-            organization_id=organization_id,
+            organization_id=api_client.organization_id,  # Use api_client's organization_id (already formatted)
             pipeline_id=pipeline_id,
             single_step=False,  # General workflows are complete execution
             scheduled=scheduled,
@@ -459,7 +461,7 @@ def _execute_general_workflow(
             api_client=api_client,
             workflow_id=workflow_id,
             execution_id=execution_id,
-            organization_id=organization_id,
+            organization_id=api_client.organization_id,  # Use api_client's organization_id (already formatted)
             use_file_history=use_file_history,
         )
 
@@ -528,6 +530,7 @@ def _execute_general_workflow(
                 scheduled=scheduled,
                 execution_mode=execution_mode,
                 use_file_history=use_file_history,
+                organization_id=api_client.organization_id,  # Use api_client's organization_id (already formatted)
             )
 
             # The orchestration result contains the chord_id and batch information
@@ -572,6 +575,7 @@ def _orchestrate_file_processing_general(
     scheduled: bool,
     execution_mode: tuple | None,
     use_file_history: bool,
+    organization_id: str,
 ) -> dict[str, Any]:
     """Orchestrate file processing for general workflows using the same pattern as API worker.
 
@@ -586,11 +590,14 @@ def _orchestrate_file_processing_general(
         scheduled: Whether execution is scheduled
         execution_mode: Execution mode tuple
         use_file_history: Whether to use file history
+        organization_id: Organization ID for callback context
 
     Returns:
         Orchestration result
     """
-    logger.info(f"Orchestrating file processing for {len(source_files)} files")
+    logger.info(
+        f"Orchestrating file processing for {len(source_files)} files with organization_id={organization_id}"
+    )
 
     try:
         # Get file batches using the same logic as Django backend
@@ -723,7 +730,13 @@ def _orchestrate_file_processing_general(
         # Execute chord exactly matching Django pattern
         from celery import chord
 
-        callback_kwargs = {"execution_id": str(execution_id)}
+        logger.info(
+            f"DEBUG: Creating callback kwargs with organization_id={organization_id}"
+        )
+        callback_kwargs = {
+            "execution_id": str(execution_id),
+            "organization_id": str(organization_id),
+        }
 
         # CRITICAL FIX: Pass pipeline_id directly to callback to ensure pipeline status updates
         if pipeline_id:
@@ -817,7 +830,7 @@ def _get_file_batches_general(input_files: dict[str, FileHash] | list[dict]) -> 
             continue
 
     # Prepare batches of files for parallel processing (exact Django logic)
-    BATCH_SIZE = int(os.getenv("MAX_PARALLEL_FILE_BATCHES", "4"))  # Default from Django
+    BATCH_SIZE = int(os.getenv("MAX_PARALLEL_FILE_BATCHES", "1"))  # Default from Django
     file_items = list(json_serializable_files.items())
 
     # Calculate how many items per batch (exact Django logic)

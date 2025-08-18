@@ -35,16 +35,26 @@ class WorkflowExecutionSerializer(serializers.ModelSerializer):
         if hasattr(self, cache_key):
             return getattr(self, cache_key)
 
+        # Import here to avoid circular imports
+        from api_v2.models import APIDeployment
+
         try:
-            # Check if the pipeline actually exists
+            # First check if it's a Pipeline
             Pipeline.objects.get(id=obj.pipeline_id)
             result = str(obj.pipeline_id)
             setattr(self, cache_key, result)
             return result
         except Pipeline.DoesNotExist:
-            # Pipeline was deleted - return None to prevent stale reference usage
-            setattr(self, cache_key, None)
-            return None
+            # Not a Pipeline, check if it's an APIDeployment
+            try:
+                APIDeployment.objects.get(id=obj.pipeline_id)
+                result = str(obj.pipeline_id)
+                setattr(self, cache_key, result)
+                return result
+            except APIDeployment.DoesNotExist:
+                # Neither Pipeline nor APIDeployment exists - return None to prevent stale reference usage
+                setattr(self, cache_key, None)
+                return None
 
     class Meta:
         model = WorkflowExecution

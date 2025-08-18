@@ -58,7 +58,7 @@ class BaseAPIClient:
     """
 
     # Internal API URL patterns - can be overridden via environment variables
-    # Standardized to use v1/ prefix consistently
+    # Standardized to use v1/ prefix consistently, with v2/ for newer optimized endpoints
     API_ENDPOINTS = {
         "health": os.getenv("INTERNAL_API_HEALTH_PREFIX", "v1/health/"),
         "workflow_execution": os.getenv(
@@ -79,6 +79,10 @@ class BaseAPIClient:
         ),
         "platform_settings": os.getenv(
             "INTERNAL_API_PLATFORM_SETTINGS_PREFIX", "v1/platform-settings/"
+        ),
+        # API deployment endpoints for optimized type-aware operations
+        "api_deployments": os.getenv(
+            "INTERNAL_API_DEPLOYMENTS_PREFIX", "v1/api-deployments/"
         ),
     }
 

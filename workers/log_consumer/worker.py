@@ -1,13 +1,11 @@
-"""General Worker Configuration
+"""Log Consumer Worker Configuration
 
-Lightweight Celery worker for general tasks including webhooks and background processing.
+Lightweight Celery worker for processing execution logs and WebSocket emissions.
 """
 
 import os
 
 from celery import Celery
-
-# Use singleton API client to eliminate repeated initialization logs
 from shared.api_client_singleton import get_singleton_api_client
 from shared.config import WorkerConfig
 from shared.health import HealthChecker, HealthServer
@@ -17,35 +15,35 @@ from shared.logging_utils import WorkerLogger
 WorkerLogger.configure(
     log_level=os.getenv("LOG_LEVEL", "INFO"),
     log_format=os.getenv("LOG_FORMAT", "structured"),
-    worker_name="general-worker",
+    worker_name="log-consumer-worker",
 )
 
 logger = WorkerLogger.get_logger(__name__)
 
-# Initialize configuration with general worker specific settings
-config = WorkerConfig.from_env("GENERAL")
+# Initialize configuration with log consumer specific settings
+config = WorkerConfig.from_env("LOG_CONSUMER")
 
 # Override worker name if not set via environment
-if not os.getenv("GENERAL_WORKER_NAME"):
-    config.worker_name = "general-worker"
+if not os.getenv("LOG_CONSUMER_WORKER_NAME"):
+    config.worker_name = "log-consumer-worker"
 
 # Celery application configuration
-app = Celery("general_worker")
+app = Celery("log_consumer_worker")
+
+# Get queue name from environment or use default
+log_queue_name = os.getenv("LOG_CONSUMER_QUEUE_NAME", "celery_log_task_queue")
 
 # Celery settings
 celery_config = {
     # Broker configuration
     "broker_url": os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0"),
     "result_backend": os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0"),
-    # Task routing - route to general/celery queue
+    # Task routing - route to log consumer queue
     "task_routes": {
-        # Webhook notifications handled by notification worker, not general worker
-        # "send_webhook_notification": {"queue": "notifications"},  # Removed - not handled here
-        "async_execute_bin": {"queue": "celery"},
-        "async_execute_bin_general": {"queue": "celery"},
-        "general_worker.*": {"queue": "celery"},
+        "logs_consumer": {"queue": log_queue_name},
+        "log_consumer.*": {"queue": log_queue_name},
     },
-    # Task filtering - reject API deployment tasks
+    # Task filtering - only accept log processing tasks
     "worker_disable_rate_limits": True,
     "task_reject_on_worker_lost": True,
     "task_ignore_result": False,
@@ -67,15 +65,11 @@ celery_config = {
     **config.get_celery_config(),
     # Task discovery
     "imports": [
-        "general.tasks",
+        "log_consumer.tasks",
     ],
 }
 
 app.config_from_object(celery_config)
-
-# Handle both API and ETL/TASK workflows in general worker
-# The Django backend sends async_execute_bin_api for both API and ETL/TASK workflows
-# We need to detect the actual workflow type and handle accordingly
 
 # Initialize health monitoring
 health_checker = HealthChecker(config)
@@ -86,68 +80,79 @@ def get_health_api_client():
     return get_singleton_api_client(config)
 
 
-# Add custom health check for general worker
-def check_general_worker_health():
-    """Custom health check for general worker."""
+# Add custom health check for log consumer worker
+def check_log_consumer_health():
+    """Custom health check for log consumer worker."""
     from shared.health import HealthCheckResult, HealthStatus
 
     try:
         # Use shared API client to reduce repeated initializations
         client = get_health_api_client()
 
-        # Simply check if API client is available (avoid making actual calls)
+        # Check if API client is available
         try:
-            # If we can get the client, API connectivity is considered healthy
             api_healthy = client is not None
         except Exception:
             api_healthy = False
 
-        # Skip webhook test to reduce noise (can be re-enabled if needed)
-        webhook_success = True  # Assume webhook is working to reduce logs
+        # Check Redis connectivity for log storage
+        try:
+            from unstract.core.log_utils import create_redis_client
 
-        if api_healthy and webhook_success:
+            redis_client = create_redis_client(
+                host=os.getenv("REDIS_HOST", "localhost"),
+                port=int(os.getenv("REDIS_PORT", "6379")),
+                username=os.getenv("REDIS_USER"),
+                password=os.getenv("REDIS_PASSWORD"),
+            )
+            redis_client.ping()
+            redis_healthy = True
+        except Exception:
+            redis_healthy = False
+
+        if api_healthy and redis_healthy:
             return HealthCheckResult(
-                name="general_worker_specific",
+                name="log_consumer_specific",
                 status=HealthStatus.HEALTHY,
-                message="General worker specific checks passed",
+                message="Log consumer worker specific checks passed",
                 details={
                     "api_health": "healthy",
-                    "webhook_test": "skipped",
+                    "redis_health": "healthy",
+                    "queue_name": log_queue_name,
                 },
             )
         else:
             return HealthCheckResult(
-                name="general_worker_specific",
+                name="log_consumer_specific",
                 status=HealthStatus.DEGRADED,
-                message="General worker partially functional",
+                message="Log consumer worker partially functional",
                 details={
-                    "api_health": "unhealthy" if not api_healthy else "healthy",
-                    "webhook_test": "skipped",
+                    "api_health": "healthy" if api_healthy else "unhealthy",
+                    "redis_health": "healthy" if redis_healthy else "unhealthy",
+                    "queue_name": log_queue_name,
                 },
             )
 
     except Exception as e:
         return HealthCheckResult(
-            name="general_worker_specific",
+            name="log_consumer_specific",
             status=HealthStatus.UNHEALTHY,
-            message=f"General worker health check failed: {str(e)}",
+            message=f"Log consumer health check failed: {str(e)}",
             details={"error": str(e)},
         )
 
 
-health_checker.add_custom_check("general_worker_specific", check_general_worker_health)
+health_checker.add_custom_check("log_consumer_specific", check_log_consumer_health)
 
-# Start health server (use different port than API deployment worker)
-health_server = HealthServer(health_checker, port=config.metrics_port + 1)
+# Start health server (use port 8084 for log consumer)
+health_server = HealthServer(health_checker, port=8084)
 
 
 def start_health_server():
     """Start health monitoring server."""
     try:
         health_server.start()
-        logger.info(
-            f"General worker health server started on port {config.metrics_port + 1}"
-        )
+        logger.info("Log consumer health server started on port 8084")
     except Exception as e:
         logger.error(f"Failed to start health server: {e}")
 
@@ -156,20 +161,17 @@ def stop_health_server():
     """Stop health monitoring server."""
     try:
         health_server.stop()
-        logger.info("General worker health server stopped")
+        logger.info("Log consumer health server stopped")
     except Exception as e:
         logger.error(f"Failed to stop health server: {e}")
 
 
-# Import tasks directly
-
-logger.info(f"General worker initialized with config: {config}")
-
-# Don't auto-start health server - let entrypoint.py handle it
+logger.info(f"Log consumer worker initialized with config: {config}")
+logger.info(f"Log consumer queue name: {log_queue_name}")
 
 if __name__ == "__main__":
     """Run worker directly for testing."""
-    logger.info("Starting general worker...")
+    logger.info("Starting log consumer worker...")
 
     try:
         # Run initial health check
@@ -177,12 +179,12 @@ if __name__ == "__main__":
         logger.info(f"Initial health status: {health_report['status']}")
 
         # Start Celery worker
-        app.start(["worker", "--loglevel=info", "--queues=celery"])
+        app.start(["worker", "--loglevel=info", f"--queues={log_queue_name}"])
 
     except KeyboardInterrupt:
-        logger.info("General worker shutdown requested")
+        logger.info("Log consumer worker shutdown requested")
     except Exception as e:
-        logger.error(f"General worker failed to start: {e}")
+        logger.error(f"Log consumer worker failed to start: {e}")
     finally:
         stop_health_server()
-        logger.info("General worker stopped")
+        logger.info("Log consumer worker stopped")

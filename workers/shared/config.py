@@ -64,7 +64,9 @@ class QueueConfig:
 
     # Queue routing rules
     TASK_ROUTES = {
-        "send_webhook_notification": {"queue": "general"},
+        "send_webhook_notification": {
+            "queue": "notifications"
+        },  # Route to notification worker
         "async_execute_bin_api": {"queue": "general"},
         "execute_workflow_with_files": {"queue": "general"},
         "_orchestrate_file_processing_general": {"queue": "general"},

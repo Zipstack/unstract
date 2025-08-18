@@ -170,6 +170,22 @@ class InternalAPIClient:
         """Get pipeline type by checking APIDeployment and Pipeline models."""
         return self.execution_client.get_pipeline_type(pipeline_id, organization_id)
 
+    def get_pipeline_data(
+        self, pipeline_id: str | uuid.UUID, organization_id: str | None = None
+    ) -> APIResponse:
+        """Get pipeline data by checking APIDeployment and Pipeline models."""
+        return self.execution_client.get_pipeline_data(pipeline_id, organization_id)
+
+    def get_api_deployment_data(
+        self, api_id: str | uuid.UUID, organization_id: str | None = None
+    ) -> APIResponse:
+        """Get APIDeployment data directly from v1 API deployment endpoint.
+
+        This method is optimized for callback workers that know they're dealing
+        with API deployments. It queries APIDeployment model directly.
+        """
+        return self.execution_client.get_api_deployment_data(api_id, organization_id)
+
     def update_workflow_execution_status(
         self,
         execution_id: str | uuid.UUID,

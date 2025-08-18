@@ -10,6 +10,7 @@ from django.conf import settings
 from django.http import JsonResponse
 from django.urls import path
 from django.views.decorators.http import require_http_methods
+from utils.websocket_views import emit_websocket
 
 from .internal_url_registry import (
     get_base_endpoints,
@@ -176,6 +177,8 @@ base_urlpatterns = [
     path("", internal_api_root, name="internal_api_root"),
     path("debug/", test_middleware_debug, name="test_middleware_debug"),
     path("v1/health/", internal_health_check, name="internal_health"),
+    # WebSocket emission endpoint for workers
+    path("emit-websocket/", emit_websocket, name="emit_websocket"),
     # All other URLs loaded dynamically from INTERNAL_URL_MODULES settings
 ]
 

@@ -500,10 +500,12 @@ def _run_workflow_api(
 
         result = chord(batch_tasks)(
             app.signature(
-                "process_batch_callback",  # Use same task name as Django
+                "process_batch_callback_api",  # Use API-specific callback
                 kwargs={
-                    "execution_id": str(execution_id)
-                },  # Pass as kwarg like Django backend
+                    "execution_id": str(execution_id),
+                    "pipeline_id": str(pipeline_id) if pipeline_id else None,
+                    "organization_id": str(schema_name),
+                },  # Pass required parameters for API callback
                 queue=file_processing_callback_queue,
             )
         )

@@ -148,6 +148,83 @@ class ExecutionAPIClient(BaseAPIClient):
                 message="Pipeline type defaulted to ETL",
             )
 
+    def get_pipeline_data(
+        self, pipeline_id: str | uuid.UUID, organization_id: str | None = None
+    ) -> APIResponse:
+        """Get pipeline data by checking APIDeployment and Pipeline models.
+
+        Args:
+            pipeline_id: Pipeline ID
+            organization_id: Optional organization ID override
+
+        Returns:
+            APIResponse containing pipeline data
+        """
+        try:
+            # Use the internal API endpoint for pipeline data resolution
+            endpoint = f"v1/pipeline/{str(pipeline_id)}/"
+            response = self.get(endpoint, organization_id=organization_id)
+
+            logger.info(f"Retrieved pipeline data for {pipeline_id}: {response}")
+            logger.debug(
+                f"Retrieved pipeline data for {pipeline_id}: {response.get('pipeline_type', 'unknown')}"
+            )
+            return APIResponse.success_response(
+                data=response,
+                message=f"Successfully retrieved pipeline data: {response.get('pipeline_type', 'unknown')}",
+            )
+        except Exception as e:
+            # This is expected for non-API deployments - pipeline endpoint doesn't exist
+            logger.error(
+                f"Pipeline data API not available for {pipeline_id} (expected for ETL workflows): {str(e)}"
+            )
+            # Return default structure - this is normal behavior
+            return APIResponse.error_response(
+                error=str(e),
+                message="Failed to retrieve pipeline data",
+            )
+
+    def get_api_deployment_data(
+        self, api_id: str | uuid.UUID, organization_id: str | None = None
+    ) -> APIResponse:
+        """Get APIDeployment data directly from v1 API deployment endpoint.
+
+        This method is optimized for callback workers that know they're dealing
+        with API deployments. It uses the v1/api-deployments/{api_id}/data/ endpoint
+        which directly queries the APIDeployment model without checking Pipeline model.
+
+        Args:
+            api_id: API deployment ID
+            organization_id: Optional organization ID override
+
+        Returns:
+            APIResponse containing APIDeployment data
+        """
+        try:
+            logger.debug(
+                f"Fetching APIDeployment data for {api_id} via v1 API deployment endpoint"
+            )
+
+            # Use the v1 API deployment endpoint for APIDeployment data
+            endpoint = self._build_url("api_deployments", f"{str(api_id)}/")
+            response = self.get(endpoint, organization_id=organization_id)
+
+            logger.info(
+                f"Retrieved APIDeployment data for {api_id}: name='{response.get('pipeline_name')}', type='{response.get('pipeline_type')}'"
+            )
+
+            return APIResponse.success_response(
+                data=response,
+                message=f"Successfully retrieved APIDeployment data: {response.get('pipeline_name')}",
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to fetch APIDeployment data for {api_id}: {str(e)}")
+            return APIResponse.error_response(
+                error=str(e),
+                message="Failed to retrieve APIDeployment data",
+            )
+
     def update_workflow_execution_status(
         self,
         execution_id: str | uuid.UUID,

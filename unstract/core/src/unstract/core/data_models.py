@@ -4,10 +4,11 @@ This module contains shared dataclasses used across backend and worker services
 to ensure type safety and consistent data structures for API communication.
 """
 
+import json
 import logging
 import uuid
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
@@ -213,6 +214,8 @@ def serialize_dataclass_to_dict(obj) -> dict[str, Any]:
             return value.isoformat()
         elif isinstance(value, time):
             return value.isoformat()
+        elif isinstance(value, Enum):
+            return value.value
         elif isinstance(value, dict):
             return {k: serialize_value(v) for k, v in value.items()}
         elif isinstance(value, list):
@@ -295,6 +298,159 @@ class WorkflowType(Enum):
     TASK = "TASK"
     API = "API"
     APP = "APP"
+
+
+class NotificationType(Enum):
+    """Notification type choices matching backend models."""
+
+    WEBHOOK = "WEBHOOK"
+    EMAIL = "EMAIL"
+    SMS = "SMS"
+    PUSH = "PUSH"
+
+    def __str__(self):
+        """Return enum value for Django CharField compatibility."""
+        return self.value
+
+
+class NotificationStatus(Enum):
+    """Notification delivery status."""
+
+    SUCCESS = "SUCCESS"
+    FAILURE = "FAILURE"
+
+    def __str__(self):
+        """Return enum value for Django CharField compatibility."""
+        return self.value
+
+
+class NotificationSource(Enum):
+    """Source of notification trigger."""
+
+    BACKEND = "backend"
+    CALLBACK_WORKER = "callback-worker"
+    PIPELINE_COMPLETION = "pipeline-completion"
+    API_EXECUTION = "api-execution"
+    MANUAL_TRIGGER = "manual-trigger"
+
+    def __str__(self):
+        """Return enum value for Django CharField compatibility."""
+        return self.value
+
+
+@dataclass
+class NotificationPayload:
+    """Standardized notification payload structure.
+
+    This dataclass defines the canonical structure for all notification payloads
+    sent from workers to notification systems, ensuring type safety and consistency.
+    """
+
+    # Core notification data
+    type: WorkflowType
+    pipeline_id: str
+    pipeline_name: str
+    status: NotificationStatus
+
+    # Optional execution context
+    execution_id: str | None = None
+    error_message: str | None = None
+    organization_id: str | None = None
+
+    # Metadata
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
+    additional_data: dict[str, Any] = field(default_factory=dict)
+
+    # Internal tracking (not sent to external webhooks)
+    _source: NotificationSource = field(default=NotificationSource.BACKEND, repr=False)
+
+    def __post_init__(self):
+        """Validate and normalize fields after initialization."""
+        # Ensure enums are properly set
+        if isinstance(self.type, str):
+            self.type = WorkflowType(self.type)
+        if isinstance(self.status, str):
+            self.status = NotificationStatus(self.status)
+        if isinstance(self._source, str):
+            self._source = NotificationSource(self._source)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary with JSON-compatible values (includes all fields)."""
+        return serialize_dataclass_to_dict(self)
+
+    def to_webhook_payload(self) -> dict[str, Any]:
+        """Convert to webhook payload format (excludes internal fields).
+
+        This is the payload structure that external webhook receivers will see.
+        Internal fields like _source are excluded from the external payload.
+        """
+        # Get full dict and remove internal fields
+        full_dict = serialize_dataclass_to_dict(self)
+
+        # Remove internal fields (those starting with _)
+        webhook_payload = {k: v for k, v in full_dict.items() if not k.startswith("_")}
+
+        # Also remove organization_id from external payloads for security
+        webhook_payload.pop("organization_id", None)
+
+        return webhook_payload
+
+    @property
+    def source(self) -> NotificationSource:
+        """Get the internal source for logging/debugging purposes."""
+        return self._source
+
+    @classmethod
+    def from_execution_status(
+        cls,
+        pipeline_id: str,
+        pipeline_name: str,
+        execution_status: ExecutionStatus,
+        workflow_type: WorkflowType,
+        source: NotificationSource,
+        execution_id: str | None = None,
+        error_message: str | None = None,
+        organization_id: str | None = None,
+        additional_data: dict[str, Any] | None = None,
+    ) -> "NotificationPayload":
+        """Create notification payload from execution status.
+
+        Args:
+            pipeline_id: Pipeline or API deployment ID
+            pipeline_name: Human readable name
+            execution_status: Current execution status
+            workflow_type: Type of workflow (ETL, API, etc.)
+            source: Source of the notification
+            execution_id: Optional execution ID
+            error_message: Optional error message for failed executions
+            organization_id: Optional organization context
+            additional_data: Optional additional metadata
+
+        Returns:
+            NotificationPayload instance
+        """
+        # Map execution status to notification status
+        if execution_status in [ExecutionStatus.COMPLETED]:
+            notification_status = NotificationStatus.SUCCESS
+        elif execution_status in [ExecutionStatus.ERROR, ExecutionStatus.STOPPED]:
+            notification_status = NotificationStatus.FAILURE
+        else:
+            # Don't send notifications for intermediate states like PENDING, EXECUTING
+            raise ValueError(
+                f"Cannot create notification for non-final status: {execution_status}"
+            )
+
+        return cls(
+            type=workflow_type,
+            pipeline_id=pipeline_id,
+            pipeline_name=pipeline_name,
+            status=notification_status,
+            execution_id=execution_id,
+            error_message=error_message,
+            organization_id=organization_id,
+            additional_data=additional_data or {},
+            _source=source,
+        )
 
 
 class ConnectionType(Enum):
@@ -662,6 +818,83 @@ class WorkflowExecutionData:
             created_at=data.get("created_at"),
             modified_at=data.get("modified_at"),
         )
+
+
+# Log Processing Data Models
+
+
+@dataclass
+class LogDataDTO:
+    """Log data DTO for storing execution logs to queue.
+
+    Shared between backend and workers for consistent log processing.
+
+    Attributes:
+        execution_id: execution id
+        organization_id: organization id
+        timestamp: timestamp
+        log_type: log type
+        data: log data
+        file_execution_id: Id for the file execution
+    """
+
+    execution_id: str
+    organization_id: str
+    timestamp: int
+    log_type: str
+    data: dict[str, Any]
+    file_execution_id: str | None = None
+
+    def __post_init__(self):
+        """Post-initialization to compute event_time from timestamp."""
+        self.event_time: datetime = datetime.fromtimestamp(self.timestamp, UTC)
+
+    @classmethod
+    def from_json(cls, json_data: str) -> "LogDataDTO | None":
+        """Create LogDataDTO from JSON string."""
+        try:
+            from unstract.core.constants import LogFieldName
+
+            json_obj = json.loads(json_data)
+            execution_id = json_obj.get(LogFieldName.EXECUTION_ID)
+            file_execution_id = json_obj.get(LogFieldName.FILE_EXECUTION_ID)
+            organization_id = json_obj.get(LogFieldName.ORGANIZATION_ID)
+            timestamp = json_obj.get(LogFieldName.TIMESTAMP)
+            log_type = json_obj.get(LogFieldName.TYPE)
+            data = json_obj.get(LogFieldName.DATA)
+
+            if all((execution_id, organization_id, timestamp, log_type, data)):
+                return cls(
+                    execution_id=execution_id,
+                    file_execution_id=file_execution_id,
+                    organization_id=organization_id,
+                    timestamp=timestamp,
+                    log_type=log_type,
+                    data=data,
+                )
+        except (json.JSONDecodeError, AttributeError):
+            logger.warning("Invalid log data: %s", json_data)
+        return None
+
+    def to_json(self) -> str:
+        """Convert LogDataDTO to JSON string."""
+        from unstract.core.constants import LogFieldName
+
+        return json.dumps(
+            {
+                LogFieldName.EXECUTION_ID: self.execution_id,
+                LogFieldName.ORGANIZATION_ID: self.organization_id,
+                LogFieldName.TIMESTAMP: self.timestamp,
+                LogFieldName.EVENT_TIME: self.event_time.isoformat(),
+                LogFieldName.TYPE: self.log_type,
+                LogFieldName.DATA: self.data,
+                LogFieldName.FILE_EXECUTION_ID: self.file_execution_id,
+            }
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for API serialization."""
+        return serialize_dataclass_to_dict(self)
 
 
 # Request/Response dataclasses for API operations
