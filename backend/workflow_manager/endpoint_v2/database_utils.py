@@ -56,13 +56,11 @@ class DatabaseUtils:
                 type_x = column_types.get(col, "")
                 if type_x == "VARIANT":
                     payload = values[column]
-                    # Normalize to a JSON string
-                    if isinstance(payload, (dict, list)):
-                        payload = json.dumps(payload)
-                    elif isinstance(payload, Enum):
+                    if isinstance(payload, Enum):
                         payload = payload.value
-                    payload = str(payload).replace("'", "\\'")
-                    sql_values[column] = f"parse_json($${payload}$$)"
+                    # Ensure valid JSON for VARIANT
+                    payload_json = json.dumps(payload, default=str)
+                    sql_values[column] = f"parse_json($${payload_json}$$)"
                 else:
                     # Non-VARIANT Snowflake types remain unchanged
                     sql_values[column] = f"{values[column]}"

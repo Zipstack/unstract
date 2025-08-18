@@ -54,7 +54,7 @@ class Redshift(UnstractDB, PsycoPgHandler):
         return True
 
     def get_string_type(self) -> str:
-        return "varchar"
+        return "character varying"
 
     def get_engine(self) -> connection:
         return psycopg2.connect(
@@ -83,7 +83,7 @@ class Redshift(UnstractDB, PsycoPgHandler):
             f"CREATE TABLE IF NOT EXISTS {table} "
             f"(id VARCHAR(65535) ,"
             f"created_by VARCHAR(65535), created_at TIMESTAMP, "
-            f"metadata VARCHAR(65535), "
+            f"metadata SUPER, "
             f"user_field_1 BOOLEAN DEFAULT FALSE, "
             f"user_field_2 INTEGER DEFAULT 0, "
             f"user_field_3 VARCHAR(65535) DEFAULT NULL, "
