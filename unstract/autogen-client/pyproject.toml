@@ -7,7 +7,7 @@ name = "unstract-autogen-client"
 dynamic = ["version"]
 description = "Unstract AutoGen ChatCompletionClient for Microsoft AutoGen framework"
 readme = "README.md"
-license = {file = "LICENSE"}
+# license = {file = "LICENSE"}
 requires-python = ">=3.10"
 authors = [
     { name = "Unstract", email = "support@unstract.com" },
@@ -85,8 +85,6 @@ extend-exclude = '''
 [tool.ruff]
 target-version = "py38"
 line-length = 88
-
-[tool.ruff.lint]
 select = [
     "E",  # pycodestyle errors
     "W",  # pycodestyle warnings
@@ -101,7 +99,9 @@ ignore = [
     "B008",  # do not perform function calls in argument defaults
     "C901",  # too complex
 ]
-per-file-ignores = {"__init__.py" = ["F401"]}
+
+[tool.ruff.per-file-ignores]
+"__init__.py" = ["F401"]
 
 [tool.mypy]
 python_version = "3.8"

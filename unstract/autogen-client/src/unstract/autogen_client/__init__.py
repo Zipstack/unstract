@@ -12,10 +12,22 @@ from .exceptions import (
     UnstractCompletionError,
     UnstractConfigurationError,
 )
+from .helper import (
+    SimpleAutoGenAgent,
+    create_simple_autogen_agent,
+    process_with_autogen,
+    process_with_autogen_async,
+    run_autogen_poc,
+)
 
 __all__ = [
     "UnstractAutoGenClient",
     "UnstractAutoGenError",
     "UnstractConfigurationError",
     "UnstractCompletionError",
+    "SimpleAutoGenAgent",
+    "create_simple_autogen_agent",
+    "process_with_autogen",
+    "process_with_autogen_async",
+    "run_autogen_poc",
 ]

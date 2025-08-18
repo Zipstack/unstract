@@ -2,8 +2,8 @@
 
 import asyncio
 import logging
+from typing import Any, Dict, List, Optional, Union
 from collections.abc import AsyncIterable
-from typing import Any, Optional, Union
 
 from autogen_core.models import (
     AssistantMessage,
@@ -39,11 +39,11 @@ class UnstractAutoGenClient(ChatCompletionClient):
     """ChatCompletionClient implementation using Unstract LLM adapters.
 
     This client provides a bridge between AutoGen's ChatCompletionClient interface
-    and Unstract's LLM adapter completion capabilities. It uses only the Unstract
-    adapter's completion method, without any external LLM library dependencies.
+    and Unstract's LLM adapter complete capabilities. It uses only the Unstract
+    adapter's complete method, without any external LLM library dependencies.
 
     Attributes:
-        llm_adapter: The Unstract LLM adapter instance with completion method
+        llm_adapter: The Unstract LLM adapter instance with complete method
         model_info: ModelInfo object containing model capabilities
 
     Examples:
@@ -69,7 +69,7 @@ class UnstractAutoGenClient(ChatCompletionClient):
         """Initialize the Unstract AutoGen client.
 
         Args:
-            llm_adapter: Unstract LLM adapter instance with a completion method
+            llm_adapter: Unstract LLM adapter instance with a complete method
             model_info: Optional ModelInfo override for capabilities
             timeout: Request timeout in seconds
             enable_retries: Whether to enable automatic retries
@@ -79,13 +79,13 @@ class UnstractAutoGenClient(ChatCompletionClient):
         Raises:
             UnstractConfigurationError: If configuration is invalid
         """
-        # Validate that adapter has completion method
+        # Validate that adapter has complete method
         if not llm_adapter:
             raise UnstractConfigurationError("llm_adapter must be provided")
 
-        if not hasattr(llm_adapter, "completion"):
+        if not hasattr(llm_adapter, "complete"):
             raise UnstractConfigurationError(
-                "llm_adapter must have a 'completion' method"
+                "llm_adapter must have a 'complete' method"
             )
 
         self.llm_adapter = llm_adapter
@@ -199,7 +199,7 @@ class UnstractAutoGenClient(ChatCompletionClient):
             )
 
         except Exception as e:
-            raise self._handle_exception(e) from e
+            raise self._handle_exception(e)
 
     async def create_stream(
         self,
@@ -294,7 +294,7 @@ class UnstractAutoGenClient(ChatCompletionClient):
             )
 
         except Exception as e:
-            raise self._handle_exception(e) from e
+            raise self._handle_exception(e)
 
     def count_tokens(self, messages: list[dict[str, str]]) -> int:
         """Count tokens in messages.
@@ -360,8 +360,35 @@ class UnstractAutoGenClient(ChatCompletionClient):
         """
 
         def _call():
-            # Use the Unstract LLM adapter's completion method
-            return self.llm_adapter.completion(**params)
+            # Extract prompt from messages for SDK1 complete method
+            messages = params.get("messages", [])
+            prompt = ""
+
+            # Find the last user message as the prompt
+            for msg in reversed(messages):
+                if isinstance(msg, dict):
+                    role = msg.get("role")
+                    content = msg.get("content", "")
+                elif hasattr(msg, "role") and hasattr(msg, "content"):
+                    role = msg.role
+                    content = msg.content
+                else:
+                    continue
+
+                if role == "user":
+                    prompt = content
+                    break
+
+            # If no user message found, use default prompt
+            if not prompt:
+                prompt = "Which model are you?"
+
+            # Create parameters for SDK1 complete method (remove messages, add prompt)
+            complete_params = {k: v for k, v in params.items() if k != "messages"}
+            complete_params["prompt"] = prompt
+
+            # Use the Unstract LLM adapter's complete method
+            return self.llm_adapter.complete(**complete_params)
 
         return await asyncio.get_event_loop().run_in_executor(None, _call)
 
@@ -376,8 +403,35 @@ class UnstractAutoGenClient(ChatCompletionClient):
         """
 
         def _stream_call():
-            # Use the Unstract LLM adapter's completion method with streaming
-            return self.llm_adapter.completion(**params)
+            # Extract prompt from messages for SDK1 complete method
+            messages = params.get("messages", [])
+            prompt = ""
+
+            # Find the last user message as the prompt
+            for msg in reversed(messages):
+                if isinstance(msg, dict):
+                    role = msg.get("role")
+                    content = msg.get("content", "")
+                elif hasattr(msg, "role") and hasattr(msg, "content"):
+                    role = msg.role
+                    content = msg.content
+                else:
+                    continue
+
+                if role == "user":
+                    prompt = content
+                    break
+
+            # If no user message found, use default prompt
+            if not prompt:
+                prompt = "Which model are you?"
+
+            # Create parameters for SDK1 complete method (remove messages, add prompt)
+            complete_params = {k: v for k, v in params.items() if k != "messages"}
+            complete_params["prompt"] = prompt
+
+            # Use the Unstract LLM adapter's complete method with streaming
+            return self.llm_adapter.complete(**complete_params)
 
         # Execute streaming completion
         stream_response = await asyncio.get_event_loop().run_in_executor(

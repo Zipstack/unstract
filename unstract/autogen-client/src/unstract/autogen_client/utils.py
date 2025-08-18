@@ -1,7 +1,7 @@
 """Utility functions for Unstract AutoGen Adapter."""
 
 import logging
-from typing import Any, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from autogen_core.models import (
     AssistantMessage,
@@ -22,17 +22,17 @@ _ALLOWED_FINISH_REASONS = {
 }
 
 
-def normalize_finish_reason(raw: Optional[str]) -> Optional[str]:
+def normalize_finish_reason(raw: Optional[str]) -> str:
     """Normalize finish reason to standard values.
 
     Args:
         raw: Raw finish reason from adapter response
 
     Returns:
-        Normalized finish reason or None
+        Normalized finish reason (defaults to 'stop' if None)
     """
     if raw is None:
-        return None
+        return "stop"  # Default to 'stop' if None
     if raw == "stop_sequence":
         return "stop"
     return raw if raw in _ALLOWED_FINISH_REASONS else "unknown"
@@ -103,10 +103,18 @@ def extract_content(response: Any) -> str:
         Response content string
     """
     try:
+        # First, try SDK1 format: {"response": {"text": "content"}}
+        if isinstance(response, dict) and "response" in response:
+            sdk1_response = response["response"]
+            if isinstance(sdk1_response, dict) and "text" in sdk1_response:
+                return sdk1_response["text"] or ""
+
+        # Then try OpenAI-like format with choices
         if hasattr(response, "choices") and response.choices:
             choice = response.choices[0]
             if hasattr(choice, "message") and hasattr(choice.message, "content"):
                 return choice.message.content or ""
+
         return ""
     except Exception as e:
         logger.warning(f"Failed to extract content: {e}")
@@ -123,11 +131,11 @@ def extract_usage(response: Any) -> RequestUsage:
         RequestUsage object
     """
     try:
-        if hasattr(response, "usage") and response.usage:
-            usage = response.usage
+        if isinstance(response, dict) and "usage" in response:
+            usage = response["usage"]
             return RequestUsage(
-                prompt_tokens=getattr(usage, "prompt_tokens", 0),
-                completion_tokens=getattr(usage, "completion_tokens", 0),
+                prompt_tokens=usage.get("prompt_tokens", 0),
+                completion_tokens=usage.get("completion_tokens", 0),
             )
     except Exception as e:
         logger.warning(f"Failed to extract usage: {e}")
@@ -135,14 +143,14 @@ def extract_usage(response: Any) -> RequestUsage:
     return RequestUsage(prompt_tokens=0, completion_tokens=0)
 
 
-def extract_finish_reason(response: Any) -> Optional[str]:
+def extract_finish_reason(response: Any) -> str:
     """Extract and normalize finish reason from adapter response.
 
     Args:
         response: Response from Unstract LLM adapter
 
     Returns:
-        Normalized finish reason or None
+        Normalized finish reason (defaults to 'stop')
     """
     try:
         if hasattr(response, "choices") and response.choices:
@@ -152,7 +160,7 @@ def extract_finish_reason(response: Any) -> Optional[str]:
     except Exception as e:
         logger.warning(f"Failed to extract finish reason: {e}")
 
-    return None
+    return normalize_finish_reason(None)  # This will return 'stop'
 
 
 def validate_adapter(adapter: Any) -> bool:
