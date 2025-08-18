@@ -93,17 +93,36 @@ class MSSQL(UnstractDB):
         )
 
     def get_create_table_base_query(self, table: str) -> str:
-        """Function to create a base create table sql query.
+        """Function to create a base create table sql query with proper schema support.
 
         Args:
-            table (str): db-connector table name
+            table (str): db-connector table name (supports schema.table format)
 
         Returns:
             str: generates a create sql base query with the constant columns
         """
+        # Parse schema and table name for existence check
+        if "." in table:
+            # Handle schema.table format like "[schema].[table]"
+            parts = table.rsplit(".", 1)
+            schema_name, table_name = parts[0], parts[1]
+            existence_check = (
+                f"IF NOT EXISTS ("
+                f"SELECT * FROM INFORMATION_SCHEMA.TABLES "
+                f"WHERE TABLE_SCHEMA = '{schema_name}' AND TABLE_NAME = '{table_name}'"
+                f")"
+            )
+        else:
+            # Handle unqualified table names (default to dbo schema)
+            existence_check = (
+                f"IF NOT EXISTS ("
+                f"SELECT * FROM INFORMATION_SCHEMA.TABLES "
+                f"WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = '{table}'"
+                f")"
+            )
+
         sql_query = (
-            f"IF NOT EXISTS ("
-            f"SELECT * FROM sysobjects WHERE name='{table}' and xtype='U')"
+            f"{existence_check} "
             f" CREATE TABLE {table} "
             f"(id NVARCHAR(MAX), "
             f"created_by NVARCHAR(MAX), created_at DATETIMEOFFSET, "
@@ -168,3 +187,37 @@ class MSSQL(UnstractDB):
                 database=self.database,
                 table_name=table_name,
             ) from e
+
+    def get_information_schema(self, table_name: str) -> dict[str, str]:
+        """Function to generate information schema with proper schema and database support.
+
+        Args:
+            table_name (str): db-connector table name (supports schema.table format)
+
+        Returns:
+            dict[str, str]: a dictionary contains db column name and
+                db column types of corresponding table
+        """
+        table_name = str.lower(table_name)
+        if "." in table_name:
+            # Handle schema.table format
+            parts = table_name.rsplit(".", 1)
+            schema_name, table_only = parts[0], parts[1]
+            query = (
+                f"SELECT column_name, data_type FROM "
+                f"information_schema.columns WHERE "
+                f"table_schema = '{schema_name}' AND table_name = '{table_only}'"
+            )
+        else:
+            # Handle unqualified table names (default to dbo)
+            query = (
+                f"SELECT column_name, data_type FROM "
+                f"information_schema.columns WHERE "
+                f"table_schema = 'dbo' AND table_name = '{table_name}'"
+            )
+
+        results = self.execute(query=query)
+        column_types: dict[str, str] = self.get_db_column_types(
+            columns_with_types=results
+        )
+        return column_types
