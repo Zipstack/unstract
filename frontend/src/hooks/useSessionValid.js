@@ -115,6 +115,7 @@ function useSessionValid() {
       userAndOrgDetails["orgId"] = orgId;
       userAndOrgDetails["csrfToken"] = csrfToken;
       userAndOrgDetails["logEventsId"] = setOrgRes?.data?.log_events_id;
+      userAndOrgDetails["is_staff"] = userSessionData?.is_staff;
 
       requestOptions["method"] = "GET";
 

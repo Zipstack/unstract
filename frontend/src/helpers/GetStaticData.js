@@ -401,8 +401,25 @@ const formattedDateTime = (ISOdateTime) => {
 
 const getBackendErrorDetail = (attr, backendErrors) => {
   if (backendErrors) {
-    const error = backendErrors?.errors.find((error) => error?.attr === attr);
-    return error ? error?.detail : null;
+    // Handle structured error response with errors array
+    if (backendErrors?.errors && Array.isArray(backendErrors.errors)) {
+      const error = backendErrors.errors.find((error) => error?.attr === attr);
+      return error ? error?.detail : null;
+    }
+
+    // Handle direct field errors (e.g., { api_name: ["error message"] })
+    if (backendErrors[attr]) {
+      return Array.isArray(backendErrors[attr])
+        ? backendErrors[attr].join(", ")
+        : backendErrors[attr];
+    }
+
+    // Handle nested errors in non_field_errors
+    if (backendErrors?.non_field_errors) {
+      return Array.isArray(backendErrors.non_field_errors)
+        ? backendErrors.non_field_errors.join(", ")
+        : backendErrors.non_field_errors;
+    }
   }
   return null;
 };
@@ -631,6 +648,22 @@ const convertTimestampToHHMMSS = (timestamp) => {
   return `${hours}:${minutes}:${seconds}`;
 };
 
+const formatTimeDisplay = (seconds) => {
+  // Format time display for TTL or duration display
+  if (seconds <= 0) return "Expired";
+
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+
+  const parts = [];
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(`${minutes}m`);
+  if (secs > 0 || parts.length === 0) parts.push(`${secs}s`);
+
+  return parts.join(" ");
+};
+
 const UNSTRACT_ADMIN = "unstract_admin";
 
 const logsStaticContent = {
@@ -708,6 +741,7 @@ export {
   convertTimestampToHHMMSS,
   UNSTRACT_ADMIN,
   formatSecondsToHMS,
+  formatTimeDisplay,
   formattedDateTimeWithSeconds,
   logsStaticContent,
 };

@@ -55,7 +55,6 @@ from workflow_manager.workflow_v2.enums import (
 )
 from workflow_manager.workflow_v2.exceptions import (
     InvalidRequest,
-    TaskDoesNotExistError,
     WorkflowDoesNotExistError,
     WorkflowExecutionError,
     WorkflowExecutionNotExist,
@@ -67,6 +66,12 @@ from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 logger = logging.getLogger(__name__)
+
+# Parameters to exclude when calling create_workflow_execution
+EXECUTION_EXCLUDED_PARAMS = {
+    "llm_profile_id",
+    "hitl_queue_name",
+}
 
 
 class WorkflowHelper:
@@ -251,6 +256,7 @@ class WorkflowHelper:
         execution_mode: tuple[str, str] | None = None,
         use_file_history: bool = True,
         llm_profile_id: str | None = None,
+        hitl_queue_name: str | None = None,
     ) -> ExecutionResponse:
         tool_instances: list[ToolInstance] = (
             ToolInstanceHelper.get_tool_instances_by_workflow(
@@ -278,6 +284,7 @@ class WorkflowHelper:
             execution_id=execution_id,
             workflow_log=workflow_log,
             use_file_history=use_file_history,
+            hitl_queue_name=hitl_queue_name,
         )
         try:
             # Validating endpoints
@@ -335,16 +342,12 @@ class WorkflowHelper:
             execution_id (str): workflow execution id
 
         Raises:
-            TaskDoesNotExistError: Not found exception
             ExecutionDoesNotExistError: If execution is not found
 
         Returns:
             ExecutionResponse: _description_
         """
         execution: WorkflowExecution = WorkflowExecution.objects.get(id=execution_id)
-        if not execution.task_id:
-            raise TaskDoesNotExistError(f"No task ID found for execution: {execution_id}")
-
         task_result = None
         result_acknowledged = execution.result_acknowledged
         # Prepare the initial response with the task's current status and result.
@@ -422,6 +425,7 @@ class WorkflowHelper:
         queue: str | None = None,
         use_file_history: bool = True,
         llm_profile_id: str | None = None,
+        hitl_queue_name: str | None = None,
     ) -> ExecutionResponse:
         """Adding a workflow to the queue for execution.
 
@@ -433,6 +437,7 @@ class WorkflowHelper:
             queue (Optional[str]): Name of the celery queue to push into
             use_file_history (bool): Use FileHistory table to return results on already
                 processed files. Defaults to True
+            hitl_queue_name (str | None): Name of the HITL queue to push files to
             llm_profile_id (str, optional): LLM profile ID for overriding tool settings
 
         Returns:
@@ -459,18 +464,36 @@ class WorkflowHelper:
                     "log_events_id": log_events_id,
                     "use_file_history": use_file_history,
                     "llm_profile_id": llm_profile_id,
+                    "hitl_queue_name": hitl_queue_name,
                 },
                 queue=queue,
             )
+
+            # Log task_id for debugging
             logger.info(
-                f"[{org_schema}] Job '{async_execution}' has been enqueued for "
-                f"execution_id '{execution_id}', '{len(hash_values_of_files)}' files"
+                f"[{org_schema}] AsyncResult created with task_id: '{async_execution.id}' "
+                f"(type: {type(async_execution.id).__name__})"
             )
+
             workflow_execution: WorkflowExecution = WorkflowExecution.objects.get(
                 id=execution_id
             )
-            workflow_execution.task_id = async_execution.id
-            workflow_execution.save()
+
+            # Handle empty task_id gracefully using existing validation logic
+            if not async_execution.id:
+                logger.warning(
+                    f"[{org_schema}] Celery returned empty task_id for execution_id '{execution_id}'. "
+                )
+                # Continue without setting task_id - execution can still complete
+            else:
+                # Use existing method to handle task_id setting with validation
+                WorkflowExecutionServiceHelper.update_execution_task(
+                    execution_id=execution_id, task_id=async_execution.id
+                )
+                logger.info(
+                    f"[{org_schema}] Job '{async_execution.id}' has been enqueued for "
+                    f"execution_id '{execution_id}', '{len(hash_values_of_files)}' files"
+                )
             execution_status = workflow_execution.status
             if timeout > -1:
                 while not ExecutionStatus.is_completed(execution_status) and timeout > 0:
@@ -625,8 +648,10 @@ class WorkflowHelper:
         workflow = Workflow.objects.get(id=workflow_id)
         # TODO: Make use of WorkflowExecution.get_or_create()
         try:
-            # Filter out llm_profile_id from kwargs as create_workflow_execution doesn't accept it
-            filtered_kwargs = {k: v for k, v in kwargs.items() if k != "llm_profile_id"}
+            # Filter out parameters that create_workflow_execution doesn't accept
+            filtered_kwargs = {
+                k: v for k, v in kwargs.items() if k not in EXECUTION_EXCLUDED_PARAMS
+            }
             workflow_execution = WorkflowExecutionServiceHelper.create_workflow_execution(
                 workflow_id=workflow_id,
                 single_step=False,
@@ -643,6 +668,9 @@ class WorkflowHelper:
             execution_id=execution_id, task_id=task_id
         )
         try:
+            logger.info(
+                f"Starting workflow execution: workflow_id={workflow_id}, execution_id={execution_id}, hitl_queue_name={kwargs.get('hitl_queue_name')}"
+            )
             execution_response = WorkflowHelper.run_workflow(
                 workflow=workflow,
                 organization_id=organization_id,
@@ -653,6 +681,7 @@ class WorkflowHelper:
                 hash_values_of_files=hash_values,
                 use_file_history=use_file_history,
                 llm_profile_id=kwargs.get("llm_profile_id"),
+                hitl_queue_name=kwargs.get("hitl_queue_name"),
             )
         except Exception as error:
             error_message = traceback.format_exc()
