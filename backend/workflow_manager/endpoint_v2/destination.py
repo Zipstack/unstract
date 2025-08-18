@@ -349,7 +349,7 @@ class DestinationConnector(BaseConnector):
         metadata = self.get_combined_metadata()
 
         # If no data and no error, don't execute CREATE or INSERT query
-        if not data:
+        if not data and not error:
             logger.info("No data obtained from tool to insert into destination DB.")
             return
 
