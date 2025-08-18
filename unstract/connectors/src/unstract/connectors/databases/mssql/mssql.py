@@ -74,14 +74,14 @@ class MSSQL(UnstractDB):
         python_type = type(value)
 
         mapping = {
-            str: "TEXT",
+            str: "NVARCHAR(MAX)",
             int: "INT",
             float: "FLOAT",
             datetime.datetime: "DATETIMEOFFSET",
             dict: "NVARCHAR(MAX)",
             list: "NVARCHAR(MAX)",
         }
-        return mapping.get(python_type, "TEXT")
+        return mapping.get(python_type, "NVARCHAR(MAX)")
 
     def get_engine(self) -> Connection:
         return pymssql.connect(  # type: ignore

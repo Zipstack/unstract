@@ -396,14 +396,8 @@ class DestinationConnector(BaseConnector):
             error=error,
         )
 
-        engine = None
         try:
-            db_class = DatabaseUtils.get_db_class(
-                connector_id=connector_instance.connector_id,
-                connector_settings=connector_settings,
-            )
-
-            engine = db_class.get_engine()
+            # Reuse the same db_class and engine created earlier
 
             DatabaseUtils.create_table_if_not_exists(
                 db_class=db_class,

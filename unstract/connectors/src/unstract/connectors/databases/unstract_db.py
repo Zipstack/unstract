@@ -3,6 +3,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
+from workflow_manager.endpoint_v2.constants import TableColumns
 from workflow_manager.endpoint_v2.exceptions import UnstractDBException
 
 from unstract.connectors.base import UnstractConnector
@@ -70,8 +71,18 @@ class UnstractDB(UnstractConnector, ABC):
         pass
 
     @abstractmethod
-    def prepare_multi_column_migration(self, table_name: str, column_name: str) -> str:
-        """Returns the ALTER TABLE query specific to the database."""
+    def prepare_multi_column_migration(self, table_name: str, column_name: str) -> str | list:
+        """Returns the ALTER TABLE query specific to the database.
+        
+        Args:
+            table_name (str): The name of the table to alter
+            column_name (str): The base name of the column to add a _v2 version for
+            
+        Returns:
+            str | list: Either a single SQL ALTER TABLE statement (str) or
+                       a list of separate ALTER TABLE statements for databases
+                       that don't support multiple column additions in one statement
+        """
         pass
 
     @abstractmethod
@@ -139,16 +150,7 @@ class UnstractDB(UnstractConnector, ABC):
         Returns:
             Any: generates a create sql query for all the columns
         """
-        PERMANENT_COLUMNS = [
-            "created_by",
-            "created_at",
-            "user_field_1",
-            "user_field_2",
-            "user_field_3",
-            "metadata",
-            "error_message",
-            "status",
-        ]
+        PERMANENT_COLUMNS = TableColumns.PERMANENT_COLUMNS
 
         sql_query = ""
         create_table_query = self.get_create_table_base_query(table=table)

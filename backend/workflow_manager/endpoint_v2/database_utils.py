@@ -55,9 +55,16 @@ class DatabaseUtils:
                 col = column.lower()
                 type_x = column_types.get(col, "")
                 if type_x == "VARIANT":
-                    values[column] = values[column].replace("'", "\\'")
-                    sql_values[column] = f"parse_json($${values[column]}$$)"
+                    payload = values[column]
+                    # Normalize to a JSON string
+                    if isinstance(payload, (dict, list)):
+                        payload = json.dumps(payload)
+                    elif isinstance(payload, Enum):
+                        payload = payload.value
+                    payload = str(payload).replace("'", "\\'")
+                    sql_values[column] = f"parse_json($${payload}$$)"
                 else:
+                    # Non-VARIANT Snowflake types remain unchanged
                     sql_values[column] = f"{values[column]}"
             else:
                 # Handle JSON and Enum types for each database
@@ -156,24 +163,37 @@ class DatabaseUtils:
         if include_timestamp:
             values[TableColumns.CREATED_AT] = datetime.datetime.now()
 
-        if metadata:
+        has_metadata_col = (table_info is None) or any(
+            k.lower() == TableColumns.METADATA.lower() for k in table_info
+        ) if table_info else True
+        has_error_col = (table_info is None) or any(
+            k.lower() == TableColumns.ERROR_MESSAGE.lower() for k in table_info
+        ) if table_info else True
+        has_status_col = (table_info is None) or any(
+            k.lower() == TableColumns.STATUS.lower() for k in table_info
+        ) if table_info else True
+
+        if metadata and has_metadata_col:
             values[TableColumns.METADATA] = json.dumps(metadata)
 
-        if error:
+        if error and has_error_col:
             values[TableColumns.ERROR_MESSAGE] = error
-            values[TableColumns.STATUS] = FileStatus.ERROR
-        else:
-            values[TableColumns.STATUS] = FileStatus.SUCCESS
+        if has_status_col:
+            values[TableColumns.STATUS] = FileStatus.ERROR if error else FileStatus.SUCCESS
 
         if column_mode == ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN:
             if isinstance(data, str):
                 wrapped_dict = {"result": data}
                 values[single_column_name] = wrapped_dict
-                if table_info and f"{single_column_name}_v2" in table_info:
+                if table_info and any(
+                    k.lower() == f"{single_column_name}_v2".lower() for k in table_info
+                ):
                     values[f"{single_column_name}_v2"] = wrapped_dict
             else:
                 values[single_column_name] = data
-                if table_info and f"{single_column_name}_v2" in table_info:
+                if table_info and any(
+                    k.lower() == f"{single_column_name}_v2".lower() for k in table_info
+                ):
                     values[f"{single_column_name}_v2"] = data
         if column_mode == ColumnModes.SPLIT_JSON_INTO_COLUMNS:
             if isinstance(data, dict):
@@ -181,14 +201,18 @@ class DatabaseUtils:
             elif isinstance(data, str):
                 values[single_column_name] = data
                 # Only write to v2 if it exists
-                if table_info and f"{single_column_name}_v2" in table_info:
+                if table_info and any(
+                    k.lower() == f"{single_column_name}_v2".lower() for k in table_info
+                ):
                     values[f"{single_column_name}_v2"] = data
             else:
                 values[single_column_name] = json.dumps(
                     data
                 )  # Legacy column gets JSON string
                 # Only write to v2 if it exists
-                if table_info and f"{single_column_name}_v2" in table_info:
+                if table_info and any(
+                    k.lower() == f"{single_column_name}_v2".lower() for k in table_info
+                ):
                     values[f"{single_column_name}_v2"] = data
 
         values[file_path_name] = file_path
