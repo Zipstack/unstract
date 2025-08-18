@@ -27,6 +27,8 @@ WORKER_MODULE_MAPPING = {
     "general": "general.worker",  # Directory: general
     "file_processing": "file_processing.worker",  # Directory: file_processing
     "callback": "callback.worker",  # Directory: callback
+    "notification": "notification.worker",  # Directory: notification
+    "log_consumer": "log_consumer.worker",  # Directory: log_consumer
 }
 
 # Get the module name to import

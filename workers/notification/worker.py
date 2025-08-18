@@ -39,14 +39,14 @@ email_queue_name = os.getenv("EMAIL_QUEUE_NAME", "notifications_email")
 sms_queue_name = os.getenv("SMS_QUEUE_NAME", "notifications_sms")
 priority_queue_name = os.getenv("PRIORITY_QUEUE_NAME", "notifications_priority")
 
-# Build queue list for worker consumption - EXCLUDE default_queue_name to prevent routing conflicts
+# Build queue list for worker consumption
 all_notification_queues = [
-    # default_queue_name,       # Remove default queue to prevent general tasks from routing here
     notification_queue_name,  # Main notification queue
     webhook_queue_name,  # Webhook-specific queue
     email_queue_name,  # Email-specific queue (future)
     sms_queue_name,  # SMS-specific queue (future)
     priority_queue_name,  # High-priority notifications
+    # NOTE: Explicitly exclude default queue to prevent misrouted tasks
 ]
 
 # Queue names as comma-separated string for Celery
@@ -59,14 +59,9 @@ celery_config = {
     "result_backend": os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0"),
     # Task routing - route to specific queues based on notification type
     "task_routes": {
-        # Backward compatibility - existing notifications might use default queue
-        "backend.notification_v2.tasks.*": {"queue": default_queue_name},
-        "backend.tasks.*": {"queue": default_queue_name},
-        # New notification worker tasks
+        # New notification worker tasks - route to notification queues
         "process_notification": {"queue": notification_queue_name},
-        "send_webhook_notification": {
-            "queue": notification_queue_name
-        },  # Send to main notifications queue
+        "send_webhook_notification": {"queue": notification_queue_name},
         "send_batch_notifications": {"queue": notification_queue_name},
         "notification_health_check": {"queue": notification_queue_name},
         "notification.tasks.*": {"queue": notification_queue_name},
@@ -99,7 +94,7 @@ celery_config = {
     **{k: v for k, v in config.get_celery_config().items() if k != "task_routes"},
     # Task discovery
     "imports": [
-        "tasks",  # Import tasks from current package
+        "notification.tasks",  # Import tasks from notification package
     ],
 }
 

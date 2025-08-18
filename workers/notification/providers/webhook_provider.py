@@ -8,7 +8,7 @@ a foundation for future notification types.
 from typing import Any
 
 import requests
-from providers.base_provider import (
+from notification.providers.base_provider import (
     BaseNotificationProvider,
     DeliveryError,
     ValidationError,

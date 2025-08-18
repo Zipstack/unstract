@@ -33,7 +33,7 @@ log_storage_enabled = os.getenv("ENABLE_LOG_HISTORY", "true").lower() == "true"
 
 
 @shared_task(name=LogProcessingTask.TASK_NAME)
-def log_consumer(**kwargs: Any) -> None:
+def logs_consumer(**kwargs: Any) -> None:
     """Task to process logs from log publisher.
 
     This task processes execution logs by:

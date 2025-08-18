@@ -9,20 +9,24 @@ import os
 from typing import Any
 
 from celery import shared_task
-from providers.base_provider import DeliveryError, NotificationError, ValidationError
-from providers.webhook_provider import (
+from notification.providers.base_provider import (
+    DeliveryError,
+    NotificationError,
+    ValidationError,
+)
+from notification.providers.webhook_provider import (
     EmailProvider,
     PushProvider,
     SMSProvider,
     WebhookProvider,
 )
-from shared.config import WorkerConfig
-from shared.logging_utils import WorkerLogger
-from utils import (
+from notification.utils import (
     log_notification_attempt,
     log_notification_failure,
     log_notification_success,
 )
+from shared.config import WorkerConfig
+from shared.logging_utils import WorkerLogger
 
 from unstract.core.notification_enums import NotificationType
 

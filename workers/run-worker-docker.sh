@@ -30,6 +30,9 @@ declare -A WORKERS=(
     ["file"]="file_processing"
     ["file-processing"]="file_processing"
     ["callback"]="callback"
+    ["notification"]="notification"
+    ["log"]="log_consumer"
+    ["log-consumer"]="log_consumer"
     ["all"]="all"
 )
 
@@ -39,6 +42,8 @@ declare -A WORKER_QUEUES=(
     ["general"]="celery"
     ["file_processing"]="file_processing,api_file_processing"
     ["callback"]="file_processing_callback,api_file_processing_callback"
+    ["notification"]="notifications,notifications_webhook,notifications_email,notifications_sms,notifications_priority"
+    ["log_consumer"]="celery_log_task_queue"
 )
 
 # Worker health ports
@@ -47,6 +52,8 @@ declare -A WORKER_HEALTH_PORTS=(
     ["general"]="8081"
     ["file_processing"]="8082"
     ["callback"]="8083"
+    ["log_consumer"]="8084"
+    ["notification"]="8085"
 )
 
 # Function to print colored output
@@ -83,7 +90,10 @@ run_worker() {
         "file-processing"|"file")
             worker_type="file_processing"
             ;;
-        # general and callback stay the same
+        "log-consumer"|"log")
+            worker_type="log_consumer"
+            ;;
+        # general, callback, and notification stay the same
     esac
 
     # Set worker-specific environment variables
@@ -117,6 +127,12 @@ run_worker() {
         "callback")
             queues="${CELERY_QUEUES_CALLBACK:-$queues}"
             ;;
+        "notification")
+            queues="${CELERY_QUEUES_NOTIFICATION:-$queues}"
+            ;;
+        "log_consumer")
+            queues="${CELERY_QUEUES_LOG_CONSUMER:-$queues}"
+            ;;
     esac
 
     # Get health port
@@ -140,6 +156,14 @@ run_worker() {
             export CALLBACK_HEALTH_PORT="${health_port}"
             export CALLBACK_METRICS_PORT="${health_port}"
             ;;
+        "notification")
+            export NOTIFICATION_HEALTH_PORT="${health_port}"
+            export NOTIFICATION_METRICS_PORT="${health_port}"
+            ;;
+        "log_consumer")
+            export LOG_CONSUMER_HEALTH_PORT="${health_port}"
+            export LOG_CONSUMER_METRICS_PORT="${health_port}"
+            ;;
     esac
 
     # Determine autoscale settings
@@ -157,6 +181,12 @@ run_worker() {
         "callback")
             autoscale="${WORKER_CALLBACK_AUTOSCALE:-4,1}"
             ;;
+        "notification")
+            autoscale="${WORKER_NOTIFICATION_AUTOSCALE:-4,1}"
+            ;;
+        "log_consumer")
+            autoscale="${WORKER_LOG_CONSUMER_AUTOSCALE:-2,1}"
+            ;;
     esac
 
     print_status $GREEN "Starting $worker_type worker..."
@@ -168,22 +198,34 @@ run_worker() {
 
     # Build Celery command with configurable options
     local celery_cmd="/app/.venv/bin/celery -A worker worker"
-    local celery_args="--loglevel=${LOG_LEVEL:-info} --queues=$queues --hostname=${worker_instance_name}@%h --autoscale=$autoscale"
+    local celery_args="--loglevel=${LOG_LEVEL:-info} --queues=$queues --hostname=${worker_instance_name}@%h"
 
-    # Add optional pool type configuration
-    if [[ -n "$CELERY_POOL" ]]; then
-        celery_args="$celery_args --pool=$CELERY_POOL"
+    # Add pool type and configure accordingly
+    local pool_type="${CELERY_POOL:-prefork}"
+    celery_args="$celery_args --pool=$pool_type"
+
+    # Configure concurrency based on pool type
+    if [[ "$pool_type" == "threads" ]] || [[ "$pool_type" == "eventlet" ]] || [[ "$pool_type" == "gevent" ]]; then
+        # Thread/async pools don't support autoscaling, use fixed concurrency
+        if [[ -n "$CELERY_CONCURRENCY" ]]; then
+            celery_args="$celery_args --concurrency=$CELERY_CONCURRENCY"
+        else
+            # Extract max from autoscale for fixed concurrency
+            local max_workers="${autoscale%,*}"
+            celery_args="$celery_args --concurrency=$max_workers"
+        fi
+    else
+        # Prefork/solo pools support autoscaling
+        if [[ -n "$CELERY_CONCURRENCY" ]]; then
+            celery_args="$celery_args --concurrency=$CELERY_CONCURRENCY"
+        else
+            celery_args="$celery_args --autoscale=$autoscale"
+        fi
     fi
 
     # Add optional prefetch multiplier
     if [[ -n "$CELERY_PREFETCH_MULTIPLIER" ]]; then
         celery_args="$celery_args --prefetch-multiplier=$CELERY_PREFETCH_MULTIPLIER"
-    fi
-
-    # Add optional concurrency override (takes precedence over autoscale)
-    if [[ -n "$CELERY_CONCURRENCY" ]]; then
-        # Remove autoscale and use fixed concurrency
-        celery_args="${celery_args/--autoscale=$autoscale/--concurrency=$CELERY_CONCURRENCY}"
     fi
 
     # Add any additional custom Celery arguments

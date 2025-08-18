@@ -41,7 +41,8 @@ celery_config = {
     # Task routing - route to log consumer queue
     "task_routes": {
         "logs_consumer": {"queue": log_queue_name},
-        "log_consumer.*": {"queue": log_queue_name},
+        "log_consumer.tasks.*": {"queue": log_queue_name},
+        "log_consumer_health_check": {"queue": log_queue_name},
     },
     # Task filtering - only accept log processing tasks
     "worker_disable_rate_limits": True,
