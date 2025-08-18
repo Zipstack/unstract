@@ -1,7 +1,7 @@
 """Utility functions for Unstract AutoGen Adapter."""
 
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional, Union
 
 from autogen_core.models import (
     AssistantMessage,

@@ -9,9 +9,9 @@ completions, demonstrating the efficiency gains of streaming for long responses.
 import asyncio
 import statistics
 import time
-from dataclasses import dataclass
-from typing import Any, List
 from collections.abc import Generator
+from dataclasses import dataclass
+from typing import Any
 
 from autogen_core.models import SystemMessage, UserMessage
 from unstract.autogen_client import UnstractAutoGenClient

@@ -8,7 +8,7 @@ and orchestrate them in a collaborative workflow to solve complex tasks.
 
 import asyncio
 from dataclasses import dataclass
-from typing import Any, List
+from typing import Any
 
 from autogen_core.models import SystemMessage, UserMessage
 from unstract.autogen_client import UnstractAutoGenClient
