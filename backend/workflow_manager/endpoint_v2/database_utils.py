@@ -163,15 +163,24 @@ class DatabaseUtils:
         if include_timestamp:
             values[TableColumns.CREATED_AT] = datetime.datetime.now()
 
-        has_metadata_col = (table_info is None) or any(
-            k.lower() == TableColumns.METADATA.lower() for k in table_info
-        ) if table_info else True
-        has_error_col = (table_info is None) or any(
-            k.lower() == TableColumns.ERROR_MESSAGE.lower() for k in table_info
-        ) if table_info else True
-        has_status_col = (table_info is None) or any(
-            k.lower() == TableColumns.STATUS.lower() for k in table_info
-        ) if table_info else True
+        has_metadata_col = (
+            (table_info is None)
+            or any(k.lower() == TableColumns.METADATA.lower() for k in table_info)
+            if table_info
+            else True
+        )
+        has_error_col = (
+            (table_info is None)
+            or any(k.lower() == TableColumns.ERROR_MESSAGE.lower() for k in table_info)
+            if table_info
+            else True
+        )
+        has_status_col = (
+            (table_info is None)
+            or any(k.lower() == TableColumns.STATUS.lower() for k in table_info)
+            if table_info
+            else True
+        )
 
         if metadata and has_metadata_col:
             values[TableColumns.METADATA] = json.dumps(metadata)
@@ -179,7 +188,9 @@ class DatabaseUtils:
         if error and has_error_col:
             values[TableColumns.ERROR_MESSAGE] = error
         if has_status_col:
-            values[TableColumns.STATUS] = FileStatus.ERROR if error else FileStatus.SUCCESS
+            values[TableColumns.STATUS] = (
+                FileStatus.ERROR if error else FileStatus.SUCCESS
+            )
 
         if column_mode == ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN:
             if isinstance(data, str):

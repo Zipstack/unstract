@@ -94,14 +94,14 @@ class Redshift(UnstractDB, PsycoPgHandler):
 
     def prepare_multi_column_migration(self, table_name: str, column_name: str) -> list:
         """Prepare ALTER TABLE statements for adding new columns to an existing table.
-        
+
         Args:
             table_name (str): The name of the table to alter
             column_name (str): The base name of the column to add a _v2 version for
-            
+
         Returns:
             list: List of ALTER TABLE statements, one per column addition
-            
+
         Note:
             Redshift does not support multiple ADD COLUMN clauses in a single ALTER TABLE statement
             and has no ADD COLUMN IF NOT EXISTS syntax. Callers should check information_schema.columns
@@ -115,7 +115,7 @@ class Redshift(UnstractDB, PsycoPgHandler):
             f"ALTER TABLE {table_name} ADD COLUMN user_field_2 INTEGER DEFAULT 0;",
             f"ALTER TABLE {table_name} ADD COLUMN user_field_3 VARCHAR(65535) DEFAULT NULL;",
             f"ALTER TABLE {table_name} ADD COLUMN status VARCHAR(10) CHECK (status IN ('ERROR', 'SUCCESS'));",
-            f"ALTER TABLE {table_name} ADD COLUMN error_message VARCHAR(65535);"
+            f"ALTER TABLE {table_name} ADD COLUMN error_message VARCHAR(65535);",
         ]
 
     def execute_query(

@@ -71,13 +71,15 @@ class UnstractDB(UnstractConnector, ABC):
         pass
 
     @abstractmethod
-    def prepare_multi_column_migration(self, table_name: str, column_name: str) -> str | list:
+    def prepare_multi_column_migration(
+        self, table_name: str, column_name: str
+    ) -> str | list:
         """Returns the ALTER TABLE query specific to the database.
-        
+
         Args:
             table_name (str): The name of the table to alter
             column_name (str): The base name of the column to add a _v2 version for
-            
+
         Returns:
             str | list: Either a single SQL ALTER TABLE statement (str) or
                        a list of separate ALTER TABLE statements for databases
