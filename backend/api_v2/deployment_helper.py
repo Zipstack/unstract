@@ -5,9 +5,8 @@ from typing import Any
 from urllib.parse import urlencode, urlparse
 
 import requests
-from django.conf import settings
-from django.core.files.uploadedfile import InMemoryUploadedFile, UploadedFile
 from configuration.models import Configuration
+from django.core.files.uploadedfile import InMemoryUploadedFile, UploadedFile
 from rest_framework.request import Request
 from rest_framework.serializers import Serializer
 from rest_framework.utils.serializer_helpers import ReturnDict
