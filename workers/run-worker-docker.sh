@@ -197,8 +197,12 @@ run_worker() {
     print_status $BLUE "Autoscale: $autoscale"
 
     # Build Celery command with configurable options
-    local celery_cmd="/app/.venv/bin/celery -A worker worker"
-    local celery_args="--loglevel=${LOG_LEVEL:-info} --queues=$queues --hostname=${worker_instance_name}@%h"
+    local app_module="${CELERY_APP_MODULE:-worker}"
+    local log_level="${CELERY_LOG_LEVEL:-${LOG_LEVEL:-INFO}}"
+    local hostname="${CELERY_HOSTNAME:-${worker_instance_name}@%h}"
+
+    local celery_cmd="/app/.venv/bin/celery -A $app_module worker"
+    local celery_args="--loglevel=$log_level --queues=$queues --hostname=$hostname"
 
     # Add pool type and configure accordingly
     local pool_type="${CELERY_POOL:-prefork}"
@@ -228,6 +232,19 @@ run_worker() {
         celery_args="$celery_args --prefetch-multiplier=$CELERY_PREFETCH_MULTIPLIER"
     fi
 
+    # Add additional optional parameters
+    if [[ -n "$CELERY_MAX_TASKS_PER_CHILD" ]]; then
+        celery_args="$celery_args --max-tasks-per-child=$CELERY_MAX_TASKS_PER_CHILD"
+    fi
+
+    if [[ -n "$CELERY_TIME_LIMIT" ]]; then
+        celery_args="$celery_args --time-limit=$CELERY_TIME_LIMIT"
+    fi
+
+    if [[ -n "$CELERY_SOFT_TIME_LIMIT" ]]; then
+        celery_args="$celery_args --soft-time-limit=$CELERY_SOFT_TIME_LIMIT"
+    fi
+
     # Add any additional custom Celery arguments
     if [[ -n "$CELERY_EXTRA_ARGS" ]]; then
         celery_args="$celery_args $CELERY_EXTRA_ARGS"
@@ -248,6 +265,18 @@ load_env "$ENV_FILE"
 
 # Add PYTHONPATH for imports - include both /app and /unstract for packages
 export PYTHONPATH="/app:/unstract/core/src:/unstract/connectors/src:/unstract/filesystem/src:/unstract/flags/src:/unstract/tool-registry/src:/unstract/tool-sandbox/src:/unstract/workflow-execution/src:${PYTHONPATH:-}"
+
+# Check for direct command override
+if [[ -n "$CELERY_COMMAND_OVERRIDE" ]]; then
+    print_status $BLUE "🔄 Using direct Celery command override..."
+    print_status $BLUE "Command: /app/.venv/bin/celery $CELERY_COMMAND_OVERRIDE"
+
+    # Set worker type for consistency
+    export WORKER_TYPE="$WORKER_TYPE"
+
+    # Execute the override command (prepend celery binary path)
+    exec /app/.venv/bin/celery $CELERY_COMMAND_OVERRIDE
+fi
 
 # Run the worker
 print_status $BLUE "Docker Unified Worker Starting..."
