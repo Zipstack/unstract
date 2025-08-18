@@ -7,6 +7,7 @@ from urllib.parse import urlencode, urlparse
 import requests
 from django.conf import settings
 from django.core.files.uploadedfile import InMemoryUploadedFile, UploadedFile
+from configuration.models import Configuration
 from rest_framework.request import Request
 from rest_framework.serializers import Serializer
 from rest_framework.utils.serializer_helpers import ReturnDict
@@ -208,7 +209,19 @@ class DeploymentHelper(BaseAPIKeyValidator):
             result.status_api = DeploymentHelper.construct_status_endpoint(
                 api_endpoint=api.api_endpoint, execution_id=execution_id
             )
-            if not settings.ENABLE_HIGHLIGHT_API_DEPLOYMENT:
+            # Check if highlight data should be removed using configuration registry
+            organization = api.organization if api else None
+            enable_highlight = False  # Safe default if the key is unavailable (e.g., OSS)
+            from configuration.config_registry import ConfigurationRegistry
+
+            if ConfigurationRegistry.is_config_key_available(
+                "ENABLE_HIGHLIGHT_API_DEPLOYMENT"
+            ):
+                enable_highlight = Configuration.get_value_by_organization(
+                    config_key="ENABLE_HIGHLIGHT_API_DEPLOYMENT",
+                    organization=organization,
+                )
+            if not enable_highlight:
                 result.remove_result_metadata_keys(["highlight_data"])
             if not include_metadata:
                 result.remove_result_metadata_keys()

@@ -82,7 +82,7 @@ ConfigureFormsLayout.propTypes = {
   type: PropTypes.string.isRequired,
   handleUpdate: PropTypes.func.isRequired,
   editItemId: PropTypes.string,
-  connectorMetadata: PropTypes.object.isRequired,
+  connectorMetadata: PropTypes.object,
   isConnAvailable: PropTypes.bool.isRequired,
   specConfig: PropTypes.object,
   formDataConfig: PropTypes.object,

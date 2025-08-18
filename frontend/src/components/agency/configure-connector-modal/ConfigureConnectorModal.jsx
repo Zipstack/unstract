@@ -2,11 +2,11 @@ import { Col, Modal, Row, Tabs, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
+import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import { ManageFiles } from "../../input-output/manage-files/ManageFiles";
+import { ConfigureFormsLayout } from "../configure-forms-layout/ConfigureFormsLayout";
 import { ListOfConnectors } from "../list-of-connectors/ListOfConnectors";
 import "./ConfigureConnectorModal.css";
-import { ConfigureFormsLayout } from "../configure-forms-layout/ConfigureFormsLayout";
-import { ManageFiles } from "../../input-output/manage-files/ManageFiles";
-import usePostHogEvents from "../../../hooks/usePostHogEvents";
 
 let DBRules;
 
@@ -44,6 +44,20 @@ function ConfigureConnectorModal({
       setActiveKey("1"); // default value
     }
   }, [open, connectorMetadata]);
+
+  // Auto-select the configured connector when modal opens
+  useEffect(() => {
+    if (open && connDetails?.connector_id && filteredList?.length > 0) {
+      const configuredConnector = filteredList.find(
+        (item) => item?.key === connDetails?.connector_id
+      );
+
+      if (configuredConnector) {
+        setSelectedId(connDetails?.connector_id);
+        setSelectedItemName(configuredConnector?.label);
+      }
+    }
+  }, [open, connDetails, filteredList]);
   const { setPostHogCustomEvent, posthogConnectorEventText } =
     usePostHogEvents();
 
@@ -66,7 +80,7 @@ function ConfigureConnectorModal({
   const setUpdatedTabOptions = (tabOption) => {
     setTabItems((prevTabOptions) => {
       // Check if inputOption already exists in prevTabOptions
-      if (prevTabOptions.some((opt) => opt.key === tabOption.key)) {
+      if (prevTabOptions.some((opt) => opt?.key === tabOption?.key)) {
         return prevTabOptions; // Return previous state unchanged
       } else {
         // Create a new array with the existing options and the new option
@@ -78,8 +92,12 @@ function ConfigureConnectorModal({
 
   useEffect(() => {
     const updatedTabItems = tabItems.map((item) => {
-      if (item.key === "2") {
+      if (item?.key === "2") {
         item.visible = connType === "FILESYSTEM";
+        item.disabled =
+          !connectorId ||
+          connDetails?.connector_id !== selectedId ||
+          connType === "DATABASE";
       } else if (item.key === "MANUALREVIEW") {
         item.disabled =
           !connectorId || connDetails?.connector_id !== selectedId;
@@ -90,11 +108,11 @@ function ConfigureConnectorModal({
       return item;
     });
     setTabItems(updatedTabItems);
-  }, [open]);
+  }, [open, selectedId, connType, connectorId, connDetails]);
 
   useEffect(() => {
     const updatedTabItems = tabItems.map((item) => {
-      if (item.key === "MANUALREVIEW") {
+      if (item?.key === "MANUALREVIEW") {
         item.disabled =
           !connectorId || connDetails?.connector_id !== selectedId;
       }
@@ -118,7 +136,7 @@ function ConfigureConnectorModal({
     }
   }, []);
   const handleSelectItem = (e) => {
-    const id = e.key;
+    const id = e?.key;
     setSelectedId(id?.toString());
     setActiveKey("1");
 
@@ -213,13 +231,13 @@ ConfigureConnectorModal.propTypes = {
   setSelectedId: PropTypes.func.isRequired,
   handleUpdate: PropTypes.func.isRequired,
   filteredList: PropTypes.array,
-  connectorMetadata: PropTypes.object.isRequired,
+  connectorMetadata: PropTypes.object,
   specConfig: PropTypes.object,
   formDataConfig: PropTypes.object,
   setFormDataConfig: PropTypes.func.isRequired,
   isSpecConfigLoading: PropTypes.bool.isRequired,
   connDetails: PropTypes.object,
-  connType: PropTypes.string.isRequired,
+  connType: PropTypes.string,
   selectedItemName: PropTypes.string,
   setSelectedItemName: PropTypes.func.isRequired,
   workflowDetails: PropTypes.object,
