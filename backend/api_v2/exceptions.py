@@ -59,16 +59,34 @@ class NoActiveAPIKeyError(APIException):
 
 
 class PresignedURLFetchError(APIException):
-    status_code = 400
     default_detail = "Failed to fetch file from presigned URL"
-
+    
     def __init__(
         self,
         detail: str | None = None,
         code: str | None = None,
         url: str = "",
         error_message: str = "",
+        status_code: int = 400,
     ):
         if detail is None:
             detail = f"Failed to fetch file from URL: {url}. Error: {error_message}"
+        
+        self.status_code = status_code
         super().__init__(detail, code)
+    
+    @classmethod
+    def from_response_error(cls, url: str, response_status: int, error_message: str = ""):
+        """Create exception with status code derived from HTTP response"""
+        return cls(url=url, error_message=error_message, status_code=response_status)
+    
+    @classmethod  
+    def from_request_exception(cls, url: str, exception: Exception):
+        """Create exception with status code inferred from exception type"""
+        status_code = 400  # default
+        if isinstance(exception, TimeoutError):
+            status_code = 504
+        elif "connection" in str(exception).lower():
+            status_code = 502
+            
+        return cls(url=url, error_message=str(exception), status_code=status_code)

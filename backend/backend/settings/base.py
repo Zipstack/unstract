@@ -101,6 +101,11 @@ API_DEPLOYMENT_PATH_PREFIX = os.environ.get(
     "API_DEPLOYMENT_PATH_PREFIX", "deployment"
 ).strip("/")
 
+# Maximum file size for presigned URLs in API deployments (in MB)
+API_DEPL_PRESIGNED_URL_MAX_FILE_SIZE_MB = int(
+    os.environ.get("API_DEPL_PRESIGNED_URL_MAX_FILE_SIZE_MB", 20)
+)
+
 DB_NAME = os.environ.get("DB_NAME", "unstract_db")
 DB_USER = os.environ.get("DB_USER", "unstract_dev")
 DB_HOST = os.environ.get("DB_HOST", "backend-db-1")

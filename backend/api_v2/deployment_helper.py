@@ -38,10 +38,6 @@ from api_v2.utils import APIDeploymentUtils
 
 logger = logging.getLogger(__name__)
 
-# Default maximum file size for presigned URLs (20MB)
-DEFAULT_PRESIGNED_URL_MAX_FILE_SIZE_MB = 20
-
-
 class DeploymentHelper(BaseAPIKeyValidator):
     @staticmethod
     def validate_parameters(request: Request, **kwargs: Any) -> None:
@@ -256,7 +252,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
             execution_id=execution_id
         )
         return execution_response
-
+        
     @staticmethod
     def fetch_presigned_file(url: str) -> InMemoryUploadedFile:
         """Fetch a file from a presigned URL and convert it to an uploaded file.
@@ -270,61 +266,29 @@ class DeploymentHelper(BaseAPIKeyValidator):
         Raises:
             PresignedURLFetchError: If the file cannot be fetched
         """
-        # Basic SSRF protection: allow only HTTPS S3 endpoints
         parsed_url = urlparse(url)
-        scheme = parsed_url.scheme.lower()
+        sanitized_url = parsed_url._replace(query="").geturl()  # For logging
         host = (parsed_url.hostname or "").lower()
-
-        # Redact query string for safe logging and error messages
-        sanitized_url = parsed_url._replace(query="").geturl()
-
-        if scheme != "https":
-            raise PresignedURLFetchError(
-                url=sanitized_url, error_message="Only HTTPS presigned URLs are allowed"
-            )
-
-        # Check if this is an AWS S3 endpoint
-        is_aws = host.endswith(".amazonaws.com")
-        # Accept common S3 endpoint patterns: path-style, virtual-hosted, regional, dualstack, accelerated
-        looks_like_s3 = (
-            host == "s3.amazonaws.com"
-            or host.endswith(".s3.amazonaws.com")
-            or re.match(r"(^|.*\.)s3[.-]([a-z0-9-]+)\.amazonaws\.com$", host) is not None
-        )
-
-        if not (is_aws and looks_like_s3):
-            raise PresignedURLFetchError(
-                url=sanitized_url,
-                error_message="URL host is not a valid S3 endpoint, only S3's pre-signed URLs are supported currently",
-            )
-
-        # Get file size limit from settings
+        file_stream = None
+        
         try:
-            max_mb = getattr(
-                settings,
-                "API_DEPL_PRESIGNED_URL_MAX_FILE_SIZE_MB",
-                DEFAULT_PRESIGNED_URL_MAX_FILE_SIZE_MB,
-            )
-            max_bytes = int(max_mb) * 1024 * 1024
-        except Exception:
-            max_bytes = (
-                DEFAULT_PRESIGNED_URL_MAX_FILE_SIZE_MB * 1024 * 1024
-            )  # sane default if settings unavailable
+            # Get max file size from settings
+            try:
+                max_bytes = settings.API_DEPL_PRESIGNED_URL_MAX_FILE_SIZE_MB * 1024 * 1024
+            except Exception:
+                max_bytes = 20 * 1024 * 1024  # sane default if settings unavailable
 
-        file_stream = BytesIO()
-        downloaded = 0
-        content_type = ""  # Default content type
+            file_stream = BytesIO()
+            downloaded = 0
+            content_type = ""  # Default content type
 
-        try:
-            # Request with timeouts, streaming, and no redirects
-            with requests.get(
-                url, stream=True, timeout=(5, 30), allow_redirects=False
-            ) as resp:
+            # Download the file with streaming
+            with requests.get(url, stream=True, timeout=(5, 30), allow_redirects=False) as resp:
                 resp.raise_for_status()
-
+                
                 # Store content type for later use
                 content_type = resp.headers.get("Content-Type", "")
-
+                
                 # Check Content-Length header if available
                 content_length = resp.headers.get("Content-Length")
                 if content_length:
@@ -333,48 +297,45 @@ class DeploymentHelper(BaseAPIKeyValidator):
                             raise PresignedURLFetchError(
                                 url=sanitized_url,
                                 error_message=f"File too large ({content_length} bytes). Max allowed: {max_bytes} bytes",
+                                status_code=413  # Payload Too Large
                             )
                     except ValueError:
                         # Non-integer Content-Length; ignore and fall back to stream enforcement
                         pass
-
+                
                 # Stream the body with an upper bound to prevent memory exhaustion
                 for chunk in resp.iter_content(chunk_size=1024 * 1024):
                     if not chunk:
                         continue
-
+                    
                     downloaded += len(chunk)
                     if downloaded > max_bytes:
                         raise PresignedURLFetchError(
                             url=sanitized_url,
                             error_message=f"File exceeds maximum allowed size of {max_bytes} bytes",
+                            status_code=413  # Payload Too Large
                         )
-
+                    
                     file_stream.write(chunk)
-
+                
                 # Reset stream position to beginning for reading
                 file_stream.seek(0)
-
+            
             # Extract filename from URL path
-            filename = (
-                parsed_url.path.split("/")[-1] if parsed_url.path else "unknown_file"
-            )
-
-            # If content type is generic or not set, use octet-stream
-            if content_type in [
-                "",
-                "application/octet-stream",
-                "binary/octet-stream",
-            ]:
+            filename = parsed_url.path.split("/")[-1] if parsed_url.path else "unknown_file"
+            
+            # Use octet-stream for generic or missing content types
+            if content_type in ["", "application/octet-stream", "binary/octet-stream"]:
                 content_type = "application/octet-stream"
                 logger.warning(
                     f"Could not detect MIME type for file '{filename}' from URL '{sanitized_url}'"
                 )
-
+            
             logger.info(
                 f"Fetched file '{filename}' with MIME type '{content_type}' from presigned URL {sanitized_url}"
             )
-
+            
+            # Return as an InMemoryUploadedFile
             return InMemoryUploadedFile(
                 file=file_stream,
                 field_name="file",
@@ -383,37 +344,70 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 size=downloaded,
                 charset=None,
             )
-
+            
         except requests.RequestException as e:
-            # Close the file stream on error
+
             if file_stream:
-                file_stream.close()
-            raise PresignedURLFetchError(url=sanitized_url, error_message=str(e))
-
-    @staticmethod
-    def load_presigned_files_generator(presigned_urls: list[str]):
-        """Generator that yields files from presigned URLs one by one.
-
-        Args:
-            presigned_urls (list[str]): List of presigned URLs to fetch files from
-
-        Yields:
-            InMemoryUploadedFile: Each fetched file as an uploaded file object
-        """
-        for url in presigned_urls:
-            yield DeploymentHelper.fetch_presigned_file(url)
+                try:
+                    file_stream.close()
+                except Exception:
+                    pass
+            
+            if isinstance(e, requests.exceptions.HTTPError) and hasattr(e, 'response') and e.response is not None:
+                status_code = e.response.status_code
+                error_msg = f"{e.response.status_code} {e.response.reason}"
+            elif isinstance(e, (requests.exceptions.ConnectTimeout, requests.exceptions.ReadTimeout)):
+                status_code = 504  # Gateway Timeout
+                error_msg = "Request timed out"
+            elif isinstance(e, requests.exceptions.ConnectionError):
+                status_code = 502  # Bad Gateway
+                error_msg = "Connection error"
+            else:
+                status_code = 400
+                error_msg = str(e)
+            
+            raise PresignedURLFetchError(
+                url=sanitized_url, 
+                error_message=error_msg,
+                status_code=status_code
+            )
+        except Exception as e:
+            # Close the file stream on any other error
+            if file_stream:
+                try:
+                    file_stream.close()
+                except Exception:
+                    pass
+                
+            # Re-raise as a PresignedURLFetchError for consistent error handling
+            if not isinstance(e, PresignedURLFetchError):
+                raise PresignedURLFetchError(
+                    url=sanitized_url,
+                    error_message=f"Unexpected error: {str(e)}",
+                    status_code=500
+                )
+            raise
 
     @staticmethod
     def load_presigned_files(
-        presigned_urls: list[str], file_objs: list[InMemoryUploadedFile]
+        presigned_urls: list[str], file_objs: list[UploadedFile]
     ) -> None:
-        """Load files from presigned URLs using a memory-efficient generator pattern.
+        """Load files from presigned URLs and append them to file_objs.
+        
+        This method processes each URL individually, fetches the file,
+        and adds it to the provided file_objs list.
+        
+        Note: URL validation is assumed to be already done by the serializer.
 
         Args:
             presigned_urls (list[str]): List of presigned URLs to fetch files from
-            file_objs (list[InMemoryUploadedFile]): List to append the fetched files to
+            file_objs (list[UploadedFile]): List to append the fetched files to
         """
-        for uploaded_file in DeploymentHelper.load_presigned_files_generator(
-            presigned_urls
-        ):
-            file_objs.append(uploaded_file)
+        for url in presigned_urls:
+            try:
+                uploaded_file = DeploymentHelper.fetch_presigned_file(url)
+                file_objs.append(uploaded_file)
+            except Exception as e:
+                logger.error(f"Error fetching file from URL: {e}")
+                # Re-raise the error to be handled by the caller
+                raise
