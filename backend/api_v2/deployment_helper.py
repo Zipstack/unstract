@@ -384,7 +384,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 charset=None,
             )
 
-        except (requests.ConnectionError, requests.RequestException) as e:
+        except requests.RequestException as e:
             # Close the file stream on error
             if file_stream:
                 file_stream.close()
