@@ -629,6 +629,12 @@ INTERNAL_URL_MODULES = {
         "enabled": True,
         "description": "Platform configuration and settings APIs",
     },
+    "execution_logs": {
+        "url_path": "v1/execution-logs/",
+        "module_path": "workflow_manager.workflow_v2.execution_log_internal_urls",
+        "enabled": True,
+        "description": "Execution log management and cache operations APIs",
+    },
     # Note: Cloud-specific modules (manual-review, analytics, etc.)
     # are added by cloud.py settings when active
 }

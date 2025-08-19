@@ -438,8 +438,13 @@ services:
       - HEALTH_PORT=8084
       # Log consumer specific configs
       - LOG_CONSUMER_QUEUE_NAME=celery_log_task_queue
-      # Configurable Celery options
-      - CELERY_QUEUES_LOG_CONSUMER=${CELERY_QUEUES_LOG_CONSUMER:-celery_log_task_queue}
+      # Multiple queue support - supports comma-separated queue names
+      - CELERY_QUEUES_LOG_CONSUMER=${CELERY_QUEUES_LOG_CONSUMER:-celery_log_task_queue,celery_periodic_logs}
+      - PERIODIC_LOGS_QUEUE_NAME=${PERIODIC_LOGS_QUEUE_NAME:-celery_periodic_logs}
+      # Log history configuration
+      - LOG_HISTORY_QUEUE_NAME=${LOG_HISTORY_QUEUE_NAME:-log_history_queue}
+      - LOGS_BATCH_LIMIT=${LOGS_BATCH_LIMIT:-100}
+      - ENABLE_LOG_HISTORY=${ENABLE_LOG_HISTORY:-true}
       - CELERY_POOL=${WORKER_LOG_CONSUMER_POOL:-prefork}
       - CELERY_PREFETCH_MULTIPLIER=${WORKER_LOG_CONSUMER_PREFETCH_MULTIPLIER:-1}
       - CELERY_CONCURRENCY=${WORKER_LOG_CONSUMER_CONCURRENCY:-2}

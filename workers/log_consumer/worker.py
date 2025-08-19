@@ -30,19 +30,38 @@ if not os.getenv("LOG_CONSUMER_WORKER_NAME"):
 # Celery application configuration
 app = Celery("log_consumer_worker")
 
-# Get queue name from environment or use default
-log_queue_name = os.getenv("LOG_CONSUMER_QUEUE_NAME", "celery_log_task_queue")
+# Get queue names from environment or use defaults (support multiple queues)
+log_consumer_queues = os.getenv("LOG_CONSUMER_QUEUE_NAME", "celery_log_task_queue")
+periodic_logs_queue = os.getenv("PERIODIC_LOGS_QUEUE_NAME", "celery_periodic_logs")
+
+# Support comma-separated queue names for flexibility
+if "," in log_consumer_queues:
+    queue_names = [q.strip() for q in log_consumer_queues.split(",")]
+else:
+    # Default queues for log consumer worker
+    queue_names = [log_consumer_queues, periodic_logs_queue]
+
+# Remove duplicates while preserving order
+all_queues = []
+seen = set()
+for queue in queue_names:
+    if queue not in seen:
+        all_queues.append(queue)
+        seen.add(queue)
+
+queue_names_str = ",".join(all_queues)
 
 # Celery settings
 celery_config = {
     # Broker configuration
     "broker_url": os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0"),
     "result_backend": os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0"),
-    # Task routing - route to log consumer queue
+    # Task routing - route to appropriate queues
     "task_routes": {
-        "logs_consumer": {"queue": log_queue_name},
-        "log_consumer.tasks.*": {"queue": log_queue_name},
-        "log_consumer_health_check": {"queue": log_queue_name},
+        "logs_consumer": {"queue": log_consumer_queues},
+        "consume_log_history": {"queue": periodic_logs_queue},
+        "log_consumer.tasks.*": {"queue": log_consumer_queues},
+        "log_consumer_health_check": {"queue": log_consumer_queues},
     },
     # Task filtering - only accept log processing tasks
     "worker_disable_rate_limits": True,
@@ -119,7 +138,7 @@ def check_log_consumer_health():
                 details={
                     "api_health": "healthy",
                     "redis_health": "healthy",
-                    "queue_name": log_queue_name,
+                    "queue_names": queue_names_str,
                 },
             )
         else:
@@ -130,7 +149,7 @@ def check_log_consumer_health():
                 details={
                     "api_health": "healthy" if api_healthy else "unhealthy",
                     "redis_health": "healthy" if redis_healthy else "unhealthy",
-                    "queue_name": log_queue_name,
+                    "queue_names": queue_names_str,
                 },
             )
 
@@ -168,7 +187,7 @@ def stop_health_server():
 
 
 logger.info(f"Log consumer worker initialized with config: {config}")
-logger.info(f"Log consumer queue name: {log_queue_name}")
+logger.info(f"Log consumer queue names: {queue_names_str}")
 
 if __name__ == "__main__":
     """Run worker directly for testing."""
@@ -179,8 +198,8 @@ if __name__ == "__main__":
         health_report = health_checker.run_all_checks()
         logger.info(f"Initial health status: {health_report['status']}")
 
-        # Start Celery worker
-        app.start(["worker", "--loglevel=info", f"--queues={log_queue_name}"])
+        # Start Celery worker with all configured queues
+        app.start(["worker", "--loglevel=info", f"--queues={queue_names_str}"])
 
     except KeyboardInterrupt:
         logger.info("Log consumer worker shutdown requested")
