@@ -294,7 +294,8 @@ class DeploymentHelper(BaseAPIKeyValidator):
 
         if not (is_aws and looks_like_s3):
             raise PresignedURLFetchError(
-                url=sanitized_url, error_message="URL host is not a valid S3 endpoint, only S3's pre-signed URLs are supported currently"
+                url=sanitized_url,
+                error_message="URL host is not a valid S3 endpoint, only S3's pre-signed URLs are supported currently",
             )
 
         # Get file size limit from settings
