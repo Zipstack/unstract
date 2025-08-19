@@ -1,3 +1,4 @@
+import logging
 import re
 import uuid
 from collections import OrderedDict
@@ -28,8 +29,6 @@ from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from api_v2.constants import ApiExecution
 from api_v2.models import APIDeployment, APIKey
 from backend.serializers import AuditSerializer
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -228,7 +227,7 @@ class ExecutionRequestSerializer(TagParamsSerializer):
     presigned_urls = ListField(child=URLField(), required=False)
     llm_profile_id = CharField(required=False, allow_null=True, allow_blank=True)
     hitl_queue_name = CharField(required=False, allow_null=True, allow_blank=True)
-    
+
     def validate_hitl_queue_name(self, value: str | None) -> str | None:
         """Validate queue name format: a-z0-9-_ with length and pattern restrictions."""
         if not value:
@@ -258,35 +257,37 @@ class ExecutionRequestSerializer(TagParamsSerializer):
                 "Queue name cannot have repeating underscores or hyphens."
             )
         return value
-    
+
     files = ListField(
         child=FileField(),
         required=False,
         allow_empty=True,
     )
-    
+
     def _validate_presigned_url(self, url: str) -> bool:
         """Validate presigned URL for security and compatibility.
-        
+
         Args:
             url (str): The presigned URL to validate
-            
+
         Returns:
             bool: True if URL is valid
-            
+
         Raises:
             ValidationError: If the URL is invalid or not secure
         """
         parsed_url = urlparse(url)
         scheme = parsed_url.scheme.lower()
         host = (parsed_url.hostname or "").lower()
-        
+
         # Require HTTPS for security
         if scheme != "https":
-            raise ValidationError({
-                "presigned_urls": f"Only HTTPS presigned URLs are allowed. URL scheme found: {scheme}"
-            })
-        
+            raise ValidationError(
+                {
+                    "presigned_urls": f"Only HTTPS presigned URLs are allowed. URL scheme found: {scheme}"
+                }
+            )
+
         # Only allow S3 endpoints
         is_aws = host.endswith(".amazonaws.com")
         looks_like_s3 = (
@@ -294,41 +295,43 @@ class ExecutionRequestSerializer(TagParamsSerializer):
             or host.endswith(".s3.amazonaws.com")
             or re.match(r"(^|.*\.)s3[.-]([a-z0-9-]+)\.amazonaws\.com$", host) is not None
         )
-        
+
         if not (is_aws and looks_like_s3):
-            raise ValidationError({
-                "presigned_urls": f"URL host '{host}' is not a valid S3 endpoint. Only S3 pre-signed URLs are supported currently."
-            })
-            
+            raise ValidationError(
+                {
+                    "presigned_urls": f"URL host '{host}' is not a valid S3 endpoint. Only S3 pre-signed URLs are supported currently."
+                }
+            )
+
         return True
 
     def validate_presigned_urls(self, urls):
         """Validate presigned URLs for proper format and endpoint requirements."""
         if not urls:
             return urls
-            
+
         for url in urls:
             self._validate_presigned_url(url)
-                
+
         return urls
-        
+
     def validate(self, data):
         """Validate all parameters including presigned URLs."""
         data = super().validate(data)
-        
+
         files = data.get("files", [])
         urls = data.get("presigned_urls", [])
         total = len(files) + len(urls)
-        
+
         if total == 0:
             raise ValidationError("You must provide at least one file or presigned URL.")
-        
+
         if total > self.MAX_FILES_ALLOWED:
             raise ValidationError(
                 f"You can upload a maximum of {self.MAX_FILES_ALLOWED} files in total (uploaded or via presigned URLs)."
             )
         return data
-        
+
     def validate_llm_profile_id(self, value):
         """Validate that the llm_profile_id belongs to the API key owner."""
         if not value:

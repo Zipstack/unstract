@@ -1,5 +1,4 @@
 import logging
-import re
 from io import BytesIO
 from typing import Any
 from urllib.parse import urlencode, urlparse
@@ -37,6 +36,7 @@ from api_v2.serializers import APIExecutionResponseSerializer
 from api_v2.utils import APIDeploymentUtils
 
 logger = logging.getLogger(__name__)
+
 
 class DeploymentHelper(BaseAPIKeyValidator):
     @staticmethod
@@ -252,7 +252,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
             execution_id=execution_id
         )
         return execution_response
-        
+
     @staticmethod
     def fetch_presigned_file(url: str) -> InMemoryUploadedFile:
         """Fetch a file from a presigned URL and convert it to an uploaded file.
@@ -270,7 +270,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         sanitized_url = parsed_url._replace(query="").geturl()  # For logging
         host = (parsed_url.hostname or "").lower()
         file_stream = None
-        
+
         try:
             # Get max file size from settings
             try:
@@ -283,12 +283,14 @@ class DeploymentHelper(BaseAPIKeyValidator):
             content_type = ""  # Default content type
 
             # Download the file with streaming
-            with requests.get(url, stream=True, timeout=(5, 30), allow_redirects=False) as resp:
+            with requests.get(
+                url, stream=True, timeout=(5, 30), allow_redirects=False
+            ) as resp:
                 resp.raise_for_status()
-                
+
                 # Store content type for later use
                 content_type = resp.headers.get("Content-Type", "")
-                
+
                 # Check Content-Length header if available
                 content_length = resp.headers.get("Content-Length")
                 if content_length:
@@ -297,44 +299,46 @@ class DeploymentHelper(BaseAPIKeyValidator):
                             raise PresignedURLFetchError(
                                 url=sanitized_url,
                                 error_message=f"File too large ({content_length} bytes). Max allowed: {max_bytes} bytes",
-                                status_code=413  # Payload Too Large
+                                status_code=413,  # Payload Too Large
                             )
                     except ValueError:
                         # Non-integer Content-Length; ignore and fall back to stream enforcement
                         pass
-                
+
                 # Stream the body with an upper bound to prevent memory exhaustion
                 for chunk in resp.iter_content(chunk_size=1024 * 1024):
                     if not chunk:
                         continue
-                    
+
                     downloaded += len(chunk)
                     if downloaded > max_bytes:
                         raise PresignedURLFetchError(
                             url=sanitized_url,
                             error_message=f"File exceeds maximum allowed size of {max_bytes} bytes",
-                            status_code=413  # Payload Too Large
+                            status_code=413,  # Payload Too Large
                         )
-                    
+
                     file_stream.write(chunk)
-                
+
                 # Reset stream position to beginning for reading
                 file_stream.seek(0)
-            
+
             # Extract filename from URL path
-            filename = parsed_url.path.split("/")[-1] if parsed_url.path else "unknown_file"
-            
+            filename = (
+                parsed_url.path.split("/")[-1] if parsed_url.path else "unknown_file"
+            )
+
             # Use octet-stream for generic or missing content types
             if content_type in ["", "application/octet-stream", "binary/octet-stream"]:
                 content_type = "application/octet-stream"
                 logger.warning(
                     f"Could not detect MIME type for file '{filename}' from URL '{sanitized_url}'"
                 )
-            
+
             logger.info(
                 f"Fetched file '{filename}' with MIME type '{content_type}' from presigned URL {sanitized_url}"
             )
-            
+
             # Return as an InMemoryUploadedFile
             return InMemoryUploadedFile(
                 file=file_stream,
@@ -344,19 +348,24 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 size=downloaded,
                 charset=None,
             )
-            
-        except requests.RequestException as e:
 
+        except requests.RequestException as e:
             if file_stream:
                 try:
                     file_stream.close()
                 except Exception:
                     pass
-            
-            if isinstance(e, requests.exceptions.HTTPError) and hasattr(e, 'response') and e.response is not None:
+
+            if (
+                isinstance(e, requests.exceptions.HTTPError)
+                and hasattr(e, "response")
+                and e.response is not None
+            ):
                 status_code = e.response.status_code
                 error_msg = f"{e.response.status_code} {e.response.reason}"
-            elif isinstance(e, (requests.exceptions.ConnectTimeout, requests.exceptions.ReadTimeout)):
+            elif isinstance(
+                e, (requests.exceptions.ConnectTimeout, requests.exceptions.ReadTimeout)
+            ):
                 status_code = 504  # Gateway Timeout
                 error_msg = "Request timed out"
             elif isinstance(e, requests.exceptions.ConnectionError):
@@ -365,11 +374,9 @@ class DeploymentHelper(BaseAPIKeyValidator):
             else:
                 status_code = 400
                 error_msg = str(e)
-            
+
             raise PresignedURLFetchError(
-                url=sanitized_url, 
-                error_message=error_msg,
-                status_code=status_code
+                url=sanitized_url, error_message=error_msg, status_code=status_code
             )
         except Exception as e:
             # Close the file stream on any other error
@@ -378,13 +385,13 @@ class DeploymentHelper(BaseAPIKeyValidator):
                     file_stream.close()
                 except Exception:
                     pass
-                
+
             # Re-raise as a PresignedURLFetchError for consistent error handling
             if not isinstance(e, PresignedURLFetchError):
                 raise PresignedURLFetchError(
                     url=sanitized_url,
                     error_message=f"Unexpected error: {str(e)}",
-                    status_code=500
+                    status_code=500,
                 )
             raise
 
@@ -393,10 +400,10 @@ class DeploymentHelper(BaseAPIKeyValidator):
         presigned_urls: list[str], file_objs: list[UploadedFile]
     ) -> None:
         """Load files from presigned URLs and append them to file_objs.
-        
+
         This method processes each URL individually, fetches the file,
         and adds it to the provided file_objs list.
-        
+
         Note: URL validation is assumed to be already done by the serializer.
 
         Args:
