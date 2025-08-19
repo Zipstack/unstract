@@ -2,6 +2,7 @@ import logging
 from io import BytesIO
 from typing import Any
 from urllib.parse import urlencode, urlparse
+import re
 
 import requests
 from configuration.models import Configuration
@@ -272,29 +273,29 @@ class DeploymentHelper(BaseAPIKeyValidator):
         # Basic SSRF protection: allow only HTTPS S3 endpoints
         parsed_url = urlparse(url)
         scheme = parsed_url.scheme.lower()
-        host = parsed_url.netloc.lower()
-
+        host = (parsed_url.hostname or "").lower()
+        
+        # Redact query string for safe logging and error messages
+        sanitized_url = parsed_url._replace(query="").geturl()
+        
         if scheme != "https":
             raise PresignedURLFetchError(
-                url=url, error_message="Only HTTPS presigned URLs are allowed"
+                url=sanitized_url, error_message="Only HTTPS presigned URLs are allowed"
             )
-
+            
         # Check if this is an AWS S3 endpoint
         is_aws = host.endswith(".amazonaws.com")
+        # Accept common S3 endpoint patterns: path-style, virtual-hosted, regional, dualstack, accelerated
         looks_like_s3 = (
             host == "s3.amazonaws.com"
             or host.endswith(".s3.amazonaws.com")
-            or host.startswith("s3.")
-            or host.startswith("s3-")
+            or re.match(r'(^|.*\.)s3[.-]([a-z0-9-]+)\.amazonaws\.com$', host) is not None
         )
-
+        
         if not (is_aws and looks_like_s3):
             raise PresignedURLFetchError(
-                url=url, error_message="URL host is not a valid S3 endpoint"
+                url=sanitized_url, error_message="URL host is not a valid S3 endpoint"
             )
-
-        # Redact query string for safe logging
-        sanitized_url = parsed_url._replace(query="").geturl()
 
         # Get file size limit from settings
         try:
@@ -323,8 +324,8 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 try:
                     if int(content_length) > max_bytes:
                         raise PresignedURLFetchError(
-                            url=url,
-                            error_message=f"File too large ({content_length} bytes). Max allowed: {max_bytes} bytes",
+                            url=sanitized_url,
+                            error_message=f"File too large ({content_length} bytes). Max allowed: {max_bytes} bytes"
                         )
                 except ValueError:
                     # Non-integer Content-Length; ignore and fall back to stream enforcement
@@ -338,7 +339,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 downloaded += len(chunk)
                 if downloaded > max_bytes:
                     raise PresignedURLFetchError(
-                        url=url,
+                        url=sanitized_url,
                         error_message=f"File exceeds maximum allowed size of {max_bytes} bytes",
                     )
 
@@ -382,7 +383,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
             # Close the file stream on error
             if file_stream:
                 file_stream.close()
-            raise PresignedURLFetchError(url=url, error_message=str(e))
+            raise PresignedURLFetchError(url=sanitized_url, error_message=str(e))
 
     @staticmethod
     def load_presigned_files_generator(presigned_urls: list[str]):
