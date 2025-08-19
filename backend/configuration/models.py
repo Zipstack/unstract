@@ -7,6 +7,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from utils.models.base_model import BaseModel
 
+from configuration.config_registry import ConfigurationRegistry
 from configuration.enums import ConfigKey
 
 logger = logging.getLogger(__name__)
@@ -47,51 +48,65 @@ class Configuration(BaseModel):
         ]
 
     def clean(self):
-        """Validate that the key field contains a valid ConfigKey enum value."""
+        """Validate that the key field contains a valid configuration key."""
         super().clean()
-        if self.key and self.key not in [config.name for config in ConfigKey]:
+        if self.key and not ConfigurationRegistry.is_config_key_available(self.key):
+            available_keys = list(ConfigurationRegistry.get_all_config_keys().keys())
             raise ValidationError(
                 {
-                    "key": f"Invalid configuration key '{self.key}'. Must be one of: {[config.name for config in ConfigKey]}"
+                    "key": f"Invalid configuration key '{self.key}'. Must be one of: {available_keys}"
                 }
             )
 
     @property
     def typed_value(self) -> Any:
-        """Convert stored string value to proper type based on ConfigKey specification."""
+        """Convert stored string value to proper type based on configuration specification."""
         try:
-            spec = ConfigKey[self.key].cast_value(self.value)
-            return spec
+            return ConfigurationRegistry.cast_value(self.key, self.value)
         except (ValueError, KeyError, TypeError):
             return None
 
     @classmethod
     def get_value_by_organization(
-        cls, config_key: ConfigKey, organization: Organization | None = None
+        cls, config_key: ConfigKey | str, organization: Organization | None = None
     ) -> Any:
         """Get configuration value for an organization with proper fallback to defaults.
 
         This method handles all error cases and returns the appropriate default value:
-        - If no organization provided: returns ConfigKey default
-        - If configuration not found: returns ConfigKey default
-        - If configuration disabled: returns ConfigKey default
-        - If value casting fails: returns ConfigKey default
-        - If value is invalid (e.g., 0, negative): returns ConfigKey default
+        - If no organization provided: returns config default
+        - If configuration not found: returns config default
+        - If configuration disabled: returns config default
+        - If value casting fails: returns config default
+        - If value is invalid (e.g., 0, negative): returns config default
 
         Args:
-            config_key: The configuration key enum to retrieve
+            config_key: The configuration key (ConfigKey enum or string name) to retrieve
             organization: The organization to get config for, None for default
 
         Returns:
             The typed configuration value or default if not found/invalid
         """
+        # Handle both ConfigKey enum and string key names
+        if isinstance(config_key, ConfigKey):
+            key_name = config_key.name
+        else:
+            key_name = config_key
+
+        # Get the config spec from registry
+        config_spec = ConfigurationRegistry.get_config_spec(key_name)
+        if not config_spec:
+            logger.error(f"Configuration key '{key_name}' not found in registry")
+            raise ValueError(f"Unknown configuration key: {key_name}")
+
+        default_value = config_spec.default
+
         if not organization:
-            return config_key.value.default
+            return default_value
 
         try:
-            config = cls.objects.get(organization=organization, key=config_key.name)
+            config = cls.objects.get(organization=organization, key=key_name)
             if not config.enabled:
-                return config_key.value.default
+                return default_value
 
             # Get the typed value, which includes validation
             typed_value = config.typed_value
@@ -99,18 +114,18 @@ class Configuration(BaseModel):
             # Additional safety check - if typed_value is None, return default
             if typed_value is None:
                 logger.warning(
-                    f"Configuration {config_key.name} for organization {organization.id} "
-                    f"returned None, using default value {config_key.value.default}"
+                    f"Configuration {key_name} for organization {organization.id} "
+                    f"returned None, using default value {default_value}"
                 )
-                return config_key.value.default
+                return default_value
 
             return typed_value
 
         except cls.DoesNotExist:
-            return config_key.value.default
+            return default_value
         except Exception as e:
             logger.warning(
-                f"Configuration {config_key.name} for organization {organization.id if organization else 'None'} "
-                f"has invalid value, using default {config_key.value.default}. Error: {e}"
+                f"Configuration {key_name} for organization {organization.id if organization else 'None'} "
+                f"has invalid value, using default {default_value}. Error: {e}"
             )
-            return config_key.value.default
+            return default_value
