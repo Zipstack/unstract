@@ -6,6 +6,7 @@ from urllib.parse import urlencode, urlparse
 
 import requests
 from configuration.models import Configuration
+from django.conf import settings
 from django.core.files.uploadedfile import InMemoryUploadedFile, UploadedFile
 from rest_framework.request import Request
 from rest_framework.serializers import Serializer
@@ -36,6 +37,9 @@ from api_v2.serializers import APIExecutionResponseSerializer
 from api_v2.utils import APIDeploymentUtils
 
 logger = logging.getLogger(__name__)
+
+# Default maximum file size for presigned URLs (20MB)
+DEFAULT_PRESIGNED_URL_MAX_FILE_SIZE_MB = 20
 
 
 class DeploymentHelper(BaseAPIKeyValidator):
@@ -255,7 +259,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
 
     @staticmethod
     def fetch_presigned_file(url: str) -> InMemoryUploadedFile:
-        """Fetch a single file from a presigned URL.
+        """Fetch a file from a presigned URL and convert it to an uploaded file.
 
         Args:
             url (str): The presigned URL to fetch the file from
@@ -266,76 +270,112 @@ class DeploymentHelper(BaseAPIKeyValidator):
         Raises:
             PresignedURLFetchError: If the file cannot be fetched
         """
-        try:
-            resp = requests.get(url)
-            resp.raise_for_status()
-        except (requests.ConnectionError, requests.RequestException) as e:
-            raise PresignedURLFetchError(url=url, error_message=str(e))
-
-        # Extract filename using urlparse for better handling
+        # Basic SSRF protection: allow only HTTPS S3 endpoints
         parsed_url = urlparse(url)
-        filename = parsed_url.path.split("/")[-1] if parsed_url.path else "unknown_file"
-
-        # Remove query parameters from filename if present
-        if "?" in filename:
-            filename = filename.split("?")[0]
-
-        # Determine content type with better MIME type detection
-        content_type = resp.headers.get("Content-Type", "")
-
-        # If content type is generic or not set, try to detect from filename
-        if not content_type or content_type in [
-            "application/octet-stream",
-            "binary/octet-stream",
-        ]:
-            detected_type, _ = mimetypes.guess_type(filename)
-            if detected_type:
-                content_type = detected_type
-                logger.info(
-                    f"Detected MIME type '{content_type}' for file '{filename}' from extension"
-                )
-            else:
-                # If we still can't detect the type, check for common patterns in URL
-                if any(
-                    ext in url.lower()
-                    for ext in [".pdf", ".docx", ".xlsx", ".png", ".jpg", ".jpeg"]
-                ):
-                    # Extract extension from URL path
-                    for ext in [".pdf", ".docx", ".xlsx", ".png", ".jpg", ".jpeg"]:
-                        if ext in url.lower():
-                            temp_filename = f"file{ext}"
-                            detected_type, _ = mimetypes.guess_type(temp_filename)
-                            if detected_type:
-                                content_type = detected_type
-                                logger.info(
-                                    f"Detected MIME type '{content_type}' from URL pattern '{ext}'"
-                                )
-                                break
-
-                if content_type in [
-                    "",
-                    "application/octet-stream",
-                    "binary/octet-stream",
-                ]:
-                    content_type = "application/octet-stream"
-                    logger.warning(
-                        f"Could not detect MIME type for file '{filename}' from URL '{url}', using fallback"
+        scheme = parsed_url.scheme.lower()
+        host = parsed_url.netloc.lower()
+        
+        if scheme != "https":
+            raise PresignedURLFetchError(
+                url=url, error_message="Only HTTPS presigned URLs are allowed"
+            )
+            
+        # Check if this is an AWS S3 endpoint
+        is_aws = host.endswith(".amazonaws.com")
+        looks_like_s3 = (
+            host == "s3.amazonaws.com"
+            or host.endswith(".s3.amazonaws.com")
+            or host.startswith("s3.")
+            or host.startswith("s3-")
+        )
+        
+        if not (is_aws and looks_like_s3):
+            raise PresignedURLFetchError(
+                url=url, error_message="URL host is not a valid S3 endpoint"
+            )
+        
+        # Redact query string for safe logging
+        sanitized_url = parsed_url._replace(query="").geturl()
+        
+        # Get file size limit from settings
+        try:
+            max_mb = getattr(settings, "PRESIGNED_URL_MAX_FILE_SIZE_MB", DEFAULT_PRESIGNED_URL_MAX_FILE_SIZE_MB)
+            max_bytes = int(max_mb) * 1024 * 1024
+        except Exception:
+            max_bytes = DEFAULT_PRESIGNED_URL_MAX_FILE_SIZE_MB * 1024 * 1024  # sane default if settings unavailable
+            
+        file_stream = BytesIO()
+        downloaded = 0
+        
+        try:
+            # Request with timeouts and streaming
+            resp = requests.get(url, stream=True, timeout=(5, 30))
+            resp.raise_for_status()
+            
+            # Check Content-Length header if available
+            content_length = resp.headers.get("Content-Length")
+            if content_length:
+                try:
+                    if int(content_length) > max_bytes:
+                        raise PresignedURLFetchError(
+                            url=url,
+                            error_message=f"File too large ({content_length} bytes). Max allowed: {max_bytes} bytes"
+                        )
+                except ValueError:
+                    # Non-integer Content-Length; ignore and fall back to stream enforcement
+                    pass
+            
+            # Stream the body with an upper bound to prevent memory exhaustion
+            for chunk in resp.iter_content(chunk_size=1024 * 1024):
+                if not chunk:
+                    continue
+                    
+                downloaded += len(chunk)
+                if downloaded > max_bytes:
+                    raise PresignedURLFetchError(
+                        url=url,
+                        error_message=f"File exceeds maximum allowed size of {max_bytes} bytes",
                     )
-
-        logger.info(
-            f"Fetched file '{filename}' with MIME type '{content_type}' from presigned URL"
-        )
-
-        file_stream = BytesIO(resp.content)
-        uploaded_file = InMemoryUploadedFile(
-            file=file_stream,
-            field_name="file",
-            name=filename,
-            content_type=content_type,
-            size=len(resp.content),
-            charset=None,
-        )
-        return uploaded_file
+                    
+                file_stream.write(chunk)
+                
+            file_stream.seek(0)
+            
+            # Extract filename from URL path
+            filename = parsed_url.path.split("/")[-1] if parsed_url.path else "unknown_file"
+            
+            # Determine content type with better MIME type detection
+            content_type = resp.headers.get("Content-Type", "")
+            
+            # If content type is generic or not set, use octet-stream
+            if content_type in [
+                "",
+                "application/octet-stream",
+                "binary/octet-stream",
+            ]:
+                content_type = "application/octet-stream"
+                logger.warning(
+                    f"Could not detect MIME type for file '{filename}' from URL '{sanitized_url}'"
+                )
+            
+            logger.info(
+                f"Fetched file '{filename}' with MIME type '{content_type}' from presigned URL {sanitized_url}"
+            )
+            
+            return InMemoryUploadedFile(
+                file=file_stream,
+                field_name="file",
+                name=filename,
+                content_type=content_type,
+                size=downloaded,
+                charset=None,
+            )
+            
+        except (requests.ConnectionError, requests.RequestException) as e:
+            # Close the file stream on error
+            if file_stream:
+                file_stream.close()
+            raise PresignedURLFetchError(url=url, error_message=str(e))
 
     @staticmethod
     def load_presigned_files_generator(presigned_urls: list[str]):
