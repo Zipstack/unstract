@@ -302,7 +302,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         try:
             max_mb = getattr(
                 settings,
-                "PRESIGNED_URL_MAX_FILE_SIZE_MB",
+                "API_DEPL_PRESIGNED_URL_MAX_FILE_SIZE_MB",
                 DEFAULT_PRESIGNED_URL_MAX_FILE_SIZE_MB,
             )
             max_bytes = int(max_mb) * 1024 * 1024
