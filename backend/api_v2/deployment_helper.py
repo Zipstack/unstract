@@ -1,8 +1,8 @@
 import logging
+import re
 from io import BytesIO
 from typing import Any
 from urllib.parse import urlencode, urlparse
-import re
 
 import requests
 from configuration.models import Configuration
@@ -274,24 +274,24 @@ class DeploymentHelper(BaseAPIKeyValidator):
         parsed_url = urlparse(url)
         scheme = parsed_url.scheme.lower()
         host = (parsed_url.hostname or "").lower()
-        
+
         # Redact query string for safe logging and error messages
         sanitized_url = parsed_url._replace(query="").geturl()
-        
+
         if scheme != "https":
             raise PresignedURLFetchError(
                 url=sanitized_url, error_message="Only HTTPS presigned URLs are allowed"
             )
-            
+
         # Check if this is an AWS S3 endpoint
         is_aws = host.endswith(".amazonaws.com")
         # Accept common S3 endpoint patterns: path-style, virtual-hosted, regional, dualstack, accelerated
         looks_like_s3 = (
             host == "s3.amazonaws.com"
             or host.endswith(".s3.amazonaws.com")
-            or re.match(r'(^|.*\.)s3[.-]([a-z0-9-]+)\.amazonaws\.com$', host) is not None
+            or re.match(r"(^|.*\.)s3[.-]([a-z0-9-]+)\.amazonaws\.com$", host) is not None
         )
-        
+
         if not (is_aws and looks_like_s3):
             raise PresignedURLFetchError(
                 url=sanitized_url, error_message="URL host is not a valid S3 endpoint"
@@ -325,7 +325,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
                     if int(content_length) > max_bytes:
                         raise PresignedURLFetchError(
                             url=sanitized_url,
-                            error_message=f"File too large ({content_length} bytes). Max allowed: {max_bytes} bytes"
+                            error_message=f"File too large ({content_length} bytes). Max allowed: {max_bytes} bytes",
                         )
                 except ValueError:
                     # Non-integer Content-Length; ignore and fall back to stream enforcement
