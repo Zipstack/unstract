@@ -325,11 +325,25 @@ class StructureTool(BaseTool):
             )
 
         # HACK: Replacing actual file's name instead of INFILE
-        if SettingsKeys.METADATA in structured_output:
-            structured_output[SettingsKeys.METADATA][SettingsKeys.FILE_NAME] = (
-                self.source_file_name
-            )
+        # Ensure metadata section exists
+        if SettingsKeys.METADATA not in structured_output:
+            structured_output[SettingsKeys.METADATA] = {}
+            self.stream_log("Created metadata section in structured_output")
 
+        structured_output[SettingsKeys.METADATA][SettingsKeys.FILE_NAME] = (
+            self.source_file_name
+        )
+
+        # Add extracted text for HITL raw view
+        if extracted_text:
+            structured_output[SettingsKeys.METADATA]["extracted_text"] = extracted_text
+            self.stream_log(
+                f"Added extracted_text to metadata (length: {len(extracted_text)} characters)"
+            )
+        else:
+            self.stream_log(
+                "No extracted_text available - STHelper.dynamic_extraction returned empty"
+            )
         if merged_metrics := self._merge_metrics(
             structured_output.get(SettingsKeys.METRICS, {}), index_metrics
         ):
