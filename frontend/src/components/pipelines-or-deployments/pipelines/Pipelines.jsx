@@ -1,5 +1,4 @@
 import {
-  ClearOutlined,
   DeleteOutlined,
   EllipsisOutlined,
   SyncOutlined,
@@ -270,27 +269,6 @@ function Pipelines({ type }) {
       });
   };
 
-  const clearCache = () => {
-    const requestOptions = {
-      method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/${selectedPorD.workflow_id}/clear-cache/`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
-    };
-    axiosPrivate(requestOptions)
-      .then(() => {
-        setOpenDeleteModal(false);
-        setAlertDetails({
-          type: "success",
-          content: "Pipeline Cache Cleared Successfully",
-        });
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
-      });
-  };
-
   const clearFileMarkers = () => {
     const requestOptions = {
       method: "GET",
@@ -408,19 +386,6 @@ function Pipelines({ type }) {
         <Space
           direction="horizontal"
           className="action-items"
-          onClick={() => clearCache()}
-        >
-          <ClearOutlined />
-          <Typography.Text>Clear Cache</Typography.Text>
-        </Space>
-      ),
-    },
-    {
-      key: "7",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
           onClick={() => clearFileMarkers()}
         >
           <HighlightOutlined />
@@ -429,7 +394,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "8",
+      key: "7",
       label: (
         <Space
           direction="horizontal"
@@ -446,7 +411,7 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "9",
+      key: "8",
       label: (
         <Space
           direction="horizontal"

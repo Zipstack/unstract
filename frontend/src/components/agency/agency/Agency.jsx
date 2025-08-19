@@ -12,7 +12,6 @@ import {
   BugOutlined,
   SettingOutlined,
   PlayCircleOutlined,
-  ClearOutlined,
   HistoryOutlined,
 } from "@ant-design/icons";
 import { useEffect, useState } from "react";
@@ -869,39 +868,6 @@ function Agency() {
     }
   };
 
-  // Handle Clear Cache action
-  const handleClearCache = () => {
-    const workflowId = details?.id;
-    if (!workflowId) {
-      setAlertDetails({
-        type: "error",
-        content: "Invalid workflow id",
-      });
-      return;
-    }
-
-    const requestOptions = {
-      method: "GET",
-      url: getUrl(`workflow/${workflowId}/clear-cache/`),
-    };
-
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const msg = res?.data;
-        setAlertDetails({
-          type: "success",
-          content: msg,
-        });
-      })
-      .catch((err) => {
-        const msg = err?.response?.data || "Failed to clear cache.";
-        setAlertDetails({
-          type: "error",
-          content: msg,
-        });
-      });
-  };
-
   // Handle tool selection from sidebar
   const handleToolSelection = async (functionName) => {
     setSelectedTool(functionName);
@@ -1013,9 +979,6 @@ function Agency() {
       case "run-workflow":
         handleRunWorkflow();
         break;
-      case "clear-cache":
-        handleClearCache();
-        break;
       case "clear-history":
         handleClearFileMarker();
         break;
@@ -1029,11 +992,6 @@ function Agency() {
       key: "run-workflow",
       label: "Run Workflow",
       icon: <PlayCircleOutlined />,
-    },
-    {
-      key: "clear-cache",
-      label: "Clear Cache",
-      icon: <ClearOutlined />,
     },
     {
       key: "clear-history",
