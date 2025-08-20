@@ -23,11 +23,11 @@ class DatabaseUtils:
     @staticmethod
     def _create_safe_error_json(data_description: str, original_error: Exception) -> dict:
         """Create a standardized error JSON object that can be safely serialized.
-        
+
         Args:
             data_description (str): Description of the data being serialized
             original_error (Exception): The original exception that occurred
-            
+
         Returns:
             dict: A safely serializable JSON object with error details
         """
@@ -37,7 +37,7 @@ class DatabaseUtils:
             "error_message": str(original_error),
             "data_type": str(type(original_error)),
             "data_description": data_description,
-            "timestamp": datetime.datetime.now().isoformat()
+            "timestamp": datetime.datetime.now().isoformat(),
         }
 
     @staticmethod
@@ -83,7 +83,9 @@ class DatabaseUtils:
                         payload_json = json.dumps(payload, default=str)
                         sql_values[column] = f"parse_json($${payload_json}$$)"
                     except (TypeError, ValueError) as e:
-                        logger.error(f"Failed to serialize payload to JSON for column {column}: {e}")
+                        logger.error(
+                            f"Failed to serialize payload to JSON for column {column}: {e}"
+                        )
                         # Create a safe fallback error object
                         fallback_payload = DatabaseUtils._create_safe_error_json(
                             f"column_{column}", e
@@ -100,7 +102,9 @@ class DatabaseUtils:
                     try:
                         sql_values[column] = json.dumps(value)
                     except (TypeError, ValueError) as e:
-                        logger.error(f"Failed to serialize value to JSON for column {column}: {e}")
+                        logger.error(
+                            f"Failed to serialize value to JSON for column {column}: {e}"
+                        )
                         # Create a safe fallback error object - consistent with Snowflake approach
                         fallback_value = DatabaseUtils._create_safe_error_json(
                             f"column_{column}", e
@@ -263,9 +267,13 @@ class DatabaseUtils:
                         data
                     )  # Legacy column gets JSON string
                 except (TypeError, ValueError) as e:
-                    logger.error(f"Failed to serialize data to JSON for column {single_column_name}: {e}")
+                    logger.error(
+                        f"Failed to serialize data to JSON for column {single_column_name}: {e}"
+                    )
                     # Create a safe fallback error object
-                    fallback_data = DatabaseUtils._create_safe_error_json(single_column_name, e)
+                    fallback_data = DatabaseUtils._create_safe_error_json(
+                        single_column_name, e
+                    )
                     values[single_column_name] = json.dumps(fallback_data)
 
                 # Only write to v2 if it exists
@@ -282,7 +290,9 @@ class DatabaseUtils:
                             values[f"{single_column_name}_v2"] = data
                         except (TypeError, ValueError) as e:
                             # Create a safe fallback error object
-                            fallback_data = DatabaseUtils._create_safe_error_json(f"{single_column_name}_v2", e)
+                            fallback_data = DatabaseUtils._create_safe_error_json(
+                                f"{single_column_name}_v2", e
+                            )
                             values[f"{single_column_name}_v2"] = fallback_data
 
         values[file_path_name] = file_path
