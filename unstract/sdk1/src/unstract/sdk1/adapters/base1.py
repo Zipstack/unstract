@@ -1,5 +1,6 @@
 import glob
 import inspect
+import logging
 import os
 from abc import ABC, abstractmethod
 from importlib import import_module
@@ -8,6 +9,9 @@ from typing import Any
 from pydantic import BaseModel, Field
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.enums import AdapterTypes
+
+
+logger = logging.getLogger(__name__)
 
 
 def register_adapters(adapters: dict[str, dict[str, Any]], adapter_type: str):
@@ -154,21 +158,22 @@ class AzureOpenAIParameters(BaseParameters):
     api_version: str | None = None
     api_key: str
     temperature: float | None = 1
+    num_retries: int | None = 3  # Set a default value for retries
 
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
         adapter_metadata["model"] = AzureOpenAIParameters.validate_model(adapter_metadata)
-        adapter_metadata["api_base"] = adapter_metadata.get("azure_endpoint", "").split(
-            "?"
-        )[0]
-
+        
+        # Ensure we have the endpoint in the right format for Azure
+        azure_endpoint = adapter_metadata.get("azure_endpoint", "")
+        if azure_endpoint:
+            adapter_metadata["api_base"] = azure_endpoint
         return AzureOpenAIParameters(**adapter_metadata).model_dump()
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
         model = adapter_metadata.get("model", "")
         return f"azure/{model}" if "/" not in model else model
-
 
 class VertexAIParameters(BaseParameters):
     """See https://docs.litellm.ai/docs/providers/vertex"""
