@@ -532,14 +532,22 @@ class DestinationConnector(BaseConnector):
         return result
 
     def has_valid_metadata(self, metadata: Any) -> bool:
-        # Check if metadata is not None and metadata is a non-empty string
-        if not metadata:
+        # Check if metadata is not None and is either a non-empty dict or valid string
+        if metadata is None:
             return False
-        if not isinstance(metadata, str):
-            return False
-        if metadata.strip().lower() == "none":
-            return False
-        return True
+
+        # Handle dict metadata (which is valid and contains extracted_text)
+        if isinstance(metadata, dict):
+            return bool(metadata)  # Return True if dict is not empty
+
+        # Handle string metadata
+        if isinstance(metadata, str):
+            if metadata.strip().lower() == "none" or not metadata.strip():
+                return False
+            return True
+
+        # For other types, consider them valid if they're truthy
+        return bool(metadata)
 
     def get_metadata(
         self, file_history: FileHistory | None = None
@@ -554,8 +562,18 @@ class DestinationConnector(BaseConnector):
                 return self.parse_string(file_history.metadata)
             else:
                 return None
-        metadata: dict[str, Any] = self.get_workflow_metadata()
 
+        # Try to get metadata from tool execution result first
+        try:
+            tool_result = self.get_tool_execution_result(file_history)
+            if isinstance(tool_result, dict) and "metadata" in tool_result:
+                # Return the metadata from tool execution result (includes extracted_text)
+                return tool_result.get("metadata", {})
+        except Exception as e:
+            logger.debug(f"Could not get metadata from tool result: {e}")
+
+        # Fallback to workflow metadata if tool result metadata not available
+        metadata: dict[str, Any] = self.get_workflow_metadata()
         return metadata
 
     def delete_file_execution_directory(self) -> None:
@@ -777,6 +795,9 @@ class DestinationConnector(BaseConnector):
             q_name = self._get_review_queue_name()
             whisper_hash = meta_data.get("whisper-hash") if meta_data else None
 
+            # Get extracted text from metadata (added by structure tool)
+            extracted_text = meta_data.get("extracted_text") if meta_data else None
+
             queue_result = QueueResult(
                 file=file_name,
                 status=QueueResultStatus.SUCCESS,
@@ -785,6 +806,7 @@ class DestinationConnector(BaseConnector):
                 file_content=file_content_base64,
                 whisper_hash=whisper_hash,
                 file_execution_id=file_execution_id,
+                extracted_text=extracted_text,
             ).to_dict()
 
             queue_result_json = json.dumps(queue_result)
@@ -811,6 +833,9 @@ class DestinationConnector(BaseConnector):
             else:
                 whisper_hash = None
 
+            # Get extracted text from metadata (added by structure tool)
+            extracted_text = meta_data.get("extracted_text") if meta_data else None
+
             # Create QueueResult with TTL metadata
             queue_result_obj = QueueResult(
                 file=file_name,
@@ -820,6 +845,7 @@ class DestinationConnector(BaseConnector):
                 file_content=file_content_base64,
                 whisper_hash=whisper_hash,
                 file_execution_id=file_execution_id,
+                extracted_text=extracted_text,
             )
 
             # Add TTL metadata based on HITLSettings
