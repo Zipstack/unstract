@@ -345,12 +345,6 @@ class DeploymentHelper(BaseAPIKeyValidator):
             )
 
         except requests.RequestException as e:
-            if file_stream:
-                try:
-                    file_stream.close()
-                except Exception:
-                    pass
-
             if (
                 isinstance(e, requests.exceptions.HTTPError)
                 and hasattr(e, "response")
@@ -362,33 +356,27 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 e, (requests.exceptions.ConnectTimeout, requests.exceptions.ReadTimeout)
             ):
                 status_code = 504  # Gateway Timeout
-                error_msg = "Request timed out"
+                error_msg = f"Request timed out: {str(e)}"
+                logger.error(f"Timeout error fetching presigned URL {sanitized_url}: {e}")
             elif isinstance(e, requests.exceptions.ConnectionError):
                 status_code = 502  # Bad Gateway
-                error_msg = "Connection error"
+                error_msg = f"Connection error: {str(e)}"
+                logger.error(f"Connection error fetching presigned URL {sanitized_url}: {e}")
             else:
                 status_code = 400
                 error_msg = str(e)
+                logger.error(f"Error fetching presigned URL {sanitized_url}: {e}")
 
             raise PresignedURLFetchError(
                 url=sanitized_url, error_message=error_msg, status_code=status_code
             )
-        except Exception as e:
-            # Close the file stream on any other error
+
+        finally:
             if file_stream:
                 try:
                     file_stream.close()
-                except Exception:
-                    pass
-
-            # Re-raise as a PresignedURLFetchError for consistent error handling
-            if not isinstance(e, PresignedURLFetchError):
-                raise PresignedURLFetchError(
-                    url=sanitized_url,
-                    error_message=f"Unexpected error: {str(e)}",
-                    status_code=500,
-                )
-            raise
+                except Exception as e:
+                    logger.warning(f"Failed to close file stream: {str(e)}")
 
     @staticmethod
     def load_presigned_files(
