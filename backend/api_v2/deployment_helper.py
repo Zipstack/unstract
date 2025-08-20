@@ -268,7 +268,6 @@ class DeploymentHelper(BaseAPIKeyValidator):
         """
         parsed_url = urlparse(url)
         sanitized_url = parsed_url._replace(query="").geturl()  # For logging
-        host = (parsed_url.hostname or "").lower()
         file_stream = None
 
         try:
