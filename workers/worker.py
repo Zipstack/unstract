@@ -23,6 +23,12 @@ WORKER_TYPE = os.environ.get("WORKER_TYPE", "general")
 
 logger.info("🚀 Unified Worker Entry Point")
 logger.info(f"📋 Worker Type: {WORKER_TYPE}")
+logger.info(
+    f"📋 Raw environment WORKER_TYPE: '{os.environ.get('WORKER_TYPE', 'NOT_SET')}'"
+)
+logger.info(
+    f"📋 All WORKER_* env vars: {[(k, v) for k, v in os.environ.items() if k.startswith('WORKER_')]}"
+)
 
 # Map worker types to their actual module names
 # Note: api-deployment uses hyphen in directory name
@@ -36,9 +42,12 @@ WORKER_MODULE_MAPPING = {
     "scheduler": "scheduler.worker",  # Directory: scheduler
 }
 
+logger.info(f"📋 Available worker types in mapping: {list(WORKER_MODULE_MAPPING.keys())}")
+
 # Get the module name to import
 module_name = WORKER_MODULE_MAPPING.get(WORKER_TYPE, "general.worker")
 
+logger.info(f"📦 Mapping lookup: WORKER_TYPE='{WORKER_TYPE}' -> module='{module_name}'")
 logger.info(f"📦 Loading module: {module_name}")
 
 # Import the appropriate worker module
@@ -56,6 +65,10 @@ try:
 
 except ImportError as e:
     logger.error(f"❌ Error loading worker module '{module_name}': {e}")
+    logger.error(f"❌ Import error details: {type(e).__name__}: {str(e)}")
+    import traceback
+
+    logger.error(f"❌ Full traceback: {traceback.format_exc()}")
     logger.info("🔄 Falling back to general worker")
 
     # Fall back to general worker
