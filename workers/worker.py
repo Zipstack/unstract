@@ -8,17 +8,21 @@ Each worker is completely self-contained to avoid circular imports.
 """
 
 import importlib
+import logging
 import os
 import sys
 
 # Add the workers directory to Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# Setup logger
+logger = logging.getLogger(__name__)
+
 # Determine worker type from environment
 WORKER_TYPE = os.environ.get("WORKER_TYPE", "general")
 
-print("🚀 Unified Worker Entry Point")
-print(f"📋 Worker Type: {WORKER_TYPE}")
+logger.info("🚀 Unified Worker Entry Point")
+logger.info(f"📋 Worker Type: {WORKER_TYPE}")
 
 # Map worker types to their actual module names
 # Note: api-deployment uses hyphen in directory name
@@ -35,7 +39,7 @@ WORKER_MODULE_MAPPING = {
 # Get the module name to import
 module_name = WORKER_MODULE_MAPPING.get(WORKER_TYPE, "general.worker")
 
-print(f"📦 Loading module: {module_name}")
+logger.info(f"📦 Loading module: {module_name}")
 
 # Import the appropriate worker module
 try:
@@ -45,14 +49,14 @@ try:
     # Also make config available if it exists (for backward compatibility)
     if hasattr(worker_module, "config"):
         config = worker_module.config
-        print(f"✅ Successfully loaded {WORKER_TYPE} worker with config")
+        logger.info(f"✅ Successfully loaded {WORKER_TYPE} worker with config")
     else:
         config = None
-        print(f"✅ Successfully loaded {WORKER_TYPE} worker (no config)")
+        logger.info(f"✅ Successfully loaded {WORKER_TYPE} worker (no config)")
 
 except ImportError as e:
-    print(f"❌ Error loading worker module '{module_name}': {e}")
-    print("🔄 Falling back to general worker")
+    logger.error(f"❌ Error loading worker module '{module_name}': {e}")
+    logger.info("🔄 Falling back to general worker")
 
     # Fall back to general worker
     try:
@@ -63,12 +67,14 @@ except ImportError as e:
             config = worker_module.config
         else:
             config = None
-        print("✅ Fallback successful - using general worker")
+        logger.info("✅ Fallback successful - using general worker")
     except Exception as fallback_error:
-        print(f"💥 Critical: Cannot load fallback general worker: {fallback_error}")
+        logger.critical(
+            f"💥 Critical: Cannot load fallback general worker: {fallback_error}"
+        )
         raise
 
-print("🎯 Worker app ready for Celery")
+logger.info("🎯 Worker app ready for Celery")
 
 # Export for Celery to use
 __all__ = ["app", "config"]

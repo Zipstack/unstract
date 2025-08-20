@@ -614,21 +614,6 @@ class ExecutionFinalizationAPIView(APIView):
 
             # Apply organization filtering if needed
             organization_id = StateStore.get(Account.ORGANIZATION_ID)
-            print(
-                "================================START EXECUTION POST============================================"
-            )
-            print(f"Organization ID: {organization_id}")
-            print(f"Execution ID: {execution_id}")
-            print(f"Execution status: {execution}")
-            print(f"Execution workflow: {execution.workflow}")
-            print(f"Execution workflow organization: {execution.workflow.organization}")
-            print(
-                f"Execution organization ID: {execution.workflow.organization.organization_id}"
-            )
-            print(f"Execution organization ID: {execution.organization_id}")
-            print(
-                "================================END EXECUTION POST============================================"
-            )
 
             if organization_id and execution.organization_id != organization_id:
                 return Response(

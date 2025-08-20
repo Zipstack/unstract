@@ -717,8 +717,6 @@ class InternalAPIClient:
         """Create multiple file history records in a single batch request."""
         return self.file_client.batch_create_file_history(file_histories, organization_id)
 
-    # Removed: create_file_history_entry - now using FileAPIClient.create_file_history with v1 endpoint
-
     # Delegate webhook client methods
     def send_webhook(
         self,

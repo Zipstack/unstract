@@ -642,8 +642,6 @@ class ExecutionAPIClient(BaseAPIClient):
             logger.error(f"Failed to get destination config: {str(e)}")
             return {"type": "none", "error": str(e)}
 
-    # Removed: create_file_history_entry - now using FileAPIClient.create_file_history with v1 endpoint
-
     def check_file_history_batch(
         self, workflow_id: str, file_hashes: list[str], organization_id: str
     ) -> dict[str, Any]:

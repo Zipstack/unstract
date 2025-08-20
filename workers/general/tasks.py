@@ -7,9 +7,15 @@ and general workflow executions using internal APIs.
 import time
 from typing import Any
 
-# Removed requests import - no longer needed after removing webhook tasks
 # Import shared worker infrastructure
 from shared.api_client import InternalAPIClient
+
+# Import worker-specific data models
+from shared.data_models import (
+    CallbackTaskData,
+    WorkerTaskResponse,
+    WorkflowExecutionStatusUpdate,
+)
 from shared.logging_utils import WorkerLogger, log_context, monitor_performance
 from shared.retry_utils import circuit_breaker
 from shared.source_connector import WorkerSourceConnector
@@ -138,33 +144,41 @@ def async_execute_bin_general(
 
                 # Update execution status to completed
                 # Only include total_files if we have files to avoid overwriting with 0
-                update_params = {
-                    "execution_id": execution_id,
-                    "status": ExecutionStatus.COMPLETED.value,
-                    "execution_time": execution_time,
-                }
-                if hash_values_of_files:
-                    update_params["total_files"] = len(hash_values_of_files)
+                update_request = WorkflowExecutionStatusUpdate(
+                    execution_id=execution_id,
+                    status=ExecutionStatus.COMPLETED.value,
+                    execution_time=execution_time,
+                    total_files=len(hash_values_of_files)
+                    if hash_values_of_files
+                    else None,
+                )
 
-                api_client.update_workflow_execution_status(**update_params)
+                api_client.update_workflow_execution_status(**update_request.to_dict())
 
                 logger.info(
                     f"Successfully completed general workflow execution {execution_id}"
                 )
 
-                return {
-                    "status": "success",
-                    "execution_id": execution_id,
-                    "workflow_id": workflow_id,
-                    "task_id": task_id,
-                    "execution_time": execution_time,
-                    "files_processed": len(hash_values_of_files)
-                    if hash_values_of_files
-                    else 0,
-                    "file_batch_results": file_batch_results,
-                    "execution_result": execution_result,
-                    "is_general_workflow": True,
-                }
+                response = WorkerTaskResponse.success_response(
+                    execution_id=execution_id,
+                    workflow_id=workflow_id,
+                    task_id=task_id,
+                    execution_time=execution_time,
+                )
+                response.is_general_workflow = True
+
+                # Convert to dict and add additional fields for backward compatibility
+                response_dict = response.to_dict()
+                response_dict.update(
+                    {
+                        "files_processed": len(hash_values_of_files)
+                        if hash_values_of_files
+                        else 0,
+                        "file_batch_results": file_batch_results,
+                        "execution_result": execution_result,
+                    }
+                )
+                return response_dict
 
         except Exception as e:
             logger.error(f"General workflow execution failed for {execution_id}: {e}")
@@ -408,15 +422,22 @@ def _execute_general_workflow(
                     logger.warning(f"Failed to update pipeline status: {pipeline_error}")
 
             execution_time = time.time() - start_time
-            return {
-                "status": "completed",
-                "execution_id": execution_id,
-                "workflow_id": workflow_id,
-                "execution_time": execution_time,
-                "files_processed": 0,
-                "message": "No files to process",
-                "is_general_workflow": True,
-            }
+            response = WorkerTaskResponse.success_response(
+                execution_id=execution_id,
+                workflow_id=workflow_id,
+                execution_time=execution_time,
+            )
+            response.is_general_workflow = True
+
+            # Convert to dict and add additional fields for backward compatibility
+            response_dict = response.to_dict()
+            response_dict.update(
+                {
+                    "files_processed": 0,
+                    "message": "No files to process",
+                }
+            )
+            return response_dict
 
         # Orchestrate file processing using chord pattern
         try:
@@ -446,11 +467,11 @@ def _execute_general_workflow(
                 error=str(e),
             )
 
-            orchestration_result = {
-                "status": "error",
-                "success": False,
-                "error": str(e),
-            }
+            orchestration_result = WorkerTaskResponse.error_response(
+                execution_id=execution_id,
+                workflow_id=workflow_id,
+                error=str(e),
+            ).to_dict()
 
         execution_time = time.time() - start_time
         orchestration_result["execution_time"] = execution_time
@@ -516,12 +537,9 @@ def _orchestrate_file_processing_general(
             else None
         )
 
-        print(f"Execution mode: {execution_mode_str}")
-        print(f"Pipeline ID: {pipeline_id}")
-        print(f"Scheduled: {scheduled}")
-        print(f"Execution mode: {execution_mode_str}")
-        print(f"Use file history: {use_file_history}")
-        print(f"Batches -------------------->>>: {batches}")
+        logger.debug(
+            f"Execution parameters: mode={execution_mode_str}, pipeline={pipeline_id}, scheduled={scheduled}, file_history={use_file_history}"
+        )
 
         # Calculate manual review configuration ONCE for all files before batching
         from shared.manual_review_factory import get_manual_review_service
@@ -541,7 +559,7 @@ def _orchestrate_file_processing_general(
                 total_files=len(source_files),
             )
         )
-        print(f"Global file data: {global_file_data}")
+        logger.debug("Global file data configured for manual review")
         # Pre-calculate file decisions for ALL files based on total count - not per batch!
         q_file_no_list = global_file_data.manual_review_config.get("q_file_no_list", [])
         logger.info(
@@ -581,9 +599,7 @@ def _orchestrate_file_processing_general(
                 files=batch, file_data=file_data, source_files=source_files
             )
 
-            print(
-                f"Batch {batch_idx + 1} contains {len(batch)} files (BEFORE enhancement): {batch_data}"
-            )
+            logger.debug(f"Processing batch {batch_idx + 1} with {len(batch)} files")
 
             # Debug: Log the files in this batch BEFORE enhancement
             logger.info(
@@ -633,14 +649,15 @@ def _orchestrate_file_processing_general(
         logger.info(
             f"DEBUG: Creating callback kwargs with organization_id={organization_id}"
         )
-        callback_kwargs = {
-            "execution_id": str(execution_id),
-            "organization_id": str(organization_id),
-        }
+        callback_data = CallbackTaskData(
+            execution_id=execution_id,
+            organization_id=organization_id,
+            pipeline_id=pipeline_id,
+        )
+        callback_kwargs = callback_data.to_dict()
 
         # CRITICAL FIX: Pass pipeline_id directly to callback to ensure pipeline status updates
         if pipeline_id:
-            callback_kwargs["pipeline_id"] = str(pipeline_id)
             logger.info(
                 f"Passing pipeline_id {pipeline_id} to callback for proper status updates"
             )
@@ -664,15 +681,24 @@ def _orchestrate_file_processing_general(
 
         logger.info(f"Execution {execution_id} file processing orchestrated successfully")
 
-        return {
-            "status": "orchestrated",
-            "execution_id": execution_id,
-            "workflow_id": workflow_id,
-            "files_processed": len(source_files),
-            "batches_created": len(batches),
-            "chord_id": result.id,
-            "message": "File processing orchestrated, waiting for completion",
-        }
+        response = WorkerTaskResponse.success_response(
+            execution_id=execution_id,
+            workflow_id=workflow_id,
+            task_id=result.id,
+        )
+        response.status = "orchestrated"
+
+        # Convert to dict and add additional fields for backward compatibility
+        response_dict = response.to_dict()
+        response_dict.update(
+            {
+                "files_processed": len(source_files),
+                "batches_created": len(batches),
+                "chord_id": result.id,
+                "message": "File processing orchestrated, waiting for completion",
+            }
+        )
+        return response_dict
 
     except Exception as e:
         # Update execution to ERROR status matching Django pattern
@@ -751,13 +777,7 @@ def _get_file_batches_general(input_files: dict[str, FileHash] | list[dict]) -> 
     return batches
 
 
-# Manual review logic moved to plugins/manual_review/workflow_service.py
-
-
-# This function has been moved to plugins/manual_review/workflow_service.py
-
-
-# This function has been moved to plugins/manual_review/workflow_service.py
+# Manual review logic has been moved to shared plugins for reusability
 
 
 def _create_batch_data_general(
@@ -1218,8 +1238,5 @@ def async_execute_bin(
             raise
 
 
-# All webhook tasks removed - they should only be handled by the notification worker
-
-
-# Removed async_execute_bin_api task - it should only be handled by the API deployment worker
-# This prevents task routing conflicts and ensures proper separation of concerns
+# Note: Webhook and API deployment tasks are handled by specialized workers
+# to prevent routing conflicts and ensure proper separation of concerns

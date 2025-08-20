@@ -238,38 +238,40 @@ class WorkerTaskBase:
 # Demonstration
 def demonstrate_separation():
     """Show the clean separation between core domain models and worker patterns."""
-    print("🏗️  Architecture Separation Demo")
+    logger.info("🏗️  Architecture Separation Demo")
 
     # 1. Core domain model (shared with backend)
-    print("\n1. Core Domain Model:")
-    print(f"   ExecutionStatus.COMPLETED = {ExecutionStatus.COMPLETED}")
-    print("   (Shared between backend and workers)")
+    logger.info("\n1. Core Domain Model:")
+    logger.info(f"   ExecutionStatus.COMPLETED = {ExecutionStatus.COMPLETED}")
+    logger.info("   (Shared between backend and workers)")
 
     # 2. Worker-specific enums (NOT shared with backend)
-    print("\n2. Worker-Specific Patterns:")
-    print(f"   TaskName.PROCESS_FILE_BATCH = {TaskName.PROCESS_FILE_BATCH}")
-    print(f"   QueueName.FILE_PROCESSING = {QueueName.FILE_PROCESSING}")
-    print(f"   WebhookStatus.DELIVERED = {WebhookStatus.DELIVERED}")
-    print("   (Worker implementation details)")
+    logger.info("\n2. Worker-Specific Patterns:")
+    logger.info(f"   TaskName.PROCESS_FILE_BATCH = {TaskName.PROCESS_FILE_BATCH}")
+    logger.info(f"   QueueName.FILE_PROCESSING = {QueueName.FILE_PROCESSING}")
+    logger.info(f"   WebhookStatus.DELIVERED = {WebhookStatus.DELIVERED}")
+    logger.info("   (Worker implementation details)")
 
     # 3. Worker result using core status
-    print("\n3. Worker Result with Core Status:")
+    logger.info("\n3. Worker Result with Core Status:")
     result = FileExecutionResult(
         file="test.pdf",
         file_execution_id="exec-123",
         status=ExecutionStatus.COMPLETED,  # Core domain model
         processing_time=1.5,
     )
-    print(
+    logger.info(
         f"   File: {result.file}, Status: {result.status}, Success: {result.is_successful()}"
     )
 
     # 4. Status mapping between domains
-    print("\n4. Status Mapping:")
+    logger.info("\n4. Status Mapping:")
     pipeline_status = StatusMappings.execution_to_pipeline(ExecutionStatus.COMPLETED)
-    print(f"   Core ExecutionStatus.COMPLETED → Worker PipelineStatus.{pipeline_status}")
+    logger.info(
+        f"   Core ExecutionStatus.COMPLETED → Worker PipelineStatus.{pipeline_status}"
+    )
 
-    print(
+    logger.info(
         "\n✅ Clean separation: Core has domain models, Workers have implementation patterns"
     )
 

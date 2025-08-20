@@ -400,6 +400,113 @@ class MetricsData:
         }
 
 
+@dataclass
+class WorkerTaskResponse:
+    """Generic worker task response structure."""
+
+    status: str
+    execution_id: str | UUID
+    workflow_id: str | UUID
+    task_id: str | None = None
+    execution_time: float | None = None
+    success: bool = True
+    error: str | None = None
+    is_general_workflow: bool | None = None
+    pipeline_id: str | UUID | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "status": self.status,
+            "execution_id": str(self.execution_id),
+            "workflow_id": str(self.workflow_id),
+            "task_id": self.task_id,
+            "execution_time": self.execution_time,
+            "success": self.success,
+            "error": self.error,
+            "is_general_workflow": self.is_general_workflow,
+            "pipeline_id": str(self.pipeline_id) if self.pipeline_id else None,
+        }
+
+    @classmethod
+    def success_response(
+        cls,
+        execution_id: str | UUID,
+        workflow_id: str | UUID,
+        task_id: str | None = None,
+        execution_time: float | None = None,
+        pipeline_id: str | UUID | None = None,
+    ) -> "WorkerTaskResponse":
+        """Create a success response."""
+        return cls(
+            status="success",
+            execution_id=execution_id,
+            workflow_id=workflow_id,
+            task_id=task_id,
+            execution_time=execution_time,
+            success=True,
+            pipeline_id=pipeline_id,
+        )
+
+    @classmethod
+    def error_response(
+        cls,
+        execution_id: str | UUID,
+        workflow_id: str | UUID,
+        error: str,
+        task_id: str | None = None,
+        execution_time: float | None = None,
+    ) -> "WorkerTaskResponse":
+        """Create an error response."""
+        return cls(
+            status="error",
+            execution_id=execution_id,
+            workflow_id=workflow_id,
+            task_id=task_id,
+            execution_time=execution_time,
+            success=False,
+            error=error,
+        )
+
+
+@dataclass
+class CallbackTaskData:
+    """Callback task data structure for worker callbacks."""
+
+    execution_id: str | UUID
+    organization_id: str | UUID
+    pipeline_id: str | UUID | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        data = {
+            "execution_id": str(self.execution_id),
+            "organization_id": str(self.organization_id),
+        }
+        if self.pipeline_id:
+            data["pipeline_id"] = str(self.pipeline_id)
+        return data
+
+
+@dataclass
+class WorkflowExecutionStatusUpdate:
+    """Workflow execution status update data structure."""
+
+    execution_id: str | UUID
+    status: str
+    execution_time: float | None = None
+    total_files: int | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        data = {
+            "execution_id": str(self.execution_id),
+            "status": self.status,
+        }
+        if self.execution_time is not None:
+            data["execution_time"] = self.execution_time
+        if self.total_files is not None:
+            data["total_files"] = self.total_files
+        return data
+
+
 # Utility functions for data model conversion
 def dict_to_dataclass(data: dict[str, Any], dataclass_type):
     """Convert dictionary to dataclass instance."""

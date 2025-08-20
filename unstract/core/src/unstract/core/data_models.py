@@ -15,6 +15,165 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+# Centralized field mapping configurations
+# These can be easily updated when model fields change
+FIELD_MAPPINGS = {
+    "WebhookConfigurationData": {
+        "notification_id": "id",
+        "url": "url",
+        "authorization_type": "authorization_type",
+        "authorization_key": "authorization_key",
+        "authorization_header": "authorization_header",
+        "max_retries": "max_retries",
+        "is_active": "is_active",
+    },
+    "HealthCheckResponse": {
+        # Direct mapping - model field names match dataclass field names
+        "status": "status",
+        "service": "service",
+        "version": "version",
+        "timestamp": "timestamp",
+        "authenticated": "authenticated",
+        "organization_id": "organization_id",
+    },
+}
+
+
+class ModelAdapterMixin:
+    """Mixin providing flexible model-to-dataclass conversion capabilities."""
+
+    @classmethod
+    def from_model(
+        cls,
+        model_instance: Any,
+        field_mapping: dict[str, str] | None = None,
+        transform_functions: dict[str, callable] | None = None,
+    ) -> Any:
+        """Create dataclass instance from any model with flexible field mapping.
+
+        Args:
+            model_instance: Django model instance or any object with attributes
+            field_mapping: Optional dict mapping dataclass_field -> model_field
+                          If None, uses centralized FIELD_MAPPINGS or direct mapping
+            transform_functions: Optional dict mapping field_name -> transform_function
+                                for custom field transformations
+
+        Returns:
+            Dataclass instance
+
+        This method is resilient to model changes:
+        - Missing fields use dataclass defaults
+        - Extra model fields are ignored
+        - Field name changes handled via mapping
+        - Custom transformations applied via transform_functions
+        - Centralized mapping configuration for maintainability
+        """
+        from dataclasses import MISSING, fields
+
+        # Get dataclass field definitions
+        dataclass_fields = {f.name: f for f in fields(cls)}
+
+        # Use centralized mapping, provided mapping, or direct mapping
+        if field_mapping is None:
+            # Try to get mapping from centralized config
+            class_name = cls.__name__
+            if class_name in FIELD_MAPPINGS:
+                field_mapping = FIELD_MAPPINGS[class_name]
+                logger.debug(f"Using centralized field mapping for {class_name}")
+            else:
+                # Fall back to direct mapping
+                field_mapping = {name: name for name in dataclass_fields.keys()}
+                logger.debug(f"Using direct field mapping for {class_name}")
+
+        # Build kwargs by mapping model fields to dataclass fields
+        kwargs = {}
+        for dataclass_field, model_field in field_mapping.items():
+            if dataclass_field in dataclass_fields:
+                field_def = dataclass_fields[dataclass_field]
+
+                # Get value from model with fallback handling
+                if hasattr(model_instance, model_field):
+                    value = getattr(model_instance, model_field)
+                elif field_def.default != MISSING:
+                    value = field_def.default
+                elif field_def.default_factory != MISSING:  # type: ignore
+                    value = field_def.default_factory()
+                else:
+                    # Required field missing from model - this indicates a breaking change
+                    logger.warning(
+                        f"Required field '{model_field}' missing from model {type(model_instance).__name__} "
+                        f"for dataclass {cls.__name__}. This may indicate a model schema change."
+                    )
+                    continue
+
+                # Apply transform function if provided
+                if transform_functions and dataclass_field in transform_functions:
+                    try:
+                        value = transform_functions[dataclass_field](value)
+                    except Exception as e:
+                        logger.warning(
+                            f"Transform function failed for field '{dataclass_field}': {e}. "
+                            f"Using original value."
+                        )
+
+                kwargs[dataclass_field] = value
+
+        return cls(**kwargs)
+
+    @classmethod
+    def from_dict_safe(cls, data: dict[str, Any]) -> Any:
+        """Create dataclass instance from dictionary with safe handling of missing fields."""
+        from dataclasses import MISSING, fields
+
+        dataclass_fields = {f.name: f for f in fields(cls)}
+        kwargs = {}
+
+        for field_name, field_def in dataclass_fields.items():
+            if field_name in data:
+                kwargs[field_name] = data[field_name]
+            elif field_def.default != MISSING:
+                kwargs[field_name] = field_def.default
+            elif field_def.default_factory != MISSING:  # type: ignore
+                kwargs[field_name] = field_def.default_factory()
+            # Required fields missing from dict will cause __init__ to fail with clear error
+
+        return cls(**kwargs)
+
+
+def create_dataclass_from_model(
+    dataclass_type: type, model_instance: Any, field_mapping: dict[str, str] | None = None
+) -> Any:
+    """Utility function to create any dataclass from a model instance.
+
+    This is a convenience function that works with any dataclass that inherits
+    from ModelAdapterMixin. It provides a consistent interface for model-to-dataclass
+    conversion.
+
+    Args:
+        dataclass_type: The dataclass type to create
+        model_instance: Django model instance or any object with attributes
+        field_mapping: Optional field mapping override
+
+    Returns:
+        Instance of dataclass_type
+
+    Example:
+        # Using centralized mapping
+        config = create_dataclass_from_model(WebhookConfigurationData, notification_model)
+
+        # Using custom mapping
+        config = create_dataclass_from_model(
+            WebhookConfigurationData,
+            notification_model,
+            field_mapping={"notification_id": "custom_id_field"}
+        )
+    """
+    if not hasattr(dataclass_type, "from_model"):
+        raise TypeError(f"{dataclass_type.__name__} must inherit from ModelAdapterMixin")
+
+    return dataclass_type.from_model(model_instance, field_mapping)
+
+
 @dataclass
 class OrganizationContext:
     """Organization context for API requests."""
@@ -1832,4 +1991,124 @@ class SourceFileListingResponse:
             validation_results=validation_results,
             processing_time=data.get("processing_time", 0.0),
             errors=data.get("errors", []),
+        )
+
+
+# Internal API Response Data Models
+@dataclass
+class HealthCheckResponse(ModelAdapterMixin):
+    """Health check response data structure."""
+
+    status: str
+    service: str
+    version: str
+    timestamp: str | None = None
+    authenticated: bool = True
+    organization_id: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "status": self.status,
+            "service": self.service,
+            "version": self.version,
+            "timestamp": self.timestamp,
+            "authenticated": self.authenticated,
+            "organization_id": self.organization_id,
+        }
+
+    @classmethod
+    def healthy_response(
+        cls,
+        service: str = "internal_api",
+        version: str = "1.0.0",
+        timestamp: str | None = None,
+        organization_id: str | None = None,
+    ) -> "HealthCheckResponse":
+        """Create a healthy response."""
+        return cls(
+            status="healthy",
+            service=service,
+            version=version,
+            timestamp=timestamp,
+            organization_id=organization_id,
+        )
+
+
+@dataclass
+class WebhookConfigurationData(ModelAdapterMixin):
+    """Webhook configuration data structure."""
+
+    notification_id: str | uuid.UUID
+    url: str
+    authorization_type: str
+    authorization_key: str | None = None
+    authorization_header: str | None = None
+    max_retries: int = 3
+    is_active: bool = True
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "notification_id": str(self.notification_id),
+            "url": self.url,
+            "authorization_type": self.authorization_type,
+            "authorization_key": self.authorization_key,
+            "authorization_header": self.authorization_header,
+            "max_retries": self.max_retries,
+            "is_active": self.is_active,
+        }
+
+    @classmethod
+    def from_notification(cls, notification: Any) -> "WebhookConfigurationData":
+        """Create from notification model using centralized field mapping."""
+        # Uses centralized FIELD_MAPPINGS automatically via ModelAdapterMixin.from_model()
+        return cls.from_model(notification)
+
+
+@dataclass
+class WebhookTestResult(ModelAdapterMixin):
+    """Webhook test result data structure."""
+
+    success: bool
+    status_code: int | None = None
+    response_time: float | None = None
+    error_message: str | None = None
+    response_data: dict[str, Any] | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "success": self.success,
+            "status_code": self.status_code,
+            "response_time": self.response_time,
+            "error_message": self.error_message,
+            "response_data": self.response_data,
+        }
+
+    @classmethod
+    def success_result(
+        cls,
+        status_code: int,
+        response_time: float,
+        response_data: dict[str, Any] | None = None,
+    ) -> "WebhookTestResult":
+        """Create a success result."""
+        return cls(
+            success=True,
+            status_code=status_code,
+            response_time=response_time,
+            response_data=response_data,
+        )
+
+    @classmethod
+    def error_result(
+        cls,
+        error_message: str,
+        status_code: int | None = None,
+        response_time: float | None = None,
+    ) -> "WebhookTestResult":
+        """Create an error result."""
+        return cls(
+            success=False,
+            status_code=status_code,
+            response_time=response_time,
+            error_message=error_message,
         )

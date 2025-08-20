@@ -137,6 +137,9 @@ run_worker() {
         "log_consumer")
             queues="${CELERY_QUEUES_LOG_CONSUMER:-$queues}"
             ;;
+        "scheduler")
+            queues="${CELERY_QUEUES_SCHEDULER:-$queues}"
+            ;;
     esac
 
     # Get health port

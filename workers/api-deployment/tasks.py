@@ -131,17 +131,11 @@ def async_execute_bin_api(
                     f"CRITICAL: Invalid schema_name received: '{schema_name}' - this will cause organization context issues!"
                 )
             else:
-                logger.info(f"DEBUG: Valid schema_name received: '{schema_name}'")
-
-            # Set organization context in StateStore (matching Django pattern)
-            StateStore.set(Account.ORGANIZATION_ID, schema_name)
-            logger.info(f"DEBUG: Set StateStore organization_id to: '{schema_name}'")
+                # Set organization context in StateStore (matching Django pattern)
+                StateStore.set(Account.ORGANIZATION_ID, schema_name)
 
             # Initialize API client with organization context
             config = WorkerConfig()
-            logger.info(
-                f"DEBUG: Worker config - internal_api_base_url: '{config.internal_api_base_url}'"
-            )
             logger.info(
                 f"DEBUG: Worker config - internal_api_key present: {bool(config.internal_api_key)}"
             )
@@ -284,17 +278,11 @@ def async_execute_bin(
                     f"CRITICAL: Invalid schema_name received: '{schema_name}' - this will cause organization context issues!"
                 )
             else:
-                logger.info(f"DEBUG: Valid schema_name received: '{schema_name}'")
-
-            # Set organization context in StateStore (matching Django pattern)
-            StateStore.set(Account.ORGANIZATION_ID, schema_name)
-            logger.info(f"DEBUG: Set StateStore organization_id to: '{schema_name}'")
+                # Set organization context in StateStore (matching Django pattern)
+                StateStore.set(Account.ORGANIZATION_ID, schema_name)
 
             # Initialize API client with organization context
             config = WorkerConfig()
-            logger.info(
-                f"DEBUG: Worker config - internal_api_base_url: '{config.internal_api_base_url}'"
-            )
             logger.info(
                 f"DEBUG: Worker config - internal_api_key present: {bool(config.internal_api_key)}"
             )

@@ -138,17 +138,15 @@ def trigger_pipeline_notifications(
 
     try:
         # Fetch pipeline notifications via API
-        response = api_client._make_request(
+        response_data = api_client._make_request(
             method="GET",
             endpoint=f"v1/webhook/pipeline/{pipeline_id}/notifications/",
             timeout=10,
         )
 
-        if response.status_code != 200:
-            logger.debug(f"No notifications endpoint or data for pipeline {pipeline_id}")
-            return
-
-        notifications_data = response.json().get("notifications", [])
+        # _make_request already handles status codes and returns parsed data
+        # If we get here, the request was successful (status 200)
+        notifications_data = response_data.get("notifications", [])
         active_notifications = [
             n for n in notifications_data if n.get("is_active", False)
         ]
@@ -159,16 +157,32 @@ def trigger_pipeline_notifications(
 
         # Normalize status for payload
         normalized_status = "SUCCESS" if status in ["SUCCESS", "COMPLETED"] else "FAILURE"
+        execution_status = (
+            ExecutionStatus.COMPLETED
+            if normalized_status == "SUCCESS"
+            else ExecutionStatus.FAILED
+        )
 
-        # Create notification payload
-        payload = {
-            "type": pipeline_type,
-            "pipeline_id": pipeline_id,
-            "pipeline_name": pipeline_name,
-            "status": normalized_status,
-            "execution_id": execution_id,
-            "error_message": error_message,
-        }
+        # Convert pipeline type string to WorkflowType enum
+        if pipeline_type == "API":
+            workflow_type = WorkflowType.API
+        elif pipeline_type == "ETL":
+            workflow_type = WorkflowType.ETL
+        elif pipeline_type == "TASK":
+            workflow_type = WorkflowType.TASK
+        else:
+            workflow_type = WorkflowType.ETL  # Default fallback
+
+        # Create notification payload using dataclass
+        payload = NotificationPayload.from_execution_status(
+            pipeline_id=pipeline_id,
+            pipeline_name=pipeline_name,
+            execution_status=execution_status,
+            workflow_type=workflow_type,
+            source=NotificationSource.CALLBACK_WORKER,
+            execution_id=execution_id,
+            error_message=error_message,
+        )
 
         logger.info(
             f"Sending {len(active_notifications)} notifications for pipeline {pipeline_name}"
@@ -214,15 +228,13 @@ def trigger_api_notifications(
 
     try:
         # Fetch API notifications via API
-        response = api_client._make_request(
+        response_data = api_client._make_request(
             method="GET", endpoint=f"v1/webhook/api/{api_id}/notifications/", timeout=10
         )
 
-        if response.status_code != 200:
-            logger.debug(f"No notifications endpoint or data for API {api_id}")
-            return
-
-        notifications_data = response.json().get("notifications", [])
+        # _make_request already handles status codes and returns parsed data
+        # If we get here, the request was successful (status 200)
+        notifications_data = response_data.get("notifications", [])
         active_notifications = [
             n for n in notifications_data if n.get("is_active", False)
         ]
@@ -233,16 +245,22 @@ def trigger_api_notifications(
 
         # Normalize status for payload
         normalized_status = "SUCCESS" if status in ["SUCCESS", "COMPLETED"] else "FAILURE"
+        execution_status = (
+            ExecutionStatus.COMPLETED
+            if normalized_status == "SUCCESS"
+            else ExecutionStatus.FAILED
+        )
 
-        # Create notification payload
-        payload = {
-            "type": "API",
-            "pipeline_id": api_id,
-            "pipeline_name": api_name,
-            "status": normalized_status,
-            "execution_id": execution_id,
-            "error_message": error_message,
-        }
+        # Create notification payload using dataclass
+        payload = NotificationPayload.from_execution_status(
+            pipeline_id=api_id,
+            pipeline_name=api_name,
+            execution_status=execution_status,
+            workflow_type=WorkflowType.API,
+            source=NotificationSource.CALLBACK_WORKER,
+            execution_id=execution_id,
+            error_message=error_message,
+        )
 
         logger.info(
             f"Sending {len(active_notifications)} notifications for API {api_name}"

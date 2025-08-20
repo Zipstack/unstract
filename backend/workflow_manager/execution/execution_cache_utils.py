@@ -71,8 +71,6 @@ class ExecutionCacheUtils:
             ValueError: If status cannot be normalized to valid ExecutionStatus
         """
         # Already an ExecutionStatus enum? Perfect!
-        print(f"status ---------_normalize_status---------->>>: {status}")
-        print(f"type(status) ---------_normalize_status---------->>>: {type(status)}")
         if isinstance(status, ExecutionStatus):
             return status
 
@@ -85,7 +83,6 @@ class ExecutionCacheUtils:
         except ValueError:
             pass
 
-        print(f"status_str ---------_normalize_status---------->>>: {status_str}")
         # Handle enum string representations by trying to extract the value
         # Works for: "ExecutionStatus.PENDING", "<ExecutionStatus.PENDING: 'PENDING'>", etc.
         for enum_member in ExecutionStatus:
@@ -94,7 +91,6 @@ class ExecutionCacheUtils:
 
         # Last resort: try case-insensitive matching
         status_upper = status_str.upper()
-        print(f"status_upper ---------_normalize_status---------->>>: {status_upper}")
         for enum_member in ExecutionStatus:
             if enum_member.value.upper() == status_upper:
                 return enum_member

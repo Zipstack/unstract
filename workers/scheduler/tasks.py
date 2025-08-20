@@ -197,8 +197,6 @@ def execute_pipeline_task_v2(
                 pipeline_id=pipeline_id, check_active=True
             )
 
-            logger.info(f"DEBUG: Pipeline response success={pipeline_response.success}")
-
             if not pipeline_response.success:
                 logger.error(
                     f"Failed to fetch pipeline {pipeline_id}: {pipeline_response.error}"

@@ -41,29 +41,19 @@ class ClientPluginRegistry:
     def initialize_from_settings(self):
         """Initialize plugins from Django settings configuration."""
         if self._initialized:
-            logger.info("DEBUG: Plugin registry already initialized")
             return
 
-        logger.info("DEBUG: Initializing plugin registry from settings")
         try:
             from django.conf import settings
 
-            logger.info("DEBUG: Successfully imported Django settings")
-
             client_plugins = getattr(settings, "WORKERS_CLIENT_PLUGINS", {})
-            logger.info(f"DEBUG: Found WORKERS_CLIENT_PLUGINS: {client_plugins}")
 
             for plugin_name, plugin_config in client_plugins.items():
-                logger.info(f"DEBUG: Processing plugin '{plugin_name}': {plugin_config}")
                 if not plugin_config.get("enabled", False):
-                    logger.info(f"DEBUG: Plugin '{plugin_name}' is disabled, skipping")
                     continue
 
                 try:
                     self._load_plugin_from_config(plugin_name, plugin_config)
-                    logger.info(
-                        f"DEBUG: Successfully loaded client plugin: {plugin_name}"
-                    )
                 except Exception as e:
                     logger.warning(f"Failed to load client plugin {plugin_name}: {e}")
 
@@ -277,9 +267,6 @@ class ClientPluginRegistry:
     def has_plugin(self, name: str) -> bool:
         """Check if a plugin is available."""
         self.initialize_from_settings()
-        logger.info(f"DEBUG: Checking plugin availability for '{name}'")
-        logger.info(f"DEBUG: Available plugins: {list(self._plugins.keys())}")
-        logger.info(f"DEBUG: Plugin '{name}' in registry: {name in self._plugins}")
         return name in self._plugins
 
     def list_available_plugins(self) -> list[dict[str, Any]]:

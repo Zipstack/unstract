@@ -31,12 +31,8 @@ dependencies = [
     "unstract-tool-sandbox",
     "unstract-workflow-execution",
     "unstract-filesystem",
-    # Removed unused dependencies:
-    # - pydantic/pydantic-settings: Using dataclasses instead
-    # - structlog: Custom structured logging implemented
-    # - tenacity: Custom retry logic implemented
-    # - pybreaker: Custom circuit breaker implemented
-    # - orjson: Standard json module used
+    # Note: Using dataclasses instead of pydantic for lightweight typing
+    # Custom implementations replace tenacity (retry), pybreaker (circuit breaker)
     # - python-dateutil: Standard datetime module sufficient
 ]
 
@@ -63,8 +59,7 @@ test = [
 
 deploy = [
     # Minimal production dependencies - most are already in main deps
-    # Removed gunicorn, gevent, python-json-logger, memory-profiler
-    # as workers don't need WSGI servers or heavy profiling tools
+    # Note: Workers don't need WSGI servers or profiling tools
 ]
 
 [build-system]

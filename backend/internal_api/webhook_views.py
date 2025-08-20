@@ -17,6 +17,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from unstract.core.data_models import WebhookConfigurationData, WebhookTestResult
+
 from .webhook_serializers import (
     NotificationListSerializer,
     NotificationSerializer,
@@ -49,9 +51,6 @@ class WebhookInternalViewSet(viewsets.ReadOnlyModelViewSet):
 
     def list(self, request, *args, **kwargs):
         """List notifications with filtering options."""
-        print(
-            "====INTERNAL API VIEWSET=====WebhookInternalViewSet===list=========================="
-        )
         try:
             # Parse query parameters
             serializer = NotificationListSerializer(data=request.query_params)
@@ -92,23 +91,12 @@ class WebhookInternalViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=["get"])
     def configuration(self, request, id=None):
         """Get webhook configuration for a notification."""
-        print(
-            "====INTERNAL API VIEWSET=====WebhookInternalViewSet===configuration=========================="
-        )
         try:
             notification = self.get_object()
 
-            config_data = {
-                "notification_id": notification.id,
-                "url": notification.url,
-                "authorization_type": notification.authorization_type,
-                "authorization_key": notification.authorization_key,
-                "authorization_header": notification.authorization_header,
-                "max_retries": notification.max_retries,
-                "is_active": notification.is_active,
-            }
+            config_data = WebhookConfigurationData.from_notification(notification)
 
-            serializer = WebhookConfigurationSerializer(config_data)
+            serializer = WebhookConfigurationSerializer(config_data.to_dict())
             return Response(serializer.data)
 
         except Exception as e:
@@ -124,9 +112,6 @@ class WebhookNotificationAPIView(APIView):
 
     def post(self, request):
         """Send a webhook notification."""
-        print(
-            "====INTERNAL API VIEWSET=====WebhookNotificationAPIView===post=========================="
-        )
         try:
             serializer = WebhookNotificationRequestSerializer(data=request.data)
 
@@ -204,9 +189,6 @@ class WebhookStatusAPIView(APIView):
 
     def get(self, request, task_id):
         """Get webhook delivery status by task ID."""
-        print(
-            "====INTERNAL API VIEWSET=====WebhookStatusAPIView===get=========================="
-        )
         try:
             # Get task result
             task_result = AsyncResult(task_id, app=celery_app)
@@ -242,9 +224,6 @@ class WebhookBatchAPIView(APIView):
 
     def post(self, request):
         """Send multiple webhook notifications in batch."""
-        print(
-            "====INTERNAL API VIEWSET=====WebhookBatchAPIView===post=========================="
-        )
         try:
             serializer = WebhookBatchRequestSerializer(data=request.data)
 
@@ -351,9 +330,6 @@ class WebhookTestAPIView(APIView):
 
     def post(self, request):
         """Test a webhook configuration without queuing."""
-        print(
-            "====INTERNAL API VIEWSET=====WebhookTestAPIView===post=========================="
-        )
         try:
             serializer = WebhookTestSerializer(data=request.data)
 
@@ -376,32 +352,42 @@ class WebhookTestAPIView(APIView):
                     timeout=validated_data["timeout"],
                 )
 
-                test_result = {
-                    "success": response.status_code < 400,
-                    "status_code": response.status_code,
-                    "response_headers": dict(response.headers),
-                    "response_body": response.text[:1000],  # Limit response size
-                    "url": validated_data["url"],
-                    "request_headers": headers,
-                    "request_payload": validated_data["payload"],
-                }
+                test_result = (
+                    WebhookTestResult.success_result(
+                        status_code=response.status_code,
+                        response_time=0.0,  # Could be calculated if needed
+                        response_data={
+                            "response_headers": dict(response.headers),
+                            "response_body": response.text[:1000],  # Limit response size
+                            "url": validated_data["url"],
+                            "request_headers": headers,
+                            "request_payload": validated_data["payload"],
+                        },
+                    )
+                    if response.status_code < 400
+                    else WebhookTestResult.error_result(
+                        error_message=f"HTTP {response.status_code}: {response.text[:500]}",
+                        status_code=response.status_code,
+                    )
+                )
 
                 logger.info(
                     f"Webhook test to {validated_data['url']} completed with status {response.status_code}"
                 )
 
-                return Response(test_result)
+                return Response(test_result.to_dict())
 
             except requests.exceptions.RequestException as e:
-                test_result = {
-                    "success": False,
-                    "error": str(e),
-                    "url": validated_data["url"],
-                    "request_headers": headers,
-                    "request_payload": validated_data["payload"],
-                }
+                test_result = WebhookTestResult.error_result(
+                    error_message=str(e),
+                    response_data={
+                        "url": validated_data["url"],
+                        "request_headers": headers,
+                        "request_payload": validated_data["payload"],
+                    },
+                )
 
-                return Response(test_result, status=status.HTTP_400_BAD_REQUEST)
+                return Response(test_result.to_dict(), status=status.HTTP_400_BAD_REQUEST)
 
         except Exception as e:
             logger.error(f"Failed to test webhook: {str(e)}")

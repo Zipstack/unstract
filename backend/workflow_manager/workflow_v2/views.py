@@ -485,9 +485,6 @@ class FileBatchCreateInternalAPIView(APIView):
 
     def post(self, request):
         """Create file execution records in batches."""
-        print(
-            f"request.data: {request.data} +++++++++++++++++FileBatchCreateInternalAPIView++++++++++++++++++++++++++"
-        )
         try:
             serializer = FileBatchCreateSerializer(data=request.data)
 
@@ -574,9 +571,6 @@ def file_history_by_cache_key_internal(request, cache_key):
         workflow_id = request.GET.get("workflow_id")
         file_path = request.GET.get("file_path")
 
-        print(f"workflow_id: {workflow_id}")
-        print(f"file_path: {file_path}")
-        print(f"organization_id: {organization_id}")
         if not workflow_id:
             return Response(
                 {"error": "workflow_id parameter is required"},
@@ -586,11 +580,6 @@ def file_history_by_cache_key_internal(request, cache_key):
         # Get workflow to pass to helper
         try:
             workflow = Workflow.objects.get(pk=workflow_id)
-            print(f"workflow: {workflow}")
-            print(f"workflow.organization: {workflow.organization}")
-            print(
-                f"workflow.organization.organization_id: {workflow.organization.organization_id}"
-            )
             if (
                 organization_id
                 and workflow.organization.organization_id != organization_id

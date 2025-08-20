@@ -40,7 +40,7 @@ celery_config = {
     # Task routing - route to general/celery queue
     "task_routes": {
         # Webhook notifications handled by notification worker, not general worker
-        # "send_webhook_notification": {"queue": "notifications"},  # Removed - not handled here
+        # Note: send_webhook_notification is handled by notification worker
         "async_execute_bin": {"queue": "celery"},
         "async_execute_bin_general": {"queue": "celery"},
         "general_worker.*": {"queue": "celery"},

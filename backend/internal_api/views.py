@@ -8,6 +8,8 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from unstract.core.data_models import HealthCheckResponse
+
 logger = logging.getLogger(__name__)
 
 
@@ -89,17 +91,13 @@ class InternalAPIHealthView(APIView):
                     status=status.HTTP_401_UNAUTHORIZED,
                 )
 
-            # Basic health checks
-            health_data = {
-                "status": "healthy",
-                "service": "internal_api",
-                "version": "1.0.0",
-                "timestamp": request.META.get("HTTP_DATE"),
-                "authenticated": True,
-                "organization_id": getattr(request, "organization_id", None),
-            }
+            # Basic health checks using dataclass
+            health_data = HealthCheckResponse.healthy_response(
+                timestamp=request.META.get("HTTP_DATE"),
+                organization_id=getattr(request, "organization_id", None),
+            )
 
-            return Response(health_data, status=status.HTTP_200_OK)
+            return Response(health_data.to_dict(), status=status.HTTP_200_OK)
 
         except Exception as e:
             logger.error(f"Internal API health check failed: {str(e)}")

@@ -5,11 +5,15 @@ CLI functionality has been removed as plugins are managed programmatically.
 """
 
 import json
+import logging
 import sys
 from pathlib import Path
 
 # Add the workers directory to the path so we can import our modules
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Setup logger
+logger = logging.getLogger(__name__)
 
 try:
     from plugins import (
@@ -19,8 +23,8 @@ try:
         validate_plugin_structure,
     )
 except ImportError as e:
-    print(f"Error importing plugin system: {e}")
-    print("Make sure you're running this from the workers directory")
+    logger.error(f"Error importing plugin system: {e}")
+    logger.error("Make sure you're running this from the workers directory")
     sys.exit(1)
 
 
@@ -32,14 +36,14 @@ class PluginManager:
         plugins = list_available_plugins()
 
         if not plugins:
-            print("No plugins found in the plugins directory.")
+            logger.info("No plugins found in the plugins directory.")
             return
 
-        print(f"Found {len(plugins)} plugin(s):\n")
+        logger.info(f"Found {len(plugins)} plugin(s):\n")
 
         for plugin in plugins:
-            print(f"📦 {plugin['name']}")
-            print(f"   Path: {plugin['path']}")
+            logger.info(f"📦 {plugin['name']}")
+            logger.info(f"   Path: {plugin['path']}")
 
             # Show available components
             components = []
@@ -55,120 +59,120 @@ class PluginManager:
                 components.append("readme")
 
             if components:
-                print(f"   Components: {', '.join(components)}")
+                logger.info(f"   Components: {', '.join(components)}")
             else:
-                print("   Components: none")
+                logger.info("   Components: none")
 
-            print("")
+            logger.info("")
 
     def show_plugin_info(self, plugin_name: str) -> None:
         """Show detailed information about a plugin."""
-        print(f"Plugin Information: {plugin_name}")
-        print("=" * 50)
+        logger.info(f"Plugin Information: {plugin_name}")
+        logger.info("=" * 50)
 
         # Get plugin requirements/metadata
         requirements = get_plugin_requirements(plugin_name)
         if requirements:
-            print("Metadata:")
+            logger.info("Metadata:")
             for key, value in requirements.items():
                 if isinstance(value, (list, dict)):
-                    print(f"  {key}: {json.dumps(value, indent=4)}")
+                    logger.info(f"  {key}: {json.dumps(value, indent=4)}")
                 else:
-                    print(f"  {key}: {value}")
-            print("")
+                    logger.info(f"  {key}: {value}")
+            logger.info("")
 
         # Validate plugin structure
         validation = validate_plugin_structure(plugin_name)
-        print("Structure Validation:")
+        logger.info("Structure Validation:")
         for check, result in validation.items():
             status = "✅" if result else "❌"
-            print(f"  {status} {check}")
-        print("")
+            logger.info(f"  {status} {check}")
+        logger.info("")
 
         # Try to load the plugin
-        print("Plugin Loading Test:")
+        logger.info("Plugin Loading Test:")
         try:
             plugin = get_plugin(plugin_name)
             if plugin:
-                print("  ✅ Plugin loaded successfully")
+                logger.info("  ✅ Plugin loaded successfully")
                 if hasattr(plugin, "__name__"):
-                    print(f"  📋 Plugin type: {plugin.__name__}")
+                    logger.info(f"  📋 Plugin type: {plugin.__name__}")
                 elif hasattr(plugin, "__class__"):
-                    print(f"  📋 Plugin type: {plugin.__class__.__name__}")
+                    logger.info(f"  📋 Plugin type: {plugin.__class__.__name__}")
             else:
-                print("  ❌ Plugin failed to load")
+                logger.error("  ❌ Plugin failed to load")
         except Exception as e:
-            print(f"  ❌ Plugin loading error: {e}")
-        print("")
+            logger.error(f"  ❌ Plugin loading error: {e}")
+        logger.info("")
 
     def validate_plugin(self, plugin_name: str) -> bool:
         """Validate a plugin thoroughly."""
-        print(f"Validating Plugin: {plugin_name}")
-        print("=" * 50)
+        logger.info(f"Validating Plugin: {plugin_name}")
+        logger.info("=" * 50)
 
         # Structure validation
         validation = validate_plugin_structure(plugin_name)
         structure_valid = True
 
-        print("Structure Validation:")
+        logger.info("Structure Validation:")
         for check, result in validation.items():
             status = "✅" if result else "❌"
-            print(f"  {status} {check}")
+            logger.info(f"  {status} {check}")
             if not result and check in ["exists", "has_init"]:
                 structure_valid = False
 
         if not structure_valid:
-            print("\n❌ Plugin has critical structure issues")
+            logger.error("\n❌ Plugin has critical structure issues")
             return False
 
-        print("")
+        logger.info("")
 
         # Import test
-        print("Import Test:")
+        logger.info("Import Test:")
         try:
             plugin = get_plugin(plugin_name)
             if plugin:
-                print("  ✅ Plugin imports successfully")
+                logger.info("  ✅ Plugin imports successfully")
 
                 # Test plugin methods if it's a plugin class
                 if hasattr(plugin, "get_metadata"):
                     try:
                         plugin.get_metadata()
-                        print("  ✅ Plugin metadata accessible")
+                        logger.info("  ✅ Plugin metadata accessible")
                     except Exception as e:
-                        print(f"  ⚠️  Plugin metadata error: {e}")
+                        logger.warning(f"  ⚠️  Plugin metadata error: {e}")
 
                 if hasattr(plugin, "validate_requirements"):
                     try:
                         plugin.validate_requirements()
-                        print("  ✅ Plugin requirements validation available")
+                        logger.info("  ✅ Plugin requirements validation available")
                     except Exception as e:
-                        print(f"  ⚠️  Plugin requirements validation error: {e}")
+                        logger.warning(f"  ⚠️  Plugin requirements validation error: {e}")
 
             else:
-                print("  ❌ Plugin failed to import")
+                logger.error("  ❌ Plugin failed to import")
                 return False
 
         except Exception as e:
-            print(f"  ❌ Import error: {e}")
+            logger.error(f"  ❌ Import error: {e}")
             return False
 
-        print("\n✅ Plugin validation completed successfully")
+        logger.info("\n✅ Plugin validation completed successfully")
         return True
 
     def test_plugin(self, plugin_name: str) -> None:
         """Run tests for a plugin."""
-        print(f"Testing Plugin: {plugin_name}")
-        print("=" * 50)
+        logger.info(f"Testing Plugin: {plugin_name}")
+        logger.info("=" * 50)
 
         plugin_path = Path(__file__).parent / plugin_name
         test_file = plugin_path / "test_plugin.py"
 
         if not test_file.exists():
-            print("❌ No test file found (test_plugin.py)")
+            logger.error("❌ No test file found (test_plugin.py)")
             return
 
-        print("🧪 Running plugin tests...")
+        logger.info("🧪 Running plugin tests...")
 
         # Try to run the test file
         import os
@@ -190,44 +194,44 @@ class PluginManager:
             )
 
             if result.returncode == 0:
-                print("✅ Tests passed!")
-                print("\nTest Output:")
-                print(result.stdout)
+                logger.info("✅ Tests passed!")
+                logger.info("\nTest Output:")
+                logger.info(result.stdout)
             else:
-                print("❌ Tests failed!")
-                print("\nTest Output:")
-                print(result.stdout)
+                logger.error("❌ Tests failed!")
+                logger.info("\nTest Output:")
+                logger.info(result.stdout)
                 if result.stderr:
-                    print("\nError Output:")
-                    print(result.stderr)
+                    logger.error("\nError Output:")
+                    logger.error(result.stderr)
 
         except subprocess.TimeoutExpired:
-            print("⏰ Tests timed out after 60 seconds")
+            logger.warning("⏰ Tests timed out after 60 seconds")
         except Exception as e:
-            print(f"❌ Error running tests: {e}")
+            logger.error(f"❌ Error running tests: {e}")
 
     def install_plugin_deps(self, plugin_name: str) -> None:
         """Install dependencies for a plugin."""
-        print(f"Installing Dependencies for Plugin: {plugin_name}")
-        print("=" * 50)
+        logger.info(f"Installing Dependencies for Plugin: {plugin_name}")
+        logger.info("=" * 50)
 
         requirements = get_plugin_requirements(plugin_name)
 
         if not requirements:
-            print("❌ No plugin requirements found")
+            logger.error("❌ No plugin requirements found")
             return
 
         dependencies = requirements.get("dependencies", [])
 
         if not dependencies:
-            print("ℹ️  No dependencies specified for this plugin")
+            logger.info("ℹ️  No dependencies specified for this plugin")
             return
 
-        print("Dependencies to install:")
+        logger.info("Dependencies to install:")
         for dep in dependencies:
-            print(f"  - {dep}")
+            logger.info(f"  - {dep}")
 
-        print("\n🚀 Installing dependencies...")
+        logger.info("\n🚀 Installing dependencies...")
 
         import subprocess
 
@@ -237,11 +241,11 @@ class PluginManager:
             result = subprocess.run(cmd, capture_output=True, text=True)
 
             if result.returncode == 0:
-                print("✅ Dependencies installed successfully!")
+                logger.info("✅ Dependencies installed successfully!")
             else:
-                print("❌ Failed to install dependencies")
-                print("Error output:")
-                print(result.stderr)
+                logger.error("❌ Failed to install dependencies")
+                logger.error("Error output:")
+                logger.error(result.stderr)
 
         except Exception as e:
-            print(f"❌ Error installing dependencies: {e}")
+            logger.error(f"❌ Error installing dependencies: {e}")
