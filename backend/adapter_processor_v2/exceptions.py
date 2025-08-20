@@ -91,7 +91,7 @@ class DeleteAdapterInUseError(APIException):
 
 
 class AdapterNotFound(APIException):
-    status_code = 500
+    status_code = 404
     default_detail = "Adapter not found"
 
     def __init__(

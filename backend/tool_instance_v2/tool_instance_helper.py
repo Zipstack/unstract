@@ -89,13 +89,8 @@ class ToolInstanceHelper:
         if adapter_key in metadata:
             adapter_value = metadata[adapter_key]
             adapter_id = None
-
-            # Check if the value is already an adapter ID (UUID format)
             if ToolInstanceHelper.is_uuid_format(adapter_value):
-                # It's already an adapter ID - validate it exists
                 logger.debug(f"Adapter value '{adapter_value}' is already in UUID format")
-                from adapter_processor_v2.models import AdapterInstance
-
                 adapter = AdapterInstance.objects.get(
                     id=adapter_value, adapter_type=adapter_type.value
                 )
@@ -299,39 +294,20 @@ class ToolInstanceHelper:
 
         # Check if any adapter value is in UUID format (indicates already migrated)
         for key in adapter_keys:
-            if key in metadata and metadata[key]:
-                if ToolInstanceHelper.is_uuid_format(metadata[key]):
-                    return True  # Found at least one UUID, assume migrated
+            if (
+                key in metadata
+                and metadata[key]
+                and ToolInstanceHelper.is_uuid_format(metadata[key])
+            ):
+                return True  # Found at least one UUID, assume migrated
 
         return False  # No UUIDs found, still using names
-
-    @staticmethod
-    def get_available_adapter_names_by_type(
-        adapter_type: AdapterTypes, user: User = None
-    ) -> list[str]:
-        """Get list of available adapter names for a given type."""
-        try:
-            if user:
-                adapters = AdapterProcessor.get_adapters_by_type(adapter_type, user)
-            else:
-                # Get all adapters if no user context (fallback)
-                from adapter_processor_v2.models import AdapterInstance
-
-                adapters = AdapterInstance.objects.filter(adapter_type=adapter_type.value)
-            return [adapter.adapter_name for adapter in adapters]
-        except Exception as e:
-            logger.warning(
-                f"Could not fetch available adapters for type {adapter_type}: {e}"
-            )
-            return []
 
     @staticmethod
     def _migrate_adapter_keys_for_type(
         metadata: dict[str, Any],
         adapter_keys: dict[str, Any],
         adapter_type: AdapterTypes,
-        tool_name: str = None,
-        user: User = None,
     ) -> tuple[dict[str, Any], bool]:
         """Helper method to migrate adapter names to IDs for a specific adapter type."""
         needs_update = False
@@ -372,7 +348,6 @@ class ToolInstanceHelper:
         # Get tool schema and name for error messages
         tool: Tool = ToolProcessor.get_tool_by_uid(tool_uid=tool_instance.tool_id)
         schema: Spec = ToolUtils.get_json_schema_for_tool(tool)
-        tool_name = tool.properties.display_name or "Unknown Tool"
 
         overall_needs_update = False
 
@@ -392,8 +367,6 @@ class ToolInstanceHelper:
                         metadata=metadata,
                         adapter_keys=adapter_properties,
                         adapter_type=adapter_type,
-                        tool_name=tool_name,
-                        user=user,
                     )
                 )
                 overall_needs_update = overall_needs_update or needs_update

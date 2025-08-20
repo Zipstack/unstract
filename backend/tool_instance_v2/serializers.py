@@ -3,6 +3,7 @@ import uuid
 from typing import Any
 
 from adapter_processor_v2.adapter_processor import AdapterProcessor
+from adapter_processor_v2.models import AdapterInstance
 from prompt_studio.prompt_studio_registry_v2.constants import PromptStudioRegistryKeys
 from rest_framework.serializers import ListField, Serializer, UUIDField, ValidationError
 from workflow_manager.workflow_v2.constants import WorkflowKey
@@ -91,64 +92,61 @@ class ToolInstanceSerializer(AuditSerializer):
 
             # Transform IDs back to names for display
             for adapter_key, adapter_type in adapter_key_to_type.items():
-                if adapter_key in display_metadata and display_metadata[adapter_key]:
-                    adapter_value = display_metadata[adapter_key]
-                    # If it's a UUID (adapter ID), convert to name for display
-                    if ToolInstanceHelper.is_uuid_format(adapter_value):
-                        try:
-                            adapter_name = AdapterProcessor.get_adapter_instance_by_id(
-                                adapter_value
-                            )
-                            if adapter_name:
-                                display_metadata[adapter_key] = adapter_name
-                            else:
-                                # Adapter ID exists but returns None - mark as orphaned
-                                display_metadata[adapter_key] = (
-                                    f"[DELETED ADAPTER: {adapter_value[:8]}...]"
-                                )
-                                logger.warning(
-                                    f"Adapter ID {adapter_value} references a deleted or inaccessible adapter"
-                                )
-                        except Exception as e:
-                            # If conversion fails, show user-friendly error
+                adapter_value = display_metadata.get(adapter_key)
+                if not adapter_value:
+                    continue
+
+                # If it's a UUID (adapter ID), convert to name for display
+                if ToolInstanceHelper.is_uuid_format(adapter_value):
+                    try:
+                        adapter_name = AdapterInstance.objects.get(
+                            id=adapter_value
+                        ).adapter_name
+                        if adapter_name:
+                            display_metadata[adapter_key] = adapter_name
+                        else:
+                            # Adapter ID exists but returns None - mark as orphaned
                             display_metadata[adapter_key] = (
-                                f"[{adapter_value[:8]}...] NOT FOUND"
+                                f"[DELETED ADAPTER: {adapter_value}...]"
                             )
-                            logger.error(
-                                f"Could not resolve adapter ID {adapter_value} to name: {e}"
+                            logger.warning(
+                                f"Adapter ID {adapter_value} references a deleted or inaccessible adapter"
                             )
-                    # If it's not a UUID, validate if the adapter name still exists
-                    elif adapter_value and not ToolInstanceHelper.is_uuid_format(
-                        adapter_value
-                    ):
-                        try:
-                            # Validate if adapter name still exists
-                            adapter = AdapterProcessor.get_adapter_by_name_and_type(
-                                adapter_type=adapter_type, adapter_name=adapter_value
+                    except Exception as e:
+                        # If conversion fails, show user-friendly error
+                        display_metadata[adapter_key] = f"[{adapter_value}...] NOT FOUND"
+                        logger.error(
+                            f"Could not resolve adapter ID {adapter_value} to name: {e}"
+                        )
+                # If it's not a UUID, validate if the adapter name still exists
+                elif adapter_value and not ToolInstanceHelper.is_uuid_format(
+                    adapter_value
+                ):
+                    try:
+                        # Validate if adapter name still exists
+                        adapter = AdapterProcessor.get_adapter_by_name_and_type(
+                            adapter_type=adapter_type, adapter_name=adapter_value
+                        )
+                        if adapter:
+                            # Adapter name is valid, display as-is
+                            display_metadata[adapter_key] = adapter_value
+                        else:
+                            # Adapter name no longer exists (likely renamed)
+                            display_metadata[adapter_key] = (
+                                f"{adapter_value} [NEEDS UPDATE]"
                             )
-                            if adapter:
-                                # Adapter name is valid, display as-is
-                                display_metadata[adapter_key] = adapter_value
-                            else:
-                                # Adapter name no longer exists (likely renamed)
-                                display_metadata[adapter_key] = (
-                                    f"{adapter_value} [NEEDS UPDATE]"
-                                )
-                                logger.warning(
-                                    f"Adapter name '{adapter_value}' no longer exists for type {adapter_type} - may have been renamed"
-                                )
-                        except Exception as e:
-                            # If validation fails, show error
-                            display_metadata[adapter_key] = f"[{adapter_value} NOT FOUND]"
-                            logger.error(
-                                f"Could not validate adapter name '{adapter_value}': {e}"
+                            logger.warning(
+                                f"Adapter name '{adapter_value}' no longer exists for type {adapter_type} - may have been renamed"
                             )
+                    except Exception as e:
+                        # If validation fails, show error
+                        display_metadata[adapter_key] = f"[{adapter_value} NOT FOUND]"
+                        logger.error(
+                            f"Could not validate adapter name '{adapter_value}': {e}"
+                        )
 
         except Exception as e:
-            logger.warning(f"Error transforming adapter IDs to names: {e}")
-            # Return original metadata if transformation fails
-            pass
-
+            logger.error(f"Error transforming adapter IDs to names: {e}")
         return display_metadata
 
     def create(self, validated_data: dict[str, Any]) -> Any:
