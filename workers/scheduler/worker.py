@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Scheduler Worker Configuration
 
 Celery worker for scheduled pipeline executions.
@@ -7,16 +6,9 @@ Handles execute_pipeline_task and execute_pipeline_task_v2 tasks.
 
 import os
 
-# Clear Django settings to avoid Celery warning about Django not being installed
-# This is set by the backend but not needed in workers
-os.environ.pop("DJANGO_SETTINGS_MODULE", None)
-
-from celery import Celery  # noqa: E402
-
-# Use singleton API client to eliminate repeated initialization logs
-from shared.config import WorkerConfig  # noqa: E402
-from shared.health import HealthChecker, HealthServer  # noqa: E402
-from shared.logging_utils import WorkerLogger  # noqa: E402
+from celery import Celery
+from shared.config import WorkerConfig
+from shared.logging_utils import WorkerLogger
 
 # Configure worker-specific logging
 WorkerLogger.configure(
@@ -37,19 +29,22 @@ if not os.getenv("SCHEDULER_WORKER_NAME"):
 # Celery application configuration
 app = Celery("scheduler_worker")
 
-# Celery settings
+# Get queue names from environment or use defaults
+scheduler_queue_name = os.getenv("SCHEDULER_QUEUE_NAME", "scheduler")
+
+# Celery settings using standard dictionary pattern like other workers
 celery_config = {
     # Broker configuration
-    "broker_url": os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0"),
-    "result_backend": os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0"),
+    "broker_url": config.celery_broker_url,
+    "result_backend": config.celery_result_backend,
     # Task routing - route to scheduler queue
     "task_routes": {
-        "execute_pipeline_task": {"queue": "scheduler"},
-        "execute_pipeline_task_v2": {"queue": "scheduler"},
-        "scheduler_health_check": {"queue": "scheduler"},
-        "scheduler.tasks.*": {"queue": "scheduler"},
+        "execute_pipeline_task": {"queue": scheduler_queue_name},
+        "execute_pipeline_task_v2": {"queue": scheduler_queue_name},
+        "scheduler_health_check": {"queue": scheduler_queue_name},
+        "scheduler.tasks.*": {"queue": scheduler_queue_name},
     },
-    # Worker configuration for scheduled tasks
+    # Standard worker configuration
     "worker_disable_rate_limits": True,
     "task_reject_on_worker_lost": True,
     "task_ignore_result": False,
@@ -60,9 +55,6 @@ celery_config = {
     # Task timeouts (longer for workflow executions)
     "task_time_limit": config.task_timeout,
     "task_soft_time_limit": config.task_timeout - 30,
-    # Logging
-    "worker_log_format": "[%(asctime)s: %(levelname)s/%(processName)s] %(message)s",
-    "worker_task_log_format": "[%(asctime)s: %(levelname)s/%(processName)s][%(task_name)s(%(task_id)s)] %(message)s",
     # Serialization
     "task_serializer": "json",
     "result_serializer": "json",
@@ -70,7 +62,7 @@ celery_config = {
     # Timezone settings
     "timezone": "UTC",
     "enable_utc": True,
-    # Additional shared config from WorkerConfig
+    # Additional shared config (overrides any duplicates)
     **config.get_celery_config(),
     # Task discovery
     "imports": [
@@ -80,35 +72,19 @@ celery_config = {
 
 app.config_from_object(celery_config)
 
-# Initialize health monitoring
-health_checker = HealthChecker(config)
-health_server = HealthServer(
-    health_checker=health_checker, port=int(os.getenv("SCHEDULER_HEALTH_PORT", "8087"))
-)
-
-logger.info(
-    f"Scheduler worker configured - Queue: scheduler, Health: {os.getenv('SCHEDULER_HEALTH_PORT', '8087')}, Timeout: {config.task_timeout}s"
-)
+logger.info(f"Scheduler worker initialized with config: {config}")
+logger.info(f"Scheduler queue name: {scheduler_queue_name}")
 
 if __name__ == "__main__":
-    logger.info(f"Starting Scheduler Worker with config: {config}")
-
-    # Start health server
-    health_server.start()
+    """Run worker directly for testing."""
+    logger.info("Starting scheduler worker...")
 
     try:
-        # Start Celery worker
-        app.worker_main(
-            [
-                "worker",
-                "--loglevel=info",
-                "--pool=prefork",
-                "--concurrency=2",
-                "--queues=scheduler",
-            ]
-        )
+        # Start Celery worker using standard pattern
+        app.start(["worker", "--loglevel=info", f"--queues={scheduler_queue_name}"])
     except KeyboardInterrupt:
-        logger.info("Shutting down Scheduler Worker...")
+        logger.info("Scheduler worker shutdown requested")
+    except Exception as e:
+        logger.error(f"Scheduler worker failed to start: {e}")
     finally:
-        # Stop health server
-        health_server.stop()
+        logger.info("Scheduler worker stopped")
