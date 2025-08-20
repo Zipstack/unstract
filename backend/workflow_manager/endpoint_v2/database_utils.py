@@ -7,7 +7,7 @@ from typing import Any
 
 from utils.constants import Common
 from workflow_manager.endpoint_v2.constants import DBConnectionClass, TableColumns
-from workflow_manager.endpoint_v2.enums import FileStatus
+from workflow_manager.endpoint_v2.enums import FileProcessingStatus
 from workflow_manager.endpoint_v2.exceptions import UnstractDBException
 from workflow_manager.workflow_v2.enums import AgentName, ColumnModes
 
@@ -187,7 +187,7 @@ class DatabaseUtils:
             values[TableColumns.ERROR_MESSAGE] = error
         if has_status_col:
             values[TableColumns.STATUS] = (
-                FileStatus.ERROR if error else FileStatus.SUCCESS
+                FileProcessingStatus.ERROR if error else FileProcessingStatus.SUCCESS
             )
 
         if column_mode == ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN:

@@ -1,7 +1,7 @@
 from enum import Enum
 
 
-class FileStatus(Enum):
+class FileProcessingStatus(Enum):
     SUCCESS = "SUCCESS"
     ERROR = "ERROR"
 
