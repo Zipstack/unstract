@@ -259,11 +259,14 @@ class WorkflowFileExecution(BaseModel):
         self,
         file_hash: str = None,
         fs_metadata: dict[str, Any] = None,
+        mime_type: str = None,
     ) -> None:
         """Updates the file execution details.
 
         Args:
             file_hash: (Optional) Hash of the file content
+            fs_metadata: (Optional) File system metadata
+            mime_type: (Optional) MIME type of the file
 
         Returns:
             None
@@ -276,5 +279,8 @@ class WorkflowFileExecution(BaseModel):
         if fs_metadata is not None:
             self.fs_metadata = fs_metadata
             update_fields.append("fs_metadata")
+        if mime_type is not None:
+            self.mime_type = mime_type
+            update_fields.append("mime_type")
         if update_fields:  # Save only if there's an actual update
             self.save(update_fields=update_fields)

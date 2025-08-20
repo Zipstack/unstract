@@ -35,6 +35,7 @@ from .clients.base_client import (
 )
 from .clients.manual_review_stub import ManualReviewNullClient
 from .config import WorkerConfig
+from .models.scheduler_models import SchedulerExecutionResult
 from .response_models import APIResponse, ExecutionResponse
 
 # Re-export shared dataclasses for backward compatibility
@@ -171,10 +172,26 @@ class InternalAPIClient:
         return self.execution_client.get_pipeline_type(pipeline_id, organization_id)
 
     def get_pipeline_data(
-        self, pipeline_id: str | uuid.UUID, organization_id: str | None = None
+        self,
+        pipeline_id: str | uuid.UUID,
+        check_active: bool = True,
+        organization_id: str | None = None,
     ) -> APIResponse:
-        """Get pipeline data by checking APIDeployment and Pipeline models."""
-        return self.execution_client.get_pipeline_data(pipeline_id, organization_id)
+        """Get pipeline data by checking APIDeployment and Pipeline models.
+
+        Args:
+            pipeline_id: Pipeline ID
+            check_active: Whether to check if pipeline is active (default: True)
+            organization_id: Optional organization ID override
+
+        Returns:
+            APIResponse containing pipeline data
+        """
+        return self.execution_client.get_pipeline_data(
+            pipeline_id=pipeline_id,
+            check_active=check_active,
+            organization_id=organization_id,
+        )
 
     def get_api_deployment_data(
         self, api_id: str | uuid.UUID, organization_id: str | None = None
@@ -232,6 +249,92 @@ class InternalAPIClient:
     ) -> dict[str, Any]:
         """Submit file batch for processing."""
         return self.execution_client.submit_file_batch_for_processing(batch_data)
+
+    def execute_workflow_async(self, execution_data: dict[str, Any]) -> dict[str, Any]:
+        """Execute workflow asynchronously for scheduler.
+
+        This method triggers async workflow execution by dispatching to the
+        appropriate Celery task via internal API.
+
+        Args:
+            execution_data: Execution parameters including workflow_id, execution_id, etc.
+
+        Returns:
+            Dictionary with execution results
+        """
+        try:
+            # Use the internal API to trigger async workflow execution
+            # This replaces the Celery send_task("async_execute_bin") call from backend
+            response = self.execution_client.post(
+                "v1/workflow-manager/execute-async/",
+                execution_data,
+                organization_id=execution_data.get("organization_id"),
+            )
+
+            if isinstance(response, dict) and response.get("success"):
+                return {
+                    "success": True,
+                    "execution_id": response.get("execution_id"),
+                    "task_id": response.get("task_id"),
+                    "message": "Async workflow execution started",
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": response.get("error", "Failed to start async execution"),
+                }
+        except Exception as e:
+            logger.error(f"Error starting async workflow execution: {e}")
+            return {
+                "success": False,
+                "error": f"API error: {str(e)}",
+            }
+
+    def execute_workflow_async_typed(
+        self, async_request: Any
+    ) -> SchedulerExecutionResult:
+        """Type-safe async workflow execution for scheduler using dataclasses.
+
+        Args:
+            async_request: AsyncExecutionRequest dataclass with execution parameters
+
+        Returns:
+            SchedulerExecutionResult with execution status and details
+        """
+        try:
+            # Convert dataclass to dict for API call
+            execution_data = async_request.to_dict()
+
+            # Use the internal API to trigger async workflow execution
+            response = self.execution_client.post(
+                "v1/workflow-manager/execute-async/",
+                execution_data,
+                organization_id=async_request.organization_id,
+            )
+
+            if isinstance(response, dict) and response.get("success"):
+                return SchedulerExecutionResult.success(
+                    execution_id=async_request.execution_id,
+                    workflow_id=async_request.workflow_id,
+                    pipeline_id=async_request.pipeline_id,
+                    task_id=response.get("task_id"),
+                    message="Async workflow execution started successfully",
+                )
+            else:
+                return SchedulerExecutionResult.error(
+                    error=response.get("error", "Failed to start async execution"),
+                    execution_id=async_request.execution_id,
+                    workflow_id=async_request.workflow_id,
+                    pipeline_id=async_request.pipeline_id,
+                )
+        except Exception as e:
+            logger.error(f"Error starting async workflow execution: {e}")
+            return SchedulerExecutionResult.error(
+                error=f"API error: {str(e)}",
+                execution_id=async_request.execution_id,
+                workflow_id=async_request.workflow_id,
+                pipeline_id=async_request.pipeline_id,
+            )
 
     def batch_update_execution_status(
         self, updates: list[dict[str, Any]], organization_id: str | None = None
@@ -404,11 +507,12 @@ class InternalAPIClient:
         file_execution_id: str | UUID,
         file_hash: str,
         fs_metadata: dict[str, Any] | None = None,
+        mime_type: str | None = None,
         organization_id: str | None = None,
     ) -> dict[str, Any]:
-        """Update workflow file execution with computed file hash."""
+        """Update workflow file execution with computed file hash and mime_type."""
         return self.file_client.update_workflow_file_execution_hash(
-            file_execution_id, file_hash, fs_metadata, organization_id
+            file_execution_id, file_hash, fs_metadata, mime_type, organization_id
         )
 
     def update_file_execution_status(

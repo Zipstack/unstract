@@ -79,12 +79,15 @@ class QueueConfig:
         "deploy_api_workflow": {"queue": "api_deployments"},
         "undeploy_api_workflow": {"queue": "api_deployments"},
         "check_api_deployment_status": {"queue": "api_deployments"},
+        # Scheduler tasks routing
+        "scheduler.tasks.execute_pipeline_task": {"queue": "scheduler"},
     }
 
     # Queue priorities (higher number = higher priority)
     QUEUE_PRIORITIES = {
         "callback": 9,  # Highest priority for completion callbacks
         "webhook": 8,  # High priority for notifications
+        "scheduler": 6,  # High priority for scheduled tasks
         "general": 5,  # Standard priority for orchestration
         "file_processing": 3,  # Lower priority for file processing
         "api_deployments": 2,  # Lowest priority for deployments
@@ -220,25 +223,23 @@ class WorkerConfig:
     )
     cache_redis_host: str = field(
         default_factory=lambda: os.getenv(
-            "CACHE_REDIS_HOST",
-            # Try to extract from Celery broker URL, fallback to localhost
-            os.getenv("CELERY_BROKER_BASE_URL", "redis://localhost:6379//")
-            .split("//")[1]
-            .split(":")[0]
-            if "redis://" in os.getenv("CELERY_BROKER_BASE_URL", "")
-            else "localhost",
+            "CACHE_REDIS_HOST", os.getenv("REDIS_HOST", "localhost")
         )
     )
     cache_redis_port: int = field(
-        default_factory=lambda: int(os.getenv("CACHE_REDIS_PORT", "6379"))
+        default_factory=lambda: int(
+            os.getenv("CACHE_REDIS_PORT", os.getenv("REDIS_PORT", "6379"))
+        )
     )
     cache_redis_db: int = field(
         default_factory=lambda: int(
-            os.getenv("CACHE_REDIS_DB", "1")
-        )  # Default to DB 1 (separate from Celery)
+            os.getenv("CACHE_REDIS_DB", os.getenv("REDIS_DB", "1"))
+        )  # Default to DB 1 (separate from Celery DB 0)
     )
     cache_redis_password: str = field(
-        default_factory=lambda: os.getenv("CACHE_REDIS_PASSWORD", "")
+        default_factory=lambda: os.getenv(
+            "CACHE_REDIS_PASSWORD", os.getenv("REDIS_PASSWORD", "")
+        )
     )
     cache_redis_username: str = field(
         default_factory=lambda: os.getenv("CACHE_REDIS_USERNAME", "")

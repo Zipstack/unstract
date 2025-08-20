@@ -29,6 +29,7 @@ WORKER_MODULE_MAPPING = {
     "callback": "callback.worker",  # Directory: callback
     "notification": "notification.worker",  # Directory: notification
     "log_consumer": "log_consumer.worker",  # Directory: log_consumer
+    "scheduler": "scheduler.worker",  # Directory: scheduler
 }
 
 # Get the module name to import

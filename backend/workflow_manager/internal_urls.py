@@ -11,16 +11,16 @@ from . import internal_api_views, internal_views
 app_name = "workflow_manager_internal"
 
 urlpatterns = [
-    # Workflow execution endpoints
-    path(
-        "execution/<str:execution_id>/",
-        internal_api_views.get_workflow_execution_data,
-        name="get_workflow_execution_data",
-    ),
+    # Workflow execution endpoints - specific paths first
     path(
         "execution/create/",
         internal_api_views.create_workflow_execution,
         name="create_workflow_execution",
+    ),
+    path(
+        "execution/<str:execution_id>/",
+        internal_api_views.get_workflow_execution_data,
+        name="get_workflow_execution_data",
     ),
     path(
         "execution/status/",
@@ -128,12 +128,6 @@ urlpatterns = [
         "pipeline/<str:pipeline_id>/status/",
         internal_views.PipelineStatusUpdateAPIView.as_view(),
         name="update_pipeline_status",
-    ),
-    # Alternative execution data access
-    path(
-        "<str:execution_id>/",
-        internal_api_views.get_workflow_execution_data,
-        name="get_execution_data_alt",
     ),
     # File execution batch operations (using simple function views for now)
     path(

@@ -562,8 +562,8 @@ def _handle_file_processing_result(
                 execution_time=file_execution_time,
                 error_message=file_execution_result.get("error"),
             )
-            logger.debug(
-                f"Updated file execution {file_execution_id} with status {final_status} and time {file_execution_time:.2f}s"
+            logger.info(
+                f"DEBUG: Updated file execution {file_execution_id} with status {final_status} and time {file_execution_time:.2f}s"
             )
         except Exception as update_error:
             logger.warning(
@@ -573,6 +573,13 @@ def _handle_file_processing_result(
         logger.warning(
             f"No file_execution_id found for {file_name}, cannot update execution time"
         )
+
+    # Add file execution time to batch result (FIX for execution_time staying at 0)
+    result.add_execution_time(file_execution_time)
+    logger.info(
+        f"DEBUG: Added {file_execution_time:.2f}s to batch execution time. "
+        f"Total batch time: {result.execution_time:.2f}s"
+    )
 
     # DJANGO PATTERN: Check error field to determine success/failure
     if file_execution_result.get("error"):
@@ -653,7 +660,11 @@ def _compile_batch_result(context: dict[str, Any]) -> dict[str, Any]:
     """
     result = context["result"]
 
-    logger.info("Function tasks.process_file_batch completed successfully")
+    logger.info(
+        f"Function tasks.process_file_batch completed successfully. "
+        f"Batch execution time: {result.execution_time:.2f}s for "
+        f"{result.successful_files + result.failed_files} files"
+    )
 
     # Return the final result matching Django backend format
     return {
@@ -801,6 +812,20 @@ def _pre_create_file_executions(
                 file_hash=file_hash_dict_for_api,
                 workflow_id=workflow_id,
             )
+
+            # PROGRESSIVE STATUS UPDATE: Set initial status to PENDING (FIXED)
+            # This ensures file executions start with PENDING status before processing begins
+            try:
+                api_client.file_client.update_file_execution_status(
+                    file_execution_id=workflow_file_execution.id,
+                    status=ExecutionStatus.PENDING.value,
+                )
+                logger.info(f"DEBUG: Set file {file_name} initial status to PENDING")
+            except Exception as status_error:
+                logger.warning(
+                    f"Failed to set initial PENDING status for file {file_name}: {status_error}"
+                )
+                # Don't fail the entire creation if status update fails
 
             pre_created_data[file_name] = {
                 "id": str(workflow_file_execution.id),
@@ -1188,6 +1213,9 @@ def _process_file(
         file_name = file_hash.file_name or "unknown"
         logger.info(f"[Execution {execution_id}] Processing file: '{file_name}'")
 
+        # Start timing individual file execution for accurate execution_time tracking
+        file_start_time = time.time()
+
         # CHECK IF FILE IS ALREADY EXECUTED (CACHED)
         if getattr(file_hash, "is_executed", False):
             logger.info(
@@ -1394,6 +1422,22 @@ def _process_file(
         else:
             logger.info(f"📤 File {file_name} marked for DESTINATION processing")
 
+        # PROGRESSIVE STATUS UPDATE: Update file execution status to EXECUTING when processing starts (FIXED)
+        # This ensures ETL/TASK workflows have the same progressive status updates as API workflows
+        if workflow_file_execution_id:
+            try:
+                # Use the file_client directly to update file execution status
+                api_client.file_client.update_file_execution_status(
+                    file_execution_id=workflow_file_execution_id,
+                    status=ExecutionStatus.EXECUTING.value,
+                )
+                logger.info(f"DEBUG: Updated file {file_name} status to EXECUTING")
+            except Exception as status_error:
+                logger.warning(
+                    f"Failed to update file execution status to EXECUTING: {status_error}"
+                )
+                # Don't fail the entire processing if status update fails
+
         # Core execution phase - use WorkflowExecutionService directly
         workflow_service = WorkerWorkflowExecutionService(api_client)
 
@@ -1503,6 +1547,35 @@ def _process_file(
                 f"Skipping file history creation for {file_name} due to processing error: {execution_result.get('error')}"
             )
 
+        # PROGRESSIVE STATUS UPDATE: Update file execution status to final state (COMPLETED/ERROR) (FIXED)
+        # This ensures ETL/TASK workflows have complete progressive status updates
+        if workflow_file_execution_id:
+            try:
+                final_status = (
+                    ExecutionStatus.ERROR.value
+                    if execution_result.get("error")
+                    else ExecutionStatus.COMPLETED.value
+                )
+                # Calculate individual file execution time
+                file_execution_time = time.time() - file_start_time
+
+                api_client.file_client.update_file_execution_status(
+                    file_execution_id=workflow_file_execution_id,
+                    status=final_status,
+                    execution_time=file_execution_time,  # Add individual file execution time
+                    error_message=execution_result.get("error")
+                    if execution_result.get("error")
+                    else None,
+                )
+                logger.info(
+                    f"DEBUG: Updated file {file_name} status to {final_status} with execution_time {file_execution_time:.2f}s"
+                )
+            except Exception as status_error:
+                logger.warning(
+                    f"Failed to update file execution status to {final_status}: {status_error}"
+                )
+                # Don't fail the entire processing if status update fails
+
         return execution_result
 
     except Exception as e:
@@ -1522,6 +1595,32 @@ def _process_file(
         file_execution_id = None
         if "workflow_file_execution" in locals() and workflow_file_execution:
             file_execution_id = getattr(workflow_file_execution, "id", None)
+
+        # PROGRESSIVE STATUS UPDATE: Update file execution status to ERROR in exception handler (FIXED)
+        # This ensures ETL/TASK workflows update status even when exceptions occur
+        if file_execution_id and "api_client" in locals() and api_client:
+            try:
+                # Calculate execution time even for failed executions
+                file_execution_time = (
+                    time.time() - file_start_time
+                    if "file_start_time" in locals()
+                    else 0.0
+                )
+
+                api_client.file_client.update_file_execution_status(
+                    file_execution_id=file_execution_id,
+                    status=ExecutionStatus.ERROR.value,
+                    execution_time=file_execution_time,
+                    error_message=str(e),
+                )
+                logger.info(
+                    f"DEBUG: Updated file {file_name} status to ERROR due to exception with execution_time {file_execution_time:.2f}s"
+                )
+            except Exception as status_error:
+                logger.warning(
+                    f"Failed to update file execution status to ERROR: {status_error}"
+                )
+                # Don't fail further if status update fails
 
         # Return Django FileExecutionResult format for exceptions
         return {
@@ -1917,6 +2016,19 @@ def _process_single_file_api(
 
     logger.info(f"Processing file: {file_name} (execution: {file_execution_id})")
 
+    # Update file execution status to EXECUTING when processing starts (FIXED)
+    if file_execution_id:
+        try:
+            api_client.update_file_execution_status(
+                file_execution_id=file_execution_id,
+                status=ExecutionStatus.EXECUTING.value,
+            )
+            logger.info(f"DEBUG: Updated file {file_name} status to EXECUTING")
+        except Exception as status_error:
+            logger.warning(
+                f"Failed to update file {file_name} status to EXECUTING: {status_error}"
+            )
+
     start_time = time.time()
 
     try:
@@ -1938,6 +2050,42 @@ def _process_single_file_api(
             raise ValueError(
                 f"File content not found for file execution {file_execution_id}"
             )
+
+        # 3.1. Compute and update file hash and mime_type (FIXED: was missing)
+        import hashlib
+        import mimetypes
+
+        if isinstance(file_content, bytes):
+            file_hash_value = hashlib.sha256(file_content).hexdigest()
+            file_size = len(file_content)
+        else:
+            # Handle string content
+            file_bytes = (
+                file_content.encode("utf-8")
+                if isinstance(file_content, str)
+                else file_content
+            )
+            file_hash_value = hashlib.sha256(file_bytes).hexdigest()
+            file_size = len(file_bytes)
+
+        # Determine mime type from file name
+        mime_type, _ = mimetypes.guess_type(file_name)
+        if not mime_type:
+            mime_type = "application/octet-stream"
+
+        # Update file execution with computed hash, mime_type, and metadata
+        try:
+            api_client.update_workflow_file_execution_hash(
+                file_execution_id=file_execution_id,
+                file_hash=file_hash_value,
+                mime_type=mime_type,  # Now properly passed as separate parameter
+                fs_metadata={"computed_during_processing": True, "file_size": file_size},
+            )
+            logger.info(
+                f"DEBUG: Updated file {file_name} with hash: {file_hash_value[:8]}..., mime_type: {mime_type}, size: {file_size}"
+            )
+        except Exception as hash_error:
+            logger.warning(f"Failed to update file hash for {file_name}: {hash_error}")
 
         # 4. Process file through runner service
         runner_result = _call_runner_service(

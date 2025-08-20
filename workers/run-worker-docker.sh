@@ -33,6 +33,8 @@ declare -A WORKERS=(
     ["notification"]="notification"
     ["log"]="log_consumer"
     ["log-consumer"]="log_consumer"
+    ["scheduler"]="scheduler"
+    ["schedule"]="scheduler"
     ["all"]="all"
 )
 
@@ -44,6 +46,7 @@ declare -A WORKER_QUEUES=(
     ["callback"]="file_processing_callback,api_file_processing_callback"
     ["notification"]="notifications,notifications_webhook,notifications_email,notifications_sms,notifications_priority"
     ["log_consumer"]="celery_log_task_queue"
+    ["scheduler"]="scheduler"
 )
 
 # Worker health ports
@@ -54,6 +57,7 @@ declare -A WORKER_HEALTH_PORTS=(
     ["callback"]="8083"
     ["log_consumer"]="8084"
     ["notification"]="8085"
+    ["scheduler"]="8087"
 )
 
 # Function to print colored output
@@ -164,6 +168,10 @@ run_worker() {
             export LOG_CONSUMER_HEALTH_PORT="${health_port}"
             export LOG_CONSUMER_METRICS_PORT="${health_port}"
             ;;
+        "scheduler")
+            export SCHEDULER_HEALTH_PORT="${health_port}"
+            export SCHEDULER_METRICS_PORT="${health_port}"
+            ;;
     esac
 
     # Determine autoscale settings
@@ -186,6 +194,9 @@ run_worker() {
             ;;
         "log_consumer")
             autoscale="${WORKER_LOG_CONSUMER_AUTOSCALE:-2,1}"
+            ;;
+        "scheduler")
+            autoscale="${WORKER_SCHEDULER_AUTOSCALE:-2,1}"
             ;;
     esac
 

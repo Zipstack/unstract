@@ -21,6 +21,7 @@ from ..data_models import (
     StatusUpdateRequest,
 )
 from ..enums import BatchOperationType, TaskStatus
+from ..models.pipeline_models import PipelineApiResponse
 from ..response_models import (
     APIResponse,
     BatchOperationResponse,
@@ -146,42 +147,6 @@ class ExecutionAPIClient(BaseAPIClient):
                     "note": "Pipeline type API not available - defaulted to ETL",
                 },
                 message="Pipeline type defaulted to ETL",
-            )
-
-    def get_pipeline_data(
-        self, pipeline_id: str | uuid.UUID, organization_id: str | None = None
-    ) -> APIResponse:
-        """Get pipeline data by checking APIDeployment and Pipeline models.
-
-        Args:
-            pipeline_id: Pipeline ID
-            organization_id: Optional organization ID override
-
-        Returns:
-            APIResponse containing pipeline data
-        """
-        try:
-            # Use the internal API endpoint for pipeline data resolution
-            endpoint = f"v1/pipeline/{str(pipeline_id)}/"
-            response = self.get(endpoint, organization_id=organization_id)
-
-            logger.info(f"Retrieved pipeline data for {pipeline_id}: {response}")
-            logger.debug(
-                f"Retrieved pipeline data for {pipeline_id}: {response.get('pipeline_type', 'unknown')}"
-            )
-            return APIResponse.success_response(
-                data=response,
-                message=f"Successfully retrieved pipeline data: {response.get('pipeline_type', 'unknown')}",
-            )
-        except Exception as e:
-            # This is expected for non-API deployments - pipeline endpoint doesn't exist
-            logger.error(
-                f"Pipeline data API not available for {pipeline_id} (expected for ETL workflows): {str(e)}"
-            )
-            # Return default structure - this is normal behavior
-            return APIResponse.error_response(
-                error=str(e),
-                message="Failed to retrieve pipeline data",
             )
 
     def get_api_deployment_data(
@@ -792,3 +757,65 @@ class ExecutionAPIClient(BaseAPIClient):
             batch_data,
             organization_id=batch_data.get("organization_id"),
         )
+
+    # Pipeline Management Methods for Scheduler Worker
+
+    def get_pipeline_data(
+        self,
+        pipeline_id: str,
+        check_active: bool = True,
+        organization_id: str | None = None,
+    ) -> APIResponse:
+        """Get pipeline data for scheduler execution.
+
+        Args:
+            pipeline_id: Pipeline ID
+            check_active: Whether to check if pipeline is active
+            organization_id: Optional organization ID override
+
+        Returns:
+            APIResponse with properly typed pipeline data
+        """
+        params = {}
+        if check_active:
+            params["check_active"] = "true"
+
+        try:
+            response = self.get(
+                f"v1/pipeline/{pipeline_id}/",
+                params=params,
+                organization_id=organization_id,
+            )
+
+            # Handle the actual backend API response format: {"status": "success", "pipeline": {...}}
+            if isinstance(response, dict):
+                status = response.get("status")
+                if status == "success":
+                    # Parse response with type safety
+                    pipeline_api_response = PipelineApiResponse.from_dict(response)
+
+                    logger.debug(
+                        f"Parsed pipeline data for {pipeline_id}: "
+                        f"name='{pipeline_api_response.pipeline.pipeline_name}', "
+                        f"workflow='{pipeline_api_response.pipeline.workflow_id}'"
+                    )
+
+                    return APIResponse.success_response(
+                        data=pipeline_api_response.to_dict(),
+                        message=f"Successfully retrieved pipeline data for {pipeline_id}",
+                    )
+                else:
+                    return APIResponse.error_response(
+                        error=response.get("error", "Unknown error"),
+                        message=f"Failed to retrieve pipeline data for {pipeline_id}",
+                    )
+            else:
+                # Fallback to legacy conversion
+                return convert_dict_response(response, APIResponse)
+
+        except Exception as e:
+            logger.error(f"Error parsing pipeline data for {pipeline_id}: {e}")
+            return APIResponse.error_response(
+                error=str(e),
+                message=f"Failed to parse pipeline data for {pipeline_id}",
+            )

@@ -60,7 +60,9 @@ class FileExecutionInternalViewSet(viewsets.ModelViewSet):
         # Apply filters step by step with debugging
         if execution_id:
             queryset = queryset.filter(workflow_execution_id=execution_id)
-            logger.debug(f"After execution_id filter: {queryset.count()} file executions")
+            logger.info(
+                f"DEBUG: After execution_id filter: {queryset.count()} file executions"
+            )
 
         # CRITICAL FIX: Include file_path filter to match unique constraints
         if file_path:
@@ -70,16 +72,20 @@ class FileExecutionInternalViewSet(viewsets.ModelViewSet):
         # CRITICAL FIX: Match backend manager logic - use file_hash OR provider_file_uuid (not both)
         if file_hash:
             queryset = queryset.filter(file_hash=file_hash)
-            logger.debug(f"After file_hash filter: {queryset.count()} file executions")
+            logger.info(
+                f"DEBUG: After file_hash filter: {queryset.count()} file executions"
+            )
         elif provider_file_uuid:
             queryset = queryset.filter(provider_file_uuid=provider_file_uuid)
-            logger.debug(
-                f"After provider_file_uuid filter: {queryset.count()} file executions"
+            logger.info(
+                f"DEBUG: After provider_file_uuid filter: {queryset.count()} file executions"
             )
 
         if workflow_id:
             queryset = queryset.filter(workflow_execution__workflow_id=workflow_id)
-            logger.debug(f"After workflow_id filter: {queryset.count()} file executions")
+            logger.info(
+                f"DEBUG: After workflow_id filter: {queryset.count()} file executions"
+            )
 
         final_count = queryset.count()
         logger.info(
@@ -302,15 +308,18 @@ class FileExecutionInternalViewSet(viewsets.ModelViewSet):
             # Extract update data
             file_hash = request.data.get("file_hash")
             fs_metadata = request.data.get("fs_metadata")
+            mime_type = request.data.get("mime_type")
 
-            if not file_hash and not fs_metadata:
+            if not file_hash and not fs_metadata and not mime_type:
                 return Response(
-                    {"error": "file_hash or fs_metadata is required"},
+                    {"error": "file_hash, fs_metadata, or mime_type is required"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
             # Use the model's update method for efficient field-specific updates
-            file_execution.update(file_hash=file_hash, fs_metadata=fs_metadata)
+            file_execution.update(
+                file_hash=file_hash, fs_metadata=fs_metadata, mime_type=mime_type
+            )
 
             logger.info(
                 f"Updated file execution {id} with file_hash: {file_hash[:16] if file_hash else 'none'}..."

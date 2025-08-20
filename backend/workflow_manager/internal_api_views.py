@@ -276,7 +276,17 @@ def create_workflow_execution(request):
             )
 
         # Get workflow with organization filtering
-        workflow = Workflow.objects.get(id=data["workflow_id"], organization_id=org_id)
+        # First get organization object, then lookup workflow
+        try:
+            organization = Organization.objects.get(organization_id=org_id)
+            workflow = Workflow.objects.get(
+                id=data["workflow_id"], organization=organization
+            )
+        except Organization.DoesNotExist:
+            return Response(
+                {"error": f"Organization {org_id} not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         # Create execution
         execution = WorkflowExecution.objects.create(
@@ -340,20 +350,71 @@ def update_workflow_execution_status(request):
         )
 
         # Update fields
+        fields_updated = []
         if "status" in data:
+            old_status = execution.status
             execution.status = data["status"]
+            fields_updated.append(f"status: {old_status} -> {data['status']}")
         if "error_message" in data:
             execution.error_message = data["error_message"][:500]  # Limit length
+            fields_updated.append("error_message")
         if "total_files" in data:
             execution.total_files = data["total_files"]
+            fields_updated.append(f"total_files: {data['total_files']}")
         if "completed_files" in data:
             execution.completed_files = data["completed_files"]
+            fields_updated.append(f"completed_files: {data['completed_files']}")
         if "failed_files" in data:
             execution.failed_files = data["failed_files"]
+            fields_updated.append(f"failed_files: {data['failed_files']}")
         if data.get("increment_attempt"):
             execution.attempts += 1
+            fields_updated.append("attempts")
 
+        logger.info(f"Updating execution {execution_id}: {', '.join(fields_updated)}")
         execution.save()
+        logger.info(
+            f"Successfully saved execution {execution_id} with status: {execution.status}"
+        )
+
+        # Emit WebSocket event for real-time UI updates
+        try:
+            from utils.log_events import _emit_websocket_event
+
+            # Create status update event data
+            status_data = {
+                "execution_id": str(execution.id),
+                "status": execution.status,
+                "total_files": execution.total_files,
+                "completed_files": execution.completed_files,
+                "failed_files": execution.failed_files,
+                "workflow_id": str(execution.workflow.id),
+                "pipeline_id": execution.pipeline_id,
+            }
+
+            # Emit to execution-specific room and general workflow room
+            _emit_websocket_event(
+                room=f"execution:{execution.id}",
+                event="execution_status_update",
+                data=status_data,
+            )
+
+            # Also emit to workflow room for general workflow listeners
+            _emit_websocket_event(
+                room=f"workflow:{execution.workflow.id}",
+                event="execution_status_update",
+                data=status_data,
+            )
+
+            logger.debug(
+                f"WebSocket events emitted for execution status update: {execution.id} -> {execution.status}"
+            )
+
+        except Exception as e:
+            # Don't fail the request if WebSocket emission fails
+            logger.warning(
+                f"Failed to emit WebSocket event for execution status update: {e}"
+            )
 
         return Response(
             {

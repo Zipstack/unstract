@@ -422,6 +422,9 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
 
                 if validated_data.get("execution_time") is not None:
                     execution.execution_time = validated_data["execution_time"]
+                    logger.info(
+                        f"DEBUG: Updated execution {id} execution_time to {validated_data['execution_time']:.2f}s"
+                    )
 
                 execution.modified_at = timezone.now()
                 execution.save()

@@ -466,6 +466,52 @@ services:
     profiles:
       - workers-new
 
+  worker-scheduler-new:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-scheduler-new
+    restart: unless-stopped
+    command: ["scheduler"]
+    ports:
+      - "8091:8087"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+      - rabbitmq
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-scheduler-new
+      - WORKER_TYPE=scheduler
+      - WORKER_NAME=scheduler-worker-new
+      - SCHEDULER_METRICS_PORT=8087
+      - HEALTH_PORT=8087
+      # Scheduler specific configs
+      - SCHEDULER_QUEUE_NAME=scheduler
+      # Configurable Celery options
+      - CELERY_QUEUES_SCHEDULER=${CELERY_QUEUES_SCHEDULER:-scheduler}
+      - CELERY_POOL=${WORKER_SCHEDULER_POOL:-prefork}
+      - CELERY_PREFETCH_MULTIPLIER=${WORKER_SCHEDULER_PREFETCH_MULTIPLIER:-1}
+      - CELERY_CONCURRENCY=${WORKER_SCHEDULER_CONCURRENCY:-2}
+      - CELERY_EXTRA_ARGS=${WORKER_SCHEDULER_EXTRA_ARGS:-}
+      # Complete command override (if set, ignores all other options)
+      - CELERY_COMMAND_OVERRIDE=${WORKER_SCHEDULER_COMMAND_OVERRIDE:-}
+      # Individual argument overrides
+      - CELERY_APP_MODULE=${WORKER_SCHEDULER_APP_MODULE:-worker}
+      - CELERY_LOG_LEVEL=${WORKER_SCHEDULER_LOG_LEVEL:-INFO}
+      - CELERY_HOSTNAME=${WORKER_SCHEDULER_HOSTNAME:-}
+      - CELERY_MAX_TASKS_PER_CHILD=${WORKER_SCHEDULER_MAX_TASKS_PER_CHILD:-}
+      - CELERY_TIME_LIMIT=${WORKER_SCHEDULER_TIME_LIMIT:-}
+      - CELERY_SOFT_TIME_LIMIT=${WORKER_SCHEDULER_SOFT_TIME_LIMIT:-}
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+    profiles:
+      - workers-new
+
 volumes:
   prompt_studio_data:
   unstract_data:

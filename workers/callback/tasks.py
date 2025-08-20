@@ -155,8 +155,17 @@ def _fetch_pipeline_data(
         # Call the pipeline data endpoint (from execution_client.py)
         response = api_client.get_pipeline_data(pipeline_id, organization_id)
 
+        logger.debug(
+            f"DEBUG: Pipeline API response for {pipeline_id}: success={response.success}, data_type={type(response.data)}, data_keys={response.data.keys() if isinstance(response.data, dict) else 'not_dict'}, error={response.error}"
+        )
+
         if response.success and response.data:
-            pipeline_data = response.data.get("pipeline", {})
+            # The response.data might be the pipeline data directly, or nested under "pipeline"
+            if "pipeline" in response.data:
+                pipeline_data = response.data.get("pipeline", {})
+            else:
+                # Treat response.data as pipeline data directly
+                pipeline_data = response.data
 
             # Determine if this is an API deployment or Pipeline based on available fields
             # APIDeployment has: api_name, display_name, api_endpoint
@@ -439,7 +448,9 @@ def _update_pipeline_with_batching(
     """
     batch_processor = get_batch_processor()
 
-    if batch_processor:
+    # TEMPORARY FIX: Skip batch processing due to BatchOperationResponse.error_response() bug
+    # Use direct API calls for reliability until batch processing bug is fixed
+    if False and batch_processor:  # Disabled batch processing
         # Use batch processing for better performance
         success = add_pipeline_update_to_batch(
             batch_processor=batch_processor,
@@ -475,7 +486,7 @@ def _update_pipeline_with_batching(
         if cache_manager:
             cache_manager.invalidate_pipeline_status(pipeline_id, organization_id)
 
-        logger.debug(f"Direct pipeline update for {pipeline_id}: {status}")
+        logger.info(f"DEBUG: Direct pipeline update SUCCESS for {pipeline_id}: {status}")
 
         # NOTE: Notifications are triggered by main batch completion logic, not here
         # This avoids duplicate notifications for the same execution
@@ -483,7 +494,10 @@ def _update_pipeline_with_batching(
         return True
 
     except Exception as e:
-        logger.error(f"Failed to update pipeline status for {pipeline_id}: {e}")
+        logger.error(f"DEBUG: Failed to update pipeline status for {pipeline_id}: {e}")
+        logger.error(
+            f"DEBUG: Pipeline update parameters: pipeline_id={pipeline_id}, status={status}, organization_id={organization_id}"
+        )
         return False
 
 
@@ -745,7 +759,17 @@ def process_batch_callback(self, results, *args, **kwargs) -> dict[str, Any]:
 
             # Update execution with aggregated results using optimized batching
             final_status = (
-                "COMPLETED" if aggregated_results["failed_files"] == 0 else "COMPLETED"
+                ExecutionStatus.COMPLETED.value
+                if aggregated_results["failed_files"] != aggregated_results["total_files"]
+                else ExecutionStatus.ERROR.value
+            )
+            logger.info(
+                f"DEBUG: Calculated final_status='{final_status}' (failed_files={aggregated_results['failed_files']})"
+            )
+
+            # Log aggregated results for debugging
+            logger.info(
+                f"DEBUG: Aggregated results: successful_files={aggregated_results.get('successful_files', 0)}, failed_files={aggregated_results.get('failed_files', 0)}, total_files={aggregated_results.get('total_files', 0)}"
             )
 
             # Use batched status update for better performance
@@ -840,6 +864,9 @@ def process_batch_callback(self, results, *args, **kwargs) -> dict[str, Any]:
                     pipeline_status = _map_execution_status_to_pipeline_status(
                         final_status
                     )
+                    logger.info(
+                        f"DEBUG: Mapped final_status='{final_status}' to pipeline_status='{pipeline_status}'"
+                    )
 
                     # Use batched pipeline update for better performance
                     pipeline_updated = _update_pipeline_with_batching(
@@ -856,11 +883,11 @@ def process_batch_callback(self, results, *args, **kwargs) -> dict[str, Any]:
 
                     if pipeline_updated:
                         logger.info(
-                            f"Queued pipeline update {pipeline_id} last_run_status to {pipeline_status}"
+                            f"DEBUG: Successfully queued pipeline update {pipeline_id} last_run_status to {pipeline_status}"
                         )
                     else:
                         logger.warning(
-                            f"Failed to queue pipeline update for {pipeline_id}"
+                            f"DEBUG: Failed to queue pipeline update for {pipeline_id} - pipeline_status={pipeline_status}, pipeline_name={pipeline_name}"
                         )
                 except CircuitBreakerOpenError:
                     logger.warning(
@@ -1146,9 +1173,20 @@ def process_batch_callback_api(
                     for file_result in all_file_results
                 )
 
-                # Update execution status to completed
+                # Debug logging for execution time calculation
+                logger.info(
+                    f"DEBUG: API callback calculated execution_time: {execution_time:.2f}s from {len(all_file_results)} file results"
+                )
+                if execution_time == 0:
+                    logger.warning(
+                        f"DEBUG: Execution time is 0! File results: {[r.get('processing_time', 'missing') for r in all_file_results[:3]]}"
+                    )
+
+                # Update execution status to completed with execution time (FIXED)
                 api_client.update_workflow_execution_status(
-                    execution_id=execution_id, status=ExecutionStatus.COMPLETED.value
+                    execution_id=execution_id,
+                    status=ExecutionStatus.COMPLETED.value,
+                    execution_time=execution_time,  # Add the calculated execution time
                 )
 
                 # Update pipeline status for API workflows
@@ -1161,14 +1199,22 @@ def process_batch_callback_api(
                             ExecutionStatus.COMPLETED.value
                         )
                         logger.info(f"Pipeline status: {pipeline_status}")
-                        # Skip pipeline status update for API deployments as they use APIDeployment model
-                        # The status is already tracked via workflow execution status above
-                        logger.info(
-                            f"Skipping pipeline status update for API deployment {pipeline_id} (uses APIDeployment model)"
-                        )
-                        logger.info(
-                            f"API pipeline {pipeline_id} status tracked via workflow execution status"
-                        )
+                        # Update API deployment status (FIXED: was previously skipped)
+                        # API deployments also need status updates for proper UI display
+                        try:
+                            api_client.update_pipeline_status(
+                                pipeline_id=pipeline_id,
+                                status=pipeline_status,
+                                execution_id=execution_id,
+                                organization_id=organization_id,
+                            )
+                            logger.info(
+                                f"Updated API deployment {pipeline_id} last_run_status to {pipeline_status}"
+                            )
+                        except Exception as pipeline_error:
+                            logger.error(
+                                f"Failed to update API deployment {pipeline_id} status: {pipeline_error}"
+                            )
 
                         # Trigger notifications for API deployment (worker-to-worker approach)
                         # NOTE: Both callback worker and Django backend may send notifications for backward compatibility
@@ -1227,6 +1273,28 @@ def process_batch_callback_api(
                         status=ExecutionStatus.ERROR.value,
                         error=str(e),
                     )
+
+                    # Also update pipeline status for API deployments on error (FIXED)
+                    if pipeline_id:
+                        try:
+                            error_pipeline_status = (
+                                _map_execution_status_to_pipeline_status(
+                                    ExecutionStatus.ERROR.value
+                                )
+                            )
+                            api_client.update_pipeline_status(
+                                pipeline_id=pipeline_id,
+                                status=error_pipeline_status,
+                                execution_id=execution_id,
+                                organization_id=organization_id,
+                            )
+                            logger.info(
+                                f"Updated API deployment {pipeline_id} last_run_status to {error_pipeline_status} (error case)"
+                            )
+                        except Exception as pipeline_error:
+                            logger.error(
+                                f"Failed to update API deployment {pipeline_id} status on error: {pipeline_error}"
+                            )
             except Exception as update_error:
                 logger.error(f"Failed to update execution status: {update_error}")
 

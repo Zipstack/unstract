@@ -179,11 +179,11 @@ class FileAPIClient(BaseAPIClient):
         # Match backend manager logic: use file_hash OR provider_file_uuid (not both)
         if file_hash_data.file_hash:
             params["file_hash"] = file_hash_data.file_hash
-            logger.debug(f"Using file_hash for lookup: {file_hash_data.file_hash}")
+            logger.info(f"DEBUG: Using file_hash for lookup: {file_hash_data.file_hash}")
         elif file_hash_data.provider_file_uuid:
             params["provider_file_uuid"] = file_hash_data.provider_file_uuid
-            logger.debug(
-                f"Using provider_file_uuid for lookup: {file_hash_data.provider_file_uuid}"
+            logger.info(
+                f"DEBUG: Using provider_file_uuid for lookup: {file_hash_data.provider_file_uuid}"
             )
         else:
             logger.warning(
@@ -273,9 +273,10 @@ class FileAPIClient(BaseAPIClient):
         file_execution_id: str | UUID,
         file_hash: str,
         fs_metadata: dict[str, Any] | None = None,
+        mime_type: str | None = None,
         organization_id: str | None = None,
     ) -> dict[str, Any]:
-        """Update workflow file execution with computed file hash.
+        """Update workflow file execution with computed file hash and mime_type.
 
         This method should be used when the SHA256 content hash is computed
         after the WorkflowFileExecution record is initially created.
@@ -284,6 +285,7 @@ class FileAPIClient(BaseAPIClient):
             file_execution_id: ID of the WorkflowFileExecution record to update
             file_hash: Computed SHA256 hash of file content
             fs_metadata: Optional filesystem metadata to update
+            mime_type: Optional MIME type to update
             organization_id: Optional organization ID override
 
         Returns:
@@ -292,6 +294,8 @@ class FileAPIClient(BaseAPIClient):
         data = {"file_hash": file_hash}
         if fs_metadata:
             data["fs_metadata"] = fs_metadata
+        if mime_type:
+            data["mime_type"] = mime_type
 
         logger.info(
             f"Updating file execution {file_execution_id} with computed hash: {file_hash[:16]}..."

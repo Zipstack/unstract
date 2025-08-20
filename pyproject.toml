@@ -24,10 +24,6 @@ dev = [
 
 workers = [
     "unstract-workers",
-    "unstract-worker-api-deployment",
-    "unstract-worker-general",
-    "unstract-worker-file-processing",
-    "unstract-worker-callback",
 ]
 
 hook-check-django-migrations = [
@@ -65,10 +61,6 @@ unstract-core = { path = "./unstract/core", editable = true }
 unstract-connectors = { path = "./unstract/connectors", editable = true }
 # Workers
 unstract-workers = { path = "./workers", editable = true }
-unstract-worker-api-deployment = { path = "./workers/api-deployment", editable = true }
-unstract-worker-general = { path = "./workers/general", editable = true }
-unstract-worker-file-processing = { path = "./workers/file-processing", editable = true }
-unstract-worker-callback = { path = "./workers/callback", editable = true }
 # === Development tool configurations ===
 
 [tool.ruff]

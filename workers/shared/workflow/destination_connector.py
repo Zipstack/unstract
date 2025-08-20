@@ -214,6 +214,11 @@ class WorkerDestinationConnector:
                     logger.info(
                         f"Sending {file_name} to manual review queue (batch decision)"
                     )
+                    # Log to UI via workflow_log
+                    if self.workflow_log:
+                        self.workflow_log.publish_log(
+                            message=f"📋 File '{file_name}' selected for manual review based on configured rules"
+                        )
                     self._push_data_to_queue(
                         file_name=file_name,
                         workflow=workflow,
@@ -866,6 +871,12 @@ class WorkerDestinationConnector:
                     message=queue_result,
                     organization_id=self.organization_id,
                 )
+                # Log to UI via workflow_log
+                if self.workflow_log:
+                    self.workflow_log.publish_log(
+                        message=f"✅ File '{file_name}' sent to manual review queue '{queue_name}'"
+                    )
+
                 logger.info(
                     f"✅ MANUAL REVIEW: File '{file_name}' sent to manual review queue '{queue_name}' successfully"
                 )

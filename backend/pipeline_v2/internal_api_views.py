@@ -108,3 +108,84 @@ class PipelineInternalViewSet(ViewSet):
             )
 
         return None  # Not found in this model
+
+    def update(self, request, pk=None):
+        """Update pipeline status for scheduler worker."""
+        try:
+            new_status = request.data.get("status")
+            if not new_status:
+                return Response(
+                    {"status": "error", "message": "Status is required"}, status=400
+                )
+
+            # Import here to avoid circular imports
+            from pipeline_v2.pipeline_processor import PipelineProcessor
+
+            # Try to update pipeline first
+            try:
+                pipeline_qs = Pipeline.objects.filter(id=pk)
+                pipeline_qs = filter_queryset_by_organization(
+                    pipeline_qs, request, "organization"
+                )
+                pipeline = pipeline_qs.first()
+
+                if pipeline:
+                    # Use the PipelineProcessor to update status properly
+                    PipelineProcessor.update_pipeline(pk, new_status)
+
+                    return Response(
+                        {
+                            "status": "success",
+                            "pipeline_id": pk,
+                            "new_status": new_status,
+                            "message": "Pipeline status updated successfully",
+                        }
+                    )
+
+            except Exception as e:
+                logger.error(f"Error updating pipeline status: {e}")
+                return Response(
+                    {"status": "error", "message": f"Failed to update pipeline: {e}"},
+                    status=500,
+                )
+
+            # Try API deployment if pipeline not found
+            try:
+                api_qs = APIDeployment.objects.filter(id=pk)
+                api_qs = filter_queryset_by_organization(api_qs, request, "organization")
+                api_deployment = api_qs.first()
+
+                if api_deployment:
+                    # For API deployments, log the status update
+                    logger.info(f"Updated API deployment {pk} status to {new_status}")
+
+                    return Response(
+                        {
+                            "status": "success",
+                            "pipeline_id": pk,
+                            "new_status": new_status,
+                            "message": "API deployment status updated successfully",
+                        }
+                    )
+
+            except Exception as e:
+                logger.error(f"Error updating API deployment status: {e}")
+                return Response(
+                    {
+                        "status": "error",
+                        "message": f"Failed to update API deployment: {e}",
+                    },
+                    status=500,
+                )
+
+            # Not found in either model
+            return Response(
+                {"status": "error", "message": "Pipeline or API deployment not found"},
+                status=404,
+            )
+
+        except Exception as e:
+            logger.error(f"Error updating pipeline/API deployment status for {pk}: {e}")
+            return Response(
+                {"status": "error", "message": "Internal server error"}, status=500
+            )

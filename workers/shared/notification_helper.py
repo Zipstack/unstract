@@ -342,9 +342,10 @@ def handle_status_notifications(
 
         logger.debug(f"Using {workflow_type.value} name from model: {pipeline_name}")
 
-        # Create standardized notification payload
+        # Validate execution status for notifications
         try:
-            notification_payload = NotificationPayload.from_execution_status(
+            # Just validate the status can be converted - we use separate functions below
+            NotificationPayload.from_execution_status(
                 pipeline_id=pipeline_id,
                 pipeline_name=pipeline_name,
                 execution_status=execution_status,
@@ -362,26 +363,35 @@ def handle_status_notifications(
             f"Processing notification for {workflow_type.value} {pipeline_id} with status {execution_status.value}"
         )
 
-        # TEMPORARY: Send to known webhook URL until internal API endpoints are fixed
-        # TODO: Replace with proper notification configuration lookup
-        webhook_url = "https://webhook.site/a09c1237-f6e0-461d-942b-16d2bb470660"
+        # Use proper notification configuration lookup based on workflow type
+        try:
+            if workflow_type == WorkflowType.API:
+                trigger_api_notifications(
+                    api_client=api_client,
+                    api_id=pipeline_id,
+                    api_name=pipeline_name,
+                    status=status,
+                    execution_id=execution_id,
+                    error_message=error_message,
+                )
+            else:
+                # For ETL/TASK/other pipeline types
+                trigger_pipeline_notifications(
+                    api_client=api_client,
+                    pipeline_id=pipeline_id,
+                    pipeline_name=pipeline_name,
+                    pipeline_type=workflow_type.value,
+                    status=status,
+                    execution_id=execution_id,
+                    error_message=error_message,
+                )
 
-        success = send_notification_to_worker(
-            url=webhook_url,
-            payload=notification_payload,
-            auth_type="NONE",
-            auth_key=None,
-            auth_header=None,
-            max_retries=0,
-        )
-
-        if success:
             logger.info(
                 f"Notification sent successfully for {workflow_type.value} {pipeline_id}"
             )
-        else:
+        except Exception as notification_error:
             logger.warning(
-                f"Failed to send notification for {workflow_type.value} {pipeline_id}"
+                f"Failed to send notification for {workflow_type.value} {pipeline_id}: {notification_error}"
             )
 
     except Exception as e:

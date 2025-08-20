@@ -400,15 +400,6 @@ wheels = [
 ]
 
 [[package]]
-name = "blinker"
-version = "1.9.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/21/28/9b3f50ce0e048515135495f198351908d99540d69bfdc8c1d15b73dc55ce/blinker-1.9.0.tar.gz", hash = "sha256:b4ce2265a7abece45e7cc896e98dbebe6cead56bcf805a3d23136d145f5445bf", size = 22460, upload-time = "2024-11-08T17:25:47.436Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/10/cb/f2ad4230dc2eb1a74edf38f1a38b9b52277f75bef262d8908e60d957e13c/blinker-1.9.0-py3-none-any.whl", hash = "sha256:ba0efaa9080b619ff2f3459d1d500c57bddea4a6b424b60a91141db6fd2f08bc", size = 8458, upload-time = "2024-11-08T17:25:46.184Z" },
-]
-
-[[package]]
 name = "boto3"
 version = "1.36.1"
 source = { registry = "https://pypi.org/simple" }
@@ -482,7 +473,7 @@ wheels = [
 
 [[package]]
 name = "celery"
-version = "5.4.0"
+version = "5.5.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "billiard" },
@@ -492,17 +483,11 @@ dependencies = [
     { name = "click-repl" },
     { name = "kombu" },
     { name = "python-dateutil" },
-    { name = "tzdata" },
     { name = "vine" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8a/9c/cf0bce2cc1c8971bf56629d8f180e4ca35612c7e79e6e432e785261a8be4/celery-5.4.0.tar.gz", hash = "sha256:504a19140e8d3029d5acad88330c541d4c3f64c789d85f94756762d8bca7e706", size = 1575692, upload-time = "2024-04-17T20:29:43.675Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bb/7d/6c289f407d219ba36d8b384b42489ebdd0c84ce9c413875a8aae0c85f35b/celery-5.5.3.tar.gz", hash = "sha256:6c972ae7968c2b5281227f01c3a3f984037d21c5129d07bf3550cc2afc6b10a5", size = 1667144, upload-time = "2025-06-01T11:08:12.563Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/90/c4/6a4d3772e5407622feb93dd25c86ce3c0fee746fa822a777a627d56b4f2a/celery-5.4.0-py3-none-any.whl", hash = "sha256:369631eb580cf8c51a82721ec538684994f8277637edde2dfc0dacd73ed97f64", size = 425983, upload-time = "2024-04-17T20:29:39.406Z" },
-]
-
-[package.optional-dependencies]
-redis = [
-    { name = "redis" },
+    { url = "https://files.pythonhosted.org/packages/c9/af/0dcccc7fdcdf170f9a1585e5e96b6fb0ba1749ef6be8c89a6202284759bd/celery-5.5.3-py3-none-any.whl", hash = "sha256:0b5761a07057acee94694464ca482416b959568904c9dfa41ce8413a7d65d525", size = 438775, upload-time = "2025-06-01T11:08:09.94Z" },
 ]
 
 [[package]]
@@ -928,22 +913,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/bb/29/745f7d30d47fe0f251d3ad3dc2978a23141917661998763bebb6da007eb1/filetype-1.2.0.tar.gz", hash = "sha256:66b56cd6474bf41d8c54660347d37afcc3f7d1970648de365c102ef77548aadb", size = 998020, upload-time = "2022-11-02T17:34:04.141Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/18/79/1b8fa1bb3568781e84c9200f951c735f3f157429f44be0495da55894d620/filetype-1.2.0-py2.py3-none-any.whl", hash = "sha256:7ce71b6880181241cf7ac8697a2f1eb6a8bd9b429f7ad6d27b8db9ba5f1c2d25", size = 19970, upload-time = "2022-11-02T17:34:01.425Z" },
-]
-
-[[package]]
-name = "flask"
-version = "2.3.3"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "blinker" },
-    { name = "click" },
-    { name = "itsdangerous" },
-    { name = "jinja2" },
-    { name = "werkzeug" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/46/b7/4ace17e37abd9c21715dea5ee11774a25e404c486a7893fa18e764326ead/flask-2.3.3.tar.gz", hash = "sha256:09c347a92aa7ff4a8e7f3206795f30d826654baf38b873d0744cd571ca609efc", size = 672756, upload-time = "2023-08-21T19:52:35.012Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/fd/56/26f0be8adc2b4257df20c1c4260ddd0aa396cf8e75d90ab2f7ff99bc34f9/flask-2.3.3-py3-none-any.whl", hash = "sha256:f69fcd559dc907ed196ab9df0e48471709175e696d6e698dd4dbe940f96ce66b", size = 96112, upload-time = "2023-08-21T19:52:33.115Z" },
 ]
 
 [[package]]
@@ -1530,15 +1499,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/54/4d/e940025e2ce31a8ce1202635910747e5a87cc3a6a6bb2d00973375014749/isodate-0.7.2.tar.gz", hash = "sha256:4cd1aa0f43ca76f4a6c6c0292a85f40b35ec2e43e315b59f06e6d32171a953e6", size = 29705, upload-time = "2024-10-08T23:04:11.5Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/15/aa/0aca39a37d3c7eb941ba736ede56d689e7be91cab5d9ca846bde3999eba6/isodate-0.7.2-py3-none-any.whl", hash = "sha256:28009937d8031054830160fce6d409ed342816b543597cece116d966c6d99e15", size = 22320, upload-time = "2024-10-08T23:04:09.501Z" },
-]
-
-[[package]]
-name = "itsdangerous"
-version = "2.2.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/9c/cb/8ac0172223afbccb63986cc25049b154ecfb5e85932587206f42317be31d/itsdangerous-2.2.0.tar.gz", hash = "sha256:e0050c0b7da1eea53ffaf149c0cfbb5c6e2e2b69c4bef22c81fa6eb73e5f6173", size = 54410, upload-time = "2024-04-16T21:28:15.614Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/04/96/92447566d16df59b2a776c0fb82dbc4d9e07cd95062562af01e408583fc4/itsdangerous-2.2.0-py3-none-any.whl", hash = "sha256:c6242fc49e35958c8b15141343aa660db5fc54d4f13a1db01a3f5891b98700ef", size = 16234, upload-time = "2024-04-16T21:28:14.499Z" },
 ]
 
 [[package]]
@@ -2442,29 +2402,6 @@ wheels = [
 ]
 
 [[package]]
-name = "orjson"
-version = "3.10.18"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/81/0b/fea456a3ffe74e70ba30e01ec183a9b26bec4d497f61dcfce1b601059c60/orjson-3.10.18.tar.gz", hash = "sha256:e8da3947d92123eda795b68228cafe2724815621fe35e8e320a9e9593a4bcd53", size = 5422810, upload-time = "2025-04-29T23:30:08.423Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/21/1a/67236da0916c1a192d5f4ccbe10ec495367a726996ceb7614eaa687112f2/orjson-3.10.18-cp312-cp312-macosx_10_15_x86_64.macosx_11_0_arm64.macosx_10_15_universal2.whl", hash = "sha256:50c15557afb7f6d63bc6d6348e0337a880a04eaa9cd7c9d569bcb4e760a24753", size = 249184, upload-time = "2025-04-29T23:28:53.612Z" },
-    { url = "https://files.pythonhosted.org/packages/b3/bc/c7f1db3b1d094dc0c6c83ed16b161a16c214aaa77f311118a93f647b32dc/orjson-3.10.18-cp312-cp312-macosx_15_0_arm64.whl", hash = "sha256:356b076f1662c9813d5fa56db7d63ccceef4c271b1fb3dd522aca291375fcf17", size = 133279, upload-time = "2025-04-29T23:28:55.055Z" },
-    { url = "https://files.pythonhosted.org/packages/af/84/664657cd14cc11f0d81e80e64766c7ba5c9b7fc1ec304117878cc1b4659c/orjson-3.10.18-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:559eb40a70a7494cd5beab2d73657262a74a2c59aff2068fdba8f0424ec5b39d", size = 136799, upload-time = "2025-04-29T23:28:56.828Z" },
-    { url = "https://files.pythonhosted.org/packages/9a/bb/f50039c5bb05a7ab024ed43ba25d0319e8722a0ac3babb0807e543349978/orjson-3.10.18-cp312-cp312-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:f3c29eb9a81e2fbc6fd7ddcfba3e101ba92eaff455b8d602bf7511088bbc0eae", size = 132791, upload-time = "2025-04-29T23:28:58.751Z" },
-    { url = "https://files.pythonhosted.org/packages/93/8c/ee74709fc072c3ee219784173ddfe46f699598a1723d9d49cbc78d66df65/orjson-3.10.18-cp312-cp312-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:6612787e5b0756a171c7d81ba245ef63a3533a637c335aa7fcb8e665f4a0966f", size = 137059, upload-time = "2025-04-29T23:29:00.129Z" },
-    { url = "https://files.pythonhosted.org/packages/6a/37/e6d3109ee004296c80426b5a62b47bcadd96a3deab7443e56507823588c5/orjson-3.10.18-cp312-cp312-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:7ac6bd7be0dcab5b702c9d43d25e70eb456dfd2e119d512447468f6405b4a69c", size = 138359, upload-time = "2025-04-29T23:29:01.704Z" },
-    { url = "https://files.pythonhosted.org/packages/4f/5d/387dafae0e4691857c62bd02839a3bf3fa648eebd26185adfac58d09f207/orjson-3.10.18-cp312-cp312-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:9f72f100cee8dde70100406d5c1abba515a7df926d4ed81e20a9730c062fe9ad", size = 142853, upload-time = "2025-04-29T23:29:03.576Z" },
-    { url = "https://files.pythonhosted.org/packages/27/6f/875e8e282105350b9a5341c0222a13419758545ae32ad6e0fcf5f64d76aa/orjson-3.10.18-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:9dca85398d6d093dd41dc0983cbf54ab8e6afd1c547b6b8a311643917fbf4e0c", size = 133131, upload-time = "2025-04-29T23:29:05.753Z" },
-    { url = "https://files.pythonhosted.org/packages/48/b2/73a1f0b4790dcb1e5a45f058f4f5dcadc8a85d90137b50d6bbc6afd0ae50/orjson-3.10.18-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:22748de2a07fcc8781a70edb887abf801bb6142e6236123ff93d12d92db3d406", size = 134834, upload-time = "2025-04-29T23:29:07.35Z" },
-    { url = "https://files.pythonhosted.org/packages/56/f5/7ed133a5525add9c14dbdf17d011dd82206ca6840811d32ac52a35935d19/orjson-3.10.18-cp312-cp312-musllinux_1_2_armv7l.whl", hash = "sha256:3a83c9954a4107b9acd10291b7f12a6b29e35e8d43a414799906ea10e75438e6", size = 413368, upload-time = "2025-04-29T23:29:09.301Z" },
-    { url = "https://files.pythonhosted.org/packages/11/7c/439654221ed9c3324bbac7bdf94cf06a971206b7b62327f11a52544e4982/orjson-3.10.18-cp312-cp312-musllinux_1_2_i686.whl", hash = "sha256:303565c67a6c7b1f194c94632a4a39918e067bd6176a48bec697393865ce4f06", size = 153359, upload-time = "2025-04-29T23:29:10.813Z" },
-    { url = "https://files.pythonhosted.org/packages/48/e7/d58074fa0cc9dd29a8fa2a6c8d5deebdfd82c6cfef72b0e4277c4017563a/orjson-3.10.18-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:86314fdb5053a2f5a5d881f03fca0219bfdf832912aa88d18676a5175c6916b5", size = 137466, upload-time = "2025-04-29T23:29:12.26Z" },
-    { url = "https://files.pythonhosted.org/packages/57/4d/fe17581cf81fb70dfcef44e966aa4003360e4194d15a3f38cbffe873333a/orjson-3.10.18-cp312-cp312-win32.whl", hash = "sha256:187ec33bbec58c76dbd4066340067d9ece6e10067bb0cc074a21ae3300caa84e", size = 142683, upload-time = "2025-04-29T23:29:13.865Z" },
-    { url = "https://files.pythonhosted.org/packages/e6/22/469f62d25ab5f0f3aee256ea732e72dc3aab6d73bac777bd6277955bceef/orjson-3.10.18-cp312-cp312-win_amd64.whl", hash = "sha256:f9f94cf6d3f9cd720d641f8399e390e7411487e493962213390d1ae45c7814fc", size = 134754, upload-time = "2025-04-29T23:29:15.338Z" },
-    { url = "https://files.pythonhosted.org/packages/10/b0/1040c447fac5b91bc1e9c004b69ee50abb0c1ffd0d24406e1350c58a7fcb/orjson-3.10.18-cp312-cp312-win_arm64.whl", hash = "sha256:3d600be83fe4514944500fa8c2a0a77099025ec6482e8087d7659e891f23058a", size = 131218, upload-time = "2025-04-29T23:29:17.324Z" },
-]
-
-[[package]]
 name = "packaging"
 version = "24.2"
 source = { registry = "https://pypi.org/simple" }
@@ -2810,12 +2747,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pybreaker"
-version = "0.8.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ea/2e/8f6cafaed265acb12f6c7f870496e75d02e11f83ed213f1b4976a27af7b9/pybreaker-0.8.0.tar.gz", hash = "sha256:41d51901a5a69e78761f1a2abdc0ae25a82c58eb752977c7b4eec51330095efc", size = 11121, upload-time = "2022-03-02T23:18:44.672Z" }
-
-[[package]]
 name = "pycln"
 version = "2.5.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2878,20 +2809,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/d6/b2/288b3579ffc07e92af66e2f1a11be3b056fe1214aab314748461f21a31c3/pydantic_core-2.33.1-cp312-cp312-win32.whl", hash = "sha256:e14f369c98a7c15772b9da98987f58e2b509a93235582838bd0d1d8c08b68fda", size = 1907034, upload-time = "2025-04-02T09:47:46.843Z" },
     { url = "https://files.pythonhosted.org/packages/02/28/58442ad1c22b5b6742b992ba9518420235adced665513868f99a1c2638a5/pydantic_core-2.33.1-cp312-cp312-win_amd64.whl", hash = "sha256:1c607801d85e2e123357b3893f82c97a42856192997b95b4d8325deb1cd0c5f4", size = 1956848, upload-time = "2025-04-02T09:47:48.404Z" },
     { url = "https://files.pythonhosted.org/packages/a1/eb/f54809b51c7e2a1d9f439f158b8dd94359321abcc98767e16fc48ae5a77e/pydantic_core-2.33.1-cp312-cp312-win_arm64.whl", hash = "sha256:8d13f0276806ee722e70a1c93da19748594f19ac4299c7e41237fc791d1861ea", size = 1903986, upload-time = "2025-04-02T09:47:49.839Z" },
-]
-
-[[package]]
-name = "pydantic-settings"
-version = "2.10.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pydantic" },
-    { name = "python-dotenv" },
-    { name = "typing-inspection" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/68/85/1ea668bbab3c50071ca613c6ab30047fb36ab0da1b92fa8f17bbc38fd36c/pydantic_settings-2.10.1.tar.gz", hash = "sha256:06f0062169818d0f5524420a360d632d5857b83cffd4d42fe29597807a1614ee", size = 172583, upload-time = "2025-06-24T13:26:46.841Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/58/f0/427018098906416f580e3cf1366d3b1abfb408a0652e9f31600c24a1903c/pydantic_settings-2.10.1-py3-none-any.whl", hash = "sha256:a60952460b99cf661dc25c29c0ef171721f98bfcb52ef8d9ea4c943d7c8cc796", size = 45235, upload-time = "2025-06-24T13:26:45.485Z" },
 ]
 
 [[package]]
@@ -3594,15 +3511,6 @@ wheels = [
 ]
 
 [[package]]
-name = "structlog"
-version = "23.3.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/44/30/1f73c8813fa47208cf17dc1239c148298ffafb11301b18071b8c6ba19f37/structlog-23.3.0.tar.gz", hash = "sha256:24b42b914ac6bc4a4e6f716e82ac70d7fb1e8c3b1035a765591953bfc37101a5", size = 1340937, upload-time = "2023-12-29T14:02:33.487Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/78/5d/8afc87f72e8ba11001c0122e62fc1e19f580f8607f9d1078012cf1492325/structlog-23.3.0-py3-none-any.whl", hash = "sha256:d6922a88ceabef5b13b9eda9c4043624924f60edbb00397f4d193bd754cde60a", size = 66004, upload-time = "2023-12-29T14:02:31.501Z" },
-]
-
-[[package]]
 name = "tenacity"
 version = "8.5.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3925,10 +3833,6 @@ hook-check-django-migrations = [
     { name = "unstract-workflow-execution" },
 ]
 workers = [
-    { name = "unstract-worker-api-deployment" },
-    { name = "unstract-worker-callback" },
-    { name = "unstract-worker-file-processing" },
-    { name = "unstract-worker-general" },
     { name = "unstract-workers" },
 ]
 
@@ -3973,13 +3877,7 @@ hook-check-django-migrations = [
     { name = "unstract-tool-sandbox", editable = "unstract/tool-sandbox" },
     { name = "unstract-workflow-execution", editable = "unstract/workflow-execution" },
 ]
-workers = [
-    { name = "unstract-worker-api-deployment", editable = "workers/api-deployment" },
-    { name = "unstract-worker-callback", editable = "workers/callback" },
-    { name = "unstract-worker-file-processing", editable = "workers/file-processing" },
-    { name = "unstract-worker-general", editable = "workers/general" },
-    { name = "unstract-workers", editable = "workers" },
-]
+workers = [{ name = "unstract-workers", editable = "workers" }]
 
 [[package]]
 name = "unstract-connectors"
@@ -4004,6 +3902,7 @@ dependencies = [
     { name = "s3fs", extra = ["boto3"] },
     { name = "singleton-decorator" },
     { name = "snowflake-connector-python", extra = ["pandas"] },
+    { name = "unstract-core" },
 ]
 
 [package.metadata]
@@ -4026,6 +3925,7 @@ requires-dist = [
     { name = "s3fs", extras = ["boto3"], specifier = "==2024.10.0" },
     { name = "singleton-decorator", specifier = "~=1.0.0" },
     { name = "snowflake-connector-python", extras = ["pandas"], specifier = "~=3.14.0" },
+    { name = "unstract-core" },
 ]
 
 [[package]]
@@ -4116,9 +4016,14 @@ dependencies = [
     { name = "tiktoken" },
     { name = "transformers" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/91/ea/038da8c278e811ec9a5263c856d157a8a4ce57a10052c507edfb192afc60/unstract_sdk-0.76.1.tar.gz", hash = "sha256:05ecdf1a1b4cdfaa2414a0a31f42bb8ba9c895980b4ff891dceca25a5b4e0407", size = 2376403 }
+sdist = { url = "https://files.pythonhosted.org/packages/91/ea/038da8c278e811ec9a5263c856d157a8a4ce57a10052c507edfb192afc60/unstract_sdk-0.76.1.tar.gz", hash = "sha256:05ecdf1a1b4cdfaa2414a0a31f42bb8ba9c895980b4ff891dceca25a5b4e0407", size = 2376403, upload-time = "2025-07-15T14:52:32.069Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fa/dc/b39d10ae577d61820546977064231cf4ae454b189fef2a25328fe873b1c6/unstract_sdk-0.76.1-py3-none-any.whl", hash = "sha256:3ddbacc1d5705a06c368225b5884797d0b406e31f5ae5a08e01c80873f6787d1", size = 266606 },
+    { url = "https://files.pythonhosted.org/packages/fa/dc/b39d10ae577d61820546977064231cf4ae454b189fef2a25328fe873b1c6/unstract_sdk-0.76.1-py3-none-any.whl", hash = "sha256:3ddbacc1d5705a06c368225b5884797d0b406e31f5ae5a08e01c80873f6787d1", size = 266606, upload-time = "2025-07-15T14:52:30.808Z" },
+]
+
+[package.optional-dependencies]
+azure = [
+    { name = "adlfs" },
 ]
 
 [[package]]
@@ -4160,245 +4065,48 @@ requires-dist = [
 ]
 
 [[package]]
-name = "unstract-worker-api-deployment"
-version = "1.0.0"
-source = { editable = "workers/api-deployment" }
-dependencies = [
-    { name = "celery", extra = ["redis"] },
-    { name = "flask" },
-    { name = "kombu" },
-    { name = "orjson" },
-    { name = "prometheus-client" },
-    { name = "psutil" },
-    { name = "pybreaker" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "python-dateutil" },
-    { name = "requests" },
-    { name = "structlog" },
-    { name = "tenacity" },
-    { name = "unstract-workers" },
-    { name = "urllib3" },
-    { name = "werkzeug" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "celery", extras = ["redis"], specifier = ">=5.3.0,<6.0.0" },
-    { name = "flask", specifier = ">=2.3.0,<3.0.0" },
-    { name = "kombu", specifier = ">=5.3.0,<6.0.0" },
-    { name = "orjson", specifier = ">=3.9.0,<4.0.0" },
-    { name = "prometheus-client", specifier = ">=0.17.0,<1.0.0" },
-    { name = "psutil", specifier = ">=5.9.0,<6.0.0" },
-    { name = "pybreaker", specifier = ">=0.8.0,<1.0.0" },
-    { name = "pydantic", specifier = ">=2.0.0,<3.0.0" },
-    { name = "pydantic-settings", specifier = ">=2.0.0,<3.0.0" },
-    { name = "python-dateutil", specifier = ">=2.8.0,<3.0.0" },
-    { name = "requests", specifier = ">=2.31.0,<3.0.0" },
-    { name = "structlog", specifier = ">=23.1.0,<24.0.0" },
-    { name = "tenacity", specifier = ">=8.2.0,<9.0.0" },
-    { name = "unstract-workers", editable = "workers" },
-    { name = "urllib3", specifier = ">=1.26.0" },
-    { name = "werkzeug", specifier = ">=2.3.0,<3.0.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "black", specifier = ">=23.7.0" },
-    { name = "isort", specifier = ">=5.12.0" },
-    { name = "mypy", specifier = ">=1.5.0" },
-    { name = "pytest", specifier = ">=7.4.0" },
-]
-
-[[package]]
-name = "unstract-worker-callback"
-version = "1.0.0"
-source = { editable = "workers/callback" }
-dependencies = [
-    { name = "celery", extra = ["redis"] },
-    { name = "flask" },
-    { name = "kombu" },
-    { name = "orjson" },
-    { name = "prometheus-client" },
-    { name = "psutil" },
-    { name = "pybreaker" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "python-dateutil" },
-    { name = "requests" },
-    { name = "structlog" },
-    { name = "tenacity" },
-    { name = "urllib3" },
-    { name = "werkzeug" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "celery", extras = ["redis"], specifier = ">=5.3.0,<6.0.0" },
-    { name = "flask", specifier = ">=2.3.0,<3.0.0" },
-    { name = "kombu", specifier = ">=5.3.0,<6.0.0" },
-    { name = "orjson", specifier = ">=3.9.0,<4.0.0" },
-    { name = "prometheus-client", specifier = ">=0.17.0,<1.0.0" },
-    { name = "psutil", specifier = ">=5.9.0,<6.0.0" },
-    { name = "pybreaker", specifier = ">=0.8.0,<1.0.0" },
-    { name = "pydantic", specifier = ">=2.0.0,<3.0.0" },
-    { name = "pydantic-settings", specifier = ">=2.0.0,<3.0.0" },
-    { name = "python-dateutil", specifier = ">=2.8.0,<3.0.0" },
-    { name = "requests", specifier = ">=2.31.0,<3.0.0" },
-    { name = "structlog", specifier = ">=23.1.0,<24.0.0" },
-    { name = "tenacity", specifier = ">=8.2.0,<9.0.0" },
-    { name = "urllib3", specifier = ">=1.26.0" },
-    { name = "werkzeug", specifier = ">=2.3.0,<3.0.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "black", specifier = ">=23.7.0" },
-    { name = "isort", specifier = ">=5.12.0" },
-    { name = "mypy", specifier = ">=1.5.0" },
-    { name = "pytest", specifier = ">=7.4.0" },
-]
-
-[[package]]
-name = "unstract-worker-file-processing"
-version = "1.0.0"
-source = { editable = "workers/file-processing" }
-dependencies = [
-    { name = "celery", extra = ["redis"] },
-    { name = "flask" },
-    { name = "kombu" },
-    { name = "orjson" },
-    { name = "prometheus-client" },
-    { name = "psutil" },
-    { name = "pybreaker" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "python-dateutil" },
-    { name = "requests" },
-    { name = "structlog" },
-    { name = "tenacity" },
-    { name = "urllib3" },
-    { name = "werkzeug" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "celery", extras = ["redis"], specifier = ">=5.3.0,<6.0.0" },
-    { name = "flask", specifier = ">=2.3.0,<3.0.0" },
-    { name = "kombu", specifier = ">=5.3.0,<6.0.0" },
-    { name = "orjson", specifier = ">=3.9.0,<4.0.0" },
-    { name = "prometheus-client", specifier = ">=0.17.0,<1.0.0" },
-    { name = "psutil", specifier = ">=5.9.0,<6.0.0" },
-    { name = "pybreaker", specifier = ">=0.8.0,<1.0.0" },
-    { name = "pydantic", specifier = ">=2.0.0,<3.0.0" },
-    { name = "pydantic-settings", specifier = ">=2.0.0,<3.0.0" },
-    { name = "python-dateutil", specifier = ">=2.8.0,<3.0.0" },
-    { name = "requests", specifier = ">=2.31.0,<3.0.0" },
-    { name = "structlog", specifier = ">=23.1.0,<24.0.0" },
-    { name = "tenacity", specifier = ">=8.2.0,<9.0.0" },
-    { name = "urllib3", specifier = ">=1.26.0" },
-    { name = "werkzeug", specifier = ">=2.3.0,<3.0.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "black", specifier = ">=23.7.0" },
-    { name = "isort", specifier = ">=5.12.0" },
-    { name = "mypy", specifier = ">=1.5.0" },
-    { name = "pytest", specifier = ">=7.4.0" },
-]
-
-[[package]]
-name = "unstract-worker-general"
-version = "1.0.0"
-source = { editable = "workers/general" }
-dependencies = [
-    { name = "celery", extra = ["redis"] },
-    { name = "flask" },
-    { name = "kombu" },
-    { name = "orjson" },
-    { name = "prometheus-client" },
-    { name = "psutil" },
-    { name = "pybreaker" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "python-dateutil" },
-    { name = "requests" },
-    { name = "structlog" },
-    { name = "tenacity" },
-    { name = "urllib3" },
-    { name = "werkzeug" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "celery", extras = ["redis"], specifier = ">=5.3.0,<6.0.0" },
-    { name = "flask", specifier = ">=2.3.0,<3.0.0" },
-    { name = "kombu", specifier = ">=5.3.0,<6.0.0" },
-    { name = "orjson", specifier = ">=3.9.0,<4.0.0" },
-    { name = "prometheus-client", specifier = ">=0.17.0,<1.0.0" },
-    { name = "psutil", specifier = ">=5.9.0,<6.0.0" },
-    { name = "pybreaker", specifier = ">=0.8.0,<1.0.0" },
-    { name = "pydantic", specifier = ">=2.0.0,<3.0.0" },
-    { name = "pydantic-settings", specifier = ">=2.0.0,<3.0.0" },
-    { name = "python-dateutil", specifier = ">=2.8.0,<3.0.0" },
-    { name = "requests", specifier = ">=2.31.0,<3.0.0" },
-    { name = "structlog", specifier = ">=23.1.0,<24.0.0" },
-    { name = "tenacity", specifier = ">=8.2.0,<9.0.0" },
-    { name = "urllib3", specifier = ">=1.26.0" },
-    { name = "werkzeug", specifier = ">=2.3.0,<3.0.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "black", specifier = ">=23.7.0" },
-    { name = "isort", specifier = ">=5.12.0" },
-    { name = "mypy", specifier = ">=1.5.0" },
-    { name = "pytest", specifier = ">=7.4.0" },
-]
-
-[[package]]
 name = "unstract-workers"
 version = "1.0.0"
 source = { editable = "workers" }
 dependencies = [
-    { name = "celery", extra = ["redis"] },
-    { name = "flask" },
-    { name = "kombu" },
-    { name = "orjson" },
+    { name = "celery" },
+    { name = "httpx" },
     { name = "prometheus-client" },
     { name = "psutil" },
-    { name = "pybreaker" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "python-dateutil" },
+    { name = "python-dotenv" },
     { name = "requests" },
-    { name = "structlog" },
-    { name = "tenacity" },
+    { name = "unstract-connectors" },
+    { name = "unstract-core" },
+    { name = "unstract-filesystem" },
+    { name = "unstract-flags" },
+    { name = "unstract-sdk", extra = ["azure"] },
+    { name = "unstract-tool-registry" },
+    { name = "unstract-tool-sandbox" },
+    { name = "unstract-workflow-execution" },
     { name = "urllib3" },
-    { name = "werkzeug" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "celery", extras = ["redis"], specifier = ">=5.3.0,<6.0.0" },
-    { name = "flask", specifier = ">=2.3.0,<3.0.0" },
-    { name = "kombu", specifier = ">=5.3.0,<6.0.0" },
-    { name = "orjson", specifier = ">=3.9.0,<4.0.0" },
+    { name = "celery", specifier = ">=5.5.3" },
+    { name = "httpx", specifier = ">=0.27.0,<0.28.0" },
     { name = "prometheus-client", specifier = ">=0.17.0,<1.0.0" },
     { name = "psutil", specifier = ">=5.9.0,<6.0.0" },
-    { name = "pybreaker", specifier = ">=0.8.0,<1.0.0" },
-    { name = "pydantic", specifier = ">=2.0.0,<3.0.0" },
-    { name = "pydantic-settings", specifier = ">=2.0.0,<3.0.0" },
-    { name = "python-dateutil", specifier = ">=2.8.0,<3.0.0" },
+    { name = "python-dotenv", specifier = ">=1.0.0,<2.0.0" },
     { name = "requests", specifier = ">=2.31.0,<3.0.0" },
-    { name = "structlog", specifier = ">=23.1.0,<24.0.0" },
-    { name = "tenacity", specifier = ">=8.2.0,<9.0.0" },
+    { name = "unstract-connectors", editable = "unstract/connectors" },
+    { name = "unstract-core", editable = "unstract/core" },
+    { name = "unstract-filesystem", editable = "unstract/filesystem" },
+    { name = "unstract-flags", editable = "unstract/flags" },
+    { name = "unstract-sdk", extras = ["azure"], specifier = "~=0.76.1" },
+    { name = "unstract-tool-registry", editable = "unstract/tool-registry" },
+    { name = "unstract-tool-sandbox", editable = "unstract/tool-sandbox" },
+    { name = "unstract-workflow-execution", editable = "unstract/workflow-execution" },
     { name = "urllib3", specifier = ">=1.26.0" },
-    { name = "werkzeug", specifier = ">=2.3.0,<3.0.0" },
 ]
 
 [package.metadata.requires-dev]
+deploy = []
 dev = [
     { name = "black", specifier = ">=23.7.0" },
     { name = "flake8", specifier = ">=6.0.0" },
@@ -4524,18 +4232,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/e6/30/fba0d96b4b5fbf5948ed3f4681f7da2f9f64512e1d303f94b4cc174c24a5/websocket_client-1.8.0.tar.gz", hash = "sha256:3239df9f44da632f96012472805d40a23281a991027ce11d2f45a6f24ac4c3da", size = 54648, upload-time = "2024-04-23T22:16:16.976Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5a/84/44687a29792a70e111c5c477230a72c4b957d88d16141199bf9acb7537a3/websocket_client-1.8.0-py3-none-any.whl", hash = "sha256:17b44cc997f5c498e809b22cdf2d9c7a9e71c02c8cc2b6c56e7c2d1239bfa526", size = 58826, upload-time = "2024-04-23T22:16:14.422Z" },
-]
-
-[[package]]
-name = "werkzeug"
-version = "2.3.8"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "markupsafe" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/3d/4b/d746f1000782c89d6c97df9df43ba8f4d126038608843d3560ae88d201b5/werkzeug-2.3.8.tar.gz", hash = "sha256:554b257c74bbeb7a0d254160a4f8ffe185243f52a52035060b761ca62d977f03", size = 819747, upload-time = "2023-11-08T18:37:03.303Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/fd/21/0a674dfe66e9df9072c46269c882e9f901d36d987d8ea50ead033a9c1e01/werkzeug-2.3.8-py3-none-any.whl", hash = "sha256:bba1f19f8ec89d4d607a3bd62f1904bd2e609472d93cd85e9d4e178f472c3748", size = 242332, upload-time = "2023-11-08T18:37:01.088Z" },
 ]
 
 [[package]]

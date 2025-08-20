@@ -35,6 +35,8 @@ declare -A WORKERS=(
     ["notification"]="notification"
     ["notifications"]="notification"
     ["notify"]="notification"
+    ["scheduler"]="scheduler"
+    ["schedule"]="scheduler"
     ["all"]="all"
 )
 
@@ -46,6 +48,7 @@ declare -A WORKER_QUEUES=(
     ["callback"]="file_processing_callback,api_file_processing_callback"
     ["log_consumer"]="celery_log_task_queue"
     ["notification"]="notifications,notifications_webhook,notifications_email,notifications_sms,notifications_priority"
+    ["scheduler"]="scheduler"
 )
 
 # Worker health ports
@@ -56,6 +59,7 @@ declare -A WORKER_HEALTH_PORTS=(
     ["callback"]="8083"
     ["log_consumer"]="8084"
     ["notification"]="8085"
+    ["scheduler"]="8087"
 )
 
 # Function to display usage
@@ -72,6 +76,7 @@ WORKER_TYPE:
     callback              Run callback worker
     log, log-consumer     Run log consumer worker
     notification, notify  Run notification worker
+    scheduler, schedule   Run scheduler worker (scheduled pipeline tasks)
     all                   Run all workers (in separate processes)
 
 OPTIONS:
@@ -131,6 +136,7 @@ HEALTH CHECKS:
     - Callback: http://localhost:8083/health
     - Log Consumer: http://localhost:8084/health
     - Notification: http://localhost:8085/health
+    - Scheduler: http://localhost:8087/health
 
 EOF
 }
@@ -222,7 +228,7 @@ show_status() {
     print_status $BLUE "Worker Status:"
     echo "=============="
 
-    for worker in api-deployment general file_processing callback log_consumer notification; do
+    for worker in api-deployment general file_processing callback log_consumer notification scheduler; do
         local worker_dir="$WORKERS_DIR/$worker"
         local health_port="${WORKER_HEALTH_PORTS[$worker]}"
         local pids=$(get_worker_pids "$worker")
@@ -290,6 +296,9 @@ run_worker() {
             "notification")
                 export NOTIFICATION_HEALTH_PORT="$health_port"
                 ;;
+            "scheduler")
+                export SCHEDULER_HEALTH_PORT="$health_port"
+                ;;
         esac
     fi
 
@@ -338,6 +347,9 @@ run_worker() {
             "notification")
                 cmd_args+=("--autoscale=4,1")
                 ;;
+            "scheduler")
+                cmd_args+=("--autoscale=2,1")
+                ;;
         esac
     fi
 
@@ -371,7 +383,7 @@ run_all_workers() {
     print_status $GREEN "Starting all workers..."
 
     # Always run all workers in background when using "all"
-    for worker in api-deployment general file_processing callback log_consumer notification; do
+    for worker in api-deployment general file_processing callback log_consumer notification scheduler; do
         print_status $BLUE "Starting $worker worker in background..."
 
         # Run each worker in background
