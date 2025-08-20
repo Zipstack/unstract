@@ -361,7 +361,9 @@ class DeploymentHelper(BaseAPIKeyValidator):
             elif isinstance(e, requests.exceptions.ConnectionError):
                 status_code = 502  # Bad Gateway
                 error_msg = f"Connection error: {str(e)}"
-                logger.error(f"Connection error fetching presigned URL {sanitized_url}: {e}")
+                logger.error(
+                    f"Connection error fetching presigned URL {sanitized_url}: {e}"
+                )
             else:
                 status_code = 400
                 error_msg = str(e)
