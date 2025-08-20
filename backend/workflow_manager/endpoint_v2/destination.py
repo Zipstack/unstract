@@ -370,10 +370,9 @@ class DestinationConnector(BaseConnector):
 
         # Check whether to migrate table to include new columns
         if table_info:
-            is_string = db_class.is_string_column(
+            if db_class.is_string_column(
                 table_info=table_info, column_name=single_column_name
-            )
-            if is_string:
+            ):
                 db_class.migrate_table_to_v2(
                     table_name=table_name,
                     column_name=single_column_name,
