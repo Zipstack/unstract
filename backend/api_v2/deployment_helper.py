@@ -406,10 +406,5 @@ class DeploymentHelper(BaseAPIKeyValidator):
             file_objs (list[UploadedFile]): List to append the fetched files to
         """
         for url in presigned_urls:
-            try:
-                uploaded_file = DeploymentHelper.fetch_presigned_file(url)
-                file_objs.append(uploaded_file)
-            except Exception as e:
-                logger.error(f"Error fetching file from URL: {e}")
-                # Re-raise the error to be handled by the caller
-                raise
+            uploaded_file = DeploymentHelper.fetch_presigned_file(url)
+            file_objs.append(uploaded_file)
