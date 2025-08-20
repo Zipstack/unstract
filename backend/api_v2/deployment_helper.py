@@ -271,11 +271,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         file_stream = None
 
         try:
-            # Get max file size from settings
-            try:
-                max_bytes = settings.API_DEPL_PRESIGNED_URL_MAX_FILE_SIZE_MB * 1024 * 1024
-            except Exception:
-                max_bytes = 20 * 1024 * 1024  # sane default if settings unavailable
+            max_bytes = settings.API_DEPL_PRESIGNED_URL_MAX_FILE_SIZE_MB * 1024 * 1024
 
             file_stream = BytesIO()
             downloaded = 0
