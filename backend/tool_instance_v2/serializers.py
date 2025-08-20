@@ -146,7 +146,7 @@ class ToolInstanceSerializer(AuditSerializer):
                         )
 
         except Exception as e:
-            logger.error(f"Error transforming adapter IDs to names: {e}")
+            logger.error(f"Error transforming adapter IDs to names: {e}", exc_info=True)
         return display_metadata
 
     def create(self, validated_data: dict[str, Any]) -> Any:
