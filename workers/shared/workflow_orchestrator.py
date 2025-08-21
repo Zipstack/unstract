@@ -9,6 +9,14 @@ from typing import Any
 
 # Import shared data models
 from unstract.core.data_models import ExecutionStatus, FileHashData
+
+# Import file execution tracking for proper recovery mechanism
+from unstract.core.file_execution_tracker import (
+    FileExecutionStage,
+    FileExecutionStageData,
+    FileExecutionStageStatus,
+    FileExecutionStatusTracker,
+)
 from unstract.workflow_execution.dto import ToolInstance, WorkflowDto
 from unstract.workflow_execution.enums import ExecutionType
 
@@ -16,9 +24,21 @@ from unstract.workflow_execution.enums import ExecutionType
 from unstract.workflow_execution.workflow_execution import WorkflowExecutionService
 
 from .api_client import InternalAPIClient
+from .data_models import FileExecutionData
 
 # Import worker infrastructure
 from .logging_utils import WorkerLogger
+
+# Import execution models for type-safe context handling
+from .models.execution_models import (
+    WorkflowConfig,
+    WorkflowContextData,
+)
+
+# Import tool models for type-safe tool configuration
+from .models.tool_models import (
+    convert_tools_config_from_dict,
+)
 from .retry_utils import circuit_breaker, retry
 
 logger = WorkerLogger.get_logger(__name__)
@@ -36,13 +56,109 @@ class WorkerWorkflowOrchestrator:
         self.api_client = api_client  # Database operations only
         self.workflow_service = WorkflowExecutionService()
 
+    def _check_and_resume_execution(
+        self, execution_id: str, file_execution_id: str
+    ) -> tuple[FileExecutionStage | None, FileExecutionData | None]:
+        """Check Redis for existing execution state and determine resume point.
+
+        Args:
+            execution_id: Workflow execution ID
+            file_execution_id: File execution ID
+
+        Returns:
+            Tuple of (resume_stage, existing_data) or (None, None) if no recovery needed
+        """
+        try:
+            tracker = FileExecutionStatusTracker()
+            existing_data = tracker.get_data(execution_id, file_execution_id)
+
+            if not existing_data:
+                # No existing data, start fresh
+                return None, None
+
+            current_stage = existing_data.stage_status.stage
+            current_status = existing_data.stage_status.status
+
+            logger.info(
+                f"Found existing execution data: stage={current_stage.value}, "
+                f"status={current_status.value} for {file_execution_id}"
+            )
+
+            if current_stage == FileExecutionStage.COMPLETED:
+                if current_status == FileExecutionStageStatus.SUCCESS:
+                    # Already completed successfully, skip processing
+                    logger.info(
+                        f"File {file_execution_id} already completed successfully"
+                    )
+                    return FileExecutionStage.COMPLETED, existing_data
+
+            elif current_status == FileExecutionStageStatus.FAILED:
+                # Restart from failed stage
+                logger.info(f"Restarting from failed stage: {current_stage.value}")
+                return current_stage, existing_data
+
+            elif current_status == FileExecutionStageStatus.IN_PROGRESS:
+                # Resume interrupted execution
+                logger.info(
+                    f"Resuming interrupted execution at stage: {current_stage.value}"
+                )
+                return current_stage, existing_data
+
+            # Continue from current stage
+            return current_stage, existing_data
+
+        except Exception as e:
+            logger.warning(f"Failed to check existing execution state: {str(e)}")
+            # On error, start fresh
+            return None, None
+
+    def _update_file_execution_tracker(
+        self,
+        execution_id: str,
+        file_execution_id: str,
+        stage: FileExecutionStage,
+        status: FileExecutionStageStatus,
+        error: str | None = None,
+        file_hash: str | None = None,
+    ) -> bool:
+        """Update file execution tracker with proper stage tracking.
+
+        Replaces the basic _checkpoint_progress method with full FileExecutionStatusTracker integration.
+        """
+        try:
+            tracker = FileExecutionStatusTracker()
+            stage_data = FileExecutionStageData(
+                stage=stage,
+                status=status,
+                error=error,
+            )
+
+            tracker.update_stage_status(
+                execution_id=execution_id,
+                file_execution_id=file_execution_id,
+                stage_status=stage_data,
+                file_hash=file_hash,
+            )
+
+            logger.debug(
+                f"Updated file execution tracker: {stage.value}:{status.value} "
+                f"for {file_execution_id}"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(
+                f"Failed to update file execution tracker for {file_execution_id}: {str(e)}"
+            )
+            return False
+
     @retry(max_attempts=3, base_delay=2.0)
     @circuit_breaker(failure_threshold=5, recovery_timeout=120.0)
     def execute_workflow_file(
         self,
         file_data: FileHashData,
-        workflow_config: dict[str, Any],
-        execution_context: dict[str, Any],
+        workflow_config: WorkflowConfig,
+        execution_context: WorkflowContextData,
     ) -> dict[str, Any]:
         """Execute workflow for single file with database checkpoints.
 
@@ -52,7 +168,7 @@ class WorkerWorkflowOrchestrator:
         Args:
             file_data: FileHashData object with file information
             workflow_config: Workflow configuration with tools and settings
-            execution_context: Execution context with IDs and metadata
+            execution_context: WorkflowContextData with type-safe context
 
         Returns:
             Dictionary with execution results
@@ -60,17 +176,33 @@ class WorkerWorkflowOrchestrator:
         Raises:
             RuntimeError: If workflow execution fails
         """
-        workflow_id = execution_context["workflow_id"]
-        execution_id = execution_context["execution_id"]
-        organization_id = execution_context["organization_id"]
-
         logger.info(
-            f"Executing workflow for file {file_data.file_name} (workflow: {workflow_id})"
+            f"Executing workflow for file {file_data.file_name} (workflow: {execution_context.workflow_id})"
         )
 
-        # Create file execution record via database API
+        # Create file execution record and check for resume
+        file_execution_id, should_skip = self._create_and_check_file_execution(
+            file_data, execution_context
+        )
+
+        if should_skip:
+            return self._create_skip_response(file_execution_id, file_data.file_name)
+
+        # Execute the workflow core logic
+        return self._execute_workflow_core(
+            file_data, workflow_config, execution_context, file_execution_id
+        )
+
+    def _create_and_check_file_execution(
+        self, file_data: FileHashData, execution_context: WorkflowContextData
+    ) -> tuple[str, bool]:
+        """Create file execution record and check if processing should be skipped.
+
+        Returns:
+            Tuple of (file_execution_id, should_skip)
+        """
         file_execution_data = {
-            "workflow_execution_id": execution_id,
+            "workflow_execution_id": execution_context.execution_id,
             "file_name": file_data.file_name,
             "file_path": file_data.file_path,
             "file_hash": file_data.file_hash,
@@ -83,95 +215,184 @@ class WorkerWorkflowOrchestrator:
         try:
             file_execution = self.api_client.create_file_execution(file_execution_data)
             file_execution_id = file_execution["id"]
-
             logger.debug(f"Created file execution record: {file_execution_id}")
+
+            # Check for existing execution state and recovery point
+            resume_stage, existing_data = self._check_and_resume_execution(
+                execution_context.execution_id, file_execution_id
+            )
+
+            should_skip = resume_stage == FileExecutionStage.COMPLETED and existing_data
+            if should_skip:
+                logger.info(
+                    f"File {file_data.file_name} already completed, skipping processing"
+                )
+
+            return file_execution_id, should_skip
 
         except Exception as e:
             error_msg = f"Failed to create file execution record: {str(e)}"
             logger.error(error_msg)
             raise RuntimeError(error_msg) from e
 
+    def _create_skip_response(
+        self, file_execution_id: str, file_name: str
+    ) -> dict[str, Any]:
+        """Create response for files that should be skipped."""
+        return {
+            "success": True,
+            "file_execution_id": file_execution_id,
+            "file_name": file_name,
+            "status": "completed",
+            "message": "File already processed successfully",
+            "existing_data": True,
+        }
+
+    def _execute_workflow_core(
+        self,
+        file_data: FileHashData,
+        workflow_config: WorkflowConfig,
+        execution_context: WorkflowContextData,
+        file_execution_id: str,
+    ) -> dict[str, Any]:
+        """Execute the core workflow logic with error handling."""
         execution_start_time = time.time()
+        execution_id = execution_context.execution_id
+        organization_id = execution_context.organization_context.organization_id
 
         try:
-            # Checkpoint: File processing started
-            self._checkpoint_progress(
-                file_execution_id,
-                "PROCESSING_STARTED",
-                ExecutionStatus.EXECUTING.value,
-                {"start_time": execution_start_time},
+            # Initialize tracking for fresh execution
+            self._initialize_execution_tracking(
+                execution_id, file_execution_id, file_data.file_hash
             )
 
-            # Prepare workflow DTO for execution service
-            workflow_dto = self._prepare_workflow_dto(
-                workflow_config=workflow_config, execution_context=execution_context
-            )
-
-            # Execute workflow using workflow-execution service (worker-native)
-            workflow_result = self.workflow_service.execute_workflow(
-                workflow_dto=workflow_dto,
-                input_file_path=file_data.file_path,
-                execution_type=ExecutionType.SINGLE_FILE,
-                organization_id=organization_id,
+            # Execute workflow
+            workflow_result = self._execute_workflow_processing(
+                workflow_config, execution_context, file_data, organization_id
             )
 
             execution_time = time.time() - execution_start_time
 
-            # Checkpoint: File processing completed
-            self._checkpoint_progress(
-                file_execution_id,
-                "PROCESSING_COMPLETED",
-                ExecutionStatus.COMPLETED.value,
-                {
-                    "result": workflow_result,
-                    "execution_time": execution_time,
-                    "end_time": time.time(),
-                },
-            )
+            # Mark execution as successful
+            self._mark_execution_success(execution_id, file_execution_id)
 
             logger.info(
                 f"Successfully executed workflow for {file_data.file_name} in {execution_time:.2f}s"
             )
 
-            return {
-                "status": "success",
-                "file_execution_id": file_execution_id,
-                "file_name": file_data.file_name,
-                "execution_time": execution_time,
-                "result": workflow_result,
-            }
+            return self._create_success_response(
+                file_execution_id, file_data.file_name, execution_time, workflow_result
+            )
 
         except Exception as e:
             execution_time = time.time() - execution_start_time
-            error_msg = f"Workflow execution failed for {file_data.file_name}: {str(e)}"
-
-            # Checkpoint: File processing failed
-            self._checkpoint_progress(
-                file_execution_id,
-                "PROCESSING_FAILED",
-                ExecutionStatus.ERROR.value,
-                {
-                    "error": str(e),
-                    "execution_time": execution_time,
-                    "end_time": time.time(),
-                },
+            return self._handle_execution_error(
+                e, execution_id, file_execution_id, file_data.file_name, execution_time
             )
 
-            logger.error(error_msg, exc_info=True)
+    def _initialize_execution_tracking(
+        self, execution_id: str, file_execution_id: str, file_hash: str
+    ) -> None:
+        """Initialize execution tracking for fresh execution."""
+        # Only track initialization if starting fresh (following backend pattern)
+        self._update_file_execution_tracker(
+            execution_id=execution_id,
+            file_execution_id=file_execution_id,
+            stage=FileExecutionStage.INITIALIZATION,
+            status=FileExecutionStageStatus.IN_PROGRESS,
+            file_hash=file_hash,
+        )
 
-            return {
-                "status": "error",
-                "file_execution_id": file_execution_id,
-                "file_name": file_data.file_name,
-                "execution_time": execution_time,
-                "error": str(e),
-            }
+    def _execute_workflow_processing(
+        self,
+        workflow_config: WorkflowConfig,
+        execution_context: WorkflowContextData,
+        file_data: FileHashData,
+        organization_id: str,
+    ) -> Any:
+        """Execute the workflow processing step."""
+        # Prepare workflow DTO for execution service
+        workflow_dto = self._prepare_workflow_dto(
+            workflow_config=workflow_config, execution_context=execution_context
+        )
+
+        # Execute workflow using workflow-execution service (worker-native)
+        return self.workflow_service.execute_workflow(
+            workflow_dto=workflow_dto,
+            input_file_path=file_data.file_path,
+            execution_type=ExecutionType.SINGLE_FILE,
+            organization_id=organization_id,
+        )
+
+    def _mark_execution_success(self, execution_id: str, file_execution_id: str) -> None:
+        """Mark execution stages as successful."""
+        # Mark finalization successful (backend pattern: skip intermediate TOOL_EXECUTION tracking)
+        self._update_file_execution_tracker(
+            execution_id=execution_id,
+            file_execution_id=file_execution_id,
+            stage=FileExecutionStage.FINALIZATION,
+            status=FileExecutionStageStatus.SUCCESS,
+        )
+
+        # Mark final completion
+        self._update_file_execution_tracker(
+            execution_id=execution_id,
+            file_execution_id=file_execution_id,
+            stage=FileExecutionStage.COMPLETED,
+            status=FileExecutionStageStatus.SUCCESS,
+        )
+
+    def _create_success_response(
+        self,
+        file_execution_id: str,
+        file_name: str,
+        execution_time: float,
+        workflow_result: Any,
+    ) -> dict[str, Any]:
+        """Create success response dictionary."""
+        return {
+            "status": "success",
+            "file_execution_id": file_execution_id,
+            "file_name": file_name,
+            "execution_time": execution_time,
+            "result": workflow_result,
+        }
+
+    def _handle_execution_error(
+        self,
+        error: Exception,
+        execution_id: str,
+        file_execution_id: str,
+        file_name: str,
+        execution_time: float,
+    ) -> dict[str, Any]:
+        """Handle execution error and create error response."""
+        error_msg = f"Workflow execution failed for {file_name}: {str(error)}"
+
+        # Mark finalization as failed (backend pattern: go directly to finalization on error)
+        self._update_file_execution_tracker(
+            execution_id=execution_id,
+            file_execution_id=file_execution_id,
+            stage=FileExecutionStage.FINALIZATION,
+            status=FileExecutionStageStatus.FAILED,
+            error=str(error),
+        )
+
+        logger.error(error_msg, exc_info=True)
+
+        return {
+            "status": "error",
+            "file_execution_id": file_execution_id,
+            "file_name": file_name,
+            "execution_time": execution_time,
+            "error": str(error),
+        }
 
     def execute_workflow_batch(
         self,
         files: list[FileHashData],
-        workflow_config: dict[str, Any],
-        execution_context: dict[str, Any],
+        workflow_config: WorkflowConfig,
+        execution_context: WorkflowContextData,
         max_concurrent: int = 3,
     ) -> dict[str, Any]:
         """Execute workflow for multiple files with controlled concurrency.
@@ -179,7 +400,7 @@ class WorkerWorkflowOrchestrator:
         Args:
             files: List of FileHashData objects
             workflow_config: Workflow configuration
-            execution_context: Execution context
+            execution_context: WorkflowContextData with type-safe context
             max_concurrent: Maximum concurrent file processing
 
         Returns:
@@ -241,79 +462,42 @@ class WorkerWorkflowOrchestrator:
 
         return batch_result
 
-    def _checkpoint_progress(
-        self,
-        file_execution_id: str,
-        stage: str,
-        status: str,
-        metadata: dict | None = None,
-    ) -> bool:
-        """Database checkpoint via API client - keeps backend informed.
-
-        Args:
-            file_execution_id: File execution ID
-            stage: Processing stage name
-            status: Execution status
-            metadata: Additional metadata (optional)
-
-        Returns:
-            True if checkpoint successful, False otherwise
-        """
-        try:
-            checkpoint_data = {
-                "status": status,
-                "metadata": metadata or {},
-                "stage": stage,
-                "checkpoint_time": time.time(),
-            }
-
-            # Update file execution via database API
-            success = self.api_client.update_file_execution_status(
-                file_execution_id=file_execution_id, **checkpoint_data
-            )
-
-            logger.debug(
-                f"Checkpoint {stage} for file execution {file_execution_id}: {'success' if success else 'failed'}"
-            )
-            return success
-
-        except Exception as e:
-            logger.error(
-                f"Failed to checkpoint progress for {file_execution_id}: {str(e)}"
-            )
-            return False
+    # Removed _checkpoint_progress method - replaced with _update_file_execution_tracker
+    # for proper FileExecutionStatusTracker integration
 
     def _prepare_workflow_dto(
-        self, workflow_config: dict[str, Any], execution_context: dict[str, Any]
+        self, workflow_config: WorkflowConfig, execution_context: WorkflowContextData
     ) -> WorkflowDto:
         """Prepare WorkflowDto from configuration for execution service.
 
         Args:
             workflow_config: Workflow configuration
-            execution_context: Execution context
+            execution_context: WorkflowContextData with type-safe context
 
         Returns:
             WorkflowDto object for execution service
         """
-        # Extract tools configuration
-        tools_config = workflow_config.get("tools", [])
+        # Extract tools configuration and convert to type-safe dataclasses
+        tools_config_data = workflow_config.get_tools_config()
+        tool_configs = convert_tools_config_from_dict(tools_config_data)
 
-        # Convert tools config to ToolInstance objects
+        # Convert typed tool configs to ToolInstance objects for workflow execution service
         tool_instances = []
-        for tool_config in tools_config:
-            tool_instance = ToolInstance(
-                tool_id=tool_config.get("tool_id"),
-                tool_name=tool_config.get("tool_name", ""),
-                tool_settings=tool_config.get("settings", {}),
-                step_name=tool_config.get("step_name", ""),
-                prompt_registry_id=tool_config.get("prompt_registry_id"),
-                enable=tool_config.get("enable", True),
-            )
-            tool_instances.append(tool_instance)
+        for tool_config in tool_configs:
+            if tool_config.is_enabled:  # Only include enabled tools
+                tool_instance = ToolInstance(
+                    tool_id=tool_config.tool_id,
+                    tool_name=tool_config.tool_name,
+                    tool_settings=tool_config.tool_settings,
+                    step_name=tool_config.step_name,
+                    prompt_registry_id=tool_config.prompt_registry_id,
+                    enable=tool_config.enable,
+                )
+                tool_instances.append(tool_instance)
 
         # Create workflow DTO
         workflow_dto = WorkflowDto(
-            id=execution_context["workflow_id"],
+            id=execution_context.workflow_id,
         )
 
         logger.debug(f"Prepared workflow DTO with {len(tool_instances)} tools")
@@ -400,7 +584,7 @@ class WorkerWorkflowExecutionManager:
         execution_id: str,
         organization_id: str,
         source_files: list[FileHashData],
-        workflow_config: dict[str, Any],
+        workflow_config: WorkflowConfig,
     ) -> dict[str, Any]:
         """Execute complete workflow with all files.
 
@@ -493,7 +677,7 @@ class WorkerWorkflowExecutionManager:
             raise RuntimeError(error_msg) from e
 
     def retry_failed_files(
-        self, execution_id: str, organization_id: str, workflow_config: dict[str, Any]
+        self, execution_id: str, organization_id: str, workflow_config: WorkflowConfig
     ) -> dict[str, Any]:
         """Retry execution for failed files only.
 

@@ -111,10 +111,12 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             is_api = False
 
             if execution.pipeline_id:
-                # ETL/Task pipeline execution
+                # Check if pipeline_id references a Pipeline or APIDeployment (like serializer)
+                from api_v2.models import APIDeployment
                 from pipeline_v2.models import Pipeline
 
                 try:
+                    # First check if it's a Pipeline
                     pipeline = Pipeline.objects.get(id=execution.pipeline_id)
                     source_settings = pipeline.workflow.source_settings or {}
                     workflow_type = "pipeline"
@@ -123,11 +125,24 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                         f"Pipeline {execution.pipeline_id} source settings: {bool(source_settings)}"
                     )
                 except Pipeline.DoesNotExist:
-                    logger.warning(
-                        f"Pipeline {execution.pipeline_id} not found for execution {execution.id}"
-                    )
-                    source_settings = workflow.source_settings or {}
-                    workflow_type = "pipeline_not_found"
+                    # Check if it's an APIDeployment (like serializer does)
+                    try:
+                        api_deployment = APIDeployment.objects.get(
+                            id=execution.pipeline_id
+                        )
+                        source_settings = workflow.source_settings or {}
+                        workflow_type = "api_deployment"
+                        is_api = True
+                        logger.debug(
+                            f"APIDeployment {execution.pipeline_id} found for execution {execution.id}"
+                        )
+                    except APIDeployment.DoesNotExist:
+                        # Neither Pipeline nor APIDeployment exists
+                        logger.warning(
+                            f"Neither Pipeline nor APIDeployment found for ID {execution.pipeline_id} in execution {execution.id}"
+                        )
+                        source_settings = workflow.source_settings or {}
+                        workflow_type = "pipeline_not_found"
             else:
                 # API deployment or general workflow execution
                 source_settings = workflow.source_settings or {}
@@ -400,34 +415,49 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             if serializer.is_valid():
                 validated_data = serializer.validated_data
 
-                # Update execution status
-                execution.status = validated_data["status"]
+                # FIXED: Use update_execution() method for proper wall-clock time calculation
+                # This replaces manual field setting which bypassed execution time logic
 
+                # Handle error message truncation before calling update_execution
+                error_message = None
                 if validated_data.get("error_message"):
-                    # Truncate error message to fit database constraint (256 chars)
-                    error_message = validated_data["error_message"]
-                    if len(error_message) > 256:
-                        execution.error_message = error_message[:253] + "..."
+                    error_msg = validated_data["error_message"]
+                    if len(error_msg) > 256:
+                        error_message = error_msg[:253] + "..."
                         logger.warning(
-                            f"Error message truncated for execution {id} (original length: {len(error_message)})"
+                            f"Error message truncated for execution {id} (original length: {len(error_msg)})"
                         )
                     else:
-                        execution.error_message = error_message
+                        error_message = error_msg
 
+                # Handle attempts increment
+                increment_attempt = (
+                    validated_data.get("attempts") is not None
+                    and validated_data.get("attempts") > execution.attempts
+                )
+
+                # Use the model's update_execution method for proper wall-clock calculation
+                from workflow_manager.workflow_v2.enums import ExecutionStatus
+
+                status_enum = ExecutionStatus(validated_data["status"])
+                execution.update_execution(
+                    status=status_enum,
+                    error=error_message,
+                    increment_attempt=increment_attempt,
+                )
+
+                # Update total_files separately (not handled by update_execution)
                 if validated_data.get("total_files") is not None:
                     execution.total_files = validated_data["total_files"]
+                    execution.save()
 
-                if validated_data.get("attempts") is not None:
-                    execution.attempts = validated_data["attempts"]
-
+                # Log ignored execution_time from workers
                 if validated_data.get("execution_time") is not None:
-                    execution.execution_time = validated_data["execution_time"]
+                    worker_time = validated_data["execution_time"]
+                    actual_time = execution.execution_time
                     logger.info(
-                        f"DEBUG: Updated execution {id} execution_time to {validated_data['execution_time']:.2f}s"
+                        f"DEBUG: Ignored worker execution_time {worker_time:.2f}s - using wall-clock time {actual_time:.2f}s instead"
                     )
-
-                execution.modified_at = timezone.now()
-                execution.save()
 
                 logger.info(
                     f"Updated workflow execution {id} status to {validated_data['status']}"
@@ -628,16 +658,28 @@ class ExecutionFinalizationAPIView(APIView):
             error_summary = request_data.get("error_summary", {})
 
             with transaction.atomic():
-                # Update execution with final status and metrics
-                execution.status = final_status
+                # FIXED: Use update_execution() method for proper wall-clock time calculation
+                # Don't override execution_time with worker's summed time
+
+                from workflow_manager.workflow_v2.enums import ExecutionStatus
+
+                status_enum = ExecutionStatus(final_status)
+
+                # Use the model's update_execution method for proper wall-clock calculation
+                execution.update_execution(
+                    status=status_enum,
+                    error=str(error_summary) if error_summary else None,
+                    increment_attempt=False,
+                )
+
+                # Update total_files separately (not handled by update_execution)
                 execution.total_files = total_files_processed
-                execution.execution_time = total_execution_time
-
-                if error_summary:
-                    execution.error_message = str(error_summary)
-
-                execution.modified_at = timezone.now()
                 execution.save()
+
+                # Log ignored execution_time from workers
+                logger.info(
+                    f"DEBUG: Finalization ignored worker total_execution_time {total_execution_time:.2f}s - using wall-clock time {execution.execution_time:.2f}s instead"
+                )
 
                 # Additional finalization logic could go here:
                 # - Cache cleanup

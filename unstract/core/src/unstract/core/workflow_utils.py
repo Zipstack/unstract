@@ -76,27 +76,46 @@ class WorkflowTypeDetector:
 
     @staticmethod
     def get_connection_type_from_endpoints(
-        endpoints_response: dict[str, Any],
+        endpoints_response: Any,
     ) -> tuple[str, bool]:
         """Determine connection type from workflow endpoints response.
 
         Args:
-            endpoints_response: Response from workflow endpoints API
+            endpoints_response: Response from workflow endpoints API (dict or dataclass)
 
         Returns:
             Tuple of (connection_type, is_api_workflow)
         """
-        # Check if workflow has API endpoints
-        has_api_endpoints = endpoints_response.get("has_api_endpoints", False)
+        # Handle both dataclass and dict responses
+        if hasattr(endpoints_response, "has_api_endpoints"):
+            # Dataclass response object
+            has_api_endpoints = endpoints_response.has_api_endpoints
+            destination_endpoint = endpoints_response.destination_endpoint
+        else:
+            # Dict response
+            has_api_endpoints = endpoints_response.get("has_api_endpoints", False)
+            destination_endpoint = endpoints_response.get("destination_endpoint", {})
 
         if has_api_endpoints:
             return WorkflowConnectionTypes.API, True
 
         # Check destination endpoint type
-        destination_endpoint = endpoints_response.get("destination_endpoint", {})
-        connection_type = destination_endpoint.get(
-            "connection_type", WorkflowConnectionTypes.FILESYSTEM
-        )
+        if hasattr(destination_endpoint, "get"):
+            # Dict format
+            connection_type = destination_endpoint.get(
+                "connection_type", WorkflowConnectionTypes.FILESYSTEM
+            )
+        else:
+            # Object format or None
+            connection_type = (
+                getattr(
+                    destination_endpoint,
+                    "connection_type",
+                    WorkflowConnectionTypes.FILESYSTEM,
+                )
+                if destination_endpoint
+                else WorkflowConnectionTypes.FILESYSTEM
+            )
 
         # API connection type also indicates API workflow
         is_api = connection_type == WorkflowConnectionTypes.API
@@ -258,13 +277,25 @@ class PipelineTypeResolver:
                 WorkflowTypeDetector.get_connection_type_from_endpoints(endpoints)
             )
 
+            # Handle both dataclass and dict responses
+            if hasattr(endpoints, "has_api_endpoints"):
+                # Dataclass response
+                has_api_endpoints = endpoints.has_api_endpoints
+                source_endpoint = endpoints.source_endpoint
+                destination_endpoint = endpoints.destination_endpoint
+            else:
+                # Dict response
+                has_api_endpoints = endpoints.get("has_api_endpoints", False)
+                source_endpoint = endpoints.get("source_endpoint")
+                destination_endpoint = endpoints.get("destination_endpoint")
+
             return {
                 "workflow_id": str(workflow_id),
                 "connection_type": connection_type,
                 "is_api_workflow": is_api,
-                "has_api_endpoints": endpoints.get("has_api_endpoints", False),
-                "source_endpoint": endpoints.get("source_endpoint"),
-                "destination_endpoint": endpoints.get("destination_endpoint"),
+                "has_api_endpoints": has_api_endpoints,
+                "source_endpoint": source_endpoint,
+                "destination_endpoint": destination_endpoint,
             }
 
         except Exception as e:

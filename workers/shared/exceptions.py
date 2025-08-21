@@ -173,6 +173,16 @@ class OrganizationContextError(WorkerError):
         super().__init__(message)
 
 
+class WorkerExecutionError(WorkerError):
+    """Raised when worker execution setup or execution fails."""
+
+    def __init__(self, message: str, execution_id: str = None, details: str = None):
+        self.execution_id = execution_id
+        if execution_id:
+            message = f"Execution {execution_id}: {message}"
+        super().__init__(message, details)
+
+
 # Exception mapping for converting backend exceptions to worker exceptions
 BACKEND_TO_WORKER_EXCEPTION_MAP = {
     "InvalidInputDirectory": InvalidInputDirectory,

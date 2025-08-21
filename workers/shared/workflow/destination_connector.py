@@ -12,13 +12,13 @@ Handles:
 """
 
 import json
-import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional
 
 from unstract.core.data_models import ConnectionType as CoreConnectionType
 from unstract.core.data_models import FileHashData
 
+from ..enums import FileDestinationType
 from ..logging_utils import WorkerLogger
 
 if TYPE_CHECKING:
@@ -59,25 +59,19 @@ class DestinationConfig:
     def get_core_connection_type(self) -> CoreConnectionType:
         """Convert string connection_type to CoreConnectionType enum."""
         try:
-            # Map string values to enum values
-            type_mapping = {
-                "FILESYSTEM": CoreConnectionType.FILESYSTEM,
-                "DATABASE": CoreConnectionType.DATABASE,
-                "API": CoreConnectionType.API,
-                "API_DEPLOYMENT": CoreConnectionType.API_DEPLOYMENT,
-                "QUEUE": CoreConnectionType.QUEUE,
-                "MANUALREVIEW": CoreConnectionType.MANUALREVIEW,
-            }
-
-            # Handle case-insensitive lookup
+            # Use the enum directly for consistent mapping
             connection_type_upper = self.connection_type.upper()
-            if connection_type_upper in type_mapping:
-                return type_mapping[connection_type_upper]
-            else:
-                logger.warning(
-                    f"Unknown connection type '{self.connection_type}', defaulting to DATABASE"
-                )
-                return CoreConnectionType.DATABASE
+
+            # Try to get enum member by value
+            for connection_type_enum in CoreConnectionType:
+                if connection_type_enum.value == connection_type_upper:
+                    return connection_type_enum
+
+            # Fallback: handle legacy/unknown types
+            logger.warning(
+                f"Unknown connection type '{self.connection_type}', defaulting to DATABASE"
+            )
+            return CoreConnectionType.DATABASE
 
         except Exception as e:
             logger.error(
@@ -109,12 +103,8 @@ class WorkerDestinationConnector:
     from workflow_manager/endpoint_v2/destination.py without Django dependencies.
     """
 
-    # Connection type constants matching backend
-    class ConnectionType:
-        FILESYSTEM = "FILESYSTEM"
-        DATABASE = "DATABASE"
-        API = "API"
-        MANUALREVIEW = "MANUALREVIEW"
+    # Use CoreConnectionType directly - no need for wrapper class
+    ConnectionType = CoreConnectionType
 
     def __init__(self, config: DestinationConfig, workflow_log=None):
         self.config = config
@@ -268,12 +258,12 @@ class WorkerDestinationConnector:
         """Handle output for individual file (original handle_output logic without manual review)."""
         try:
             # Process through destination based on connection type
-            if self.connection_type == CoreConnectionType.DATABASE:
+            if self.connection_type == CoreConnectionType.DATABASE.value:
                 self.insert_into_db(
                     input_file_path=input_file_path,
                     tool_execution_result=tool_execution_result,
                 )
-            elif self.connection_type == CoreConnectionType.FILESYSTEM:
+            elif self.connection_type == CoreConnectionType.FILESYSTEM.value:
                 self.copy_output_to_output_directory(input_file_path)
             else:
                 logger.warning(f"Unsupported connection type: {self.connection_type}")
@@ -310,7 +300,7 @@ class WorkerDestinationConnector:
         # Check if file is marked for manual review via file_destination field
         if (
             hasattr(file_hash, "file_destination")
-            and file_hash.file_destination == "MANUALREVIEW"
+            and file_hash.file_destination == FileDestinationType.MANUALREVIEW.value
         ):
             logger.info(
                 f"File {file_name} marked for manual review via file_destination field"
@@ -346,9 +336,9 @@ class WorkerDestinationConnector:
             return tool_execution_result
 
         try:
-            if connection_type == self.ConnectionType.FILESYSTEM:
+            if connection_type == self.ConnectionType.FILESYSTEM.value:
                 self.copy_output_to_output_directory(input_file_path)
-            elif connection_type == self.ConnectionType.DATABASE:
+            elif connection_type == self.ConnectionType.DATABASE.value:
                 # Check for manual review first (like backend)
                 if not self._should_handle_hitl(
                     file_name=file_name,
@@ -370,7 +360,7 @@ class WorkerDestinationConnector:
                         )
                     # Handle database insertion following production pattern
                     self.insert_into_db(input_file_path, tool_execution_result)
-            elif connection_type == self.ConnectionType.API:
+            elif connection_type == self.ConnectionType.API.value:
                 logger.info(f"API connection type detected for file {file_name}")
                 # Check for HITL (Manual Review Queue) override for API deployments (like backend)
                 if not self._should_handle_hitl(
@@ -398,7 +388,7 @@ class WorkerDestinationConnector:
                         tool_execution_result = self.get_tool_execution_result(
                             file_history, tool_execution_result
                         )
-            elif connection_type == self.ConnectionType.MANUALREVIEW:
+            elif connection_type == self.ConnectionType.MANUALREVIEW.value:
                 # Get real tool execution result if not provided
                 if not tool_execution_result:
                     tool_execution_result = (
@@ -424,7 +414,7 @@ class WorkerDestinationConnector:
         except Exception as destination_error:
             logger.error(f"Destination handle_output failed: {str(destination_error)}")
             # Don't re-raise for API destinations to allow workflow completion
-            if connection_type != self.ConnectionType.API:
+            if connection_type != self.ConnectionType.API.value:
                 raise
             else:
                 logger.warning(
@@ -503,8 +493,12 @@ class WorkerDestinationConnector:
         if isinstance(data, dict):
             data.pop("metadata", None)
 
-        # Generate execution ID for this operation
-        execution_id = str(uuid.uuid4())
+        # Use the workflow execution ID - warn if not available
+        if not self.execution_id:
+            logger.warning("Workflow execution_id not provided, using NULL in database")
+            execution_id = None
+        else:
+            execution_id = self.execution_id
 
         values = WorkerDatabaseUtils.get_columns_and_values(
             column_mode_str=column_mode,

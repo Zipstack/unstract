@@ -40,22 +40,19 @@ class SourceConfig:
     def get_core_connection_type(self) -> CoreConnectionType:
         """Convert string connection_type to CoreConnectionType enum."""
         try:
-            # Map string values to enum values
-            type_mapping = {
-                "FILESYSTEM": CoreConnectionType.FILESYSTEM,
-                "API": CoreConnectionType.API,
-                "API_STORAGE": CoreConnectionType.API_STORAGE,
-            }
-
-            # Handle case-insensitive lookup
+            # Use the enum directly for consistent mapping
             connection_type_upper = self.connection_type.upper()
-            if connection_type_upper in type_mapping:
-                return type_mapping[connection_type_upper]
-            else:
-                logger.warning(
-                    f"Unknown connection type '{self.connection_type}', defaulting to FILESYSTEM"
-                )
-                return CoreConnectionType.FILESYSTEM
+
+            # Try to get enum member by value
+            for connection_type_enum in CoreConnectionType:
+                if connection_type_enum.value == connection_type_upper:
+                    return connection_type_enum
+
+            # Fallback: handle legacy/unknown types
+            logger.warning(
+                f"Unknown connection type '{self.connection_type}', defaulting to FILESYSTEM"
+            )
+            return CoreConnectionType.FILESYSTEM
 
         except Exception as e:
             logger.error(
@@ -82,10 +79,14 @@ class WorkerSourceConnector:
     from workflow_manager/endpoint_v2/source.py without Django dependencies.
     """
 
-    # Connection type constants matching backend
+    # Local connection types for workflow source handling
     class ConnectionType:
-        FILESYSTEM = "FILESYSTEM"
-        API = "API"
+        # Standard connection types from CoreConnectionType
+        FILESYSTEM = CoreConnectionType.FILESYSTEM.value
+        API = CoreConnectionType.API.value
+        DATABASE = CoreConnectionType.DATABASE.value
+
+        # Workflow-specific connection type for API execution storage
         API_STORAGE = "API_STORAGE"
 
     def __init__(self, config: SourceConfig, workflow_log=None):

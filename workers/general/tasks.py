@@ -16,11 +16,24 @@ from shared.data_models import (
     WorkerTaskResponse,
     WorkflowExecutionStatusUpdate,
 )
+from shared.enums import FileDestinationType
+from shared.enums.task_enums import TaskName
+from shared.execution_context import WorkerExecutionContext
+from shared.file_processing_utils import FileProcessingUtils
 from shared.logging_utils import WorkerLogger, log_context, monitor_performance
+
+# Import execution models for type-safe context handling
+from shared.models.execution_models import (
+    WorkflowContextData,
+    create_organization_context,
+)
+from shared.orchestration_utils import WorkflowOrchestrationUtils
 from shared.retry_utils import circuit_breaker
 from shared.source_connector import WorkerSourceConnector
 from shared.type_utils import FileDataValidator, TypeConverter
 from shared.workflow_execution_service import WorkerWorkflowExecutionService
+
+from unstract.connectors import ConnectionType
 
 # Import shared data models for type safety
 from unstract.core.data_models import (
@@ -45,7 +58,7 @@ logger = WorkerLogger.get_logger(__name__)
 
 @app.task(
     bind=True,
-    name="async_execute_bin_general",
+    name=TaskName.ASYNC_EXECUTE_BIN_GENERAL,
     autoretry_for=(Exception,),
     max_retries=3,
     retry_backoff=True,
@@ -101,84 +114,84 @@ def async_execute_bin_general(
         )
 
         try:
-            # Initialize API client with organization context
-            with InternalAPIClient(config) as api_client:
-                api_client.set_organization_context(schema_name)
+            # Initialize execution context with shared utility
+            config, api_client = WorkerExecutionContext.setup_execution_context(
+                schema_name, execution_id, workflow_id
+            )
 
-                # Get workflow execution context
-                execution_response = api_client.get_workflow_execution(execution_id)
-                if not execution_response.success:
-                    raise Exception(
-                        f"Failed to get execution context: {execution_response.error}"
-                    )
-                execution_context = execution_response.data
-                logger.info(f"Retrieved execution context for {execution_id}")
+            # Get workflow execution context
+            execution_response = api_client.get_workflow_execution(execution_id)
+            if not execution_response.success:
+                raise Exception(
+                    f"Failed to get execution context: {execution_response.error}"
+                )
+            execution_context = execution_response.data
+            logger.info(f"Retrieved execution context for {execution_id}")
 
-                # Update execution status to in progress
-                api_client.update_workflow_execution_status(
-                    execution_id=execution_id,
-                    status=ExecutionStatus.EXECUTING.value,
-                    attempts=self.request.retries + 1,
+            # Update execution status to in progress
+            api_client.update_workflow_execution_status(
+                execution_id=execution_id,
+                status=ExecutionStatus.EXECUTING.value,
+                attempts=self.request.retries + 1,
+            )
+
+            # Process file batches if files provided
+            file_batch_results = []
+            if hash_values_of_files:
+                file_batch_results = _process_file_batches_general(
+                    api_client, execution_id, hash_values_of_files, pipeline_id
                 )
 
-                # Process file batches if files provided
-                file_batch_results = []
-                if hash_values_of_files:
-                    file_batch_results = _process_file_batches_general(
-                        api_client, execution_id, hash_values_of_files, pipeline_id
-                    )
+            # Execute workflow-specific logic for general workflows
+            execution_result = _execute_general_workflow(
+                api_client,
+                execution_context,
+                file_batch_results,
+                pipeline_id,
+                execution_mode,
+                use_file_history,
+                scheduled,
+                schema_name,
+            )
 
-                # Execute workflow-specific logic for general workflows
-                execution_result = _execute_general_workflow(
-                    api_client,
-                    execution_context,
-                    file_batch_results,
-                    pipeline_id,
-                    execution_mode,
-                    use_file_history,
-                    scheduled,
-                )
+            # Calculate execution time
+            execution_time = execution_result.get("execution_time", 0)
 
-                # Calculate execution time
-                execution_time = execution_result.get("execution_time", 0)
+            # Update execution status to completed
+            # Only include total_files if we have files to avoid overwriting with 0
+            update_request = WorkflowExecutionStatusUpdate(
+                execution_id=execution_id,
+                status=ExecutionStatus.COMPLETED.value,
+                execution_time=execution_time,
+                total_files=len(hash_values_of_files) if hash_values_of_files else None,
+            )
 
-                # Update execution status to completed
-                # Only include total_files if we have files to avoid overwriting with 0
-                update_request = WorkflowExecutionStatusUpdate(
-                    execution_id=execution_id,
-                    status=ExecutionStatus.COMPLETED.value,
-                    execution_time=execution_time,
-                    total_files=len(hash_values_of_files)
+            api_client.update_workflow_execution_status(**update_request.to_dict())
+
+            logger.info(
+                f"Successfully completed general workflow execution {execution_id}"
+            )
+
+            response = WorkerTaskResponse.success_response(
+                execution_id=execution_id,
+                workflow_id=workflow_id,
+                task_id=task_id,
+                execution_time=execution_time,
+            )
+            response.is_general_workflow = True
+
+            # Convert to dict and add additional fields for backward compatibility
+            response_dict = response.to_dict()
+            response_dict.update(
+                {
+                    "files_processed": len(hash_values_of_files)
                     if hash_values_of_files
-                    else None,
-                )
-
-                api_client.update_workflow_execution_status(**update_request.to_dict())
-
-                logger.info(
-                    f"Successfully completed general workflow execution {execution_id}"
-                )
-
-                response = WorkerTaskResponse.success_response(
-                    execution_id=execution_id,
-                    workflow_id=workflow_id,
-                    task_id=task_id,
-                    execution_time=execution_time,
-                )
-                response.is_general_workflow = True
-
-                # Convert to dict and add additional fields for backward compatibility
-                response_dict = response.to_dict()
-                response_dict.update(
-                    {
-                        "files_processed": len(hash_values_of_files)
-                        if hash_values_of_files
-                        else 0,
-                        "file_batch_results": file_batch_results,
-                        "execution_result": execution_result,
-                    }
-                )
-                return response_dict
+                    else 0,
+                    "file_batch_results": file_batch_results,
+                    "execution_result": execution_result,
+                }
+            )
+            return response_dict
 
         except Exception as e:
             logger.error(f"General workflow execution failed for {execution_id}: {e}")
@@ -287,6 +300,7 @@ def _execute_general_workflow(
     execution_mode: tuple | None,
     use_file_history: bool,
     scheduled: bool,
+    schema_name: str,
 ) -> dict[str, Any]:
     """Execute general workflow specific logic for ETL/TASK workflows.
 
@@ -311,6 +325,7 @@ def _execute_general_workflow(
     logger.info("Executing general workflow logic for ETL/TASK workflow")
 
     try:
+        # Convert dictionary execution context to type-safe dataclass
         execution_data = execution_context.get("execution", {})
         workflow_definition = execution_context.get("workflow_definition", {})
 
@@ -318,23 +333,48 @@ def _execute_general_workflow(
         workflow_id = execution_data.get("workflow_id") or workflow_definition.get(
             "workflow_id"
         )
-        organization_id = (
-            execution_data.get("organization_id")
-            or execution_context.get("organization_id")
-            or execution_context.get("organization_context", {}).get("organization_id")
+        # Note: organization_id extracted but not used directly - schema_name is used instead
+
+        # Create organization context - use schema_name (org string) not numeric organization_id
+        org_context = create_organization_context(schema_name, api_client)
+
+        # Create type-safe workflow context
+        workflow_context = WorkflowContextData(
+            workflow_id=workflow_id,
+            workflow_name=workflow_definition.get(
+                "workflow_name", f"workflow-{workflow_id}"
+            ),
+            workflow_type=workflow_definition.get("workflow_type", "TASK"),
+            execution_id=execution_id,
+            organization_context=org_context,
+            files={},  # Will be populated from source connector
+            settings={
+                "use_file_history": use_file_history,
+                "pipeline_id": pipeline_id,
+            },
+            metadata={
+                "execution_data": execution_data,
+                "workflow_definition": workflow_definition,
+                "execution_context": execution_context,
+                "file_batch_results": file_batch_results,
+                "execution_mode": execution_mode,
+            },
+            is_scheduled=scheduled,
         )
 
         logger.info(
-            f"Starting real workflow execution for workflow {workflow_id}, execution {execution_id}, organization_id={organization_id}"
+            f"Starting real workflow execution for workflow {workflow_context.workflow_id}, execution {workflow_context.execution_id}, organization_id={workflow_context.organization_context.organization_id}"
         )
 
         # Get workflow endpoints to determine connection type
-        workflow_endpoints = api_client.get_workflow_endpoints(workflow_id)
-        has_api_endpoints = workflow_endpoints.get("has_api_endpoints", False)
+        workflow_endpoints = api_client.get_workflow_endpoints(
+            workflow_context.workflow_id
+        )
+        has_api_endpoints = workflow_endpoints.has_api_endpoints
 
         if has_api_endpoints:
             logger.warning(
-                f"Workflow {workflow_id} has API endpoints but routed to general worker - this should use API worker"
+                f"Workflow {workflow_context.workflow_id} has API endpoints but routed to general worker - this should use API worker"
             )
 
         # For ETL/TASK workflows, we need to:
@@ -346,18 +386,19 @@ def _execute_general_workflow(
         # Initialize workflow execution service with migrated business logic
         workflow_service = WorkerWorkflowExecutionService(
             api_client=api_client,
-            workflow_id=workflow_id,
-            organization_id=api_client.organization_id,  # Use api_client's organization_id (already formatted)
-            pipeline_id=pipeline_id,
+            workflow_id=workflow_context.workflow_id,
+            organization_id=workflow_context.organization_context.organization_id,
+            pipeline_id=workflow_context.get_setting("pipeline_id"),
             single_step=False,  # General workflows are complete execution
-            scheduled=scheduled,
-            execution_id=execution_id,
-            use_file_history=use_file_history,
+            scheduled=workflow_context.is_scheduled,
+            execution_id=workflow_context.execution_id,
+            use_file_history=workflow_context.get_setting("use_file_history", True),
         )
 
         # Create or get workflow execution
-        if not execution_id:
+        if not workflow_context.execution_id:
             execution_id = workflow_service.create_workflow_execution()
+            workflow_context.execution_id = execution_id
             logger.info(f"Created new workflow execution: {execution_id}")
 
         # Compile workflow
@@ -373,10 +414,10 @@ def _execute_general_workflow(
         # Get source files using backend-compatible operations
         source_connector = WorkerSourceConnector(
             api_client=api_client,
-            workflow_id=workflow_id,
-            execution_id=execution_id,
-            organization_id=api_client.organization_id,  # Use api_client's organization_id (already formatted)
-            use_file_history=use_file_history,
+            workflow_id=workflow_context.workflow_id,
+            execution_id=workflow_context.execution_id,
+            organization_id=workflow_context.organization_context.organization_id,
+            use_file_history=workflow_context.get_setting("use_file_history", True),
         )
 
         # List files from source
@@ -384,15 +425,15 @@ def _execute_general_workflow(
 
         # Get connection type from endpoint config
         connection_type = source_connector.endpoint_config.get(
-            "connection_type", "FILESYSTEM"
+            "connection_type", ConnectionType.FILESYSTEM.value
         )
-        is_api = connection_type == "API"
+        is_api = connection_type == ConnectionType.API.value
 
         logger.info(
             f"Listed {total_files} files from {connection_type} source (API: {is_api}, file_history: {use_file_history})"
         )
 
-        # Update total_files immediately so UI can show proper progress (fixes race condition)
+        # Update total_files at workflow start
         api_client.update_workflow_execution_status(
             execution_id=execution_id,
             status=ExecutionStatus.EXECUTING.value,
@@ -567,19 +608,9 @@ def _orchestrate_file_processing_general(
         )
 
         for batch_idx, batch in enumerate(batches):
-            # Create file data using the pre-calculated global configuration
-            file_data = (
-                manual_review_service.create_workflow_file_data_with_manual_review(
-                    workflow_id=workflow_id,
-                    execution_id=execution_id,
-                    organization_id=api_client.organization_id,
-                    pipeline_id=pipeline_id,
-                    scheduled=scheduled,
-                    execution_mode=execution_mode_str,
-                    use_file_history=use_file_history,
-                    total_files=len(source_files),
-                )
-            )
+            # CRITICAL FIX: Use the pre-calculated global file data instead of recalculating
+            # This prevents random reselection of different files for each batch
+            file_data = global_file_data
 
             # Calculate batch-specific decisions based on the global q_file_no_list
             file_decisions = []
@@ -632,7 +663,7 @@ def _orchestrate_file_processing_general(
             # Create task signature matching Django backend pattern
             batch_tasks.append(
                 app.signature(
-                    "process_file_batch",  # Use same task name as Django
+                    TaskName.PROCESS_FILE_BATCH.value,  # Use enum string value for Celery
                     args=[
                         batch_data.to_dict()
                     ],  # Convert FileBatchData to dict for Celery serialization
@@ -643,9 +674,7 @@ def _orchestrate_file_processing_general(
         # Create callback queue using FILESYSTEM logic
         file_processing_callback_queue = _get_callback_queue_name_general()
 
-        # Execute chord exactly matching Django pattern
-        from celery import chord
-
+        # Execute chord using shared orchestration utility
         logger.info(
             f"DEBUG: Creating callback kwargs with organization_id={organization_id}"
         )
@@ -662,17 +691,17 @@ def _orchestrate_file_processing_general(
                 f"Passing pipeline_id {pipeline_id} to callback for proper status updates"
             )
 
-        # Create callback signature exactly matching the working API deployment pattern
         # Import to ensure we have the right app context
         from .worker import app as celery_app
 
-        callback_signature = celery_app.signature(
-            "process_batch_callback",
-            kwargs=callback_kwargs,  # Pass execution_id and pipeline_id as kwargs
-            queue=file_processing_callback_queue,
+        # Use shared orchestration utility for chord execution
+        result = WorkflowOrchestrationUtils.create_chord_execution(
+            batch_tasks=batch_tasks,
+            callback_task_name=TaskName.PROCESS_BATCH_CALLBACK.value,
+            callback_kwargs=callback_kwargs,
+            callback_queue=file_processing_callback_queue,
+            app_instance=celery_app,
         )
-
-        result = chord(batch_tasks)(callback_signature)
 
         if not result:
             exception = f"Failed to queue execution task {execution_id}"
@@ -725,9 +754,6 @@ def _get_file_batches_general(input_files: dict[str, FileHash] | list[dict]) -> 
     Returns:
         List of file batches
     """
-    import math
-    import os
-
     # Use type converter to ensure consistent format
     try:
         standardized_files = TypeConverter.ensure_file_dict_format(input_files)
@@ -755,26 +781,12 @@ def _get_file_batches_general(input_files: dict[str, FileHash] | list[dict]) -> 
             logger.error(f"Failed to serialize file '{file_name}': {e}")
             continue
 
-    # Prepare batches of files for parallel processing (exact Django logic)
-    BATCH_SIZE = int(os.getenv("MAX_PARALLEL_FILE_BATCHES", "1"))  # Default from Django
-    file_items = list(json_serializable_files.items())
-
-    # Calculate how many items per batch (exact Django logic)
-    num_files = len(file_items)
-    if num_files == 0:
-        return []  # No files to batch
-
-    num_batches = min(BATCH_SIZE, num_files)
-    items_per_batch = math.ceil(num_files / num_batches)
-
-    # Split into batches (exact Django logic)
-    batches = []
-    for start_index in range(0, len(file_items), items_per_batch):
-        end_index = start_index + items_per_batch
-        batch = file_items[start_index:end_index]
-        batches.append(batch)
-
-    return batches
+    # Use shared file processing utility for batching
+    return FileProcessingUtils.create_file_batches(
+        json_serializable_files,
+        "MAX_PARALLEL_FILE_BATCHES",
+        1,  # Default from Django
+    )
 
 
 # Manual review logic has been moved to shared plugins for reusability
@@ -914,7 +926,9 @@ def _create_batch_data_general(
             # Set manual review fields in file hash
             enhanced_file_hash["is_manualreview_required"] = is_manual_review_required
             enhanced_file_hash["file_destination"] = (
-                "MANUALREVIEW" if is_manual_review_required else "destination"
+                FileDestinationType.MANUALREVIEW.value
+                if is_manual_review_required
+                else FileDestinationType.DESTINATION.value
             )
 
             logger.info(
@@ -963,7 +977,9 @@ def _create_batch_data_general(
             # Set manual review fields in file hash
             enhanced_file_hash["is_manualreview_required"] = is_manual_review_required
             enhanced_file_hash["file_destination"] = (
-                "MANUALREVIEW" if is_manual_review_required else "destination"
+                FileDestinationType.MANUALREVIEW.value
+                if is_manual_review_required
+                else FileDestinationType.DESTINATION.value
             )
 
             logger.info(
@@ -1107,25 +1123,36 @@ def _validate_batch_data_integrity_dataclass(
         provider_uuid = (
             file_hash.get("provider_file_uuid") if isinstance(file_hash, dict) else None
         )
+        # For API workflows, check if file has file_hash (cache_key) instead
+        has_cache_key = (
+            file_hash.get("file_hash") if isinstance(file_hash, dict) else None
+        )
 
         if provider_uuid is None or (
             isinstance(provider_uuid, str) and not provider_uuid.strip()
         ):
-            missing_uuid_count += 1
-            logger.warning(
-                f"VALIDATION [Batch {batch_idx}]: File '{file_name}' missing/empty provider_file_uuid"
-            )
+            # If no provider_uuid but has cache_key (API workflow), count as valid
+            if has_cache_key:
+                valid_uuid_count += 1
+                logger.debug(
+                    f"VALIDATION [Batch {batch_idx}]: File '{file_name}' using cache_key instead of provider_file_uuid (API workflow)"
+                )
+            else:
+                missing_uuid_count += 1
+                logger.warning(
+                    f"VALIDATION [Batch {batch_idx}]: File '{file_name}' missing/empty provider_file_uuid and cache_key"
+                )
         else:
             valid_uuid_count += 1
 
     total_files = len(files)
     logger.info(
-        f"VALIDATION [Batch {batch_idx}]: {valid_uuid_count}/{total_files} files have valid provider_file_uuid"
+        f"VALIDATION [Batch {batch_idx}]: {valid_uuid_count}/{total_files} files have valid provider_file_uuid or cache_key"
     )
 
     if missing_uuid_count > 0:
-        logger.error(
-            f"VALIDATION [Batch {batch_idx}]: {missing_uuid_count} files missing provider_file_uuid - this may cause FileHistory issues"
+        logger.warning(
+            f"VALIDATION [Batch {batch_idx}]: {missing_uuid_count} files missing both provider_file_uuid and cache_key - this may cause FileHistory issues"
         )
 
 

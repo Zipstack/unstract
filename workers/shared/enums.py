@@ -9,18 +9,8 @@ from enum import Enum
 # Import unified ConnectionType from connectors package
 from unstract.connectors import ConnectionType as UnifiedConnectionType
 
-
-class AuthorizationType(Enum):
-    """Authorization types for webhook and API requests."""
-
-    NONE = "NONE"
-    BEARER = "BEARER"
-    BASIC = "BASIC"
-    API_KEY = "API_KEY"
-    CUSTOM_HEADER = "CUSTOM_HEADER"
-
-    def __str__(self):
-        return self.value
+# AuthorizationType moved to unstract.core.notification_enums to avoid duplication
+# Import from: from unstract.core.notification_enums import AuthorizationType
 
 
 # Re-export for backward compatibility
@@ -32,7 +22,6 @@ class EndpointType(Enum):
 
     SOURCE = "SOURCE"
     DESTINATION = "DESTINATION"
-    API_DEPLOYMENT = "API_DEPLOYMENT"
 
     def __str__(self):
         return self.value
@@ -117,6 +106,12 @@ class ToolOutputType(Enum):
         return self.value
 
 
+# Note: ExecutionStatus is imported from unstract.core.data_models to maintain consistency
+
+# PipelineType moved to status_enums.py to avoid duplication
+# Import from: from shared.enums import PipelineType
+
+
 class NotificationPlatform(Enum):
     """Notification platforms for webhook delivery."""
 
@@ -136,6 +131,21 @@ class BatchOperationType(Enum):
     UPDATE = "update"
     DELETE = "delete"
     STATUS_UPDATE = "status_update"
+
+    def __str__(self):
+        return self.value
+
+
+# FileDestinationType moved to method_enums.py to avoid duplication
+# Import from: from shared.enums import FileDestinationType
+
+
+class FileHistoryStatus(Enum):
+    """File history status types."""
+
+    SUCCESS = "SUCCESS"
+    ERROR = "ERROR"
+    PARTIAL = "PARTIAL"
 
     def __str__(self):
         return self.value

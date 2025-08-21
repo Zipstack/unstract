@@ -13,6 +13,7 @@ is not available.
 import logging
 from typing import Any
 
+from ..enums import FileDestinationType
 from ..manual_review_response import ManualReviewResponse
 
 logger = logging.getLogger(__name__)
@@ -155,7 +156,9 @@ class ManualReviewNullClient:
         }
 
     def get_manual_review_workflows(
-        self, connection_type: str = "MANUALREVIEW", organization_id: str | None = None
+        self,
+        connection_type: str = FileDestinationType.MANUALREVIEW.value,
+        organization_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Get workflows configured for manual review (returns empty list in
         OSS).

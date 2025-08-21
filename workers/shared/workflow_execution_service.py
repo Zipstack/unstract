@@ -168,7 +168,7 @@ class WorkerWorkflowExecutionService(WorkflowExecutionService):
                 workflow_id=self.workflow_id,
                 organization_id=self.organization_id,
             )
-            return response.get("tool_instances", [])
+            return response.tool_instances
         except Exception as e:
             logger.error(f"Failed to get tool instances data: {e}")
             raise

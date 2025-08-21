@@ -35,6 +35,19 @@ class PipelineStatus(str, Enum):
         return self.value
 
 
+class PipelineType(str, Enum):
+    """Pipeline types for workflows."""
+
+    ETL = "ETL"
+    TASK = "TASK"
+    API = "API"
+    APP = "APP"
+    DEFAULT = "DEFAULT"
+
+    def __str__(self):
+        return self.value
+
+
 class WebhookStatus(str, Enum):
     """Webhook delivery status."""
 

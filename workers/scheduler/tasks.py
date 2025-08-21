@@ -10,6 +10,7 @@ from typing import Any
 from celery import shared_task
 from shared.api_client_singleton import get_singleton_api_client
 from shared.config import WorkerConfig
+from shared.enums.task_enums import QueueName
 from shared.logging_utils import WorkerLogger
 from shared.models.pipeline_models import PipelineApiResponse
 from shared.models.scheduler_models import (
@@ -97,7 +98,7 @@ def _execute_scheduled_workflow(
                     context.use_file_history,  # use_file_history
                 ],
                 kwargs={},
-                queue="celery",  # Route to celery queue (what general worker listens to)
+                queue=QueueName.CELERY,  # Route to celery queue (what general worker listens to)
             )
 
             task_id = async_result.id

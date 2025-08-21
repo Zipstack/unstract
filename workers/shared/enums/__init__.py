@@ -5,10 +5,10 @@ Task names, queue names, and status enums used by workers.
 
 from .batch_enums import BatchOperationType
 from .method_enums import (
-    AuthorizationType,
     CircuitBreakerState,
     ConnectionType,
     EndpointType,
+    FileDestinationType,
     FileOperationType,
     HTTPMethod,
     LogLevel,
@@ -17,6 +17,7 @@ from .method_enums import (
 )
 from .status_enums import (
     PipelineStatus,
+    PipelineType,
     TaskStatus,
     ToolOutputType,
     WebhookStatus,
@@ -29,6 +30,7 @@ __all__ = [
     "QueueName",
     "WorkerTaskStatus",
     "PipelineStatus",
+    "PipelineType",
     "WebhookStatus",
     "TaskStatus",
     "ToolOutputType",
@@ -37,9 +39,9 @@ __all__ = [
     "CircuitBreakerState",
     "ConnectionType",
     "EndpointType",
+    "FileDestinationType",
     "FileOperationType",
     "HTTPMethod",
     "LogLevel",
     "NotificationPlatform",
-    "AuthorizationType",
 ]

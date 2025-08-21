@@ -18,6 +18,7 @@ from unstract.workflow_execution.dto import ToolInstance, WorkflowDto
 from unstract.workflow_execution.workflow_execution import WorkflowExecutionService
 
 from .api_client import InternalAPIClient
+from .enums import FileDestinationType
 from .logging_utils import WorkerLogger
 
 logger = WorkerLogger.get_logger(__name__)
@@ -65,7 +66,7 @@ class WorkerWorkflowExecutionService:
                 workflow_id=workflow_id,
                 organization_id=organization_id,
             )
-            tool_instances_data = tool_instances_response.get("tool_instances", [])
+            tool_instances_data = tool_instances_response.tool_instances
 
             if not tool_instances_data:
                 logger.warning(f"No tool instances found for workflow {workflow_id}")
@@ -1145,7 +1146,7 @@ class WorkerWorkflowExecutionService:
 
             if not processing_error:
                 # CRITICAL: Log file destination routing decision
-                if file_hash.file_destination == "MANUALREVIEW":
+                if file_hash.file_destination == FileDestinationType.MANUALREVIEW.value:
                     logger.info(
                         f"🔄 File {file_hash.file_name} marked for MANUAL REVIEW - sending to queue"
                     )

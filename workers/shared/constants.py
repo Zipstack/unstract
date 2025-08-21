@@ -18,14 +18,3 @@ class Common:
 
 # ExecutionStatus is now imported from shared data models above
 # This ensures consistency between backend and workers
-
-
-class FileExecutionStage:
-    INITIATED = "INITIATED"
-    IN_PROGRESS = "IN_PROGRESS"
-    COMPLETED = "COMPLETED"
-
-
-class FileExecutionStageStatus:
-    SUCCESS = "SUCCESS"
-    FAILED = "FAILED"

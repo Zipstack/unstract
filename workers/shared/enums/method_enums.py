@@ -65,6 +65,16 @@ class FileOperationType(str, Enum):
         return self.value
 
 
+class FileDestinationType(str, Enum):
+    """File destination types for workflow processing."""
+
+    DESTINATION = "destination"
+    MANUALREVIEW = "MANUALREVIEW"  # Backend uses this exact format
+
+    def __str__(self):
+        return self.value
+
+
 class HTTPMethod(str, Enum):
     """HTTP methods."""
 
@@ -105,14 +115,5 @@ class NotificationPlatform(str, Enum):
         return self.value
 
 
-class AuthorizationType(str, Enum):
-    """Authorization types for API requests."""
-
-    NONE = "none"
-    BEARER = "bearer"
-    BASIC = "basic"
-    API_KEY = "api_key"
-    CUSTOM = "custom"
-
-    def __str__(self):
-        return self.value
+# AuthorizationType moved to unstract.core.notification_enums to avoid duplication
+# Import from: from unstract.core.notification_enums import AuthorizationType

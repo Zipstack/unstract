@@ -153,3 +153,253 @@ class BatchExecutionResult:
             self.failed_files += 1
 
         self.execution_time += file_result.processing_time
+
+
+@dataclass
+class WorkflowExecutionResult:
+    """Comprehensive result for complete workflow execution."""
+
+    execution_id: str
+    workflow_id: str
+    organization_id: str
+    execution_status: ExecutionStatus
+    total_files: int = 0
+    successful_files: int = 0
+    failed_files: int = 0
+    execution_start_time: float = 0.0
+    execution_end_time: float = 0.0
+    total_execution_time: float = 0.0
+    batch_results: list[BatchExecutionResult] = field(default_factory=list)
+    final_output: dict[str, Any] | None = None
+    error_summary: str | None = None
+    metadata: dict[str, Any] | None = None
+
+    @property
+    def completion_percentage(self) -> float:
+        """Get completion percentage of the workflow execution."""
+        if self.total_files == 0:
+            return 100.0
+        processed = self.successful_files + self.failed_files
+        return (processed / self.total_files) * 100.0
+
+    @property
+    def success_rate(self) -> float:
+        """Get success rate of processed files."""
+        if self.total_files == 0:
+            return 100.0
+        return (self.successful_files / self.total_files) * 100.0
+
+    @property
+    def is_completed(self) -> bool:
+        """Check if workflow execution is completed."""
+        return self.execution_status == ExecutionStatus.COMPLETED
+
+    @property
+    def is_failed(self) -> bool:
+        """Check if workflow execution failed."""
+        return self.execution_status == ExecutionStatus.ERROR
+
+    @property
+    def is_executing(self) -> bool:
+        """Check if workflow execution is in progress."""
+        return self.execution_status == ExecutionStatus.EXECUTING
+
+    @property
+    def has_errors(self) -> bool:
+        """Check if workflow has any failed files."""
+        return self.failed_files > 0
+
+    @property
+    def batch_count(self) -> int:
+        """Get the number of batches processed."""
+        return len(self.batch_results)
+
+    def add_batch_result(self, batch_result: BatchExecutionResult) -> None:
+        """Add a batch processing result to the workflow."""
+        self.batch_results.append(batch_result)
+
+        # Update file counts from batch results
+        self.successful_files += batch_result.successful_files
+        self.failed_files += batch_result.failed_files
+        self.total_execution_time += batch_result.execution_time
+
+    def get_all_file_results(self) -> list[FileExecutionResult]:
+        """Get all file results from all batches."""
+        all_results = []
+        for batch_result in self.batch_results:
+            all_results.extend(batch_result.file_results)
+        return all_results
+
+    def get_error_summary(self) -> str:
+        """Get a comprehensive error summary from all batches."""
+        if not self.has_errors:
+            return "No errors in workflow execution"
+
+        error_messages = []
+        for batch_result in self.batch_results:
+            error_messages.extend(batch_result.errors)
+
+        if self.error_summary:
+            error_messages.append(self.error_summary)
+
+        return "; ".join(filter(None, error_messages))
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert workflow execution result to dictionary."""
+        return serialize_dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "WorkflowExecutionResult":
+        """Create WorkflowExecutionResult from dictionary data."""
+        status_str = data.get("execution_status", ExecutionStatus.ERROR.value)
+        status = (
+            ExecutionStatus(status_str) if isinstance(status_str, str) else status_str
+        )
+
+        batch_results = [
+            BatchExecutionResult.from_dict(batch_data)
+            for batch_data in data.get("batch_results", [])
+        ]
+
+        return cls(
+            execution_id=data["execution_id"],
+            workflow_id=data["workflow_id"],
+            organization_id=data["organization_id"],
+            execution_status=status,
+            total_files=data.get("total_files", 0),
+            successful_files=data.get("successful_files", 0),
+            failed_files=data.get("failed_files", 0),
+            execution_start_time=data.get("execution_start_time", 0.0),
+            execution_end_time=data.get("execution_end_time", 0.0),
+            total_execution_time=data.get("total_execution_time", 0.0),
+            batch_results=batch_results,
+            final_output=data.get("final_output"),
+            error_summary=data.get("error_summary"),
+            metadata=data.get("metadata"),
+        )
+
+
+@dataclass
+class CallbackProcessingResult:
+    """Result for callback processing operations."""
+
+    callback_id: str
+    execution_id: str
+    organization_id: str
+    workflow_id: str
+    results: list[dict[str, Any]] = field(default_factory=list)
+    callback_status: ExecutionStatus = ExecutionStatus.COMPLETED
+    processing_time: float = 0.0
+    successful_callbacks: int = 0
+    failed_callbacks: int = 0
+    error_message: str | None = None
+    metadata: dict[str, Any] | None = None
+
+    @property
+    def result_count(self) -> int:
+        """Get the number of results in this callback."""
+        return len(self.results) if self.results else 0
+
+    @property
+    def has_results(self) -> bool:
+        """Check if this callback has any results."""
+        return self.result_count > 0
+
+    @property
+    def is_successful(self) -> bool:
+        """Check if callback processing was successful."""
+        return (
+            self.callback_status == ExecutionStatus.COMPLETED and not self.error_message
+        )
+
+    def get_successful_results(self) -> list[dict[str, Any]]:
+        """Filter and return only successful results."""
+        if not self.results:
+            return []
+
+        return [
+            result
+            for result in self.results
+            if isinstance(result, dict) and not result.get("error")
+        ]
+
+    def get_failed_results(self) -> list[dict[str, Any]]:
+        """Filter and return only failed results."""
+        if not self.results:
+            return []
+
+        return [
+            result
+            for result in self.results
+            if isinstance(result, dict) and result.get("error")
+        ]
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert callback result to dictionary."""
+        return serialize_dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "CallbackProcessingResult":
+        """Create CallbackProcessingResult from dictionary data."""
+        status_str = data.get("callback_status", ExecutionStatus.COMPLETED.value)
+        status = (
+            ExecutionStatus(status_str) if isinstance(status_str, str) else status_str
+        )
+
+        return cls(
+            callback_id=data["callback_id"],
+            execution_id=data["execution_id"],
+            organization_id=data["organization_id"],
+            workflow_id=data["workflow_id"],
+            results=data.get("results", []),
+            callback_status=status,
+            processing_time=data.get("processing_time", 0.0),
+            successful_callbacks=data.get("successful_callbacks", 0),
+            failed_callbacks=data.get("failed_callbacks", 0),
+            error_message=data.get("error_message"),
+            metadata=data.get("metadata"),
+        )
+
+
+# Utility functions for result aggregation
+def aggregate_file_results(
+    file_results: list[FileExecutionResult],
+) -> BatchExecutionResult:
+    """Aggregate multiple file results into a batch result."""
+    successful = len([r for r in file_results if r.is_successful()])
+    failed = len([r for r in file_results if r.has_error()])
+    total_time = sum(r.processing_time for r in file_results)
+
+    return BatchExecutionResult(
+        total_files=len(file_results),
+        successful_files=successful,
+        failed_files=failed,
+        execution_time=total_time,
+        file_results=file_results,
+    )
+
+
+def create_workflow_result_from_batches(
+    execution_id: str,
+    workflow_id: str,
+    organization_id: str,
+    batch_results: list[BatchExecutionResult],
+    execution_status: ExecutionStatus = ExecutionStatus.COMPLETED,
+) -> WorkflowExecutionResult:
+    """Create WorkflowExecutionResult from batch results."""
+    workflow_result = WorkflowExecutionResult(
+        execution_id=execution_id,
+        workflow_id=workflow_id,
+        organization_id=organization_id,
+        execution_status=execution_status,
+        batch_results=batch_results,
+    )
+
+    # Calculate totals from batch results
+    for batch_result in batch_results:
+        workflow_result.total_files += batch_result.total_files
+        workflow_result.successful_files += batch_result.successful_files
+        workflow_result.failed_files += batch_result.failed_files
+        workflow_result.total_execution_time += batch_result.execution_time
+
+    return workflow_result

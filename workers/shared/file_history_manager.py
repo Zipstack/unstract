@@ -10,6 +10,7 @@ from typing import Any
 from unstract.core.data_models import FileHash
 
 from .api_client import InternalAPIClient
+from .enums import FileHistoryStatus
 
 logger = logging.getLogger(__name__)
 
@@ -60,9 +61,13 @@ class WorkerFileHistoryManager:
                 return False
 
             # Determine status from execution result
-            status = execution_result.get("status", "SUCCESS")
-            if status not in ["SUCCESS", "ERROR", "PARTIAL"]:
-                status = "SUCCESS"  # Default to success
+            status = execution_result.get("status", FileHistoryStatus.SUCCESS.value)
+            if status not in [
+                FileHistoryStatus.SUCCESS.value,
+                FileHistoryStatus.ERROR.value,
+                FileHistoryStatus.PARTIAL.value,
+            ]:
+                status = FileHistoryStatus.SUCCESS.value  # Default to success
 
             # Build history data matching backend expectations
             history_data = {
@@ -74,7 +79,7 @@ class WorkerFileHistoryManager:
                 "provider_file_uuid": file_data.provider_file_uuid,
                 "mime_type": file_data.mime_type,
                 "status": status,
-                "is_completed": status == "SUCCESS",
+                "is_completed": status == FileHistoryStatus.SUCCESS.value,
                 "execution_id": execution_result.get("execution_id"),
                 "result": execution_result.get("result", {}),
                 "metadata": execution_result.get("metadata", {}),

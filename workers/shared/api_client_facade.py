@@ -35,8 +35,24 @@ from .clients.base_client import (
 )
 from .clients.manual_review_stub import ManualReviewNullClient
 from .config import WorkerConfig
+
+# Import new API response dataclasses for type safety
+from .models.api_responses import (
+    FileBatchResponse,
+    FileHistoryResponse,
+    ToolInstancesResponse,
+    WorkflowDefinitionResponse,
+    WorkflowEndpointsResponse,
+    WorkflowExecutionResponse,
+)
+
+# Import execution models for type-safe execution contexts
+# Import notification models for type-safe notifications
+from .models.notification_models import (
+    WebhookNotificationRequest,
+)
 from .models.scheduler_models import SchedulerExecutionResult
-from .response_models import APIResponse, ExecutionResponse
+from .response_models import APIResponse
 
 # Re-export shared dataclasses for backward compatibility
 # Note: These would be imported from unstract.core.data_models in production
@@ -92,39 +108,57 @@ class InternalAPIClient:
         """
         self.config = config or WorkerConfig()
 
-        # Initialize all specialized clients
-        self.base_client = BaseAPIClient(config)
-        self.execution_client = ExecutionAPIClient(config)
-        self.file_client = FileAPIClient(config)
-        self.webhook_client = WebhookAPIClient(config)
-        self.organization_client = OrganizationAPIClient(config)
-        self.tool_client = ToolAPIClient(config)
+        # Initialize core clients
+        self._initialize_core_clients()
 
-        # Initialize manual review client via plugin registry
-        # The registry handles both Django settings and worker-specific plugin loading
-        try:
-            plugin_instance = get_client_plugin("manual_review", config)
-            if plugin_instance:
-                self.manual_review_client = plugin_instance
-                logger.debug("Using manual review plugin from registry")
-            else:
-                self.manual_review_client = ManualReviewNullClient(config)
-                logger.debug("Manual review plugin not available, using null client")
-        except Exception as e:
-            logger.warning(f"Failed to load manual review plugin, using null client: {e}")
-            self.manual_review_client = ManualReviewNullClient(config)
+        # Initialize plugin clients
+        self._initialize_plugin_clients()
 
+        # Setup direct access references
+        self._setup_direct_access_references()
+
+        logger.info("Initialized InternalAPIClient facade with modular architecture")
+
+    def _initialize_core_clients(self) -> None:
+        """Initialize all core API clients."""
+        self.base_client = BaseAPIClient(self.config)
+        self.execution_client = ExecutionAPIClient(self.config)
+        self.file_client = FileAPIClient(self.config)
+        self.webhook_client = WebhookAPIClient(self.config)
+        self.organization_client = OrganizationAPIClient(self.config)
+        self.tool_client = ToolAPIClient(self.config)
+
+    def _initialize_plugin_clients(self) -> None:
+        """Initialize plugin-based clients with error handling."""
+        self.manual_review_client = self._load_manual_review_client()
         logger.debug(
             f"Manual review client type: {type(self.manual_review_client).__name__}"
         )
 
-        # Store references for direct access if needed
+    def _load_manual_review_client(self) -> Any:
+        """Load manual review client via plugin registry with fallback.
+
+        Returns:
+            ManualReviewClient or ManualReviewNullClient
+        """
+        try:
+            plugin_instance = get_client_plugin("manual_review", self.config)
+            if plugin_instance:
+                logger.debug("Using manual review plugin from registry")
+                return plugin_instance
+            else:
+                logger.debug("Manual review plugin not available, using null client")
+                return ManualReviewNullClient(self.config)
+        except Exception as e:
+            logger.warning(f"Failed to load manual review plugin, using null client: {e}")
+            return ManualReviewNullClient(self.config)
+
+    def _setup_direct_access_references(self) -> None:
+        """Setup direct access references for backward compatibility."""
         self.base_url = self.base_client.base_url
         self.api_key = self.base_client.api_key
         self.organization_id = self.base_client.organization_id
         self.session = self.base_client.session
-
-        logger.info("Initialized InternalAPIClient facade with modular architecture")
 
     # Delegate base client methods
     def health_check(self) -> dict[str, Any]:
@@ -155,15 +189,31 @@ class InternalAPIClient:
     # Delegate execution client methods
     def get_workflow_execution(
         self, execution_id: str | uuid.UUID, organization_id: str | None = None
-    ) -> ExecutionResponse:
+    ) -> WorkflowExecutionResponse:
         """Get workflow execution with context."""
-        return self.execution_client.get_workflow_execution(execution_id, organization_id)
+        response = self.execution_client.get_workflow_execution(
+            execution_id, organization_id
+        )
+        # Convert ExecutionResponse to WorkflowExecutionResponse for type safety
+        if hasattr(response, "to_dict"):
+            response_dict = response.to_dict()
+        else:
+            response_dict = response
+        return WorkflowExecutionResponse.from_api_response(response_dict)
 
     def get_workflow_definition(
         self, workflow_id: str | uuid.UUID, organization_id: str | None = None
-    ) -> ExecutionResponse:
+    ) -> WorkflowDefinitionResponse:
         """Get workflow definition including workflow_type."""
-        return self.execution_client.get_workflow_definition(workflow_id, organization_id)
+        response = self.execution_client.get_workflow_definition(
+            workflow_id, organization_id
+        )
+        # Convert to WorkflowDefinitionResponse for type safety
+        if hasattr(response, "to_dict"):
+            response_dict = response.to_dict()
+        else:
+            response_dict = response
+        return WorkflowDefinitionResponse.from_api_response(response_dict)
 
     def get_pipeline_type(
         self, pipeline_id: str | uuid.UUID, organization_id: str | None = None
@@ -230,11 +280,13 @@ class InternalAPIClient:
 
     def get_tool_instances_by_workflow(
         self, workflow_id: str, organization_id: str
-    ) -> dict[str, Any]:
+    ) -> ToolInstancesResponse:
         """Get tool instances for a workflow."""
-        return self.execution_client.get_tool_instances_by_workflow(
+        response = self.execution_client.get_tool_instances_by_workflow(
             workflow_id, organization_id
         )
+        # Convert to ToolInstancesResponse for type safety
+        return ToolInstancesResponse.from_api_response(response)
 
     def compile_workflow(
         self, workflow_id: str, execution_id: str, organization_id: str
@@ -371,17 +423,23 @@ class InternalAPIClient:
         files: list,
         is_api: bool = False,
         organization_id: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> FileBatchResponse:
         """Create file execution batch."""
-        return self.execution_client.create_file_batch(
+        response = self.execution_client.create_file_batch(
             workflow_execution_id, files, is_api, organization_id
         )
+        # Convert to FileBatchResponse for type safety
+        return FileBatchResponse.from_api_response(response)
 
     def get_workflow_endpoints(
         self, workflow_id: str | UUID, organization_id: str | None = None
-    ) -> dict[str, Any]:
+    ) -> WorkflowEndpointsResponse:
         """Get workflow endpoints for a specific workflow."""
-        return self.execution_client.get_workflow_endpoints(workflow_id, organization_id)
+        response = self.execution_client.get_workflow_endpoints(
+            workflow_id, organization_id
+        )
+        # Convert to WorkflowEndpointsResponse for type safety
+        return WorkflowEndpointsResponse.from_api_response(response)
 
     def update_pipeline_status(
         self,
@@ -655,7 +713,7 @@ class InternalAPIClient:
         file_hash: str | None = None,
         file_path: str | None = None,
         organization_id: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> FileHistoryResponse:
         """Get file history by provider_file_uuid or file_hash.
 
         This unified method handles both lookup patterns:
@@ -670,13 +728,14 @@ class InternalAPIClient:
             organization_id: Organization ID for context
 
         Returns:
-            Dictionary with file_history data or empty dict if not found
+            FileHistoryResponse with file_history data
         """
         # If file_hash is provided, use the existing cache key lookup
         if file_hash and not provider_file_uuid:
-            return self.get_file_history_by_cache_key(
+            response = self.get_file_history_by_cache_key(
                 cache_key=file_hash, workflow_id=workflow_id, file_path=file_path
             )
+            return FileHistoryResponse.from_api_response(response)
 
         # Otherwise, use provider_file_uuid lookup
         endpoint = "v1/file-history/get/"
@@ -701,7 +760,7 @@ class InternalAPIClient:
                 f"File history lookup for provider_file_uuid {provider_file_uuid}: "
                 f"{'found' if response.get('file_history') else 'not found'}"
             )
-            return response
+            return FileHistoryResponse.from_api_response(response)
 
         except Exception as e:
             logger.error(
@@ -709,7 +768,7 @@ class InternalAPIClient:
                 f"provider_file_uuid {provider_file_uuid}: {str(e)}"
             )
             # Return empty result to continue without breaking the flow
-            return {}
+            return FileHistoryResponse(success=False, error=str(e))
 
     def batch_create_file_history(
         self, file_histories: list[dict[str, Any]], organization_id: str | None = None
@@ -723,7 +782,7 @@ class InternalAPIClient:
         url: str,
         payload: dict[str, Any],
         notification_id: str | None = None,
-        authorization_type: str = "none",
+        authorization_type: str = "NONE",
         authorization_key: str | None = None,
         authorization_header: str | None = None,
         timeout: int = 30,
@@ -743,6 +802,31 @@ class InternalAPIClient:
             max_retries,
             retry_delay,
             headers,
+        )
+
+    def send_webhook_notification(
+        self,
+        notification_request: WebhookNotificationRequest,
+    ) -> dict[str, Any]:
+        """Send webhook notification using type-safe NotificationRequest dataclass.
+
+        Args:
+            notification_request: WebhookNotificationRequest dataclass with notification details
+
+        Returns:
+            Dictionary with webhook response data
+        """
+        return self.webhook_client.send_webhook(
+            url=notification_request.url,
+            payload=notification_request.payload,
+            notification_id=notification_request.notification_id,
+            authorization_type=notification_request.authorization_type,
+            authorization_key=notification_request.authorization_key,
+            authorization_header=notification_request.authorization_header,
+            timeout=notification_request.timeout,
+            max_retries=notification_request.max_retries,
+            retry_delay=notification_request.retry_delay,
+            headers=notification_request.headers,
         )
 
     def get_webhook_status(self, task_id: str) -> dict[str, Any]:

@@ -12,6 +12,10 @@ Handles:
 """
 
 import logging
+
+# Import shared AuthorizationType from core
+import os
+import sys
 from typing import Any
 
 from ..data_models import (
@@ -19,8 +23,11 @@ from ..data_models import (
     BatchOperationRequest,
     BatchOperationResponse,
 )
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../unstract/core/src"))
+from unstract.core.notification_enums import AuthorizationType
+
 from ..enums import (
-    AuthorizationType,
     BatchOperationType,
     TaskStatus,
 )

@@ -47,6 +47,19 @@ class APIResponse(BaseResponse):
     data: dict[str, Any] | None = None
     error: str | None = None
 
+    def to_dict(self) -> dict[str, Any]:
+        """Convert response to dictionary format for compatibility."""
+        result = {
+            "success": self.success,
+            "data": self.data or {},
+            "status_code": self.status_code,
+        }
+        if self.message:
+            result["message"] = self.message
+        if self.error:
+            result["error"] = self.error
+        return result
+
     @classmethod
     def success_response(
         cls,

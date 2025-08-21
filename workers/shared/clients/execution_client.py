@@ -463,11 +463,39 @@ class ExecutionAPIClient(BaseAPIClient):
         Returns:
             Finalization response
         """
-        # Convert status to string if it's an enum
-        final_status_str = (
+        final_status_str = self._convert_status_to_string(final_status)
+        finalization_data = self._build_finalization_data(
+            final_status_str,
+            total_files_processed,
+            total_execution_time,
+            results_summary,
+            error_summary,
+            organization_id,
+        )
+
+        try:
+            return self._execute_finalization_request(
+                execution_id, finalization_data, organization_id
+            )
+        except (CircuitBreakerOpenError, Exception) as e:
+            return self._handle_finalization_error(e, execution_id, final_status_str)
+
+    def _convert_status_to_string(self, final_status: str | TaskStatus) -> str:
+        """Convert status to string format."""
+        return (
             final_status.value if isinstance(final_status, TaskStatus) else final_status
         )
 
+    def _build_finalization_data(
+        self,
+        final_status_str: str,
+        total_files_processed: int | None,
+        total_execution_time: float,
+        results_summary: dict[str, Any] | None,
+        error_summary: dict[str, Any] | None,
+        organization_id: str | None,
+    ) -> dict[str, Any]:
+        """Build finalization request data."""
         data = {
             "final_status": final_status_str,
             "total_execution_time": total_execution_time,
@@ -486,51 +514,77 @@ class ExecutionAPIClient(BaseAPIClient):
                 f"Including organization_id {organization_id} in finalization request"
             )
 
-        try:
-            response = self.post(
-                self._build_url("execution", f"finalize/{str(execution_id)}/"),
-                data,
-                organization_id=organization_id,
-            )
-            logger.debug(f"Finalization API call successful for execution {execution_id}")
-            return APIResponse(
-                success=response.get("success", True),
-                data=response,
-                status_code=response.get("status_code"),
-            )
-        except CircuitBreakerOpenError:
+        return data
+
+    def _execute_finalization_request(
+        self,
+        execution_id: str | uuid.UUID,
+        data: dict[str, Any],
+        organization_id: str | None,
+    ) -> APIResponse:
+        """Execute the finalization API request."""
+        response = self.post(
+            self._build_url("execution", f"finalize/{str(execution_id)}/"),
+            data,
+            organization_id=organization_id,
+        )
+        logger.debug(f"Finalization API call successful for execution {execution_id}")
+        return APIResponse(
+            success=response.get("success", True),
+            data=response,
+            status_code=response.get("status_code"),
+        )
+
+    def _handle_finalization_error(
+        self, error: Exception, execution_id: str | uuid.UUID, final_status_str: str
+    ) -> APIResponse:
+        """Handle finalization errors with appropriate fallback strategy."""
+        if isinstance(error, CircuitBreakerOpenError):
+            return self._handle_circuit_breaker_error(execution_id, final_status_str)
+        else:
+            return self._handle_api_error(error, execution_id, final_status_str)
+
+    def _handle_circuit_breaker_error(
+        self, execution_id: str | uuid.UUID, final_status_str: str
+    ) -> APIResponse:
+        """Handle circuit breaker open error."""
+        logger.warning(
+            "Finalization endpoint circuit breaker open - using fallback status update"
+        )
+        return self.update_workflow_execution_status(
+            execution_id=str(execution_id), status=final_status_str
+        )
+
+    def _handle_api_error(
+        self, error: Exception, execution_id: str | uuid.UUID, final_status_str: str
+    ) -> APIResponse:
+        """Handle API errors with fallback for known issues."""
+        logger.error(
+            f"Finalization API call failed for execution {execution_id}: {str(error)}"
+        )
+
+        if self._should_use_fallback(error):
+            error_str = str(error)
             logger.warning(
-                "Finalization endpoint circuit breaker open - using fallback status update"
+                f"Known backend error detected - using fallback status update: {error_str[:100]}..."
             )
-            # Circuit breaker is open, use fallback immediately
             return self.update_workflow_execution_status(
                 execution_id=str(execution_id), status=final_status_str
             )
-        except Exception as e:
-            logger.error(
-                f"Finalization API call failed for execution {execution_id}: {str(e)}"
-            )
-            # Check for specific error patterns that require fallback
-            error_str = str(e)
-            if any(
-                pattern in error_str
-                for pattern in [
-                    "'WorkflowExecution' object has no attribute 'organization_id'",
-                    "too many error responses",
-                    "500 Internal Server Error",
-                    "503 Service Unavailable",
-                    "502 Bad Gateway",
-                ]
-            ):
-                logger.warning(
-                    f"Known backend error detected - using fallback status update: {error_str[:100]}..."
-                )
-                # Fallback to simple status update that avoids the problematic backend code path
-                return self.update_workflow_execution_status(
-                    execution_id=str(execution_id), status=final_status_str
-                )
-            else:
-                raise e
+        else:
+            raise error
+
+    def _should_use_fallback(self, error: Exception) -> bool:
+        """Determine if error requires fallback to simple status update."""
+        error_str = str(error)
+        fallback_patterns = [
+            "'WorkflowExecution' object has no attribute 'organization_id'",
+            "too many error responses",
+            "500 Internal Server Error",
+            "503 Service Unavailable",
+            "502 Bad Gateway",
+        ]
+        return any(pattern in error_str for pattern in fallback_patterns)
 
     @circuit_breaker(failure_threshold=2, recovery_timeout=30.0)
     def cleanup_execution_resources(

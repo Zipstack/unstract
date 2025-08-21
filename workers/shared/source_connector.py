@@ -67,7 +67,7 @@ class WorkerSourceConnector:
                 organization_id=self.organization_id,
             )
             # The API returns endpoints list, we need the first source endpoint
-            endpoints = response.get("endpoints", [])
+            endpoints = response.endpoints
             for endpoint in endpoints:
                 if endpoint.get("endpoint_type") == "SOURCE":
                     return endpoint

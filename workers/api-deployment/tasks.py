@@ -12,9 +12,13 @@ from shared.api_client import InternalAPIClient
 from shared.config import WorkerConfig
 
 # Import from shared worker modules
-from shared.constants import Account
-from shared.local_context import StateStore
+from shared.enums.task_enums import TaskName
+
+# Import new shared utilities
+from shared.execution_context import WorkerExecutionContext
+from shared.file_processing_utils import FileProcessingUtils
 from shared.logging_utils import WorkerLogger, log_context, monitor_performance
+from shared.orchestration_utils import WorkflowOrchestrationUtils
 from shared.retry_utils import retry
 
 # Import shared data models for type safety
@@ -28,9 +32,161 @@ from .worker import app
 logger = WorkerLogger.get_logger(__name__)
 
 
+def _unified_api_execution(
+    task_instance,
+    schema_name: str,
+    workflow_id: str,
+    execution_id: str,
+    hash_values_of_files: dict[str, dict | FileHashData],
+    scheduled: bool = False,
+    execution_mode: tuple | None = None,
+    pipeline_id: str | None = None,
+    log_events_id: str | None = None,
+    use_file_history: bool = False,
+    task_type: str = "api",
+    **kwargs: dict[str, Any],
+) -> dict[str, Any]:
+    """Unified API deployment execution logic.
+
+    This consolidates the duplicate logic from async_execute_bin_api
+    and async_execute_bin methods.
+
+    Args:
+        task_instance: The Celery task instance
+        schema_name: Organization schema name
+        workflow_id: Workflow ID
+        execution_id: Execution ID
+        hash_values_of_files: File hash data
+        scheduled: Whether execution is scheduled
+        execution_mode: Execution mode tuple
+        pipeline_id: Pipeline ID (for API deployments)
+        log_events_id: Log events ID
+        use_file_history: Whether to use file history
+        task_type: Type of task (api/legacy) for differentiation
+        **kwargs: Additional keyword arguments
+
+    Returns:
+        Execution result dictionary
+    """
+    task_id = task_instance.request.id
+    organization_id = schema_name
+
+    # Use standardized logging context
+    with log_context(
+        task_id=task_id,
+        execution_id=execution_id,
+        workflow_id=workflow_id,
+        organization_id=organization_id,
+        pipeline_id=pipeline_id,
+    ):
+        try:
+            # Set up execution context using shared utilities
+            config, api_client = WorkerExecutionContext.setup_execution_context(
+                organization_id, execution_id, workflow_id
+            )
+
+            # Log task start with standardized format
+            WorkerExecutionContext.log_task_start(
+                f"unified_api_execution_{task_type}",
+                execution_id,
+                workflow_id,
+                {
+                    "pipeline_id": pipeline_id,
+                    "scheduled": scheduled,
+                    "use_file_history": use_file_history,
+                    "files_count": len(hash_values_of_files)
+                    if hash_values_of_files
+                    else 0,
+                },
+            )
+
+            # Convert file hash data using standardized conversion
+            converted_files = FileProcessingUtils.convert_file_hash_data(
+                hash_values_of_files
+            )
+
+            if not converted_files:
+                logger.warning("No valid files to process after conversion")
+                return {
+                    "execution_id": execution_id,
+                    "status": "COMPLETED",
+                    "message": "No files to process",
+                    "files_processed": 0,
+                }
+
+            # Validate orchestration parameters
+            WorkflowOrchestrationUtils.validate_orchestration_parameters(
+                execution_id, workflow_id, organization_id, converted_files
+            )
+
+            # Create file batches using standardized algorithm
+            file_batches = FileProcessingUtils.create_file_batches(
+                converted_files, "MAX_PARALLEL_FILE_BATCHES", 4
+            )
+
+            logger.info(
+                f"Processing {len(converted_files)} files in {len(file_batches)} batches"
+            )
+
+            # Execute workflow through general worker coordination
+            # Import general worker function with proper path handling
+            import sys
+
+            if "../" not in sys.path:
+                sys.path.insert(0, "../")
+            from general.tasks import _orchestrate_file_processing_general
+
+            # Call the general worker orchestration with API-specific parameters
+            result = _orchestrate_file_processing_general(
+                api_client=api_client,
+                workflow_id=workflow_id,
+                execution_id=execution_id,
+                source_files=converted_files,  # Fixed parameter name
+                pipeline_id=pipeline_id,
+                scheduled=scheduled,
+                execution_mode=execution_mode,
+                use_file_history=use_file_history,
+                organization_id=organization_id,
+            )
+
+            # Log completion with standardized format
+            WorkerExecutionContext.log_task_completion(
+                f"unified_api_execution_{task_type}",
+                execution_id,
+                True,
+                f"files_processed={len(converted_files)}",
+            )
+
+            return result
+
+        except Exception as e:
+            logger.error(f"API execution failed: {e}")
+
+            # Handle execution error with standardized pattern
+            if "api_client" in locals():
+                WorkerExecutionContext.handle_execution_error(
+                    api_client, execution_id, e, logger, f"api_execution_{task_type}"
+                )
+
+            # Log completion with error
+            WorkerExecutionContext.log_task_completion(
+                f"unified_api_execution_{task_type}",
+                execution_id,
+                False,
+                f"error={str(e)}",
+            )
+
+            return {
+                "execution_id": execution_id,
+                "status": "ERROR",
+                "error": str(e),
+                "files_processed": 0,
+            }
+
+
 @app.task(
     bind=True,
-    name="async_execute_bin_api",
+    name=TaskName.ASYNC_EXECUTE_BIN_API,
     autoretry_for=(Exception,),
     max_retries=0,  # Match Django backend pattern
     retry_backoff=True,
@@ -72,128 +228,27 @@ def async_execute_bin_api(
     Returns:
         Execution result dictionary
     """
-    task_id = self.request.id
-
-    with log_context(
-        task_id=task_id,
-        execution_id=execution_id,
+    return _unified_api_execution(
+        task_instance=self,
+        schema_name=schema_name,
         workflow_id=workflow_id,
-        organization_id=schema_name,
+        execution_id=execution_id,
+        hash_values_of_files=hash_values_of_files,
+        scheduled=scheduled,
+        execution_mode=execution_mode,
         pipeline_id=pipeline_id,
-    ):
-        # Convert hash_values_of_files from dicts to FileHashData objects if needed
-        # Backend sends file_hash_in_str which contains .to_json() results (dicts)
-        converted_files = {}
-        for file_key, file_data in (hash_values_of_files or {}).items():
-            if isinstance(file_data, dict):
-                # Convert dict back to FileHashData object
-                try:
-                    converted_files[file_key] = FileHashData.from_dict(file_data)
-                except Exception as e:
-                    logger.warning(f"Failed to convert file data for {file_key}: {e}")
-                    continue
-            elif isinstance(file_data, FileHashData):
-                # Already correct type
-                converted_files[file_key] = file_data
-            else:
-                logger.warning(
-                    f"Unexpected file data type for {file_key}: {type(file_data)}"
-                )
-                continue
-
-        hash_values_of_files = converted_files
-
-        # DEBUG: Log all task parameters for debugging K8s vs local differences
-        logger.info(
-            f"Starting API deployment execution for workflow {workflow_id}, execution {execution_id}"
-        )
-        logger.info(
-            f"DEBUG: Task received parameters - schema_name='{schema_name}' (type: {type(schema_name).__name__})"
-        )
-        logger.info(
-            f"DEBUG: Task parameters - workflow_id={workflow_id}, execution_id={execution_id}"
-        )
-        logger.info(
-            f"DEBUG: Task parameters - pipeline_id={pipeline_id}, scheduled={scheduled}"
-        )
-        logger.info(
-            f"DEBUG: Task parameters - files_count={len(hash_values_of_files) if hash_values_of_files else 0}"
-        )
-
-        try:
-            # DEBUG: Verify schema_name before using it
-            if (
-                schema_name is None
-                or schema_name == ""
-                or str(schema_name).lower() == "none"
-            ):
-                logger.error(
-                    f"CRITICAL: Invalid schema_name received: '{schema_name}' - this will cause organization context issues!"
-                )
-            else:
-                # Set organization context in StateStore (matching Django pattern)
-                StateStore.set(Account.ORGANIZATION_ID, schema_name)
-
-            # Initialize API client with organization context
-            config = WorkerConfig()
-            logger.info(
-                f"DEBUG: Worker config - internal_api_key present: {bool(config.internal_api_key)}"
-            )
-
-            with InternalAPIClient(config) as api_client:
-                logger.info(
-                    f"DEBUG: Before set_organization_context - schema_name: '{schema_name}'"
-                )
-                api_client.set_organization_context(schema_name)
-                logger.info(
-                    "DEBUG: After set_organization_context - organization set on API client"
-                )
-
-                # Get workflow execution context
-                api_client.get_workflow_execution(execution_id)
-                logger.info(f"Retrieved execution context for {execution_id}")
-
-                # Run workflow using the exact same pattern as Django backend
-                return _run_workflow_api(
-                    api_client=api_client,
-                    schema_name=schema_name,
-                    workflow_id=workflow_id,
-                    execution_id=execution_id,
-                    hash_values_of_files=hash_values_of_files,
-                    scheduled=scheduled,
-                    execution_mode=execution_mode,
-                    pipeline_id=pipeline_id,
-                    use_file_history=use_file_history,
-                    task_id=task_id,
-                )
-
-        except Exception as e:
-            logger.error(f"API deployment execution failed for {execution_id}: {e}")
-
-            # Try to update execution status to failed (matching Django pattern)
-            try:
-                config = WorkerConfig()
-                with InternalAPIClient(config) as api_client:
-                    api_client.set_organization_context(schema_name)
-                    api_client.update_workflow_execution_status(
-                        execution_id=execution_id,
-                        status=ExecutionStatus.ERROR.value,
-                        error_message=str(e),
-                        attempts=self.request.retries + 1,
-                    )
-            except Exception as update_error:
-                logger.error(f"Failed to update execution status: {update_error}")
-
-            # Re-raise for Celery retry mechanism
-            raise
+        log_events_id=log_events_id,
+        use_file_history=use_file_history,
+        task_type="api",
+        **kwargs,
+    )
 
 
-# Add alias for backward compatibility with backend
 @app.task(
     bind=True,
-    name="async_execute_bin",  # Backend sends this name
+    name=TaskName.ASYNC_EXECUTE_BIN,
     autoretry_for=(Exception,),
-    max_retries=0,
+    max_retries=0,  # Match Django backend pattern
     retry_backoff=True,
     retry_backoff_max=500,
     retry_jitter=True,
@@ -219,120 +274,20 @@ def async_execute_bin(
     The backend sends 'async_execute_bin' tasks but we want to handle them
     as API deployments. This is identical to async_execute_bin_api.
     """
-    task_id = self.request.id
-
-    with log_context(
-        task_id=task_id,
-        execution_id=execution_id,
+    return _unified_api_execution(
+        task_instance=self,
+        schema_name=schema_name,
         workflow_id=workflow_id,
-        organization_id=schema_name,
+        execution_id=execution_id,
+        hash_values_of_files=hash_values_of_files,
+        scheduled=scheduled,
+        execution_mode=execution_mode,
         pipeline_id=pipeline_id,
-    ):
-        # Convert hash_values_of_files from dicts to FileHashData objects if needed
-        # Backend sends file_hash_in_str which contains .to_json() results (dicts)
-        converted_files = {}
-        for file_key, file_data in (hash_values_of_files or {}).items():
-            if isinstance(file_data, dict):
-                # Convert dict back to FileHashData object
-                try:
-                    converted_files[file_key] = FileHashData.from_dict(file_data)
-                except Exception as e:
-                    logger.warning(f"Failed to convert file data for {file_key}: {e}")
-                    continue
-            elif isinstance(file_data, FileHashData):
-                # Already correct type
-                converted_files[file_key] = file_data
-            else:
-                logger.warning(
-                    f"Unexpected file data type for {file_key}: {type(file_data)}"
-                )
-                continue
-
-        hash_values_of_files = converted_files
-
-        # DEBUG: Log all task parameters for debugging K8s vs local differences
-        logger.info(
-            f"Starting API deployment execution for workflow {workflow_id}, execution {execution_id} [async_execute_bin alias]"
-        )
-        logger.info(
-            f"DEBUG: Task received parameters - schema_name='{schema_name}' (type: {type(schema_name).__name__})"
-        )
-        logger.info(
-            f"DEBUG: Task parameters - workflow_id={workflow_id}, execution_id={execution_id}"
-        )
-        logger.info(
-            f"DEBUG: Task parameters - pipeline_id={pipeline_id}, scheduled={scheduled}"
-        )
-        logger.info(
-            f"DEBUG: Task parameters - files_count={len(hash_values_of_files) if hash_values_of_files else 0}"
-        )
-
-        try:
-            # DEBUG: Verify schema_name before using it
-            if (
-                schema_name is None
-                or schema_name == ""
-                or str(schema_name).lower() == "none"
-            ):
-                logger.error(
-                    f"CRITICAL: Invalid schema_name received: '{schema_name}' - this will cause organization context issues!"
-                )
-            else:
-                # Set organization context in StateStore (matching Django pattern)
-                StateStore.set(Account.ORGANIZATION_ID, schema_name)
-
-            # Initialize API client with organization context
-            config = WorkerConfig()
-            logger.info(
-                f"DEBUG: Worker config - internal_api_key present: {bool(config.internal_api_key)}"
-            )
-
-            with InternalAPIClient(config) as api_client:
-                logger.info(
-                    f"DEBUG: Before set_organization_context - schema_name: '{schema_name}'"
-                )
-                api_client.set_organization_context(schema_name)
-                logger.info(
-                    "DEBUG: After set_organization_context - organization set on API client"
-                )
-
-                # Get workflow execution context
-                api_client.get_workflow_execution(execution_id)
-                logger.info(f"Retrieved execution context for {execution_id}")
-
-                # Run workflow using the exact same pattern as Django backend
-                return _run_workflow_api(
-                    api_client=api_client,
-                    schema_name=schema_name,
-                    workflow_id=workflow_id,
-                    execution_id=execution_id,
-                    hash_values_of_files=hash_values_of_files,
-                    scheduled=scheduled,
-                    execution_mode=execution_mode,
-                    pipeline_id=pipeline_id,
-                    use_file_history=use_file_history,
-                    task_id=task_id,
-                )
-
-        except Exception as e:
-            logger.error(f"API deployment execution failed for {execution_id}: {e}")
-
-            # Try to update execution status to failed (matching Django pattern)
-            try:
-                config = WorkerConfig()
-                with InternalAPIClient(config) as api_client:
-                    api_client.set_organization_context(schema_name)
-                    api_client.update_workflow_execution_status(
-                        execution_id=execution_id,
-                        status=ExecutionStatus.ERROR.value,
-                        error_message=str(e),
-                        attempts=self.request.retries + 1,
-                    )
-            except Exception as update_error:
-                logger.error(f"Failed to update execution status: {update_error}")
-
-            # Re-raise for Celery retry mechanism
-            raise
+        log_events_id=log_events_id,
+        use_file_history=use_file_history,
+        task_type="legacy",
+        **kwargs,
+    )
 
 
 def _run_workflow_api(
@@ -354,7 +309,7 @@ def _run_workflow_api(
     """
     total_files = len(hash_values_of_files)
 
-    # Update total_files immediately so UI can show proper progress (fixes race condition)
+    # Update total_files at workflow start
     api_client.update_workflow_execution_status(
         execution_id=execution_id,
         status=ExecutionStatus.EXECUTING.value,
