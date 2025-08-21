@@ -433,7 +433,7 @@ const CreateApiDeploymentFromPromptStudio = ({
       if (errorDetails) {
         setBackendErrors(err.response.data);
         // Extract specific error messages for better user feedback
-        if (errorDetails && errorDetails.length > 0) {
+        if (errorDetails.length > 0) {
           const errorDetails = errorDetails
             .map((e) => `${e.attr}: ${e.detail}`)
             .join(", ");
