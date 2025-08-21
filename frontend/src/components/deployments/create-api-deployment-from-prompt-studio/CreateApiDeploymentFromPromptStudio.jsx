@@ -70,8 +70,9 @@ const CreateApiDeploymentFromPromptStudio = ({
       const timestamp = Date.now();
       const baseApiName = toolDetails.tool_name
         .toLowerCase()
-        .replace(/\s+/g, "_");
-      const uniqueApiName = `${baseApiName}_${timestamp}`;
+        .replace(/\s+/g, "_")
+        .substring(0, 15); // Limit base name to 15 chars to leave room for timestamp
+      const uniqueApiName = `${baseApiName}_${timestamp}`.substring(0, 30); // Ensure total doesn't exceed 30
 
       // Set default deployment details based on tool details
       const defaultValues = {
@@ -237,6 +238,7 @@ const CreateApiDeploymentFromPromptStudio = ({
 
   const cleanupCreatedResources = async (createdResources) => {
     const cleanupPromises = [];
+    const cleanupResults = { success: [], failed: [] };
 
     // Clean up API deployment if created
     if (createdResources.apiDeploymentId) {
@@ -247,9 +249,13 @@ const CreateApiDeploymentFromPromptStudio = ({
           headers: {
             "X-CSRFToken": sessionDetails?.csrfToken,
           },
-        }).catch(() => {
-          // Silently handle cleanup failures to avoid additional errors
         })
+          .then(() => {
+            cleanupResults.success.push("API deployment");
+          })
+          .catch(() => {
+            cleanupResults.failed.push("API deployment");
+          })
       );
     }
 
@@ -262,9 +268,13 @@ const CreateApiDeploymentFromPromptStudio = ({
           headers: {
             "X-CSRFToken": sessionDetails?.csrfToken,
           },
-        }).catch(() => {
-          // Silently handle cleanup failures to avoid additional errors
         })
+          .then(() => {
+            cleanupResults.success.push("Tool instance");
+          })
+          .catch(() => {
+            cleanupResults.failed.push("Tool instance");
+          })
       );
     }
 
@@ -273,17 +283,35 @@ const CreateApiDeploymentFromPromptStudio = ({
       cleanupPromises.push(
         workflowApiService
           .deleteProject(createdResources.workflowId)
+          .then(() => {
+            cleanupResults.success.push("Workflow");
+          })
           .catch(() => {
-            // Silently handle cleanup failures to avoid additional errors
+            cleanupResults.failed.push("Workflow");
           })
       );
     }
 
     // Wait for all cleanup operations to complete
     await Promise.allSettled(cleanupPromises);
+
+    // Log cleanup results for debugging
+    if (cleanupResults.failed.length > 0) {
+      console.warn(
+        "Some resources could not be cleaned up:",
+        cleanupResults.failed
+      );
+    }
+
+    return cleanupResults;
   };
 
   const createApiDeployment = async () => {
+    // Prevent duplicate submissions
+    if (isLoading) {
+      return;
+    }
+
     try {
       setPostHogCustomEvent("intent_create_api_deployment_from_prompt_studio", {
         info: "Creating API deployment from prompt studio",
@@ -296,6 +324,7 @@ const CreateApiDeploymentFromPromptStudio = ({
     }
 
     setIsLoading(true);
+    setBackendErrors(null); // Clear any previous errors
 
     // Track created resources for cleanup
     const createdResources = {
@@ -321,7 +350,9 @@ const CreateApiDeploymentFromPromptStudio = ({
       });
 
       // Step 2: Create workflow with unique name based on API deployment name
-      const workflowName = `${deploymentDetails.api_name}_workflow`;
+      // Add timestamp to ensure uniqueness even if API name is reused
+      const timestamp = Date.now();
+      const workflowName = `${deploymentDetails.api_name}_workflow_${timestamp}`;
       const workflowResponse = await workflowApiService.editProject(
         workflowName,
         `Workflow for ${deploymentDetails.display_name} API deployment`,
@@ -377,16 +408,9 @@ const CreateApiDeploymentFromPromptStudio = ({
       });
 
       // Step 6: Create API deployment
-      // Get the latest form values to ensure we have the most up-to-date data
-      const currentFormValues = form.getFieldsValue();
-      const finalDeploymentDetails = {
-        ...deploymentDetails,
-        ...currentFormValues,
-      };
-
       const apiDeploymentResponse =
         await apiDeploymentsApiService.createApiDeployment({
-          ...finalDeploymentDetails,
+          ...deploymentDetails,
           workflow: workflowId,
         });
 
@@ -402,12 +426,36 @@ const CreateApiDeploymentFromPromptStudio = ({
       // Cleanup created resources on failure
       await cleanupCreatedResources(createdResources);
 
-      if (err.response?.data?.errors) {
+      // Show error message to user
+      let errorMessage = "Failed to create API deployment";
+      const errorDetails = err?.response?.data?.errors;
+
+      if (errorDetails) {
         setBackendErrors(err.response.data);
-      } else {
-        setAlertDetails(
-          handleException(err, "Failed to create API deployment")
+        // Extract specific error messages for better user feedback
+        if (errorDetails && errorDetails.length > 0) {
+          const errorDetails = errorDetails
+            .map((e) => `${e.attr}: ${e.detail}`)
+            .join(", ");
+          errorMessage = `API deployment creation failed: ${errorDetails}`;
+        }
+      }
+
+      // Always show an alert for API deployment failures
+      setAlertDetails({
+        type: "error",
+        content: errorMessage,
+      });
+
+      // If we're on step 2 and have backend errors for deployment fields,
+      // go back to step 1 to show the errors
+      if (errorDetails && currentStep === 1) {
+        const hasDeploymentFieldErrors = errorDetails.some((error) =>
+          ["api_name", "display_name", "description"].includes(error?.attr)
         );
+        if (hasDeploymentFieldErrors) {
+          setCurrentStep(0);
+        }
       }
     } finally {
       setIsLoading(false);
@@ -634,7 +682,13 @@ const CreateApiDeploymentFromPromptStudio = ({
           <Form.Item
             label="Display Name"
             name="display_name"
-            rules={[{ required: true, message: "Please enter a display name" }]}
+            rules={[
+              { required: true, message: "Please enter a display name" },
+              {
+                max: 30,
+                message: "Maximum 30 characters allowed",
+              },
+            ]}
             validateStatus={
               getBackendErrorDetail("display_name", backendErrors)
                 ? "error"
@@ -642,7 +696,12 @@ const CreateApiDeploymentFromPromptStudio = ({
             }
             help={getBackendErrorDetail("display_name", backendErrors)}
           >
-            <Input placeholder="Enter display name for the API" />
+            <Input.TextArea
+              placeholder="Enter display name for the API"
+              maxLength={30}
+              showCount
+              autoSize={{ minRows: 1, maxRows: 2 }}
+            />
           </Form.Item>
 
           <Form.Item
@@ -670,8 +729,8 @@ const CreateApiDeploymentFromPromptStudio = ({
                   "Only letters, numbers, hyphen and underscores are allowed",
               },
               {
-                pattern: /^.{1,30}$/,
-                message: "Maximum 30 characters only allowed",
+                max: 30,
+                message: "Maximum 30 characters allowed",
               },
             ]}
             validateStatus={
@@ -679,7 +738,13 @@ const CreateApiDeploymentFromPromptStudio = ({
             }
             help={getBackendErrorDetail("api_name", backendErrors)}
           >
-            <Input placeholder="Enter API name (used in URL)" />
+            <Input.TextArea
+              placeholder="Enter API name (used in URL)"
+              maxLength={30}
+              showCount
+              autoSize={{ minRows: 1, maxRows: 2 }}
+              style={{ resize: "none" }}
+            />
           </Form.Item>
         </Form>
       )}
