@@ -13,7 +13,7 @@ class CeleryConfig:
     # Result backend configuration
     result_backend = (
         f"db+postgresql://{settings.DB_USER}:{quote_plus(settings.DB_PASSWORD)}"
-        f"@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
+        f"@{settings.DB_HOST}:{settings.DB_PORT}/{settings.CELERY_BACKEND_DB_NAME}"
     )
 
     # Broker URL configuration

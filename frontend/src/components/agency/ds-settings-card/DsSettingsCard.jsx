@@ -1,11 +1,4 @@
 import {
-  ExclamationCircleOutlined,
-  ExportOutlined,
-  ImportOutlined,
-  SettingOutlined,
-  CheckCircleTwoTone,
-} from "@ant-design/icons";
-import {
   Button,
   Col,
   Image,
@@ -18,7 +11,7 @@ import {
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
-import { getMenuItem, titleCase } from "../../../helpers/GetStaticData";
+import { getMenuItem } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -28,11 +21,6 @@ import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { ConfigureConnectorModal } from "../configure-connector-modal/ConfigureConnectorModal";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import "./DsSettingsCard.css";
-
-const tooltip = {
-  input: "Data Source Settings",
-  output: "Data Destination Settings",
-};
 
 const disabledIdsByType = {
   FILE_SYSTEM: [
@@ -84,11 +72,6 @@ function DsSettingsCard({ type, endpointDetails, message }) {
   const handleException = useExceptionHandler();
   const { flags } = sessionDetails;
   const { getUrl } = useRequestUrl();
-
-  const icons = {
-    input: <ImportOutlined className="ds-set-icon-size" />,
-    output: <ExportOutlined className="ds-set-icon-size" />,
-  };
 
   const setUpdatedInputoptions = (inputOption) => {
     setInputOptions((prevInputOptions) => {
@@ -347,14 +330,49 @@ function DsSettingsCard({ type, endpointDetails, message }) {
       });
   };
 
+  // Generate configure button tooltip message
+  const getConfigureTooltipMessage = () => {
+    if (!endpointDetails?.connection_type) {
+      return "Select the connector type from the dropdown";
+    }
+    return "";
+  };
+
+  // Check if connector is configured
+  const isConnectorConfigured = () => {
+    // For API connections, connector_instance is not required
+    if (endpointDetails?.connection_type === "API") {
+      return true;
+    }
+
+    // For other connection types (Database, etc.), check if connector instance is configured
+    // connector_instance represents the actual configured connector with credentials
+    return !!endpointDetails?.connector_instance;
+  };
+
+  // Get configure button text based on configuration status
+  const getConfigureButtonText = () => {
+    if (!endpointDetails?.connection_type) {
+      return "Configure";
+    }
+
+    return isConnectorConfigured() ? "Configured" : "Configure";
+  };
+
   return (
     <>
       <Row className="ds-set-card-row">
-        <Col span={4} className="ds-set-card-col1">
-          <Tooltip title={tooltip[type]}>{icons[type]}</Tooltip>
-        </Col>
         <Col span={12} className="ds-set-card-col2">
           <SpaceWrapper>
+            {message && (
+              <Typography.Paragraph
+                ellipsis={{ rows: 2, expandable: false }}
+                className="font-size-12 ds-set-card-message"
+                type="secondary"
+              >
+                {message}
+              </Typography.Paragraph>
+            )}
             <Space>
               <Tooltip
                 title={
@@ -364,7 +382,6 @@ function DsSettingsCard({ type, endpointDetails, message }) {
               >
                 <Select
                   className="ds-set-card-select"
-                  size="small"
                   options={options}
                   placeholder="Select Connector Type"
                   value={endpointDetails?.connection_type || undefined}
@@ -379,16 +396,9 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                 />
               </Tooltip>
 
-              <Tooltip
-                title={`${
-                  endpointDetails?.connection_type
-                    ? ""
-                    : "Select the connector type from the dropdown"
-                }`}
-              >
+              <Tooltip title={getConfigureTooltipMessage()}>
                 <Button
-                  type="text"
-                  size="small"
+                  type="primary"
                   onClick={() => setOpenModal(true)}
                   disabled={
                     !endpointDetails?.connection_type ||
@@ -396,61 +406,11 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                     connType === "APPDEPLOYMENT"
                   }
                 >
-                  <SettingOutlined />
+                  {getConfigureButtonText()}
                 </Button>
               </Tooltip>
             </Space>
-            <div className="display-flex-align-center">
-              {connDetails?.connector_name ? (
-                <Space>
-                  <Image
-                    src={connDetails?.icon}
-                    height={20}
-                    width={20}
-                    preview={false}
-                  />
-                  <Typography.Text className="font-size-12">
-                    {connDetails?.connector_name}
-                  </Typography.Text>
-                </Space>
-              ) : (
-                <>
-                  {connType === "API" || connType === "APPDEPLOYMENT" ? (
-                    <Typography.Text
-                      className="font-size-12 display-flex-align-center"
-                      ellipsis={{ rows: 1, expandable: false }}
-                      type="secondary"
-                    >
-                      <CheckCircleTwoTone twoToneColor="#52c41a" />
-                      <span style={{ marginLeft: "5px" }}>
-                        {titleCase(type)} set to {connType} successfully
-                      </span>
-                    </Typography.Text>
-                  ) : (
-                    <Typography.Text
-                      className="font-size-12 display-flex-align-center"
-                      ellipsis={{ rows: 1, expandable: false }}
-                      type="secondary"
-                    >
-                      <ExclamationCircleOutlined />
-                      <span style={{ marginLeft: "5px" }}>
-                        Connector not configured
-                      </span>
-                    </Typography.Text>
-                  )}
-                </>
-              )}
-            </div>
           </SpaceWrapper>
-        </Col>
-        <Col span={8} className="ds-set-card-col3">
-          <Typography.Paragraph
-            ellipsis={{ rows: 2, expandable: false }}
-            className="font-size-12"
-            type="secondary"
-          >
-            {message}
-          </Typography.Paragraph>
         </Col>
       </Row>
       <ConfigureConnectorModal

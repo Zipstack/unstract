@@ -1,4 +1,9 @@
-import { ArrowLeftOutlined, CaretRightOutlined } from "@ant-design/icons";
+import {
+  ArrowLeftOutlined,
+  CaretRightOutlined,
+  DownOutlined,
+  SettingOutlined,
+} from "@ant-design/icons";
 import {
   Button,
   Col,
@@ -24,6 +29,8 @@ import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import "./AddLlmProfile.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import RetrievalStrategyModal from "../retrieval-strategy-modal/RetrievalStrategyModal";
+import { useRetrievalStrategies } from "../../../hooks/useRetrievalStrategies";
 
 function AddLlmProfile({
   editLlmProfileId,
@@ -36,6 +43,7 @@ function AddLlmProfile({
   const [resetForm, setResetForm] = useState(false);
   const [backendErrors, setBackendErrors] = useState(null);
   const [retrievalItems, setRetrievalItems] = useState([]);
+  const [hasLoadedFromApi, setHasLoadedFromApi] = useState(false);
   const [llmItems, setLlmItems] = useState([]);
   const [vectorDbItems, setVectorDbItems] = useState([]);
   const [embeddingItems, setEmbeddingItems] = useState([]);
@@ -44,35 +52,46 @@ function AddLlmProfile({
   const [loading, setLoading] = useState(false);
   const [modalTitle, setModalTitle] = useState("");
   const [areAdaptersReady, setAreAdaptersReady] = useState(false);
+  const [isRetrievalModalVisible, setIsRetrievalModalVisible] = useState(false);
   const { sessionDetails } = useSessionStore();
-  const { details, getDropdownItems, llmProfiles, updateCustomTool } =
-    useCustomToolStore();
+  const { details, llmProfiles, updateCustomTool } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const { token } = theme.useToken();
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
-  const panelStyle = {
-    marginBottom: 16,
-  };
+  const { getStrategies } = useRetrievalStrategies();
 
   useEffect(() => {
     setAdaptorProfilesDropdown();
-    const data = getDropdownItems("retrieval_strategy");
-    if (!data) {
-      return;
-    }
-    const items = Object.keys(data).map((name) => {
-      return {
-        value: data[name],
-      };
-    });
-    setRetrievalItems(items);
 
     return () => {
       setEditLlmProfileId(null);
     };
   }, []);
+
+  // Load retrieval strategies when tool_id is available (only once)
+  useEffect(() => {
+    if (details?.tool_id && !hasLoadedFromApi) {
+      const loadStrategies = async () => {
+        try {
+          const strategies = await getStrategies(details.tool_id);
+          const items =
+            strategies?.map((strategy) => ({
+              value: strategy?.key,
+              label: strategy?.title,
+            })) || [];
+          setRetrievalItems(items);
+          setHasLoadedFromApi(true);
+        } catch (error) {
+          console.error("Error loading retrieval strategies:", error);
+          setHasLoadedFromApi(true);
+        }
+      };
+
+      loadStrategies();
+    }
+  }, [details?.tool_id, hasLoadedFromApi]); // getStrategies intentionally omitted to prevent infinite re-renders
 
   useEffect(() => {
     if (editLlmProfileId) {
@@ -243,11 +262,11 @@ function AddLlmProfile({
       });
   };
 
-  const getItems = (panelStyle) => [
+  const getItems = () => [
     {
       key: "1",
       label: "Advanced Settings",
-      style: panelStyle,
+      className: "add-llm-profile-panel",
       children: (
         <div>
           <Form.Item
@@ -260,7 +279,35 @@ function AddLlmProfile({
             }
             help={getBackendErrorDetail("retrieval_strategy", backendErrors)}
           >
-            <Select options={retrievalItems} />
+            <button
+              type="button"
+              className="retrieval-strategy-selector"
+              onClick={handleRetrievalModalOpen}
+              aria-label="Select retrieval strategy"
+              aria-expanded={isRetrievalModalVisible}
+              aria-haspopup="dialog"
+            >
+              <span
+                className={`retrieval-strategy-text ${
+                  formDetails.retrieval_strategy
+                    ? "retrieval-strategy-text--selected"
+                    : "retrieval-strategy-text--placeholder"
+                }`}
+              >
+                {formDetails.retrieval_strategy
+                  ? retrievalItems.find(
+                      (item) => item.value === formDetails.retrieval_strategy
+                    )?.label || "Select retrieval strategy"
+                  : "Select retrieval strategy"}
+              </span>
+              <div className="retrieval-strategy-actions">
+                <SettingOutlined
+                  className="retrieval-strategy-settings-icon"
+                  title="Configure retrieval strategy"
+                />
+                <DownOutlined className="retrieval-strategy-dropdown-icon" />
+              </div>
+            </button>
           </Form.Item>
           <Form.Item
             label="Matching count limit (similarity top-k)"
@@ -400,6 +447,34 @@ function AddLlmProfile({
     const tokenSize = (chunkSize / 4 / 1024).toFixed(1);
     return tokenSize;
   }
+
+  const handleRetrievalModalOpen = () => {
+    setIsRetrievalModalVisible(true);
+  };
+
+  const handleRetrievalStrategySelect = (strategy) => {
+    const strategyLabel =
+      retrievalItems.find((item) => item.value === strategy)?.label || strategy;
+    form.setFieldsValue({ retrieval_strategy: strategy });
+    setFormDetails({ ...formDetails, retrieval_strategy: strategy });
+    setIsRetrievalModalVisible(false);
+
+    // Clear any existing backend errors for this field
+    setBackendErrors((prevErrors) => {
+      if (prevErrors) {
+        const updatedErrors = prevErrors.errors.filter(
+          (error) => error.attr !== "retrieval_strategy"
+        );
+        return { ...prevErrors, errors: updatedErrors };
+      }
+      return null;
+    });
+
+    setAlertDetails({
+      type: "success",
+      content: `Retrieval strategy set to: ${strategyLabel}`,
+    });
+  };
 
   return (
     <div className="settings-body-pad-top">
@@ -576,7 +651,7 @@ function AddLlmProfile({
               style={{
                 background: token.colorBgContainer,
               }}
-              items={getItems(panelStyle)}
+              items={getItems()}
               activeKey={activeKey && "1"}
               onChange={handleCollapse}
             />
@@ -590,6 +665,14 @@ function AddLlmProfile({
           </Space>
         </Form.Item>
       </Form>
+
+      <RetrievalStrategyModal
+        visible={isRetrievalModalVisible}
+        onCancel={() => setIsRetrievalModalVisible(false)}
+        onOk={handleRetrievalStrategySelect}
+        currentStrategy={formDetails.retrieval_strategy}
+        loading={false}
+      />
     </div>
   );
 }
