@@ -171,6 +171,20 @@ class DestinationConnector(BaseConnector):
             logger.info(f"Successfully pushed {file_name} to HITL queue")
             return True
 
+        # Check if file is already marked for manual review
+        if (
+            hasattr(file_hash, "is_manualreview_required")
+            and file_hash.is_manualreview_required
+        ):
+            logger.info(f"File {file_name} marked for manual review based on rules")
+            self._push_data_to_queue(
+                file_name=file_name,
+                workflow=workflow,
+                input_file_path=input_file_path,
+                file_execution_id=file_execution_id,
+            )
+            return True
+
         # Skip HITL validation if we're using file_history and no execution result is available
         if self.is_api and self.use_file_history:
             return False

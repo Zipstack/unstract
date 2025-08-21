@@ -20,8 +20,19 @@ class ModifierConfig:
     METADATA_IS_ACTIVE = "is_active"
 
 
+# Cache for loaded plugins to avoid repeated loading
+_modifier_plugins_cache: list[Any] = []
+_plugins_loaded = False
+
+
 def load_plugins() -> list[Any]:
     """Iterate through the extraction plugins and register them."""
+    global _modifier_plugins_cache, _plugins_loaded
+
+    # Return cached plugins if already loaded
+    if _plugins_loaded:
+        return _modifier_plugins_cache
+
     plugins_app = apps.get_app_config(ModifierConfig.PLUGINS_APP)
     package_path = plugins_app.module.__package__
     modifier_dir = os.path.join(plugins_app.path, ModifierConfig.PLUGIN_DIR)
@@ -29,6 +40,8 @@ def load_plugins() -> list[Any]:
     modifier_plugins: list[Any] = []
 
     if not os.path.exists(modifier_dir):
+        _modifier_plugins_cache = modifier_plugins
+        _plugins_loaded = True
         return modifier_plugins
 
     for item in os.listdir(modifier_dir):
@@ -68,5 +81,9 @@ def load_plugins() -> list[Any]:
 
     if len(modifier_plugins) == 0:
         logger.info("No modifier plugins found.")
+
+    # Cache the results for future requests
+    _modifier_plugins_cache = modifier_plugins
+    _plugins_loaded = True
 
     return modifier_plugins

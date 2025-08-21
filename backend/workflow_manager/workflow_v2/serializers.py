@@ -19,6 +19,7 @@ from backend.serializers import AuditSerializer
 from workflow_manager.workflow_v2.constants import WorkflowExecutionKey, WorkflowKey
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.execution_log import ExecutionLog
+from workflow_manager.workflow_v2.models.file_history import FileHistory
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 logger = logging.getLogger(__name__)
@@ -112,4 +113,10 @@ class WorkflowExecutionSerializer(ModelSerializer):
 class WorkflowExecutionLogSerializer(ModelSerializer):
     class Meta:
         model = ExecutionLog
+        fields = "__all__"
+
+
+class FileHistorySerializer(ModelSerializer):
+    class Meta:
+        model = FileHistory
         fields = "__all__"

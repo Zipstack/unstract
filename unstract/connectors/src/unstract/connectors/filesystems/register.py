@@ -32,7 +32,11 @@ def register_connectors(connectors: dict[str, Any]) -> None:
                             Common.METADATA: metadata,
                         }
             except ModuleNotFoundError as exception:
-                logger.error(f"Error while importing connectors : {exception}")
+                logger.error(
+                    f"Error while importing connectors ===FS===== {connector} : {exception}",
+                    exc_info=True,
+                    stack_info=True,
+                )
 
     if len(connectors) == 0:
         logger.warning("No connector found.")

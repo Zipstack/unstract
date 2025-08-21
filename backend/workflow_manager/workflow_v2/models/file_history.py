@@ -4,6 +4,7 @@ from django.db import models
 from django.db.models import Q
 from utils.models.base_model import BaseModel
 
+from unstract.core.data_models import FileHistoryData
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
@@ -18,7 +19,7 @@ class FileHistory(BaseModel):
         Returns:
             bool: True if the execution status is completed, False otherwise.
         """
-        return self.status is not None and self.status == ExecutionStatus.COMPLETED
+        return self.status is not None and self.status == ExecutionStatus.COMPLETED.value
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     cache_key = models.CharField(
@@ -99,3 +100,16 @@ class FileHistory(BaseModel):
             update_fields.append("provider_file_uuid")
         if update_fields:  # Save only if there's an actual update
             self.save(update_fields=update_fields)
+
+    def to_file_history_data(self) -> FileHistoryData:
+        return FileHistoryData(
+            id=self.id,
+            cache_key=self.cache_key,
+            provider_file_uuid=self.provider_file_uuid,
+            workflow_id=self.workflow.id,
+            status=self.status,
+            error=self.error,
+            result=self.result,
+            metadata=self.metadata,
+            file_path=self.file_path,
+        )

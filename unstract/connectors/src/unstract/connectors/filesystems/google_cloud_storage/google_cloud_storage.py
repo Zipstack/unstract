@@ -99,6 +99,55 @@ class GoogleCloudStorageFS(UnstractFileSystem):
         logger.error(f"[GCS] File hash not found for the metadata: {metadata}")
         return None
 
+    @staticmethod
+    def get_connector_root_dir(input_dir: str, **kwargs) -> str:
+        """Get the correct root directory for GCS operations.
+
+        This method handles GCS-specific path resolution, including:
+        - Bucket name extraction from paths
+        - Proper path formatting for GCS operations
+        - Compatibility with different path formats
+
+        Args:
+            input_dir: Input directory path (may include bucket name)
+            root_path: Root path configured for the connector
+
+        Returns:
+            str: Properly formatted GCS path
+        """
+        # For GCS, paths might be passed as "bucket-name/folder-path"
+        # But fsspec GCS expects just "folder-path" without bucket prefix
+
+        root_path = kwargs.get("root_path", "")
+
+        # If root_path is set, it should already contain the bucket
+        if root_path:
+            # Remove leading/trailing slashes
+            root_path = root_path.strip("/")
+            input_dir = input_dir.strip("/")
+
+            # If input_dir is just "/", use root_path
+            if not input_dir or input_dir == "/":
+                return root_path
+
+            # Combine paths
+            return f"{root_path}/{input_dir}"
+
+        # If no root_path, clean up the input_dir
+        input_dir = input_dir.strip("/")
+
+        # Check if input_dir contains bucket name (has no slashes or is bucket/path format)
+        if "/" in input_dir:
+            # This might be "bucket/path" format
+            parts = input_dir.split("/", 1)
+            if len(parts) == 2:
+                bucket_name, folder_path = parts
+                # For GCS, we typically need the full path including bucket
+                return input_dir
+
+        # Return as-is if it's just a folder name or bucket name
+        return input_dir
+
     def is_dir_by_metadata(self, metadata: dict[str, Any]) -> bool:
         """Check if the given path is a directory.
 
@@ -108,8 +157,46 @@ class GoogleCloudStorageFS(UnstractFileSystem):
         Returns:
             bool: True if the path is a directory, False otherwise.
         """
-        # Note: Here Metadata type seems to be always "file" even for directories
-        return metadata.get("type") == "directory"
+        # Primary check: Standard directory type
+        if metadata.get("type") == "directory":
+            return True
+
+        # GCS-specific directory detection
+        # In GCS, folders are represented as objects with specific characteristics
+        object_name = metadata.get("name", "")
+        size = metadata.get("size", 0)
+        content_type = metadata.get("contentType", "")
+
+        # GCS folder indicators:
+        # 1. Object name ends with "/" (most reliable indicator)
+        if object_name.endswith("/"):
+            logger.debug(
+                f"[GCS Directory Check] '{object_name}' identified as directory: name ends with '/'"
+            )
+            return True
+
+        # 2. Zero-size object with text/plain content type (common for GCS folders)
+        if size == 0 and content_type == "text/plain":
+            logger.debug(
+                f"[GCS Directory Check] '{object_name}' identified as directory: zero-size with text/plain content type"
+            )
+            return True
+
+        # 3. Check for GCS-specific folder metadata
+        # Some GCS folder objects have no contentType or have application/x-www-form-urlencoded
+        if size == 0 and (
+            not content_type
+            or content_type
+            in ["application/x-www-form-urlencoded", "binary/octet-stream"]
+        ):
+            # Additional validation: check if this looks like a folder path
+            if "/" in object_name and not object_name.split("/")[-1]:  # Path ends with /
+                logger.debug(
+                    f"[GCS Directory Check] '{object_name}' identified as directory: zero-size folder-like object"
+                )
+                return True
+
+        return False
 
     def test_credentials(self) -> bool:
         """Test Google Cloud Storage credentials by accessing the root path info.

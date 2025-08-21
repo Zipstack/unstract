@@ -53,6 +53,7 @@ class ExecutionFileHandler:
             raise FileMetadataJsonNotFound()
         file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
         file_storage = file_system.get_file_storage()
+        print(f"metadata_file ----------------------->>: {self.metadata_file}")
         metadata_content = file_storage.read(path=self.metadata_file, mode="r")
         metadata = json.loads(metadata_content)
         return metadata
@@ -233,3 +234,32 @@ class ExecutionFileHandler:
         if not self.file_execution_dir:
             return None
         return os.path.join(self.file_execution_dir, WorkflowFileType.METADATA_JSON)
+
+    def delete_file_execution_directory(self) -> None:
+        """Delete the file execution directory and all its contents.
+
+        This method cleans up temporary files created during workflow execution.
+        It's safe to call even if the directory doesn't exist.
+        """
+        if not self.file_execution_dir:
+            logger.debug("No file execution directory to delete")
+            return
+
+        try:
+            file_path = Path(self.file_execution_dir)
+            if file_path.exists() and file_path.is_dir():
+                import shutil
+
+                shutil.rmtree(file_path)
+                logger.debug(
+                    f"Deleted file execution directory: {self.file_execution_dir}"
+                )
+            else:
+                logger.debug(
+                    f"File execution directory does not exist: {self.file_execution_dir}"
+                )
+        except Exception as e:
+            logger.warning(
+                f"Failed to delete file execution directory {self.file_execution_dir}: {str(e)}"
+            )
+            # Don't raise exception as cleanup failure shouldn't stop execution

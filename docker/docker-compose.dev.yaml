@@ -1,0 +1,53 @@
+# Development overlay for hot reload and fast iteration
+# Usage: VERSION=local docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up -d worker-*-new
+#
+# This configuration uses volume mounts for source code to enable hot reload during development.
+# The workers will automatically restart when code changes are detected.
+
+services:
+  # Development overrides - these simply add restart policies for auto-reload
+  # The actual hot reload happens via the dev-watch.sh script
+
+  worker-api-deployment-new:
+    environment:
+      - ENVIRONMENT=development
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    deploy:
+      restart_policy:
+        condition: any
+        delay: 2s
+
+  worker-callback-new:
+    environment:
+      - ENVIRONMENT=development
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    deploy:
+      restart_policy:
+        condition: any
+        delay: 2s
+
+  worker-file-processing-new:
+    environment:
+      - ENVIRONMENT=development
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    deploy:
+      restart_policy:
+        condition: any
+        delay: 2s
+
+  worker-general-new:
+    environment:
+      - ENVIRONMENT=development
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    deploy:
+      restart_policy:
+        condition: any
+        delay: 2s

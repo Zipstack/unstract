@@ -21,7 +21,6 @@ from workflow_manager.endpoint_v2.constants import (
     FileSystemConnector,
     FileType,
     SourceConstant,
-    SourceKey,
 )
 from workflow_manager.endpoint_v2.dto import FileHash, SourceConfig
 from workflow_manager.endpoint_v2.enums import AllowedFileTypes
@@ -44,6 +43,9 @@ from workflow_manager.workflow_v2.models.file_history import FileHistory
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
+
+# Import unified SourceKey from core package
+from unstract.core.data_models import SourceKey
 from unstract.filesystem import FileStorageType, FileSystem
 from unstract.sdk.file_storage import FileStorage
 from unstract.workflow_execution.enums import LogStage, LogState
@@ -164,15 +166,13 @@ class SourceConnector(BaseConnector):
         connector: ConnectorInstance = self.endpoint.connector_instance
         connector_settings: dict[str, Any] = connector.connector_metadata
         source_configurations: dict[str, Any] = self.endpoint.configuration
-        required_patterns = list(source_configurations.get(SourceKey.FILE_EXTENSIONS, []))
-        recursive = bool(
-            source_configurations.get(SourceKey.PROCESS_SUB_DIRECTORIES, False)
-        )
-        limit = int(
-            source_configurations.get(SourceKey.MAX_FILES, FileSystemConnector.MAX_FILES)
+        required_patterns = SourceKey.get_file_extensions(source_configurations)
+        recursive = SourceKey.get_process_sub_directories(source_configurations)
+        limit = SourceKey.get_max_files(
+            source_configurations, FileSystemConnector.MAX_FILES
         )
         root_dir_path = connector_settings.get(ConnectorKeys.PATH, "")
-        folders_to_process = list(source_configurations.get(SourceKey.FOLDERS, ["/"]))
+        folders_to_process = SourceKey.get_folders(source_configurations)
         # Process from root in case its user provided list is empty
         if not folders_to_process:
             folders_to_process = ["/"]
@@ -716,6 +716,7 @@ class SourceConnector(BaseConnector):
             file_size=file_size,
             provider_file_uuid=provider_file_uuid,
             fs_metadata=serialized_metadata,
+            is_manualreview_required=False,  # Will be set later based on rules
         )
 
     def list_files_from_source(
@@ -1055,6 +1056,7 @@ class SourceConnector(BaseConnector):
                     is_executed=True,
                     file_size=file.size,
                     mime_type=mime_type,
+                    is_manualreview_required=False,  # Will be set later based on rules
                 )
                 file_hashes.update({file_name: file_hash})
                 continue

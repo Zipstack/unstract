@@ -66,6 +66,8 @@ COPY ${BUILD_CONTEXT_PATH}/ ./
 RUN uv sync --group deploy --locked && \
     uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement - && \
     chmod +x ./entrypoint.sh
+RUN set -e; \
+    uv add -r requirements.txt
 
 EXPOSE 8000
 

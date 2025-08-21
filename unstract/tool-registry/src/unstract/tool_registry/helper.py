@@ -302,12 +302,38 @@ class ToolRegistryHelper:
                 data = ToolUtils.get_all_tools_from_disk(file_path=tool_file, fs=self.fs)
                 if not data:
                     logger.info(f"No data from {tool_file}")
-                tool_version_list = [
-                    f"tool: {k}, version: {v['properties']['toolVersion']}"
-                    for k, v in data.items()
-                ]
+
+                tool_version_list = []
+                for k, v in data.items():
+                    if k == "tools" and isinstance(v, list):
+                        # Skip empty tools array - this is wrong format from namespace package issue
+                        logger.warning(f"Skipping malformed 'tools' array in {tool_file}")
+                        continue
+                    elif (
+                        isinstance(v, dict)
+                        and "properties" in v
+                        and isinstance(v["properties"], dict)
+                    ):
+                        tool_version_list.append(
+                            f"tool: {k}, version: {v['properties']['toolVersion']}"
+                        )
+                    else:
+                        logger.warning(
+                            f"Skipping malformed tool entry: {k} = {type(v)} in {tool_file}"
+                        )
+                        continue
                 logger.info(f"Loading tools from {tool_file}: {tool_version_list}")
-                tools.update(data)
+                # Filter out malformed entries before updating tools
+                valid_data = {}
+                for k, v in data.items():
+                    if k == "tools" and isinstance(v, list):
+                        # Skip the malformed 'tools' array
+                        continue
+                    elif isinstance(v, dict) and "properties" in v:
+                        valid_data[k] = v
+                    else:
+                        logger.warning(f"Filtering out malformed tool entry: {k}")
+                tools.update(valid_data)
             except FileNotFoundError:
                 logger.warning(f"Unable to find tool file to load tools: {tool_file}")
         return tools

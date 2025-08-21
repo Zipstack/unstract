@@ -2,47 +2,16 @@ from __future__ import annotations
 
 from enum import Enum
 
-from django.db.models import TextChoices
+# Import shared ExecutionStatus to ensure consistency between backend and workers
+from unstract.core.data_models import ExecutionStatus
 
 
 class WorkflowExecutionMethod(Enum):
     INSTANT = "INSTANT"
     QUEUED = "QUEUED"
 
-
-class ExecutionStatus(TextChoices):
-    """An enumeration representing the various statuses of an execution
-    process.
-
-    Statuses:
-        PENDING: The execution's entry has been created in the database.
-        EXECUTING: The execution is currently in progress.
-        COMPLETED: The execution has been successfully completed.
-        STOPPED: The execution was stopped by the user
-            (applicable to step executions).
-        ERROR: An error occurred during the execution process.
-
-    Note:
-        Intermediate statuses might not be experienced due to
-        Django's query triggering once all processes are completed.
-    """
-
-    PENDING = "PENDING"
-    EXECUTING = "EXECUTING"
-    COMPLETED = "COMPLETED"
-    STOPPED = "STOPPED"
-    ERROR = "ERROR"
-
-    @classmethod
-    def is_completed(cls, status: str | ExecutionStatus) -> bool:
-        """Check if the execution status is completed."""
-        try:
-            status_enum = cls(status)
-        except ValueError:
-            raise ValueError(
-                f"Invalid status: {status}. Must be a valid ExecutionStatus."
-            )
-        return status_enum in [cls.COMPLETED, cls.STOPPED, cls.ERROR]
+    # ExecutionStatus is now imported from shared data models above
+    # This ensures consistency between backend and workers
 
     @classmethod
     def is_active(cls, status: str | ExecutionStatus) -> bool:

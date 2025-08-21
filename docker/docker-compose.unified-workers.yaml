@@ -1,0 +1,186 @@
+# Docker Compose with Unified Worker Architecture
+# This file demonstrates using a single worker image for all worker types
+# Benefits: 1 build instead of 4, faster development iteration
+
+include:
+  - docker-compose-dev-essentials.yaml
+
+services:
+  # Backend service (unchanged)
+  backend:
+    image: unstract/backend:${VERSION}
+    container_name: unstract-backend
+    restart: unless-stopped
+    command: --migrate
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../backend/.env
+    depends_on:
+      - db
+      - redis
+      - rabbitmq
+      - reverse-proxy
+      - minio
+      - createbuckets
+      - platform-service
+      - prompt-service
+      - x2text-service
+    volumes:
+      - prompt_studio_data:/app/prompt-studio-data
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-backend
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.backend.rule=Host(`frontend.unstract.localhost`) && PathPrefix(`/api/v1`, `/deployment`)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # UNIFIED WORKERS - Single image, different entry points
+
+  # General worker (webhooks, background tasks)
+  worker-general:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-general
+    restart: unless-stopped
+    command: ["general"]  # Worker type as argument
+    env_file:
+      - ../backend/.env
+    depends_on:
+      - rabbitmq
+      - db
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-general
+      - WORKER_TYPE=general
+      - HEALTH_PORT=8081
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+
+  # API deployment worker
+  worker-api-deployment:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-api-deployment
+    restart: unless-stopped
+    command: ["api-deployment"]  # Worker type as argument
+    env_file:
+      - ../backend/.env
+    depends_on:
+      - rabbitmq
+      - db
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-api-deployment
+      - WORKER_TYPE=api-deployment
+      - HEALTH_PORT=8080
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+
+  # File processing worker
+  worker-file-processing:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-file-processing
+    restart: unless-stopped
+    command: ["file-processing"]  # Worker type as argument
+    env_file:
+      - ../backend/.env
+    depends_on:
+      - rabbitmq
+      - db
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-file-processing
+      - WORKER_TYPE=file_processing
+      - HEALTH_PORT=8082
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+
+  # Callback worker
+  worker-callback:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-callback
+    restart: unless-stopped
+    command: ["callback"]  # Worker type as argument
+    env_file:
+      - ../backend/.env
+    depends_on:
+      - rabbitmq
+      - db
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-callback
+      - WORKER_TYPE=callback
+      - HEALTH_PORT=8083
+    labels:
+      - traefik.enable=false
+
+  # Original backend workers (for comparison/backward compatibility)
+
+  # Celery default worker (using backend image)
+  worker-legacy:
+    image: unstract/backend:${VERSION}
+    container_name: unstract-worker-legacy
+    restart: unless-stopped
+    entrypoint: .venv/bin/celery
+    command: "-A backend worker --loglevel=info -Q celery,celery_api_deployments --autoscale=${WORKER_AUTOSCALE}"
+    env_file:
+      - ../backend/.env
+    depends_on:
+      - rabbitmq
+      - db
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-legacy
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+
+  # Celery worker for managing logs and periodic tasks (using backend image)
+  worker-logging:
+    image: unstract/backend:${VERSION}
+    container_name: unstract-worker-logging
+    restart: unless-stopped
+    entrypoint: .venv/bin/celery
+    command: "-A backend worker --loglevel=info -Q celery_periodic_logs,celery_log_task_queue --autoscale=${WORKER_LOGGING_AUTOSCALE}"
+    env_file:
+      - ../backend/.env
+    depends_on:
+      - rabbitmq
+      - db
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-logging
+    labels:
+      - traefik.enable=false
+
+  # All other services (unchanged from original docker-compose.yaml)
+
+  frontend:
+    image: unstract/frontend:${VERSION}
+    container_name: unstract-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.frontend.rule=Host(`frontend.unstract.localhost`)
+      - traefik.http.services.frontend.loadbalancer.server.port=3000
+
+  # Other services would be included here...
+  # (platform-service, prompt-service, x2text-service, etc.)
+
+# Volumes are defined in docker-compose-dev-essentials.yaml

@@ -1,0 +1,74 @@
+# Unified Worker Docker ignore file
+# Based on worker-base.dockerignore but unified for all worker types
+
+# Virtual environments
+**/.venv/
+**/venv/
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+
+# IDE and editor files
+**/.vscode/
+**/.idea/
+**/*.swp
+**/*.swo
+**/*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Docker files (avoid recursion)
+**/Dockerfile*
+**/*.dockerignore
+
+# Build artifacts
+**/dist/
+**/build/
+**/*.egg-info/
+
+# Logs
+**/*.log
+**/logs/
+
+# Test files
+**/tests/
+**/test_*.py
+**/*_test.py
+
+# Development files
+**/dev-*
+**/sample.*
+**/example.*
+
+# Node modules (if any)
+**/node_modules/
+
+# Documentation
+**/docs/
+**/*.md
+!README.md
+
+# Configuration that shouldn't be in containers
+**/.env*
+**/local_settings.py
+
+# Coverage reports
+**/htmlcov/
+**/.coverage
+**/coverage.xml
+
+# Backup files
+**/*.bak
+**/*.backup
+**/*.orig
+
+# Temporary files
+**/tmp/
+**/temp/
+**/.tmp/
