@@ -186,7 +186,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
       if (pathSegments[1].includes("/approve")) {
         setReviewPageHeader("Approve");
       } else if (pathSegments[1].includes("/download_and_sync")) {
-        setReviewPageHeader("Download and syncmanager");
+        setReviewPageHeader("Download and Sync Manager");
       } else {
         setReviewPageHeader("Review");
       }
