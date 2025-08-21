@@ -10,6 +10,7 @@ import {
   KeyOutlined,
   CloudDownloadOutlined,
   CopyOutlined,
+  LoadingOutlined,
 } from "@ant-design/icons";
 import {
   Button,
@@ -42,6 +43,7 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { pipelineService } from "../pipeline-service.js";
 import { ManageKeys } from "../../deployments/manage-keys/ManageKeys.jsx";
 import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
+import useClearFileHistory from "../../../hooks/useClearFileHistory";
 import { NotificationModal } from "../notification-modal/NotificationModal.jsx";
 import { usePromptStudioStore } from "../../../store/prompt-studio-store";
 import { PromptStudioModal } from "../../common/PromptStudioModal";
@@ -61,6 +63,8 @@ function Pipelines({ type }) {
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+  const { clearFileHistory, isClearing: isClearingFileHistory } =
+    useClearFileHistory();
   const [isEdit, setIsEdit] = useState(false);
   const [openLogsModal, setOpenLogsModal] = useState(false);
   const [executionLogs, setExecutionLogs] = useState([]);
@@ -269,25 +273,15 @@ function Pipelines({ type }) {
       });
   };
 
-  const clearFileMarkers = () => {
-    const requestOptions = {
-      method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/${selectedPorD.workflow_id}/clear-file-marker/`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
-    };
-    axiosPrivate(requestOptions)
-      .then(() => {
-        setOpenDeleteModal(false);
-        setAlertDetails({
-          type: "success",
-          content: "Pipeline File History Cleared Successfully",
-        });
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
-      });
+  const clearFileMarkers = async () => {
+    const workflowId = selectedPorD?.workflow_id;
+    const success = await clearFileHistory(
+      workflowId,
+      "Pipeline File History Cleared Successfully"
+    );
+    if (success && openDeleteModal) {
+      setOpenDeleteModal(false);
+    }
   };
 
   const actionItems = [
@@ -385,10 +379,14 @@ function Pipelines({ type }) {
       label: (
         <Space
           direction="horizontal"
-          className="action-items"
-          onClick={() => clearFileMarkers()}
+          className={`action-items ${
+            isClearingFileHistory
+              ? "action-item-disabled"
+              : "action-item-enabled"
+          }`}
+          onClick={() => !isClearingFileHistory && clearFileMarkers()}
         >
-          <HighlightOutlined />
+          {isClearingFileHistory ? <LoadingOutlined /> : <HighlightOutlined />}
           <Typography.Text>Clear Processed File History</Typography.Text>
         </Space>
       ),
@@ -398,8 +396,13 @@ function Pipelines({ type }) {
       label: (
         <Space
           direction="horizontal"
-          className="action-items"
+          className={`action-items ${
+            isClearingFileHistory
+              ? "action-item-disabled"
+              : "action-item-enabled"
+          }`}
           onClick={() =>
+            !isClearingFileHistory &&
             handleSync({
               pipeline_id: selectedPorD.id,
             })
