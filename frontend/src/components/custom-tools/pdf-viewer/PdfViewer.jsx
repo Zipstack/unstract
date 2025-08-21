@@ -69,11 +69,6 @@ function PdfViewer({ fileUrl, highlightData, currentHighlightIndex }) {
           : 0;
       const pageNumber = cleanedHighlightData[index][0]; // Get page number from current highlight
 
-      console.log("[PDF Navigation] Jumping to page:", {
-        currentIndex: index,
-        pageNumber: pageNumber,
-        totalHighlights: cleanedHighlightData.length,
-      });
 
       if (pageNumber !== null && pageNumber !== undefined && jumpToPage) {
         setTimeout(() => {
