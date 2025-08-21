@@ -562,17 +562,6 @@ class DestinationConnector(BaseConnector):
                 return self.parse_string(file_history.metadata)
             else:
                 return None
-
-        # Try to get metadata from tool execution result first
-        try:
-            tool_result = self.get_tool_execution_result(file_history)
-            if isinstance(tool_result, dict) and "metadata" in tool_result:
-                # Return the metadata from tool execution result (includes extracted_text)
-                return tool_result.get("metadata", {})
-        except Exception as e:
-            logger.debug(f"Could not get metadata from tool result: {e}")
-
-        # Fallback to workflow metadata if tool result metadata not available
         metadata: dict[str, Any] = self.get_workflow_metadata()
         return metadata
 
