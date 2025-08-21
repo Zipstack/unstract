@@ -30,7 +30,8 @@ const useClearFileHistory = () => {
     if (!workflowId) {
       setAlertDetails({
         type: "error",
-        content: "Invalid workflow id",
+        content:
+          "Cannot clear processed file history, workflow ID is undefined",
       });
       return false;
     }
