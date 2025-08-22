@@ -1,10 +1,13 @@
 /* Styles for ConfigureConnectorModal */
 
 .conn-modal-body {
-    height: 800px;
+    height: 80vh; /* 80% of viewport height */
+    max-height: 800px; /* Cap at 800px for large screens */
+    min-height: 400px; /* Minimum height for usability */
     display: flex;
     flex-direction: column;
     overflow-y: hidden;
+    overflow-x: hidden;
 }
 
 .conn-modal-row {
@@ -19,19 +22,15 @@
     display: flex;
     flex-direction: column;
     overflow-y: auto;
+    border-right: 1px solid #f0f0f0;
 }
 
 .conn-modal-col-left {
     background-color: var(--page-bg-3);
 }
 
-.conn-modal-tab-body {
-    flex: 1;
-    overflow-y: hidden;
-}
-
-.conn-modal-gap {
-    margin-bottom: 8px;
+.conn-modal-col .ant-tabs-nav {
+    margin: 0px;
 }
 
 .conn-modal-menu {
@@ -49,48 +48,146 @@
     padding: 4px 20px 0px 20px;
 }
 
-.conn-modal-form-right {
-    padding: 12px 12px 0px 0px;
-    padding-right: 20px;
-    border-right: 1px solid #D4D4D4;
-    height: 100%;
-}
-
-.conn-modal-form-left {
-    padding: 12px 0px 0px 12px;
-    padding-left: 20px;
-    height: 100%;
-}
-
-.conn-modal-flex {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    overflow-y: hidden;
-}
-
-.conn-modal-flex-1 {
-    flex: 1;
-    overflow-y: auto;
-}
-
 .form-right {
     padding: 8px 8px 0px 0px;
 }
 
-.sidebar-menu {
-    margin-top: 10px;
-    background-color: transparent;
+/* Styles for connector selection dropdown */
+.connector-selection-section {
+    padding: 16px 8px;
 }
 
-.sidebar-menu .ant-menu-item {
-    padding: 5px !important;
+.connector-selection-label {
+    display: block;
+    margin-bottom: 8px;
 }
 
-.sidebar-menu .ant-menu-title-content {
-    margin-left: 5px;
+.connector-selection-dropdown {
+    width: 100%;
 }
 
-.conn-modal-col .ant-tabs-nav {
-    margin: 0px;
+.connector-selection-dropdown .ant-select-selector {
+    height: 40px;
+    padding: 4px 11px 4px 8px;
+    display: flex;
+    align-items: center;
+}
+
+.connector-selection-dropdown .ant-select-arrow {
+    right: 8px;
+}
+
+.connector-dropdown-add-new {
+    border-top: 1px solid #f0f0f0;
+    padding: 8px 12px;
+    cursor: pointer;
+    background-color: #fafafa;
+    transition: background-color 0.2s;
+
+    /* Button reset styles */
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    width: 100%;
+    text-align: left;
+    font-family: inherit;
+    font-size: inherit;
+}
+
+.connector-dropdown-add-new:hover {
+    background-color: #f0f0f0;
+}
+
+.connector-dropdown-add-new:focus {
+    outline: 2px solid #1890ff;
+    outline-offset: -2px;
+    background-color: #f0f0f0;
+}
+
+.connector-dropdown-menu-container {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.conn-modal-fs-config {
+    overflow-y: hidden;
+}
+
+.file-browser-section {
+    padding-top: 16px;
+    height: 100%;
+}
+
+.file-browser-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.file-browser-header button {
+    margin-right: 16px;
+}
+
+.file-browser-content {
+    flex: 1;
+}
+
+.field-description {
+    display: block;
+    font-size: 12px;
+}
+
+
+/* Placeholder styles for empty state */
+.connector-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 400px;
+    color: #8c8c8c;
+}
+
+.connector-placeholder-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    color: #bfbfbf;
+}
+
+.connector-placeholder-text {
+    font-size: 16px;
+    color: #8c8c8c;
+    text-align: center;
+}
+
+
+/* Responsive adjustments for different screen sizes */
+@media (max-height: 900px) {
+    .conn-modal-body {
+        height: 75vh; /* Reduce height on smaller screens */
+    }
+}
+
+@media (max-height: 768px) {
+    .conn-modal-body {
+        height: 60vh; /* Further reduce for very small screens */
+        min-height: 350px; /* Adjust minimum height */
+    }
+}
+
+@media (max-width: 1200px) {
+    .file-browser-section {
+        padding: 12px;
+    }
+
+    .file-browser-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .file-browser-content {
+        width: 100%;
+    }
+
 }

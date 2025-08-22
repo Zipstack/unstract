@@ -7,7 +7,8 @@ from connector_auth_v2.exceptions import CacheMissException, MissingParamExcepti
 from connector_auth_v2.pipeline.common import ConnectorAuthHelper
 from connector_processor.exceptions import OAuthTimeOut
 from django.db import IntegrityError
-from django.db.models import QuerySet
+from django.db.models import ProtectedError, QuerySet
+from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
@@ -15,7 +16,10 @@ from utils.filtering import FilterHelper
 
 from backend.constants import RequestKey
 from connector_v2.constants import ConnectorInstanceKey as CIKey
+from unstract.connectors.connectorkit import Connectorkit
+from unstract.connectors.enums import ConnectorMode
 
+from .exceptions import DeleteConnectorInUseError
 from .models import ConnectorInstance
 from .serializers import ConnectorInstanceSerializer
 
@@ -26,18 +30,42 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
     serializer_class = ConnectorInstanceSerializer
 
+    def get_permissions(self) -> list[Any]:
+        if self.action == "destroy":
+            return [IsOwner()]
+
+        return [IsOwnerOrSharedUserOrSharedToOrg()]
+
     def get_queryset(self) -> QuerySet | None:
+        queryset = ConnectorInstance.objects.for_user(self.request.user)
+
         filter_args = FilterHelper.build_filter_args(
             self.request,
             RequestKey.WORKFLOW,
             RequestKey.CREATED_BY,
             CIKey.CONNECTOR_TYPE,
-            CIKey.CONNECTOR_MODE,
         )
         if filter_args:
-            queryset = ConnectorInstance.objects.filter(**filter_args)
-        else:
-            queryset = ConnectorInstance.objects.all()
+            queryset = queryset.filter(**filter_args)
+
+        # Filter by connector_mode
+        connector_mode_param = self.request.query_params.get("connector_mode")
+        if connector_mode_param:
+            try:
+                connector_mode = ConnectorMode(connector_mode_param)
+                connectors = Connectorkit().get_connectors_list(mode=connector_mode)
+                connector_ids = [conn.get("id") for conn in connectors if conn.get("id")]
+
+                if connector_ids:
+                    queryset = queryset.filter(connector_id__in=connector_ids)
+                else:
+                    queryset = queryset.none()
+            except ValueError:
+                logger.warning(
+                    f"Invalid connector_mode parameter: {connector_mode_param}"
+                )
+                queryset = queryset.none()
+
         return queryset
 
     def _get_connector_metadata(self, connector_id: str) -> dict[str, str] | None:
@@ -123,3 +151,21 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
             )
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def perform_destroy(self, instance: ConnectorInstance) -> None:
+        """Override perform_destroy to handle ProtectedError gracefully.
+
+        Args:
+            instance: The ConnectorInstance to be deleted
+
+        Raises:
+            DeleteConnectorInUseError: If the connector is being used in workflows
+        """
+        try:
+            super().perform_destroy(instance)
+        except ProtectedError:
+            logger.error(
+                f"Failed to delete connector: {instance.connector_id}"
+                f" named {instance.connector_name}"
+            )
+            raise DeleteConnectorInUseError(connector_name=instance.connector_name)

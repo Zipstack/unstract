@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import Form from "@rjsf/antd";
 import validator from "@rjsf/validator-ajv8";
 import PropTypes from "prop-types";
+import { Alert, Space } from "antd";
 
 import { AltDateTimeWidget } from "../../components/rjsf-custom-widgets/alt-date-time-widget/AltDateTimeWidget.jsx";
 import { AltDateWidget } from "../../components/rjsf-custom-widgets/alt-date-widget/AltDateWidget.jsx";
@@ -22,7 +23,6 @@ import { TextWidget } from "../../components/rjsf-custom-widgets/text-widget/Tex
 import { PasswordWidget } from "../../components/rjsf-custom-widgets/password-widget/PasswordWidget.jsx";
 import { UpDownWidget } from "../../components/rjsf-custom-widgets/up-down-widget/UpDownWidget.jsx";
 import { CustomFieldTemplate } from "./CustomFieldTemplate.jsx";
-import { Alert, Space } from "antd";
 import CustomMarkdown from "../../components/helpers/custom-markdown/CustomMarkdown.jsx";
 import "./RjsfFormLayout.css";
 
@@ -142,14 +142,14 @@ function RjsfFormLayout({
             formData={formData}
             transformErrors={transformErrors}
             onError={() => {}}
-            onSubmit={(e) => validateAndSubmit(e.formData)}
+            onSubmit={(e) => validateAndSubmit?.(e.formData)}
             showErrorList={false}
             onChange={handleChange}
             templates={{
               FieldTemplate: CustomFieldTemplate,
             }}
           >
-            {children}
+            {children || <></>}
           </Form>
         </Space>
       )}
