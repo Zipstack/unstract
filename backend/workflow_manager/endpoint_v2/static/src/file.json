@@ -37,6 +37,28 @@
             "title": "Max files to process",
             "default": 100,
             "description": "The maximum number of files to process"
+        },
+        "duplicateHandling": {
+            "type": "string",
+            "title": "Duplicate File Handling",
+            "description": "Configure how duplicate files should be handled during processing",
+            "default": "skip_duplicates",
+            "enum": ["skip_duplicates", "reprocess_after_interval"],
+            "enumNames": ["Skip duplicate files", "Reprocess duplicate files after interval"]
+        },
+        "reprocessInterval": {
+            "type": "number",
+            "title": "Reprocess after",
+            "default": 30,
+            "minimum": 1,
+            "description": "Number of time units before duplicate files are reprocessed"
+        },
+        "intervalUnit": {
+            "type": "string",
+            "title": "Time Unit",
+            "default": "days",
+            "enum": ["days", "months"],
+            "enumNames": ["Days", "Months"]
         }
     }
 }

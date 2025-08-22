@@ -5,6 +5,7 @@ from django.db.models import Q
 from django.db.utils import IntegrityError
 
 from workflow_manager.endpoint_v2.dto import FileHash
+from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models.file_history import FileHistory
@@ -49,8 +50,18 @@ class FileHistoryHelper:
 
         try:
             if file_path:
-                return FileHistory.objects.get(filters & Q(file_path=file_path))
-            return FileHistory.objects.get(filters & Q(file_path__isnull=True))
+                file_history: FileHistory = (
+                    FileHistory.objects.exclude_reprocessable().get(
+                        filters & Q(file_path=file_path)
+                    )
+                )
+            else:
+                file_history: FileHistory = (
+                    FileHistory.objects.exclude_reprocessable().get(
+                        filters & Q(file_path__isnull=True)
+                    )
+                )
+            return file_history
         except FileHistory.DoesNotExist:
             if file_path:
                 # Legacy fallback: file_path was not stored in older file history records; fallback ensures backward compatibility.
@@ -70,7 +81,7 @@ class FileHistoryHelper:
     ) -> FileHistory | None:
         """Handle fallback for workflows where file_path was not stored (e.g., API deployments or older records)."""
         try:
-            file_history: FileHistory = FileHistory.objects.get(
+            file_history: FileHistory = FileHistory.objects.exclude_reprocessable().get(
                 filters & Q(file_path__isnull=True)
             )
             file_execution = cls.get_file_execution_by_file_hash(
@@ -125,6 +136,46 @@ class FileHistoryHelper:
         return None
 
     @staticmethod
+    def _get_reprocessing_interval_from_config(workflow: Workflow) -> int | None:
+        """Get reprocessing interval in days from workflow configuration.
+
+        Args:
+            workflow: The workflow to get configuration from.
+
+        Returns:
+            int | None: Reprocessing interval in days, or None if no reprocessing.
+        """
+        try:
+            source_endpoint = WorkflowEndpoint.objects.get(
+                workflow=workflow,
+                endpoint_type=WorkflowEndpoint.EndpointType.SOURCE,
+            )
+
+            if not source_endpoint.configuration:
+                return None
+
+            duplicate_handling = source_endpoint.configuration.get("duplicateHandling")
+            if duplicate_handling != "reprocess_after_interval":
+                return None  # Skip duplicates
+
+            interval_value = source_endpoint.configuration.get("reprocessInterval", 0)
+            interval_unit = source_endpoint.configuration.get("intervalUnit", "days")
+
+            if interval_value <= 0:
+                return None
+
+            # Convert to days
+            if interval_unit == "months":
+                return interval_value * 30
+            return interval_value
+
+        except Exception as e:
+            logger.debug(
+                f"Error getting reprocessing interval for workflow {workflow}: {e}"
+            )
+            return None
+
+    @staticmethod
     def create_file_history(
         file_hash: FileHash,
         workflow: Workflow,
@@ -143,9 +194,16 @@ class FileHistoryHelper:
             result (Any): The result from the execution.
             metadata (str | None): The metadata from the execution.
             error (str | None): The error from the execution.
+            is_api (bool): Whether this is an API call.
         """
         try:
             file_path = file_hash.file_path if not is_api else None
+
+            # Get reprocessing interval from WorkflowEndpoint configuration
+            reprocessing_interval = (
+                FileHistoryHelper._get_reprocessing_interval_from_config(workflow)
+            )
+
             FileHistory.objects.create(
                 workflow=workflow,
                 cache_key=file_hash.file_hash,
@@ -155,6 +213,7 @@ class FileHistoryHelper:
                 metadata=str(metadata) if metadata else "",
                 error=str(error) if error else "",
                 file_path=file_path,
+                file_reprocessing_interval=reprocessing_interval,
             )
         except IntegrityError as e:
             # TODO: Need to find why duplicate insert is coming
