@@ -15,17 +15,18 @@ try {
   // Do nothing, no plugin will be loaded.
 }
 
-function PdfViewer({ fileUrl, highlightData }) {
+function PdfViewer({ fileUrl, highlightData, currentHighlightIndex }) {
   const newPlugin = defaultLayoutPlugin();
   const pageNavigationPluginInstance = pageNavigationPlugin();
   const { jumpToPage } = pageNavigationPluginInstance;
   const parentRef = useRef(null);
   function removeZerosAndDeleteIfAllZero(highlightData) {
-    return highlightData?.filter((innerArray) => {
-      return (
-        Array.isArray(innerArray) && innerArray.some((value) => value !== 0)
-      );
-    });
+    if (Array.isArray(highlightData))
+      return highlightData?.filter((innerArray) => {
+        return (
+          Array.isArray(innerArray) && innerArray?.some((value) => value !== 0)
+        );
+      });
   }
 
   const processHighlightData = highlightData
@@ -41,27 +42,41 @@ function PdfViewer({ fileUrl, highlightData }) {
       Array.isArray(processedHighlightData) &&
       processedHighlightData?.length > 0
     ) {
+      // Only pass the current highlight to render
+      const currentHighlight =
+        currentHighlightIndex !== null &&
+        currentHighlightIndex < processedHighlightData.length
+          ? [processedHighlightData[currentHighlightIndex]]
+          : processedHighlightData;
+
       return highlightPlugin({
         renderHighlights: (props) => (
-          <RenderHighlights {...props} highlightData={processedHighlightData} />
+          <RenderHighlights {...props} highlightData={currentHighlight} />
         ),
       });
     }
     return "";
-  }, [RenderHighlights, processedHighlightData]);
+  }, [RenderHighlights, processedHighlightData, currentHighlightIndex]);
 
-  // Jump to page when highlightData changes
+  // Jump to page when highlightData changes or when navigating through highlights
   useEffect(() => {
-    highlightData = removeZerosAndDeleteIfAllZero(highlightData); // Removing zeros before checking the highlight data condition
-    if (highlightData && highlightData.length > 0) {
-      const pageNumber = highlightData[0][0]; // Assume highlightData[0][0] is the page number
-      if (pageNumber !== null && jumpToPage) {
+    const cleanedHighlightData = removeZerosAndDeleteIfAllZero(highlightData);
+    if (cleanedHighlightData && cleanedHighlightData.length > 0) {
+      // Use currentHighlightIndex if provided, otherwise default to first highlight
+      const index =
+        currentHighlightIndex !== null &&
+        currentHighlightIndex < cleanedHighlightData.length
+          ? currentHighlightIndex
+          : 0;
+      const pageNumber = cleanedHighlightData[index][0]; // Get page number from current highlight
+
+      if (pageNumber !== null && pageNumber !== undefined && jumpToPage) {
         setTimeout(() => {
-          jumpToPage(pageNumber); // jumpToPage is 0-indexed, so subtract 1 if necessary
+          jumpToPage(pageNumber); // jumpToPage is 0-indexed
         }, 100); // Add a slight delay to ensure proper page rendering
       }
     }
-  }, [processedHighlightData, jumpToPage]);
+  }, [highlightData, jumpToPage, currentHighlightIndex]); // Changed dependency to highlightData instead of processedHighlightData
 
   return (
     <div ref={parentRef} className="doc-manager-body">
@@ -82,6 +97,7 @@ function PdfViewer({ fileUrl, highlightData }) {
 PdfViewer.propTypes = {
   fileUrl: PropTypes.any,
   highlightData: PropTypes.array,
+  currentHighlightIndex: PropTypes.number,
 };
 
 export { PdfViewer };

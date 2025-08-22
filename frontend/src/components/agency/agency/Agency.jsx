@@ -12,8 +12,8 @@ import {
   BugOutlined,
   SettingOutlined,
   PlayCircleOutlined,
-  ClearOutlined,
   HistoryOutlined,
+  LoadingOutlined,
 } from "@ant-design/icons";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -31,6 +31,7 @@ import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import useRequestUrl from "../../../hooks/useRequestUrl";
+import useClearFileHistory from "../../../hooks/useClearFileHistory";
 import { CreateApiDeploymentModal } from "../../deployments/create-api-deployment-modal/CreateApiDeploymentModal.jsx";
 import { EtlTaskDeploy } from "../../pipelines-or-deployments/etl-task-deploy/EtlTaskDeploy.jsx";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
@@ -69,6 +70,8 @@ function Agency() {
   const handleException = useExceptionHandler();
   const apiDeploymentService = apiDeploymentsService();
   const pipelineServiceInstance = pipelineService();
+  const { clearFileHistory, isClearing: isClearingFileHistory } =
+    useClearFileHistory();
   const prompt = details?.prompt_text;
   const [prevLoadingType, setPrevLoadingType] = useState("");
   const [isUpdateSteps, setIsUpdateSteps] = useState(false);
@@ -182,8 +185,8 @@ function Agency() {
     setCanAddETLPipeline(
       source?.connector_instance &&
         ((destination?.connection_type === "DATABASE" &&
-          destination.connector_instance) ||
-          destination.connection_type === "MANUALREVIEW")
+          destination?.connector_instance) ||
+          destination?.connection_type === "MANUALREVIEW")
     );
   }, [source, destination]);
 
@@ -259,7 +262,12 @@ function Agency() {
       })
       .catch((err) => {
         if (!signal?.aborted) {
-          setAlertDetails(handleException(err, "Failed to get exported tools"));
+          setAlertDetails(
+            handleException(
+              err,
+              "Failed to get exported Prompt Studio projects"
+            )
+          );
         }
         throw err;
       });
@@ -272,11 +280,44 @@ function Agency() {
     }
 
     try {
-      // Fetch API deployments and pipelines in parallel
-      const [apiDeployments, pipelines] = await Promise.all([
-        apiDeploymentService.getDeploymentsByWorkflowId(projectId),
-        pipelineServiceInstance.getPipelinesByWorkflowId(projectId),
-      ]);
+      // Determine which APIs to call based on connector configuration
+      const shouldFetchApiDeployments =
+        source?.connection_type === "API" &&
+        destination?.connection_type === "API";
+
+      const shouldFetchPipelines =
+        source?.connection_type === "FILESYSTEM" &&
+        (destination?.connection_type === "DATABASE" ||
+          destination?.connection_type === "FILESYSTEM" ||
+          destination?.connection_type === "MANUALREVIEW");
+
+      // If no valid deployment configuration, set null and return
+      if (!shouldFetchApiDeployments && !shouldFetchPipelines) {
+        if (!signal?.aborted) {
+          setDeploymentInfo(null);
+        }
+        return;
+      }
+
+      // Fetch only the relevant deployment types
+      const promises = [];
+      if (shouldFetchApiDeployments) {
+        promises.push(
+          apiDeploymentService.getDeploymentsByWorkflowId(projectId)
+        );
+      } else {
+        promises.push(Promise.resolve({ data: [] }));
+      }
+
+      if (shouldFetchPipelines) {
+        promises.push(
+          pipelineServiceInstance.getPipelinesByWorkflowId(projectId)
+        );
+      } else {
+        promises.push(Promise.resolve({ data: [] }));
+      }
+
+      const [apiDeployments, pipelines] = await Promise.all(promises);
 
       // Check if request was aborted before setting state
       if (signal?.aborted) {
@@ -587,16 +628,16 @@ function Agency() {
     }
 
     // For API connections, just having an endpoint is sufficient
-    if (endpoint.connection_type === "API") {
+    if (endpoint?.connection_type === "API") {
       return {
         configured: true,
         type: "API",
-        name: endpoint.connector_name || "API Endpoint",
+        name: endpoint?.connector_name || "API Endpoint",
       };
     }
 
     // For filesystem connectors, they are automatically configured
-    if (endpoint.connection_type === "FILESYSTEM") {
+    if (endpoint?.connection_type === "FILESYSTEM") {
       return {
         configured: true,
         type: "File System",
@@ -611,8 +652,8 @@ function Agency() {
 
     return {
       configured: true,
-      type: endpoint.connection_type,
-      name: endpoint.connector_name || "Configured",
+      type: endpoint?.connection_type,
+      name: endpoint?.connector_name || "Configured",
     };
   };
 
@@ -655,6 +696,7 @@ function Agency() {
   }, [details?.tool_instances, details?.id]);
 
   // Refresh deployment info when allowChangeEndpoint changes (indicates deployment status change)
+  // Also refresh when source/destination connector types change since API calls are now conditional
   useEffect(() => {
     if (projectId) {
       const abortController = new AbortController();
@@ -664,7 +706,12 @@ function Agency() {
         abortController.abort();
       };
     }
-  }, [allowChangeEndpoint, projectId]);
+  }, [
+    allowChangeEndpoint,
+    projectId,
+    source?.connection_type,
+    destination?.connection_type,
+  ]);
 
   // Update progress whenever relevant state changes
   useEffect(() => {
@@ -869,39 +916,6 @@ function Agency() {
     }
   };
 
-  // Handle Clear Cache action
-  const handleClearCache = () => {
-    const workflowId = details?.id;
-    if (!workflowId) {
-      setAlertDetails({
-        type: "error",
-        content: "Invalid workflow id",
-      });
-      return;
-    }
-
-    const requestOptions = {
-      method: "GET",
-      url: getUrl(`workflow/${workflowId}/clear-cache/`),
-    };
-
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const msg = res?.data;
-        setAlertDetails({
-          type: "success",
-          content: msg,
-        });
-      })
-      .catch((err) => {
-        const msg = err?.response?.data || "Failed to clear cache.";
-        setAlertDetails({
-          type: "error",
-          content: msg,
-        });
-      });
-  };
-
   // Handle tool selection from sidebar
   const handleToolSelection = async (functionName) => {
     setSelectedTool(functionName);
@@ -965,46 +979,21 @@ function Agency() {
           type: "success",
           content:
             details?.tool_instances?.length > 0
-              ? "Tool replaced successfully"
-              : "Tool added successfully",
+              ? "Prompt Studio project replaced successfully"
+              : "Prompt Studio project added successfully",
         });
       } catch (err) {
-        setAlertDetails(handleException(err, "Failed to update tool"));
+        setAlertDetails(
+          handleException(err, "Failed to update Prompt Studio project")
+        );
       }
     }
   };
 
   // Handle Clear Processed File History action
-  const handleClearFileMarker = () => {
+  const handleClearFileMarker = async () => {
     const workflowId = details?.id;
-    if (!workflowId) {
-      setAlertDetails({
-        type: "error",
-        content: "Invalid workflow id",
-      });
-      return;
-    }
-
-    const requestOptions = {
-      method: "GET",
-      url: getUrl(`workflow/${workflowId}/clear-file-marker/`),
-    };
-
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const msg = res?.data;
-        setAlertDetails({
-          type: "success",
-          content: msg,
-        });
-      })
-      .catch((err) => {
-        const msg = err?.response?.data || "Failed to clear file marker.";
-        setAlertDetails({
-          type: "error",
-          content: msg,
-        });
-      });
+    await clearFileHistory(workflowId);
   };
 
   // Handle dropdown menu click
@@ -1012,9 +1001,6 @@ function Agency() {
     switch (key) {
       case "run-workflow":
         handleRunWorkflow();
-        break;
-      case "clear-cache":
-        handleClearCache();
         break;
       case "clear-history":
         handleClearFileMarker();
@@ -1029,16 +1015,13 @@ function Agency() {
       key: "run-workflow",
       label: "Run Workflow",
       icon: <PlayCircleOutlined />,
-    },
-    {
-      key: "clear-cache",
-      label: "Clear Cache",
-      icon: <ClearOutlined />,
+      disabled: isClearingFileHistory || loadingType === "EXECUTE",
     },
     {
       key: "clear-history",
       label: "Clear Processed File History",
-      icon: <HistoryOutlined />,
+      icon: isClearingFileHistory ? <LoadingOutlined /> : <HistoryOutlined />,
+      disabled: isClearingFileHistory || loadingType === "EXECUTE",
     },
   ];
 
@@ -1082,8 +1065,8 @@ function Agency() {
             <Button
               type="primary"
               icon={<SettingOutlined />}
-              loading={loadingType === "EXECUTE"}
-              disabled={loadingType === "EXECUTE"}
+              loading={loadingType === "EXECUTE" || isClearingFileHistory}
+              disabled={loadingType === "EXECUTE" || isClearingFileHistory}
             >
               Actions
             </Button>
@@ -1103,22 +1086,13 @@ function Agency() {
                     source,
                     !allowChangeEndpoint
                   );
-                  // Show connector type for non-API configured connectors
-                  if (
-                    status?.configured &&
-                    source?.connection_type &&
-                    source?.connection_type !== "API"
-                  ) {
-                    return source?.connection_type;
-                  }
                   return status?.configured ? "✓" : "1";
                 })()}
                 title="Configure Source Connector"
                 description="Select and configure your data input connector"
-                type={sourceTypes.connectors[0]}
+                connType={sourceTypes.connectors[0]}
                 endpointDetails={source}
                 message={sourceMsg}
-                connectorIcon={source?.connector_instance?.icon}
               />
             </Col>
 
@@ -1130,29 +1104,20 @@ function Agency() {
                     destination,
                     !allowChangeEndpoint
                   );
-                  // Show connector type for non-API configured connectors
-                  if (
-                    status?.configured &&
-                    destination?.connection_type &&
-                    destination?.connection_type !== "API"
-                  ) {
-                    return destination?.connection_type;
-                  }
                   return status?.configured ? "✓" : "2";
                 })()}
-                title="Configure Output Destination"
+                title="Configure Destination Connector"
                 description="Select and configure your data output connector"
-                type={sourceTypes.connectors[1]}
+                connType={sourceTypes.connectors[1]}
                 endpointDetails={destination}
                 message={destinationMsg}
-                connectorIcon={destination?.connector_instance?.icon}
               />
             </Col>
             <Col span={12}>
               <WorkflowCard
                 number={selectedTool ? "✓" : "3"}
-                title="Select Exported Tool"
-                description="Choose an exported tool for processing your data"
+                title="Select Exported Prompt Studio project"
+                description="Choose an exported Prompt Studio project for processing your data"
                 customContent={
                   <div className="workflow-card-content">
                     <div className="tool-selection-display">
@@ -1168,7 +1133,7 @@ function Agency() {
                             onClick={() => setShowToolSelectionSidebar(true)}
                             size="small"
                           >
-                            Change Tool
+                            Change Prompt Studio project
                           </Button>
                         </div>
                       ) : (
@@ -1177,7 +1142,7 @@ function Agency() {
                           onClick={() => setShowToolSelectionSidebar(true)}
                           className="select-tool-btn"
                         >
-                          Select Tool
+                          Select Prompt Studio project
                         </Button>
                       )}
                     </div>
