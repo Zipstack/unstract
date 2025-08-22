@@ -262,7 +262,12 @@ function Agency() {
       })
       .catch((err) => {
         if (!signal?.aborted) {
-          setAlertDetails(handleException(err, "Failed to get exported tools"));
+          setAlertDetails(
+            handleException(
+              err,
+              "Failed to get exported Prompt Studio projects"
+            )
+          );
         }
         throw err;
       });
@@ -935,11 +940,13 @@ function Agency() {
           type: "success",
           content:
             details?.tool_instances?.length > 0
-              ? "Tool replaced successfully"
-              : "Tool added successfully",
+              ? "Prompt Studio project replaced successfully"
+              : "Prompt Studio project added successfully",
         });
       } catch (err) {
-        setAlertDetails(handleException(err, "Failed to update tool"));
+        setAlertDetails(
+          handleException(err, "Failed to update Prompt Studio project")
+        );
       }
     }
   };
@@ -1088,8 +1095,8 @@ function Agency() {
             <Col span={12}>
               <WorkflowCard
                 number={selectedTool ? "✓" : "3"}
-                title="Select Exported Tool"
-                description="Choose an exported tool for processing your data"
+                title="Select Exported Prompt Studio project"
+                description="Choose an exported Prompt Studio project for processing your data"
                 customContent={
                   <div className="workflow-card-content">
                     <div className="tool-selection-display">
@@ -1105,7 +1112,7 @@ function Agency() {
                             onClick={() => setShowToolSelectionSidebar(true)}
                             size="small"
                           >
-                            Change Tool
+                            Change Prompt Studio project
                           </Button>
                         </div>
                       ) : (
@@ -1114,7 +1121,7 @@ function Agency() {
                           onClick={() => setShowToolSelectionSidebar(true)}
                           className="select-tool-btn"
                         >
-                          Select Tool
+                          Select Prompt Studio project
                         </Button>
                       )}
                     </div>
