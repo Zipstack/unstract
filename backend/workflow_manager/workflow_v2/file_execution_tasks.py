@@ -1152,13 +1152,6 @@ class FileExecutionTasks:
                         f"Retrieved API hub headers for tracking: {list(api_hub_headers.keys())}"
                     )
 
-                    # Convert normalized headers back to Django format for compatibility
-                    request_meta = {}
-                    for key, value in api_hub_headers.items():
-                        # Convert 'subscription-id' to 'HTTP_X_SUBSCRIPTION_ID'
-                        django_key = f"HTTP_X_{key.upper().replace('-', '_')}"
-                        request_meta[django_key] = value
-
                     # Get API deployment info
                     api_name = None
                     if workflow_execution.pipeline_id:
@@ -1172,19 +1165,32 @@ class FileExecutionTasks:
                         except APIDeployment.DoesNotExist:
                             pass
 
-                    # Track usage if this is an API hub request
+                    # Extract usage metrics from execution result
+                    execution_result_dict = (
+                        final_result.to_dict()
+                        if hasattr(final_result, "to_dict")
+                        else {"metadata": {}}
+                    )
+                    metadata = execution_result_dict.get("metadata", {})
+                    usage_metrics = {
+                        "page_count": metadata.get("page_count", 0),
+                        "total_tokens": metadata.get("total_tokens", 0),
+                        "prompt_tokens": metadata.get("prompt_tokens", 0),
+                        "completion_tokens": metadata.get("completion_tokens", 0),
+                        "file_count": metadata.get("file_count", 1),
+                    }
+
+                    # Track usage directly - no double conversion needed
                     try:
-                        success = api_hub_usage_tracker.track_api_execution(
-                            request_meta=request_meta,
+                        success = api_hub_usage_tracker.store_usage(
                             execution_id=str(workflow_execution.id),
-                            execution_result=final_result.to_dict()
-                            if hasattr(final_result, "to_dict")
-                            else {"metadata": {}},
-                            execution_time=workflow_execution.execution_time,
+                            api_hub_headers=api_hub_headers,  # Already normalized
+                            usage_metrics=usage_metrics,
                             api_name=api_name,
                             organization_id=workflow_execution.workflow.organization_id
                             if workflow_execution.workflow
                             else None,
+                            execution_time=workflow_execution.execution_time,
                         )
                         if success:
                             logger.debug(
