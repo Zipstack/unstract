@@ -1,5 +1,4 @@
 import {
-  ClearOutlined,
   DeleteOutlined,
   EllipsisOutlined,
   SyncOutlined,
@@ -11,6 +10,7 @@ import {
   KeyOutlined,
   CloudDownloadOutlined,
   CopyOutlined,
+  LoadingOutlined,
 } from "@ant-design/icons";
 import {
   Button,
@@ -43,6 +43,7 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { pipelineService } from "../pipeline-service.js";
 import { ManageKeys } from "../../deployments/manage-keys/ManageKeys.jsx";
 import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
+import useClearFileHistory from "../../../hooks/useClearFileHistory";
 import { NotificationModal } from "../notification-modal/NotificationModal.jsx";
 import { usePromptStudioStore } from "../../../store/prompt-studio-store";
 import { PromptStudioModal } from "../../common/PromptStudioModal";
@@ -62,6 +63,8 @@ function Pipelines({ type }) {
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+  const { clearFileHistory, isClearing: isClearingFileHistory } =
+    useClearFileHistory();
   const [isEdit, setIsEdit] = useState(false);
   const [openLogsModal, setOpenLogsModal] = useState(false);
   const [executionLogs, setExecutionLogs] = useState([]);
@@ -270,49 +273,19 @@ function Pipelines({ type }) {
       });
   };
 
-  const clearCache = () => {
-    const requestOptions = {
-      method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/${selectedPorD.workflow_id}/clear-cache/`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
-    };
-    axiosPrivate(requestOptions)
-      .then(() => {
-        setOpenDeleteModal(false);
-        setAlertDetails({
-          type: "success",
-          content: "Pipeline Cache Cleared Successfully",
-        });
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
-      });
-  };
-
-  const clearFileMarkers = () => {
-    const requestOptions = {
-      method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/${selectedPorD.workflow_id}/clear-file-marker/`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
-    };
-    axiosPrivate(requestOptions)
-      .then(() => {
-        setOpenDeleteModal(false);
-        setAlertDetails({
-          type: "success",
-          content: "Pipeline File History Cleared Successfully",
-        });
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
-      });
+  const clearFileMarkers = async () => {
+    const workflowId = selectedPorD?.workflow_id;
+    const success = await clearFileHistory(
+      workflowId,
+      "Pipeline File History Cleared Successfully"
+    );
+    if (success && openDeleteModal) {
+      setOpenDeleteModal(false);
+    }
   };
 
   const actionItems = [
+    // Configuration Section
     {
       key: "1",
       label: (
@@ -336,19 +309,6 @@ function Pipelines({ type }) {
         <Space
           direction="horizontal"
           className="action-items"
-          onClick={() => setOpenDeleteModal(true)}
-        >
-          <DeleteOutlined />
-          <Typography.Text>Delete</Typography.Text>
-        </Space>
-      ),
-    },
-    {
-      key: "3",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
           onClick={() =>
             getApiKeys(
               pipelineApiService,
@@ -364,17 +324,42 @@ function Pipelines({ type }) {
       ),
     },
     {
-      key: "4",
+      key: "3",
       label: (
         <Space
           direction="horizontal"
           className="action-items"
+          onClick={() => setOpenNotificationModal(true)}
+        >
+          <NotificationOutlined />
+          <Typography.Text>Setup Notifications</Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      key: "divider-config",
+      type: "divider",
+    },
+    // Operation Section
+    {
+      key: "4",
+      label: (
+        <Space
+          direction="horizontal"
+          className={`action-items ${
+            isClearingFileHistory
+              ? "action-item-disabled"
+              : "action-item-enabled"
+          }`}
           onClick={() =>
-            downloadPostmanCollection(pipelineApiService, selectedPorD?.id)
+            !isClearingFileHistory &&
+            handleSync({
+              pipeline_id: selectedPorD.id,
+            })
           }
         >
-          <CloudDownloadOutlined />
-          <Typography.Text>Download Postman Collection</Typography.Text>
+          <SyncOutlined />
+          <Typography.Text>Sync Now</Typography.Text>
         </Space>
       ),
     },
@@ -403,27 +388,43 @@ function Pipelines({ type }) {
       ),
     },
     {
+      key: "divider-operation",
+      type: "divider",
+    },
+    // Developer related Section
+    {
       key: "6",
       label: (
         <Space
           direction="horizontal"
           className="action-items"
-          onClick={() => clearCache()}
+          onClick={() =>
+            downloadPostmanCollection(pipelineApiService, selectedPorD?.id)
+          }
         >
-          <ClearOutlined />
-          <Typography.Text>Clear Cache</Typography.Text>
+          <CloudDownloadOutlined />
+          <Typography.Text>Download Postman Collection</Typography.Text>
         </Space>
       ),
     },
+    {
+      key: "divider-dev-related",
+      type: "divider",
+    },
+    // Delete related section
     {
       key: "7",
       label: (
         <Space
           direction="horizontal"
-          className="action-items"
-          onClick={() => clearFileMarkers()}
+          className={`action-items ${
+            isClearingFileHistory
+              ? "action-item-disabled"
+              : "action-item-enabled"
+          }`}
+          onClick={() => !isClearingFileHistory && clearFileMarkers()}
         >
-          <HighlightOutlined />
+          {isClearingFileHistory ? <LoadingOutlined /> : <HighlightOutlined />}
           <Typography.Text>Clear Processed File History</Typography.Text>
         </Space>
       ),
@@ -434,27 +435,10 @@ function Pipelines({ type }) {
         <Space
           direction="horizontal"
           className="action-items"
-          onClick={() =>
-            handleSync({
-              pipeline_id: selectedPorD.id,
-            })
-          }
+          onClick={() => setOpenDeleteModal(true)}
         >
-          <SyncOutlined />
-          <Typography.Text>Sync Now</Typography.Text>
-        </Space>
-      ),
-    },
-    {
-      key: "9",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
-          onClick={() => setOpenNotificationModal(true)}
-        >
-          <NotificationOutlined />
-          <Typography.Text>Setup Notifications</Typography.Text>
+          <DeleteOutlined />
+          <Typography.Text>Delete</Typography.Text>
         </Space>
       ),
     },

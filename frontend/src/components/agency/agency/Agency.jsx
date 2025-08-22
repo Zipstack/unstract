@@ -12,8 +12,8 @@ import {
   BugOutlined,
   SettingOutlined,
   PlayCircleOutlined,
-  ClearOutlined,
   HistoryOutlined,
+  LoadingOutlined,
 } from "@ant-design/icons";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -31,6 +31,7 @@ import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import useRequestUrl from "../../../hooks/useRequestUrl";
+import useClearFileHistory from "../../../hooks/useClearFileHistory";
 import { CreateApiDeploymentModal } from "../../deployments/create-api-deployment-modal/CreateApiDeploymentModal.jsx";
 import { EtlTaskDeploy } from "../../pipelines-or-deployments/etl-task-deploy/EtlTaskDeploy.jsx";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
@@ -69,6 +70,8 @@ function Agency() {
   const handleException = useExceptionHandler();
   const apiDeploymentService = apiDeploymentsService();
   const pipelineServiceInstance = pipelineService();
+  const { clearFileHistory, isClearing: isClearingFileHistory } =
+    useClearFileHistory();
   const prompt = details?.prompt_text;
   const [prevLoadingType, setPrevLoadingType] = useState("");
   const [isUpdateSteps, setIsUpdateSteps] = useState(false);
@@ -874,39 +877,6 @@ function Agency() {
     }
   };
 
-  // Handle Clear Cache action
-  const handleClearCache = () => {
-    const workflowId = details?.id;
-    if (!workflowId) {
-      setAlertDetails({
-        type: "error",
-        content: "Invalid workflow id",
-      });
-      return;
-    }
-
-    const requestOptions = {
-      method: "GET",
-      url: getUrl(`workflow/${workflowId}/clear-cache/`),
-    };
-
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const msg = res?.data;
-        setAlertDetails({
-          type: "success",
-          content: msg,
-        });
-      })
-      .catch((err) => {
-        const msg = err?.response?.data || "Failed to clear cache.";
-        setAlertDetails({
-          type: "error",
-          content: msg,
-        });
-      });
-  };
-
   // Handle tool selection from sidebar
   const handleToolSelection = async (functionName) => {
     setSelectedTool(functionName);
@@ -982,36 +952,9 @@ function Agency() {
   };
 
   // Handle Clear Processed File History action
-  const handleClearFileMarker = () => {
+  const handleClearFileMarker = async () => {
     const workflowId = details?.id;
-    if (!workflowId) {
-      setAlertDetails({
-        type: "error",
-        content: "Invalid workflow id",
-      });
-      return;
-    }
-
-    const requestOptions = {
-      method: "GET",
-      url: getUrl(`workflow/${workflowId}/clear-file-marker/`),
-    };
-
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const msg = res?.data;
-        setAlertDetails({
-          type: "success",
-          content: msg,
-        });
-      })
-      .catch((err) => {
-        const msg = err?.response?.data || "Failed to clear file marker.";
-        setAlertDetails({
-          type: "error",
-          content: msg,
-        });
-      });
+    await clearFileHistory(workflowId);
   };
 
   // Handle dropdown menu click
@@ -1019,9 +962,6 @@ function Agency() {
     switch (key) {
       case "run-workflow":
         handleRunWorkflow();
-        break;
-      case "clear-cache":
-        handleClearCache();
         break;
       case "clear-history":
         handleClearFileMarker();
@@ -1036,16 +976,13 @@ function Agency() {
       key: "run-workflow",
       label: "Run Workflow",
       icon: <PlayCircleOutlined />,
-    },
-    {
-      key: "clear-cache",
-      label: "Clear Cache",
-      icon: <ClearOutlined />,
+      disabled: isClearingFileHistory || loadingType === "EXECUTE",
     },
     {
       key: "clear-history",
       label: "Clear Processed File History",
-      icon: <HistoryOutlined />,
+      icon: isClearingFileHistory ? <LoadingOutlined /> : <HistoryOutlined />,
+      disabled: isClearingFileHistory || loadingType === "EXECUTE",
     },
   ];
 
@@ -1089,8 +1026,8 @@ function Agency() {
             <Button
               type="primary"
               icon={<SettingOutlined />}
-              loading={loadingType === "EXECUTE"}
-              disabled={loadingType === "EXECUTE"}
+              loading={loadingType === "EXECUTE" || isClearingFileHistory}
+              disabled={loadingType === "EXECUTE" || isClearingFileHistory}
             >
               Actions
             </Button>

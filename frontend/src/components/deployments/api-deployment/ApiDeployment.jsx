@@ -248,6 +248,7 @@ function ApiDeployment() {
   };
 
   const actionItems = [
+    // Configuration Section
     {
       key: "1",
       label: (
@@ -295,38 +296,24 @@ function ApiDeployment() {
         <Space
           direction="horizontal"
           className="action-items"
-          onClick={() =>
-            downloadPostmanCollection(apiDeploymentsApiService, selectedRow?.id)
-          }
+          onClick={() => setOpenNotificationModal(true)}
         >
           <div>
-            <CloudDownloadOutlined />
+            <NotificationOutlined />
           </div>
           <div>
-            <Typography.Text>Download Postman Collection</Typography.Text>
+            <Typography.Text>Setup Notifications</Typography.Text>
           </div>
         </Space>
       ),
     },
+    {
+      key: "divider-config",
+      type: "divider",
+    },
+    // Operation Section
     {
       key: "4",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
-          onClick={() => setOpenCodeModal(true)}
-        >
-          <div>
-            <CodeOutlined />
-          </div>
-          <div>
-            <Typography.Text>Code Snippets</Typography.Text>
-          </div>
-        </Space>
-      ),
-    },
-    {
-      key: "5",
       label: (
         <Space
           direction="horizontal"
@@ -354,7 +341,53 @@ function ApiDeployment() {
       ),
     },
     {
+      key: "divider-operation",
+      type: "divider",
+    },
+    // Developer related Section
+    {
+      key: "5",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
+          onClick={() => setOpenCodeModal(true)}
+        >
+          <div>
+            <CodeOutlined />
+          </div>
+          <div>
+            <Typography.Text>Code Snippets</Typography.Text>
+          </div>
+        </Space>
+      ),
+    },
+    {
       key: "6",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
+          onClick={() =>
+            downloadPostmanCollection(apiDeploymentsApiService, selectedRow?.id)
+          }
+        >
+          <div>
+            <CloudDownloadOutlined />
+          </div>
+          <div>
+            <Typography.Text>Download Postman Collection</Typography.Text>
+          </div>
+        </Space>
+      ),
+    },
+    {
+      key: "divider-dev-related",
+      type: "divider",
+    },
+    // Delete related section
+    {
+      key: "7",
       label: (
         <Space
           direction="horizontal"
@@ -366,23 +399,6 @@ function ApiDeployment() {
           </div>
           <div>
             <Typography.Text>Delete</Typography.Text>
-          </div>
-        </Space>
-      ),
-    },
-    {
-      key: "7",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
-          onClick={() => setOpenNotificationModal(true)}
-        >
-          <div>
-            <NotificationOutlined />
-          </div>
-          <div>
-            <Typography.Text>Setup Notifications</Typography.Text>
           </div>
         </Space>
       ),
