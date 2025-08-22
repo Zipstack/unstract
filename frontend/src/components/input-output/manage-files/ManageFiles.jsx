@@ -3,44 +3,64 @@ import PropTypes from "prop-types";
 
 import { inputService } from "../../input-output/input-output/input-service.js";
 import { FileExplorer } from "../file-system/FileSystem.jsx";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
-function ManageFiles({ selectedItem }) {
+function ManageFiles({
+  selectedConnector,
+  onFolderSelect,
+  selectedFolderPath,
+}) {
   const inpService = inputService();
+  const handleException = useExceptionHandler();
 
   const [files, setFiles] = useState([]);
   const [loadingData, setLoadingData] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     setFiles([]);
-    if (!selectedItem) return;
+    setError("");
+    if (!selectedConnector) return;
     setLoadingData(true);
+    let cancelled = false;
     inpService
-      .getFileList(selectedItem)
+      .getFileList(selectedConnector)
       .then((res) => {
+        if (cancelled) return;
         setFiles(res.data);
-        setError(false);
+        setError("");
       })
-      .catch(() => {
-        setError(true);
+      .catch((err) => {
+        if (cancelled) return;
+        const errorDetails = handleException(err, "Error loading files");
+        setError(errorDetails.content);
       })
       .finally(() => {
+        if (cancelled) return;
         setLoadingData(false);
       });
-  }, [selectedItem]);
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedConnector]);
 
   return (
     <FileExplorer
-      selectedItem={selectedItem}
+      selectedConnector={selectedConnector}
       data={files}
       loadingData={loadingData}
       error={error}
+      setError={setError}
+      onFolderSelect={onFolderSelect}
+      selectedFolderPath={selectedFolderPath}
     />
   );
 }
 
 ManageFiles.propTypes = {
-  selectedItem: PropTypes.string,
+  selectedConnector: PropTypes.string,
+  onFolderSelect: PropTypes.func,
+  selectedFolderPath: PropTypes.string,
 };
 
 export { ManageFiles };

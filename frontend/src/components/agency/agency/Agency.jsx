@@ -185,8 +185,8 @@ function Agency() {
     setCanAddETLPipeline(
       source?.connector_instance &&
         ((destination?.connection_type === "DATABASE" &&
-          destination.connector_instance) ||
-          destination.connection_type === "MANUALREVIEW")
+          destination?.connector_instance) ||
+          destination?.connection_type === "MANUALREVIEW")
     );
   }, [source, destination]);
 
@@ -280,11 +280,44 @@ function Agency() {
     }
 
     try {
-      // Fetch API deployments and pipelines in parallel
-      const [apiDeployments, pipelines] = await Promise.all([
-        apiDeploymentService.getDeploymentsByWorkflowId(projectId),
-        pipelineServiceInstance.getPipelinesByWorkflowId(projectId),
-      ]);
+      // Determine which APIs to call based on connector configuration
+      const shouldFetchApiDeployments =
+        source?.connection_type === "API" &&
+        destination?.connection_type === "API";
+
+      const shouldFetchPipelines =
+        source?.connection_type === "FILESYSTEM" &&
+        (destination?.connection_type === "DATABASE" ||
+          destination?.connection_type === "FILESYSTEM" ||
+          destination?.connection_type === "MANUALREVIEW");
+
+      // If no valid deployment configuration, set null and return
+      if (!shouldFetchApiDeployments && !shouldFetchPipelines) {
+        if (!signal?.aborted) {
+          setDeploymentInfo(null);
+        }
+        return;
+      }
+
+      // Fetch only the relevant deployment types
+      const promises = [];
+      if (shouldFetchApiDeployments) {
+        promises.push(
+          apiDeploymentService.getDeploymentsByWorkflowId(projectId)
+        );
+      } else {
+        promises.push(Promise.resolve({ data: [] }));
+      }
+
+      if (shouldFetchPipelines) {
+        promises.push(
+          pipelineServiceInstance.getPipelinesByWorkflowId(projectId)
+        );
+      } else {
+        promises.push(Promise.resolve({ data: [] }));
+      }
+
+      const [apiDeployments, pipelines] = await Promise.all(promises);
 
       // Check if request was aborted before setting state
       if (signal?.aborted) {
@@ -595,16 +628,16 @@ function Agency() {
     }
 
     // For API connections, just having an endpoint is sufficient
-    if (endpoint.connection_type === "API") {
+    if (endpoint?.connection_type === "API") {
       return {
         configured: true,
         type: "API",
-        name: endpoint.connector_name || "API Endpoint",
+        name: endpoint?.connector_name || "API Endpoint",
       };
     }
 
     // For filesystem connectors, they are automatically configured
-    if (endpoint.connection_type === "FILESYSTEM") {
+    if (endpoint?.connection_type === "FILESYSTEM") {
       return {
         configured: true,
         type: "File System",
@@ -619,8 +652,8 @@ function Agency() {
 
     return {
       configured: true,
-      type: endpoint.connection_type,
-      name: endpoint.connector_name || "Configured",
+      type: endpoint?.connection_type,
+      name: endpoint?.connector_name || "Configured",
     };
   };
 
@@ -663,6 +696,7 @@ function Agency() {
   }, [details?.tool_instances, details?.id]);
 
   // Refresh deployment info when allowChangeEndpoint changes (indicates deployment status change)
+  // Also refresh when source/destination connector types change since API calls are now conditional
   useEffect(() => {
     if (projectId) {
       const abortController = new AbortController();
@@ -672,7 +706,12 @@ function Agency() {
         abortController.abort();
       };
     }
-  }, [allowChangeEndpoint, projectId]);
+  }, [
+    allowChangeEndpoint,
+    projectId,
+    source?.connection_type,
+    destination?.connection_type,
+  ]);
 
   // Update progress whenever relevant state changes
   useEffect(() => {
@@ -1047,22 +1086,13 @@ function Agency() {
                     source,
                     !allowChangeEndpoint
                   );
-                  // Show connector type for non-API configured connectors
-                  if (
-                    status?.configured &&
-                    source?.connection_type &&
-                    source?.connection_type !== "API"
-                  ) {
-                    return source?.connection_type;
-                  }
                   return status?.configured ? "✓" : "1";
                 })()}
                 title="Configure Source Connector"
                 description="Select and configure your data input connector"
-                type={sourceTypes.connectors[0]}
+                connType={sourceTypes.connectors[0]}
                 endpointDetails={source}
                 message={sourceMsg}
-                connectorIcon={source?.connector_instance?.icon}
               />
             </Col>
 
@@ -1074,22 +1104,13 @@ function Agency() {
                     destination,
                     !allowChangeEndpoint
                   );
-                  // Show connector type for non-API configured connectors
-                  if (
-                    status?.configured &&
-                    destination?.connection_type &&
-                    destination?.connection_type !== "API"
-                  ) {
-                    return destination?.connection_type;
-                  }
                   return status?.configured ? "✓" : "2";
                 })()}
-                title="Configure Output Destination"
+                title="Configure Destination Connector"
                 description="Select and configure your data output connector"
-                type={sourceTypes.connectors[1]}
+                connType={sourceTypes.connectors[1]}
                 endpointDetails={destination}
                 message={destinationMsg}
-                connectorIcon={destination?.connector_instance?.icon}
               />
             </Col>
             <Col span={12}>

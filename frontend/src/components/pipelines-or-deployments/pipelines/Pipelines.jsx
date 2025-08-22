@@ -620,7 +620,7 @@ function Pipelines({ type }) {
           setOpen={setOpenEtlOrTaskModal}
           setTableData={setTableData}
           type={type}
-          title={deploymentsStaticContent[type].modalTitle}
+          title={deploymentsStaticContent[type].addBtn}
           isEdit={isEdit}
           selectedRow={selectedPorD}
           setSelectedRow={setSelectedPorD}
