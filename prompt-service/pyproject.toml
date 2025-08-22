@@ -22,11 +22,13 @@ dependencies = [
     "redis>=5.0.3,<5.3",
     "unstract-core",
     "unstract-flags",
+    "unstract-sdk1"
 ]
 
 [tool.uv.sources]
 unstract-flags = { path = "../unstract/flags", editable = true }
 unstract-core = { path = "../unstract/core", editable = true }
+unstract-sdk1 = { path = "../unstract/sdk1", editable = true }
 
 [dependency-groups]
 test = [
