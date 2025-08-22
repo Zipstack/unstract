@@ -71,7 +71,6 @@ class PresignedURLFetchError(APIException):
         if detail is None:
             detail = f"Failed to fetch file from URL: {url}. Error: {error_message}"
         
-        # Set status_code as instance attribute, don't modify class attribute
         self.status_code = status_code
         super().__init__(detail, code)
     
