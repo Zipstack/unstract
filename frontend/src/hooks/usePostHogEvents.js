@@ -37,9 +37,8 @@ const usePostHogEvents = () => {
   };
 
   const posthogConnectorAddedEventText = {
-    "FILESYSTEM:input": "intent_success_wf_fs_source",
-    "FILESYSTEM:output": "intent_success_wf_fs_dest",
-    "DATABASE:output": "intent_success_wf_db_dest",
+    FILESYSTEM: "intent_success_fs_connector",
+    DATABASE: "intent_success_db_connector",
   };
 
   const posthogWfDeploymentEventText = {

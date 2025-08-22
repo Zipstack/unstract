@@ -1,17 +1,16 @@
 import {
   Button,
   Col,
-  Image,
   Row,
   Select,
   Space,
   Tooltip,
   Typography,
+  Image,
 } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
-import { getMenuItem } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -22,34 +21,17 @@ import { ConfigureConnectorModal } from "../configure-connector-modal/ConfigureC
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import "./DsSettingsCard.css";
 
-const disabledIdsByType = {
-  FILE_SYSTEM: [
-    "box|4d94d237-ce4b-45d8-8f34-ddeefc37c0bf",
-    "http|6fdea346-86e4-4383-9a21-132db7c9a576",
-  ],
-};
-
-const needToRemove = {
-  FILE_SYSTEM: ["pcs|b8cd25cd-4452-4d54-bd5e-e7d71459b702"],
-};
-
-function DsSettingsCard({ type, endpointDetails, message }) {
+function DsSettingsCard({ connType, endpointDetails, message }) {
   const workflowStore = useWorkflowStore();
   const { source, destination, allowChangeEndpoint, details } = workflowStore;
-  const [options, setOptions] = useState({});
+  const [options, setOptions] = useState([]);
   const [openModal, setOpenModal] = useState(false);
 
-  const [listOfConnectors, setListOfConnectors] = useState([]);
-  const [filteredList, setFilteredList] = useState([]);
-
-  const [connType, setConnType] = useState(null);
+  const [connMode, setConnMode] = useState(null);
 
   const [connDetails, setConnDetails] = useState({});
-  const [specConfig, setSpecConfig] = useState({});
-  const [isSpecConfigLoading, setIsSpecConfigLoading] = useState(false);
   const [formDataConfig, setFormDataConfig] = useState({});
-  const [selectedId, setSelectedId] = useState("");
-  const [selectedItemName, setSelectedItemName] = useState("");
+
   const [inputOptions, setInputOptions] = useState([
     {
       value: "API",
@@ -76,10 +58,10 @@ function DsSettingsCard({ type, endpointDetails, message }) {
   const setUpdatedInputoptions = (inputOption) => {
     setInputOptions((prevInputOptions) => {
       // Check if inputOption already exists in prevInputOptions
+      // Return previous state unchanged if it does or create new array
       if (prevInputOptions.some((opt) => opt.value === inputOption.value)) {
-        return prevInputOptions; // Return previous state unchanged
+        return prevInputOptions;
       } else {
-        // Create a new array with the existing options and the new option
         const updatedInputOptions = [...prevInputOptions, inputOption];
         return updatedInputOptions;
       }
@@ -99,10 +81,10 @@ function DsSettingsCard({ type, endpointDetails, message }) {
   }, []);
 
   useEffect(() => {
-    if (type === "output") {
+    if (connType === "output") {
       if (source?.connection_type === "") {
         // Clear options when source is blank
-        setOptions({});
+        setOptions([]);
       } else {
         // Filter options based on source connection type
         const isAPI = source?.connection_type === "API";
@@ -114,7 +96,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
       }
     }
 
-    if (type === "input") {
+    if (connType === "input") {
       // Remove Database from Source Dropdown
       const filteredOptions = inputOptions.filter(
         (option) =>
@@ -124,9 +106,16 @@ function DsSettingsCard({ type, endpointDetails, message }) {
     }
   }, [source, destination]);
 
+  // Set formDataConfig from endpointDetails configuration
   useEffect(() => {
-    if (endpointDetails?.connection_type !== connType) {
-      setConnType(endpointDetails?.connection_type);
+    if (endpointDetails?.configuration) {
+      setFormDataConfig(endpointDetails.configuration);
+    }
+  }, [endpointDetails?.configuration]);
+
+  useEffect(() => {
+    if (endpointDetails?.connection_type !== connMode) {
+      setConnMode(endpointDetails?.connection_type);
     }
 
     if (!endpointDetails?.connector_instance) {
@@ -136,117 +125,16 @@ function DsSettingsCard({ type, endpointDetails, message }) {
 
     // Use connector_instance data directly from endpointDetails if it's an object
     if (typeof endpointDetails?.connector_instance === "object") {
-      const connectorData = endpointDetails.connector_instance;
-      connectorData.connector_metadata = connectorData.connector_metadata || {};
-      connectorData.connector_metadata.connectorName =
-        connectorData?.connector_name || "";
-      setConnDetails(connectorData);
-      setSelectedId(connectorData?.connector_id);
-      return;
-    }
-
-    // Fallback for legacy connector_instance ID format (string)
-    if (typeof endpointDetails?.connector_instance === "string") {
-      // Only call getSourceDetails if we haven't already loaded this connector
-      if (connDetails?.id !== endpointDetails?.connector_instance) {
-        getSourceDetails();
-      }
+      setConnDetails(endpointDetails.connector_instance);
       return;
     }
   }, [endpointDetails]);
 
-  useEffect(() => {
-    const menuItems = [];
-    [...listOfConnectors].forEach((item) => {
-      if (
-        endpointDetails?.connection_type &&
-        item?.connector_mode.split("_").join("") !==
-          endpointDetails?.connection_type
-      ) {
-        return;
-      }
-      menuItems.push(
-        getMenuItem(
-          item?.name,
-          item?.id,
-          sourceIcon(item?.icon),
-          undefined,
-          undefined,
-          item?.isDisabled
-        )
-      );
-    });
-    setSelectedId("");
-    setFilteredList(menuItems);
-
-    if (!endpointDetails?.id) {
-      return;
-    }
-
-    setFormDataConfig(endpointDetails.configuration || {});
-    const requestOptions = {
-      method: "GET",
-      url: getUrl(`workflow/endpoint/${endpointDetails?.id}/settings/`),
-    };
-
-    setIsSpecConfigLoading(true);
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const data = res?.data;
-        setSpecConfig(data?.schema || {});
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err, "Failed to load the spec"));
-      })
-      .finally(() => {
-        setIsSpecConfigLoading(false);
-      });
-  }, [connType, listOfConnectors]);
-
-  useEffect(() => {
-    if (!type) {
-      return;
-    }
-
-    const requestOptions = {
-      method: "GET",
-      url: getUrl(`supported_connectors/?type=${type.toUpperCase()}`),
-    };
-
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        let data = res?.data;
-        // Remove items specified in needToRemove from data
-        Object.keys(needToRemove).forEach((mode) => {
-          const idsToRemove = needToRemove[mode];
-          data = data.filter(
-            (source) =>
-              !(
-                source.connector_mode === mode &&
-                idsToRemove.includes(source.id)
-              )
-          );
-        });
-
-        const updatedSources = data?.map((source) => ({
-          ...source,
-          isDisabled: disabledIdsByType[source?.connector_mode]?.includes(
-            source?.id
-          ),
-        }));
-        setListOfConnectors(updatedSources || []);
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
-      })
-      .finally(() => {});
-  }, [type]);
-
-  const sourceIcon = (src) => {
-    return <Image src={src} height={25} width={25} preview={false} />;
-  };
-
   const clearDestination = (updatedData) => {
+    if (!destination) {
+      return;
+    }
+
     const requestOptions = {
       method: "PATCH",
       url: getUrl(`workflow/endpoint/${destination?.id}/`),
@@ -271,7 +159,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
 
   const updateDestination = () => {
     // Clear destination dropdown & data when input is switched
-    if (type === "input") {
+    if (connType === "input") {
       clearDestination({
         connection_type: "",
         connector_instance_id: null,
@@ -279,7 +167,11 @@ function DsSettingsCard({ type, endpointDetails, message }) {
     }
   };
 
-  const handleUpdate = (updatedData, showSuccess) => {
+  const handleEndpointUpdate = (updatedData, showSuccess) => {
+    if (!endpointDetails?.id) {
+      return Promise.resolve();
+    }
+
     const requestOptions = {
       method: "PATCH",
       url: getUrl(`workflow/endpoint/${endpointDetails?.id}/`),
@@ -289,11 +181,12 @@ function DsSettingsCard({ type, endpointDetails, message }) {
       },
       data: updatedData,
     };
-    axiosPrivate(requestOptions)
+
+    return axiosPrivate(requestOptions)
       .then((res) => {
         const data = res?.data || {};
         const updatedData = {};
-        if (type === "input") {
+        if (connType === "input") {
           updatedData["source"] = data;
         } else {
           updatedData["destination"] = data;
@@ -305,28 +198,11 @@ function DsSettingsCard({ type, endpointDetails, message }) {
             content: "Successfully updated",
           });
         }
+        return res;
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to update"));
-      });
-  };
-
-  const getSourceDetails = () => {
-    const requestOptions = {
-      method: "GET",
-      url: getUrl(`connector/${endpointDetails?.connector_instance}/`),
-    };
-
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const data = res?.data;
-        data["connector_metadata"]["connectorName"] =
-          data?.connector_name || "";
-        setConnDetails(data);
-        setSelectedId(data?.connector_id);
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
+        throw err;
       });
   };
 
@@ -336,27 +212,6 @@ function DsSettingsCard({ type, endpointDetails, message }) {
       return "Select the connector type from the dropdown";
     }
     return "";
-  };
-
-  // Check if connector is configured
-  const isConnectorConfigured = () => {
-    // For API connections, connector_instance is not required
-    if (endpointDetails?.connection_type === "API") {
-      return true;
-    }
-
-    // For other connection types (Database, etc.), check if connector instance is configured
-    // connector_instance represents the actual configured connector with credentials
-    return !!endpointDetails?.connector_instance;
-  };
-
-  // Get configure button text based on configuration status
-  const getConfigureButtonText = () => {
-    if (!endpointDetails?.connection_type) {
-      return "Configure";
-    }
-
-    return isConnectorConfigured() ? "Configured" : "Configure";
   };
 
   return (
@@ -387,7 +242,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                   value={endpointDetails?.connection_type || undefined}
                   disabled={!allowChangeEndpoint}
                   onChange={(value) => {
-                    handleUpdate({
+                    handleEndpointUpdate({
                       connection_type: value,
                       connector_instance_id: null,
                     });
@@ -402,35 +257,49 @@ function DsSettingsCard({ type, endpointDetails, message }) {
                   onClick={() => setOpenModal(true)}
                   disabled={
                     !endpointDetails?.connection_type ||
-                    connType === "API" ||
-                    connType === "APPDEPLOYMENT"
+                    connMode === "API" ||
+                    connMode === "APPDEPLOYMENT"
                   }
                 >
-                  {getConfigureButtonText()}
+                  Configure
                 </Button>
               </Tooltip>
             </Space>
           </SpaceWrapper>
+          {connDetails?.id && (
+            <div className="ds-connector-info-wrapper">
+              <Space className="ds-connector-info">
+                {connDetails?.icon && (
+                  <Image
+                    src={connDetails.icon}
+                    width={20}
+                    height={20}
+                    preview={false}
+                    alt="connector-icon"
+                  />
+                )}
+                <Typography.Text
+                  className="ds-connector-name"
+                  ellipsis={{ tooltip: true }}
+                >
+                  {connDetails?.connector_name || "Unnamed Connector"}
+                </Typography.Text>
+              </Space>
+            </div>
+          )}
         </Col>
       </Row>
       <ConfigureConnectorModal
         open={openModal}
         setOpen={setOpenModal}
-        type={type}
-        selectedId={selectedId}
-        setSelectedId={setSelectedId}
-        handleUpdate={handleUpdate}
-        filteredList={filteredList}
-        connectorMetadata={connDetails?.connector_metadata}
-        connectorId={connDetails?.id}
-        specConfig={specConfig}
+        connType={connType}
+        handleEndpointUpdate={handleEndpointUpdate}
+        endpointDetails={endpointDetails}
         formDataConfig={formDataConfig}
         setFormDataConfig={setFormDataConfig}
-        isSpecConfigLoading={isSpecConfigLoading}
         connDetails={connDetails}
-        connType={connType}
-        selectedItemName={selectedItemName}
-        setSelectedItemName={setSelectedItemName}
+        setConnDetails={setConnDetails}
+        connMode={connMode}
         workflowDetails={details}
       />
     </>
@@ -438,7 +307,7 @@ function DsSettingsCard({ type, endpointDetails, message }) {
 }
 
 DsSettingsCard.propTypes = {
-  type: PropTypes.string.isRequired,
+  connType: PropTypes.string.isRequired,
   endpointDetails: PropTypes.object.isRequired,
   message: PropTypes.string,
 };

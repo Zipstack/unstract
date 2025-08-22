@@ -7,14 +7,24 @@ import { Document, Folder } from "../../../assets";
 import { formatBytes } from "../../../helpers/GetStaticData";
 import { inputService } from "../../input-output/input-output/input-service.js";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 import "./FileSystem.css";
 
 const { DirectoryTree } = Tree;
 const { Text } = Typography;
 
-function FileExplorer({ selectedItem = "", data = [], loadingData, error }) {
+function FileExplorer({
+  selectedConnector = "",
+  data = [],
+  loadingData,
+  error,
+  setError,
+  onFolderSelect,
+  selectedFolderPath,
+}) {
   const inpService = inputService();
+  const handleException = useExceptionHandler();
 
   const [tree, setTree] = useState([]);
   const [expandedKeys, setExpandedKeys] = useState([]);
@@ -32,7 +42,17 @@ function FileExplorer({ selectedItem = "", data = [], loadingData, error }) {
     // Clear selected items/keys when the data source is changed.
     setExpandedKeys([]);
     setSelectedKeys([]);
-  }, [selectedItem]);
+    if (setError) {
+      setError("");
+    }
+  }, [selectedConnector]);
+
+  useEffect(() => {
+    // Clear tree selection when selectedFolderPath is cleared
+    if (!selectedFolderPath) {
+      setSelectedKeys([]);
+    }
+  }, [selectedFolderPath]);
 
   function onLoadData({ key, children }) {
     return new Promise((resolve) => {
@@ -49,8 +69,11 @@ function FileExplorer({ selectedItem = "", data = [], loadingData, error }) {
   }
 
   function getAndUpdateFiles(path) {
+    if (setError) {
+      setError("");
+    }
     return inpService
-      .getFileList(selectedItem, path)
+      .getFileList(selectedConnector, path)
       .then((res) => {
         let newTree = tree;
         if (path) {
@@ -61,10 +84,15 @@ function FileExplorer({ selectedItem = "", data = [], loadingData, error }) {
         }
         updateTree(newTree);
       })
-      .catch(() => {
-        console.error(
-          `Unable to get files on "${selectedItem}" for the folder "${path}"`
+      .catch((err) => {
+        const errorDetails = handleException(
+          err,
+          `Error loading files from "${path || "root"}"`
         );
+        if (setError) {
+          setError(errorDetails.content);
+        }
+        throw err;
       });
   }
 
@@ -72,8 +100,16 @@ function FileExplorer({ selectedItem = "", data = [], loadingData, error }) {
     setSelectedKeys(selectedKeys);
     if (event.node.isLeaf) {
       uploadPathRef.current = "";
+      // Call the folder selection callback for files (disabled state)
+      if (onFolderSelect) {
+        onFolderSelect(event.node.key, "file");
+      }
     } else {
       uploadPathRef.current = event.node.key;
+      // Call the folder selection callback for folders (enabled state)
+      if (onFolderSelect) {
+        onFolderSelect(event.node.key, "folder");
+      }
     }
   }
 
@@ -126,7 +162,7 @@ function FileExplorer({ selectedItem = "", data = [], loadingData, error }) {
       )}
       {error && (
         <div className="center">
-          <Text>Error loading the data</Text>
+          <Text>{error}</Text>
         </div>
       )}
     </div>
@@ -186,10 +222,13 @@ function transformTree(tree) {
 }
 
 FileExplorer.propTypes = {
-  selectedItem: PropTypes.string,
+  selectedConnector: PropTypes.string,
   data: PropTypes.array,
   loadingData: PropTypes.bool,
-  error: PropTypes.bool,
+  error: PropTypes.string,
+  setError: PropTypes.func,
+  onFolderSelect: PropTypes.func,
+  selectedFolderPath: PropTypes.string,
 };
 
 export { FileExplorer };
