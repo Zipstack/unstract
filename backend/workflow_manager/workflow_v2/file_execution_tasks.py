@@ -1137,16 +1137,18 @@ class FileExecutionTasks:
 
             # Track usage for enterprise deployments (graceful fallback for OSS)
             try:
-                from plugins.verticals_usage.kong_headers_cache import kong_headers_cache
-                from plugins.verticals_usage.usage_tracker import verticals_usage_tracker
+                from plugins.verticals_usage.api_hub_headers_cache import api_hub_headers_cache
+                from plugins.verticals_usage.usage_tracker import api_hub_usage_tracker
 
-                # Get Kong headers from Redis cache
-                kong_headers = kong_headers_cache.get_headers(str(workflow_execution.id))
+                # Get API hub headers from Redis cache
+                api_hub_headers = api_hub_headers_cache.get_headers(str(workflow_execution.id))
 
-                if kong_headers:
-                    # Convert Kong headers back to Django request.META format
+                if api_hub_headers:
+                    logger.debug(f"Retrieved API hub headers for tracking: {list(api_hub_headers.keys())}")
+                    
+                    # Convert normalized headers back to Django format for compatibility
                     request_meta = {}
-                    for key, value in kong_headers.items():
+                    for key, value in api_hub_headers.items():
                         # Convert 'subscription-id' to 'HTTP_X_SUBSCRIPTION_ID'
                         django_key = f"HTTP_X_{key.upper().replace('-', '_')}"
                         request_meta[django_key] = value
@@ -1164,28 +1166,38 @@ class FileExecutionTasks:
                         except APIDeployment.DoesNotExist:
                             pass
 
-                    # Track usage if this is a verticals request
-                    verticals_usage_tracker.track_api_execution(
-                        request_meta=request_meta,
-                        execution_id=str(workflow_execution.id),
-                        execution_result=final_result.to_dict()
-                        if hasattr(final_result, "to_dict")
-                        else {"metadata": {}},
-                        execution_time=workflow_execution.execution_time,
-                        api_name=api_name,
-                        organization_id=workflow_execution.workflow.organization_id
-                        if workflow_execution.workflow
-                        else None,
-                    )
+                    # Track usage if this is an API hub request
+                    try:
+                        success = api_hub_usage_tracker.track_api_execution(
+                            request_meta=request_meta,
+                            execution_id=str(workflow_execution.id),
+                            execution_result=final_result.to_dict()
+                            if hasattr(final_result, "to_dict")
+                            else {"metadata": {}},
+                            execution_time=workflow_execution.execution_time,
+                            api_name=api_name,
+                            organization_id=workflow_execution.workflow.organization_id
+                            if workflow_execution.workflow
+                            else None,
+                        )
+                        if success:
+                            logger.debug(f"Successfully tracked API hub usage for execution {workflow_execution.id}")
+                        else:
+                            logger.warning(f"API hub usage tracking returned false for execution {workflow_execution.id}")
+                    except Exception as track_error:
+                        logger.error(f"Failed to track API hub usage for execution {workflow_execution.id}: {track_error}")
 
-                    # Clean up cached headers
-                    kong_headers_cache.delete_headers(str(workflow_execution.id))
+                    # Clean up cached headers (always do this)
+                    try:
+                        api_hub_headers_cache.delete_headers(str(workflow_execution.id))
+                    except Exception as cleanup_error:
+                        logger.warning(f"Failed to clean up cached headers: {cleanup_error}")
+                else:
+                    logger.debug(f"No API hub headers found for execution {workflow_execution.id}")
 
             except ImportError:
-                # Plugin not available in OSS - expected behavior
                 pass
             except Exception as e:
-                # Don't fail API execution if usage tracking fails
                 logger.debug(f"Usage tracking failed: {e}")
 
         if destination:
