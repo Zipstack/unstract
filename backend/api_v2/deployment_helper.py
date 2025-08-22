@@ -154,7 +154,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         tag_names: list[str] = [],
         llm_profile_id: str | None = None,
         hitl_queue_name: str | None = None,
-        request=None,
+        request_meta=None,
     ) -> ReturnDict:
         """Execute workflow by api.
 
@@ -188,16 +188,16 @@ class DeploymentHelper(BaseAPIKeyValidator):
         execution_id = workflow_execution.id
 
         # Store API hub headers for usage tracking (enterprise feature)
-        if request and hasattr(request, 'META'):
+        if request_meta:
             try:
                 from plugins.verticals_usage.api_hub_headers_cache import (
                     api_hub_headers_cache,
                 )
                 from plugins.verticals_usage.usage_tracker import api_hub_usage_tracker
 
-                # Pass request.META instead of full request for better security
+                # Process API hub headers from request.META
                 normalized_headers = api_hub_usage_tracker.extract_api_hub_headers_from_request(
-                    request.META
+                    request_meta
                 )
                 if normalized_headers:
                     success = api_hub_headers_cache.store_headers(
@@ -208,7 +208,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
                             f"Failed to cache API hub headers for execution {execution_id}"
                         )
                 else:
-                    logger.debug("No API hub subscription headers found in request")
+                    logger.debug("No API hub subscription headers found in request.META")
             except ImportError:
                 logger.debug("API hub usage tracking plugin not available")
             except Exception as e:
