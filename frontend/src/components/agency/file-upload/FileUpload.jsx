@@ -21,10 +21,10 @@ const FileUpload = ({
   const beforeUpload = (file) => {
     if (fileList.length >= WORKFLOW_PAGE_MAX_FILES) {
       message.error(WORKFLOW_VALIDATION_MESSAGES.MAX_FILES_EXCEEDED);
-      return false;
+    } else {
+      setFileList([...fileList, file]);
     }
-    setFileList([...fileList, file]);
-    return false;
+    return false; // Always prevent automatic upload (manual upload on submit)
   };
 
   const submitFile = () => {
