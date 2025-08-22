@@ -42,7 +42,10 @@
   text-align: left;
 }
 
-.create-api-deployment-from-prompt-studio-modal .success-content .ant-typography h4 {
+.create-api-deployment-from-prompt-studio-modal
+  .success-content
+  .ant-typography
+  h4 {
   text-align: center;
   margin-bottom: 24px;
   color: #52c41a;
@@ -54,7 +57,9 @@
   font-weight: 500;
 }
 
-.create-api-deployment-from-prompt-studio-modal .success-content .ant-btn:hover {
+.create-api-deployment-from-prompt-studio-modal
+  .success-content
+  .ant-btn:hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   transition: all 0.3s ease;
@@ -75,4 +80,27 @@
 .create-api-deployment-from-prompt-studio-modal .success-footer {
   text-align: center;
   margin-top: 16px;
+}
+
+/* Form textarea styles for Display Name and API Name */
+.create-api-deployment-from-prompt-studio-modal .ant-form-item-control-input textarea[maxlength="30"],
+.create-api-deployment-from-prompt-studio-modal .ant-form-item-control-input textarea[maxlength="100"] {
+  font-family: monospace;
+  word-break: break-all;
+  line-height: 1.5;
+}
+
+/* Character counter styles for textareas with showCount */
+.create-api-deployment-from-prompt-studio-modal .ant-input-textarea-show-count::after {
+  position: static;
+  display: block;
+  text-align: right;
+  margin-top: 4px;
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+}
+
+/* Ensure proper spacing for auto-sized textareas */
+.create-api-deployment-from-prompt-studio-modal .ant-input-textarea {
+  margin-bottom: 0;
 }
