@@ -69,6 +69,9 @@ class ToolInstanceHelper:
     ) -> None:
         """Update the metadata dictionary with adapter properties.
 
+        Handles both legacy metadata (adapter names) and new metadata (adapter IDs).
+        Automatically converts adapter names to IDs for consistency.
+
         Parameters:
             metadata (dict[str, Any]):
                 The metadata dictionary to be updated with adapter properties.
@@ -81,17 +84,30 @@ class ToolInstanceHelper:
 
         Returns:
             None
+
         """
         if adapter_key in metadata:
-            adapter_name = metadata[adapter_key]
-            adapter = AdapterProcessor.get_adapter_by_name_and_type(
-                adapter_type=adapter_type, adapter_name=adapter_name
-            )
-            adapter_id = str(adapter.id) if adapter else None
-            metadata_key_for_id = adapter_property.get(
-                AdapterPropertyKey.ADAPTER_ID_KEY, AdapterPropertyKey.ADAPTER_ID
-            )
-            metadata[metadata_key_for_id] = adapter_id
+            adapter_value = metadata[adapter_key]
+            adapter_id = None
+            if ToolInstanceHelper.is_uuid_format(adapter_value):
+                logger.debug(f"Adapter value '{adapter_value}' is already in UUID format")
+                adapter = AdapterInstance.objects.get(
+                    id=adapter_value, adapter_type=adapter_type.value
+                )
+                adapter_id = str(adapter.id)
+                metadata_key_for_id = adapter_property.get(
+                    AdapterPropertyKey.ADAPTER_ID_KEY, AdapterPropertyKey.ADAPTER_ID
+                )
+                metadata[metadata_key_for_id] = adapter_id
+            else:
+                adapter = AdapterProcessor.get_adapter_by_name_and_type(
+                    adapter_type=adapter_type, adapter_name=adapter_value
+                )
+                adapter_id = str(adapter.id)
+                metadata_key_for_id = adapter_property.get(
+                    AdapterPropertyKey.ADAPTER_ID_KEY, AdapterPropertyKey.ADAPTER_ID
+                )
+                metadata[metadata_key_for_id] = adapter_id
 
     @staticmethod
     def update_metadata_with_adapter_instances(
@@ -189,7 +205,7 @@ class ToolInstanceHelper:
             metadata_key_for_id = adapter_property.get(
                 AdapterPropertyKey.ADAPTER_ID_KEY, AdapterPropertyKey.ADAPTER_ID
             )
-            metadata[adapter_key] = adapter.adapter_name
+            metadata[adapter_key] = str(adapter.id)
             metadata[metadata_key_for_id] = str(adapter.id)
 
     @staticmethod
@@ -250,6 +266,120 @@ class ToolInstanceHelper:
             tool_instance = ToolInstance.objects.get(pk=tool_instance_id)
             tool_instance.step = step + 1
             tool_instance.save()
+
+    @staticmethod
+    def is_uuid_format(value: str) -> bool:
+        """Check if a string is in UUID format."""
+        if not value or not isinstance(value, str):
+            return False
+        try:
+            uuid.UUID(value)
+            return True
+        except ValueError:
+            return False
+
+    @staticmethod
+    def has_adapter_ids_in_metadata(metadata: dict[str, Any], tool_uid: str) -> bool:
+        """Check if metadata already uses adapter IDs instead of names."""
+        tool: Tool = ToolProcessor.get_tool_by_uid(tool_uid=tool_uid)
+        schema: Spec = ToolUtils.get_json_schema_for_tool(tool)
+
+        # Get all adapter keys for this tool
+        adapter_keys = set()
+        adapter_keys.update(schema.get_llm_adapter_properties().keys())
+        adapter_keys.update(schema.get_embedding_adapter_properties().keys())
+        adapter_keys.update(schema.get_vector_db_adapter_properties().keys())
+        adapter_keys.update(schema.get_text_extractor_adapter_properties().keys())
+        adapter_keys.update(schema.get_ocr_adapter_properties().keys())
+
+        # Check if any adapter value is in UUID format (indicates already migrated)
+        for key in adapter_keys:
+            if (
+                key in metadata
+                and metadata[key]
+                and ToolInstanceHelper.is_uuid_format(metadata[key])
+            ):
+                return True  # Found at least one UUID, assume migrated
+
+        return False  # No UUIDs found, still using names
+
+    @staticmethod
+    def _migrate_adapter_keys_for_type(
+        metadata: dict[str, Any],
+        adapter_keys: dict[str, Any],
+        adapter_type: AdapterTypes,
+    ) -> tuple[dict[str, Any], bool]:
+        """Helper method to migrate adapter names to IDs for a specific adapter type."""
+        needs_update = False
+
+        for adapter_key in adapter_keys.keys():
+            if (
+                adapter_key in metadata
+                and metadata[adapter_key]
+                and not ToolInstanceHelper.is_uuid_format(metadata[adapter_key])
+            ):
+                adapter_name = metadata[adapter_key]
+                adapter = AdapterProcessor.get_adapter_by_name_and_type(
+                    adapter_type=adapter_type, adapter_name=adapter_name
+                )
+                logger.info(
+                    f"Migrating {adapter_type.value} adapter '{adapter_name}' to ID '{adapter.id}'"
+                )
+                metadata[adapter_key] = str(adapter.id)
+                needs_update = True
+
+        return metadata, needs_update
+
+    @staticmethod
+    def ensure_adapter_ids_in_metadata(
+        tool_instance: ToolInstance, user: User = None
+    ) -> dict[str, Any]:
+        """Lazy migration: convert adapter names to IDs if needed and update database."""
+        metadata = tool_instance.metadata.copy()
+
+        # Check if already migrated
+        if ToolInstanceHelper.has_adapter_ids_in_metadata(
+            metadata, tool_instance.tool_id
+        ):
+            return metadata
+
+        logger.info(f"Performing lazy migration for tool instance {tool_instance.id}")
+
+        # Get tool schema and name for error messages
+        tool: Tool = ToolProcessor.get_tool_by_uid(tool_uid=tool_instance.tool_id)
+        schema: Spec = ToolUtils.get_json_schema_for_tool(tool)
+
+        overall_needs_update = False
+
+        # Migrate each adapter type
+        adapter_types_to_migrate = [
+            (schema.get_llm_adapter_properties(), AdapterTypes.LLM),
+            (schema.get_embedding_adapter_properties(), AdapterTypes.EMBEDDING),
+            (schema.get_vector_db_adapter_properties(), AdapterTypes.VECTOR_DB),
+            (schema.get_text_extractor_adapter_properties(), AdapterTypes.X2TEXT),
+            (schema.get_ocr_adapter_properties(), AdapterTypes.OCR),
+        ]
+
+        for adapter_properties, adapter_type in adapter_types_to_migrate:
+            if adapter_properties:  # Only process if this tool uses this adapter type
+                metadata, needs_update = (
+                    ToolInstanceHelper._migrate_adapter_keys_for_type(
+                        metadata=metadata,
+                        adapter_keys=adapter_properties,
+                        adapter_type=adapter_type,
+                    )
+                )
+                overall_needs_update = overall_needs_update or needs_update
+
+        # Update database if changes were made
+        if overall_needs_update:
+            tool_instance.metadata = metadata
+            tool_instance.save()
+            logger.info(
+                f"Successfully migrated tool instance {tool_instance.id} to use adapter IDs"
+            )
+
+        return metadata
 
     @staticmethod
     def validate_tool_settings(
