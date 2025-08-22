@@ -4,3 +4,13 @@
     display: flex;
     flex-direction: column;
 }
+
+.action-item-disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.action-item-enabled {
+    opacity: 1;
+    cursor: pointer;
+}
