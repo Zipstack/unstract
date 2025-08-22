@@ -1,0 +1,428 @@
+"""Migration to convert workflow-specific connectors to centralized connectors."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+import uuid
+from typing import Any
+
+from django.db import migrations
+
+logger = logging.getLogger(__name__)
+
+
+def _compute_metadata_hash(connector_metadata: dict[str, Any] | None) -> str | None:
+    """Compute SHA256 hash of connector metadata."""
+    if not connector_metadata:
+        return None
+    metadata_json = json.dumps(connector_metadata, sort_keys=True)
+    return hashlib.sha256(metadata_json.encode("utf-8")).hexdigest()
+
+
+def _extract_connector_sys_name(connector_id: str) -> str:
+    """Extract platform's connector name from 'name|uuid' format."""
+    if "|" in connector_id:
+        return connector_id.split("|")[0]
+    return connector_id
+
+
+def _get_short_group_key(group_key: tuple[Any, str, str | None]) -> tuple[Any, str, str]:
+    """Generate a shortened group key for logging."""
+    return (
+        group_key[0],
+        group_key[1],
+        group_key[2][:8] if group_key[2] else "None",
+    )
+
+
+def _group_connectors(
+    connector_instances: Any,
+) -> dict[tuple[Any, str, str | None], list[Any]]:
+    """Group connectors by organization, connector type, and metadata hash."""
+    connector_groups = {}
+
+    for connector in connector_instances:
+        try:
+            metadata_hash = _compute_metadata_hash(connector.connector_metadata)
+            connector_sys_name = _extract_connector_sys_name(connector.connector_id)
+
+            group_key = (
+                connector.organization_id,
+                connector_sys_name,
+                metadata_hash,
+            )
+
+            if group_key not in connector_groups:
+                connector_groups[group_key] = []
+            connector_groups[group_key].append(connector)
+
+        except Exception as e:
+            logger.error(f"Error processing connector {connector.id}: {str(e)}")
+            raise
+
+    return connector_groups
+
+
+def _process_single_connector(
+    connector: Any,
+    processed_groups: int,
+    total_groups: int,
+    short_group_key: tuple[Any, str, str],
+) -> None:
+    """Process a group with only one connector."""
+    connector.connector_name = f"{connector.connector_name}-{uuid.uuid4().hex[:8]}"
+    logger.info(
+        f"[Group {processed_groups}/{total_groups}] {short_group_key}: "
+        f"Only 1 connector present, renaming to '{connector.connector_name}'"
+    )
+    connector.save()
+
+
+def _centralize_connector_group(
+    connectors: list[Any],
+    processed_groups: int,
+    total_groups: int,
+    short_group_key: tuple[Any, str, str],
+) -> tuple[Any, dict[Any, Any], set[Any]]:
+    """Centralize a group of multiple connectors."""
+    logger.info(
+        f"[Group {processed_groups}/{total_groups}] {short_group_key}: "
+        f"Found {len(connectors)} similar connectors to unify"
+    )
+
+    # First connector becomes the centralized one
+    centralized_connector = connectors[0]
+    original_name = centralized_connector.connector_name
+    centralized_connector.connector_name = f"{original_name}-{uuid.uuid4().hex[:8]}"
+
+    logger.info(
+        f"[Group {processed_groups}/{total_groups}] {short_group_key}: "
+        f"Centralizing '{original_name}' -> '{centralized_connector.connector_name}'"
+    )
+    centralized_connector.save()
+
+    # Build mapping for connectors to be replaced
+    connector_mapping = {}
+    connectors_to_delete = set()
+
+    for connector_to_delete in connectors[1:]:
+        connector_mapping[connector_to_delete.id] = centralized_connector
+        connectors_to_delete.add(connector_to_delete.id)
+
+    return centralized_connector, connector_mapping, connectors_to_delete
+
+
+def _update_workflow_endpoints(
+    connector_mapping: dict[Any, Any], workflow_endpoint_model: Any
+) -> tuple[int, set[Any]]:
+    """Update WorkflowEndpoint references to use centralized connectors."""
+    endpoint_updates = 0
+    connectors_to_delete = set()
+
+    for old_connector_id, new_connector in connector_mapping.items():
+        try:
+            updated_count = workflow_endpoint_model.objects.filter(
+                connector_instance_id=old_connector_id
+            ).update(connector_instance=new_connector)
+
+            if updated_count == 0:
+                logger.debug(f"No WorkflowEndpoint uses connector '{old_connector_id}'")
+                connectors_to_delete.add(old_connector_id)
+            else:
+                endpoint_updates += updated_count
+                logger.debug(
+                    f"Updated {updated_count} endpoints for connector '{old_connector_id}'"
+                )
+
+        except Exception as e:
+            logger.error(
+                f"Error updating endpoints for connector {old_connector_id}: {str(e)}"
+            )
+            raise
+
+    logger.info(f"Updated {endpoint_updates} WorkflowEndpoint references")
+    return endpoint_updates, connectors_to_delete
+
+
+def _delete_redundant_connectors(
+    connectors_to_delete_ids: set[Any], connector_instance_model: Any
+) -> int:
+    """Delete redundant connectors in bulk."""
+    if not connectors_to_delete_ids:
+        return 0
+
+    try:
+        delete_count = connector_instance_model.objects.filter(
+            id__in=connectors_to_delete_ids
+        ).delete()[0]
+        logger.info(f"Deleted {delete_count} redundant connectors")
+        return delete_count
+    except Exception as e:
+        logger.error(f"Error deleting redundant connectors: {str(e)}")
+        raise
+
+
+def migrate_to_centralized_connectors(apps, schema_editor):  # noqa: ARG001
+    """Migrate existing workflow-specific connectors to centralized connectors.
+
+    This migration:
+    1. Finds all workflow-specific connectors
+    2. Groups them by organization, connector ID, and connector metadata
+    3. Marks first connector of each group as centralized
+    4. Updates WorkflowEndpoint references to use the new centralized connectors
+    """
+    ConnectorInstance = apps.get_model("connector_v2", "ConnectorInstance")  # NOSONAR
+    WorkflowEndpoint = apps.get_model("endpoint_v2", "WorkflowEndpoint")  # NOSONAR
+
+    # Get all connector instances with select_related for performance
+    connector_instances = ConnectorInstance.objects.select_related(
+        "organization", "created_by", "modified_by"
+    ).all()
+
+    total_connectors = connector_instances.count()
+    logger.info(f"Processing {total_connectors} connector instances for centralization")
+
+    # Group connectors by organization and unique credential fingerprint
+    connector_groups = _group_connectors(connector_instances)
+
+    # Process each group and centralize connectors
+    processed_groups = 0
+    centralized_count = 0
+    total_groups = len(connector_groups)
+    all_connector_mappings = {}
+    all_connectors_to_delete = set()
+
+    for group_key, connectors in connector_groups.items():
+        processed_groups += 1
+        short_group_key = _get_short_group_key(group_key)
+
+        try:
+            # Process single connector groups differently
+            if len(connectors) == 1:
+                _process_single_connector(
+                    connectors[0], processed_groups, total_groups, short_group_key
+                )
+                continue
+
+            # Centralize multiple connectors
+            _, connector_mapping, connectors_to_delete = _centralize_connector_group(
+                connectors, processed_groups, total_groups, short_group_key
+            )
+
+            centralized_count += 1
+            all_connector_mappings.update(connector_mapping)
+            all_connectors_to_delete.update(connectors_to_delete)
+
+        except Exception as e:
+            logger.error(f"Error processing group {short_group_key}: {str(e)}")
+            raise
+
+    logger.info(
+        f"Processed {processed_groups} connector groups, centralized {centralized_count}"
+    )
+
+    # Update WorkflowEndpoint references
+    _, additional_deletes = _update_workflow_endpoints(
+        all_connector_mappings, WorkflowEndpoint
+    )
+    all_connectors_to_delete.update(additional_deletes)
+
+    # Delete redundant connectors
+    _delete_redundant_connectors(all_connectors_to_delete, ConnectorInstance)
+
+    logger.info(
+        f"Migration completed: {centralized_count} centralized connectors created"
+    )
+
+
+def _get_connector_type_from_endpoint(endpoint_type: str) -> str:
+    """Map endpoint type to connector type."""
+    return "INPUT" if endpoint_type == "SOURCE" else "OUTPUT"
+
+
+def _find_unused_connectors(
+    centralized_connectors: Any, workflow_endpoint_model: Any, total_connectors: int
+) -> list[Any]:
+    """Find centralized connectors that have no endpoint references."""
+    unused_connectors = []
+    processed_connectors = 0
+
+    for centralized_connector in centralized_connectors:
+        processed_connectors += 1
+
+        endpoints = workflow_endpoint_model.objects.filter(
+            connector_instance=centralized_connector
+        )
+
+        if not endpoints.exists():
+            logger.info(
+                f"[{processed_connectors}/{total_connectors}] Centralized connector "
+                f"'{centralized_connector}' has no endpoints, marking for deletion"
+            )
+            unused_connectors.append(centralized_connector.id)
+
+    return unused_connectors
+
+
+def _create_workflow_specific_connector(
+    centralized_connector: Any,
+    workflow: Any,
+    connector_type: str,
+    connector_instance_model: Any,
+) -> Any:
+    """Create a new workflow-specific connector from a centralized one."""
+    return connector_instance_model.objects.create(
+        connector_name=centralized_connector.connector_name,
+        connector_id=centralized_connector.connector_id,
+        connector_metadata=centralized_connector.connector_metadata,
+        connector_version=centralized_connector.connector_version,
+        connector_type=connector_type,
+        connector_auth=centralized_connector.connector_auth,
+        connector_mode=centralized_connector.connector_mode,
+        workflow=workflow,
+        organization=centralized_connector.organization,
+        created_by=centralized_connector.created_by,
+        modified_by=centralized_connector.modified_by,
+    )
+
+
+def _process_connector_endpoints(
+    centralized_connector: Any,
+    endpoints: Any,
+    connector_instance_model: Any,
+    processed_count: int,
+    total_count: int,
+) -> int:
+    """Process endpoints for a centralized connector, creating workflow-specific copies."""
+    endpoint_ref_count = endpoints.count()
+    added_connector_count = 0
+
+    logger.info(
+        f"[{processed_count}/{total_count}] Centralized connector "
+        f"'{centralized_connector}' has {endpoint_ref_count} endpoint(s) to process"
+    )
+
+    # Process each endpoint, reusing the last connector to avoid unnecessary creation
+    for index, endpoint in enumerate(endpoints):
+        workflow = endpoint.workflow
+        endpoint_type = endpoint.endpoint_type
+        connector_type = _get_connector_type_from_endpoint(endpoint_type)
+
+        if index == endpoint_ref_count - 1:
+            # Last endpoint reuses the existing centralized connector
+            centralized_connector.workflow = workflow
+            centralized_connector.connector_type = connector_type
+            centralized_connector.save()
+            logger.debug(f"Reused centralized connector for endpoint {endpoint.id}")
+        else:
+            # Create new workflow-specific connector for other endpoints
+            endpoint_connector = _create_workflow_specific_connector(
+                centralized_connector, workflow, connector_type, connector_instance_model
+            )
+            added_connector_count += 1
+            endpoint.connector_instance = endpoint_connector
+            endpoint.save()
+            logger.debug(f"Created new connector for endpoint {endpoint.id}")
+
+    return added_connector_count
+
+
+def _delete_unused_centralized_connectors(
+    unused_connector_ids: list[Any], connector_instance_model: Any
+) -> int:
+    """Delete unused centralized connectors in bulk."""
+    if not unused_connector_ids:
+        logger.info("No unused centralized connectors to delete")
+        return 0
+
+    try:
+        delete_count = connector_instance_model.objects.filter(
+            id__in=unused_connector_ids
+        ).delete()[0]
+        logger.info(f"Deleted {delete_count} unused centralized connectors")
+        return delete_count
+    except Exception as e:
+        logger.error(f"Error deleting unused connectors: {str(e)}")
+        raise
+
+
+def reverse_centralized_connectors(apps, schema_editor):  # noqa: ARG001
+    """Reverse the migration by converting centralized connectors back to workflow-specific ones.
+
+    This is a best-effort reversal that:
+    1. Finds all centralized connectors
+    2. For each WorkflowEndpoint using a centralized connector, creates a workflow-specific copy
+    3. Updates the WorkflowEndpoint to use the workflow-specific copy
+    """
+    ConnectorInstance = apps.get_model("connector_v2", "ConnectorInstance")  # NOSONAR
+    WorkflowEndpoint = apps.get_model("endpoint_v2", "WorkflowEndpoint")  # NOSONAR
+
+    # Get all centralized connectors with prefetch for better performance
+    centralized_connectors = ConnectorInstance.objects.prefetch_related(
+        "workflow_endpoints"
+    ).all()
+
+    total_connectors = centralized_connectors.count()
+    logger.info(f"Processing {total_connectors} centralized connectors for reversal")
+
+    # Find unused connectors that can be deleted
+    unused_connectors = _find_unused_connectors(
+        centralized_connectors, WorkflowEndpoint, total_connectors
+    )
+
+    # Process connectors with endpoints to create workflow-specific copies
+    added_connector_count = 0
+    processed_connectors = 0
+
+    for centralized_connector in centralized_connectors:
+        processed_connectors += 1
+
+        # Skip connectors already marked for deletion
+        if centralized_connector.id in unused_connectors:
+            continue
+
+        try:
+            endpoints = WorkflowEndpoint.objects.filter(
+                connector_instance=centralized_connector
+            )
+
+            if endpoints.exists():
+                connector_count = _process_connector_endpoints(
+                    centralized_connector,
+                    endpoints,
+                    ConnectorInstance,
+                    processed_connectors,
+                    total_connectors,
+                )
+                added_connector_count += connector_count
+
+        except Exception as e:
+            logger.error(
+                f"Error processing connector {centralized_connector.id}: {str(e)}"
+            )
+            raise
+
+    # Delete unused centralized connectors
+    _delete_unused_centralized_connectors(unused_connectors, ConnectorInstance)
+
+    logger.info(
+        f"Reverse migration completed: added {added_connector_count} workflow-specific connectors"
+    )
+
+
+class Migration(migrations.Migration):
+    dependencies = [
+        (
+            "connector_v2",
+            "0002_alter_connectorinstance_connector_metadata_and_more",
+        ),
+        ("endpoint_v2", "0001_initial"),
+    ]
+
+    operations = [
+        migrations.RunPython(
+            migrate_to_centralized_connectors, reverse_centralized_connectors
+        ),
+    ]
