@@ -56,7 +56,7 @@ class DeploymentExecution(views.APIView):
     ) -> Response:
         api: APIDeployment = deployment_execution_dto.api
         api_key: str = deployment_execution_dto.api_key
-        
+
         serializer = ExecutionRequestSerializer(
             data=request.data, context={"api": api, "api_key": api_key}
         )

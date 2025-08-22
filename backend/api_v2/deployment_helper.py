@@ -182,13 +182,13 @@ class DeploymentHelper(BaseAPIKeyValidator):
             total_files=len(file_objs),
         )
         execution_id = workflow_execution.id
-        
+
         # Store Kong headers for verticals usage tracking (enterprise feature)
         if request_meta:
             try:
                 from plugins.verticals_usage.kong_headers_cache import kong_headers_cache
                 from plugins.verticals_usage.usage_tracker import verticals_usage_tracker
-                
+
                 kong_headers = verticals_usage_tracker.extract_kong_headers(request_meta)
                 if kong_headers:
                     kong_headers_cache.store_headers(str(execution_id), kong_headers)
