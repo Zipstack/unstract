@@ -2,7 +2,7 @@ import PropTypes from "prop-types";
 import { Modal, Upload, Button, message } from "antd";
 import { UploadOutlined } from "@ant-design/icons";
 import {
-  MAX_WORKFLOW_EXECUTION_FILES,
+  WORKFLOW_PAGE_MAX_FILES,
   WORKFLOW_VALIDATION_MESSAGES,
 } from "./WfConstants.js";
 
@@ -19,7 +19,7 @@ const FileUpload = ({
   };
 
   const beforeUpload = (file) => {
-    if (fileList.length >= MAX_WORKFLOW_EXECUTION_FILES) {
+    if (fileList.length >= WORKFLOW_PAGE_MAX_FILES) {
       message.error(WORKFLOW_VALIDATION_MESSAGES.MAX_FILES_EXCEEDED);
       return false;
     }
@@ -32,7 +32,7 @@ const FileUpload = ({
       message.error(WORKFLOW_VALIDATION_MESSAGES.NO_FILES_SELECTED);
       return;
     }
-    if (fileList.length > MAX_WORKFLOW_EXECUTION_FILES) {
+    if (fileList.length > WORKFLOW_PAGE_MAX_FILES) {
       message.error(WORKFLOW_VALIDATION_MESSAGES.MAX_FILES_EXCEEDED);
       return;
     }
@@ -63,7 +63,7 @@ const FileUpload = ({
         fileList={fileList}
         beforeUpload={beforeUpload}
         onRemove={onRemove}
-        maxCount={MAX_WORKFLOW_EXECUTION_FILES}
+        maxCount={WORKFLOW_PAGE_MAX_FILES}
         multiple={true}
       >
         <Button icon={<UploadOutlined />}>Select File</Button>

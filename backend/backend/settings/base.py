@@ -66,8 +66,8 @@ if ENV_FILE:
 WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND = os.environ.get(
     "WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND", 10800
 )
-# Maximum number of files allowed per workflow execution
-MAX_WORKFLOW_EXECUTION_FILES = int(os.environ.get("MAX_WORKFLOW_EXECUTION_FILES", 2))
+# Maximum number of files allowed per workflow page execution
+WORKFLOW_PAGE_MAX_FILES = int(os.environ.get("WORKFLOW_PAGE_MAX_FILES", 2))
 WEB_APP_ORIGIN_URL = os.environ.get("WEB_APP_ORIGIN_URL", "http://localhost:3000")
 parsed_url = urlparse(WEB_APP_ORIGIN_URL)
 WEB_APP_ORIGIN_URL_WITH_WILD_CARD = f"{parsed_url.scheme}://*.{parsed_url.netloc}"

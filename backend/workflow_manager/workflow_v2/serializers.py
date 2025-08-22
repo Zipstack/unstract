@@ -91,11 +91,11 @@ class ExecuteWorkflowSerializer(Serializer):
         request = self.context.get(RequestKey.REQUEST)
         if request and hasattr(request, "FILES"):
             files = request.FILES.getlist("files")
-            if len(files) > settings.MAX_WORKFLOW_EXECUTION_FILES:
+            if len(files) > settings.WORKFLOW_PAGE_MAX_FILES:
                 raise ValidationError(
                     {
                         "files": (
-                            f"Maximum {settings.MAX_WORKFLOW_EXECUTION_FILES} files are allowed for workflow execution. "
+                            f"Maximum {settings.WORKFLOW_PAGE_MAX_FILES} files are allowed for workflow execution. "
                             f"You have uploaded '{len(files)}' files."
                         )
                     },
