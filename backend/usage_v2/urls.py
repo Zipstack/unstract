@@ -5,6 +5,7 @@ from .views import UsageView
 
 get_token_usage = UsageView.as_view({"get": "get_token_usage"})
 aggregate = UsageView.as_view({"get": UsageView.aggregate.__name__})
+trial_statistics = UsageView.as_view({"get": "get_trial_statistics"})
 usage_list = UsageView.as_view({"get": UsageView.list.__name__})
 usage_detail = UsageView.as_view(
     {
@@ -26,6 +27,11 @@ urlpatterns = format_suffix_patterns(
             "aggregate/",
             aggregate,
             name="aggregate",
+        ),
+        path(
+            "trial-statistics/",
+            trial_statistics,
+            name="trial-statistics",
         ),
         path("<str:pk>/", usage_detail, name="usage_detail"),
     ]

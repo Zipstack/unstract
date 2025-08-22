@@ -93,3 +93,31 @@ class UsageView(viewsets.ModelViewSet):
 
         # Return the result
         return Response(status=status.HTTP_200_OK, data=result)
+
+    @action(detail=False, methods=["get"], url_path="trial-statistics")
+    def get_trial_statistics(self, request: HttpRequest) -> Response:
+        """Retrieves comprehensive trial usage statistics for the current organization.
+
+        Returns:
+            Response: A Response object containing trial usage statistics including:
+                     - LLM cost saved
+                     - Documents processed
+                     - API calls made
+                     - ETL pipeline runs
+                     - Processing accuracy metrics
+                     - Trial period information
+        """
+        try:
+            user_organization = UserContext.get_organization()
+
+            # Get trial statistics from helper
+            trial_stats = UsageHelper.get_trial_statistics(user_organization)
+
+            return Response(status=status.HTTP_200_OK, data=trial_stats)
+
+        except Exception as e:
+            logger.error(f"Error retrieving trial statistics: {str(e)}")
+            return Response(
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                data={"error": "Unable to retrieve trial statistics"},
+            )
