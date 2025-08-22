@@ -11,8 +11,14 @@ from adapter_processor_v2.adapter_processor import AdapterProcessor
 from adapter_processor_v2.constants import AdapterKeys
 from backend.constants import FieldLengthConstants as FLC
 from backend.serializers import AuditSerializer
-from unstract.sdk.adapters.constants import Common as common
-from unstract.sdk.adapters.enums import AdapterTypes
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.constants import AdapterTypes
+    from unstract.sdk1.constants import Common as common
+else:
+    from unstract.sdk.adapters.constants import Common as common
+    from unstract.sdk.adapters.enums import AdapterTypes
 
 from .models import AdapterInstance, UserDefaultAdapter
 
@@ -70,6 +76,7 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
         rep[AdapterKeys.ADAPTER_METADATA] = adapter_metadata
         # Retrieve context window if adapter is a LLM
         # For other adapter types, context_window is not relevant.
+
         if instance.adapter_type == AdapterTypes.LLM.value:
             adapter_metadata[AdapterKeys.ADAPTER_CONTEXT_WINDOW_SIZE] = (
                 instance.get_context_window_size()

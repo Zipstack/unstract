@@ -1,0 +1,30 @@
+{
+  "title": "Milvus Vector DB",
+  "type": "object",
+  "required": [
+    "adapter_name",
+    "uri"
+  ],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this adapter instance. Example: milvus-vdb-1"
+    },
+    "uri": {
+      "type": "string",
+      "title": "URI",
+      "format": "uri",
+      "default": "localhost:19530",
+      "description": "Provide the URI of the Milvus server. Example: `https://<instance-id>.api.gcp-us-west1.zillizcloud.com`"
+    },
+    "token": {
+      "type": "string",
+      "title": "Token",
+      "default": "",
+      "format": "password",
+      "description": "Provide the token (API Key) of the Milvus server. Leave empty for local server"
+    }
+  }
+}

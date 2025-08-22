@@ -62,7 +62,12 @@ from prompt_studio.prompt_studio_registry_v2.serializers import (
 from prompt_studio.prompt_studio_v2.constants import ToolStudioPromptErrors
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_v2.serializers import ToolStudioPromptSerializer
-from unstract.sdk.utils.common_utils import CommonUtils
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.utils.common import Utils as CommonUtils
+else:
+    from unstract.sdk.utils.common_utils import CommonUtils
 
 from .models import CustomTool
 from .serializers import (
@@ -286,7 +291,10 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         profile_manager: str = request.data.get(ToolStudioPromptKeys.PROFILE_MANAGER_ID)
         if not run_id:
             # Generate a run_id
-            run_id = CommonUtils.generate_uuid()
+            if FeatureFlagHelper.check_flag_status("sdk1"):
+                run_id = Utils.generate_uuid()
+            else:
+                run_id = CommonUtils.generate_uuid()
         response: dict[str, Any] = PromptStudioHelper.prompt_responder(
             id=id,
             tool_id=tool_id,
@@ -317,7 +325,10 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         run_id: str = request.data.get(ToolStudioPromptKeys.RUN_ID)
         if not run_id:
             # Generate a run_id
-            run_id = CommonUtils.generate_uuid()
+            if check_feature_flag_status("sdk1"):
+                run_id = CommonUtils.generate_uuid()
+            else:
+                run_id = CommonUtils.generate_uuid()
         response: dict[str, Any] = PromptStudioHelper.prompt_responder(
             tool_id=tool_id,
             org_id=UserSessionUtils.get_organization_id(request),
