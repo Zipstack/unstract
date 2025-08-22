@@ -56,6 +56,7 @@ class DeploymentExecution(views.APIView):
     ) -> Response:
         api: APIDeployment = deployment_execution_dto.api
         api_key: str = deployment_execution_dto.api_key
+        
         serializer = ExecutionRequestSerializer(
             data=request.data, context={"api": api, "api_key": api_key}
         )
@@ -80,6 +81,7 @@ class DeploymentExecution(views.APIView):
             tag_names=tag_names,
             llm_profile_id=llm_profile_id,
             hitl_queue_name=hitl_queue_name,
+            request_meta=dict(request.META),
         )
         if "error" in response and response["error"]:
             logger.error("API deployment execution failed")

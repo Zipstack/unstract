@@ -1134,6 +1134,52 @@ class FileExecutionTasks:
                 execution_id=str(workflow_execution.id),
                 api_result=final_result,
             )
+            
+            # Track usage for enterprise deployments (graceful fallback for OSS)
+            try:
+                from plugins.verticals_usage.kong_headers_cache import kong_headers_cache
+                from plugins.verticals_usage.usage_tracker import verticals_usage_tracker
+                
+                # Get Kong headers from Redis cache
+                kong_headers = kong_headers_cache.get_headers(str(workflow_execution.id))
+                
+                if kong_headers:
+                    # Convert Kong headers back to Django request.META format
+                    request_meta = {}
+                    for key, value in kong_headers.items():
+                        # Convert 'subscription-id' to 'HTTP_X_SUBSCRIPTION_ID'
+                        django_key = f"HTTP_X_{key.upper().replace('-', '_')}"
+                        request_meta[django_key] = value
+                    
+                    # Get API deployment info
+                    api_name = None
+                    if workflow_execution.pipeline_id:
+                        try:
+                            from api_v2.models import APIDeployment
+                            api_deployment = APIDeployment.objects.get(id=workflow_execution.pipeline_id)
+                            api_name = api_deployment.api_name
+                        except APIDeployment.DoesNotExist:
+                            pass
+                    
+                    # Track usage if this is a verticals request
+                    verticals_usage_tracker.track_api_execution(
+                        request_meta=request_meta,
+                        execution_id=str(workflow_execution.id),
+                        execution_result=final_result.to_dict() if hasattr(final_result, 'to_dict') else {"metadata": {}},
+                        execution_time=workflow_execution.execution_time,
+                        api_name=api_name,
+                        organization_id=workflow_execution.workflow.organization_id if workflow_execution.workflow else None
+                    )
+                    
+                    # Clean up cached headers
+                    kong_headers_cache.delete_headers(str(workflow_execution.id))
+                    
+            except ImportError:
+                # Plugin not available in OSS - expected behavior
+                pass
+            except Exception as e:
+                # Don't fail API execution if usage tracking fails
+                logger.debug(f"Usage tracking failed: {e}")
 
         if destination:
             logger.info(
