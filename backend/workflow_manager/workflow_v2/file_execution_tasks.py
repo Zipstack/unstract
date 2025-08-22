@@ -1137,15 +1137,21 @@ class FileExecutionTasks:
 
             # Track usage for enterprise deployments (graceful fallback for OSS)
             try:
-                from plugins.verticals_usage.api_hub_headers_cache import api_hub_headers_cache
+                from plugins.verticals_usage.api_hub_headers_cache import (
+                    api_hub_headers_cache,
+                )
                 from plugins.verticals_usage.usage_tracker import api_hub_usage_tracker
 
                 # Get API hub headers from Redis cache
-                api_hub_headers = api_hub_headers_cache.get_headers(str(workflow_execution.id))
+                api_hub_headers = api_hub_headers_cache.get_headers(
+                    str(workflow_execution.id)
+                )
 
                 if api_hub_headers:
-                    logger.debug(f"Retrieved API hub headers for tracking: {list(api_hub_headers.keys())}")
-                    
+                    logger.debug(
+                        f"Retrieved API hub headers for tracking: {list(api_hub_headers.keys())}"
+                    )
+
                     # Convert normalized headers back to Django format for compatibility
                     request_meta = {}
                     for key, value in api_hub_headers.items():
@@ -1181,19 +1187,29 @@ class FileExecutionTasks:
                             else None,
                         )
                         if success:
-                            logger.debug(f"Successfully tracked API hub usage for execution {workflow_execution.id}")
+                            logger.debug(
+                                f"Successfully tracked API hub usage for execution {workflow_execution.id}"
+                            )
                         else:
-                            logger.warning(f"API hub usage tracking returned false for execution {workflow_execution.id}")
+                            logger.warning(
+                                f"API hub usage tracking returned false for execution {workflow_execution.id}"
+                            )
                     except Exception as track_error:
-                        logger.error(f"Failed to track API hub usage for execution {workflow_execution.id}: {track_error}")
+                        logger.error(
+                            f"Failed to track API hub usage for execution {workflow_execution.id}: {track_error}"
+                        )
 
                     # Clean up cached headers (always do this)
                     try:
                         api_hub_headers_cache.delete_headers(str(workflow_execution.id))
                     except Exception as cleanup_error:
-                        logger.warning(f"Failed to clean up cached headers: {cleanup_error}")
+                        logger.warning(
+                            f"Failed to clean up cached headers: {cleanup_error}"
+                        )
                 else:
-                    logger.debug(f"No API hub headers found for execution {workflow_execution.id}")
+                    logger.debug(
+                        f"No API hub headers found for execution {workflow_execution.id}"
+                    )
 
             except ImportError:
                 pass

@@ -154,7 +154,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         tag_names: list[str] = [],
         llm_profile_id: str | None = None,
         hitl_queue_name: str | None = None,
-        request = None,
+        request=None,
     ) -> ReturnDict:
         """Execute workflow by api.
 
@@ -190,21 +190,31 @@ class DeploymentHelper(BaseAPIKeyValidator):
         # Store API hub headers for usage tracking (enterprise feature)
         if request:
             try:
-                from plugins.verticals_usage.api_hub_headers_cache import api_hub_headers_cache
+                from plugins.verticals_usage.api_hub_headers_cache import (
+                    api_hub_headers_cache,
+                )
                 from plugins.verticals_usage.usage_tracker import api_hub_usage_tracker
 
                 # Let plugin extract API hub headers
-                normalized_headers = api_hub_usage_tracker.extract_api_hub_headers_from_request(request)
+                normalized_headers = (
+                    api_hub_usage_tracker.extract_api_hub_headers_from_request(request)
+                )
                 if normalized_headers:
-                    success = api_hub_headers_cache.store_headers(str(execution_id), normalized_headers)
+                    success = api_hub_headers_cache.store_headers(
+                        str(execution_id), normalized_headers
+                    )
                     if not success:
-                        logger.warning(f"Failed to cache API hub headers for execution {execution_id}")
+                        logger.warning(
+                            f"Failed to cache API hub headers for execution {execution_id}"
+                        )
                 else:
                     logger.debug("No API hub subscription headers found in request")
             except ImportError:
                 logger.debug("API hub usage tracking plugin not available")
             except Exception as e:
-                logger.warning(f"API hub header caching failed for execution {execution_id}: {e}")
+                logger.warning(
+                    f"API hub header caching failed for execution {execution_id}: {e}"
+                )
                 pass
 
         hash_values_of_files = SourceConnector.add_input_file_to_api_storage(
