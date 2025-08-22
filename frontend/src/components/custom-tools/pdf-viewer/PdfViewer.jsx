@@ -43,7 +43,7 @@ function PdfViewer({ fileUrl, highlightData, currentHighlightIndex }) {
     ) {
       // Only pass the current highlight to render
       const currentHighlight =
-        currentHighlightIndex !== undefined &&
+        currentHighlightIndex != null &&
         currentHighlightIndex < processedHighlightData.length
           ? [processedHighlightData[currentHighlightIndex]]
           : processedHighlightData;
@@ -63,7 +63,7 @@ function PdfViewer({ fileUrl, highlightData, currentHighlightIndex }) {
     if (cleanedHighlightData && cleanedHighlightData.length > 0) {
       // Use currentHighlightIndex if provided, otherwise default to first highlight
       const index =
-        currentHighlightIndex !== undefined &&
+        currentHighlightIndex != null &&
         currentHighlightIndex < cleanedHighlightData.length
           ? currentHighlightIndex
           : 0;
