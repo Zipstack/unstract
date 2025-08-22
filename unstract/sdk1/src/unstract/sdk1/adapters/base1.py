@@ -233,28 +233,30 @@ class AWSBedrockParameters(BaseParameters):
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
         adapter_metadata["model"] = AWSBedrockParameters.validate_model(adapter_metadata)
-        if "region_name" in adapter_metadata and not adapter_metadata.get("aws_region_name"):
+        if "region_name" in adapter_metadata and not adapter_metadata.get(
+            "aws_region_name"
+        ):
             adapter_metadata["aws_region_name"] = adapter_metadata["region_name"]
-        
+
         # Apply AWS Bedrock specific thinking logic
         enable_thinking = adapter_metadata.get("enable_thinking", False)
         if enable_thinking:
             # Set temperature to 1 for thinking mode
             adapter_metadata["temperature"] = 1
-            
+
             # Add additionalModelRequestFields for thinking
             additional_kwargs = {
                 "additionalModelRequestFields": {
                     "thinking": {
                         "type": "enabled",
-                        "budget_tokens": adapter_metadata.get("budget_tokens", None)
+                        "budget_tokens": adapter_metadata.get("budget_tokens", None),
                     }
                 }
             }
             adapter_metadata.update(additional_kwargs)
             adapter_metadata.pop("enable_thinking")
             adapter_metadata.pop("budget_tokens")
-            
+
         return AWSBedrockParameters(**adapter_metadata).model_dump()
 
     @staticmethod
