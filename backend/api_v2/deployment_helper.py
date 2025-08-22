@@ -188,16 +188,16 @@ class DeploymentHelper(BaseAPIKeyValidator):
         execution_id = workflow_execution.id
 
         # Store API hub headers for usage tracking (enterprise feature)
-        if request:
+        if request and hasattr(request, 'META'):
             try:
                 from plugins.verticals_usage.api_hub_headers_cache import (
                     api_hub_headers_cache,
                 )
                 from plugins.verticals_usage.usage_tracker import api_hub_usage_tracker
 
-                # Let plugin extract API hub headers
-                normalized_headers = (
-                    api_hub_usage_tracker.extract_api_hub_headers_from_request(request)
+                # Pass request.META instead of full request for better security
+                normalized_headers = api_hub_usage_tracker.extract_api_hub_headers_from_request(
+                    request.META
                 )
                 if normalized_headers:
                     success = api_hub_headers_cache.store_headers(
