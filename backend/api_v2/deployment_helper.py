@@ -196,8 +196,10 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 from plugins.verticals_usage.usage_tracker import api_hub_usage_tracker
 
                 # Process API hub headers from request.headers
-                normalized_headers = api_hub_usage_tracker.extract_api_hub_headers_from_request(
-                    request_headers
+                normalized_headers = (
+                    api_hub_usage_tracker.extract_api_hub_headers_from_request(
+                        request_headers
+                    )
                 )
                 if normalized_headers:
                     success = api_hub_headers_cache.store_headers(
@@ -208,7 +210,9 @@ class DeploymentHelper(BaseAPIKeyValidator):
                             f"Failed to cache API hub headers for execution {execution_id}"
                         )
                 else:
-                    logger.debug("No API hub subscription headers found in request headers")
+                    logger.debug(
+                        "No API hub subscription headers found in request headers"
+                    )
             except ImportError:
                 logger.debug("API hub usage tracking plugin not available")
             except Exception as e:
