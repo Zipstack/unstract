@@ -1159,7 +1159,7 @@ class FileExecutionTasks:
                         else {"metadata": {}}
                     )
                     metadata = execution_result_dict.get("metadata", {})
-                    
+
                     usage_metrics = {
                         "page_count": metadata.get("page_count", 0),
                     }

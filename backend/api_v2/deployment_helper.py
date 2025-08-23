@@ -195,8 +195,10 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 )
                 from plugins.verticals_usage.usage_tracker import api_hub_usage_tracker
 
-                normalized_headers = api_hub_usage_tracker.extract_api_hub_headers_from_request(
-                    request_headers
+                normalized_headers = (
+                    api_hub_usage_tracker.extract_api_hub_headers_from_request(
+                        request_headers
+                    )
                 )
                 if normalized_headers:
                     success = api_hub_headers_cache.store_headers(
