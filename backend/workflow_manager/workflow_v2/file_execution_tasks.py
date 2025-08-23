@@ -1194,9 +1194,9 @@ class FileExecutionTasks:
                     )
 
             except ImportError:
-                pass
+                logger.debug("API hub usage tracking plugin not available")
             except Exception as e:
-                logger.debug(f"Usage tracking failed: {e}")
+                logger.error(f"Usage tracking failed: {e}")
 
         if destination:
             logger.info(
