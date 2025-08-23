@@ -104,7 +104,6 @@ def validate_etl_run(org_id: str) -> bool:
     Returns:
         A boolean indicating whether the pre-run check passed or not.
     """
-    return True
     try:
         from pluggable_apps.subscription_v2.subscription_helper import (
             SubscriptionHelper,

@@ -18,6 +18,8 @@ from ..manual_review_response import ManualReviewResponse
 
 logger = logging.getLogger(__name__)
 
+# Stub uses simple dicts - no need for complex dataclasses when manual review is disabled
+
 
 class ManualReviewNullClient:
     """Null object implementation for manual review functionality in OSS.
@@ -102,6 +104,97 @@ class ManualReviewNullClient:
             "success": False,
             "message": "Manual review not available in OSS version",
             "queue_name": None,
+        }
+
+    def route_to_manual_review(
+        self,
+        file_execution_id: str,
+        file_data: dict[str, Any],
+        workflow_id: str,
+        execution_id: str,
+        organization_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Route file to manual review (no-op in OSS).
+
+        In OSS, files marked for manual review are processed normally
+        since there's no manual review backend infrastructure.
+
+        Args:
+            file_execution_id: Workflow file execution ID
+            file_data: File hash data dictionary
+            workflow_id: Workflow UUID
+            execution_id: Execution UUID
+            organization_id: Organization context
+
+        Returns:
+            Dictionary indicating manual review routing skipped
+        """
+        logger.debug(
+            f"ManualReviewNullClient: route_to_manual_review called for file {file_data.get('file_name', 'unknown')} - skipping in OSS"
+        )
+        return {
+            "success": True,  # Return success to avoid blocking workflow
+            "message": "Manual review not available in OSS - file will be processed normally",
+            "queue_name": f"review_queue_{organization_id}_{workflow_id}",
+            "skipped": True,
+        }
+
+    def route_with_results(
+        self,
+        file_execution_id: str,
+        file_data: dict[str, Any],
+        workflow_result: dict[str, Any],
+        workflow_id: str,
+        execution_id: str,
+        organization_id: str | None = None,
+        file_name: str = "unknown",
+    ) -> dict[str, Any]:
+        """Route file to manual review with results (no-op in OSS).
+
+        In OSS, files marked for manual review are processed normally
+        since manual review functionality is not available.
+
+        Args:
+            file_execution_id: Workflow file execution ID
+            file_data: File hash data dictionary
+            workflow_result: Results from tool execution
+            workflow_id: Workflow UUID
+            execution_id: Execution UUID
+            organization_id: Organization context
+            file_name: File name for logging
+
+        Returns:
+            Dictionary indicating manual review routing skipped, includes results
+        """
+        logger.debug(
+            f"ManualReviewNullClient: route_with_results called for file {file_name} - skipping in OSS"
+        )
+
+        # Extract tool results from workflow_result for consistency
+        tool_result = None
+        if workflow_result and "result" in workflow_result:
+            tool_result = workflow_result["result"]
+        elif workflow_result and "output" in workflow_result:
+            tool_result = workflow_result["output"]
+        else:
+            tool_result = workflow_result
+
+        # Simple dict return for OSS stub - no dataclass complexity needed
+        return {
+            "success": True,  # Return success to avoid blocking workflow
+            "message": "Manual review not available in OSS - file processed normally with results",
+            "file": file_name,
+            "file_execution_id": file_execution_id,
+            "error": None,
+            "result": tool_result,
+            "metadata": {
+                "routed_to_manual_review": False,
+                "has_tool_results": tool_result is not None,
+                "processed_before_review": True,
+                "oss_mode": True,
+            },
+            "manual_review": False,
+            "skipped": True,
         }
 
     def dequeue_manual_review(self, *args, **kwargs) -> dict[str, Any]:

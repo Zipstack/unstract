@@ -7,6 +7,12 @@ Optimized callback implementation with performance enhancements:
 - Smart circuit breaker patterns for resilience
 
 Replaces the heavy Django process_batch_callback task with API coordination.
+
+TODO: Circuit Breaker Improvements
+- Implement retry queue for operations blocked by open circuit breakers
+- Add reconciliation task to process queued updates when circuit closes
+- Prevent data loss/staleness from skipped DB updates
+- See inline TODOs for specific implementation details
 """
 
 import time
@@ -248,12 +254,28 @@ def _fetch_api_deployment_data(
         response = api_client.get_api_deployment_data(api_id, organization_id)
 
         if response.success and response.data:
+            # DEBUG: Log the full API response to understand the issue
+            logger.info(
+                f"DEBUG: API deployment response for {api_id}: success={response.success}, data_keys={response.data.keys() if isinstance(response.data, dict) else 'not_dict'}"
+            )
+            logger.info(f"DEBUG: Full API deployment response data: {response.data}")
+
             # Response format: {"status": "success", "pipeline": {...}}
             pipeline_data = response.data.get("pipeline", {})
+
+            # DEBUG: Log pipeline data specifically
+            logger.info(
+                f"DEBUG: Pipeline data from API deployment endpoint: {pipeline_data}"
+            )
 
             # API deployment data structure from serializer:
             pipeline_name = pipeline_data.get("api_name")
             pipeline_type = PipelineType.API.value
+
+            # DEBUG: Log what we extracted
+            logger.info(
+                f"DEBUG: Extracted from API deployment - name='{pipeline_name}', type='{pipeline_type}' (hardcoded to API)"
+            )
 
             logger.info(
                 f"Found APIDeployment {api_id}: name='{pipeline_name}', type='{pipeline_type}', display_name='{pipeline_data.get('display_name')}'"
@@ -535,21 +557,16 @@ def _get_performance_stats() -> dict:
     return stats
 
 
-@app.task(
-    bind=True,
-    name=TaskName.PROCESS_BATCH_CALLBACK,
-    max_retries=0,  # Match Django backend pattern
-    ignore_result=False,  # Match Django backend pattern
-)
-@monitor_performance
-@circuit_breaker(failure_threshold=5, recovery_timeout=120.0)
-def process_batch_callback(self, results, *args, **kwargs) -> dict[str, Any]:
-    """Callback task to handle batch processing results.
+def _process_batch_callback_core(
+    task_instance, results, *args, **kwargs
+) -> dict[str, Any]:
+    """Core implementation of batch callback processing.
 
-    This exactly matches the Django backend process_batch_callback task signature
-    and logic, using API coordination instead of direct ORM access.
+    This function contains the actual processing logic that both the new task
+    and Django compatibility task will use.
 
     Args:
+        task_instance: The Celery task instance (self)
         results (list): List of results from each batch
             Each result is a dictionary containing:
             - successful_files: Number of successfully processed files
@@ -560,7 +577,7 @@ def process_batch_callback(self, results, *args, **kwargs) -> dict[str, Any]:
     Returns:
         Callback processing result
     """
-    task_id = self.request.id
+    task_id = task_instance.request.id if hasattr(task_instance, "request") else "unknown"
 
     # Initialize performance optimizations
     _initialize_performance_managers()
@@ -685,13 +702,32 @@ def process_batch_callback(self, results, *args, **kwargs) -> dict[str, Any]:
         pipeline_data = None
 
         if pipeline_id:
-            pipeline_data = _fetch_pipeline_data(pipeline_id, organization_id, api_client)
-            if pipeline_data:
-                pipeline_name = pipeline_data.get("resolved_pipeline_name")
-                pipeline_type = pipeline_data.get("resolved_pipeline_type")
+            # CRITICAL FIX: Check if this is an API deployment first to ensure correct notification type
+            # The backend may route API deployments to the general worker queue by mistake,
+            # but we still need to send notifications with type="API" instead of type="ETL"
+            api_deployment_data = _fetch_api_deployment_data(
+                pipeline_id, organization_id, api_client
+            )
+            if api_deployment_data:
+                pipeline_name = api_deployment_data.get("resolved_pipeline_name")
+                pipeline_type = api_deployment_data.get(
+                    "resolved_pipeline_type"
+                )  # Should be "API"
+                pipeline_data = api_deployment_data
                 logger.info(
-                    f"✅ Pipeline data from models: name='{pipeline_name}', type='{pipeline_type}', is_api={pipeline_data.get('is_api', False)}"
+                    f"✅ ROUTING FIX: APIDeployment routed to ETL callback - correcting type: name='{pipeline_name}', type='{pipeline_type}'"
                 )
+            else:
+                # Fallback to regular pipeline lookup for ETL/TASK/APP workflows
+                pipeline_data = _fetch_pipeline_data(
+                    pipeline_id, organization_id, api_client
+                )
+                if pipeline_data:
+                    pipeline_name = pipeline_data.get("resolved_pipeline_name")
+                    pipeline_type = pipeline_data.get("resolved_pipeline_type")
+                    logger.info(
+                        f"✅ Pipeline data from models: name='{pipeline_name}', type='{pipeline_type}', is_api={pipeline_data.get('is_api', False)}"
+                    )
         else:
             # No pipeline_id provided - check if we can extract from execution context
             logger.warning(
@@ -703,17 +739,44 @@ def process_batch_callback(self, results, *args, **kwargs) -> dict[str, Any]:
             pipeline_id = workflow_execution.get("pipeline_id")
             logger.info(f"Using pipeline_id from execution context: {pipeline_id}")
 
+            # BACKWARD COMPATIBILITY: During Django transition, execution_log_id might contain the pipeline_id
+            if not pipeline_id:
+                execution_log_id = workflow_execution.get("execution_log_id")
+                if execution_log_id:
+                    logger.warning(
+                        f"BACKWARD COMPATIBILITY: pipeline_id is None but execution_log_id exists: {execution_log_id}"
+                    )
+                    logger.info(
+                        "Attempting to use execution_log_id as pipeline_id for Django compatibility"
+                    )
+                    pipeline_id = execution_log_id
+
             # Now try to fetch pipeline data with the extracted pipeline_id
             if pipeline_id:
-                pipeline_data = _fetch_pipeline_data(
+                # CRITICAL FIX: Check if this is an API deployment first (even from execution context)
+                api_deployment_data = _fetch_api_deployment_data(
                     pipeline_id, organization_id, api_client
                 )
-                if pipeline_data:
-                    pipeline_name = pipeline_data.get("resolved_pipeline_name")
-                    pipeline_type = pipeline_data.get("resolved_pipeline_type")
+                if api_deployment_data:
+                    pipeline_name = api_deployment_data.get("resolved_pipeline_name")
+                    pipeline_type = api_deployment_data.get(
+                        "resolved_pipeline_type"
+                    )  # Should be "API"
+                    pipeline_data = api_deployment_data
                     logger.info(
-                        f"✅ Pipeline data from execution context: name='{pipeline_name}', type='{pipeline_type}', is_api={pipeline_data.get('is_api', False)}"
+                        f"✅ ROUTING FIX: APIDeployment from execution context - correcting type: name='{pipeline_name}', type='{pipeline_type}'"
                     )
+                else:
+                    # Fallback to regular pipeline lookup
+                    pipeline_data = _fetch_pipeline_data(
+                        pipeline_id, organization_id, api_client
+                    )
+                    if pipeline_data:
+                        pipeline_name = pipeline_data.get("resolved_pipeline_name")
+                        pipeline_type = pipeline_data.get("resolved_pipeline_type")
+                        logger.info(
+                            f"✅ Pipeline data from execution context: name='{pipeline_name}', type='{pipeline_type}', is_api={pipeline_data.get('is_api', False)}"
+                        )
             else:
                 # No pipeline_id found anywhere - this is a critical error for ETL/TASK/APP callbacks
                 error_msg = f"No pipeline_id found for ETL/TASK/APP callback. execution_id={execution_id}, workflow_id={workflow_id}"
@@ -887,60 +950,77 @@ def process_batch_callback(self, results, *args, **kwargs) -> dict[str, Any]:
                         raise e
 
             # Update pipeline status using optimized batching
+            # OPTIMIZATION: Skip pipeline status update for API deployments to avoid 404 errors
             pipeline_updated = False
             if pipeline_id:
-                try:
+                # Check if this is an API deployment (has pipeline_data with is_api=True)
+                is_api_deployment = pipeline_data and pipeline_data.get("is_api", False)
+
+                if is_api_deployment:
                     logger.info(
-                        f"Updating pipeline {pipeline_id} status with organization_id: {organization_id}"
+                        f"OPTIMIZATION: Skipping pipeline status update for API deployment {pipeline_id} (no Pipeline record exists)"
                     )
-
-                    # Map execution status to pipeline status
-                    pipeline_status = _map_execution_status_to_pipeline_status(
-                        final_status
-                    )
-                    logger.info(
-                        f"DEBUG: Mapped final_status='{final_status}' to pipeline_status='{pipeline_status}'"
-                    )
-
-                    # Use batched pipeline update for better performance
-                    pipeline_updated = _update_pipeline_with_batching(
-                        pipeline_id=pipeline_id,
-                        execution_id=execution_id,
-                        status=pipeline_status,
-                        organization_id=organization_id,
-                        api_client=api_client,
-                        pipeline_name=pipeline_name,
-                        last_run_status=pipeline_status,
-                        last_run_time=time.time(),
-                        increment_run_count=True,
-                    )
-
-                    if pipeline_updated:
+                    pipeline_updated = True  # Mark as "updated" to avoid warnings
+                else:
+                    try:
                         logger.info(
-                            f"DEBUG: Successfully queued pipeline update {pipeline_id} last_run_status to {pipeline_status}"
+                            f"Updating pipeline {pipeline_id} status with organization_id: {organization_id}"
                         )
-                    else:
+
+                        # Map execution status to pipeline status
+                        pipeline_status = _map_execution_status_to_pipeline_status(
+                            final_status
+                        )
+                        logger.info(
+                            f"DEBUG: Mapped final_status='{final_status}' to pipeline_status='{pipeline_status}'"
+                        )
+
+                        # Use batched pipeline update for better performance
+                        pipeline_updated = _update_pipeline_with_batching(
+                            pipeline_id=pipeline_id,
+                            execution_id=execution_id,
+                            status=pipeline_status,
+                            organization_id=organization_id,
+                            api_client=api_client,
+                            pipeline_name=pipeline_name,
+                            last_run_status=pipeline_status,
+                            last_run_time=time.time(),
+                            increment_run_count=True,
+                        )
+
+                        if pipeline_updated:
+                            logger.info(
+                                f"DEBUG: Successfully queued pipeline update {pipeline_id} last_run_status to {pipeline_status}"
+                            )
+                        else:
+                            logger.warning(
+                                f"DEBUG: Failed to queue pipeline update for {pipeline_id} - pipeline_status={pipeline_status}, pipeline_name={pipeline_name}"
+                            )
+                    except CircuitBreakerOpenError:
+                        # TODO: Implement retry queue to prevent lost DB updates
+                        # When circuit breaker is open, we should queue the update for later retry
+                        # instead of skipping it completely. This could lead to stale pipeline status in DB.
+                        # Proposed solution:
+                        # 1. Queue update in Redis: redis_client.lpush(f"pending_pipeline_updates:{org_id}", {...})
+                        # 2. Add reconciliation task to process pending updates when circuit closes
+                        # 3. Consider using eventual consistency pattern with status reconciliation
                         logger.warning(
-                            f"DEBUG: Failed to queue pipeline update for {pipeline_id} - pipeline_status={pipeline_status}, pipeline_name={pipeline_name}"
-                        )
-                except CircuitBreakerOpenError:
-                    logger.warning(
-                        "Pipeline status update circuit breaker open - skipping update"
-                    )
-                    pass
-                except Exception as e:
-                    # ROOT CAUSE FIX: Handle pipeline not found errors gracefully
-                    if (
-                        "404" in str(e)
-                        or "Pipeline not found" in str(e)
-                        or "Not Found" in str(e)
-                    ):
-                        logger.info(
-                            f"Pipeline {pipeline_id} not found - likely using stale reference, skipping update"
+                            "Pipeline status update circuit breaker open - skipping update"
                         )
                         pass
-                    else:
-                        logger.warning(f"Failed to update pipeline status: {str(e)}")
+                    except Exception as e:
+                        # ROOT CAUSE FIX: Handle pipeline not found errors gracefully
+                        if (
+                            "404" in str(e)
+                            or "Pipeline not found" in str(e)
+                            or "Not Found" in str(e)
+                        ):
+                            logger.info(
+                                f"Pipeline {pipeline_id} not found - likely using stale reference, skipping update"
+                            )
+                            pass
+                        else:
+                            logger.warning(f"Failed to update pipeline status: {str(e)}")
 
             # Cleanup resources (gracefully handle missing endpoint)
             try:
@@ -948,6 +1028,9 @@ def process_batch_callback(self, results, *args, **kwargs) -> dict[str, Any]:
                     execution_ids=[execution_id], cleanup_types=["cache", "temp_files"]
                 )
             except CircuitBreakerOpenError:
+                # TODO: Queue cleanup tasks for later when circuit breaker is open
+                # Similar to pipeline status updates, cleanup operations should be queued
+                # for retry rather than skipped entirely to prevent resource leaks
                 logger.info(
                     "Cleanup endpoint circuit breaker open - skipping resource cleanup"
                 )
@@ -1066,6 +1149,29 @@ def process_batch_callback(self, results, *args, **kwargs) -> dict[str, Any]:
 
             # Re-raise for Celery retry mechanism
             raise
+
+
+@app.task(
+    bind=True,
+    name=TaskName.PROCESS_BATCH_CALLBACK,
+    max_retries=0,  # Match Django backend pattern
+    ignore_result=False,  # Match Django backend pattern
+)
+@monitor_performance
+@circuit_breaker(failure_threshold=5, recovery_timeout=120.0)
+def process_batch_callback(self, results, *args, **kwargs) -> dict[str, Any]:
+    """Callback task to handle batch processing results.
+
+    This is the main task entry point for new workers.
+
+    Args:
+        results (list): List of results from each batch
+        **kwargs: Additional arguments including execution_id
+
+    Returns:
+        Callback processing result
+    """
+    return _process_batch_callback_core(self, results, *args, **kwargs)
 
 
 @app.task(
@@ -1224,58 +1330,40 @@ def process_batch_callback_api(
                     execution_time=execution_time,  # Add the calculated execution time
                 )
 
-                # Update pipeline status for API workflows
-                # Note: API deployments use APIDeployment model, not Pipeline model
-                # The pipeline status update is handled differently for API deployments
+                # OPTIMIZATION: Skip pipeline status update for API deployments
+                # API deployments use APIDeployment model, not Pipeline model
+                # Pipeline status updates don't apply to APIDeployments and cause 404 errors
                 if pipeline_id:
+                    # API callbacks always handle APIDeployments, so skip pipeline status update
+                    logger.info(
+                        f"OPTIMIZATION: Skipping pipeline status update for API deployment {pipeline_id} (no Pipeline record exists)"
+                    )
+
+                    # Trigger notifications for API deployment (worker-to-worker approach)
+                    # NOTE: Both callback worker and Django backend may send notifications for backward compatibility
+                    # Multiple notifications are allowed for now and will be handled by deduplication later
                     try:
-                        logger.info(f"Updating API pipeline {pipeline_id} status")
-                        pipeline_status = _map_execution_status_to_pipeline_status(
-                            ExecutionStatus.COMPLETED.value
+                        # DEBUG: Log notification parameters before calling handle_status_notifications
+                        logger.info(
+                            f"DEBUG: About to trigger notifications with - pipeline_id='{pipeline_id}', pipeline_name='{pipeline_name}', pipeline_type='{pipeline_type}', status='{ExecutionStatus.COMPLETED.value}', execution_id='{execution_id}'"
                         )
-                        logger.info(f"Pipeline status: {pipeline_status}")
-                        # Update API deployment status (FIXED: was previously skipped)
-                        # API deployments also need status updates for proper UI display
-                        try:
-                            api_client.update_pipeline_status(
-                                pipeline_id=pipeline_id,
-                                status=pipeline_status,
-                                execution_id=execution_id,
-                                organization_id=organization_id,
-                            )
-                            logger.info(
-                                f"Updated API deployment {pipeline_id} last_run_status to {pipeline_status}"
-                            )
-                        except Exception as pipeline_error:
-                            logger.error(
-                                f"Failed to update API deployment {pipeline_id} status: {pipeline_error}"
-                            )
 
-                        # Trigger notifications for API deployment (worker-to-worker approach)
-                        # NOTE: Both callback worker and Django backend may send notifications for backward compatibility
-                        # Multiple notifications are allowed for now and will be handled by deduplication later
-                        try:
-                            config = WorkerConfig.from_env("CALLBACK")
-                            handle_status_notifications(
-                                api_client=api_client,
-                                pipeline_id=pipeline_id,
-                                status=ExecutionStatus.COMPLETED.value,  # Use execution status, not pipeline status
-                                execution_id=execution_id,
-                                error_message=None,  # API callbacks typically don't have error messages
-                                pipeline_name=pipeline_name,
-                                pipeline_type=pipeline_type,
-                                organization_id=organization_id,
-                            )
-                        except Exception as notif_error:
-                            logger.warning(
-                                f"Failed to trigger API notifications for {pipeline_id}: {notif_error}"
-                            )
-                            # Continue execution - notifications are not critical for callback success
-
-                    except Exception as pipeline_error:
+                        config = WorkerConfig.from_env("CALLBACK")
+                        handle_status_notifications(
+                            api_client=api_client,
+                            pipeline_id=pipeline_id,
+                            status=ExecutionStatus.COMPLETED.value,  # Use execution status, not pipeline status
+                            execution_id=execution_id,
+                            error_message=None,  # API callbacks typically don't have error messages
+                            pipeline_name=pipeline_name,
+                            pipeline_type=pipeline_type,
+                            organization_id=organization_id,
+                        )
+                    except Exception as notif_error:
                         logger.warning(
-                            f"Failed to update API pipeline status: {pipeline_error}"
+                            f"Failed to trigger API notifications for {pipeline_id}: {notif_error}"
                         )
+                        # Continue execution - notifications are not critical for callback success
 
                 callback_result = {
                     "execution_id": execution_id,
@@ -1309,27 +1397,11 @@ def process_batch_callback_api(
                         error=str(e),
                     )
 
-                    # Also update pipeline status for API deployments on error (FIXED)
+                    # OPTIMIZATION: Skip pipeline status update for API deployments on error
                     if pipeline_id:
-                        try:
-                            error_pipeline_status = (
-                                _map_execution_status_to_pipeline_status(
-                                    ExecutionStatus.ERROR.value
-                                )
-                            )
-                            api_client.update_pipeline_status(
-                                pipeline_id=pipeline_id,
-                                status=error_pipeline_status,
-                                execution_id=execution_id,
-                                organization_id=organization_id,
-                            )
-                            logger.info(
-                                f"Updated API deployment {pipeline_id} last_run_status to {error_pipeline_status} (error case)"
-                            )
-                        except Exception as pipeline_error:
-                            logger.error(
-                                f"Failed to update API deployment {pipeline_id} status on error: {pipeline_error}"
-                            )
+                        logger.info(
+                            f"OPTIMIZATION: Skipping pipeline status update for API deployment {pipeline_id} on error (no Pipeline record exists)"
+                        )
             except Exception as update_error:
                 logger.error(f"Failed to update execution status: {update_error}")
 
@@ -1942,3 +2014,38 @@ class WallClockTimeCalculator:
 
         logger.warning(f"⚠️ Using fallback sum of file times: {fallback_time:.2f}s")
         return fallback_time
+
+
+# Backward compatibility aliases for Django backend during transition
+# Register the same task function with the old Django task names for compatibility
+
+
+@app.task(
+    bind=True,
+    name="workflow_manager.workflow_v2.file_execution_tasks.process_batch_callback",
+    max_retries=0,
+    ignore_result=False,
+)
+def process_batch_callback_django_compat(
+    self, results, *args, **kwargs
+) -> dict[str, Any]:
+    """Backward compatibility wrapper for Django backend callback task name.
+
+    This allows new workers to handle callback tasks sent from the old Django backend
+    during the transition period when both systems are running.
+
+    Args:
+        results: Batch processing results from Django backend
+        *args: Additional arguments
+        **kwargs: Additional keyword arguments
+
+    Returns:
+        Same result as process_batch_callback
+    """
+    logger.info(
+        "Processing batch callback via Django compatibility task name: "
+        "workflow_manager.workflow_v2.file_execution_tasks.process_batch_callback"
+    )
+
+    # Delegate to the core implementation (same as main task)
+    return _process_batch_callback_core(self, results, *args, **kwargs)

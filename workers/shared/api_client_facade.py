@@ -1066,6 +1066,44 @@ class InternalAPIClient:
             organization_id=organization_id,
         )
 
+    def route_to_manual_review(
+        self,
+        file_execution_id: str,
+        file_data: dict[str, Any],
+        workflow_id: str,
+        execution_id: str,
+        organization_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Route file to manual review queue (delegates to manual review client)."""
+        return self.manual_review_client.route_to_manual_review(
+            file_execution_id=file_execution_id,
+            file_data=file_data,
+            workflow_id=workflow_id,
+            execution_id=execution_id,
+            organization_id=organization_id or self.organization_id,
+        )
+
+    def route_to_manual_review_with_results(
+        self,
+        file_execution_id: str,
+        file_data: dict[str, Any],
+        workflow_result: dict[str, Any],
+        workflow_id: str,
+        execution_id: str,
+        organization_id: str | None = None,
+        file_name: str = "unknown",
+    ) -> dict[str, Any]:
+        """Route file to manual review with tool execution results (delegates to manual review client)."""
+        return self.manual_review_client.route_with_results(
+            file_execution_id=file_execution_id,
+            file_data=file_data,
+            workflow_result=workflow_result,
+            workflow_id=workflow_id,
+            execution_id=execution_id,
+            organization_id=organization_id or self.organization_id,
+            file_name=file_name,
+        )
+
 
 # Export all classes and exceptions for backward compatibility
 __all__ = [

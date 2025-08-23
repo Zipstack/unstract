@@ -450,6 +450,56 @@ def _is_completed(cls, status: str) -> bool:
 ExecutionStatus.is_completed = classmethod(_is_completed)
 
 
+# Add the get_skip_processing_statuses method as a class method
+def _get_skip_processing_statuses(cls) -> list["ExecutionStatus"]:
+    """Get list of statuses that should skip file processing.
+
+    Skip processing if:
+    - EXECUTING: File is currently being processed
+    - PENDING: File is queued to be processed
+    - COMPLETED: File has already been successfully processed
+
+    Returns:
+        list[ExecutionStatus]: List of statuses where file processing should be skipped
+    """
+    return [cls.EXECUTING, cls.PENDING, cls.COMPLETED]
+
+
+ExecutionStatus.get_skip_processing_statuses = classmethod(_get_skip_processing_statuses)
+
+
+def _can_update_to_pending(cls, status) -> bool:
+    """Check if a status can be updated to PENDING.
+
+    Allow updating to PENDING if:
+    - Status is STOPPED or ERROR (can retry)
+    - Status is None (new record)
+
+    Don't allow updating to PENDING if:
+    - Status is EXECUTING (currently processing)
+    - Status is COMPLETED (already done)
+    - Status is already PENDING (no change needed)
+
+    Args:
+        status: Current execution status (string or ExecutionStatus enum)
+
+    Returns:
+        bool: True if status can be updated to PENDING, False otherwise
+    """
+    if status is None:
+        return True
+
+    try:
+        status_enum = cls(status)
+    except ValueError:
+        return True  # Invalid status, allow update
+
+    return status_enum in [cls.STOPPED, cls.ERROR]
+
+
+ExecutionStatus.can_update_to_pending = classmethod(_can_update_to_pending)
+
+
 class WorkflowType(Enum):
     """Workflow type choices matching backend models."""
 

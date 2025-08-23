@@ -1009,6 +1009,14 @@ class WorkerDestinationConnector:
                         "selection_method": "deterministic_hash_based",
                     }
 
+            # OPTIMIZATION: Skip manual review DB rules for API workflows to avoid 404 errors
+            # API workflows don't use manual review DB rules configured in the UI
+            if self.is_api:
+                logger.info(
+                    f"OPTIMIZATION: Skipping manual review DB rules for API workflow {self.workflow_id} (not applicable to API workflows)"
+                )
+                return [False] * len(files_data)
+
             # Get DB rules data from backend (ORM only)
             response = api_client.manual_review_client.get_db_rules_data(
                 workflow_id=self.workflow_id,

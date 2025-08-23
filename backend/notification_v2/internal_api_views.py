@@ -22,50 +22,92 @@ logger = logging.getLogger(__name__)
 @csrf_exempt
 @require_http_methods(["GET"])
 def get_pipeline_notifications(request, pipeline_id):
-    """Get active notifications for a pipeline.
+    """Get active notifications for a pipeline or API deployment.
 
     Used by callback worker to fetch notification configuration.
     """
     try:
-        # Get pipeline with organization filtering
+        # Try to find the pipeline ID in Pipeline model first
         pipeline_queryset = Pipeline.objects.filter(id=pipeline_id)
         pipeline_queryset = filter_queryset_by_organization(
             pipeline_queryset, request, "organization"
         )
-        pipeline = get_object_or_404(pipeline_queryset)
 
-        # Get active notifications for this pipeline
-        notifications = Notification.objects.filter(pipeline=pipeline, is_active=True)
+        if pipeline_queryset.exists():
+            pipeline = pipeline_queryset.first()
 
-        notifications_data = []
-        for notification in notifications:
-            notifications_data.append(
+            # Get active notifications for this pipeline
+            notifications = Notification.objects.filter(pipeline=pipeline, is_active=True)
+
+            notifications_data = []
+            for notification in notifications:
+                notifications_data.append(
+                    {
+                        "id": str(notification.id),
+                        "notification_type": notification.notification_type,
+                        "url": notification.url,
+                        "authorization_type": notification.authorization_type,
+                        "authorization_key": notification.authorization_key,
+                        "authorization_header": notification.authorization_header,
+                        "max_retries": notification.max_retries,
+                        "is_active": notification.is_active,
+                    }
+                )
+
+            return JsonResponse(
                 {
-                    "id": str(notification.id),
-                    "notification_type": notification.notification_type,
-                    "url": notification.url,
-                    "authorization_type": notification.authorization_type,
-                    "authorization_key": notification.authorization_key,
-                    "authorization_header": notification.authorization_header,
-                    "max_retries": notification.max_retries,
-                    "is_active": notification.is_active,
+                    "status": "success",
+                    "pipeline_id": str(pipeline.id),
+                    "pipeline_name": pipeline.pipeline_name,
+                    "pipeline_type": pipeline.pipeline_type,
+                    "notifications": notifications_data,
                 }
             )
+        else:
+            # If not found in Pipeline, try APIDeployment model
+            api_queryset = APIDeployment.objects.filter(id=pipeline_id)
+            api_queryset = filter_queryset_by_organization(
+                api_queryset, request, "organization"
+            )
 
-        return JsonResponse(
-            {
-                "status": "success",
-                "pipeline_id": str(pipeline.id),
-                "pipeline_name": pipeline.pipeline_name,
-                "pipeline_type": pipeline.pipeline_type,
-                "notifications": notifications_data,
-            }
-        )
+            if api_queryset.exists():
+                api = api_queryset.first()
 
-    except Pipeline.DoesNotExist:
-        return JsonResponse(
-            {"status": "error", "message": "Pipeline not found"}, status=404
-        )
+                # Get active notifications for this API deployment
+                notifications = Notification.objects.filter(api=api, is_active=True)
+
+                notifications_data = []
+                for notification in notifications:
+                    notifications_data.append(
+                        {
+                            "id": str(notification.id),
+                            "notification_type": notification.notification_type,
+                            "url": notification.url,
+                            "authorization_type": notification.authorization_type,
+                            "authorization_key": notification.authorization_key,
+                            "authorization_header": notification.authorization_header,
+                            "max_retries": notification.max_retries,
+                            "is_active": notification.is_active,
+                        }
+                    )
+
+                return JsonResponse(
+                    {
+                        "status": "success",
+                        "pipeline_id": str(api.id),
+                        "pipeline_name": api.api_name,
+                        "pipeline_type": "API",
+                        "notifications": notifications_data,
+                    }
+                )
+            else:
+                return JsonResponse(
+                    {
+                        "status": "error",
+                        "message": "Pipeline or API deployment not found",
+                    },
+                    status=404,
+                )
     except Exception as e:
         logger.error(f"Error getting pipeline notifications for {pipeline_id}: {e}")
         return JsonResponse(

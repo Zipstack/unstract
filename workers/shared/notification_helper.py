@@ -338,15 +338,30 @@ def handle_status_notifications(
             logger.debug(f"Skipping notifications for non-final status: {status}")
             return
 
+        # DEBUG: Log input parameters
+        logger.info(
+            f"DEBUG: handle_status_notifications called with pipeline_id='{pipeline_id}', pipeline_name='{pipeline_name}', pipeline_type='{pipeline_type}', status='{status}'"
+        )
+
         # Determine workflow type - default to API if not specified
         workflow_type = WorkflowType.API
         if pipeline_type:
             try:
+                logger.info(
+                    f"DEBUG: Converting pipeline_type '{pipeline_type}' to WorkflowType enum"
+                )
                 workflow_type = WorkflowType(pipeline_type.upper())
+                logger.info(
+                    f"DEBUG: Successfully converted to workflow_type='{workflow_type.value}'"
+                )
             except ValueError:
                 logger.warning(
                     f"Unknown workflow type '{pipeline_type}', defaulting to API"
                 )
+        else:
+            logger.info(
+                "DEBUG: No pipeline_type provided, using default workflow_type=API"
+            )
 
         # Pipeline name MUST exist in models - no fallback allowed
         if not pipeline_name:

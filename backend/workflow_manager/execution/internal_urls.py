@@ -2,7 +2,7 @@
 
 from django.urls import path
 
-from .views.execution import (
+from .internal_views import (
     cleanup_execution_resources_internal,
     execution_finalization_status_internal,
     finalize_workflow_execution_internal,

@@ -104,8 +104,10 @@ class DropboxFS(UnstractFileSystem):
 
     @staticmethod
     def get_connector_root_dir(input_dir: str, **kwargs: Any) -> str:
-        """Get roor dir of zs dropbox."""
-        return f"/{input_dir.strip('/')}"
+        """Get root dir of zs dropbox with backward compatibility."""
+        # BACKWARD COMPATIBILITY: Ensure trailing slash for directory operations
+        clean_path = input_dir.strip("/")
+        return f"/{clean_path}/" if clean_path else "/"
 
     def create_dir_if_not_exists(self, input_dir: str) -> None:
         """Create roor dir of zs dropbox if not exists."""

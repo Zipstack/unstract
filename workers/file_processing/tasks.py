@@ -50,30 +50,24 @@ from .worker import app
 logger = WorkerLogger.get_logger(__name__)
 
 
-@app.task(
-    bind=True,
-    name=TaskName.PROCESS_FILE_BATCH,
-    max_retries=0,  # Match Django backend pattern
-    ignore_result=False,  # Result is passed to the callback task
-    retry_backoff=True,
-    retry_backoff_max=500,  # Match Django backend
-    retry_jitter=True,
-    default_retry_delay=5,  # Match Django backend
-)
-@monitor_performance
-def process_file_batch(self, file_batch_data: dict[str, Any]) -> dict[str, Any]:
-    """Process a batch of files in parallel using Celery.
+def _process_file_batch_core(
+    task_instance, file_batch_data: dict[str, Any]
+) -> dict[str, Any]:
+    """Core implementation of file batch processing.
 
-    This function orchestrates the entire file batch processing workflow.
-    It has been refactored from a 1,378-line monolith into smaller, focused functions.
+    This function contains the actual processing logic that both the new task
+    and Django compatibility task will use.
 
     Args:
+        task_instance: The Celery task instance (self)
         file_batch_data: Dictionary that will be converted to FileBatchData dataclass
 
     Returns:
         Dictionary with successful_files and failed_files counts
     """
-    celery_task_id = self.request.id
+    celery_task_id = (
+        task_instance.request.id if hasattr(task_instance, "request") else "unknown"
+    )
 
     # Step 1: Validate and parse input data
     batch_data = _validate_and_parse_batch_data(file_batch_data)
@@ -98,6 +92,31 @@ def process_file_batch(self, file_batch_data: dict[str, Any]) -> dict[str, Any]:
 
     # Step 7: Compile and return final result
     return _compile_batch_result(context)
+
+
+@app.task(
+    bind=True,
+    name=TaskName.PROCESS_FILE_BATCH,
+    max_retries=0,  # Match Django backend pattern
+    ignore_result=False,  # Result is passed to the callback task
+    retry_backoff=True,
+    retry_backoff_max=500,  # Match Django backend
+    retry_jitter=True,
+    default_retry_delay=5,  # Match Django backend
+)
+@monitor_performance
+def process_file_batch(self, file_batch_data: dict[str, Any]) -> dict[str, Any]:
+    """Process a batch of files in parallel using Celery.
+
+    This is the main task entry point for new workers.
+
+    Args:
+        file_batch_data: Dictionary that will be converted to FileBatchData dataclass
+
+    Returns:
+        Dictionary with successful_files and failed_files counts
+    """
+    return _process_file_batch_core(self, file_batch_data)
 
 
 def _validate_and_parse_batch_data(file_batch_data: dict[str, Any]) -> FileBatchData:
@@ -401,7 +420,8 @@ def _process_individual_files(context: WorkflowContextData) -> WorkflowContextDa
     """
     files = list(context.files.values())  # Convert dict back to list
     file_data = context.metadata["file_data"]
-    # q_file_no_list = context.metadata["q_file_no_list"] # ARCHITECTURE FIX: q_file_no_list is not used in file processing worker
+    # CRITICAL FIX: Use q_file_no_list from context metadata for manual review decisions
+    q_file_no_list = context.metadata.get("q_file_no_list", set())
     use_file_history = context.get_setting("use_file_history", True)
     api_client = context.organization_context.api_client
     workflow_execution = context.metadata["workflow_execution"]
@@ -454,13 +474,30 @@ def _process_individual_files(context: WorkflowContextData) -> WorkflowContextDa
         # Create file hash object matching Django FileHash structure
         file_hash: FileHashData = _create_file_hash_from_dict(file_hash_dict)
 
-        # CRITICAL: Set file_number from the enumerate loop (1-indexed)
-        file_hash.file_number = file_number
+        # CRITICAL FIX: Preserve original file_number from source, don't override with batch enumeration
+        original_file_number = (
+            file_hash_dict.get("file_number") if file_hash_dict else None
+        )
+        if original_file_number is not None:
+            # Use the original file number assigned in source connector (global numbering)
+            file_hash.file_number = original_file_number
+            logger.info(
+                f"Using original global file_number {original_file_number} for '{file_name}' (batch position {file_number})"
+            )
+        else:
+            # Fallback to batch enumeration if original file number not available
+            file_hash.file_number = file_number
+            logger.warning(
+                f"No original file_number found for '{file_name}', using batch position {file_number}"
+            )
 
         # Set use_file_history flag based on workflow determination
         file_hash.use_file_history = use_file_history
 
-        # Manual review decision already made in batch processing - no need to recalculate
+        # CRITICAL FIX: Apply manual review decision using q_file_no_list with correct global file number
+        file_hash = _add_file_destination_filehash(
+            file_hash.file_number, q_file_no_list, file_hash
+        )
 
         # Log manual review decision
         if (
@@ -468,7 +505,7 @@ def _process_individual_files(context: WorkflowContextData) -> WorkflowContextDa
             and file_hash.is_manualreview_required
         ):
             logger.info(
-                f"File {file_name} (#{file_hash.file_number}) MARKED FOR MANUAL REVIEW - destination: {file_hash.file_destination}"
+                f"👥 File {file_name} (#{file_hash.file_number}) MARKED FOR MANUAL REVIEW - destination: {file_hash.file_destination}"
             )
         else:
             logger.info(
@@ -2105,3 +2142,40 @@ def process_file_batch_resilient(
         except Exception as e:
             logger.error(f"Resilient file batch processing failed: {e}")
             raise
+
+
+# Backward compatibility aliases for Django backend during transition
+# Register the same task function with the old Django task names for compatibility
+
+
+@app.task(
+    bind=True,
+    name="workflow_manager.workflow_v2.file_execution_tasks.process_file_batch",
+    max_retries=0,
+    ignore_result=False,
+    retry_backoff=True,
+    retry_backoff_max=500,
+    retry_jitter=True,
+    default_retry_delay=5,
+)
+def process_file_batch_django_compat(
+    self, file_batch_data: dict[str, Any]
+) -> dict[str, Any]:
+    """Backward compatibility wrapper for Django backend task name.
+
+    This allows new workers to handle tasks sent from the old Django backend
+    during the transition period when both systems are running.
+
+    Args:
+        file_batch_data: File batch data from Django backend
+
+    Returns:
+        Same result as process_file_batch
+    """
+    logger.info(
+        "Processing file batch via Django compatibility task name: "
+        "workflow_manager.workflow_v2.file_execution_tasks.process_file_batch"
+    )
+
+    # Delegate to the core implementation (same as main task)
+    return _process_file_batch_core(self, file_batch_data)

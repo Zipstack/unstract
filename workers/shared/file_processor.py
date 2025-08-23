@@ -316,6 +316,7 @@ class ManualReviewHandler:
                     file_data=context.file_hash.to_dict(),
                     workflow_id=context.workflow_id,
                     execution_id=context.execution_id,
+                    organization_id=context.organization_id,
                 )
 
                 return {
@@ -333,6 +334,47 @@ class ManualReviewHandler:
                 # Fall through to normal processing
 
         return None
+
+    @staticmethod
+    def route_with_results(
+        context: FileProcessingContext, workflow_result: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Route file to manual review with tool execution results via plugin.
+
+        Args:
+            context: File processing context
+            workflow_result: Results from tool execution
+
+        Returns:
+            Manual review result with execution data, None if routing failed
+        """
+        try:
+            logger.info(
+                f"Routing file {context.file_name} to manual review with execution results via plugin"
+            )
+
+            # Delegate to the manual review plugin through the API client facade
+            # This will automatically handle plugin availability and fallback to stub
+            result = context.api_client.route_to_manual_review_with_results(
+                file_execution_id=context.workflow_file_execution_id,
+                file_data=context.file_hash.to_dict(),
+                workflow_result=workflow_result,
+                workflow_id=context.workflow_id,
+                execution_id=context.execution_id,
+                organization_id=context.organization_id,
+                file_name=context.file_name,
+            )
+
+            logger.info(
+                f"Manual review routing result for {context.file_name}: {result.get('success', False)}"
+            )
+            return result
+
+        except Exception as review_error:
+            logger.error(
+                f"Failed to route file to manual review with results: {review_error}"
+            )
+            return None
 
 
 class WorkflowExecutionProcessor:
@@ -482,22 +524,21 @@ class FileProcessor:
                 logger.info(f"Returning historical result for {context.file_name}")
                 return history_result
 
-            # Step 4: Check manual review routing
+            # Step 4: Execute workflow processing (always run tools first)
             logger.info(
-                f"DEBUG: Step 4 - Checking manual review routing for {context.file_name}"
+                f"DEBUG: Step 4 - Executing workflow processing for {context.file_name}"
             )
-            manual_review_result = ManualReviewHandler.check_manual_review_routing(
+            workflow_result = WorkflowExecutionProcessor.execute_workflow_processing(
                 context
             )
-            if manual_review_result:
-                logger.info(f"File routed to manual review: {context.file_name}")
-                return manual_review_result
 
-            # Step 5: Execute normal workflow processing
+            # Step 5: Tool execution completed - destination processing will handle routing
             logger.info(
-                f"DEBUG: Step 5 - Executing normal workflow processing for {context.file_name}"
+                f"DEBUG: Step 5 - Tool execution completed for {context.file_name}, destination will handle routing"
             )
-            return WorkflowExecutionProcessor.execute_workflow_processing(context)
+
+            # Return workflow results - destination processing will handle manual review routing
+            return workflow_result
 
         except Exception as e:
             logger.error(f"File processing failed for {context.file_name}: {e}")

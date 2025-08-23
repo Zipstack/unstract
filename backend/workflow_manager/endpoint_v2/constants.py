@@ -42,6 +42,13 @@ class WorkflowFileType:
     METADATA_JSON = "METADATA.json"
 
 
+class SourceKey:
+    FILE_EXTENSIONS = "fileExtensions"
+    PROCESS_SUB_DIRECTORIES = "processSubDirectories"
+    MAX_FILES = "maxFiles"
+    FOLDERS = "folders"
+
+
 class DestinationKey:
     TABLE = "table"
     INCLUDE_AGENT = "includeAgent"

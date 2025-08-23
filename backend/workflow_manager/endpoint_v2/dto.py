@@ -22,7 +22,6 @@ class FileHash:
     )
     is_executed: bool = False
     file_number: int | None = None
-    is_manualreview_required: bool = False  # Added for manual review support
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -37,7 +36,6 @@ class FileHash:
             "provider_file_uuid": self.provider_file_uuid,
             "fs_metadata": self.fs_metadata,
             "file_number": self.file_number,
-            "is_manualreview_required": self.is_manualreview_required,
         }
 
     def to_serialized_json(self) -> str:

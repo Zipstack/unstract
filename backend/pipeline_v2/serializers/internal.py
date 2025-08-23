@@ -8,6 +8,7 @@ class PipelineSerializer(serializers.ModelSerializer):
     is_api = serializers.SerializerMethodField()
     resolved_pipeline_type = serializers.SerializerMethodField()
     resolved_pipeline_name = serializers.SerializerMethodField()
+    pipeline_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Pipeline
@@ -25,12 +26,17 @@ class PipelineSerializer(serializers.ModelSerializer):
         """Returns the pipeline name from the Pipeline model."""
         return obj.pipeline_name
 
+    def get_pipeline_name(self, obj):
+        """Returns the pipeline name for callback worker compatibility."""
+        return obj.pipeline_name
+
 
 class APIDeploymentSerializer(serializers.ModelSerializer):
     # Add computed fields for callback worker
     is_api = serializers.SerializerMethodField()
     resolved_pipeline_type = serializers.SerializerMethodField()
     resolved_pipeline_name = serializers.SerializerMethodField()
+    pipeline_name = serializers.SerializerMethodField()
 
     class Meta:
         model = APIDeployment
@@ -46,4 +52,8 @@ class APIDeploymentSerializer(serializers.ModelSerializer):
 
     def get_resolved_pipeline_name(self, obj):
         """Returns the api_name from the APIDeployment model."""
+        return obj.api_name
+
+    def get_pipeline_name(self, obj):
+        """Returns the api_name for callback worker compatibility."""
         return obj.api_name

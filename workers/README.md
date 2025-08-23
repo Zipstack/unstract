@@ -35,15 +35,32 @@ done
 
 ### 2. Configuration
 
+**Quick Setup (Recommended):**
 ```bash
-# Copy and configure environment
+# Copy environment file
 cp sample.env .env
-# Edit .env with your settings
+
+# Automatic configuration for your development setup
+./setup-dev-env.sh
+```
+
+**Manual Setup:**
+```bash
+# Edit .env based on your setup:
+# 1. Full Docker:     DJANGO_APP_BACKEND_URL=http://unstract-backend:8000
+# 2. Backend on host:  DJANGO_APP_BACKEND_URL=http://172.17.0.1:8000 (Linux)
+#                      DJANGO_APP_BACKEND_URL=http://host.docker.internal:8000 (Mac/Win)
+# 3. Local dev:       DJANGO_APP_BACKEND_URL=http://localhost:8000
 
 # Or use environment variables
 export INTERNAL_API_BASE_URL="http://localhost:8000/internal"
 export INTERNAL_SERVICE_API_KEY="internal-celery-worker-key-123"
 export CELERY_BROKER_URL="redis://localhost:6379/0"
+```
+
+**Test Configuration:**
+```bash
+python test_backend_connection.py  # Verify backend connectivity
 ```
 
 ### 3. Run Workers

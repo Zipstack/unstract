@@ -1,12 +1,10 @@
 import logging
 from typing import Any
 
-from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
-from rest_framework.views import APIView
 from utils.user_session import UserSessionUtils
 
 from account_v2.authentication_controller import AuthenticationController
@@ -15,7 +13,6 @@ from account_v2.dto import (
     OrganizationSignupResponse,
     UserSessionInfo,
 )
-from account_v2.internal_serializers import OrganizationContextSerializer
 from account_v2.models import Organization
 from account_v2.organization import OrganizationService
 from account_v2.serializer import (
@@ -179,39 +176,3 @@ def makeSignupResponse(
             organization.created_at,
         )
     ).data
-
-
-# =============================================================================
-# INTERNAL API VIEWS - Used by Celery workers for service-to-service communication
-# =============================================================================
-
-
-logger = logging.getLogger(__name__)
-
-
-class OrganizationContextAPIView(APIView):
-    """Internal API endpoint for getting organization context."""
-
-    def get(self, request, org_id):
-        """Get organization context information."""
-        try:
-            organization = get_object_or_404(Organization, id=org_id)
-
-            context_data = {
-                "organization_id": str(organization.id),
-                "organization_name": organization.display_name,
-                "settings": {
-                    "created_at": organization.created_at.isoformat(),
-                    "is_active": getattr(organization, "is_active", True),
-                },
-            }
-
-            serializer = OrganizationContextSerializer(context_data)
-            return Response(serializer.data)
-
-        except Exception as e:
-            logger.error(f"Failed to get organization context for {org_id}: {str(e)}")
-            return Response(
-                {"error": "Failed to get organization context", "detail": str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )

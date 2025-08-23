@@ -128,25 +128,18 @@ def _unified_api_execution(
                 f"Processing {len(converted_files)} files in {len(file_batches)} batches"
             )
 
-            # Execute workflow through general worker coordination
-            # Import general worker function with proper path handling
-            import sys
-
-            if "../" not in sys.path:
-                sys.path.insert(0, "../")
-            from general.tasks import _orchestrate_file_processing_general
-
-            # Call the general worker orchestration with API-specific parameters
-            result = _orchestrate_file_processing_general(
+            # Execute workflow through direct API orchestration
+            result = _run_workflow_api(
                 api_client=api_client,
+                schema_name=organization_id,
                 workflow_id=workflow_id,
                 execution_id=execution_id,
-                source_files=converted_files,  # Fixed parameter name
-                pipeline_id=pipeline_id,
+                hash_values_of_files=converted_files,  # Changed parameter name
                 scheduled=scheduled,
                 execution_mode=execution_mode,
+                pipeline_id=pipeline_id,
                 use_file_history=use_file_history,
-                organization_id=organization_id,
+                task_id=task_instance.request.id,  # Add required task_id
             )
 
             # Log completion with standardized format
@@ -285,7 +278,7 @@ def async_execute_bin(
         pipeline_id=pipeline_id,
         log_events_id=log_events_id,
         use_file_history=use_file_history,
-        task_type="legacy",
+        task_type="api",
         **kwargs,
     )
 

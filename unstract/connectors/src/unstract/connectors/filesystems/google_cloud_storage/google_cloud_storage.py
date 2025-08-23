@@ -107,13 +107,14 @@ class GoogleCloudStorageFS(UnstractFileSystem):
         - Bucket name extraction from paths
         - Proper path formatting for GCS operations
         - Compatibility with different path formats
+        - Backward compatibility with Django backend expectations
 
         Args:
             input_dir: Input directory path (may include bucket name)
             root_path: Root path configured for the connector
 
         Returns:
-            str: Properly formatted GCS path
+            str: Properly formatted GCS path with trailing slash for directory compatibility
         """
         # For GCS, paths might be passed as "bucket-name/folder-path"
         # But fsspec GCS expects just "folder-path" without bucket prefix
@@ -128,10 +129,14 @@ class GoogleCloudStorageFS(UnstractFileSystem):
 
             # If input_dir is just "/", use root_path
             if not input_dir or input_dir == "/":
-                return root_path
+                # BACKWARD COMPATIBILITY: Ensure trailing slash for directory operations
+                return f"{root_path}/" if not root_path.endswith("/") else root_path
 
-            # Combine paths
-            return f"{root_path}/{input_dir}"
+            # Combine paths with trailing slash for backward compatibility
+            combined_path = f"{root_path}/{input_dir}"
+            return (
+                f"{combined_path}/" if not combined_path.endswith("/") else combined_path
+            )
 
         # If no root_path, clean up the input_dir
         input_dir = input_dir.strip("/")
@@ -143,10 +148,12 @@ class GoogleCloudStorageFS(UnstractFileSystem):
             if len(parts) == 2:
                 bucket_name, folder_path = parts
                 # For GCS, we typically need the full path including bucket
-                return input_dir
+                # BACKWARD COMPATIBILITY: Add trailing slash for directory operations
+                return f"{input_dir}/" if not input_dir.endswith("/") else input_dir
 
         # Return as-is if it's just a folder name or bucket name
-        return input_dir
+        # BACKWARD COMPATIBILITY: Add trailing slash for directory operations
+        return f"{input_dir}/" if not input_dir.endswith("/") else input_dir
 
     def is_dir_by_metadata(self, metadata: dict[str, Any]) -> bool:
         """Check if the given path is a directory.

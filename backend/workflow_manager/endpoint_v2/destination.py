@@ -171,20 +171,6 @@ class DestinationConnector(BaseConnector):
             logger.info(f"Successfully pushed {file_name} to HITL queue")
             return True
 
-        # Check if file is already marked for manual review
-        if (
-            hasattr(file_hash, "is_manualreview_required")
-            and file_hash.is_manualreview_required
-        ):
-            logger.info(f"File {file_name} marked for manual review based on rules")
-            self._push_data_to_queue(
-                file_name=file_name,
-                workflow=workflow,
-                input_file_path=input_file_path,
-                file_execution_id=file_execution_id,
-            )
-            return True
-
         # Skip HITL validation if we're using file_history and no execution result is available
         if self.is_api and self.use_file_history:
             return False
@@ -550,7 +536,7 @@ class DestinationConnector(BaseConnector):
         if metadata is None:
             return False
 
-        # Handle dict metadata (which is valid and contains extracted_text)
+        # Handle dict metadata (which is valid)
         if isinstance(metadata, dict):
             return bool(metadata)  # Return True if dict is not empty
 
@@ -798,9 +784,6 @@ class DestinationConnector(BaseConnector):
             q_name = self._get_review_queue_name()
             whisper_hash = meta_data.get("whisper-hash") if meta_data else None
 
-            # Get extracted text from metadata (added by structure tool)
-            extracted_text = meta_data.get("extracted_text") if meta_data else None
-
             queue_result = QueueResult(
                 file=file_name,
                 status=QueueResultStatus.SUCCESS,
@@ -809,11 +792,9 @@ class DestinationConnector(BaseConnector):
                 file_content=file_content_base64,
                 whisper_hash=whisper_hash,
                 file_execution_id=file_execution_id,
-                extracted_text=extracted_text,
             ).to_dict()
 
             queue_result_json = json.dumps(queue_result)
-
             conn = QueueUtils.get_queue_inst()
             conn.enqueue(queue_name=q_name, message=queue_result_json)
             logger.info(f"Pushed {file_name} to queue {q_name} with file content")
@@ -836,11 +817,7 @@ class DestinationConnector(BaseConnector):
             else:
                 whisper_hash = None
 
-            # Get extracted text from metadata (added by structure tool)
-            extracted_text = meta_data.get("extracted_text") if meta_data else None
-
-            # Create QueueResult with TTL metadata
-            queue_result_obj = QueueResult(
+            queue_result = QueueResult(
                 file=file_name,
                 status=QueueResultStatus.SUCCESS,
                 result=result,
@@ -848,30 +825,12 @@ class DestinationConnector(BaseConnector):
                 file_content=file_content_base64,
                 whisper_hash=whisper_hash,
                 file_execution_id=file_execution_id,
-                extracted_text=extracted_text,
-            )
-
-            # Add TTL metadata based on HITLSettings
-            queue_result_obj.ttl_seconds = WorkflowUtil.get_hitl_ttl_seconds(workflow)
-
-            queue_result = queue_result_obj.to_dict()
+            ).to_dict()
+            # Convert the result dictionary to a JSON string
             queue_result_json = json.dumps(queue_result)
-
-            # Validate the JSON is not empty before enqueuing
-            if not queue_result_json or queue_result_json.strip() == "":
-                logger.error(
-                    f"Attempted to enqueue empty JSON with TTL for file {file_name}"
-                )
-                raise ValueError("Cannot enqueue empty JSON message")
-
             conn = QueueUtils.get_queue_inst()
-
-            # Use the TTL metadata that was already set in the QueueResult object
-            ttl_seconds = queue_result_obj.ttl_seconds
-
-            conn.enqueue_with_ttl(
-                queue_name=q_name, message=queue_result_json, ttl_seconds=ttl_seconds
-            )
+            # Enqueue the JSON string
+            conn.enqueue(queue_name=q_name, message=queue_result_json)
             logger.info(f"Pushed {file_name} to queue {q_name} with file content")
 
     def _read_file_content_for_queue(self, input_file_path: str, file_name: str) -> str:
