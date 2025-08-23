@@ -195,7 +195,6 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 )
                 from plugins.verticals_usage.usage_tracker import api_hub_usage_tracker
 
-                # Process API hub headers from request.headers
                 normalized_headers = api_hub_usage_tracker.extract_api_hub_headers_from_request(
                     request_headers
                 )
@@ -215,7 +214,6 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 logger.warning(
                     f"API hub header caching failed for execution {execution_id}: {e}"
                 )
-                pass
 
         hash_values_of_files = SourceConnector.add_input_file_to_api_storage(
             pipeline_id=pipeline_id,

@@ -85,7 +85,7 @@ class DeploymentExecution(views.APIView):
             tag_names=tag_names,
             llm_profile_id=llm_profile_id,
             hitl_queue_name=hitl_queue_name,
-            request_headers=dict(request.headers) if request else None,
+            request_headers=dict(request.headers),
         )
         if "error" in response and response["error"]:
             logger.error("API deployment execution failed")
