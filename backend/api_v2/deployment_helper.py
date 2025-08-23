@@ -207,7 +207,9 @@ class DeploymentHelper(BaseAPIKeyValidator):
                             f"Failed to cache API hub headers for execution {execution_id}"
                         )
                 else:
-                    logger.debug("No API hub subscription headers found in request headers")
+                    logger.debug(
+                        "No API hub subscription headers found in request headers"
+                    )
             except ImportError:
                 logger.debug("API hub usage tracking plugin not available")
             except Exception as e:
