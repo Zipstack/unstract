@@ -157,7 +157,7 @@ class AzureOpenAIParameters(BaseParameters):
     api_version: str | None = None
     api_key: str
     temperature: float | None = 1
-    num_retries: int | None = 3  # Set a default value for retries
+    num_retries: int | None = 3
 
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
@@ -184,37 +184,63 @@ class VertexAIParameters(BaseParameters):
 
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
-        adapter_metadata["model"] = VertexAIParameters.validate_model(adapter_metadata)
-        adapter_metadata["vertex_credentials"] = adapter_metadata.get(
-            "json_credentials", ""
-        )
-        adapter_metadata["vertex_project"] = adapter_metadata.get("project", "")
+        # Make a copy so we don't modify the original
+        metadata_copy = {**adapter_metadata}
+        
+        # Set model with proper prefix
+        metadata_copy["model"] = VertexAIParameters.validate_model(metadata_copy)
+        
+        # Map credentials and project fields
+        if "json_credentials" in metadata_copy and not metadata_copy.get("vertex_credentials"):
+            metadata_copy["vertex_credentials"] = metadata_copy["json_credentials"]
+        if "project" in metadata_copy and not metadata_copy.get("vertex_project"):
+            metadata_copy["vertex_project"] = metadata_copy["project"]
+        
+        # Handle safety settings
+        ss_dict = metadata_copy.get("safety_settings", {})
+        
+        # Handle case where safety_settings is already a list
+        if isinstance(ss_dict, list):
+            metadata_copy["safety_settings"] = ss_dict
+        else:
+            # Convert dictionary format to list format
+            metadata_copy["safety_settings"] = [
+                {
+                    "category": "HARM_CATEGORY_HARASSMENT",
+                    "threshold": ss_dict.get("harassment", "BLOCK_ONLY_HIGH"),
+                },
+                {
+                    "category": "HARM_CATEGORY_HATE_SPEECH",
+                    "threshold": ss_dict.get("hate_speech", "BLOCK_ONLY_HIGH"),
+                },
+                {
+                    "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                    "threshold": ss_dict.get("sexual_content", "BLOCK_ONLY_HIGH"),
+                },
+                {
+                    "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                    "threshold": ss_dict.get("dangerous_content", "BLOCK_ONLY_HIGH"),
+                },
+                {
+                    "category": "HARM_CATEGORY_CIVIC_INTEGRITY",
+                    "threshold": ss_dict.get("civic_integrity", "BLOCK_ONLY_HIGH"),
+                },
+            ]
 
-        ss_dict = adapter_metadata.get("safety_settings", {})
-        adapter_metadata["safety_settings"] = [
-            {
-                "category": "HARM_CATEGORY_HARASSMENT",
-                "threshold": ss_dict.get("harassment", "BLOCK_ONLY_HIGH"),
-            },
-            {
-                "category": "HARM_CATEGORY_HATE_SPEECH",
-                "threshold": ss_dict.get("hate_speech", "BLOCK_ONLY_HIGH"),
-            },
-            {
-                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                "threshold": ss_dict.get("sexual_content", "BLOCK_ONLY_HIGH"),
-            },
-            {
-                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-                "threshold": ss_dict.get("dangerous_content", "BLOCK_ONLY_HIGH"),
-            },
-            {
-                "category": "HARM_CATEGORY_CIVIC_INTEGRITY",
-                "threshold": ss_dict.get("civic_integrity", "BLOCK_ONLY_HIGH"),
-            },
+        # These are the fields to preserve (in addition to model fields)
+        fields_to_preserve = [
+            "max_tokens", "max_retries", "timeout", "temperature", "n", "stream"
         ]
-
-        return VertexAIParameters(**adapter_metadata).model_dump()
+        
+        # First validate using pydantic
+        validated_data = VertexAIParameters(**metadata_copy).model_dump()
+        
+        # Preserve any important fields not in the model
+        for field in fields_to_preserve:
+            if field in metadata_copy and field not in validated_data:
+                validated_data[field] = metadata_copy[field]
+                
+        return validated_data
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
@@ -245,15 +271,13 @@ class AWSBedrockParameters(BaseParameters):
             adapter_metadata["temperature"] = 1
 
             # Add additionalModelRequestFields for thinking
-            additional_kwargs = {
-                "additionalModelRequestFields": {
-                    "thinking": {
-                        "type": "enabled",
-                        "budget_tokens": adapter_metadata.get("budget_tokens", None),
-                    }
+            thinking = {
+                "thinking": {
+                    "type": "enabled",
+                    "budget_tokens": adapter_metadata.get("budget_tokens", None),
                 }
             }
-            adapter_metadata.update(additional_kwargs)
+            adapter_metadata.update(thinking)
             adapter_metadata.pop("enable_thinking")
             adapter_metadata.pop("budget_tokens")
 

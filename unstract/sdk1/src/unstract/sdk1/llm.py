@@ -141,6 +141,9 @@ class LLM:
             dict[str, Any]  : A dictionary containing the result of the completion,
                 any processed output, and the captured metrics (if applicable).
         """
+
+        litellm.drop_params = True # drop params that are not supported by the model
+
         messages: list[dict[str, str]] = [
             {"role": "system", "content": self._system_prompt},
             {"role": "user", "content": prompt},
