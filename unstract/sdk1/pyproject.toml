@@ -27,7 +27,7 @@ dependencies = [
     "python-dotenv==1.0.0",
     # # Adapter changes
     "tiktoken~=0.9.0",
-    "litellm~=v1.74.7",
+    "litellm~=v1.76.0",
     "llama-index==0.12.39",
     "llama-index-vector-stores-postgres==0.4.1",
     # Including Supabase conflicts with postgres on pg-vector.
