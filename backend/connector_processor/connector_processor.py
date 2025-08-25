@@ -80,8 +80,7 @@ class ConnectorProcessor:
         # TODO: Remove RedisQueue from the list of connectors and use separately instead
         # HACK: Connectors that are marked active but not supported explicitly
         unsupported_connectors = [
-            connector.get_id() 
-            for connector in filter(None, [RedisQueue])
+            connector.get_id() for connector in filter(None, [RedisQueue])
         ]
 
         if type == ConnectorKeys.INPUT:
