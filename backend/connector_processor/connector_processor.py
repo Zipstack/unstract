@@ -20,7 +20,6 @@ from unstract.connectors.connectorkit import Connectorkit
 from unstract.connectors.enums import ConnectorMode
 from unstract.connectors.exceptions import ConnectorError, FSAccessDeniedError
 from unstract.connectors.filesystems.ucs import UnstractCloudStorage
-from unstract.connectors.queues.redis import RedisQueue
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +71,10 @@ class ConnectorProcessor:
         """Function to return list of all supported connectors except PCS."""
         supported_connectors = []
         updated_connectors = []
-        # Connectors that are marked active but not supported explicitly
-        unsupported_connectors = [RedisQueue.get_id()]
+
+        # HACK: Connectors that are marked active but not supported explicitly
+        # TODO: Remove RedisQueue from the list of connectors and use separately instead
+        unsupported_connectors = ["redisqueue|79e1d681-9b8b-4f6b-b972-1a6a095312f45"]
 
         if type == ConnectorKeys.INPUT:
             updated_connectors = fetch_connectors_by_key_value(

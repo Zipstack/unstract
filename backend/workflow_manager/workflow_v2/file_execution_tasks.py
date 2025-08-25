@@ -557,7 +557,7 @@ class FileExecutionTasks:
                 result=result,
                 workflow_file_execution=None,
                 error=error_msg,
-                is_api=destination.is_api,
+                is_api=destination.is_api if destination else False,
                 destination=destination,
             )
         except Exception as error:
@@ -578,7 +578,7 @@ class FileExecutionTasks:
                 result=result,
                 workflow_file_execution=workflow_file_execution,
                 error=error_msg,
-                is_api=destination.is_api,
+                is_api=destination.is_api if destination else False,
                 destination=destination,
             )
 
@@ -1136,10 +1136,17 @@ class FileExecutionTasks:
             )
 
         if destination:
-            logger.info(
-                f"Deleting file execution directory for file: '{file_hash.file_name}'"
-            )
-            destination.delete_file_execution_directory()
+            try:
+                logger.info(
+                    f"Deleting file execution directory for file: '{file_hash.file_name}'"
+                )
+                destination.delete_file_execution_directory()
+            except Exception as cleanup_error:
+                logger.exception(
+                    f"[Execution ID: {workflow_execution.id}, File Execution ID: {workflow_file_execution.id}] "
+                    f"Failed to delete file execution directory for '{file_hash.file_name}': {cleanup_error}. "
+                    f"This is non-critical and needs to be cleaned up later."
+                )
 
         status = (
             FileExecutionStageStatus.SUCCESS
