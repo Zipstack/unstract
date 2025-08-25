@@ -291,10 +291,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         profile_manager: str = request.data.get(ToolStudioPromptKeys.PROFILE_MANAGER_ID)
         if not run_id:
             # Generate a run_id
-            if FeatureFlagHelper.check_flag_status("sdk1"):
-                run_id = Utils.generate_uuid()
-            else:
-                run_id = CommonUtils.generate_uuid()
+            run_id = CommonUtils.generate_uuid()
         response: dict[str, Any] = PromptStudioHelper.prompt_responder(
             id=id,
             tool_id=tool_id,
@@ -325,10 +322,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         run_id: str = request.data.get(ToolStudioPromptKeys.RUN_ID)
         if not run_id:
             # Generate a run_id
-            if check_feature_flag_status("sdk1"):
-                run_id = CommonUtils.generate_uuid()
-            else:
-                run_id = CommonUtils.generate_uuid()
+            run_id = CommonUtils.generate_uuid()
         response: dict[str, Any] = PromptStudioHelper.prompt_responder(
             tool_id=tool_id,
             org_id=UserSessionUtils.get_organization_id(request),
@@ -367,7 +361,15 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def create_profile_manager(self, request: HttpRequest, pk: Any = None) -> Response:
         context = super().get_serializer_context()
-        serializer = ProfileManagerSerializer(data=request.data, context=context)
+        
+        # Get the current tool instance
+        custom_tool = self.get_object()
+        
+        # Add the prompt_studio_tool to the request data
+        request_data = request.data.copy()
+        request_data[ProfileManagerKeys.PROMPT_STUDIO_TOOL] = custom_tool.tool_id
+        
+        serializer = ProfileManagerSerializer(data=request_data, context=context)
 
         serializer.is_valid(raise_exception=True)
         # Check for the maximum number of profiles constraint
