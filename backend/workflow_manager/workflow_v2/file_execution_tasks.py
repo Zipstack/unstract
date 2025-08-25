@@ -1157,7 +1157,8 @@ class FileExecutionTasks:
                             file_execution_id=str(workflow_file_execution.id),
                             api_hub_headers=api_hub_headers,  # Already normalized
                             organization_id=workflow_execution.workflow.organization.organization_id
-                            if workflow_execution.workflow and workflow_execution.workflow.organization
+                            if workflow_execution.workflow
+                            and workflow_execution.workflow.organization
                             else None,
                         )
                         if success:
