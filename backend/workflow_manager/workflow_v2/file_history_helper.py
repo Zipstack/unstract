@@ -154,12 +154,16 @@ class FileHistoryHelper:
             if not source_endpoint.configuration:
                 return None
 
-            duplicate_handling = source_endpoint.configuration.get("duplicateHandling")
+            duplicate_handling = source_endpoint.configuration.get(
+                "fileReprocessingHandling"
+            )
             if duplicate_handling != "reprocess_after_interval":
                 return None  # Skip duplicates
 
-            interval_value = source_endpoint.configuration.get("reprocessInterval", 0)
-            interval_unit = source_endpoint.configuration.get("intervalUnit", "days")
+            interval_value: int = source_endpoint.configuration.get(
+                "reprocessInterval", 0
+            )
+            interval_unit: str = source_endpoint.configuration.get("intervalUnit", "days")
 
             if interval_value <= 0:
                 return None

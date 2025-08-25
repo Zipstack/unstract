@@ -4,7 +4,6 @@ from typing import Any
 from django.db.models import Model
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.models.file_history import FileHistory
 
@@ -22,6 +21,7 @@ def sync_file_reprocessing_interval(
         instance: The WorkflowEndpoint instance that was saved
         **kwargs: Additional arguments from the signal
     """
+    print("########## HELLOOOOO ########## ")
     # Only handle SOURCE endpoints
     if instance.endpoint_type != WorkflowEndpoint.EndpointType.SOURCE:
         return
@@ -33,7 +33,10 @@ def sync_file_reprocessing_interval(
     try:
         # Extract reprocessing configuration with proper type handling
         config: dict[str, Any] = instance.configuration or {}
-        duplicate_handling: str = str(config.get("duplicateHandling", "skip_duplicates"))
+        duplicate_handling: str = str(
+            config.get("fileReprocessingHandling", "skip_duplicates")
+        )
+        print("****** duplicate_handling **** ", duplicate_handling)
 
         # Calculate interval in days
         reprocessing_interval: int | None = None
@@ -47,6 +50,8 @@ def sync_file_reprocessing_interval(
                     reprocessing_interval = interval_value * 30
                 else:
                     reprocessing_interval = interval_value
+
+        print("****** reprocessing_interval **** ", reprocessing_interval)
 
         # Update all FileHistory records for this workflow
         FileHistory.objects.filter(workflow=instance.workflow).update(
