@@ -1168,7 +1168,7 @@ class FileExecutionTasks:
                         success = api_hub_usage_tracker.store_usage(
                             execution_id=str(workflow_execution.id),
                             api_hub_headers=api_hub_headers,  # Already normalized
-                            usage_metrics=usage_metrics,
+                            page_count=usage_metrics.get("page_count", 0),
                             organization_id=workflow_execution.workflow.organization_id
                             if workflow_execution.workflow
                             else None,
