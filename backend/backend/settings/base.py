@@ -66,6 +66,8 @@ if ENV_FILE:
 WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND = os.environ.get(
     "WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND", 10800
 )
+# Maximum number of files allowed per workflow page execution
+WORKFLOW_PAGE_MAX_FILES = int(os.environ.get("WORKFLOW_PAGE_MAX_FILES", 2))
 WEB_APP_ORIGIN_URL = os.environ.get("WEB_APP_ORIGIN_URL", "http://localhost:3000")
 parsed_url = urlparse(WEB_APP_ORIGIN_URL)
 WEB_APP_ORIGIN_URL_WITH_WILD_CARD = f"{parsed_url.scheme}://*.{parsed_url.netloc}"
@@ -100,6 +102,11 @@ PATH_PREFIX = os.environ.get("PATH_PREFIX", "api/v1").strip("/")
 API_DEPLOYMENT_PATH_PREFIX = os.environ.get(
     "API_DEPLOYMENT_PATH_PREFIX", "deployment"
 ).strip("/")
+
+# Maximum file size for presigned URLs in API deployments (in MB)
+API_DEPL_PRESIGNED_URL_MAX_FILE_SIZE_MB = int(
+    os.environ.get("API_DEPL_PRESIGNED_URL_MAX_FILE_SIZE_MB", 20)
+)
 
 DB_NAME = os.environ.get("DB_NAME", "unstract_db")
 DB_USER = os.environ.get("DB_USER", "unstract_dev")
