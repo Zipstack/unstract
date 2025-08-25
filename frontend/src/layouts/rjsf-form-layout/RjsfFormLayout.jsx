@@ -23,6 +23,7 @@ import { TextWidget } from "../../components/rjsf-custom-widgets/text-widget/Tex
 import { PasswordWidget } from "../../components/rjsf-custom-widgets/password-widget/PasswordWidget.jsx";
 import { UpDownWidget } from "../../components/rjsf-custom-widgets/up-down-widget/UpDownWidget.jsx";
 import { CustomFieldTemplate } from "./CustomFieldTemplate.jsx";
+import { CustomObjectFieldTemplate } from "./CustomObjectFieldTemplate.jsx";
 import CustomMarkdown from "../../components/helpers/custom-markdown/CustomMarkdown.jsx";
 import "./RjsfFormLayout.css";
 
@@ -147,6 +148,7 @@ function RjsfFormLayout({
             onChange={handleChange}
             templates={{
               FieldTemplate: CustomFieldTemplate,
+              ObjectFieldTemplate: CustomObjectFieldTemplate,
             }}
           >
             {children || <></>}

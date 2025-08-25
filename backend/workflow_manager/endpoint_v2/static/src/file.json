@@ -37,6 +37,49 @@
             "title": "Max files to process",
             "default": 100,
             "description": "The maximum number of files to process"
+        },
+        "fileReprocessingHandling": {
+            "type": "string",
+            "title": "File Expiry Behavior",
+            "description": "Configure how long files are protected from reprocessing",
+            "default": "skip_duplicates",
+            "enum": ["skip_duplicates", "reprocess_after_interval"],
+            "enumNames": ["Never expire (permanent protection)", "Expire after duration"]
+        }
+    },
+    "dependencies": {
+        "fileReprocessingHandling": {
+            "oneOf": [
+                {
+                    "properties": {
+                        "fileReprocessingHandling": {
+                            "enum": ["skip_duplicates"]
+                        }
+                    }
+                },
+                {
+                    "properties": {
+                        "fileReprocessingHandling": {
+                            "enum": ["reprocess_after_interval"]
+                        },
+                        "reprocessInterval": {
+                            "type": "string",
+                            "title": "Expires after",
+                            "default": "30",
+                            "minimum": 1,
+                            "pattern": "^[1-9]\\d*$"
+                        },
+                        "intervalUnit": {
+                            "type": "string",
+                            "title": "Duration Type",
+                            "default": "days",
+                            "enum": ["days", "months"],
+                            "enumNames": ["Days", "Months"]
+                        }
+                    },
+                    "required": ["reprocessInterval", "intervalUnit"]
+                }
+            ]
         }
     }
 }
