@@ -1,10 +1,10 @@
 from typing import Any
 
-from unstract.sdk1.adapters.base1 import AzureOpenAIParameters, BaseAdapter
+from unstract.sdk1.adapters.base1 import AzureOpenAILLMParameters, BaseAdapter
 from unstract.sdk1.adapters.enums import AdapterTypes
 
 
-class AzureOpenAILLMAdapter(AzureOpenAIParameters, BaseAdapter):
+class AzureOpenAILLMAdapter(AzureOpenAILLMParameters, BaseAdapter):
     @staticmethod
     def get_id() -> str:
         return "azureopenai|592d84b9-fe03-4102-a17e-6b391f32850b"

@@ -1,10 +1,10 @@
 from typing import Any
 
-from unstract.sdk1.adapters.base1 import BaseAdapter, OllamaParameters
+from unstract.sdk1.adapters.base1 import BaseAdapter, OllamaLLMParameters
 from unstract.sdk1.adapters.enums import AdapterTypes
 
 
-class OllamaLLMAdapter(OllamaParameters, BaseAdapter):
+class OllamaLLMAdapter(OllamaLLMParameters, BaseAdapter):
     @staticmethod
     def get_id() -> str:
         return "ollama|4b8bd31a-ce42-48d4-9d69-f29c12e0f276"

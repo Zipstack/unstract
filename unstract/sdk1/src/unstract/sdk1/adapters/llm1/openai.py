@@ -1,10 +1,10 @@
 from typing import Any
 
-from unstract.sdk1.adapters.base1 import BaseAdapter, OpenAIParameters
+from unstract.sdk1.adapters.base1 import BaseAdapter, OpenAILLMParameters
 from unstract.sdk1.adapters.enums import AdapterTypes
 
 
-class OpenAILLMAdapter(OpenAIParameters, BaseAdapter):
+class OpenAILLMAdapter(OpenAILLMParameters, BaseAdapter):
     @staticmethod
     def get_id() -> str:
         return "openai|502ecf49-e47c-445c-9907-6d4b90c5cd17"

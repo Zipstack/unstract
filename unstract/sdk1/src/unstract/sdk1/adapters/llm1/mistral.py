@@ -1,10 +1,10 @@
 from typing import Any
 
-from unstract.sdk1.adapters.base1 import BaseAdapter, MistralParameters
+from unstract.sdk1.adapters.base1 import BaseAdapter, MistralLLMParameters
 from unstract.sdk1.adapters.enums import AdapterTypes
 
 
-class MistralLLMAdapter(MistralParameters, BaseAdapter):
+class MistralLLMAdapter(MistralLLMParameters, BaseAdapter):
     @staticmethod
     def get_id() -> str:
         return "mistral|00f766a5-6d6d-47ea-9f6c-ddb1e8a94e82"

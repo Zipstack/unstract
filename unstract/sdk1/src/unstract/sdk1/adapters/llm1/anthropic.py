@@ -1,10 +1,10 @@
 from typing import Any
 
-from unstract.sdk1.adapters.base1 import AnthropicParameters, BaseAdapter
+from unstract.sdk1.adapters.base1 import AnthropicLLMParameters, BaseAdapter
 from unstract.sdk1.adapters.enums import AdapterTypes
 
 
-class AnthropicLLMAdapter(AnthropicParameters, BaseAdapter):
+class AnthropicLLMAdapter(AnthropicLLMParameters, BaseAdapter):
     @staticmethod
     def get_id() -> str:
         return "anthropic|90ebd4cd-2f19-4cef-a884-9eeb6ac0f203"

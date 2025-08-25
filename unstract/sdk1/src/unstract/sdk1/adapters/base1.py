@@ -104,7 +104,7 @@ class BaseAdapter(ABC):
         pass
 
 
-class BaseParameters(BaseModel):
+class BaseChatCompletionParameters(BaseModel):
     """Base parameters for all SDK v1 providers.
     See https://docs.litellm.ai/docs/completion/input#input-params-1
     """
@@ -130,8 +130,24 @@ class BaseParameters(BaseModel):
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
         pass
 
+class BaseEmbeddingParameters(BaseModel):
+    """Base parameters for all SDK v1 embedding providers."""
 
-class OpenAIParameters(BaseParameters):
+    model: str
+    timeout: float | int | None = 600
+    max_retries: int | None = None
+
+    @staticmethod
+    @abstractmethod
+    def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
+        pass
+
+    @staticmethod
+    @abstractmethod
+    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+        pass
+
+class OpenAILLMParameters(BaseChatCompletionParameters):
     """See https://docs.litellm.ai/docs/providers/openai/"""
 
     api_key: str
@@ -140,9 +156,9 @@ class OpenAIParameters(BaseParameters):
 
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
-        adapter_metadata["model"] = OpenAIParameters.validate_model(adapter_metadata)
+        adapter_metadata["model"] = OpenAILLMParameters.validate_model(adapter_metadata)
 
-        return OpenAIParameters(**adapter_metadata).model_dump()
+        return OpenAILLMParameters(**adapter_metadata).model_dump()
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
@@ -150,7 +166,7 @@ class OpenAIParameters(BaseParameters):
         return f"openai/{model}" if "/" not in model else model
 
 
-class AzureOpenAIParameters(BaseParameters):
+class AzureOpenAILLMParameters(BaseChatCompletionParameters):
     """See https://docs.litellm.ai/docs/providers/azure/#completion---using-azure_ad_token-api_base-api_version"""
 
     api_base: str
@@ -161,13 +177,13 @@ class AzureOpenAIParameters(BaseParameters):
 
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
-        adapter_metadata["model"] = AzureOpenAIParameters.validate_model(adapter_metadata)
+        adapter_metadata["model"] = AzureOpenAILLMParameters.validate_model(adapter_metadata)
 
         # Ensure we have the endpoint in the right format for Azure
         azure_endpoint = adapter_metadata.get("azure_endpoint", "")
         if azure_endpoint:
             adapter_metadata["api_base"] = azure_endpoint
-        return AzureOpenAIParameters(**adapter_metadata).model_dump()
+        return AzureOpenAILLMParameters(**adapter_metadata).model_dump()
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
@@ -175,7 +191,7 @@ class AzureOpenAIParameters(BaseParameters):
         return f"azure/{model}" if "/" not in model else model
 
 
-class VertexAIParameters(BaseParameters):
+class VertexAILLMParameters(BaseChatCompletionParameters):
     """See https://docs.litellm.ai/docs/providers/vertex"""
 
     vertex_credentials: str
@@ -188,7 +204,7 @@ class VertexAIParameters(BaseParameters):
         metadata_copy = {**adapter_metadata}
         
         # Set model with proper prefix
-        metadata_copy["model"] = VertexAIParameters.validate_model(metadata_copy)
+        metadata_copy["model"] = VertexAILLMParameters.validate_model(metadata_copy)
         
         # Map credentials and project fields
         if "json_credentials" in metadata_copy and not metadata_copy.get("vertex_credentials"):
@@ -233,7 +249,7 @@ class VertexAIParameters(BaseParameters):
         ]
         
         # First validate using pydantic
-        validated_data = VertexAIParameters(**metadata_copy).model_dump()
+        validated_data = VertexAILLMParameters(**metadata_copy).model_dump()
         
         # Preserve any important fields not in the model
         for field in fields_to_preserve:
@@ -248,7 +264,7 @@ class VertexAIParameters(BaseParameters):
         return f"vertex_ai/{model}" if "/" not in model else model
 
 
-class AWSBedrockParameters(BaseParameters):
+class AWSBedrockLLMParameters(BaseChatCompletionParameters):
     """See https://docs.litellm.ai/docs/providers/bedrock"""
 
     aws_access_key_id: str | None
@@ -258,7 +274,7 @@ class AWSBedrockParameters(BaseParameters):
 
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
-        adapter_metadata["model"] = AWSBedrockParameters.validate_model(adapter_metadata)
+        adapter_metadata["model"] = AWSBedrockLLMParameters.validate_model(adapter_metadata)
         if "region_name" in adapter_metadata and not adapter_metadata.get(
             "aws_region_name"
         ):
@@ -281,7 +297,7 @@ class AWSBedrockParameters(BaseParameters):
             adapter_metadata.pop("enable_thinking")
             adapter_metadata.pop("budget_tokens")
 
-        return AWSBedrockParameters(**adapter_metadata).model_dump()
+        return AWSBedrockLLMParameters(**adapter_metadata).model_dump()
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
@@ -289,16 +305,16 @@ class AWSBedrockParameters(BaseParameters):
         return f"bedrock/{model}" if "/" not in model else model
 
 
-class AnthropicParameters(BaseParameters):
+class AnthropicLLMParameters(BaseChatCompletionParameters):
     """See https://docs.litellm.ai/docs/providers/anthropic"""
 
     api_key: str
 
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
-        adapter_metadata["model"] = AnthropicParameters.validate_model(adapter_metadata)
+        adapter_metadata["model"] = AnthropicLLMParameters.validate_model(adapter_metadata)
 
-        return AnthropicParameters(**adapter_metadata).model_dump()
+        return AnthropicLLMParameters(**adapter_metadata).model_dump()
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
@@ -306,16 +322,16 @@ class AnthropicParameters(BaseParameters):
         return f"anthropic/{model}" if "/" not in model else model
 
 
-class AnyscaleParameters(BaseParameters):
+class AnyscaleLLMParameters(BaseChatCompletionParameters):
     """See https://docs.litellm.ai/docs/providers/anyscale"""
 
     api_key: str
 
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
-        adapter_metadata["model"] = AnyscaleParameters.validate_model(adapter_metadata)
+        adapter_metadata["model"] = AnyscaleLLMParameters.validate_model(adapter_metadata)
 
-        return AnyscaleParameters(**adapter_metadata).model_dump()
+        return AnyscaleLLMParameters(**adapter_metadata).model_dump()
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
@@ -323,16 +339,16 @@ class AnyscaleParameters(BaseParameters):
         return f"anyscale/{model}" if "/" not in model else model
 
 
-class MistralParameters(BaseParameters):
+class MistralLLMParameters(BaseChatCompletionParameters):
     """See https://docs.litellm.ai/docs/providers/mistral"""
 
     api_key: str
 
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
-        adapter_metadata["model"] = MistralParameters.validate_model(adapter_metadata)
+        adapter_metadata["model"] = MistralLLMParameters.validate_model(adapter_metadata)
 
-        return MistralParameters(**adapter_metadata).model_dump()
+        return MistralLLMParameters(**adapter_metadata).model_dump()
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
@@ -340,19 +356,142 @@ class MistralParameters(BaseParameters):
         return f"mistral/{model}" if "/" not in model else model
 
 
-class OllamaParameters(BaseParameters):
+class OllamaLLMParameters(BaseChatCompletionParameters):
     """See https://docs.litellm.ai/docs/providers/ollama"""
 
     api_base: str
 
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
-        adapter_metadata["model"] = OllamaParameters.validate_model(adapter_metadata)
+        adapter_metadata["model"] = OllamaLLMParameters.validate_model(adapter_metadata)
         adapter_metadata["api_base"] = adapter_metadata.get("base_url", "")
 
-        return OllamaParameters(**adapter_metadata).model_dump()
+        return OllamaLLMParameters(**adapter_metadata).model_dump()
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
         model = adapter_metadata.get("model", "")
         return f"ollama_chat/{model}" if "/" not in model else model
+
+
+# Embedding Parameter Classes
+
+class OpenAIEmbeddingParameters(BaseEmbeddingParameters):
+    """See https://docs.litellm.ai/docs/providers/openai"""
+
+    api_key: str
+    api_base: str | None = None
+    embed_batch_size: int | None = 10
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
+        adapter_metadata["model"] = OpenAIEmbeddingParameters.validate_model(adapter_metadata)
+
+        return OpenAIEmbeddingParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+        model = adapter_metadata.get("model", "")
+        return model
+
+
+class AzureOpenAIEmbeddingParameters(BaseEmbeddingParameters):
+    """See https://docs.litellm.ai/docs/providers/azure"""
+
+    api_key: str
+    api_base: str
+    api_version: str | None
+    embed_batch_size: int | None = 5
+    num_retries: int | None = 3
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
+        adapter_metadata["model"] = AzureOpenAIEmbeddingParameters.validate_model(adapter_metadata)
+
+        # Ensure we have the endpoint in the right format for Azure
+        azure_endpoint = adapter_metadata.get("azure_endpoint", "")
+        if azure_endpoint:
+            adapter_metadata["api_base"] = azure_endpoint
+    
+        # Map num_retries to max_retries for consistency
+        if "num_retries" in adapter_metadata and not adapter_metadata.get("max_retries"):
+            adapter_metadata["max_retries"] = adapter_metadata["num_retries"]
+
+        return AzureOpenAIEmbeddingParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+        model = adapter_metadata.get("deployment_name", "") #litellm expects model to be in the format of "azure/<deployment_namke>"
+        model = f"azure/{model}" if "/" not in model else model
+        del adapter_metadata["deployment_name"]
+        return model
+
+
+class VertexAIEmbeddingParameters(BaseEmbeddingParameters):
+    """See https://docs.litellm.ai/docs/providers/vertex"""
+
+    vertex_credentials: str
+    vertex_project: str
+    embed_batch_size: int | None = 10
+    embed_mode: str | None = "default"
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
+        # Make a copy so we don't modify the original
+        metadata_copy = {**adapter_metadata}
+        
+        # Set model with proper prefix
+        metadata_copy["model"] = VertexAIEmbeddingParameters.validate_model(metadata_copy)
+        
+        # Map credentials and project fields
+        if "json_credentials" in metadata_copy and not metadata_copy.get("vertex_credentials"):
+            metadata_copy["vertex_credentials"] = metadata_copy["json_credentials"]
+        if "project" in metadata_copy and not metadata_copy.get("vertex_project"):
+            metadata_copy["vertex_project"] = metadata_copy["project"]
+
+        return VertexAIEmbeddingParameters(**metadata_copy).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+        model = adapter_metadata.get("model", "")
+        return model
+
+
+class AWSBedrockEmbeddingParameters(BaseEmbeddingParameters):
+    """See https://docs.litellm.ai/docs/providers/bedrock"""
+
+    aws_access_key_id: str | None
+    aws_secret_access_key: str | None
+    aws_region_name: str | None
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
+        adapter_metadata["model"] = AWSBedrockEmbeddingParameters.validate_model(adapter_metadata)
+        if "region_name" in adapter_metadata and not adapter_metadata.get("aws_region_name"):
+            adapter_metadata["aws_region_name"] = adapter_metadata["region_name"]
+
+        return AWSBedrockEmbeddingParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+        model = adapter_metadata.get("model", "")
+        return model
+
+
+class OllamaEmbeddingParameters(BaseEmbeddingParameters):
+    """See https://docs.litellm.ai/docs/providers/ollama"""
+
+    api_base: str
+    embed_batch_size: int | None = 10
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
+        adapter_metadata["model"] = OllamaEmbeddingParameters.validate_model(adapter_metadata)
+        adapter_metadata["api_base"] = adapter_metadata.get("base_url", "")
+
+        return OllamaEmbeddingParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+        model = adapter_metadata.get("model_name", "")
+        return model

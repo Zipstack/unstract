@@ -38,13 +38,6 @@
         "title": "AWS Region name",
         "description": "Provide the AWS Region name where the service is running. Eg. us-east-1"
       },
-      "embed_batch_size": {
-      "type": "number",
-      "minimum": 0,
-      "multipleOf": 1,
-      "title": "Embedding Batch Size",
-      "default": 10
-      },
       "max_retries": {
         "type": "number",
         "minimum": 0,

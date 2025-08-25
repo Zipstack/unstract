@@ -1,10 +1,10 @@
 from typing import Any
 
-from unstract.sdk1.adapters.base1 import AWSBedrockParameters, BaseAdapter
+from unstract.sdk1.adapters.base1 import AWSBedrockLLMParameters, BaseAdapter
 from unstract.sdk1.adapters.enums import AdapterTypes
 
 
-class AWSBedrockLLMAdapter(AWSBedrockParameters, BaseAdapter):
+class AWSBedrockLLMAdapter(AWSBedrockLLMParameters, BaseAdapter):
     @staticmethod
     def get_id() -> str:
         return "bedrock|8d18571f-5e96-4505-bd28-ad0379c64064"

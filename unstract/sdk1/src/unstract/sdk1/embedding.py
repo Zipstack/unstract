@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import litellm
+import os
 from llama_index.core.embeddings import BaseEmbedding
 from pydantic import ValidationError
 from unstract.sdk1.adapters.constants import Common
@@ -12,7 +13,6 @@ from unstract.sdk1.exceptions import SdkError
 from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.tool.base import BaseTool
 from unstract.sdk1.utils.callback_manager import CallbackManager
-
 
 class Embedding:
     """Unified embedding interface powered by LiteLLM.
@@ -54,6 +54,7 @@ class Embedding:
                 self._adapter_id = adapter_id
                 if adapter_metadata:
                     self._adapter_metadata = adapter_metadata
+                    self._tool = tool
                 else:
                     self._adapter_metadata = adapters[self._adapter_id][Common.METADATA]
                 self._adapter_instance_id = ""
@@ -78,7 +79,8 @@ class Embedding:
         """Return embedding vector for query string."""
         kwargs = self.kwargs.copy()
         model = kwargs.pop("model")
-        del kwargs["temperature"]
+
+        litellm.drop_params = True
 
         resp = litellm.embedding(model=model, input=[text], **kwargs)
 
@@ -125,11 +127,13 @@ class EmbeddingCompat(BaseEmbedding):
     def __init__(
         self,
         adapter_id: str = "",
-        adapter_metadata: dict[str, Any] = {},
+        adapter_metadata: dict[str, Any] = None,
         adapter_instance_id: str = "",
         tool: BaseTool = None,
-        kwargs: dict[str, Any] = {},
+        kwargs: dict[str, Any] = None,
     ):
+        adapter_metadata = adapter_metadata or {}
+        kwargs = kwargs or {}
         super().__init__(**kwargs)
 
         # For compatibility with Prompt Service, SDK indexing and VectorDB.
@@ -141,6 +145,7 @@ class EmbeddingCompat(BaseEmbedding):
             kwargs=kwargs,
         )
         self._length = self._embedding_instance._length
+        self._tool = tool
 
         # For compatibility with SDK Callback Manager.
         self.model_name = self._embedding_instance.kwargs.get("model", "")
@@ -149,9 +154,13 @@ class EmbeddingCompat(BaseEmbedding):
         if not PlatformHelper.is_public_adapter(
             adapter_id=self._embedding_instance._adapter_instance_id
         ):
-            platform_api_key = self._embedding_instance._tool.get_env_or_die(
-                ToolEnv.PLATFORM_API_KEY
-            )
+            if self._tool:
+                platform_api_key = self._embedding_instance._tool.get_env_or_die(
+                    ToolEnv.PLATFORM_API_KEY
+                )
+            else: 
+                platform_api_key = os.environ.get(ToolEnv.PLATFORM_API_KEY, "")
+
             CallbackManager.set_callback(
                 platform_api_key=platform_api_key,
                 model=self,

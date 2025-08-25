@@ -1,10 +1,10 @@
 from typing import Any
 
-from unstract.sdk1.adapters.base1 import BaseAdapter, VertexAIParameters
+from unstract.sdk1.adapters.base1 import BaseAdapter, VertexAILLMParameters
 from unstract.sdk1.adapters.enums import AdapterTypes
 
 
-class VertexAILLMAdapter(VertexAIParameters, BaseAdapter):
+class VertexAILLMAdapter(VertexAILLMParameters, BaseAdapter):
     @staticmethod
     def get_id() -> str:
         return "vertexai|78fa17a5-a619-47d4-ac6e-3fc1698fdb55"
