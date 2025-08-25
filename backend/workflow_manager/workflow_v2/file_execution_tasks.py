@@ -1142,7 +1142,7 @@ class FileExecutionTasks:
                 )
                 destination.delete_file_execution_directory()
             except Exception as cleanup_error:
-                logger.warning(
+                logger.exception(
                     f"[Execution ID: {workflow_execution.id}, File Execution ID: {workflow_file_execution.id}] "
                     f"Failed to delete file execution directory for '{file_hash.file_name}': {cleanup_error}. "
                     f"This is non-critical and needs to be cleaned up later."
