@@ -1135,6 +1135,66 @@ class FileExecutionTasks:
                 api_result=final_result,
             )
 
+            # Track usage for enterprise deployments (graceful fallback for OSS)
+            try:
+                from plugins.verticals_usage.api_hub_headers_cache import (
+                    api_hub_headers_cache,
+                )
+                from plugins.verticals_usage.usage_tracker import api_hub_usage_tracker
+
+                # Get API hub headers from Redis cache
+                api_hub_headers = api_hub_headers_cache.get_headers(
+                    str(workflow_execution.id)
+                )
+
+                if api_hub_headers:
+                    logger.debug(
+                        f"Retrieved API hub headers for tracking: {list(api_hub_headers.keys())}"
+                    )
+
+                    # Extract page count from execution result metadata
+                    execution_result_dict = (
+                        final_result.to_json()
+                        if hasattr(final_result, "to_json")
+                        else {"metadata": {}}
+                    )
+                    metadata = execution_result_dict.get("metadata", {})
+                    page_count = metadata.get("page_count", 0)
+
+                    try:
+                        success = api_hub_usage_tracker.store_usage(
+                            execution_id=str(workflow_execution.id),
+                            api_hub_headers=api_hub_headers,  # Already normalized
+                            page_count=page_count,
+                            organization_id=workflow_execution.workflow.organization_id
+                            if workflow_execution.workflow
+                            else None,
+                        )
+                        if success:
+                            logger.debug(
+                                f"Successfully tracked API hub usage for execution {workflow_execution.id}"
+                            )
+                        else:
+                            logger.warning(
+                                f"API hub usage tracking returned false for execution {workflow_execution.id}"
+                            )
+                    except Exception as track_error:
+                        logger.error(
+                            f"Failed to track API hub usage for execution {workflow_execution.id}: {track_error}"
+                        )
+
+                    # Do not delete headers here; other files in the same execution may still need them.
+                    # Headers will auto-expire based on TTL (2 hours)
+                else:
+                    logger.debug(
+                        f"No API hub headers found for execution {workflow_execution.id}"
+                    )
+
+            except ImportError:
+                logger.debug("API hub usage tracking plugin not available")
+            except Exception as e:
+                logger.error(f"Usage tracking failed: {e}")
+
         if destination:
             try:
                 logger.info(

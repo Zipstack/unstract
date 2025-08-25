@@ -154,6 +154,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         tag_names: list[str] = [],
         llm_profile_id: str | None = None,
         hitl_queue_name: str | None = None,
+        request_headers=None,
     ) -> ReturnDict:
         """Execute workflow by api.
 
@@ -185,6 +186,38 @@ class DeploymentHelper(BaseAPIKeyValidator):
             total_files=len(file_objs),
         )
         execution_id = workflow_execution.id
+
+        # Store API hub headers for usage tracking (enterprise feature)
+        if request_headers:
+            try:
+                from plugins.verticals_usage.api_hub_headers_cache import (
+                    api_hub_headers_cache,
+                )
+                from plugins.verticals_usage.usage_tracker import api_hub_usage_tracker
+
+                normalized_headers = (
+                    api_hub_usage_tracker.extract_api_hub_headers_from_request(
+                        request_headers
+                    )
+                )
+                if normalized_headers:
+                    success = api_hub_headers_cache.store_headers(
+                        str(execution_id), normalized_headers
+                    )
+                    if not success:
+                        logger.warning(
+                            f"Failed to cache API hub headers for execution {execution_id}"
+                        )
+                else:
+                    logger.debug(
+                        "No API hub subscription headers found in request headers"
+                    )
+            except ImportError:
+                logger.debug("API hub usage tracking plugin not available")
+            except Exception as e:
+                logger.warning(
+                    f"API hub header caching failed for execution {execution_id}: {e}"
+                )
 
         hash_values_of_files = SourceConnector.add_input_file_to_api_storage(
             pipeline_id=pipeline_id,
