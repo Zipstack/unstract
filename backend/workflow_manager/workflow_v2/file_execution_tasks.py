@@ -1152,22 +1152,12 @@ class FileExecutionTasks:
                         f"Retrieved API hub headers for tracking: {list(api_hub_headers.keys())}"
                     )
 
-                    # Extract page count from execution result metadata
-                    execution_result_dict = (
-                        final_result.to_json()
-                        if hasattr(final_result, "to_json")
-                        else {"metadata": {}}
-                    )
-                    metadata = execution_result_dict.get("metadata", {})
-                    page_count = metadata.get("page_count", 0)
-
                     try:
                         success = api_hub_usage_tracker.store_usage(
-                            execution_id=str(workflow_execution.id),
+                            file_execution_id=str(workflow_file_execution.id),
                             api_hub_headers=api_hub_headers,  # Already normalized
-                            page_count=page_count,
-                            organization_id=workflow_execution.workflow.organization_id
-                            if workflow_execution.workflow
+                            organization_id=workflow_execution.workflow.organization.organization_id
+                            if workflow_execution.workflow and workflow_execution.workflow.organization
                             else None,
                         )
                         if success:
