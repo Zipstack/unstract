@@ -79,18 +79,3 @@ class APIHubUsageUtil:
         # OSS version - no caching available
         return False
 
-    @staticmethod
-    def is_api_hub_request(headers: dict | None) -> bool:
-        """Check if this is an API Hub request that needs usage tracking.
-
-        OSS version: Always returns False.
-        Enterprise version: Checks for valid API hub headers.
-
-        Args:
-            headers: Normalized API hub headers
-
-        Returns:
-            False in OSS version. Enterprise version returns True if valid API hub request.
-        """
-        # OSS version - no API hub support
-        return False
