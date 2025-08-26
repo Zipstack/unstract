@@ -7,6 +7,7 @@ import requests
 from configuration.models import Configuration
 from django.conf import settings
 from django.core.files.uploadedfile import InMemoryUploadedFile, UploadedFile
+from plugins.workflow_manager.workflow_v2.api_hub_usage_utils import APIHubUsageUtil
 from rest_framework.request import Request
 from rest_framework.serializers import Serializer
 from rest_framework.utils.serializer_helpers import ReturnDict
@@ -190,18 +191,14 @@ class DeploymentHelper(BaseAPIKeyValidator):
         # Store API hub headers for usage tracking (enterprise feature)
         if request_headers:
             try:
-                from plugins.verticals_usage.api_hub_headers_cache import (
-                    api_hub_headers_cache,
+                # Extract and normalize API hub headers
+                normalized_headers = APIHubUsageUtil.extract_api_hub_headers(
+                    request_headers
                 )
-                from plugins.verticals_usage.usage_tracker import api_hub_usage_tracker
-
-                normalized_headers = (
-                    api_hub_usage_tracker.extract_api_hub_headers_from_request(
-                        request_headers
-                    )
-                )
+                
                 if normalized_headers:
-                    success = api_hub_headers_cache.store_headers(
+                    # Cache headers for later usage tracking by file execution tasks
+                    success = APIHubUsageUtil.cache_api_hub_headers(
                         str(execution_id), normalized_headers
                     )
                     if not success:
@@ -212,10 +209,9 @@ class DeploymentHelper(BaseAPIKeyValidator):
                     logger.debug(
                         "No API hub subscription headers found in request headers"
                     )
-            except ImportError:
-                logger.debug("API hub usage tracking plugin not available")
             except Exception as e:
-                logger.warning(
+                # Log but don't fail the API execution for header caching issues
+                logger.debug(
                     f"API hub header caching failed for execution {execution_id}: {e}"
                 )
 
