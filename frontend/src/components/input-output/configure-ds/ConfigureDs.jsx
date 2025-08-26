@@ -1,9 +1,7 @@
 import { Col, Row } from "antd";
 import PropTypes from "prop-types";
 import { createRef, useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
 
-import { sourceTypes } from "../../../helpers/GetStaticData.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { RjsfFormLayout } from "../../../layouts/rjsf-form-layout/RjsfFormLayout.jsx";
@@ -13,6 +11,7 @@ import { OAuthDs } from "../../oauth-ds/oauth-ds/OAuthDs.jsx";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import "./ConfigureDs.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
+import useRequestUrl from "../../../hooks/useRequestUrl";
 
 function ConfigureDs({
   spec,
@@ -25,19 +24,16 @@ function ConfigureDs({
   addNewItem,
   type,
   editItemId,
-  sourceType,
-  handleUpdate,
-  connDetails,
+  isConnector,
   metadata,
   selectedSourceName,
-  connType,
-  formDataConfig,
 }) {
   const formRef = createRef(null);
   const axiosPrivate = useAxiosPrivate();
   const [isTcSuccessful, setIsTcSuccessful] = useState(false);
   const [isTcLoading, setIsTcLoading] = useState(false);
   const [isSubmitApiLoading, setIsSubmitApiLoading] = useState(false);
+
   const [cacheKey, setCacheKey] = useState("");
   const [status, setStatus] = useState("");
   const { sessionDetails } = useSessionStore();
@@ -50,8 +46,49 @@ function ConfigureDs({
     posthogConnectorAddedEventText,
     setPostHogCustomEvent,
   } = usePostHogEvents();
+  const { getUrl } = useRequestUrl();
 
-  const { id } = useParams();
+  const oauthCacheKey = `oauth-cachekey-${selectedSourceId}`;
+  const oauthStatusKey = `oauth-status-${selectedSourceId}`;
+
+  // Initialize OAuth state from localStorage after keys are available
+  useEffect(() => {
+    if (!oAuthProvider?.length) {
+      return;
+    }
+
+    // Initialize cache key
+    const storedCacheKey = localStorage.getItem(oauthCacheKey);
+    if (storedCacheKey) {
+      setCacheKey(storedCacheKey);
+    }
+
+    // Initialize status from connector-specific key only
+    const storedStatus = localStorage.getItem(oauthStatusKey);
+    if (storedStatus) {
+      setStatus(storedStatus);
+    }
+  }, [oauthCacheKey, oauthStatusKey, oAuthProvider, selectedSourceId]);
+
+  // Wrapper functions to persist OAuth state to localStorage
+  const handleSetCacheKey = (key) => {
+    // Only handle OAuth operations for OAuth-enabled connectors
+    if (!oAuthProvider?.length) {
+      return;
+    }
+    setCacheKey(key);
+    localStorage.setItem(oauthCacheKey, key);
+  };
+
+  const handleSetStatus = (newStatus) => {
+    // Only handle OAuth operations for OAuth-enabled connectors
+    if (!oAuthProvider?.length) {
+      return;
+    }
+    setStatus(newStatus);
+    // Store only in connector-specific location to prevent contamination
+    localStorage.setItem(oauthStatusKey, newStatus);
+  };
 
   useEffect(() => {
     if (isTcSuccessful) {
@@ -60,15 +97,40 @@ function ConfigureDs({
   }, [formData]);
 
   useEffect(() => {
-    const { connector_id: connectorId } = connDetails || {};
-
-    // Check if connectorId matches selectedSourceId and metadata is available
-    const shouldSetMetadata = connectorId === selectedSourceId && metadata;
-    if (!shouldSetMetadata) return;
-
-    // Set formData based on the condition
+    if (!metadata) return;
     setFormData(metadata);
-  }, [selectedSourceId]);
+  }, [selectedSourceId, metadata, setFormData]);
+
+  // Clear OAuth state when switching to a different connector
+  useEffect(() => {
+    // Reset test connection success when switching connectors
+    setIsTcSuccessful(false);
+
+    // Reset local state only if current connector doesn't have stored OAuth credentials
+    const hasStoredOAuthState =
+      localStorage.getItem(oauthStatusKey) ||
+      localStorage.getItem(oauthCacheKey);
+    if (oAuthProvider?.length > 0 && !hasStoredOAuthState) {
+      setStatus("");
+      setCacheKey("");
+    }
+  }, [selectedSourceId, oauthStatusKey, oauthCacheKey]);
+
+  // Restore OAuth state when returning to a connector with stored credentials
+  useEffect(() => {
+    if (oAuthProvider?.length > 0) {
+      const storedStatus = localStorage.getItem(oauthStatusKey);
+      const storedCacheKey = localStorage.getItem(oauthCacheKey);
+
+      // Always restore stored credentials when switching to this connector
+      if (storedStatus) {
+        setStatus(storedStatus);
+      }
+      if (storedCacheKey) {
+        setCacheKey(storedCacheKey);
+      }
+    }
+  }, [selectedSourceId, oAuthProvider, oauthStatusKey, oauthCacheKey]);
 
   const isFormValid = () => {
     if (formRef) {
@@ -87,33 +149,35 @@ function ConfigureDs({
       return;
     }
     if (oAuthProvider?.length && (status !== "success" || !cacheKey?.length)) {
+      const providerName =
+        oAuthProvider === "google-oauth2" ? "Google" : "OAuth provider";
       setAlertDetails({
         type: "error",
-        content: "Invalid OAuth",
+        content: `OAuth authentication required. Please sign in with ${providerName} first.`,
       });
       return;
     }
 
     let body = {};
-    let url = `/api/v1/unstract/${sessionDetails?.orgId}/`;
+    let url;
 
-    if (sourceType === Object.keys(sourceTypes)[0]) {
+    if (isConnector) {
       const connectorMetadata = { ...updatedFormData };
       delete connectorMetadata.connectorName;
       body = {
         connector_id: selectedSourceId,
         connector_metadata: connectorMetadata,
       };
-      url += "test_connectors/";
+      url = getUrl("test_connectors/");
     } else {
       const adapterMetadata = { ...updatedFormData };
       delete adapterMetadata.adapterName;
       body = {
         adapter_id: selectedSourceId,
         adapter_metadata: adapterMetadata,
-        adapter_type: type.toUpperCase(),
+        adapter_type: type?.toUpperCase(),
       };
-      url += "test_adapters/";
+      url = getUrl("test_adapters/");
 
       try {
         setPostHogCustomEvent(posthogTcEventText[type], {
@@ -178,9 +242,9 @@ function ConfigureDs({
     }
 
     let body = {};
-    let url = `/api/v1/unstract/${sessionDetails?.orgId}/`;
+    let url;
 
-    if (sourceType === Object.keys(sourceTypes)[0]) {
+    if (isConnector) {
       const connectorMetadata = { ...formData };
       const connectorName = connectorMetadata?.connectorName;
       delete connectorMetadata.connectorName;
@@ -190,20 +254,18 @@ function ConfigureDs({
         connector_metadata: connectorMetadata,
         connector_name: connectorName,
         created_by: sessionDetails?.id,
-        workflow: id,
-        connector_type: type.toUpperCase(),
       };
 
-      url += "connector/";
+      url = getUrl("connector/");
 
       try {
-        setPostHogCustomEvent(
-          posthogConnectorAddedEventText[`${connType}:${type}`],
-          {
+        const eventKey = `${type.toUpperCase()}`;
+        if (posthogConnectorAddedEventText[eventKey]) {
+          setPostHogCustomEvent(posthogConnectorAddedEventText[eventKey], {
             info: `Clicked on 'Submit' button`,
             connector_name: selectedSourceName,
-          }
-        );
+          });
+        }
       } catch (err) {
         // If an error occurs while setting custom posthog event, ignore it and continue
       }
@@ -214,10 +276,10 @@ function ConfigureDs({
       body = {
         adapter_id: selectedSourceId,
         adapter_metadata: adapterMetadata,
-        adapter_type: type.toUpperCase(),
+        adapter_type: type?.toUpperCase(),
         adapter_name: adapterName,
       };
-      url += "adapter/";
+      url = getUrl("adapter/");
 
       try {
         setPostHogCustomEvent(posthogSubmitEventText[type], {
@@ -232,7 +294,7 @@ function ConfigureDs({
     let method = "POST";
     if (editItemId?.length) {
       method = "PUT";
-      url += `${editItemId}/`;
+      url = `${url}${editItemId}/`;
     }
 
     if (oAuthProvider?.length > 0) {
@@ -254,17 +316,8 @@ function ConfigureDs({
     axiosPrivate(requestOptions)
       .then((res) => {
         const data = res?.data;
-        if (sourceTypes.connectors.includes(type)) {
-          handleUpdate(
-            {
-              connector_instance_id: data?.id,
-              configuration: formDataConfig,
-            },
-            true
-          );
-          setIsTcSuccessful(false);
-          return;
-        }
+
+        // For centralized connectors or adapters
         if (data) {
           addNewItem(data, !!editItemId);
         }
@@ -274,9 +327,13 @@ function ConfigureDs({
             method === "POST" ? "added" : "updated"
           } connector`,
         });
-        if (sourceType === Object.keys(sourceTypes)[1] && method === "POST") {
+        if (!isConnector && method === "POST") {
           updateSession(type);
         }
+
+        // Keep OAuth state after successful submission for potential re-use
+        // OAuth state will be cleared only when switching to different connectors
+
         setOpen(false);
       })
       .catch((err) => {
@@ -302,8 +359,9 @@ function ConfigureDs({
       {!isLoading && oAuthProvider?.length > 0 && (
         <OAuthDs
           oAuthProvider={oAuthProvider}
-          setCacheKey={setCacheKey}
-          setStatus={setStatus}
+          setCacheKey={handleSetCacheKey}
+          setStatus={handleSetStatus}
+          selectedSourceId={selectedSourceId}
         />
       )}
       <RjsfFormLayout
@@ -355,13 +413,9 @@ ConfigureDs.propTypes = {
   addNewItem: PropTypes.func,
   type: PropTypes.string,
   editItemId: PropTypes.string,
-  sourceType: PropTypes.string.isRequired,
-  handleUpdate: PropTypes.func,
-  connDetails: PropTypes.object,
+  isConnector: PropTypes.bool.isRequired,
   metadata: PropTypes.object,
   selectedSourceName: PropTypes.string.isRequired,
-  connType: PropTypes.string,
-  formDataConfig: PropTypes.object,
 };
 
 export { ConfigureDs };

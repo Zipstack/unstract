@@ -10,8 +10,8 @@ from connector_v2.constants import ConnectorInstanceKey as CIKey
 from backend.exceptions import UnstractFSException
 from connector_processor.constants import ConnectorKeys
 from connector_processor.exceptions import (
-    InValidConnectorId,
-    InValidConnectorMode,
+    InvalidConnectorID,
+    InvalidConnectorMode,
     OAuthTimeOut,
     TestConnectorInputError,
 )
@@ -45,12 +45,9 @@ class ConnectorProcessor:
             return schema_details
         updated_connectors = fetch_connectors_by_key_value(ConnectorKeys.ID, connector_id)
         if len(updated_connectors) == 0:
-            logger.error(
-                f"Invalid connector Id : {connector_id} "
-                f"while fetching "
-                f"JSON Schema"
+            raise InvalidConnectorID(
+                f"Invalid connector ID '{connector_id}' while fetching JSON Schema"
             )
-            raise InValidConnectorId()
 
         connector = updated_connectors[0]
         schema_details[ConnectorKeys.OAUTH] = connector.get(ConnectorKeys.OAUTH)
@@ -69,30 +66,42 @@ class ConnectorProcessor:
 
     @staticmethod
     def get_all_supported_connectors(
-        type: str, connector_mode: ConnectorMode | None = None
+        type: str | None = None, connector_mode: ConnectorMode | None = None
     ) -> list[dict]:
         """Function to return list of all supported connectors except PCS."""
         supported_connectors = []
         updated_connectors = []
+
+        # HACK: Connectors that are marked active but not supported explicitly
+        # TODO: Remove RedisQueue from the list of connectors and use separately instead
+        unsupported_connectors = ["redisqueue|79e1d681-9b8b-4f6b-b972-1a6a095312f45"]
+
         if type == ConnectorKeys.INPUT:
             updated_connectors = fetch_connectors_by_key_value(
                 ConnectorKeys.CAN_READ, True, connector_mode=connector_mode
             )
-        if type == ConnectorKeys.OUTPUT:
+        elif type == ConnectorKeys.OUTPUT:
             updated_connectors = fetch_connectors_by_key_value(
                 ConnectorKeys.CAN_WRITE, True, connector_mode=connector_mode
             )
+        else:
+            # When type is None, get all connectors directly
+            connector_kit = Connectorkit()
+            updated_connectors = connector_kit.get_connectors_list(mode=connector_mode)
 
-        for each_connector in updated_connectors:
+        for connector in updated_connectors:
+            if connector.get(ConnectorKeys.ID) in unsupported_connectors:
+                continue
+            mode = connector.get(CIKey.CONNECTOR_MODE)
             supported_connectors.append(
                 {
-                    ConnectorKeys.ID: each_connector.get(ConnectorKeys.ID),
-                    ConnectorKeys.NAME: each_connector.get(ConnectorKeys.NAME),
-                    ConnectorKeys.DESCRIPTION: each_connector.get(
-                        ConnectorKeys.DESCRIPTION
-                    ),
-                    ConnectorKeys.ICON: each_connector.get(ConnectorKeys.ICON),
-                    CIKey.CONNECTOR_MODE: each_connector.get(CIKey.CONNECTOR_MODE).name,
+                    ConnectorKeys.ID: connector.get(ConnectorKeys.ID),
+                    ConnectorKeys.NAME: connector.get(ConnectorKeys.NAME),
+                    ConnectorKeys.DESCRIPTION: connector.get(ConnectorKeys.DESCRIPTION),
+                    ConnectorKeys.ICON: connector.get(ConnectorKeys.ICON),
+                    ConnectorKeys.CAN_READ: connector.get(ConnectorKeys.CAN_READ),
+                    ConnectorKeys.CAN_WRITE: connector.get(ConnectorKeys.CAN_WRITE),
+                    CIKey.CONNECTOR_MODE: getattr(mode, "value", None),
                 }
             )
 
@@ -112,8 +121,7 @@ class ConnectorProcessor:
                 )
             except Exception as exc:
                 logger.error(
-                    f"Error while testing file based OAuth supported "
-                    f"connectors: {exc}"
+                    f"Error while testing file based OAuth supported connectors: {exc}"
                 )
                 raise OAuthTimeOut()
 
@@ -131,8 +139,9 @@ class ConnectorProcessor:
         """Generic Function to get connector data with provided key."""
         updated_connectors = fetch_connectors_by_key_value("id", connector_id)
         if len(updated_connectors) == 0:
-            logger.error(f"Invalid connector ID {connector_id} while invoking utility")
-            raise InValidConnectorId()
+            raise InvalidConnectorID(
+                f"Invalid connector ID '{connector_id}' while invoking utility"
+            )
         return fetch_connectors_by_key_value("id", connector_id)[0].get(key_value)
 
     @staticmethod
@@ -151,5 +160,5 @@ class ConnectorProcessor:
         try:
             connector_mode = ConnectorMode(connector_mode)
         except ValueError:
-            raise InValidConnectorMode
+            raise InvalidConnectorMode
         return connector_mode

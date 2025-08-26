@@ -20,7 +20,6 @@ workflow_execute = WorkflowViewSet.as_view({"post": "execute", "put": "activate"
 execution_entity = WorkflowExecutionViewSet.as_view({"get": "retrieve"})
 execution_list = WorkflowExecutionViewSet.as_view({"get": "list"})
 execution_log_list = WorkflowExecutionLogViewSet.as_view({"get": "list"})
-workflow_clear_cache = WorkflowViewSet.as_view({"get": "clear_cache"})
 workflow_clear_file_marker = WorkflowViewSet.as_view({"get": "clear_file_marker"})
 workflow_schema = WorkflowViewSet.as_view({"get": "get_schema"})
 can_update = WorkflowViewSet.as_view({"get": "can_update"})
@@ -29,11 +28,6 @@ urlpatterns = format_suffix_patterns(
     [
         path("", workflow_list, name="workflow-list"),
         path("<uuid:pk>/", workflow_detail, name="workflow-detail"),
-        path(
-            "<uuid:pk>/clear-cache/",
-            workflow_clear_cache,
-            name="clear-cache",
-        ),
         path(
             "<uuid:pk>/clear-file-marker/",
             workflow_clear_file_marker,
