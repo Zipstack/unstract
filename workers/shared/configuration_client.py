@@ -54,6 +54,15 @@ class WorkerConfigurationClient:
         self.api_client = api_client
         self.core_client = CoreConfigurationClient(api_client=self._create_api_adapter())
 
+        # Configuration caching for performance optimization
+        self._config_cache = {}
+        self._cache_timestamps = {}
+        self._cache_ttl = (
+            getattr(self.api_client.config, "config_cache_ttl", 300)
+            if api_client
+            else 300
+        )  # 5 minutes default
+
     def _create_api_adapter(self):
         """Create an adapter for the core configuration client to use our API client.
 
@@ -97,8 +106,36 @@ class WorkerConfigurationClient:
 
         return APIAdapter(self.api_client)
 
+    def _get_cache_key(self, config_key: str, organization_id: str | None = None) -> str:
+        """Generate cache key for configuration values."""
+        return f"{config_key}:{organization_id or 'default'}"
+
+    def _is_cache_valid(self, cache_key: str) -> bool:
+        """Check if cached value is still valid."""
+        if cache_key not in self._cache_timestamps:
+            return False
+
+        # Check if caching is enabled
+        if (
+            hasattr(self.api_client, "config")
+            and hasattr(self.api_client.config, "enable_config_cache")
+            and not self.api_client.config.enable_config_cache
+        ):
+            return False
+
+        import time
+
+        return (time.time() - self._cache_timestamps[cache_key]) < self._cache_ttl
+
+    def _set_cache(self, cache_key: str, value: Any) -> None:
+        """Store value in cache with timestamp."""
+        import time
+
+        self._config_cache[cache_key] = value
+        self._cache_timestamps[cache_key] = time.time()
+
     def get_max_parallel_file_batches(self, organization_id: str | None = None) -> int:
-        """Get MAX_PARALLEL_FILE_BATCHES configuration for an organization.
+        """Get MAX_PARALLEL_FILE_BATCHES configuration for an organization with caching.
 
         Args:
             organization_id: Organization ID for specific overrides
@@ -106,8 +143,24 @@ class WorkerConfigurationClient:
         Returns:
             Maximum parallel file batches (guaranteed to be >= 1)
         """
+        cache_key = self._get_cache_key("MAX_PARALLEL_FILE_BATCHES", organization_id)
+
+        # Check cache first
+        if self._is_cache_valid(cache_key):
+            cached_value = self._config_cache[cache_key]
+            logger.debug(
+                f"Using cached configuration for org {organization_id}: {cached_value}"
+            )
+            return cached_value
+
         try:
-            return self.core_client.get_max_parallel_file_batches(organization_id)
+            value = self.core_client.get_max_parallel_file_batches(organization_id)
+            # Cache the successful result
+            self._set_cache(cache_key, value)
+            logger.debug(
+                f"Using organization configuration for {organization_id}: {value}"
+            )
+            return value
         except Exception as e:
             logger.warning(f"Failed to get batch size from configuration: {e}")
             # Fallback to environment variable (matching backend)
@@ -117,7 +170,13 @@ class WorkerConfigurationClient:
                 value = int(
                     os.getenv("MAX_PARALLEL_FILE_BATCHES", "1")
                 )  # Match backend default
-                return max(1, value)
+                value = max(1, value)
+                # Cache the fallback value for a shorter time (30 seconds)
+                import time
+
+                self._cache_timestamps[cache_key] = time.time() - (self._cache_ttl - 30)
+                self._config_cache[cache_key] = value
+                return value
             except (ValueError, TypeError):
                 env_default = int(os.getenv("MAX_PARALLEL_FILE_BATCHES", "1"))
                 logger.warning(

@@ -104,8 +104,12 @@ class BaseAPIClient:
         self.session = requests.Session()
         self._setup_session()
 
-        logger.info(f"Initialized BaseAPIClient for {self.base_url}")
-        logger.debug(f"API endpoint configuration: {self.get_endpoint_config()}")
+        if self.config.debug_api_client_init:
+            logger.info(f"Initialized BaseAPIClient for {self.base_url}")
+            logger.debug(f"API endpoint configuration: {self.get_endpoint_config()}")
+        else:
+            # Just log without DEBUG prefix to reduce noise
+            logger.info(f"Initialized BaseAPIClient for {self.base_url}")
 
     def get_endpoint_config(self) -> dict[str, str]:
         """Get current API endpoint configuration for debugging."""
@@ -512,30 +516,49 @@ class BaseAPIClient:
 
     # Organization context management
     def set_organization_context(self, org_id: str):
-        """Set organization context for subsequent requests."""
-        logger.info(
-            f"DEBUG: set_organization_context called with org_id='{org_id}' (type: {type(org_id).__name__})"
-        )
+        """Set organization context for subsequent requests with caching optimization."""
+        # Performance optimization: Skip redundant context setting
+        if (
+            hasattr(self, "_cached_org_id")
+            and self._cached_org_id == org_id
+            and self.config.enable_organization_context_cache
+        ):
+            if self.config.debug_organization_context:
+                logger.info(
+                    f"DEBUG: Using cached organization context '{org_id}' - skipping redundant call"
+                )
+            return
+
+        if self.config.debug_organization_context:
+            logger.info(
+                f"DEBUG: set_organization_context called with org_id='{org_id}' (type: {type(org_id).__name__})"
+            )
 
         if org_id is None or str(org_id).lower() == "none":
-            logger.error(
-                f"DEBUG: Attempted to set organization context with invalid value: '{org_id}' - skipping header"
-            )
+            if self.config.debug_organization_context:
+                logger.error(
+                    f"DEBUG: Attempted to set organization context with invalid value: '{org_id}' - skipping header"
+                )
             self.organization_id = None
+            self._cached_org_id = None
             # Don't set the header if org_id is None
             if "X-Organization-ID" in self.session.headers:
                 del self.session.headers["X-Organization-ID"]
-                logger.info("DEBUG: Removed X-Organization-ID header from session")
+                if self.config.debug_organization_context:
+                    logger.info("DEBUG: Removed X-Organization-ID header from session")
             return
 
         self.organization_id = org_id
+        self._cached_org_id = org_id  # Cache for future calls
         self.session.headers["X-Organization-ID"] = org_id
-        logger.info(
-            f"DEBUG: Set organization context to '{org_id}' - header added to session"
-        )
-        logger.info(
-            f"DEBUG: Session headers now include: {list(self.session.headers.keys())}"
-        )
+
+        if self.config.debug_organization_context:
+            logger.info(
+                f"DEBUG: Set organization context to '{org_id}' - header added to session"
+            )
+            logger.info(
+                f"DEBUG: Session headers now include: {list(self.session.headers.keys())}"
+            )
 
     def clear_organization_context(self):
         """Clear organization context."""

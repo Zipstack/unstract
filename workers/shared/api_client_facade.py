@@ -105,6 +105,11 @@ class InternalAPIClient(CachedAPIClientMixin):
     both the improved modular architecture and caching for better performance.
     """
 
+    # Class-level shared base client for singleton pattern
+    _shared_base_client = None
+    _shared_session = None
+    _initialization_count = 0
+
     def __init__(self, config: WorkerConfig | None = None):
         """Initialize the facade with all specialized clients and caching.
 
@@ -130,7 +135,62 @@ class InternalAPIClient(CachedAPIClientMixin):
         )
 
     def _initialize_core_clients(self) -> None:
-        """Initialize all core API clients."""
+        """Initialize all core API clients with performance optimizations."""
+        if self.config.enable_api_client_singleton:
+            self._initialize_core_clients_optimized()
+        else:
+            self._initialize_core_clients_traditional()
+
+    def _initialize_core_clients_optimized(self) -> None:
+        """Initialize clients using singleton pattern for better performance."""
+        InternalAPIClient._initialization_count += 1
+
+        # Create or reuse shared base client
+        if InternalAPIClient._shared_base_client is None:
+            if self.config.debug_api_client_init:
+                logger.info("Creating shared BaseAPIClient instance (singleton pattern)")
+            InternalAPIClient._shared_base_client = BaseAPIClient(self.config)
+            self.base_client = InternalAPIClient._shared_base_client
+        else:
+            if self.config.debug_api_client_init:
+                logger.info(
+                    f"Reusing shared BaseAPIClient instance (#{InternalAPIClient._initialization_count})"
+                )
+            self.base_client = InternalAPIClient._shared_base_client
+
+        # Create specialized clients that share the base configuration
+        self.execution_client = (
+            ExecutionAPIClient.from_base_client(self.base_client)
+            if hasattr(ExecutionAPIClient, "from_base_client")
+            else ExecutionAPIClient(self.config)
+        )
+        self.file_client = (
+            FileAPIClient.from_base_client(self.base_client)
+            if hasattr(FileAPIClient, "from_base_client")
+            else FileAPIClient(self.config)
+        )
+        self.webhook_client = (
+            WebhookAPIClient.from_base_client(self.base_client)
+            if hasattr(WebhookAPIClient, "from_base_client")
+            else WebhookAPIClient(self.config)
+        )
+        self.organization_client = (
+            OrganizationAPIClient.from_base_client(self.base_client)
+            if hasattr(OrganizationAPIClient, "from_base_client")
+            else OrganizationAPIClient(self.config)
+        )
+        self.tool_client = (
+            ToolAPIClient.from_base_client(self.base_client)
+            if hasattr(ToolAPIClient, "from_base_client")
+            else ToolAPIClient(self.config)
+        )
+
+    def _initialize_core_clients_traditional(self) -> None:
+        """Initialize clients the traditional way (for backward compatibility)."""
+        if self.config.debug_api_client_init:
+            logger.info(
+                "Using traditional API client initialization (6 separate instances)"
+            )
         self.base_client = BaseAPIClient(self.config)
         self.execution_client = ExecutionAPIClient(self.config)
         self.file_client = FileAPIClient(self.config)

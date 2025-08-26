@@ -319,6 +319,43 @@ class WorkerConfig:
         default_factory=lambda: int(os.getenv("MAX_CONCURRENT_TASKS", "10"))
     )
 
+    # API Client Performance Optimization
+    enable_api_client_singleton: bool = field(
+        default_factory=lambda: os.getenv("ENABLE_API_CLIENT_SINGLETON", "true").lower()
+        == "true"
+    )
+    enable_organization_context_cache: bool = field(
+        default_factory=lambda: os.getenv(
+            "ENABLE_ORGANIZATION_CONTEXT_CACHE", "true"
+        ).lower()
+        == "true"
+    )
+    api_client_pool_size: int = field(
+        default_factory=lambda: int(os.getenv("API_CLIENT_POOL_SIZE", "3"))
+    )
+
+    # Configuration Caching
+    enable_config_cache: bool = field(
+        default_factory=lambda: os.getenv("ENABLE_CONFIG_CACHE", "true").lower() == "true"
+    )
+    config_cache_ttl: int = field(
+        default_factory=lambda: int(os.getenv("CONFIG_CACHE_TTL", "300"))
+    )
+
+    # Debug Logging Control (Performance Optimization)
+    enable_debug_logging: bool = field(
+        default_factory=lambda: os.getenv("ENABLE_DEBUG_LOGGING", "false").lower()
+        == "true"
+    )
+    debug_api_client_init: bool = field(
+        default_factory=lambda: os.getenv("DEBUG_API_CLIENT_INIT", "false").lower()
+        == "true"
+    )
+    debug_organization_context: bool = field(
+        default_factory=lambda: os.getenv("DEBUG_ORGANIZATION_CONTEXT", "false").lower()
+        == "true"
+    )
+
     # Task Timeout Settings (in seconds) - 1 hour defaults
     task_timeout: int = field(
         default_factory=lambda: int(
