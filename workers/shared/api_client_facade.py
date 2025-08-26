@@ -145,45 +145,47 @@ class InternalAPIClient(CachedAPIClientMixin):
         """Initialize clients using singleton pattern for better performance."""
         InternalAPIClient._initialization_count += 1
 
-        # Create or reuse shared base client
-        if InternalAPIClient._shared_base_client is None:
+        # Create or reuse shared session and configuration
+        if InternalAPIClient._shared_session is None:
             if self.config.debug_api_client_init:
-                logger.info("Creating shared BaseAPIClient instance (singleton pattern)")
-            InternalAPIClient._shared_base_client = BaseAPIClient(self.config)
-            self.base_client = InternalAPIClient._shared_base_client
+                logger.info("Creating shared HTTP session (singleton pattern)")
+            # Create the first base client to establish the session
+            self.base_client = BaseAPIClient(self.config)
+            # Share the session for reuse
+            InternalAPIClient._shared_session = self.base_client.session
+            InternalAPIClient._shared_base_client = self.base_client
         else:
             if self.config.debug_api_client_init:
                 logger.info(
-                    f"Reusing shared BaseAPIClient instance (#{InternalAPIClient._initialization_count})"
+                    f"Reusing shared HTTP session (#{InternalAPIClient._initialization_count})"
                 )
-            self.base_client = InternalAPIClient._shared_base_client
+            # Create base client and replace its session with shared one
+            self.base_client = BaseAPIClient(self.config)
+            self.base_client.session.close()  # Close the new session
+            self.base_client.session = (
+                InternalAPIClient._shared_session
+            )  # Use shared session
 
-        # Create specialized clients that share the base configuration
-        self.execution_client = (
-            ExecutionAPIClient.from_base_client(self.base_client)
-            if hasattr(ExecutionAPIClient, "from_base_client")
-            else ExecutionAPIClient(self.config)
-        )
-        self.file_client = (
-            FileAPIClient.from_base_client(self.base_client)
-            if hasattr(FileAPIClient, "from_base_client")
-            else FileAPIClient(self.config)
-        )
-        self.webhook_client = (
-            WebhookAPIClient.from_base_client(self.base_client)
-            if hasattr(WebhookAPIClient, "from_base_client")
-            else WebhookAPIClient(self.config)
-        )
-        self.organization_client = (
-            OrganizationAPIClient.from_base_client(self.base_client)
-            if hasattr(OrganizationAPIClient, "from_base_client")
-            else OrganizationAPIClient(self.config)
-        )
-        self.tool_client = (
-            ToolAPIClient.from_base_client(self.base_client)
-            if hasattr(ToolAPIClient, "from_base_client")
-            else ToolAPIClient(self.config)
-        )
+        # Create specialized clients with shared session
+        self.execution_client = ExecutionAPIClient(self.config)
+        self.execution_client.session.close()
+        self.execution_client.session = InternalAPIClient._shared_session
+
+        self.file_client = FileAPIClient(self.config)
+        self.file_client.session.close()
+        self.file_client.session = InternalAPIClient._shared_session
+
+        self.webhook_client = WebhookAPIClient(self.config)
+        self.webhook_client.session.close()
+        self.webhook_client.session = InternalAPIClient._shared_session
+
+        self.organization_client = OrganizationAPIClient(self.config)
+        self.organization_client.session.close()
+        self.organization_client.session = InternalAPIClient._shared_session
+
+        self.tool_client = ToolAPIClient(self.config)
+        self.tool_client.session.close()
+        self.tool_client.session = InternalAPIClient._shared_session
 
     def _initialize_core_clients_traditional(self) -> None:
         """Initialize clients the traditional way (for backward compatibility)."""
