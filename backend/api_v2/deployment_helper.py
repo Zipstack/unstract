@@ -195,7 +195,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 normalized_headers = APIHubUsageUtil.extract_api_hub_headers(
                     request_headers
                 )
-                
+
                 if normalized_headers:
                     # Cache headers for later usage tracking by file execution tasks
                     success = APIHubUsageUtil.cache_api_hub_headers(
