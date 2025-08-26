@@ -120,6 +120,11 @@ urlpatterns = [
         name="workflow_file_execution",
     ),
     path(
+        "file-execution/check-active",
+        internal_views.WorkflowFileExecutionCheckActiveAPIView.as_view(),
+        name="workflow_file_execution_check_active",
+    ),
+    path(
         "execute-file/",
         internal_views.WorkflowExecuteFileAPIView.as_view(),
         name="execute_workflow_file",

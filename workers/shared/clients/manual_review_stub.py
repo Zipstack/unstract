@@ -50,15 +50,15 @@ class ManualReviewNullClient:
         )
 
     def get_q_no_list(
-        self, workflow_id: str, total_files: int, organization_id: str | None = None
+        self, workflow_id: str, total_files: int = 0, organization_id: str | None = None
     ) -> ManualReviewResponse:
         """Get queue file numbers for manual review (returns empty list in
         OSS).
 
         Args:
             workflow_id: Workflow ID
-            total_files: Total number of files
-            organization_id: Organization ID
+            total_files: Total number of files (unused in stub)
+            organization_id: Organization ID (unused in stub)
 
         Returns:
             ManualReviewResponse with empty q_file_no_list indicating no files for manual review
@@ -72,13 +72,13 @@ class ManualReviewNullClient:
         )
 
     def get_db_rules_data(
-        self, workflow_id: str, organization_id: str | None = None
+        self, workflow_id: str, _organization_id: str | None = None
     ) -> ManualReviewResponse:
         """Get database rules for manual review (returns no rules in OSS).
 
         Args:
             workflow_id: Workflow ID
-            organization_id: Organization ID
+            _organization_id: Organization ID (unused in stub)
 
         Returns:
             ManualReviewResponse indicating no manual review rules are configured
@@ -288,7 +288,6 @@ class ManualReviewNullClient:
     def close(self) -> None:
         """Close the client (no-op in null implementation)."""
         logger.debug("ManualReviewNullClient: close called - no-op")
-        pass
 
     def __enter__(self):
         """Context manager entry."""

@@ -61,8 +61,24 @@ from unstract.core.data_models import ExecutionStatus, FileHashData
 
 logger = WorkerLogger.get_logger(__name__)
 
+# Constants
+NOT_FOUND_MSG = "Not Found"
+
 # Initialize performance optimization managers on module load
 _performance_managers_initialized = False
+
+
+def _get_callback_timeouts():
+    """Get coordinated timeout values to prevent mismatch with file processing.
+
+    This ensures callback tasks have adequate time to complete even if file processing
+    took longer than expected. Uses workflow-level timeout coordination.
+    """
+    from shared.config import WorkerConfig
+
+    config = WorkerConfig()
+    timeouts = config.get_coordinated_timeouts()
+    return timeouts["callback"], timeouts["callback_soft"]
 
 
 def _initialize_performance_managers():
@@ -465,7 +481,6 @@ def _update_pipeline_with_batching(
     status: str,
     organization_id: str,
     api_client: InternalAPIClient,
-    pipeline_name: str | None = None,
     **additional_fields,
 ) -> bool:
     """Update pipeline status using batching optimization.
@@ -915,7 +930,7 @@ def _process_batch_callback_core(
                         max_delay=10.0,
                     )
                 except Exception as e:
-                    if "404" in str(e) or "Not Found" in str(e):
+                    if "404" in str(e) or NOT_FOUND_MSG in str(e):
                         logger.info(
                             "Finalization API endpoint not available, workflow finalization completed via status update"
                         )
@@ -938,7 +953,7 @@ def _process_batch_callback_core(
                         organization_id=organization_id,
                     )
                 except Exception as e:
-                    if "404" in str(e) or "Not Found" in str(e):
+                    if "404" in str(e) or NOT_FOUND_MSG in str(e):
                         logger.info(
                             "Finalization API endpoint not available, workflow finalization completed via status update"
                         )
@@ -982,7 +997,6 @@ def _process_batch_callback_core(
                             status=pipeline_status,
                             organization_id=organization_id,
                             api_client=api_client,
-                            pipeline_name=pipeline_name,
                             last_run_status=pipeline_status,
                             last_run_time=time.time(),
                             increment_run_count=True,
@@ -1013,7 +1027,7 @@ def _process_batch_callback_core(
                         if (
                             "404" in str(e)
                             or "Pipeline not found" in str(e)
-                            or "Not Found" in str(e)
+                            or NOT_FOUND_MSG in str(e)
                         ):
                             logger.info(
                                 f"Pipeline {pipeline_id} not found - likely using stale reference, skipping update"
@@ -1036,7 +1050,7 @@ def _process_batch_callback_core(
                 )
                 cleanup_result = {"status": "skipped", "message": "Circuit breaker open"}
             except Exception as e:
-                if "404" in str(e) or "Not Found" in str(e):
+                if "404" in str(e) or NOT_FOUND_MSG in str(e):
                     logger.info(
                         "Cleanup API endpoint not available, skipping resource cleanup"
                     )
@@ -1102,7 +1116,7 @@ def _process_batch_callback_core(
                     handle_status_notifications(
                         api_client=api_client,
                         pipeline_id=notification_target_id,
-                        status="COMPLETED",
+                        status=ExecutionStatus.COMPLETED.value,
                         execution_id=execution_id,
                         error_message=None,
                         pipeline_name=pipeline_name,
@@ -1131,12 +1145,12 @@ def _process_batch_callback_core(
                     try:
                         api_client.finalize_workflow_execution(
                             execution_id=execution_id,
-                            final_status="ERROR",
+                            final_status=ExecutionStatus.ERROR.value,
                             error_summary={"callback_error": str(e)},
                             organization_id=organization_id,
                         )
                     except Exception as finalize_error:
-                        if "404" in str(finalize_error) or "Not Found" in str(
+                        if "404" in str(finalize_error) or NOT_FOUND_MSG in str(
                             finalize_error
                         ):
                             logger.info(
@@ -1156,6 +1170,12 @@ def _process_batch_callback_core(
     name=TaskName.PROCESS_BATCH_CALLBACK,
     max_retries=0,  # Match Django backend pattern
     ignore_result=False,  # Match Django backend pattern
+    task_time_limit=_get_callback_timeouts()[
+        0
+    ],  # Configurable hard timeout (default: 1 hour)
+    task_soft_time_limit=_get_callback_timeouts()[
+        1
+    ],  # Configurable soft timeout (default: 55 minutes)
 )
 @monitor_performance
 @circuit_breaker(failure_threshold=5, recovery_timeout=120.0)
@@ -1182,6 +1202,12 @@ def process_batch_callback(self, results, *args, **kwargs) -> dict[str, Any]:
     retry_backoff=True,
     retry_backoff_max=300,
     retry_jitter=True,
+    task_time_limit=_get_callback_timeouts()[
+        0
+    ],  # Configurable hard timeout (default: 1 hour)
+    task_soft_time_limit=_get_callback_timeouts()[
+        1
+    ],  # Configurable soft timeout (default: 55 minutes)
 )
 @monitor_performance
 @circuit_breaker(failure_threshold=5, recovery_timeout=120.0)
@@ -1498,11 +1524,11 @@ def _update_execution_with_results(
     try:
         # Determine final status
         if aggregated_results["failed_files"] == 0:
-            final_status = "COMPLETED"
+            final_status = ExecutionStatus.COMPLETED.value
         elif aggregated_results["successful_files"] > 0:
-            final_status = "COMPLETED"
+            final_status = ExecutionStatus.COMPLETED.value
         else:
-            final_status = "ERROR"
+            final_status = ExecutionStatus.ERROR.value
 
         # Update execution status
         update_result = api_client.update_workflow_execution_status(

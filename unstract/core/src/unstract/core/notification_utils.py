@@ -15,6 +15,9 @@ from unstract.core.notification_enums import AuthorizationType
 
 logger = logging.getLogger(__name__)
 
+# Constants
+APPLICATION_JSON = "application/json"
+
 
 def serialize_notification_data(data: Any) -> Any:
     """Serialize notification data to handle UUIDs and datetimes.
@@ -59,7 +62,7 @@ def build_webhook_headers(
     Raises:
         ValueError: If authorization configuration is invalid
     """
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": APPLICATION_JSON}
 
     # Add custom headers if provided
     if custom_headers:
@@ -74,18 +77,18 @@ def build_webhook_headers(
     header_formats = {
         AuthorizationType.BEARER: lambda key: {
             "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
+            "Content-Type": APPLICATION_JSON,
         },
         AuthorizationType.API_KEY: lambda key: {
             "Authorization": key,
-            "Content-Type": "application/json",
+            "Content-Type": APPLICATION_JSON,
         },
         AuthorizationType.CUSTOM_HEADER: lambda key: {
             authorization_header: key,
-            "Content-Type": "application/json",
+            "Content-Type": APPLICATION_JSON,
         },
         AuthorizationType.NONE: lambda _: {
-            "Content-Type": "application/json",
+            "Content-Type": APPLICATION_JSON,
         },
     }
 

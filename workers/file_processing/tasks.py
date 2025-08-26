@@ -24,6 +24,11 @@ from shared.enums.task_enums import TaskName
 # Import the new refactored file processor
 from shared.file_processor import FileProcessor
 from shared.local_context import StateStore
+from shared.logging_helpers import (
+    log_file_processing_error,
+    log_file_processing_start,
+    log_file_processing_success,
+)
 from shared.logging_utils import WorkerLogger, log_context, monitor_performance
 
 # Import execution models for type-safe context handling
@@ -48,6 +53,9 @@ from unstract.core.data_models import (
 from .worker import app
 
 logger = WorkerLogger.get_logger(__name__)
+
+# Constants
+APPLICATION_OCTET_STREAM = "application/octet-stream"
 
 
 def _process_file_batch_core(
@@ -94,6 +102,19 @@ def _process_file_batch_core(
     return _compile_batch_result(context)
 
 
+def _get_file_processing_timeouts():
+    """Get coordinated timeout values to prevent mismatch with callbacks.
+
+    This ensures file processing and callback tasks have properly coordinated timeouts
+    so that if file processing takes longer, callback still has adequate time to complete.
+    """
+    from shared.config import WorkerConfig
+
+    config = WorkerConfig()
+    timeouts = config.get_coordinated_timeouts()
+    return timeouts["file_processing"], timeouts["file_processing_soft"]
+
+
 @app.task(
     bind=True,
     name=TaskName.PROCESS_FILE_BATCH,
@@ -103,6 +124,12 @@ def _process_file_batch_core(
     retry_backoff_max=500,  # Match Django backend
     retry_jitter=True,
     default_retry_delay=5,  # Match Django backend
+    task_time_limit=_get_file_processing_timeouts()[
+        0
+    ],  # Configurable hard timeout (default: 1 hour)
+    task_soft_time_limit=_get_file_processing_timeouts()[
+        1
+    ],  # Configurable soft timeout (default: 55 minutes)
 )
 @monitor_performance
 def process_file_batch(self, file_batch_data: dict[str, Any]) -> dict[str, Any]:
@@ -207,6 +234,31 @@ def _setup_execution_context(
     execution_context = execution_response.data
     workflow_execution = execution_context.get("execution", {})
 
+    # Update execution status to EXECUTING when processing starts
+    # This fixes the missing EXECUTION status in logs
+    try:
+        api_client.update_workflow_execution_status(
+            execution_id=execution_id,
+            status=ExecutionStatus.EXECUTING.value,
+        )
+        logger.info(f"Updated workflow execution {execution_id} status to EXECUTING")
+    except Exception as status_error:
+        logger.warning(f"Failed to update execution status to EXECUTING: {status_error}")
+
+    # Initialize WebSocket logger for UI logs
+    from shared.workflow_logger import WorkerWorkflowLogger
+
+    workflow_logger = WorkerWorkflowLogger.create_for_file_processing(
+        execution_id=execution_id,
+        organization_id=organization_id,
+        pipeline_id=getattr(file_data, "pipeline_id", None)
+        if hasattr(file_data, "pipeline_id")
+        else None,
+    )
+
+    # Send initial workflow logs to UI
+    workflow_logger.publish_initial_workflow_logs(len(files))
+
     # Set log events ID in StateStore like Django backend
     log_events_id = workflow_execution.get("execution_log_id")
     if log_events_id:
@@ -259,6 +311,7 @@ def _setup_execution_context(
             "execution_context": execution_context,
             "workflow_execution": workflow_execution,
             "total_files": len(files),
+            "workflow_logger": workflow_logger,
         },
         is_scheduled=False,
     )
@@ -526,6 +579,16 @@ def _process_individual_files(context: WorkflowContextData) -> WorkflowContextDa
         workflow_file_execution_id = pre_created_data["id"]
         workflow_file_execution_object = pre_created_data["object"]
 
+        # Send file processing start log to UI with file_execution_id
+        workflow_logger = context.metadata.get("workflow_logger")
+        log_file_processing_start(
+            workflow_logger,
+            workflow_file_execution_id,
+            file_name,
+            file_number,
+            total_files,
+        )
+
         # Process single file using Django-like pattern but with API coordination
         file_execution_result = _process_file(
             current_file_idx=file_number,
@@ -536,6 +599,7 @@ def _process_individual_files(context: WorkflowContextData) -> WorkflowContextDa
             workflow_execution=workflow_execution,
             workflow_file_execution_id=workflow_file_execution_id,  # Pass pre-created ID
             workflow_file_execution_object=workflow_file_execution_object,  # Pass pre-created object
+            workflow_logger=workflow_logger,  # Pass workflow logger for UI logging
         )
 
         # Handle file processing result
@@ -549,6 +613,8 @@ def _process_individual_files(context: WorkflowContextData) -> WorkflowContextDa
             api_client,
             context.workflow_id,
             context.execution_id,
+            workflow_logger,
+            workflow_file_execution_id,
         )
 
     # Update metadata with results
@@ -570,6 +636,8 @@ def _handle_file_processing_result(
     api_client: Any,
     workflow_id: str,
     execution_id: str,
+    workflow_logger: Any,
+    file_execution_id: str,
 ) -> None:
     """Handle the result of individual file processing.
 
@@ -580,9 +648,11 @@ def _handle_file_processing_result(
         result: Batch result tracker
         successful_files_for_manual_review: List of successful files
         file_hash: File hash data
-        api_client: API client instance
+        api_client: Internal API client
         workflow_id: Workflow ID
         execution_id: Execution ID
+        workflow_logger: Workflow logger instance
+        file_execution_id: File execution ID
     """
     import time
 
@@ -612,7 +682,11 @@ def _handle_file_processing_result(
     file_execution_id = file_execution_result.get("file_execution_id")
     if file_execution_id:
         try:
-            final_status = "ERROR" if file_execution_result.get("error") else "COMPLETED"
+            final_status = (
+                ExecutionStatus.ERROR.value
+                if file_execution_result.get("error")
+                else ExecutionStatus.COMPLETED.value
+            )
             api_client.update_file_execution_status(
                 file_execution_id=file_execution_id,
                 status=final_status,
@@ -645,6 +719,11 @@ def _handle_file_processing_result(
             f"File execution for file {file_name} marked as failed with error: {file_execution_result['error']}"
         )
 
+        # Send failed processing log to UI with file_execution_id
+        log_file_processing_error(
+            workflow_logger, file_execution_id, file_name, file_execution_result["error"]
+        )
+
         # Update failed file count in cache (like Django backend)
         try:
             api_client.increment_failed_files(
@@ -658,6 +737,31 @@ def _handle_file_processing_result(
 
         # Add to successful files for manual review evaluation
         successful_files_for_manual_review.append((file_name, file_hash))
+
+        # Send successful processing log to UI with file_execution_id
+        log_file_processing_success(workflow_logger, file_execution_id, file_name)
+
+        # Create file history record for successful processing
+        # This fixes the issue of files being processed repeatedly
+        if file_hash.use_file_history:
+            try:
+                api_client.create_file_history(
+                    workflow_id=workflow_id,
+                    file_name=file_hash.file_name,
+                    file_path=file_hash.file_path,
+                    result=str(file_execution_result.get("result", {})),
+                    metadata=str(file_execution_result.get("metadata", {})),
+                    status=ExecutionStatus.COMPLETED.value,
+                    provider_file_uuid=file_hash.provider_file_uuid,
+                    is_api=False,  # This is file processing, not API workflow
+                )
+                logger.info(
+                    f"Created file history record for {file_name} with provider_file_uuid: {file_hash.provider_file_uuid}"
+                )
+            except Exception as history_error:
+                logger.warning(
+                    f"Failed to create file history for {file_name}: {history_error}"
+                )
 
 
 def _evaluate_batch_manual_review(context: WorkflowContextData) -> WorkflowContextData:
@@ -718,6 +822,15 @@ def _compile_batch_result(context: WorkflowContextData) -> dict[str, Any]:
         Final result dictionary
     """
     result = context.metadata["result"]
+    workflow_logger = context.metadata.get("workflow_logger")
+
+    # Send execution completion summary to UI
+    if workflow_logger:
+        workflow_logger.publish_execution_complete(
+            successful_files=result.successful_files,
+            failed_files=result.failed_files,
+            total_time=result.execution_time,
+        )
 
     logger.info(
         f"Function tasks.process_file_batch completed successfully. "
@@ -1035,7 +1148,7 @@ def _is_file_already_processed(
                 is_completed = file_history.get("is_completed", False)
                 status = file_history.get("status", "")
 
-                return is_completed or status == "COMPLETED"
+                return is_completed or status == ExecutionStatus.COMPLETED.value
             elif (
                 file_history and isinstance(file_history, list) and len(file_history) > 0
             ):
@@ -1043,7 +1156,7 @@ def _is_file_already_processed(
                 for history_record in file_history:
                     if (
                         history_record.get("is_completed", False)
-                        or history_record.get("status") == "COMPLETED"
+                        or history_record.get("status") == ExecutionStatus.COMPLETED.value
                     ):
                         return True
                 return False
@@ -1097,7 +1210,7 @@ def _create_file_hash_from_dict(file_hash_dict: dict[str, Any]) -> FileHashData:
             file_name="unknown.txt",
             file_hash="",  # Empty - will be computed during execution
             file_size=0,
-            mime_type="application/octet-stream",
+            mime_type=APPLICATION_OCTET_STREAM,
             fs_metadata={},
             is_executed=False,
         )
@@ -1145,7 +1258,7 @@ def _create_file_hash_from_dict(file_hash_dict: dict[str, Any]) -> FileHashData:
             file_hash=file_hash_value.strip(),  # Will be populated during execution
             file_size=file_hash_dict.get("file_size") or 0,
             provider_file_uuid=file_hash_dict.get("provider_file_uuid"),
-            mime_type=file_hash_dict.get("mime_type") or "application/octet-stream",
+            mime_type=file_hash_dict.get("mime_type") or APPLICATION_OCTET_STREAM,
             fs_metadata=file_hash_dict.get("fs_metadata") or {},
             file_destination=file_hash_dict.get("file_destination"),
             is_executed=file_hash_dict.get("is_executed", False),
@@ -1228,6 +1341,7 @@ def _process_file(
     workflow_execution: dict[str, Any],
     workflow_file_execution_id: str = None,
     workflow_file_execution_object: Any = None,
+    workflow_logger: Any = None,
 ) -> dict[str, Any]:
     """Process a single file matching Django backend _process_file pattern.
 
@@ -1255,6 +1369,7 @@ def _process_file(
         workflow_execution=workflow_execution,
         workflow_file_execution_id=workflow_file_execution_id,
         workflow_file_execution_object=workflow_file_execution_object,
+        workflow_logger=workflow_logger,
     )
 
 
@@ -1512,6 +1627,12 @@ def _analyze_file_hash_for_api_indicators(
     retry_backoff_max=500,
     retry_jitter=True,
     default_retry_delay=5,
+    task_time_limit=_get_file_processing_timeouts()[
+        0
+    ],  # Configurable hard timeout (default: 1 hour)
+    task_soft_time_limit=_get_file_processing_timeouts()[
+        1
+    ],  # Configurable soft timeout (default: 55 minutes)
 )
 @monitor_performance
 def process_file_batch_api(
@@ -1642,18 +1763,8 @@ def _process_single_file_api(
 
     logger.info(f"Processing file: {file_name} (execution: {file_execution_id})")
 
-    # Update file execution status to EXECUTING when processing starts (FIXED)
-    if file_execution_id:
-        try:
-            api_client.update_file_execution_status(
-                file_execution_id=file_execution_id,
-                status=ExecutionStatus.EXECUTING.value,
-            )
-            logger.info(f"DEBUG: Updated file {file_name} status to EXECUTING")
-        except Exception as status_error:
-            logger.warning(
-                f"Failed to update file {file_name} status to EXECUTING: {status_error}"
-            )
+    # Update file execution status to EXECUTING when processing starts (using common method)
+    api_client.update_file_status_to_executing(file_execution_id, file_name)
 
     start_time = time.time()
 
@@ -1697,7 +1808,7 @@ def _process_single_file_api(
         # Determine mime type from file name
         mime_type, _ = mimetypes.guess_type(file_name)
         if not mime_type:
-            mime_type = "application/octet-stream"
+            mime_type = APPLICATION_OCTET_STREAM
 
         # Update file execution with computed hash, mime_type, and metadata
         try:
@@ -1750,7 +1861,9 @@ def _process_single_file_api(
         # Try to update file execution status to failed
         try:
             api_client.update_file_execution_status(
-                file_execution_id=file_execution_id, status="FAILED", error_message=str(e)
+                file_execution_id=file_execution_id,
+                status=ExecutionStatus.ERROR.value,
+                error_message=str(e),
             )
         except Exception as update_error:
             logger.error(f"Failed to update file execution status: {update_error}")
@@ -1897,9 +2010,15 @@ def _detect_mime_type(file_name: str) -> str:
     import mimetypes
 
     mime_type, _ = mimetypes.guess_type(file_name)
-    return mime_type or "application/octet-stream"
+    return mime_type or APPLICATION_OCTET_STREAM
 
 
+# ============================================================================
+# WARNING: DEAD CODE - _process_single_file and _execute_tool_for_file below
+# are NEVER CALLED. They contain duplicate file history creation logic.
+# The active code path uses FileProcessor.process_file from shared/file_processor.py
+# TODO: Remove these unused functions in a future cleanup
+# ============================================================================
 def _process_single_file(
     api_client: InternalAPIClient,
     workflow_id: str,
@@ -1911,7 +2030,7 @@ def _process_single_file(
     is_api: bool,
     pipeline_id: str | None = None,
 ) -> dict[str, Any]:
-    """Process a single file using internal APIs.
+    """[UNUSED] Process a single file using internal APIs.
 
     This implements the hybrid approach where file coordination happens via APIs
     but actual tool execution is handled by Django backend.
@@ -2001,7 +2120,7 @@ def _process_single_file(
                     provider_file_uuid=file_hash_data.get("provider_file_uuid"),
                     result=str(current_input) if current_input else "",
                     metadata="",  # Can be populated with workflow metadata if needed
-                    status="COMPLETED",
+                    status=ExecutionStatus.COMPLETED.value,
                     is_api=is_api,
                 )
                 logger.info(f"Created file history record for {file_name}")
@@ -2054,7 +2173,7 @@ def _execute_tool_for_file(
     file_data: dict[str, Any],
     execution_context: dict[str, Any],
 ) -> dict[str, Any]:
-    """Execute a single tool for a file using internal APIs.
+    """[UNUSED] Execute a single tool for a file using internal APIs.
 
     This calls the Django backend to perform the actual tool execution
     while maintaining coordination in the lightweight worker.

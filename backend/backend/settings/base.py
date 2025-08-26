@@ -637,6 +637,12 @@ INTERNAL_URL_MODULES = {
         "enabled": True,
         "description": "Execution log management and cache operations APIs",
     },
+    "configuration": {
+        "url_path": "v1/configuration/",
+        "module_path": "configuration.internal_urls",
+        "enabled": True,
+        "description": "Organization configuration management APIs",
+    },
     # Note: Cloud-specific modules (manual-review, analytics, etc.)
     # are added by cloud.py settings when active
 }

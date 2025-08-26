@@ -209,7 +209,9 @@ class StatusMappings:
     }
 
     @classmethod
-    def execution_to_pipeline(cls, execution_status: ExecutionStatus) -> PipelineStatus:
+    def map_execution_to_pipeline(
+        cls, execution_status: ExecutionStatus
+    ) -> PipelineStatus:
         """Convert core ExecutionStatus to worker PipelineStatus."""
         return cls.EXECUTION_TO_PIPELINE.get(execution_status, PipelineStatus.FAILURE)
 

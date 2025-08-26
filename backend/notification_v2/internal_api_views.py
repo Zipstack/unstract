@@ -2,6 +2,11 @@
 
 These endpoints provide notification configuration data to workers
 without exposing full Django models or requiring Django dependencies.
+
+Security Note:
+- CSRF protection is disabled for internal service-to-service communication
+- Authentication is handled by InternalAPIAuthMiddleware using Bearer tokens
+- These endpoints are not accessible from browsers and don't use session cookies
 """
 
 import logging
@@ -18,7 +23,15 @@ from notification_v2.models import Notification
 
 logger = logging.getLogger(__name__)
 
+# Constants for error messages
+INTERNAL_SERVER_ERROR_MSG = "Internal server error"
 
+
+# CSRF exemption is safe here because:
+# 1. This is service-to-service communication (workers → backend)
+# 2. Authentication uses Bearer tokens (INTERNAL_SERVICE_API_KEY)
+# 3. No browser sessions or cookies involved
+# 4. InternalAPIAuthMiddleware provides adequate protection
 @csrf_exempt
 @require_http_methods(["GET"])
 def get_pipeline_notifications(request, pipeline_id):
@@ -111,10 +124,12 @@ def get_pipeline_notifications(request, pipeline_id):
     except Exception as e:
         logger.error(f"Error getting pipeline notifications for {pipeline_id}: {e}")
         return JsonResponse(
-            {"status": "error", "message": "Internal server error"}, status=500
+            {"status": "error", "message": INTERNAL_SERVER_ERROR_MSG}, status=500
         )
 
 
+# CSRF exemption is safe for internal service-to-service communication
+# Protected by InternalAPIAuthMiddleware Bearer token authentication
 @csrf_exempt
 @require_http_methods(["GET"])
 def get_api_notifications(request, api_id):
@@ -165,10 +180,12 @@ def get_api_notifications(request, api_id):
     except Exception as e:
         logger.error(f"Error getting API notifications for {api_id}: {e}")
         return JsonResponse(
-            {"status": "error", "message": "Internal server error"}, status=500
+            {"status": "error", "message": INTERNAL_SERVER_ERROR_MSG}, status=500
         )
 
 
+# CSRF exemption is safe for internal service-to-service communication
+# Protected by InternalAPIAuthMiddleware Bearer token authentication
 @csrf_exempt
 @require_http_methods(["GET"])
 def get_pipeline_data(request, pipeline_id):
@@ -201,10 +218,12 @@ def get_pipeline_data(request, pipeline_id):
     except Exception as e:
         logger.error(f"Error getting pipeline data for {pipeline_id}: {e}")
         return JsonResponse(
-            {"status": "error", "message": "Internal server error"}, status=500
+            {"status": "error", "message": INTERNAL_SERVER_ERROR_MSG}, status=500
         )
 
 
+# CSRF exemption is safe for internal service-to-service communication
+# Protected by InternalAPIAuthMiddleware Bearer token authentication
 @csrf_exempt
 @require_http_methods(["GET"])
 def get_api_data(request, api_id):
@@ -237,5 +256,5 @@ def get_api_data(request, api_id):
     except Exception as e:
         logger.error(f"Error getting API data for {api_id}: {e}")
         return JsonResponse(
-            {"status": "error", "message": "Internal server error"}, status=500
+            {"status": "error", "message": INTERNAL_SERVER_ERROR_MSG}, status=500
         )

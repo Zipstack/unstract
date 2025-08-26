@@ -17,6 +17,8 @@ from uuid import UUID
 # Manual review functionality loaded via plugin registry
 from client_plugin_registry import get_client_plugin
 
+from .cache import CachedAPIClientMixin, with_cache
+from .cache.cache_types import CacheType
 from .clients import (
     BaseAPIClient,
     ExecutionAPIClient,
@@ -35,6 +37,7 @@ from .clients.base_client import (
 )
 from .clients.manual_review_stub import ManualReviewNullClient
 from .config import WorkerConfig
+from .enums import HTTPMethod
 
 # Import new API response dataclasses for type safety
 from .models.api_responses import (
@@ -71,16 +74,18 @@ except ImportError:
                 setattr(self, key, value)
 
         def to_dict(self):
-            return {k: v for k, v in self.__dict__.items()}
+            return dict(self.__dict__.items())
 
         @classmethod
         def from_dict(cls, data):
             return cls(**data)
 
         def ensure_hash(self):
+            # Mock implementation - no hash computation needed for testing
             pass
 
         def validate_for_api(self):
+            # Mock implementation - no validation needed for testing
             pass
 
     WorkflowFileExecutionData = MockDataClass
@@ -91,22 +96,25 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-class InternalAPIClient:
+class InternalAPIClient(CachedAPIClientMixin):
     """Backward compatibility facade for the original monolithic InternalAPIClient.
 
     This class provides the same interface as the original InternalAPIClient
-    but delegates all operations to the specialized modular clients. This ensures
-    existing code continues to work without modification while benefiting from
-    the improved modular architecture.
+    but delegates all operations to the specialized modular clients with caching support.
+    This ensures existing code continues to work without modification while benefiting from
+    both the improved modular architecture and caching for better performance.
     """
 
     def __init__(self, config: WorkerConfig | None = None):
-        """Initialize the facade with all specialized clients.
+        """Initialize the facade with all specialized clients and caching.
 
         Args:
             config: Worker configuration. If None, uses default config.
         """
         self.config = config or WorkerConfig()
+
+        # Initialize caching (parent class)
+        super().__init__()
 
         # Initialize core clients
         self._initialize_core_clients()
@@ -117,7 +125,9 @@ class InternalAPIClient:
         # Setup direct access references
         self._setup_direct_access_references()
 
-        logger.info("Initialized InternalAPIClient facade with modular architecture")
+        logger.info(
+            "Initialized InternalAPIClient facade with modular architecture and caching"
+        )
 
     def _initialize_core_clients(self) -> None:
         """Initialize all core API clients."""
@@ -187,6 +197,141 @@ class InternalAPIClient:
         self.close()
 
     # Delegate execution client methods
+    def get_workflow_executions_by_status(
+        self,
+        workflow_id: str | uuid.UUID,
+        statuses: list[str],
+        organization_id: str | None = None,
+    ) -> APIResponse:
+        """Get workflow executions by status for a specific workflow.
+
+        This gets ALL executions for a workflow that match the given statuses,
+        matching the backend logic in source.py _get_active_workflow_executions().
+
+        Args:
+            workflow_id: Workflow ID
+            statuses: List of status values (e.g., ['PENDING', 'EXECUTING'])
+            organization_id: Optional organization ID override
+
+        Returns:
+            APIResponse with workflow executions data
+        """
+        try:
+            # Use workflow execution endpoint with status filtering (trailing slash required by Django)
+            response_data = self._make_request(
+                method=HTTPMethod.GET,
+                endpoint="v1/workflow-execution/",
+                params={
+                    "workflow_id": str(workflow_id),
+                    "status__in": ",".join(statuses),  # Multiple status filter
+                },
+                organization_id=organization_id,
+            )
+
+            # Backend now properly filters by workflow_id and status parameters
+            if isinstance(response_data, list):
+                logger.info(
+                    f"DEBUG: Backend returned {len(response_data)} executions for workflow {workflow_id} with statuses {statuses}"
+                )
+            else:
+                logger.warning(
+                    f"DEBUG: Expected list response but got {type(response_data)}"
+                )
+
+            # Wrap filtered response data in APIResponse
+            return APIResponse(
+                success=True,
+                data=response_data,
+            )
+
+        except Exception as e:
+            logger.error(f"Error getting workflow executions by status: {e}")
+            return APIResponse(
+                success=False,
+                error=str(e),
+            )
+
+    def check_files_active_processing(
+        self,
+        workflow_id: str | uuid.UUID,
+        provider_file_uuids: list[str],
+        current_execution_id: str | None = None,
+        organization_id: str | None = None,
+    ) -> APIResponse:
+        """Check if specific files are being processed in PENDING/EXECUTING workflow executions.
+
+        Optimized single API call instead of querying all executions and their file executions.
+
+        Args:
+            workflow_id: Workflow ID to check
+            provider_file_uuids: List of provider file UUIDs to check
+            current_execution_id: Current execution ID to exclude from active check
+            organization_id: Optional organization ID override
+
+        Returns:
+            APIResponse with {provider_uuid: is_active} mapping
+        """
+        try:
+            # Single optimized API call to check multiple files at once
+            response_data = self._make_request(
+                method=HTTPMethod.POST,
+                endpoint="v1/workflow-manager/file-execution/check-active",
+                data={
+                    "workflow_id": str(workflow_id),
+                    "provider_file_uuids": provider_file_uuids,
+                    "statuses": ["PENDING", "EXECUTING"],
+                    "exclude_execution_id": str(current_execution_id)
+                    if current_execution_id
+                    else None,
+                },
+                organization_id=organization_id,
+            )
+
+            return APIResponse(
+                success=True,
+                data=response_data,
+            )
+
+        except Exception as e:
+            logger.error(f"Error checking files active processing: {e}")
+            # Fallback: assume no files are active to avoid blocking
+            return APIResponse(
+                success=True,
+                data={"active_uuids": []},
+            )
+
+    def get_workflow_file_executions_by_execution(
+        self, execution_id: str | uuid.UUID, organization_id: str | None = None
+    ) -> APIResponse:
+        """Get WorkflowFileExecutions for a specific execution using internal API.
+
+        This uses the existing /internal/api/v1/file-execution/?execution_id=<id> endpoint
+        to get all file executions for a workflow execution.
+
+        Args:
+            execution_id: Workflow execution ID
+            organization_id: Optional organization ID override
+
+        Returns:
+            APIResponse with file executions data
+        """
+        try:
+            response = self._make_request(
+                method=HTTPMethod.GET,
+                url=f"{self.base_url}/v1/file-execution/",
+                params={"execution_id": str(execution_id)},
+                organization_id=organization_id,
+            )
+
+            return response
+
+        except Exception as e:
+            logger.error(f"Error getting workflow file executions: {e}")
+            return APIResponse(
+                success=False,
+                error=str(e),
+            )
+
     def get_workflow_execution(
         self, execution_id: str | uuid.UUID, organization_id: str | None = None
     ) -> WorkflowExecutionResponse:
@@ -201,10 +346,18 @@ class InternalAPIClient:
             response_dict = response
         return WorkflowExecutionResponse.from_api_response(response_dict)
 
+    @with_cache(
+        CacheType.WORKFLOW,
+        lambda self, workflow_id, organization_id=None: str(workflow_id),
+    )
     def get_workflow_definition(
         self, workflow_id: str | uuid.UUID, organization_id: str | None = None
     ) -> WorkflowDefinitionResponse:
-        """Get workflow definition including workflow_type."""
+        """Get workflow definition including workflow_type.
+
+        This method automatically uses caching through the @with_cache decorator.
+        """
+        # Direct API call - caching is handled by decorator
         response = self.execution_client.get_workflow_definition(
             workflow_id, organization_id
         )
@@ -243,6 +396,9 @@ class InternalAPIClient:
             organization_id=organization_id,
         )
 
+    @with_cache(
+        CacheType.API_DEPLOYMENT, lambda self, api_id, organization_id=None: str(api_id)
+    )
     def get_api_deployment_data(
         self, api_id: str | uuid.UUID, organization_id: str | None = None
     ) -> APIResponse:
@@ -250,7 +406,9 @@ class InternalAPIClient:
 
         This method is optimized for callback workers that know they're dealing
         with API deployments. It queries APIDeployment model directly.
+        Caching is handled automatically through the @with_cache decorator.
         """
+        # Direct API call - caching is handled by decorator
         return self.execution_client.get_api_deployment_data(api_id, organization_id)
 
     def update_workflow_execution_status(
@@ -278,10 +436,17 @@ class InternalAPIClient:
         """Create workflow execution."""
         return self.execution_client.create_workflow_execution(execution_data)
 
+    @with_cache(
+        CacheType.TOOL_INSTANCES, lambda self, workflow_id, organization_id: workflow_id
+    )
     def get_tool_instances_by_workflow(
         self, workflow_id: str, organization_id: str
     ) -> ToolInstancesResponse:
-        """Get tool instances for a workflow."""
+        """Get tool instances for a workflow.
+
+        Caching is handled automatically through the @with_cache decorator.
+        """
+        # Direct API call - caching is handled by decorator
         response = self.execution_client.get_tool_instances_by_workflow(
             workflow_id, organization_id
         )
@@ -431,10 +596,18 @@ class InternalAPIClient:
         # Convert to FileBatchResponse for type safety
         return FileBatchResponse.from_api_response(response)
 
+    @with_cache(
+        CacheType.WORKFLOW_ENDPOINTS,
+        lambda self, workflow_id, organization_id=None: str(workflow_id),
+    )
     def get_workflow_endpoints(
         self, workflow_id: str | UUID, organization_id: str | None = None
     ) -> WorkflowEndpointsResponse:
-        """Get workflow endpoints for a specific workflow."""
+        """Get workflow endpoints for a specific workflow.
+
+        Caching is handled automatically through the @with_cache decorator.
+        """
+        # Direct API call - caching is handled by decorator
         response = self.execution_client.get_workflow_endpoints(
             workflow_id, organization_id
         )
@@ -597,6 +770,56 @@ class InternalAPIClient:
         return self.file_client.update_workflow_file_execution_status(
             file_execution_id, status, result, error_message
         )
+
+    def update_file_status_to_executing(
+        self,
+        file_execution_id: str | UUID | None,
+        file_name: str,
+        organization_id: str | None = None,
+    ) -> bool:
+        """Common method to update file execution status to EXECUTING with proper error handling.
+
+        This method provides consistent logging and error handling for updating file execution
+        status to EXECUTING across all workflow types (ETL, TASK, API).
+
+        Args:
+            file_execution_id: File execution ID to update
+            file_name: File name for logging purposes
+            organization_id: Optional organization ID override
+
+        Returns:
+            bool: True if update successful, False otherwise
+        """
+        if not file_execution_id:
+            logger.warning(
+                f"DEBUG: No file_execution_id for file {file_name}, cannot update status to EXECUTING"
+            )
+            return False
+
+        try:
+            from unstract.core.data_models import ExecutionStatus
+
+            logger.info(
+                f"DEBUG: About to update file {file_name} (ID: {file_execution_id}) status to EXECUTING"
+            )
+            result = self.update_file_execution_status(
+                file_execution_id=file_execution_id,
+                status=ExecutionStatus.EXECUTING.value,
+                organization_id=organization_id,
+            )
+            logger.info(
+                f"DEBUG: Updated file {file_name} status to EXECUTING - API result: {result}"
+            )
+            return True
+
+        except Exception as status_error:
+            logger.error(
+                f"CRITICAL: Failed to update file {file_name} (ID: {file_execution_id}) status to EXECUTING: {status_error}"
+            )
+            import traceback
+
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return False
 
     def create_workflow_file_execution(
         self,
@@ -1104,8 +1327,68 @@ class InternalAPIClient:
             file_name=file_name,
         )
 
+    # Configuration client methods
+    def get_configuration(
+        self,
+        config_key: str,
+        organization_id: str | None = None,
+    ) -> "APIResponse":
+        """Get organization configuration value.
 
-# Export all classes and exceptions for backward compatibility
+        Args:
+            config_key: Configuration key name (e.g., "MAX_PARALLEL_FILE_BATCHES")
+            organization_id: Organization ID (uses client default if not provided)
+
+        Returns:
+            APIResponse with configuration data
+        """
+        try:
+            response = self._make_request(
+                method=HTTPMethod.GET,
+                endpoint=f"v1/configuration/{config_key}/",
+                params={"organization_id": organization_id or self.organization_id},
+            )
+
+            return response
+
+        except Exception as e:
+            logger.error(f"Error getting configuration {config_key}: {e}")
+            from .data_models import APIResponse
+
+            return APIResponse(
+                success=False,
+                error=str(e),
+            )
+
+    # Export all classes and exceptions for backward compatibility
+    # =============================
+    # CACHE MANAGEMENT UTILITIES
+    # =============================
+    # These methods provide cache management without overriding existing methods
+    # The caching happens transparently in the execution client methods
+
+    def get_api_cache_stats(self) -> dict[str, Any]:
+        """Get API client cache statistics."""
+        if hasattr(self, "_cache") and self._cache.backend.available:
+            return self.get_cache_stats()
+        return {"available": False, "message": "Cache not available"}
+
+    def clear_api_cache_stats(self):
+        """Clear API client cache statistics."""
+        if hasattr(self, "_cache") and self._cache.backend.available:
+            self.clear_cache_stats()
+
+    def invalidate_workflow_related_cache(self, workflow_id: str):
+        """Invalidate all cache entries related to a workflow."""
+        if hasattr(self, "_cache") and self._cache.backend.available:
+            self.invalidate_workflow_cache(workflow_id)
+            logger.info(f"Invalidated all cache entries for workflow {workflow_id}")
+        else:
+            logger.debug(
+                f"Cache not available, skipping invalidation for workflow {workflow_id}"
+            )
+
+
 __all__ = [
     # Main facade class
     "InternalAPIClient",

@@ -119,9 +119,13 @@ def _unified_api_execution(
                 execution_id, workflow_id, organization_id, converted_files
             )
 
-            # Create file batches using standardized algorithm
+            # Create file batches using standardized algorithm with organization-specific config
             file_batches = FileProcessingUtils.create_file_batches(
-                converted_files, "MAX_PARALLEL_FILE_BATCHES", 4
+                files=converted_files,
+                organization_id=organization_id,
+                api_client=api_client,
+                batch_size_env_var="MAX_PARALLEL_FILE_BATCHES",
+                # default_batch_size not needed - will use environment default
             )
 
             logger.info(
@@ -373,8 +377,12 @@ def _run_workflow_api(
     else:
         logger.info(f"Sending {total_files} files to file worker (file history disabled)")
 
-    # Get file batches using the exact same logic as Django backend
-    batches = _get_file_batches(files_to_send)
+    # Get file batches using the exact same logic as Django backend with organization-specific config
+    batches = _get_file_batches(
+        input_files=files_to_send,
+        organization_id=schema_name,  # schema_name is the organization_id
+        api_client=api_client,
+    )
     logger.info(
         f"Execution {execution_id} processing {total_files} files in {len(batches)} batches"
     )
@@ -479,13 +487,20 @@ def _run_workflow_api(
         raise
 
 
-def _get_file_batches(input_files: dict[str, FileHashData] | list[dict]) -> list:
-    """Get file batches using the exact same logic as Django backend.
+def _get_file_batches(
+    input_files: dict[str, FileHashData] | list[dict],
+    organization_id: str | None = None,
+    api_client=None,
+) -> list:
+    """Get file batches using the exact same logic as Django backend with organization-specific config.
 
-    This matches WorkflowHelper.get_file_batches() exactly.
+    This matches WorkflowHelper.get_file_batches() exactly, but now supports organization-specific
+    MAX_PARALLEL_FILE_BATCHES configuration.
 
     Args:
         input_files: Dictionary of file hash data or list of file dictionaries (for backward compatibility)
+        organization_id: Organization ID for configuration lookup
+        api_client: Internal API client for configuration access
 
     Returns:
         List of file batches
@@ -536,8 +551,15 @@ def _get_file_batches(input_files: dict[str, FileHashData] | list[dict]) -> list
             )
             continue
 
-    # Prepare batches of files for parallel processing (exact Django logic)
-    BATCH_SIZE = int(os.getenv("MAX_PARALLEL_FILE_BATCHES", "4"))  # Default from Django
+    # Prepare batches of files for parallel processing with organization-specific config
+    from shared.configuration_client import get_batch_size_with_fallback
+
+    BATCH_SIZE = get_batch_size_with_fallback(
+        organization_id=organization_id,
+        api_client=api_client,
+        env_var_name="MAX_PARALLEL_FILE_BATCHES",
+        # default_value not needed - will use environment default
+    )
     file_items = list(json_serializable_files.items())
 
     # Calculate how many items per batch (exact Django logic)

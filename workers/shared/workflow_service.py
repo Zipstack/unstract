@@ -30,6 +30,7 @@ class WorkerWorkflowExecutionService:
     def __init__(self, api_client: InternalAPIClient = None):
         self.api_client = api_client
         self.logger = logger
+        self._last_execution_error = None
 
     def execute_workflow_for_file(
         self,
@@ -217,12 +218,18 @@ class WorkerWorkflowExecutionService:
 
                 return final_result
             else:
+                # Get the specific error if available
+                specific_error = getattr(
+                    self, "_last_execution_error", "Workflow execution failed"
+                )
+                logger.error(f"Returning error result for {file_name}: {specific_error}")
+
                 return {
                     "file_execution_id": workflow_file_execution_id,
                     "file": file_name,
                     "result": None,
                     "success": False,
-                    "error": "Workflow execution failed",
+                    "error": specific_error,
                     "metadata": {
                         "workflow_id": workflow_id,
                         "execution_id": execution_id,
@@ -730,6 +737,8 @@ class WorkerWorkflowExecutionService:
             logger.error(
                 f"Workflow execution failed for file {file_name}: {str(e)}", exc_info=True
             )
+            # Store the actual error for better debugging
+            self._last_execution_error = str(e)
             return False
 
     def _extract_tool_results(self, execution_service, workflow_file_execution_id: str):

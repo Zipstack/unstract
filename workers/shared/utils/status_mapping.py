@@ -36,12 +36,16 @@ class StatusMappings:
     }
 
     @classmethod
-    def execution_to_pipeline(cls, execution_status: ExecutionStatus) -> PipelineStatus:
+    def map_execution_to_pipeline(
+        cls, execution_status: ExecutionStatus
+    ) -> PipelineStatus:
         """Map execution status to pipeline status."""
         return cls.EXECUTION_TO_PIPELINE.get(execution_status, PipelineStatus.FAILURE)
 
     @classmethod
-    def pipeline_to_execution(cls, pipeline_status: PipelineStatus) -> ExecutionStatus:
+    def map_pipeline_to_execution(
+        cls, pipeline_status: PipelineStatus
+    ) -> ExecutionStatus:
         """Map pipeline status to execution status."""
         return cls.PIPELINE_TO_EXECUTION.get(pipeline_status, ExecutionStatus.ERROR)
 

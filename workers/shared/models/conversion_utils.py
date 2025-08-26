@@ -107,7 +107,7 @@ def ensure_dict(data: dict[str, Any] | Any) -> dict[str, Any]:
         return data.__dict__
 
     raise ConversionError(
-        f"Cannot convert {type(data)} to dict. " f"Expected dict or dataclass instance."
+        f"Cannot convert {type(data)} to dict. Expected dict or dataclass instance."
     )
 
 

@@ -2,6 +2,11 @@
 
 This module provides endpoints for workers to trigger WebSocket events
 through the backend's SocketIO server.
+
+Security Note:
+- CSRF protection is disabled for internal service-to-service communication
+- Authentication is handled by InternalAPIAuthMiddleware using Bearer tokens
+- This endpoint is for worker → backend WebSocket event triggering only
 """
 
 import json
@@ -16,6 +21,11 @@ from utils.log_events import _emit_websocket_event
 logger = logging.getLogger(__name__)
 
 
+# CSRF exemption is safe here because:
+# 1. Internal service-to-service communication (workers → backend)
+# 2. Protected by InternalAPIAuthMiddleware Bearer token authentication
+# 3. No browser sessions or cookies involved
+# 4. Used for WebSocket event triggering, not state modification
 @csrf_exempt
 @require_http_methods(["POST"])
 def emit_websocket(request):

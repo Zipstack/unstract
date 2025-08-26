@@ -10,6 +10,11 @@ from typing import Any
 
 from unstract.core.data_models import serialize_dataclass_to_dict
 
+# Error message constants
+WORKFLOW_ID_REQUIRED = "Workflow ID is required"
+PIPELINE_ID_REQUIRED = "Pipeline ID is required"
+ORGANIZATION_ID_REQUIRED = "Organization ID is required"
+
 
 class ExecutionMode(str, Enum):
     """Workflow execution modes."""
@@ -45,11 +50,11 @@ class WorkflowExecutionRequest:
     def __post_init__(self):
         """Validate required fields."""
         if not self.workflow_id:
-            raise ValueError("Workflow ID is required")
+            raise ValueError(WORKFLOW_ID_REQUIRED)
         if not self.pipeline_id:
-            raise ValueError("Pipeline ID is required")
+            raise ValueError(PIPELINE_ID_REQUIRED)
         if not self.organization_id:
-            raise ValueError("Organization ID is required")
+            raise ValueError(ORGANIZATION_ID_REQUIRED)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API calls."""
@@ -73,11 +78,11 @@ class AsyncExecutionRequest:
         if not self.execution_id:
             raise ValueError("Execution ID is required")
         if not self.workflow_id:
-            raise ValueError("Workflow ID is required")
+            raise ValueError(WORKFLOW_ID_REQUIRED)
         if not self.pipeline_id:
-            raise ValueError("Pipeline ID is required")
+            raise ValueError(PIPELINE_ID_REQUIRED)
         if not self.organization_id:
-            raise ValueError("Organization ID is required")
+            raise ValueError(ORGANIZATION_ID_REQUIRED)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API calls."""
@@ -177,13 +182,13 @@ class ScheduledPipelineContext:
     def __post_init__(self):
         """Validate required fields."""
         if not self.pipeline_id:
-            raise ValueError("Pipeline ID is required")
+            raise ValueError(PIPELINE_ID_REQUIRED)
         if not self.pipeline_name:
             raise ValueError("Pipeline name is required")
         if not self.workflow_id:
-            raise ValueError("Workflow ID is required")
+            raise ValueError(WORKFLOW_ID_REQUIRED)
         if not self.organization_id:
-            raise ValueError("Organization ID is required")
+            raise ValueError(ORGANIZATION_ID_REQUIRED)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""

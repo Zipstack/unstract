@@ -39,7 +39,7 @@ class ClientPluginRegistry:
         self._initialized = False
 
     def initialize_from_settings(self):
-        """Initialize plugins from Django settings configuration."""
+        """Initialize plugins from environment configuration (Django not required in workers)."""
         if self._initialized:
             return
 

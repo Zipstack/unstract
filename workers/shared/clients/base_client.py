@@ -25,6 +25,9 @@ from ..logging_utils import WorkerLogger
 
 logger = WorkerLogger.get_logger(__name__)
 
+# HTTP Content Type Constants
+APPLICATION_JSON = "application/json"
+
 
 class InternalAPIClientError(Exception):
     """Base exception for API client errors."""
@@ -152,9 +155,9 @@ class BaseAPIClient:
         self.session.headers.update(
             {
                 "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
+                "Content-Type": APPLICATION_JSON,
                 "User-Agent": f"UnstractWorker/{self.config.worker_version}",
-                "Accept": "application/json",
+                "Accept": APPLICATION_JSON,
                 "Connection": "keep-alive",
             }
         )
@@ -410,7 +413,7 @@ class BaseAPIClient:
             # Check content type
             content_type = response.headers.get("Content-Type", "").lower()
 
-            if "application/json" in content_type:
+            if APPLICATION_JSON in content_type:
                 json_data = response.json()
                 logger.debug(f"Successfully parsed JSON response from {endpoint}")
                 return json_data

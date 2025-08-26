@@ -19,6 +19,7 @@ from unstract.core.data_models import ConnectionType as CoreConnectionType
 from unstract.core.data_models import FileHashData
 
 from ..enums import FileDestinationType
+from ..logging_helpers import log_file_info
 from ..logging_utils import WorkerLogger
 
 if TYPE_CHECKING:
@@ -104,7 +105,6 @@ class WorkerDestinationConnector:
     """
 
     # Use CoreConnectionType directly - no need for wrapper class
-    ConnectionType = CoreConnectionType
 
     def __init__(self, config: DestinationConfig, workflow_log=None):
         self.config = config
@@ -180,62 +180,18 @@ class WorkerDestinationConnector:
 
         # Process each file based on manual review decision
         results = []
-        for i, (
-            file_name,
-            file_hash,
-            file_history,
-            workflow,
-            input_file_path,
-            file_execution_id,
-        ) in enumerate(files_data):
+        for i, file_data in enumerate(files_data):
             try:
-                should_review = (
-                    manual_review_decisions[i]
-                    if i < len(manual_review_decisions)
-                    else False
+                success = self._process_single_file(
+                    file_data=file_data,
+                    file_index=i,
+                    manual_review_decisions=manual_review_decisions,
+                    tool_execution_results=tool_execution_results,
+                    api_client=api_client,
                 )
-                tool_execution_result = (
-                    tool_execution_results[i]
-                    if tool_execution_results and i < len(tool_execution_results)
-                    else None
-                )
-
-                if should_review:
-                    logger.info(
-                        f"Sending {file_name} to manual review queue (batch decision)"
-                    )
-                    # Log to UI via workflow_log
-                    if self.workflow_log:
-                        self.workflow_log.publish_log(
-                            message=f"📋 File '{file_name}' selected for manual review based on configured rules"
-                        )
-                    self._push_data_to_queue(
-                        file_name=file_name,
-                        workflow=workflow,
-                        input_file_path=input_file_path,
-                        file_execution_id=file_execution_id,
-                        tool_execution_result=tool_execution_result,
-                        api_client=api_client,
-                    )
-                    results.append(True)
-                else:
-                    logger.info(
-                        f"Processing {file_name} through destination (skipping manual review)"
-                    )
-                    # Process through normal destination
-                    success = self._handle_individual_output(
-                        file_name=file_name,
-                        file_hash=file_hash,
-                        file_history=file_history,
-                        workflow=workflow,
-                        input_file_path=input_file_path,
-                        file_execution_id=file_execution_id,
-                        api_client=api_client,
-                        tool_execution_result=tool_execution_result,
-                    )
-                    results.append(success)
-
+                results.append(success)
             except Exception as e:
+                file_name = file_data[0]
                 logger.error(f"Error processing file {file_name}: {e}")
                 results.append(False)
 
@@ -244,15 +200,119 @@ class WorkerDestinationConnector:
         )
         return results
 
-    def _handle_individual_output(
+    def _process_single_file(
+        self,
+        file_data: tuple[str, FileHashData, Any, dict[str, Any], str, str],
+        file_index: int,
+        manual_review_decisions: list[bool],
+        tool_execution_results: list[str] | None,
+        api_client: Optional["InternalAPIClient"] = None,
+    ) -> bool:
+        """Process a single file based on manual review decision."""
+        (
+            file_name,
+            file_hash,
+            file_history,
+            workflow,
+            input_file_path,
+            file_execution_id,
+        ) = file_data
+
+        should_review = (
+            manual_review_decisions[file_index]
+            if file_index < len(manual_review_decisions)
+            else False
+        )
+        tool_execution_result = (
+            tool_execution_results[file_index]
+            if tool_execution_results and file_index < len(tool_execution_results)
+            else None
+        )
+
+        if should_review:
+            return self._handle_manual_review_file(
+                file_name=file_name,
+                workflow=workflow,
+                input_file_path=input_file_path,
+                file_execution_id=file_execution_id,
+                tool_execution_result=tool_execution_result,
+                api_client=api_client,
+            )
+        else:
+            return self._handle_regular_processing(
+                file_name=file_name,
+                file_hash=file_hash,
+                file_history=file_history,
+                workflow=workflow,
+                input_file_path=input_file_path,
+                file_execution_id=file_execution_id,
+                tool_execution_result=tool_execution_result,
+                api_client=api_client,
+            )
+
+    def _handle_manual_review_file(
+        self,
+        file_name: str,
+        workflow: dict[str, Any],
+        input_file_path: str,
+        file_execution_id: str,
+        tool_execution_result: str | None,
+        api_client: Optional["InternalAPIClient"] = None,
+    ) -> bool:
+        """Handle file that needs manual review."""
+        logger.info(f"Sending {file_name} to manual review queue (batch decision)")
+        # Log to UI via workflow_log with file_execution_id for better correlation
+        log_file_info(
+            self.workflow_log,
+            file_execution_id,
+            f"📋 File '{file_name}' selected for manual review based on configured rules",
+        )
+        self._push_data_to_queue(
+            file_name=file_name,
+            workflow=workflow,
+            input_file_path=input_file_path,
+            file_execution_id=file_execution_id,
+            tool_execution_result=tool_execution_result,
+            api_client=api_client,
+        )
+        return True
+
+    def _handle_regular_processing(
         self,
         file_name: str,
         file_hash: FileHashData,
         file_history,
         workflow: dict[str, Any],
         input_file_path: str,
-        file_execution_id: str = None,
+        file_execution_id: str,
+        tool_execution_result: str | None,
         api_client: Optional["InternalAPIClient"] = None,
+    ) -> bool:
+        """Handle file through regular destination processing."""
+        logger.info(
+            f"Processing {file_name} through destination (skipping manual review)"
+        )
+        # Process through normal destination
+        return self._handle_individual_output(
+            file_name=file_name,
+            file_hash=file_hash,
+            file_history=file_history,
+            workflow=workflow,
+            input_file_path=input_file_path,
+            file_execution_id=file_execution_id,
+            api_client=api_client,
+            tool_execution_result=tool_execution_result,
+        )
+
+    def _handle_individual_output(
+        self,
+        file_name: str,
+        _file_hash: FileHashData,
+        _file_history,
+        _workflow: dict[str, Any],
+        input_file_path: str,
+        _file_execution_id: str = None,
+        _api_client: Optional["InternalAPIClient"] = None,
         tool_execution_result: str | None = None,
     ) -> bool:
         """Handle output for individual file (original handle_output logic without manual review)."""
@@ -325,20 +385,19 @@ class WorkerDestinationConnector:
                 api_client=api_client,
             )
 
-            # Log successful processing
-            if self.workflow_log:
-                self.workflow_log.publish_log(
-                    message=f"File '{file_name}' sent to manual review queue"
-                )
-            else:
-                logger.info(f"File '{file_name}' sent to manual review queue")
+            # Log successful processing with file_execution_id for better correlation
+            log_file_info(
+                self.workflow_log,
+                file_execution_id,
+                f"File '{file_name}' sent to manual review queue",
+            )
 
             return tool_execution_result
 
         try:
-            if connection_type == self.ConnectionType.FILESYSTEM.value:
+            if connection_type == CoreConnectionType.FILESYSTEM.value:
                 self.copy_output_to_output_directory(input_file_path)
-            elif connection_type == self.ConnectionType.DATABASE.value:
+            elif connection_type == CoreConnectionType.DATABASE.value:
                 # Check for manual review first (like backend)
                 if not self._should_handle_hitl(
                     file_name=file_name,
@@ -360,7 +419,7 @@ class WorkerDestinationConnector:
                         )
                     # Handle database insertion following production pattern
                     self.insert_into_db(input_file_path, tool_execution_result)
-            elif connection_type == self.ConnectionType.API.value:
+            elif connection_type == CoreConnectionType.API.value:
                 logger.info(f"API connection type detected for file {file_name}")
                 # Check for HITL (Manual Review Queue) override for API deployments (like backend)
                 if not self._should_handle_hitl(
@@ -388,7 +447,7 @@ class WorkerDestinationConnector:
                         tool_execution_result = self.get_tool_execution_result(
                             file_history, tool_execution_result
                         )
-            elif connection_type == self.ConnectionType.MANUALREVIEW.value:
+            elif connection_type == CoreConnectionType.MANUALREVIEW.value:
                 # Get real tool execution result if not provided
                 if not tool_execution_result:
                     tool_execution_result = (
@@ -414,20 +473,19 @@ class WorkerDestinationConnector:
         except Exception as destination_error:
             logger.error(f"Destination handle_output failed: {str(destination_error)}")
             # Don't re-raise for API destinations to allow workflow completion
-            if connection_type != self.ConnectionType.API.value:
+            if connection_type != CoreConnectionType.API.value:
                 raise
             else:
                 logger.warning(
                     f"API destination error ignored to allow workflow completion: {str(destination_error)}"
                 )
 
-        # Log successful processing
-        if self.workflow_log:
-            self.workflow_log.publish_log(
-                message=f"File '{file_name}' processed successfully"
-            )
-        else:
-            logger.info(f"File '{file_name}' processed successfully")
+        # Log successful processing with file_execution_id for better correlation
+        log_file_info(
+            self.workflow_log,
+            file_execution_id,
+            f"File '{file_name}' processed successfully",
+        )
 
         return tool_execution_result
 
@@ -462,10 +520,12 @@ class WorkerDestinationConnector:
         )
 
         if not connector_id:
-            raise Exception("No connector_id provided in destination configuration")
+            raise ValueError("No connector_id provided in destination configuration")
 
         if not connector_settings:
-            raise Exception("No connector_settings provided in destination configuration")
+            raise ValueError(
+                "No connector_settings provided in destination configuration"
+            )
 
         # Get table configuration from destination settings (table-specific config)
         table_name = str(self.settings.get("table", "unstract_results"))
@@ -575,7 +635,6 @@ class WorkerDestinationConnector:
         # This would copy files from execution directory to destination
         logger.info(f"Copying output to filesystem destination for {input_file_path}")
         # Placeholder implementation - actual filesystem copying would be implemented here
-        pass
 
     def get_tool_execution_result(
         self, file_history=None, tool_execution_result: str = None
@@ -865,11 +924,12 @@ class WorkerDestinationConnector:
                     message=queue_result,
                     organization_id=self.organization_id,
                 )
-                # Log to UI via workflow_log
-                if self.workflow_log:
-                    self.workflow_log.publish_log(
-                        message=f"✅ File '{file_name}' sent to manual review queue '{queue_name}'"
-                    )
+                # Log to UI via workflow_log with file_execution_id for better correlation
+                log_file_info(
+                    self.workflow_log,
+                    file_execution_id,
+                    f"✅ File '{file_name}' sent to manual review queue '{queue_name}'",
+                )
 
                 logger.info(
                     f"✅ MANUAL REVIEW: File '{file_name}' sent to manual review queue '{queue_name}' successfully"
@@ -1104,7 +1164,7 @@ class WorkerDestinationConnector:
             file_storage = file_system.get_file_storage()
 
             if not file_storage.exists(input_file_path):
-                raise Exception(f"File not found: {input_file_path}")
+                raise FileNotFoundError(f"File not found: {input_file_path}")
 
             file_bytes = file_storage.read(input_file_path, mode="rb")
             if isinstance(file_bytes, str):
@@ -1112,7 +1172,7 @@ class WorkerDestinationConnector:
             return base64.b64encode(file_bytes).decode("utf-8")
         except Exception as e:
             logger.error(f"Failed to read file content for {file_name}: {e}")
-            raise Exception(f"Failed to read file content for queue: {e}")
+            raise OSError(f"Failed to read file content for queue: {e}")
 
     def _read_file_from_source_connector(
         self, input_file_path: str, file_name: str, workflow: dict[str, Any]
@@ -1135,7 +1195,7 @@ class WorkerDestinationConnector:
                 )
 
                 if not source_connector_id or not source_connector_settings:
-                    raise Exception(
+                    raise ValueError(
                         f"Source connector configuration not available for {file_name}"
                     )
             else:
@@ -1173,7 +1233,7 @@ class WorkerDestinationConnector:
             logger.error(
                 f"Failed to read file from source connector for {file_name}: {e}"
             )
-            raise Exception(f"Failed to read file from source connector: {e}")
+            raise OSError(f"Failed to read file from source connector: {e}")
 
 
 # Alias for backward compatibility

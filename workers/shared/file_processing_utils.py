@@ -5,7 +5,6 @@ validation, and conversion utilities used across worker implementations.
 """
 
 import math
-import os
 import time
 from typing import Any
 
@@ -81,29 +80,40 @@ class FileProcessingUtils:
     @staticmethod
     def create_file_batches(
         files: dict[str, Any],
+        organization_id: str | None = None,
+        api_client=None,
         batch_size_env_var: str = "MAX_PARALLEL_FILE_BATCHES",
         default_batch_size: int = 4,
     ) -> list[list[tuple[str, Any]]]:
-        """Standardized file batching algorithm used across workers.
+        """Standardized file batching algorithm used across workers with organization-specific config.
 
         Args:
             files: Dictionary of files to batch
-            batch_size_env_var: Environment variable for batch size config
-            default_batch_size: Default batch size if env var not set
+            organization_id: Organization ID for configuration lookup
+            api_client: Internal API client for configuration access
+            batch_size_env_var: Environment variable for batch size config (fallback)
+            default_batch_size: Default batch size if all else fails
 
         Returns:
             List of file batches, each batch is a list of (key, value) tuples
 
         Note:
             This consolidates the math.ceil batching logic found in
-            api-deployment and general workers.
+            api-deployment and general workers, now with organization-specific configuration support.
         """
         if not files:
             logger.warning("No files provided for batching")
             return []
 
-        # Get batch size from environment
-        batch_size = int(os.getenv(batch_size_env_var, str(default_batch_size)))
+        # Get batch size using configuration client with fallback
+        from .configuration_client import get_batch_size_with_fallback
+
+        batch_size = get_batch_size_with_fallback(
+            organization_id=organization_id,
+            api_client=api_client,
+            env_var_name=batch_size_env_var,
+            default_value=default_batch_size,  # This will be used only if passed explicitly
+        )
 
         # Convert to list of items
         file_items = list(files.items())

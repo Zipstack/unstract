@@ -96,9 +96,28 @@ class WorkerDatabaseUtils:
                 else:
                     sql_values[column] = f"{values[column]}"
             else:
-                # Default to Other SQL DBs
-                # TODO: Handle numeric types with no quotes
-                sql_values[column] = f"{values[column]}"
+                # Default to Other SQL DBs - handle numeric types without quotes
+                col = column.lower()
+                type_x = column_types.get(col, "").upper()
+
+                # Numeric types don't need quotes
+                if type_x in [
+                    "INT",
+                    "INTEGER",
+                    "BIGINT",
+                    "SMALLINT",
+                    "TINYINT",
+                    "DECIMAL",
+                    "NUMERIC",
+                    "FLOAT",
+                    "DOUBLE",
+                    "REAL",
+                    "NUMBER",
+                    "BIT",
+                ]:
+                    sql_values[column] = str(values[column])
+                else:
+                    sql_values[column] = f"{values[column]}"
 
         # If table has a column 'id', unstract inserts a unique value to it
         # Oracle db has column 'ID' instead of 'id'
@@ -173,40 +192,88 @@ class WorkerDatabaseUtils:
         """
         values: dict[str, Any] = {}
 
-        # Determine column mode (default to single column if invalid)
+        # Determine column mode and add metadata
+        column_mode = WorkerDatabaseUtils._determine_column_mode(column_mode_str)
+        WorkerDatabaseUtils._add_metadata_columns(
+            values, include_agent, agent_name, include_timestamp
+        )
+
+        # Process data based on column mode
+        WorkerDatabaseUtils._process_data_by_mode(
+            values, column_mode, data, single_column_name
+        )
+
+        # Add required columns
+        values[file_path_name] = file_path
+        values[execution_id_name] = execution_id
+        return values
+
+    @staticmethod
+    def _determine_column_mode(column_mode_str: str) -> ColumnModes:
+        """Determine column mode from string, defaulting to single column mode."""
         try:
             if column_mode_str == ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN:
-                column_mode = ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN
+                return ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN
             elif column_mode_str == ColumnModes.SPLIT_JSON_INTO_COLUMNS:
-                column_mode = ColumnModes.SPLIT_JSON_INTO_COLUMNS
+                return ColumnModes.SPLIT_JSON_INTO_COLUMNS
             else:
-                column_mode = ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN
+                return ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN
         except Exception:
             # Handle the case where the string is not a valid enum value
-            column_mode = ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN
+            return ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN
 
+    @staticmethod
+    def _add_metadata_columns(
+        values: dict[str, Any],
+        include_agent: bool,
+        agent_name: str | None,
+        include_timestamp: bool,
+    ) -> None:
+        """Add metadata columns (agent, timestamp) to values dictionary."""
         if include_agent and agent_name:
             values[TableColumns.CREATED_BY] = agent_name
 
         if include_timestamp:
             values[TableColumns.CREATED_AT] = datetime.datetime.now()
 
+    @staticmethod
+    def _process_data_by_mode(
+        values: dict[str, Any],
+        column_mode: ColumnModes,
+        data: Any,
+        single_column_name: str,
+    ) -> None:
+        """Process data based on the specified column mode."""
         if column_mode == ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN:
-            if isinstance(data, str):
-                values[single_column_name] = data
-            else:
-                values[single_column_name] = json.dumps(data)
+            WorkerDatabaseUtils._process_single_column_mode(
+                values, data, single_column_name
+            )
         elif column_mode == ColumnModes.SPLIT_JSON_INTO_COLUMNS:
-            if isinstance(data, dict):
-                values.update(data)
-            elif isinstance(data, str):
-                values[single_column_name] = data
-            else:
-                values[single_column_name] = json.dumps(data)
+            WorkerDatabaseUtils._process_split_column_mode(
+                values, data, single_column_name
+            )
 
-        values[file_path_name] = file_path
-        values[execution_id_name] = execution_id
-        return values
+    @staticmethod
+    def _process_single_column_mode(
+        values: dict[str, Any], data: Any, single_column_name: str
+    ) -> None:
+        """Process data for single column mode."""
+        if isinstance(data, str):
+            values[single_column_name] = data
+        else:
+            values[single_column_name] = json.dumps(data)
+
+    @staticmethod
+    def _process_split_column_mode(
+        values: dict[str, Any], data: Any, single_column_name: str
+    ) -> None:
+        """Process data for split column mode."""
+        if isinstance(data, dict):
+            values.update(data)
+        elif isinstance(data, str):
+            values[single_column_name] = data
+        else:
+            values[single_column_name] = json.dumps(data)
 
     @staticmethod
     def get_sql_query_data(

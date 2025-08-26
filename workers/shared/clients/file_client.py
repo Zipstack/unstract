@@ -43,16 +43,18 @@ except ImportError:
                 setattr(self, key, value)
 
         def to_dict(self):
-            return {k: v for k, v in self.__dict__.items()}
+            return dict(self.__dict__.items())
 
         @classmethod
         def from_dict(cls, data):
             return cls(**data)
 
         def ensure_hash(self):
+            # Mock implementation - no hash computation needed for testing
             pass
 
         def validate_for_api(self):
+            # Mock implementation - no validation needed for testing
             pass
 
     WorkflowFileExecutionData = MockDataClass
@@ -206,7 +208,7 @@ class FileAPIClient(BaseAPIClient):
                 return WorkflowFileExecutionData.from_dict(response[0])
         except Exception as e:
             logger.debug(f"Could not get existing workflow file execution: {str(e)}")
-            pass  # Continue to create if not found
+            # Continue to create if not found
 
         # Create request using shared dataclass
         create_request = FileExecutionCreateRequest(

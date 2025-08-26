@@ -8,7 +8,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
@@ -123,7 +123,7 @@ class HealthChecker:
                     )
                 },
                 execution_time=execution_time,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(UTC),
             )
 
         except APIRequestError as e:
@@ -134,7 +134,7 @@ class HealthChecker:
                 message=f"API request failed: {str(e)}",
                 details={"error": str(e)},
                 execution_time=execution_time,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(UTC),
             )
         except Exception as e:
             execution_time = time.time() - start_time
@@ -144,7 +144,7 @@ class HealthChecker:
                 message=f"Unexpected error: {str(e)}",
                 details={"error": str(e)},
                 execution_time=execution_time,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(UTC),
             )
 
     def check_system_resources(self) -> HealthCheckResult:
@@ -198,7 +198,7 @@ class HealthChecker:
                 message=message,
                 details=asdict(metrics),
                 execution_time=execution_time,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(UTC),
             )
 
         except Exception as e:
@@ -209,7 +209,7 @@ class HealthChecker:
                 message=f"Failed to check system resources: {str(e)}",
                 details={"error": str(e)},
                 execution_time=execution_time,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(UTC),
             )
 
     def check_worker_process(self) -> HealthCheckResult:
@@ -227,7 +227,7 @@ class HealthChecker:
                     status=HealthStatus.UNHEALTHY,
                     message="Worker process is zombie",
                     execution_time=execution_time,
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(UTC),
                 )
 
             # Check worker uptime
@@ -247,7 +247,7 @@ class HealthChecker:
                 message=f"Worker process healthy (uptime: {uptime:.0f}s)",
                 details=process_info,
                 execution_time=execution_time,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(UTC),
             )
 
         except Exception as e:
@@ -258,7 +258,7 @@ class HealthChecker:
                 message=f"Failed to check worker process: {str(e)}",
                 details={"error": str(e)},
                 execution_time=execution_time,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(UTC),
             )
 
     def run_all_checks(self) -> dict[str, Any]:
@@ -288,7 +288,7 @@ class HealthChecker:
                         status=HealthStatus.UNHEALTHY,
                         message=f"Custom check failed: {str(e)}",
                         details={"error": str(e)},
-                        timestamp=datetime.utcnow(),
+                        timestamp=datetime.now(UTC),
                     )
                 )
 
@@ -313,7 +313,7 @@ class HealthChecker:
         # Build health report
         health_report = {
             "status": overall_status.value,
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(UTC).isoformat() + "Z",
             "uptime_seconds": time.time() - self.start_time,
             "worker_name": self.config.worker_name,
             "worker_version": self.config.worker_version,
@@ -367,7 +367,7 @@ class HealthChecker:
             uptime_seconds=time.time() - self.start_time,
             process_count=len(psutil.pids()),
             thread_count=process.num_threads(),
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
         )
 
     def get_last_health_check(self) -> dict[str, Any] | None:

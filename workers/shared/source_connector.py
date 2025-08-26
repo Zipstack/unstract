@@ -363,14 +363,239 @@ class WorkerSourceConnector:
             logger.info(
                 f"File history filtering: {len(filtered_files)}/{len(existing_file_hashes)} files after deduplication"
             )
+
+            # If we have a logger, send filtering info to UI
+            filtered_count = len(existing_file_hashes) - len(filtered_files)
+            if filtered_count > 0:
+                logger.info(f"Filtered out {filtered_count} previously processed files")
             return filtered_files, len(filtered_files)
 
         return existing_file_hashes, len(existing_file_hashes)
+
+    def _get_existing_file_executions_optimized(
+        self, provider_file_uuids: list[str]
+    ) -> dict[str, str]:
+        """OPTIMIZED: Check specific files against active executions in single API call.
+
+        Instead of:
+        1. Get ALL PENDING/EXECUTING executions (100+ executions)
+        2. For each execution, get file executions (100+ API calls)
+        3. Build massive lookup table
+
+        Do this:
+        1. Single API call to check specific files
+        2. Return only files that are actively being processed
+
+        Args:
+            provider_file_uuids: List of file UUIDs to check
+
+        Returns:
+            dict: Mapping of provider_file_uuid to status for files being processed
+        """
+        if not provider_file_uuids:
+            return {}
+
+        logger.info(
+            f"DEBUG: OPTIMIZED check - {len(provider_file_uuids)} files against active executions (excluding current execution: {self.execution_id})"
+        )
+
+        try:
+            if not self.workflow_id:
+                logger.info(
+                    "DEBUG: No workflow_id available, skipping file execution check"
+                )
+                return {}
+
+            # Single optimized API call
+            response = self.api_client.check_files_active_processing(
+                workflow_id=self.workflow_id,
+                provider_file_uuids=provider_file_uuids,
+                current_execution_id=self.execution_id,
+            )
+
+            if not response.success:
+                logger.warning(
+                    f"Failed to check files active processing: {response.error}"
+                )
+                return {}
+
+            active_data = response.data or {}
+            active_uuids = active_data.get("active_uuids", [])
+
+            if not active_uuids:
+                logger.info("DEBUG: OPTIMIZED - No files are actively being processed")
+                return {}
+
+            logger.info(
+                f"DEBUG: OPTIMIZED - Found {len(active_uuids)} files being actively processed"
+            )
+
+            # Convert to expected format
+            result = {}
+            for uuid in active_uuids:
+                result[uuid] = "PENDING_OR_EXECUTING"  # Status for filtering
+                logger.info(f"DEBUG: OPTIMIZED - File {uuid[:16]}... is being processed")
+
+            return result
+
+        except Exception as e:
+            logger.warning(f"Error in optimized file execution check: {e}")
+            # Fallback to empty dict (assume no conflicts) to avoid blocking workflow
+            return {}
+
+    def _get_existing_file_executions(self) -> dict[str, str]:
+        """Get existing file executions for ALL active workflow executions.
+
+        This mimics the backend logic from source.py exactly:
+        1. Get ALL active executions for the workflow (PENDING/EXECUTING status)
+        2. For each active execution, get file executions
+        3. Skip files that are being processed in ANY active execution
+
+        This prevents race conditions between concurrent executions of the same workflow.
+
+        Returns:
+            dict: Mapping of provider_file_uuid to execution status
+        """
+        try:
+            if not self.workflow_id:
+                logger.info(
+                    "DEBUG: No workflow_id available, skipping file execution check"
+                )
+                return {}
+
+            from unstract.core.data_models import ExecutionStatus
+
+            # Step 1: Get ALL active workflow executions (matching backend _get_active_workflow_executions)
+            try:
+                # Get workflow executions with PENDING or EXECUTING status
+                workflow_response = self.api_client.get_workflow_executions_by_status(
+                    workflow_id=self.workflow_id,
+                    statuses=[
+                        ExecutionStatus.PENDING.value,
+                        ExecutionStatus.EXECUTING.value,
+                    ],
+                )
+
+                if not workflow_response.success:
+                    logger.warning(
+                        f"Failed to get active workflow executions: {workflow_response.error}"
+                    )
+                    return {}
+
+                active_executions = workflow_response.data or []
+
+                if not active_executions:
+                    logger.info(
+                        f"DEBUG: No active executions found for workflow {self.workflow_id}"
+                    )
+                    return {}
+
+                logger.info(
+                    f"DEBUG: Found {len(active_executions)} active executions for workflow {self.workflow_id}"
+                )
+
+            except Exception as workflow_error:
+                logger.warning(
+                    f"Error getting active workflow executions: {workflow_error}"
+                )
+                return {}
+
+            # Step 2: For each active execution, get file executions (matching backend loop)
+            all_file_executions = {}
+
+            for execution_data in active_executions:
+                execution_id = execution_data.get("id")
+                execution_status = execution_data.get("status")
+
+                if not execution_id:
+                    continue
+
+                logger.info(
+                    f"DEBUG: Checking file executions for execution {execution_id} (status: {execution_status})"
+                )
+
+                try:
+                    # Get file executions for this specific execution
+                    response = self.api_client.get_workflow_file_executions_by_execution(
+                        execution_id
+                    )
+
+                    if not response.success:
+                        logger.warning(
+                            f"Failed to get file executions for {execution_id}: {response.error}"
+                        )
+                        continue
+
+                    file_executions_data = response.data or []
+
+                except Exception as api_error:
+                    logger.warning(
+                        f"Error getting file executions for {execution_id}: {api_error}"
+                    )
+                    continue
+
+                # Process file executions for this execution
+                if file_executions_data and isinstance(file_executions_data, list):
+                    skip_statuses = ExecutionStatus.get_skip_processing_statuses()
+                    skip_status_values = [status.value for status in skip_statuses]
+
+                    for file_exec in file_executions_data:
+                        provider_uuid = file_exec.get("provider_file_uuid")
+                        status = file_exec.get("status")
+                        file_name = file_exec.get("file_name", "unknown")
+                        file_path = file_exec.get("file_path", "")
+
+                        # Only include files that should be skipped (matching backend logic)
+                        if provider_uuid and status and status in skip_status_values:
+                            # Keep track of which execution is blocking this file
+                            all_file_executions[provider_uuid] = {
+                                "status": status,
+                                "execution_id": execution_id,
+                                "file_name": file_name,
+                                "file_path": file_path,
+                            }
+                            logger.info(
+                                f"DEBUG: Found blocking file execution - "
+                                f"File: {file_name}, "
+                                f"UUID: {provider_uuid[:16]}..., "
+                                f"Status: {status}, "
+                                f"Execution: {execution_id}, "
+                                f"Path: {file_path[:50]}..."
+                            )
+
+            # Convert to the expected format (provider_uuid -> status)
+            file_executions = {
+                uuid: data["status"] for uuid, data in all_file_executions.items()
+            }
+
+            if file_executions:
+                logger.info(
+                    f"DEBUG: Found {len(file_executions)} existing file executions to skip across {len(active_executions)} active executions "
+                    f"(PENDING: {sum(1 for s in file_executions.values() if s == ExecutionStatus.PENDING.value)}, "
+                    f"EXECUTING: {sum(1 for s in file_executions.values() if s == ExecutionStatus.EXECUTING.value)}, "
+                    f"COMPLETED: {sum(1 for s in file_executions.values() if s == ExecutionStatus.COMPLETED.value)})"
+                )
+            else:
+                logger.info(
+                    f"DEBUG: No blocking file executions found across {len(active_executions)} active workflow executions. "
+                    f"This is normal when no files are currently being processed."
+                )
+
+            return file_executions
+
+        except Exception as e:
+            logger.warning(f"Error getting existing file executions: {e}")
+            # Return empty dict to allow processing to continue
+            return {}
 
     def _apply_file_history_filtering(
         self, files: dict[str, FileHash]
     ) -> dict[str, FileHash]:
         """Apply file history filtering to remove already processed files.
+
+        This method filters out files that are:
+        1. Already completed in file history (from previous executions)
+        2. Currently being processed (PENDING/EXECUTING in current execution)
 
         Args:
             files: Files to filter
@@ -383,10 +608,25 @@ class WorkerSourceConnector:
 
         logger.info(f"DEBUG: Starting file history filtering for {len(files)} files")
         logger.info(
-            f"DEBUG: use_file_history={self.use_file_history}, workflow_id={self.workflow_id}"
+            f"DEBUG: use_file_history={self.use_file_history}, workflow_id={self.workflow_id}, execution_id={self.execution_id}"
         )
 
         filtered_files = {}
+
+        # OPTIMIZATION: Extract all provider_file_uuids first for batch check
+        provider_file_uuids = []
+        for file_data in files.values():
+            if hasattr(file_data, "provider_file_uuid") and file_data.provider_file_uuid:
+                provider_file_uuids.append(file_data.provider_file_uuid)
+
+        logger.info(
+            f"DEBUG: Extracted {len(provider_file_uuids)} provider_file_uuids for optimized checking"
+        )
+
+        # OPTIMIZED: Single API call to check all files against active executions
+        existing_file_executions = self._get_existing_file_executions_optimized(
+            provider_file_uuids
+        )
 
         try:
             # For ETL/TASK workflows, we'll check file history individually using provider_file_uuid
@@ -400,6 +640,22 @@ class WorkerSourceConnector:
                 logger.info(
                     f"DEBUG: File data - provider_file_uuid: '{file_data.provider_file_uuid}', source_connection_type: '{file_data.source_connection_type}'"
                 )
+
+                # Check if file is already being processed in current execution (PENDING/EXECUTING)
+                if (
+                    existing_file_executions
+                    and file_data.provider_file_uuid in existing_file_executions
+                ):
+                    file_exec_status = existing_file_executions[
+                        file_data.provider_file_uuid
+                    ]
+                    if file_exec_status in ["PENDING", "EXECUTING"]:
+                        logger.info(
+                            f"DEBUG: *** SKIPPING FILE *** {file_data.file_name} - "
+                            f"Already in {file_exec_status} status in current execution"
+                        )
+                        continue  # Skip this file
+
                 # Skip files without provider_file_uuid (shouldn't happen for ETL/TASK)
                 if not file_data.provider_file_uuid:
                     logger.warning(
@@ -429,17 +685,22 @@ class WorkerSourceConnector:
                     )
 
                     # If no history or incomplete history, file is new (matches backend source.py:628-630)
-                    if not history_response or "file_history" not in history_response:
+                    # Fix: history_response is a FileHistoryResponse object, not a dict
+                    if (
+                        not history_response
+                        or not history_response.success
+                        or not history_response.found
+                    ):
                         logger.info(
                             f"DEBUG: No file history found for {file_data.file_name} - including in batch"
                         )
                         logger.info(
-                            f"DEBUG: Reason - response is empty: {not history_response}, missing file_history key: {'file_history' not in (history_response or {})}"
+                            f"DEBUG: Reason - response is empty: {not history_response}, not successful: {not history_response.success if history_response else 'N/A'}, not found: {not history_response.found if history_response else 'N/A'}"
                         )
                         filtered_files[file_path] = file_data
                         continue
 
-                    file_history = history_response["file_history"]
+                    file_history = history_response.file_history
                     logger.info(
                         f"DEBUG: File history data for {file_data.file_name}: {file_history}"
                     )

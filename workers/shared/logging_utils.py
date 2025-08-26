@@ -13,7 +13,7 @@ import traceback
 from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from threading import local
 from typing import Any
 
@@ -80,7 +80,7 @@ class StructuredFormatter(logging.Formatter):
         """Format log record as structured JSON."""
         # Base log entry
         log_entry = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(UTC).isoformat() + "Z",
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -300,7 +300,7 @@ class PerformanceMonitor:
             Function result
         """
         start_time = time.time()
-        start_datetime = datetime.utcnow()
+        start_datetime = datetime.now(UTC)
         function_name = f"{func.__module__}.{func.__name__}"
 
         try:
@@ -314,7 +314,7 @@ class PerformanceMonitor:
 
             # Calculate metrics
             end_time = time.time()
-            end_datetime = datetime.utcnow()
+            end_datetime = datetime.now(UTC)
             execution_time = end_time - start_time
             memory_after = self._get_memory_usage()
             memory_usage = (
@@ -349,7 +349,7 @@ class PerformanceMonitor:
         except Exception as e:
             # Calculate metrics for failed execution
             end_time = time.time()
-            end_datetime = datetime.utcnow()
+            end_datetime = datetime.now(UTC)
             execution_time = end_time - start_time
 
             metrics = PerformanceMetrics(

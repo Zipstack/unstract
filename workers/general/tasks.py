@@ -370,7 +370,13 @@ def _execute_general_workflow(
         workflow_endpoints = api_client.get_workflow_endpoints(
             workflow_context.workflow_id
         )
-        has_api_endpoints = workflow_endpoints.has_api_endpoints
+        # Handle both reconstructed objects and cached dicts for backward compatibility
+        if hasattr(workflow_endpoints, "has_api_endpoints"):
+            has_api_endpoints = workflow_endpoints.has_api_endpoints
+        elif isinstance(workflow_endpoints, dict):
+            has_api_endpoints = workflow_endpoints.get("has_api_endpoints", False)
+        else:
+            has_api_endpoints = False
 
         if has_api_endpoints:
             logger.warning(
@@ -433,6 +439,18 @@ def _execute_general_workflow(
             f"Listed {total_files} files from {connection_type} source (API: {is_api}, file_history: {use_file_history})"
         )
 
+        # Initialize WebSocket logger for UI logs
+        from shared.workflow_logger import WorkerWorkflowLogger
+
+        workflow_logger = WorkerWorkflowLogger.create_for_general_workflow(
+            execution_id=execution_id,
+            organization_id=api_client.organization_id,
+            pipeline_id=pipeline_id,
+        )
+
+        # Send source logs to UI
+        workflow_logger.publish_source_logs(total_files)
+
         # Update total_files at workflow start
         api_client.update_workflow_execution_status(
             execution_id=execution_id,
@@ -444,6 +462,12 @@ def _execute_general_workflow(
 
         if not source_files:
             logger.info(f"Execution {execution_id} no files to process")
+
+            # Send completion log to UI
+            workflow_logger.publish_execution_complete(
+                successful_files=0, failed_files=0, total_time=0.0
+            )
+
             # Complete immediately with no files using workflow service
             workflow_service.update_execution_status(
                 status=ExecutionStatus.COMPLETED,
@@ -562,8 +586,12 @@ def _orchestrate_file_processing_general(
     )
 
     try:
-        # Get file batches using the same logic as Django backend
-        batches = _get_file_batches_general(source_files)
+        # Get file batches using the same logic as Django backend with organization-specific config
+        batches = _get_file_batches_general(
+            input_files=source_files,
+            organization_id=organization_id,
+            api_client=api_client,
+        )
         logger.info(f"Created {len(batches)} file batches for processing")
 
         # Create batch tasks following the exact Django pattern
@@ -743,10 +771,15 @@ def _orchestrate_file_processing_general(
         raise
 
 
-def _get_file_batches_general(input_files: dict[str, FileHash] | list[dict]) -> list:
-    """Get file batches using the exact same logic as Django backend.
+def _get_file_batches_general(
+    input_files: dict[str, FileHash] | list[dict],
+    organization_id: str | None = None,
+    api_client=None,
+) -> list:
+    """Get file batches using the exact same logic as Django backend with organization-specific config.
 
-    This matches WorkflowHelper.get_file_batches() exactly.
+    This matches WorkflowHelper.get_file_batches() exactly, but now supports organization-specific
+    MAX_PARALLEL_FILE_BATCHES configuration.
 
     Args:
         input_files: Dictionary of file hash data or list of file dictionaries (for backward compatibility)
@@ -781,11 +814,13 @@ def _get_file_batches_general(input_files: dict[str, FileHash] | list[dict]) -> 
             logger.error(f"Failed to serialize file '{file_name}': {e}")
             continue
 
-    # Use shared file processing utility for batching
+    # Use shared file processing utility for batching with organization-specific config
     return FileProcessingUtils.create_file_batches(
-        json_serializable_files,
-        "MAX_PARALLEL_FILE_BATCHES",
-        1,  # Default from Django
+        files=json_serializable_files,
+        organization_id=organization_id,
+        api_client=api_client,
+        batch_size_env_var="MAX_PARALLEL_FILE_BATCHES",
+        # default_batch_size not needed - will use environment default matching Django
     )
 
 

@@ -67,6 +67,8 @@ def get_base_internal_api_endpoints() -> dict[str, str]:
         "organization": build_internal_endpoint("organization/{org_id}/"),
         # Platform Settings APIs
         "platform_key": build_internal_endpoint("platform-settings/platform-key/"),
+        # Configuration APIs (configuration app)
+        "configuration": build_internal_endpoint("configuration/{config_key}/"),
     }
 
 

@@ -70,18 +70,26 @@ class PluginManager:
         logger.info(f"Plugin Information: {plugin_name}")
         logger.info("=" * 50)
 
-        # Get plugin requirements/metadata
-        requirements = get_plugin_requirements(plugin_name)
-        if requirements:
-            logger.info("Metadata:")
-            for key, value in requirements.items():
-                if isinstance(value, (list, dict)):
-                    logger.info(f"  {key}: {json.dumps(value, indent=4)}")
-                else:
-                    logger.info(f"  {key}: {value}")
-            logger.info("")
+        self._show_plugin_metadata(plugin_name)
+        self._show_plugin_structure_validation(plugin_name)
+        self._show_plugin_loading_test(plugin_name)
 
-        # Validate plugin structure
+    def _show_plugin_metadata(self, plugin_name: str) -> None:
+        """Display plugin metadata information."""
+        requirements = get_plugin_requirements(plugin_name)
+        if not requirements:
+            return
+
+        logger.info("Metadata:")
+        for key, value in requirements.items():
+            if isinstance(value, (list, dict)):
+                logger.info(f"  {key}: {json.dumps(value, indent=4)}")
+            else:
+                logger.info(f"  {key}: {value}")
+        logger.info("")
+
+    def _show_plugin_structure_validation(self, plugin_name: str) -> None:
+        """Display plugin structure validation results."""
         validation = validate_plugin_structure(plugin_name)
         logger.info("Structure Validation:")
         for check, result in validation.items():
@@ -89,21 +97,26 @@ class PluginManager:
             logger.info(f"  {status} {check}")
         logger.info("")
 
-        # Try to load the plugin
+    def _show_plugin_loading_test(self, plugin_name: str) -> None:
+        """Test and display plugin loading results."""
         logger.info("Plugin Loading Test:")
         try:
             plugin = get_plugin(plugin_name)
             if plugin:
                 logger.info("  ✅ Plugin loaded successfully")
-                if hasattr(plugin, "__name__"):
-                    logger.info(f"  📋 Plugin type: {plugin.__name__}")
-                elif hasattr(plugin, "__class__"):
-                    logger.info(f"  📋 Plugin type: {plugin.__class__.__name__}")
+                self._show_plugin_type_info(plugin)
             else:
                 logger.error("  ❌ Plugin failed to load")
         except Exception as e:
             logger.error(f"  ❌ Plugin loading error: {e}")
         logger.info("")
+
+    def _show_plugin_type_info(self, plugin) -> None:
+        """Display plugin type information."""
+        if hasattr(plugin, "__name__"):
+            logger.info(f"  📋 Plugin type: {plugin.__name__}")
+        elif hasattr(plugin, "__class__"):
+            logger.info(f"  📋 Plugin type: {plugin.__class__.__name__}")
 
     def validate_plugin(self, plugin_name: str) -> bool:
         """Validate a plugin thoroughly."""
@@ -111,6 +124,14 @@ class PluginManager:
         logger.info("=" * 50)
 
         # Structure validation
+        if not self._validate_plugin_structure(plugin_name):
+            return False
+
+        # Import test
+        return self._validate_plugin_import(plugin_name)
+
+    def _validate_plugin_structure(self, plugin_name: str) -> bool:
+        """Validate plugin structure and return True if valid."""
         validation = validate_plugin_structure(plugin_name)
         structure_valid = True
 
@@ -126,39 +147,41 @@ class PluginManager:
             return False
 
         logger.info("")
+        return True
 
-        # Import test
+    def _validate_plugin_import(self, plugin_name: str) -> bool:
+        """Validate plugin import and methods."""
         logger.info("Import Test:")
         try:
             plugin = get_plugin(plugin_name)
-            if plugin:
-                logger.info("  ✅ Plugin imports successfully")
-
-                # Test plugin methods if it's a plugin class
-                if hasattr(plugin, "get_metadata"):
-                    try:
-                        plugin.get_metadata()
-                        logger.info("  ✅ Plugin metadata accessible")
-                    except Exception as e:
-                        logger.warning(f"  ⚠️  Plugin metadata error: {e}")
-
-                if hasattr(plugin, "validate_requirements"):
-                    try:
-                        plugin.validate_requirements()
-                        logger.info("  ✅ Plugin requirements validation available")
-                    except Exception as e:
-                        logger.warning(f"  ⚠️  Plugin requirements validation error: {e}")
-
-            else:
+            if not plugin:
                 logger.error("  ❌ Plugin failed to import")
                 return False
+
+            logger.info("  ✅ Plugin imports successfully")
+            self._test_plugin_methods(plugin)
+            logger.info("\n✅ Plugin validation completed successfully")
+            return True
 
         except Exception as e:
             logger.error(f"  ❌ Import error: {e}")
             return False
 
-        logger.info("\n✅ Plugin validation completed successfully")
-        return True
+    def _test_plugin_methods(self, plugin) -> None:
+        """Test plugin methods if available."""
+        if hasattr(plugin, "get_metadata"):
+            try:
+                plugin.get_metadata()
+                logger.info("  ✅ Plugin metadata accessible")
+            except Exception as e:
+                logger.warning(f"  ⚠️  Plugin metadata error: {e}")
+
+        if hasattr(plugin, "validate_requirements"):
+            try:
+                plugin.validate_requirements()
+                logger.info("  ✅ Plugin requirements validation available")
+            except Exception as e:
+                logger.warning(f"  ⚠️  Plugin requirements validation error: {e}")
 
     def test_plugin(self, plugin_name: str) -> None:
         """Run tests for a plugin."""

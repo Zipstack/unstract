@@ -1,7 +1,5 @@
 import logging
 
-# serializers.py
-# internal_api_views.py
 from api_v2.models import APIDeployment
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
@@ -15,37 +13,6 @@ logger = logging.getLogger(__name__)
 
 
 class PipelineInternalViewSet(ViewSet):
-    # def retrieve(self, request, pk=None):
-    #     logger.info(f"Retrieving pipeline data for +++++++++++++++++++++++ {pk}")
-    #     try:
-    #         queryset = Pipeline.objects.filter(id=pk)
-    #         logger.info(f"Queryset SQL: {queryset.query}")
-    #         queryset = filter_queryset_by_organization(queryset, request, "organization")
-    #         logger.info(f"Queryset SQL after organization filter: {queryset.query}")
-    #         pipeline = get_object_or_404(queryset)
-    #         logger.info(f"Pipeline data: {pipeline}")
-    #         return Response({
-    #             "status": "success",
-    #             "pipeline": PipelineSerializer(pipeline).data
-    #         })
-    #     except Pipeline.DoesNotExist:
-    #         queryset = APIDeployment.objects.filter(id=pk)
-    #         logger.info(f"Queryset SQL: {queryset.query}")
-    #         queryset = filter_queryset_by_organization(queryset, request, "organization")
-    #         logger.info(f"Queryset SQL after organization filter: {queryset.query}")
-    #         pipeline = get_object_or_404(queryset)
-    #         logger.info(f"Pipeline data: {pipeline}")
-    #         return Response({
-    #             "status": "success",
-    #             "pipeline": APIDeploymentSerializer(pipeline).data
-    #         })
-    #     except Exception as e:
-    #         logger.error(f"Pipeline not found for {pk}: {e}")
-    #         return Response({
-    #             "status": "error",
-    #             "message": "Pipeline not found"
-    #         }, status=404)
-
     def retrieve(self, request, pk=None):
         logger.info(f"[PipelineInternalViewSet] Retrieving data for ID: {pk}")
 

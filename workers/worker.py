@@ -30,11 +30,14 @@ logger.info(
     f"📋 All WORKER_* env vars: {[(k, v) for k, v in os.environ.items() if k.startswith('WORKER_')]}"
 )
 
+# Constants
+GENERAL_WORKER_MODULE = "general.worker"
+
 # Map worker types to their actual module names
 # Note: api-deployment uses hyphen in directory name
 WORKER_MODULE_MAPPING = {
     "api_deployment": "api-deployment.worker",  # Directory: api-deployment
-    "general": "general.worker",  # Directory: general
+    "general": GENERAL_WORKER_MODULE,  # Directory: general
     "file_processing": "file_processing.worker",  # Directory: file_processing
     "callback": "callback.worker",  # Directory: callback
     "notification": "notification.worker",  # Directory: notification
@@ -45,7 +48,7 @@ WORKER_MODULE_MAPPING = {
 logger.info(f"📋 Available worker types in mapping: {list(WORKER_MODULE_MAPPING.keys())}")
 
 # Get the module name to import
-module_name = WORKER_MODULE_MAPPING.get(WORKER_TYPE, "general.worker")
+module_name = WORKER_MODULE_MAPPING.get(WORKER_TYPE, GENERAL_WORKER_MODULE)
 
 logger.info(f"📦 Mapping lookup: WORKER_TYPE='{WORKER_TYPE}' -> module='{module_name}'")
 logger.info(f"📦 Loading module: {module_name}")
@@ -75,7 +78,7 @@ except ImportError as e:
     try:
         from general.worker import app
 
-        worker_module = importlib.import_module("general.worker")
+        worker_module = importlib.import_module(GENERAL_WORKER_MODULE)
         if hasattr(worker_module, "config"):
             config = worker_module.config
         else:

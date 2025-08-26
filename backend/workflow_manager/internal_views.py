@@ -57,6 +57,50 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             queryset, self.request, "workflow__organization"
         )
 
+    def list(self, request, *args, **kwargs):
+        """List workflow executions with proper query parameter filtering."""
+        try:
+            # Start with organization-filtered queryset
+            queryset = self.get_queryset()
+
+            # Apply query parameter filters
+            workflow_id = request.query_params.get("workflow_id")
+            if workflow_id:
+                queryset = queryset.filter(workflow_id=workflow_id)
+
+            status_filter = request.query_params.get("status__in")
+            if status_filter:
+                # Handle comma-separated status values
+                statuses = [s.strip() for s in status_filter.split(",")]
+                queryset = queryset.filter(status__in=statuses)
+
+            # Apply any other filters
+            status = request.query_params.get("status")
+            if status:
+                queryset = queryset.filter(status=status)
+
+            # Order by creation time (newest first) for consistent results
+            queryset = queryset.order_by("-created_at")
+
+            # Serialize the filtered queryset
+            serializer = self.get_serializer(queryset, many=True)
+
+            logger.info(
+                f"WorkflowExecution list: returned {len(serializer.data)} executions"
+            )
+            logger.debug(
+                f"Applied filters - workflow_id: {workflow_id}, status__in: {status_filter}, status: {status}"
+            )
+
+            return Response(serializer.data)
+
+        except Exception as e:
+            logger.error(f"Error in WorkflowExecution list: {str(e)}")
+            return Response(
+                {"error": "Failed to list workflow executions", "detail": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
     def retrieve(self, request, *args, **kwargs):
         """Get specific workflow execution with context."""
         try:
@@ -704,6 +748,128 @@ class ExecutionFinalizationAPIView(APIView):
             logger.error(f"Failed to finalize execution {execution_id}: {str(e)}")
             return Response(
                 {"error": "Failed to finalize execution", "detail": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class WorkflowFileExecutionCheckActiveAPIView(APIView):
+    """Internal API for checking if files are actively being processed."""
+
+    def post(self, request):
+        """Check if files are in PENDING or EXECUTING state in other workflow executions."""
+        try:
+            from django.core.cache import cache
+
+            from workflow_manager.file_execution.models import WorkflowFileExecution
+
+            workflow_id = request.data.get("workflow_id")
+            provider_file_uuids = request.data.get("provider_file_uuids", [])
+            current_execution_id = request.data.get("current_execution_id")
+
+            if not workflow_id or not provider_file_uuids:
+                return Response(
+                    {"error": "workflow_id and provider_file_uuids are required"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            logger.info(
+                f"Checking active files for workflow {workflow_id}, "
+                f"excluding execution {current_execution_id}, "
+                f"checking {len(provider_file_uuids)} files"
+            )
+
+            # Check for files in PENDING or EXECUTING state in other workflow executions
+            active_files = {}
+            cache_hits = 0
+            db_queries = 0
+
+            for provider_uuid in provider_file_uuids:
+                # 1. Check completion cache first (highest priority)
+                completion_key = f"file_completed:{workflow_id}:{provider_uuid}"
+                completion_data = cache.get(completion_key)
+
+                if completion_data:
+                    logger.debug(
+                        f"File {provider_uuid} found in completion cache, skipping"
+                    )
+                    continue  # Skip - recently completed
+
+                # 2. Check active processing cache
+                active_key = f"file_active:{workflow_id}:{provider_uuid}"
+                cached_active = cache.get(active_key)
+
+                if cached_active:
+                    # Verify it's not the current execution
+                    if cached_active.get("execution_id") != current_execution_id:
+                        active_files[provider_uuid] = [cached_active]
+                        cache_hits += 1
+                        logger.debug(f"File {provider_uuid} found in active cache")
+                        continue
+
+                # 3. Database query only if no cache hit
+                db_queries += 1
+                query = WorkflowFileExecution.objects.filter(
+                    workflow_execution__workflow_id=workflow_id,
+                    provider_file_uuid=provider_uuid,
+                    status__in=["PENDING", "EXECUTING"],
+                )
+
+                # Exclude current execution if provided
+                if current_execution_id:
+                    query = query.exclude(workflow_execution_id=current_execution_id)
+
+                active_executions = query.values(
+                    "id", "workflow_execution_id", "file_name", "status", "created_at"
+                )
+
+                if active_executions.exists():
+                    execution_list = list(active_executions)
+                    active_files[provider_uuid] = execution_list
+
+                    # Cache the active status with shorter TTL (5 minutes = 300 seconds)
+                    cache_data = {
+                        "id": execution_list[0]["id"],
+                        "execution_id": execution_list[0]["workflow_execution_id"],
+                        "file_name": execution_list[0]["file_name"],
+                        "status": execution_list[0]["status"],
+                        "created_at": execution_list[0]["created_at"].isoformat(),
+                    }
+                    cache.set(
+                        active_key, cache_data, timeout=300
+                    )  # 5 minutes instead of 15 seconds
+
+                    logger.info(
+                        f"File {provider_uuid} is actively being processed in "
+                        f"{len(execution_list)} other executions"
+                    )
+
+            logger.info(
+                f"Active file check complete: {len(active_files)}/{len(provider_file_uuids)} "
+                f"files are being processed (cache_hits: {cache_hits}, db_queries: {db_queries})"
+            )
+
+            return Response(
+                {
+                    "active_files": active_files,
+                    "active_uuids": list(
+                        active_files.keys()
+                    ),  # Worker expects this format
+                    "total_checked": len(provider_file_uuids),
+                    "total_active": len(active_files),
+                    "cache_stats": {
+                        "cache_hits": cache_hits,
+                        "db_queries": db_queries,
+                        "cache_hit_rate": f"{(cache_hits / len(provider_file_uuids) * 100):.1f}%"
+                        if provider_file_uuids
+                        else "0.0%",
+                    },
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error checking active files: {str(e)}", exc_info=True)
+            return Response(
+                {"error": "Failed to check active files", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 

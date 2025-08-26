@@ -468,7 +468,7 @@ class ExecutionStatusUpdate:
         valid_statuses = {status.value for status in ExecutionStatus}
         if self.status not in valid_statuses:
             raise ValueError(
-                f"Invalid status '{self.status}'. " f"Must be one of: {valid_statuses}"
+                f"Invalid status '{self.status}'. Must be one of: {valid_statuses}"
             )
 
     @property

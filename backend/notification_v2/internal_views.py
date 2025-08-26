@@ -34,6 +34,9 @@ from notification_v2.provider.webhook.webhook import send_webhook_notification
 
 logger = logging.getLogger(__name__)
 
+# Constants
+APPLICATION_JSON = "application/json"
+
 
 class WebhookInternalViewSet(viewsets.ReadOnlyModelViewSet):
     """Internal API ViewSet for Webhook/Notification operations."""
@@ -158,7 +161,7 @@ class WebhookSendAPIView(APIView):
 
     def _build_headers(self, validated_data: dict[str, Any]) -> dict[str, str]:
         """Build headers based on authorization configuration."""
-        headers = {"Content-Type": "application/json"}
+        headers = {"Content-Type": APPLICATION_JSON}
 
         auth_type = validated_data.get("authorization_type", AuthorizationType.NONE.value)
         auth_key = validated_data.get("authorization_key")
@@ -290,7 +293,7 @@ class WebhookBatchAPIView(APIView):
 
     def _build_headers(self, webhook_data: dict[str, Any]) -> dict[str, str]:
         """Build headers for webhook request."""
-        headers = {"Content-Type": "application/json"}
+        headers = {"Content-Type": APPLICATION_JSON}
 
         auth_type = webhook_data.get("authorization_type", AuthorizationType.NONE.value)
         auth_key = webhook_data.get("authorization_key")
@@ -373,7 +376,7 @@ class WebhookTestAPIView(APIView):
 
     def _build_headers(self, validated_data: dict[str, Any]) -> dict[str, str]:
         """Build headers for webhook test."""
-        headers = {"Content-Type": "application/json"}
+        headers = {"Content-Type": APPLICATION_JSON}
 
         auth_type = validated_data.get("authorization_type", AuthorizationType.NONE.value)
         auth_key = validated_data.get("authorization_key")
