@@ -78,4 +78,3 @@ class APIHubUsageUtil:
         """
         # OSS version - no caching available
         return False
-
