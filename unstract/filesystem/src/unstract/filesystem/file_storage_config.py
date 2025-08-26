@@ -28,9 +28,11 @@ def get_provider(var_name: str, default: str = "minio") -> FileStorageProvider:
 STORAGE_MAPPING = {
     FileStorageType.WORKFLOW_EXECUTION: StorageType.SHARED_TEMPORARY,
     FileStorageType.API_EXECUTION: StorageType.SHARED_TEMPORARY,
+    FileStorageType.HITL_FILES: StorageType.SHARED_TEMPORARY,  # Use shared temporary for HITL files
 }
 
 FILE_STORAGE_CREDENTIALS_TO_ENV_NAME_MAPPING = {
     FileStorageType.WORKFLOW_EXECUTION: "WORKFLOW_EXECUTION_FILE_STORAGE_CREDENTIALS",
     FileStorageType.API_EXECUTION: "API_FILE_STORAGE_CREDENTIALS",
+    FileStorageType.HITL_FILES: "HITL_FILE_STORAGE_CREDENTIALS",
 }
