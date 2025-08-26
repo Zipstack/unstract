@@ -4,7 +4,13 @@ import PropTypes from "prop-types";
 const CustomObjectFieldTemplate = (props) => {
   const { properties, title, description, formData } = props;
 
-  // Define exact field order - conditional fields at bottom
+  // Create a map of properties by name for easy lookup
+  const propertyMap = {};
+  properties.forEach((prop) => {
+    propertyMap[prop.name] = prop;
+  });
+
+  // Define field order for file connector forms (this template is only used for forms with file expiry fields)
   const fieldOrder = [
     "folders",
     "processSubDirectories",
@@ -15,12 +21,6 @@ const CustomObjectFieldTemplate = (props) => {
     "reprocessInterval",
     "intervalUnit",
   ];
-
-  // Create a map of properties by name for easy lookup
-  const propertyMap = {};
-  properties.forEach((prop) => {
-    propertyMap[prop.name] = prop;
-  });
 
   // Auto-detect if we have file expiry fields that should be rendered side-by-side
   const hasFileExpiryFields =
@@ -66,9 +66,14 @@ const CustomObjectFieldTemplate = (props) => {
                   key="conditional-fields"
                   gutter={[4, 2]}
                   className="compact-expiry-fields"
+                  style={{ width: "100%" }}
                 >
-                  <Col span={12}>{intervalProperty.content}</Col>
-                  <Col span={12}>{unitProperty.content}</Col>
+                  <Col span={12} style={{ paddingRight: "2px" }}>
+                    {intervalProperty.content}
+                  </Col>
+                  <Col span={12} style={{ paddingLeft: "2px" }}>
+                    {unitProperty.content}
+                  </Col>
                 </Row>
               );
             }

@@ -1,9 +1,10 @@
-import { useCallback, useMemo } from "react";
 import Form from "@rjsf/antd";
 import validator from "@rjsf/validator-ajv8";
-import PropTypes from "prop-types";
 import { Alert, Space } from "antd";
+import PropTypes from "prop-types";
+import { useCallback, useMemo } from "react";
 
+import CustomMarkdown from "../../components/helpers/custom-markdown/CustomMarkdown.jsx";
 import { AltDateTimeWidget } from "../../components/rjsf-custom-widgets/alt-date-time-widget/AltDateTimeWidget.jsx";
 import { AltDateWidget } from "../../components/rjsf-custom-widgets/alt-date-widget/AltDateWidget.jsx";
 import { ArrayField } from "../../components/rjsf-custom-widgets/array-field/ArrayField.jsx";
@@ -15,16 +16,15 @@ import { DateWidget } from "../../components/rjsf-custom-widgets/date-widget/Dat
 import { EmailWidget } from "../../components/rjsf-custom-widgets/email-widget/EmailWidget.jsx";
 import { FileWidget } from "../../components/rjsf-custom-widgets/file-widget/FileWidget.jsx";
 import { HiddenWidget } from "../../components/rjsf-custom-widgets/hidden-widget/HiddenWidget.jsx";
+import { PasswordWidget } from "../../components/rjsf-custom-widgets/password-widget/PasswordWidget.jsx";
 import { SelectWidget } from "../../components/rjsf-custom-widgets/select-widget/SelectWidget.jsx";
+import { TextWidget } from "../../components/rjsf-custom-widgets/text-widget/TextWidget.jsx";
 import { TimeWidget } from "../../components/rjsf-custom-widgets/time-widget/TimeWidget.jsx";
+import { UpDownWidget } from "../../components/rjsf-custom-widgets/up-down-widget/UpDownWidget.jsx";
 import { URLWidget } from "../../components/rjsf-custom-widgets/url-widget/URLWidget.jsx";
 import { SpinnerLoader } from "../../components/widgets/spinner-loader/SpinnerLoader.jsx";
-import { TextWidget } from "../../components/rjsf-custom-widgets/text-widget/TextWidget.jsx";
-import { PasswordWidget } from "../../components/rjsf-custom-widgets/password-widget/PasswordWidget.jsx";
-import { UpDownWidget } from "../../components/rjsf-custom-widgets/up-down-widget/UpDownWidget.jsx";
 import { CustomFieldTemplate } from "./CustomFieldTemplate.jsx";
 import { CustomObjectFieldTemplate } from "./CustomObjectFieldTemplate.jsx";
-import CustomMarkdown from "../../components/helpers/custom-markdown/CustomMarkdown.jsx";
 import "./RjsfFormLayout.css";
 
 function RjsfFormLayout({
@@ -121,6 +121,22 @@ function RjsfFormLayout({
     [isStateUpdateRequired, setFormData]
   );
 
+  // Apply CustomObjectFieldTemplate for file connector forms (those with fileReprocessingHandling)
+  const templates = useMemo(() => {
+    const isFileConnectorForm =
+      !!formSchema?.properties?.fileReprocessingHandling;
+
+    return isFileConnectorForm
+      ? {
+          FieldTemplate: CustomFieldTemplate,
+          ObjectFieldTemplate: CustomObjectFieldTemplate,
+        }
+      : {
+          FieldTemplate: CustomFieldTemplate,
+          // No ObjectFieldTemplate - use RJSF default for tool settings etc.
+        };
+  }, [formSchema]);
+
   return (
     <>
       {isLoading ? (
@@ -146,10 +162,7 @@ function RjsfFormLayout({
             onSubmit={(e) => validateAndSubmit?.(e.formData)}
             showErrorList={false}
             onChange={handleChange}
-            templates={{
-              FieldTemplate: CustomFieldTemplate,
-              ObjectFieldTemplate: CustomObjectFieldTemplate,
-            }}
+            templates={templates}
           >
             {children || <></>}
           </Form>
