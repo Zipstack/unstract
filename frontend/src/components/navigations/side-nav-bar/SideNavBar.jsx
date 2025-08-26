@@ -222,7 +222,11 @@ const SideNavBar = ({ collapsed }) => {
     unstractMenuItems[1].subMenu.unshift(dashboardSideMenuItem(orgName));
   }
 
-  const data = menu || unstractMenuItems;
+  // If selectedProduct is verticals and menu is null, don't show any sidebar items
+  const data =
+    selectedProduct === "verticals" && menu === null
+      ? []
+      : menu || unstractMenuItems;
 
   if (getMenuItem && flags?.app_deployment) {
     data[1]?.subMenu?.splice(1, 0, getMenuItem.default(orgName));
