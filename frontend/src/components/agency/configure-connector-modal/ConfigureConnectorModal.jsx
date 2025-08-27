@@ -261,15 +261,14 @@ function ConfigureConnectorModal({
           updatePayload.configuration = formDataConfig;
         }
         if (Object.keys(updatePayload).length > 0) {
-          await handleEndpointUpdate(updatePayload);
+          // TEMPORARY: Remove when save button is restored
+          // The 'true' parameter suppresses error display from handleEndpointUpdate
+          // to prevent duplicate error messages - let modal handle errors instead
+          await handleEndpointUpdate(updatePayload, false, true);
         }
         setOpen(false);
       } catch (error) {
-        setAlertDetails({
-          type: "error",
-          content:
-            error?.message || "Failed to save changes. Please try again.",
-        });
+        setAlertDetails(handleException(error, "Failed to save changes"));
       } finally {
         setIsSavingEndpoint(false);
       }

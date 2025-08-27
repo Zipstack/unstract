@@ -33,18 +33,19 @@
             }
         },
         "maxFiles": {
-            "type": "number",
+            "type": "integer",
             "title": "Max files to process",
             "default": 100,
+            "minimum": 1,
             "description": "The maximum number of files to process"
         },
         "fileReprocessingHandling": {
             "type": "string",
-            "title": "File Expiry Behavior",
-            "description": "Configure how long files are protected from reprocessing",
+            "title": "File metadata deletion behavior",
+            "description": "File metadata will not be deleted until the expiration interval passes",
             "default": "skip_duplicates",
             "enum": ["skip_duplicates", "reprocess_after_interval"],
-            "enumNames": ["Never expire (permanent protection)", "Expire after duration"]
+            "enumNames": ["Never delete", "Delete after"]
         }
     },
     "dependencies": {
@@ -63,11 +64,10 @@
                             "enum": ["reprocess_after_interval"]
                         },
                         "reprocessInterval": {
-                            "type": "string",
-                            "title": "Expires after",
-                            "default": "30",
-                            "minimum": 1,
-                            "pattern": "^[1-9]\\d*$"
+                            "type": "integer",
+                            "title": "Duration",
+                            "default": 30,
+                            "minimum": 1
                         },
                         "intervalUnit": {
                             "type": "string",
