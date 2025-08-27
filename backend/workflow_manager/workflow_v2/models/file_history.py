@@ -1,7 +1,9 @@
 import uuid
+from datetime import timedelta
 
 from django.db import models
-from django.db.models import Q
+from django.db.models import F, Q
+from django.utils import timezone
 from utils.models.base_model import BaseModel
 
 from workflow_manager.workflow_v2.enums import ExecutionStatus
@@ -9,6 +11,24 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 
 HASH_LENGTH = 64
 FILE_PATH_LENGTH = 1000
+
+
+class FileHistoryManager(models.Manager):
+    """Custom manager for FileHistory with reprocessing logic."""
+
+    def exclude_reprocessable(self) -> models.QuerySet["FileHistory"]:
+        """Return QuerySet excluding files that should be reprocessed based on stored interval.
+
+        Performance optimized: Uses only FileHistory table, no cross-table queries.
+
+        Returns:
+            QuerySet excluding files that should be reprocessed
+        """
+        now = timezone.now()
+        return self.exclude(
+            file_reprocessing_interval__isnull=False,
+            modified_at__gte=now - F("file_reprocessing_interval") * timedelta(days=1),
+        )
 
 
 class FileHistory(BaseModel):
@@ -50,6 +70,12 @@ class FileHistory(BaseModel):
     file_path = models.CharField(
         max_length=FILE_PATH_LENGTH, null=True, db_comment="Full Path of the file"
     )
+    file_reprocessing_interval = models.IntegerField(
+        null=True,
+        db_comment="Reprocessing interval in days. NULL means skip duplicates (no reprocessing)",
+    )
+
+    objects: FileHistoryManager = FileHistoryManager()
 
     class Meta:
         verbose_name = "File History"

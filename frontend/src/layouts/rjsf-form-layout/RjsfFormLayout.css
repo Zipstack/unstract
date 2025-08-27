@@ -23,3 +23,22 @@
 .rjsf-helper-font {
   font-size: 12px;
 }
+
+/* Compact styling for file expiry fields */
+.compact-expiry-fields {
+  margin-top: 8px !important;
+  margin-bottom: 16px !important;
+}
+
+.compact-expiry-fields .ant-col {
+  padding-bottom: 0 !important;
+}
+
+.compact-expiry-fields .ant-form-item {
+  margin-bottom: 12px !important;
+}
+
+/* Make the expires after input narrower */
+.compact-expiry-fields .ant-col:first-child .ant-input {
+  max-width: 120px;
+}
