@@ -7,24 +7,31 @@ import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import { useAlertStore } from "../../../store/alert-store";
 import GoogleOAuthButton from "../google/GoogleOAuthButton.jsx";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
-function OAuthDs({ oAuthProvider, setCacheKey, setStatus, selectedSourceId }) {
+function OAuthDs({
+  oAuthProvider,
+  setCacheKey,
+  setStatus,
+  selectedSourceId,
+  workflowId,
+  connectorType,
+}) {
   const axiosPrivate = useAxiosPrivate();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
 
-  const oauthCacheKey = `oauth-cachekey-${selectedSourceId}`;
+  // Create workflow and connector-type specific OAuth storage keys
+  const oauthCacheKey = `oauth-cachekey-${workflowId}-${connectorType}-${selectedSourceId}`;
+  const oauthStatusKey = `oauth-status-${workflowId}-${connectorType}-${selectedSourceId}`;
 
   const [oauthStatus, setOAuthStatus] = useState(() => {
-    // Initialize from connector-specific status only to prevent contamination
-    return localStorage.getItem(`oauth-status-${selectedSourceId}`);
+    // Initialize from workflow and connector-type specific status to prevent contamination
+    return localStorage.getItem(oauthStatusKey);
   });
 
   useEffect(() => {
-    const connectorStatusKey = `oauth-status-${selectedSourceId}`;
-
     const handleStorageChange = () => {
-      // Listen for changes to our specific connector's status only
-      const updatedOAuthStatus = localStorage.getItem(connectorStatusKey);
+      // Listen for changes to our specific workflow-connector combination only
+      const updatedOAuthStatus = localStorage.getItem(oauthStatusKey);
       if (updatedOAuthStatus) {
         setOAuthStatus(updatedOAuthStatus);
         setStatus(updatedOAuthStatus);
@@ -39,23 +46,32 @@ function OAuthDs({ oAuthProvider, setCacheKey, setStatus, selectedSourceId }) {
       setCacheKey(persistedCacheKey);
     }
 
-    // Set initial status from connector-specific status only
-    const connectorSpecificStatus = localStorage.getItem(connectorStatusKey);
-    if (connectorSpecificStatus) {
-      setStatus(connectorSpecificStatus);
-      setOAuthStatus(connectorSpecificStatus);
+    // Set initial status from workflow and connector-type specific status only
+    const workflowSpecificStatus = localStorage.getItem(oauthStatusKey);
+    if (workflowSpecificStatus) {
+      setStatus(workflowSpecificStatus);
+      setOAuthStatus(workflowSpecificStatus);
     }
 
     return () => {
       window.removeEventListener("storage", handleStorageChange);
       // Don't clear localStorage on unmount to persist across tab switches
     };
-  }, [selectedSourceId]);
+  }, [
+    selectedSourceId,
+    workflowId,
+    connectorType,
+    oauthCacheKey,
+    oauthStatusKey,
+    setCacheKey,
+    setStatus,
+  ]);
 
   const handleOAuth = async () => {
     try {
-      // Store connector ID in sessionStorage for OAuth callback (survives window.open)
-      sessionStorage.setItem("oauth-current-connector", selectedSourceId);
+      // Store workflow and connector context in sessionStorage for OAuth callback (survives window.open)
+      const oauthConnectorContext = `${workflowId}-${connectorType}-${selectedSourceId}`;
+      sessionStorage.setItem("oauth-current-connector", oauthConnectorContext);
 
       const requestOptions = {
         method: "GET",
@@ -101,6 +117,8 @@ OAuthDs.propTypes = {
   setCacheKey: PropTypes.func,
   setStatus: PropTypes.func,
   selectedSourceId: PropTypes.string.isRequired,
+  workflowId: PropTypes.string.isRequired,
+  connectorType: PropTypes.string.isRequired,
 };
 
 export { OAuthDs };

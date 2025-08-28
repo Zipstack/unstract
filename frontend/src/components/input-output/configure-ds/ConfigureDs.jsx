@@ -7,6 +7,7 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { RjsfFormLayout } from "../../../layouts/rjsf-form-layout/RjsfFormLayout.jsx";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
+import { useWorkflowStore } from "../../../store/workflow-store.js";
 import { OAuthDs } from "../../oauth-ds/oauth-ds/OAuthDs.jsx";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import "./ConfigureDs.css";
@@ -37,6 +38,7 @@ function ConfigureDs({
   const [cacheKey, setCacheKey] = useState("");
   const [status, setStatus] = useState("");
   const { sessionDetails } = useSessionStore();
+  const { projectId: workflowId } = useWorkflowStore();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const { updateSessionDetails } = useSessionStore();
@@ -48,8 +50,10 @@ function ConfigureDs({
   } = usePostHogEvents();
   const { getUrl } = useRequestUrl();
 
-  const oauthCacheKey = `oauth-cachekey-${selectedSourceId}`;
-  const oauthStatusKey = `oauth-status-${selectedSourceId}`;
+  // Create workflow and connector-type specific OAuth storage keys
+  const connectorType = type === "input" ? "source" : "destination";
+  const oauthCacheKey = `oauth-cachekey-${workflowId}-${connectorType}-${selectedSourceId}`;
+  const oauthStatusKey = `oauth-status-${workflowId}-${connectorType}-${selectedSourceId}`;
 
   // Initialize OAuth state from localStorage after keys are available
   useEffect(() => {
@@ -362,6 +366,8 @@ function ConfigureDs({
           setCacheKey={handleSetCacheKey}
           setStatus={handleSetStatus}
           selectedSourceId={selectedSourceId}
+          workflowId={workflowId}
+          connectorType={connectorType}
         />
       )}
       <RjsfFormLayout
