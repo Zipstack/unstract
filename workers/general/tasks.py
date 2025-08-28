@@ -7,33 +7,40 @@ and general workflow executions using internal APIs.
 import time
 from typing import Any
 
-# Import shared worker infrastructure
-from shared.api_client import InternalAPIClient
+# Import shared worker infrastructure using new structure
+from shared.api import InternalAPIClient
 
 # Import worker-specific data models
-from shared.data_models import (
+from shared.data.models import (
     CallbackTaskData,
     WorkerTaskResponse,
     WorkflowExecutionStatusUpdate,
 )
 from shared.enums import FileDestinationType
 from shared.enums.task_enums import TaskName
-from shared.execution_context import WorkerExecutionContext
-from shared.file_processing_utils import FileProcessingUtils
-from shared.logging_utils import WorkerLogger, log_context, monitor_performance
+from shared.infrastructure.logging import (
+    WorkerLogger,
+    log_context,
+    monitor_performance,
+)
 
 # Import execution models for type-safe context handling
 from shared.models.execution_models import (
     WorkflowContextData,
     create_organization_context,
 )
-from shared.orchestration_utils import WorkflowOrchestrationUtils
-from shared.retry_utils import circuit_breaker
-from shared.source_connector import WorkerSourceConnector
-from shared.type_utils import FileDataValidator, TypeConverter
-from shared.workflow_execution_service import WorkerWorkflowExecutionService
+from shared.patterns.retry.utils import circuit_breaker
+from shared.processing.files import FileProcessingUtils
+from shared.processing.types import FileDataValidator, TypeConverter
+from shared.workflow.execution import (
+    WorkerExecutionContext,
+    WorkflowOrchestrationUtils,
+)
+from shared.workflow.execution.active_file_manager import ActiveFileManager
+from shared.workflow.execution.file_management_utils import FileManagementUtils
 
-from unstract.connectors import ConnectionType
+# Import from local worker module (avoid circular import)
+from worker import app, config
 
 # Import shared data models for type safety
 from unstract.core.data_models import (
@@ -46,9 +53,6 @@ from unstract.core.data_models import (
 
 # Import common workflow utilities
 from unstract.core.workflow_utils import PipelineTypeResolver, WorkflowTypeDetector
-
-# Import from local worker module (avoid circular import)
-from .worker import app, config
 
 logger = WorkerLogger.get_logger(__name__)
 
@@ -128,6 +132,17 @@ def async_execute_bin_general(
             execution_context = execution_response.data
             logger.info(f"Retrieved execution context for {execution_id}")
 
+            # Get execution and workflow information
+            execution_data = execution_context.get("execution", {})
+            current_status = execution_data.get("status")
+            workflow_id = execution_data.get("workflow_id")
+
+            logger.info(f"Execution {execution_id} status: {current_status}")
+            # Note: We allow PENDING executions to continue - they should process available files
+
+            # NOTE: Concurrent executions are allowed - individual active files are filtered out
+            # during source file discovery using cache + database checks
+
             # Update execution status to in progress
             api_client.update_workflow_execution_status(
                 execution_id=execution_id,
@@ -168,6 +183,43 @@ def async_execute_bin_general(
 
             api_client.update_workflow_execution_status(**update_request.to_dict())
 
+            # Clean up active file cache entries to prevent future conflicts
+            provider_uuids = []
+
+            # Extract provider UUIDs from hash_values_of_files (legacy file batch path)
+            if hash_values_of_files:
+                provider_uuids.extend(
+                    FileManagementUtils.extract_provider_uuids(hash_values_of_files)
+                )
+
+            # Extract provider UUIDs from processed source files (orchestrated workflows)
+            processed_source_files = execution_result.get("processed_source_files", {})
+            if processed_source_files:
+                for file_key, file_data in processed_source_files.items():
+                    provider_uuid = ActiveFileManager._extract_provider_uuid(file_data)
+                    if provider_uuid:
+                        provider_uuids.append(provider_uuid)
+                        logger.debug(
+                            f"Added source file {file_key} ({provider_uuid}) to cleanup list"
+                        )
+
+            # Remove duplicates and clean up
+            if provider_uuids:
+                unique_uuids = list(set(provider_uuids))  # Remove duplicates
+                cleaned_count = FileManagementUtils.cleanup_active_file_cache(
+                    provider_file_uuids=unique_uuids,
+                    workflow_id=workflow_id,
+                    logger_instance=logger,
+                )
+                logger.info(
+                    f"🧹 Cleaned up {cleaned_count} active file cache entries for completed execution"
+                )
+                logger.debug(
+                    f"Cleaned cache entries for: hash_files={len(FileManagementUtils.extract_provider_uuids(hash_values_of_files)) if hash_values_of_files else 0}, source_files={len(processed_source_files)}"
+                )
+            else:
+                logger.debug("No provider UUIDs found for cache cleanup")
+
             logger.info(
                 f"Successfully completed general workflow execution {execution_id}"
             )
@@ -207,6 +259,38 @@ def async_execute_bin_general(
                     )
             except Exception as update_error:
                 logger.error(f"Failed to update execution status: {update_error}")
+
+            # Clean up active file cache entries even on failure to prevent conflicts
+            try:
+                provider_uuids = []
+
+                # Extract provider UUIDs from hash_values_of_files (legacy path)
+                if hash_values_of_files:
+                    provider_uuids.extend(
+                        FileManagementUtils.extract_provider_uuids(hash_values_of_files)
+                    )
+
+                # NOTE: In failure case, we don't have access to execution_result
+                # For orchestrated workflows, source_files cleanup will need to be handled
+                # by the orchestration layer or by using a different cleanup strategy
+
+                # Remove duplicates and clean up
+                if provider_uuids:
+                    unique_uuids = list(set(provider_uuids))  # Remove duplicates
+                    cleaned_count = FileManagementUtils.cleanup_active_file_cache(
+                        provider_file_uuids=unique_uuids,
+                        workflow_id=workflow_id,
+                        logger_instance=logger,
+                    )
+                    logger.info(
+                        f"🧹 Cleaned up {cleaned_count} active file cache entries for failed execution"
+                    )
+                else:
+                    logger.debug("No provider UUIDs found for failure cleanup")
+            except Exception as cleanup_error:
+                logger.warning(
+                    f"Failed to cleanup cache entries on error: {cleanup_error}"
+                )
 
             # Re-raise for Celery retry mechanism
             raise
@@ -389,35 +473,28 @@ def _execute_general_workflow(
         # 3. Orchestrate file processing through file_processing workers
         # 4. Aggregate results through callback workers
 
-        # Initialize workflow execution service with migrated business logic
-        workflow_service = WorkerWorkflowExecutionService(
-            api_client=api_client,
-            workflow_id=workflow_context.workflow_id,
-            organization_id=workflow_context.organization_context.organization_id,
-            pipeline_id=workflow_context.get_setting("pipeline_id"),
-            single_step=False,  # General workflows are complete execution
-            scheduled=workflow_context.is_scheduled,
-            execution_id=workflow_context.execution_id,
-            use_file_history=workflow_context.get_setting("use_file_history", True),
-        )
+        # For ETL/TASK workflows, we use file processing orchestration
+        # The workflow execution already exists and is managed by the backend
+        execution_id = workflow_context.execution_id
+        if not execution_id:
+            raise ValueError("Execution ID required for general workflow execution")
 
-        # Create or get workflow execution
-        if not workflow_context.execution_id:
-            execution_id = workflow_service.create_workflow_execution()
-            workflow_context.execution_id = execution_id
-            logger.info(f"Created new workflow execution: {execution_id}")
+        logger.info(f"Processing general workflow execution: {execution_id}")
 
-        # Compile workflow
-        compilation_success = workflow_service.compile_workflow()
-        if not compilation_success:
-            logger.error("Workflow compilation failed")
-            workflow_service.update_execution_status(
-                status=ExecutionStatus.ERROR,
-                error="Workflow compilation failed",
+        # Update status to EXECUTING
+        try:
+            api_client.update_workflow_execution_status(
+                execution_id=execution_id,
+                status=ExecutionStatus.EXECUTING.value,
             )
-            return
+        except Exception as status_error:
+            logger.warning(f"Failed to update execution status: {status_error}")
 
-        # Get source files using backend-compatible operations
+        # Execute workflow - retrieve source files from configured source connector
+        # Import the source connector
+        from shared.workflow.connectors.source import WorkerSourceConnector
+
+        # Create source connector instance
         source_connector = WorkerSourceConnector(
             api_client=api_client,
             workflow_id=workflow_context.workflow_id,
@@ -426,21 +503,56 @@ def _execute_general_workflow(
             use_file_history=workflow_context.get_setting("use_file_history", True),
         )
 
-        # List files from source
-        source_files, total_files = source_connector.list_files_from_source()
+        # Retrieve source files from the configured source
+        try:
+            source_files, total_files = source_connector.list_files_from_source()
+            logger.info(f"Retrieved {total_files} source files from configured source")
 
-        # Get connection type from endpoint config
-        connection_type = source_connector.endpoint_config.get(
-            "connection_type", ConnectionType.FILESYSTEM.value
-        )
-        is_api = connection_type == ConnectionType.API.value
+            # Get connection type from endpoint config
+            connection_type = source_connector.endpoint_config.get(
+                "connection_type", "unknown"
+            )
+            is_api = connection_type == "API"
+
+        except Exception as source_error:
+            logger.error(f"Failed to retrieve source files: {source_error}")
+            # Continue with empty source files but log the error
+            source_files = {}
+            total_files = 0
+            is_api = False
+            connection_type = "unknown"
 
         logger.info(
-            f"Listed {total_files} files from {connection_type} source (API: {is_api}, file_history: {use_file_history})"
+            f"Processing {total_files} source files from {connection_type} source"
         )
 
+        # FILE PROCESSING: Choose appropriate processing method based on workflow type
+        max_files_limit = source_connector.get_max_files_limit()
+
+        if not is_api and source_files:
+            # ETL/TASK workflows: Apply active file filtering to prevent duplicate processing
+            source_files, total_files = (
+                FileManagementUtils.process_files_with_active_filtering(
+                    source_files=source_files,
+                    workflow_id=workflow_context.workflow_id,
+                    execution_id=execution_id,
+                    max_limit=max_files_limit,
+                    api_client=api_client,
+                    logger_instance=logger,
+                )
+            )
+        else:
+            # API workflows: Process without active file filtering (they have their own logic)
+            source_files, total_files = (
+                FileManagementUtils.process_files_without_active_filtering(
+                    source_files=source_files,
+                    max_limit=max_files_limit,
+                    logger_instance=logger,
+                )
+            )
+
         # Initialize WebSocket logger for UI logs
-        from shared.workflow_logger import WorkerWorkflowLogger
+        from shared.infrastructure.logging.workflow_logger import WorkerWorkflowLogger
 
         workflow_logger = WorkerWorkflowLogger.create_for_general_workflow(
             execution_id=execution_id,
@@ -468,12 +580,15 @@ def _execute_general_workflow(
                 successful_files=0, failed_files=0, total_time=0.0
             )
 
-            # Complete immediately with no files using workflow service
-            workflow_service.update_execution_status(
-                status=ExecutionStatus.COMPLETED,
-                completed_files=0,
-                failed_files=0,
-            )
+            # Complete immediately with no files
+            try:
+                api_client.update_workflow_execution_status(
+                    execution_id=execution_id,
+                    status=ExecutionStatus.COMPLETED.value,
+                    total_files=0,
+                )
+            except Exception as status_error:
+                logger.warning(f"Failed to update execution status: {status_error}")
 
             # Update pipeline status if needed
             if pipeline_id:
@@ -500,6 +615,8 @@ def _execute_general_workflow(
                 {
                     "files_processed": 0,
                     "message": "No files to process",
+                    "processed_source_files": {},
+                    "processed_files_count": 0,
                 }
             )
             return response_dict
@@ -527,16 +644,24 @@ def _execute_general_workflow(
 
         except Exception as e:
             logger.error(f"Workflow execution failed: {e}")
-            workflow_service.update_execution_status(
-                status=ExecutionStatus.ERROR,
-                error=str(e),
-            )
+            try:
+                api_client.update_workflow_execution_status(
+                    execution_id=execution_id,
+                    status=ExecutionStatus.ERROR.value,
+                    error=str(e),
+                )
+            except Exception as status_error:
+                logger.warning(f"Failed to update error status: {status_error}")
 
             orchestration_result = WorkerTaskResponse.error_response(
                 execution_id=execution_id,
                 workflow_id=workflow_id,
                 error=str(e),
             ).to_dict()
+
+            # Include empty processed files info even on error
+            orchestration_result["processed_source_files"] = {}
+            orchestration_result["processed_files_count"] = 0
 
         execution_time = time.time() - start_time
         orchestration_result["execution_time"] = execution_time
@@ -611,7 +736,7 @@ def _orchestrate_file_processing_general(
         )
 
         # Calculate manual review configuration ONCE for all files before batching
-        from shared.manual_review_factory import get_manual_review_service
+        from shared.legacy.manual_review_factory import get_manual_review_service
 
         manual_review_service = get_manual_review_service(
             api_client, api_client.organization_id
@@ -720,7 +845,7 @@ def _orchestrate_file_processing_general(
             )
 
         # Import to ensure we have the right app context
-        from .worker import app as celery_app
+        from worker import app as celery_app
 
         # Use shared orchestration utility for chord execution
         result = WorkflowOrchestrationUtils.create_chord_execution(
@@ -772,7 +897,7 @@ def _orchestrate_file_processing_general(
 
 
 def _get_file_batches_general(
-    input_files: dict[str, FileHash] | list[dict],
+    input_files: dict[str, FileHash],
     organization_id: str | None = None,
     api_client=None,
 ) -> list:
@@ -782,12 +907,12 @@ def _get_file_batches_general(
     MAX_PARALLEL_FILE_BATCHES configuration.
 
     Args:
-        input_files: Dictionary of file hash data or list of file dictionaries (for backward compatibility)
+        input_files: Dictionary of FileHash objects
 
     Returns:
         List of file batches
     """
-    # Use type converter to ensure consistent format
+    # Convert FileHash objects to dict format for serialization
     try:
         standardized_files = TypeConverter.ensure_file_dict_format(input_files)
         logger.info(

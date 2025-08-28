@@ -19,8 +19,8 @@ from unstract.core.data_models import ConnectionType as CoreConnectionType
 from unstract.core.data_models import FileHashData
 
 from ..enums import FileDestinationType
-from ..logging_helpers import log_file_info
-from ..logging_utils import WorkerLogger
+from ..infrastructure.logging import WorkerLogger
+from ..infrastructure.logging.helpers import log_file_info
 
 if TYPE_CHECKING:
     from ..api_client import InternalAPIClient
@@ -494,7 +494,7 @@ class WorkerDestinationConnector:
     ) -> None:
         """Insert data into the database (following production pattern)."""
         try:
-            from shared.database_utils import WorkerDatabaseUtils
+            from shared.infrastructure.database.utils import WorkerDatabaseUtils
         except ImportError:
             # Fallback import path
             from ...shared.database_utils import WorkerDatabaseUtils

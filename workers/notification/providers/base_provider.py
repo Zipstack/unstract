@@ -8,7 +8,7 @@ implementation details.
 from abc import ABC, abstractmethod
 from typing import Any
 
-from shared.logging_utils import WorkerLogger
+from shared.infrastructure.logging import WorkerLogger
 
 logger = WorkerLogger.get_logger(__name__)
 

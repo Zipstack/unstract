@@ -95,7 +95,7 @@ class RedisCacheBackend(BaseCacheBackend):
 
             # Use provided config or create default one
             if config is None:
-                from ..config import WorkerConfig
+                from ..infrastructure.config import WorkerConfig
 
                 config = WorkerConfig()
 

@@ -8,10 +8,10 @@ from collections import defaultdict
 from typing import Any
 
 from celery import shared_task
-from shared.api_client_singleton import get_singleton_api_client
 from shared.clients.log_client import LogAPIClient
-from shared.config import WorkerConfig
-from shared.logging_utils import WorkerLogger
+from shared.infrastructure.config import WorkerConfig
+from shared.infrastructure.logging import WorkerLogger
+from shared.legacy.api_client_singleton import get_singleton_api_client
 
 from unstract.core.constants import LogEventArgument, LogProcessingTask
 from unstract.core.log_utils import create_redis_client, store_execution_log

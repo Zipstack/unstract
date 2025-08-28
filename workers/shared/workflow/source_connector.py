@@ -15,7 +15,7 @@ from typing import Any
 
 from unstract.core.data_models import ConnectionType as CoreConnectionType
 
-from ..logging_utils import WorkerLogger
+from ..infrastructure.logging.logger import WorkerLogger
 
 logger = WorkerLogger.get_logger(__name__)
 

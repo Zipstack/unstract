@@ -3,7 +3,8 @@
 Configuration values and constants specific to workers.
 """
 
-from ..config import DefaultConfig, FileProcessingConfig, QueueConfig
+# Commented out to avoid circular imports - import these directly when needed
+# from ..infrastructure.config import DefaultConfig, FileProcessingConfig, QueueConfig
 from .account import Account, Common
 from .api_endpoints import APIEndpoints
 from .cache import CacheConfig
@@ -15,9 +16,10 @@ from .security import SecurityConfig
 
 __all__ = [
     "APIEndpoints",
-    "DefaultConfig",
-    "QueueConfig",
-    "FileProcessingConfig",
+    # Config classes removed to avoid circular imports
+    # "DefaultConfig",
+    # "QueueConfig",
+    # "FileProcessingConfig",
     "ErrorMessages",
     "LogMessages",
     "CacheConfig",

@@ -17,7 +17,7 @@ from typing import Any
 from uuid import UUID
 
 from ..constants.api_endpoints import build_internal_endpoint
-from ..data_models import (
+from ..data.models import (
     APIResponse,
     BatchOperationRequest,
     BatchOperationResponse,
@@ -103,6 +103,7 @@ class FileAPIClient(BaseAPIClient):
         file_hash: dict[str, Any] | FileHashData,
         workflow_id: str | UUID,
         organization_id: str | None = None,
+        force_create: bool = False,
     ) -> WorkflowFileExecutionData:
         """Get or create a workflow file execution record using shared dataclasses.
 
@@ -111,6 +112,7 @@ class FileAPIClient(BaseAPIClient):
             file_hash: File hash data (dict or FileHashData)
             workflow_id: Workflow ID
             organization_id: Optional organization ID override
+            force_create: If True, skip lookup and always create new record
 
         Returns:
             WorkflowFileExecutionData instance
@@ -194,21 +196,24 @@ class FileAPIClient(BaseAPIClient):
 
         logger.debug(f"Lookup parameters: {params}")
 
-        try:
-            # Try to get existing record
-            response = self.get(
-                self._build_url("file_execution"),
-                params=params,
-                organization_id=organization_id,
-            )
-            if response and isinstance(response, list) and len(response) > 0:
-                logger.debug(
-                    f"Found existing workflow file execution: {response[0].get('id')}"
+        if not force_create:
+            try:
+                # Try to get existing record
+                response = self.get(
+                    self._build_url("file_execution"),
+                    params=params,
+                    organization_id=organization_id,
                 )
-                return WorkflowFileExecutionData.from_dict(response[0])
-        except Exception as e:
-            logger.debug(f"Could not get existing workflow file execution: {str(e)}")
-            # Continue to create if not found
+                if response and isinstance(response, list) and len(response) > 0:
+                    logger.debug(
+                        f"Found existing workflow file execution: {response[0].get('id')}"
+                    )
+                    return WorkflowFileExecutionData.from_dict(response[0])
+            except Exception as e:
+                logger.debug(f"Could not get existing workflow file execution: {str(e)}")
+                # Continue to create if not found
+        else:
+            logger.debug("Force create enabled - skipping existing record lookup")
 
         # Create request using shared dataclass
         create_request = FileExecutionCreateRequest(
@@ -737,6 +742,9 @@ class FileAPIClient(BaseAPIClient):
         logger.info(
             f"Creating file history record for {file_name} with status: {status_str}"
         )
+        # DEBUG: Log file_hash parameter being sent
+        logger.info(f"DEBUG: Sending file_hash='{file_hash}' in request data")
+        logger.info(f"DEBUG: file_hash_data contains: {file_hash_data}")
         logger.debug(f"File history data: {data}")
 
         try:

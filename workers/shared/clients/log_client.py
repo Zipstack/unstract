@@ -7,7 +7,7 @@ direct Django ORM dependencies.
 import logging
 from typing import Any
 
-from ..response_models import APIResponse, BatchOperationResponse
+from ..data.response_models import APIResponse, BatchOperationResponse
 from .base_client import BaseAPIClient
 
 logger = logging.getLogger(__name__)

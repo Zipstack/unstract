@@ -794,9 +794,47 @@ class WorkflowFileExecutionCheckActiveAPIView(APIView):
                     )
                     continue  # Skip - recently completed
 
-                # 2. Check active processing cache
-                active_key = f"file_active:{workflow_id}:{provider_uuid}"
-                cached_active = cache.get(active_key)
+                # 2. Check active processing cache (support both old and new key formats)
+                cached_active = None
+
+                # Check old format first
+                old_active_key = f"file_active:{workflow_id}:{provider_uuid}"
+                cached_active = cache.get(old_active_key)
+
+                # If not found, try new file-path-aware format using pattern search
+                if not cached_active:
+                    try:
+                        # Use Redis pattern search for new file-path-aware keys
+                        import redis
+                        from django.conf import settings
+
+                        # Connect to Redis directly for pattern search
+                        redis_client = redis.Redis.from_url(
+                            settings.CACHES["default"]["LOCATION"]
+                        )
+                        pattern = f"file_active:{workflow_id}:{provider_uuid}:*"
+                        matching_keys = redis_client.keys(pattern)
+
+                        # Check each matching key
+                        for key in matching_keys:
+                            key_str = (
+                                key.decode("utf-8") if isinstance(key, bytes) else key
+                            )
+                            cache_data = cache.get(key_str)
+                            if (
+                                cache_data
+                                and cache_data.get("execution_id") != current_execution_id
+                            ):
+                                cached_active = cache_data
+                                logger.debug(
+                                    f"File {provider_uuid} found in new file-path-aware cache: {key_str}"
+                                )
+                                break
+
+                    except Exception as pattern_error:
+                        logger.debug(
+                            f"Pattern search for file-path-aware cache failed: {pattern_error}"
+                        )
 
                 if cached_active:
                     # Verify it's not the current execution
@@ -826,17 +864,9 @@ class WorkflowFileExecutionCheckActiveAPIView(APIView):
                     execution_list = list(active_executions)
                     active_files[provider_uuid] = execution_list
 
-                    # Cache the active status with shorter TTL (5 minutes = 300 seconds)
-                    cache_data = {
-                        "id": execution_list[0]["id"],
-                        "execution_id": execution_list[0]["workflow_execution_id"],
-                        "file_name": execution_list[0]["file_name"],
-                        "status": execution_list[0]["status"],
-                        "created_at": execution_list[0]["created_at"].isoformat(),
-                    }
-                    cache.set(
-                        active_key, cache_data, timeout=300
-                    )  # 5 minutes instead of 15 seconds
+                    # NOTE: Don't create cache entries here - let the worker create them
+                    # The worker is responsible for creating cache entries when it starts processing
+                    # This prevents double cache creation between worker and backend
 
                     logger.info(
                         f"File {provider_uuid} is actively being processed in "

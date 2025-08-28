@@ -1,112 +1,72 @@
-"""Lightweight File Processing Callback Worker
+"""Callback Worker
 
-Handles result aggregation and execution finalization using internal APIs.
+Celery worker for processing file processing callbacks and status updates.
 """
 
-import os
+from shared.enums.worker_enums import WorkerType
+from shared.infrastructure.config.builder import WorkerBuilder
+from shared.infrastructure.config.registry import WorkerRegistry
+from shared.infrastructure.logging import WorkerLogger
 
-from celery import Celery
-from shared.config import WorkerConfig
-from shared.health import HealthChecker, HealthServer
-from shared.logging_utils import WorkerLogger
+# Setup worker
+logger = WorkerLogger.setup(WorkerType.CALLBACK)
+app, config = WorkerBuilder.build_celery_app(WorkerType.CALLBACK)
 
-# Initialize configuration with callback-specific settings
-config = WorkerConfig.from_env("CALLBACK")
 
-# Configure logging to match Django backend
-WorkerLogger.configure(
-    log_level=os.getenv("LOG_LEVEL", "INFO"),
-    log_format=os.getenv("LOG_FORMAT", "django"),  # Use Django-style logging
-    worker_name="callback-worker",
-)
+def check_callback_health():
+    """Custom health check for callback worker."""
+    from shared.infrastructure.monitoring.health import HealthCheckResult, HealthStatus
 
-# Initialize logger
-logger = WorkerLogger.get_logger(__name__)
+    try:
+        from shared.legacy.api_client_singleton import get_singleton_api_client
 
-# Initialize Celery app
-app = Celery("file_processing_callback_worker")
+        client = get_singleton_api_client(config)
+        api_healthy = client is not None
 
-# Configure Celery
-app.conf.update(
-    broker_url=config.celery_broker_url,
-    result_backend=config.celery_result_backend,
-    task_serializer="json",
-    accept_content=["json"],
-    result_serializer="json",
-    timezone="UTC",
-    enable_utc=True,
-    # Worker configuration
-    worker_prefetch_multiplier=int(os.getenv("CELERY_WORKER_PREFETCH_MULTIPLIER", "1")),
-    task_acks_late=os.getenv("CELERY_TASK_ACKS_LATE", "true").lower() == "true",
-    worker_max_tasks_per_child=int(
-        os.getenv("CELERY_WORKER_MAX_TASKS_PER_CHILD", "1000")
-    ),
-    # Queue configuration
-    task_routes={
-        "process_batch_callback": {"queue": "file_processing_callback"},
-        "process_batch_callback_api": {"queue": "api_file_processing_callback"},
-        "finalize_execution_callback": {"queue": "file_processing_callback"},
-    },
-    # Task configuration
-    task_reject_on_worker_lost=True,
-    task_acks_on_failure_or_timeout=True,
-    worker_disable_rate_limits=False,
-    # Retry configuration
-    task_default_retry_delay=60,
-    task_max_retries=3,
-    # Callback-specific: Reduce chord retry noise (default 1s -> 3s for callbacks)
-    result_chord_retry_interval=float(
-        os.getenv("CELERY_RESULT_CHORD_RETRY_INTERVAL", "3.0")
-    ),
-    # Worker stability
-    worker_pool_restarts=True,  # Enable worker pool restarts for stability
-    broker_connection_retry_on_startup=True,  # Retry broker connection on startup
-    # Monitoring
-    worker_send_task_events=True,
-    task_send_sent_event=True,
-    # Task discovery
-    imports=[
-        "callback.tasks",
-    ],
-)
+        if api_healthy:
+            return HealthCheckResult(
+                name="callback_health",
+                status=HealthStatus.HEALTHY,
+                message="Callback worker is healthy",
+                details={
+                    "worker_type": "callback",
+                    "api_client": "healthy",
+                    "queues": [
+                        "file_processing_callback",
+                        "api_file_processing_callback",
+                    ],
+                },
+            )
+        else:
+            return HealthCheckResult(
+                name="callback_health",
+                status=HealthStatus.DEGRADED,
+                message="Callback worker partially functional",
+                details={"api_client": "unhealthy"},
+            )
 
-# Initialize metrics
-# TODO: Fix metrics import - metrics = init_metrics("callback")
+    except Exception as e:
+        return HealthCheckResult(
+            name="callback_health",
+            status=HealthStatus.DEGRADED,
+            message=f"Health check failed: {e}",
+            details={"error": str(e)},
+        )
 
-# Initialize health checker and server
 
-health_checker = HealthChecker(config)
-health_server = HealthServer(
-    health_checker=health_checker, port=int(os.getenv("CALLBACK_HEALTH_PORT", "8083"))
+# Register health check
+
+WorkerRegistry.register_health_check(
+    WorkerType.CALLBACK, "callback_health", check_callback_health
 )
 
 
 @app.task(bind=True)
 def healthcheck(self):
-    """Health check task for monitoring."""
-    return {"status": "healthy", "worker_type": "callback", "task_id": self.request.id}
-
-
-# Tasks are imported via Celery imports configuration above
-
-if __name__ == "__main__":
-    logger.info(f"Starting File Processing Callback Worker with config: {config}")
-
-    # Start health server
-    health_server.start()
-
-    try:
-        # Start Celery worker
-        app.worker_main(
-            [
-                "worker",
-                "--loglevel=info",
-                "--autoscale=4,1",
-                "--queues=file_processing_callback,api_file_processing_callback",
-            ]
-        )
-    except KeyboardInterrupt:
-        logger.info("Shutting down File Processing Callback Worker...")
-    finally:
-        # Stop health server
-        health_server.stop()
+    """Health check task for monitoring systems."""
+    return {
+        "status": "healthy",
+        "worker_type": "callback",
+        "task_id": self.request.id,
+        "worker_name": config.worker_name if config else "callback-worker",
+    }

@@ -7,31 +7,35 @@ Uses the same patterns as workflow_helper.py and file_execution_tasks.py
 import time
 from typing import Any
 
-# Import shared worker infrastructure
-from shared.api_client import InternalAPIClient
-from shared.config import WorkerConfig
+# Import shared worker infrastructure using new structure
+from shared.api import InternalAPIClient
 
 # Import from shared worker modules
 from shared.enums.task_enums import TaskName
+from shared.infrastructure.config import WorkerConfig
+from shared.infrastructure.logging import (
+    WorkerLogger,
+    monitor_performance,
+    with_execution_context,
+)
+from shared.patterns.retry.utils import retry
+from shared.processing.files import FileProcessingUtils
 
 # Import new shared utilities
-from shared.execution_context import WorkerExecutionContext
-from shared.file_processing_utils import FileProcessingUtils
-from shared.logging_utils import WorkerLogger, log_context, monitor_performance
-from shared.orchestration_utils import WorkflowOrchestrationUtils
-from shared.retry_utils import retry
+from shared.workflow.execution import WorkerExecutionContext, WorkflowOrchestrationUtils
+
+# Import from local worker module (avoid circular import)
+from worker import app
 
 # Import shared data models for type safety
 from unstract.core.data_models import ExecutionStatus, FileHashData
-
-# Import from local worker module (avoid circular import)
-from .worker import app
 
 # Note: FileExecutionResult removed - file worker now handles all result caching
 
 logger = WorkerLogger.get_logger(__name__)
 
 
+@with_execution_context
 def _unified_api_execution(
     task_instance,
     schema_name: str,
@@ -68,117 +72,103 @@ def _unified_api_execution(
     Returns:
         Execution result dictionary
     """
-    task_id = task_instance.request.id
-    organization_id = schema_name
+    try:
+        # Set up execution context using shared utilities
+        organization_id = schema_name
+        config, api_client = WorkerExecutionContext.setup_execution_context(
+            organization_id, execution_id, workflow_id
+        )
 
-    # Use standardized logging context
-    with log_context(
-        task_id=task_id,
-        execution_id=execution_id,
-        workflow_id=workflow_id,
-        organization_id=organization_id,
-        pipeline_id=pipeline_id,
-    ):
-        try:
-            # Set up execution context using shared utilities
-            config, api_client = WorkerExecutionContext.setup_execution_context(
-                organization_id, execution_id, workflow_id
-            )
+        # Log task start with standardized format
+        WorkerExecutionContext.log_task_start(
+            f"unified_api_execution_{task_type}",
+            execution_id,
+            workflow_id,
+            {
+                "pipeline_id": pipeline_id,
+                "scheduled": scheduled,
+                "use_file_history": use_file_history,
+                "files_count": len(hash_values_of_files) if hash_values_of_files else 0,
+            },
+        )
 
-            # Log task start with standardized format
-            WorkerExecutionContext.log_task_start(
-                f"unified_api_execution_{task_type}",
-                execution_id,
-                workflow_id,
-                {
-                    "pipeline_id": pipeline_id,
-                    "scheduled": scheduled,
-                    "use_file_history": use_file_history,
-                    "files_count": len(hash_values_of_files)
-                    if hash_values_of_files
-                    else 0,
-                },
-            )
+        # Convert file hash data using standardized conversion
+        converted_files = FileProcessingUtils.convert_file_hash_data(hash_values_of_files)
 
-            # Convert file hash data using standardized conversion
-            converted_files = FileProcessingUtils.convert_file_hash_data(
-                hash_values_of_files
-            )
-
-            if not converted_files:
-                logger.warning("No valid files to process after conversion")
-                return {
-                    "execution_id": execution_id,
-                    "status": "COMPLETED",
-                    "message": "No files to process",
-                    "files_processed": 0,
-                }
-
-            # Validate orchestration parameters
-            WorkflowOrchestrationUtils.validate_orchestration_parameters(
-                execution_id, workflow_id, organization_id, converted_files
-            )
-
-            # Create file batches using standardized algorithm with organization-specific config
-            file_batches = FileProcessingUtils.create_file_batches(
-                files=converted_files,
-                organization_id=organization_id,
-                api_client=api_client,
-                batch_size_env_var="MAX_PARALLEL_FILE_BATCHES",
-                # default_batch_size not needed - will use environment default
-            )
-
-            logger.info(
-                f"Processing {len(converted_files)} files in {len(file_batches)} batches"
-            )
-
-            # Execute workflow through direct API orchestration
-            result = _run_workflow_api(
-                api_client=api_client,
-                schema_name=organization_id,
-                workflow_id=workflow_id,
-                execution_id=execution_id,
-                hash_values_of_files=converted_files,  # Changed parameter name
-                scheduled=scheduled,
-                execution_mode=execution_mode,
-                pipeline_id=pipeline_id,
-                use_file_history=use_file_history,
-                task_id=task_instance.request.id,  # Add required task_id
-            )
-
-            # Log completion with standardized format
-            WorkerExecutionContext.log_task_completion(
-                f"unified_api_execution_{task_type}",
-                execution_id,
-                True,
-                f"files_processed={len(converted_files)}",
-            )
-
-            return result
-
-        except Exception as e:
-            logger.error(f"API execution failed: {e}")
-
-            # Handle execution error with standardized pattern
-            if "api_client" in locals():
-                WorkerExecutionContext.handle_execution_error(
-                    api_client, execution_id, e, logger, f"api_execution_{task_type}"
-                )
-
-            # Log completion with error
-            WorkerExecutionContext.log_task_completion(
-                f"unified_api_execution_{task_type}",
-                execution_id,
-                False,
-                f"error={str(e)}",
-            )
-
+        if not converted_files:
+            logger.warning("No valid files to process after conversion")
             return {
                 "execution_id": execution_id,
-                "status": "ERROR",
-                "error": str(e),
+                "status": "COMPLETED",
+                "message": "No files to process",
                 "files_processed": 0,
             }
+
+        # Validate orchestration parameters
+        WorkflowOrchestrationUtils.validate_orchestration_parameters(
+            execution_id, workflow_id, organization_id, converted_files
+        )
+
+        # Create file batches using standardized algorithm with organization-specific config
+        file_batches = FileProcessingUtils.create_file_batches(
+            files=converted_files,
+            organization_id=organization_id,
+            api_client=api_client,
+            batch_size_env_var="MAX_PARALLEL_FILE_BATCHES",
+            # default_batch_size not needed - will use environment default
+        )
+
+        logger.info(
+            f"Processing {len(converted_files)} files in {len(file_batches)} batches"
+        )
+
+        # Execute workflow through direct API orchestration
+        result = _run_workflow_api(
+            api_client=api_client,
+            schema_name=organization_id,
+            workflow_id=workflow_id,
+            execution_id=execution_id,
+            hash_values_of_files=converted_files,  # Changed parameter name
+            scheduled=scheduled,
+            execution_mode=execution_mode,
+            pipeline_id=pipeline_id,
+            use_file_history=use_file_history,
+            task_id=task_instance.request.id,  # Add required task_id
+        )
+
+        # Log completion with standardized format
+        WorkerExecutionContext.log_task_completion(
+            f"unified_api_execution_{task_type}",
+            execution_id,
+            True,
+            f"files_processed={len(converted_files)}",
+        )
+
+        return result
+
+    except Exception as e:
+        logger.error(f"API execution failed: {e}")
+
+        # Handle execution error with standardized pattern
+        if "api_client" in locals():
+            WorkerExecutionContext.handle_execution_error(
+                api_client, execution_id, e, logger, f"api_execution_{task_type}"
+            )
+
+        # Log completion with error
+        WorkerExecutionContext.log_task_completion(
+            f"unified_api_execution_{task_type}",
+            execution_id,
+            False,
+            f"error={str(e)}",
+        )
+
+        return {
+            "execution_id": execution_id,
+            "status": "ERROR",
+            "error": str(e),
+            "files_processed": 0,
+        }
 
 
 @app.task(
@@ -350,20 +340,91 @@ def _run_workflow_api(
             execution_id=execution_id,
         )
 
-        # Mark cached files as executed and send ALL files to file worker
+        # Mark cached files as executed and add their results to API cache
         if cached_results:
             logger.info(
                 f"Marking {len(cached_results)} files as already executed (cached)"
             )
-            for file_hash_str, cached_result in cached_results.items():
-                # Find the corresponding FileHashData object and mark it as executed
-                for hash_data in hash_values_of_files.values():
-                    if hash_data.file_hash == file_hash_str:
-                        hash_data.is_executed = True
-                        logger.info(
-                            f"Marked file {hash_data.file_name} as is_executed=True"
-                        )
-                        break
+            logger.info(
+                f"DEBUG: cached_results type: {type(cached_results)}, keys: {list(cached_results.keys()) if isinstance(cached_results, dict) else 'not a dict'}"
+            )
+
+            # CRITICAL FIX: Add cached file history results to API results cache
+            # This ensures cached files appear in the final API response
+            # NOTE: This fix is ONLY for API deployments, not for ETL/TASK workflows
+            try:
+                from shared.workflow.execution.service import (
+                    WorkerWorkflowExecutionService,
+                )
+
+                # Create workflow service for caching (API deployment only)
+                workflow_service = WorkerWorkflowExecutionService(api_client=api_client)
+
+                for file_hash_str, cached_result in cached_results.items():
+                    # Find the corresponding FileHashData object and mark it as executed
+                    for hash_data in hash_values_of_files.values():
+                        if hash_data.file_hash == file_hash_str:
+                            hash_data.is_executed = True
+                            logger.info(
+                                f"Marked file {hash_data.file_name} as is_executed=True"
+                            )
+
+                            # Add cached result to API results cache for final response
+                            # Parse cached result if it's a JSON string (from file_history storage)
+                            cached_result_data = cached_result.get("result")
+                            if isinstance(cached_result_data, str):
+                                try:
+                                    import json
+
+                                    cached_result_data = json.loads(cached_result_data)
+                                except (json.JSONDecodeError, TypeError) as e:
+                                    logger.warning(
+                                        f"Failed to parse cached result JSON for {hash_data.file_name}: {e}"
+                                    )
+                                    # Fallback: try to parse Python string representation (legacy format)
+                                    try:
+                                        import ast
+
+                                        cached_result_data = ast.literal_eval(
+                                            cached_result_data
+                                        )
+                                        logger.info(
+                                            f"Successfully parsed legacy Python string format for {hash_data.file_name}"
+                                        )
+                                    except (ValueError, SyntaxError) as parse_error:
+                                        logger.warning(
+                                            f"Failed to parse legacy format for {hash_data.file_name}: {parse_error}"
+                                        )
+                                        # Keep as string if all parsing fails
+
+                            api_result = {
+                                "file": hash_data.file_name,
+                                "file_execution_id": hash_data.provider_file_uuid or "",
+                                "result": cached_result_data,
+                                "error": None,
+                                "metadata": {
+                                    "processing_time": 0.0,  # Cached files take no time
+                                    "source": "file_history_cache",
+                                },
+                            }
+
+                            # Cache the result for API response aggregation
+                            workflow_service.cache_api_result(
+                                workflow_id=workflow_id,
+                                execution_id=execution_id,
+                                result=api_result,
+                                is_api=True,
+                            )
+                            logger.info(
+                                f"Added cached file history result to API results cache: {hash_data.file_name}"
+                            )
+                            break
+
+            except Exception as cache_error:
+                logger.error(
+                    f"Failed to cache file history results for API response: {cache_error}"
+                )
+                # Continue execution - caching failures shouldn't stop the workflow
 
     # Send ALL files to file worker (both cached and non-cached)
     # File worker will handle cached files by checking is_executed flag
@@ -488,7 +549,7 @@ def _run_workflow_api(
 
 
 def _get_file_batches(
-    input_files: dict[str, FileHashData] | list[dict],
+    input_files: dict[str, FileHashData],
     organization_id: str | None = None,
     api_client=None,
 ) -> list:
@@ -498,61 +559,43 @@ def _get_file_batches(
     MAX_PARALLEL_FILE_BATCHES configuration.
 
     Args:
-        input_files: Dictionary of file hash data or list of file dictionaries (for backward compatibility)
+        input_files: Dictionary of FileHashData objects (already converted by FileProcessingUtils)
         organization_id: Organization ID for configuration lookup
         api_client: Internal API client for configuration access
 
     Returns:
         List of file batches
+
+    Note:
+        This function expects FileHashData objects since convert_file_hash_data() is called upstream.
+        The function converts them to dict format for Celery serialization.
     """
     import math
-    import os
-
-    # Handle both list and dict formats for backward compatibility
-    if isinstance(input_files, list):
-        # Convert list format to dict format
-        logger.info(f"Converting list format to dict format for {len(input_files)} files")
-        dict_files = {}
-        for file_data in input_files:
-            if isinstance(file_data, dict):
-                file_name = file_data.get("file_name", f"file_{len(dict_files)}")
-                # Handle duplicate file names
-                if file_name in dict_files:
-                    base_name, ext = os.path.splitext(file_name)
-                    counter = 1
-                    while f"{base_name}_{counter}{ext}" in dict_files:
-                        counter += 1
-                    file_name = f"{base_name}_{counter}{ext}"
-                    logger.warning(
-                        f"Duplicate file name detected, renamed to: {file_name}"
-                    )
-                dict_files[file_name] = file_data
-            else:
-                logger.error(f"Unexpected file data type in list: {type(file_data)}")
-                continue
-        input_files = dict_files
-    elif not isinstance(input_files, dict):
-        logger.error(
-            f"Unexpected input_files type: {type(input_files)}, expected dict or list"
-        )
-        raise TypeError(f"input_files must be dict or list, got {type(input_files)}")
 
     # Convert FileHashData objects to serializable format for batching
+    # At this point, input_files should contain only FileHashData objects
+    # (converted upstream by FileProcessingUtils.convert_file_hash_data)
+    if not isinstance(input_files, dict):
+        raise TypeError(f"Expected dict[str, FileHashData], got {type(input_files)}")
+
     json_serializable_files = {}
     for file_name, file_hash_data in input_files.items():
         if isinstance(file_hash_data, FileHashData):
             json_serializable_files[file_name] = file_hash_data.to_dict()
-        elif isinstance(file_hash_data, dict):
-            # Backward compatibility for dict format
-            json_serializable_files[file_name] = file_hash_data
         else:
+            # This should not happen if convert_file_hash_data was called upstream
             logger.error(
-                f"Unexpected file data type for '{file_name}': {type(file_hash_data)}"
+                f"Unexpected file data type for '{file_name}': {type(file_hash_data)}. "
+                f"Expected FileHashData object. This suggests convert_file_hash_data() was not called upstream."
             )
-            continue
+            # Try to handle gracefully
+            if isinstance(file_hash_data, dict):
+                json_serializable_files[file_name] = file_hash_data
+            else:
+                continue
 
     # Prepare batches of files for parallel processing with organization-specific config
-    from shared.configuration_client import get_batch_size_with_fallback
+    from shared.infrastructure.config.client import get_batch_size_with_fallback
 
     BATCH_SIZE = get_batch_size_with_fallback(
         organization_id=organization_id,
@@ -775,6 +818,7 @@ def _calculate_manual_review_decisions_for_batch_api(
 @app.task(bind=True)
 @monitor_performance
 @retry(max_attempts=3, base_delay=2.0)
+@with_execution_context
 def api_deployment_status_check(
     self, execution_id: str, organization_id: str
 ) -> dict[str, Any]:
@@ -787,52 +831,48 @@ def api_deployment_status_check(
     Returns:
         Status information
     """
-    task_id = self.request.id
+    logger.info(f"Checking status for API deployment execution {execution_id}")
 
-    with log_context(
-        task_id=task_id, execution_id=execution_id, organization_id=organization_id
-    ):
-        logger.info(f"Checking status for API deployment execution {execution_id}")
+    try:
+        config = WorkerConfig()
+        with InternalAPIClient(config) as api_client:
+            api_client.set_organization_context(organization_id)
 
-        try:
-            config = WorkerConfig()
-            with InternalAPIClient(config) as api_client:
-                api_client.set_organization_context(organization_id)
-
-                # Get execution status
-                execution_response = api_client.get_workflow_execution(execution_id)
-                if not execution_response.success:
-                    raise Exception(
-                        f"Failed to get execution context: {execution_response.error}"
-                    )
-                execution_context = execution_response.data
-                execution_data = execution_context.get("execution", {})
-
-                status_info = {
-                    "execution_id": execution_id,
-                    "status": execution_data.get("status"),
-                    "created_at": execution_data.get("created_at"),
-                    "modified_at": execution_data.get("modified_at"),
-                    "total_files": execution_data.get("total_files"),
-                    "attempts": execution_data.get("attempts"),
-                    "execution_time": execution_data.get("execution_time"),
-                    "error_message": execution_data.get("error_message"),
-                    "is_api_deployment": True,
-                }
-
-                logger.info(
-                    f"API deployment execution {execution_id} status: {status_info['status']}"
+            # Get execution status
+            execution_response = api_client.get_workflow_execution(execution_id)
+            if not execution_response.success:
+                raise Exception(
+                    f"Failed to get execution context: {execution_response.error}"
                 )
+            execution_context = execution_response.data
+            execution_data = execution_context.get("execution", {})
 
-                return status_info
+            status_info = {
+                "execution_id": execution_id,
+                "status": execution_data.get("status"),
+                "created_at": execution_data.get("created_at"),
+                "modified_at": execution_data.get("modified_at"),
+                "total_files": execution_data.get("total_files"),
+                "attempts": execution_data.get("attempts"),
+                "execution_time": execution_data.get("execution_time"),
+                "error_message": execution_data.get("error_message"),
+                "is_api_deployment": True,
+            }
 
-        except Exception as e:
-            logger.error(f"Failed to check API deployment status: {e}")
-            raise
+            logger.info(
+                f"API deployment execution {execution_id} status: {status_info['status']}"
+            )
+
+            return status_info
+
+    except Exception as e:
+        logger.error(f"Failed to check API deployment status: {e}")
+        raise
 
 
 @app.task(bind=True)
 @monitor_performance
+@with_execution_context
 def api_deployment_cleanup(
     self, execution_id: str, organization_id: str
 ) -> dict[str, Any]:
@@ -845,35 +885,29 @@ def api_deployment_cleanup(
     Returns:
         Cleanup result
     """
-    task_id = self.request.id
+    logger.info(f"Starting cleanup for API deployment execution {execution_id}")
 
-    with log_context(
-        task_id=task_id, execution_id=execution_id, organization_id=organization_id
-    ):
-        logger.info(f"Starting cleanup for API deployment execution {execution_id}")
+    try:
+        # Cleanup logic would go here
+        # - Remove temporary files
+        # - Clean up API deployment resources
+        # - Archive execution data if needed
+        task_id = self.request.id
 
-        try:
-            # Cleanup logic would go here
-            # - Remove temporary files
-            # - Clean up API deployment resources
-            # - Archive execution data if needed
+        cleanup_result = {
+            "execution_id": execution_id,
+            "cleanup_completed": True,
+            "cleanup_time": time.time(),
+            "task_id": task_id,
+        }
 
-            cleanup_result = {
-                "execution_id": execution_id,
-                "cleanup_completed": True,
-                "cleanup_time": time.time(),
-                "task_id": task_id,
-            }
+        logger.info(f"Cleanup completed for API deployment execution {execution_id}")
 
-            logger.info(f"Cleanup completed for API deployment execution {execution_id}")
+        return cleanup_result
 
-            return cleanup_result
-
-        except Exception as e:
-            logger.error(
-                f"Cleanup failed for API deployment execution {execution_id}: {e}"
-            )
-            raise
+    except Exception as e:
+        logger.error(f"Cleanup failed for API deployment execution {execution_id}: {e}")
+        raise
 
 
 def _check_file_history_api(

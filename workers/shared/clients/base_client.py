@@ -18,10 +18,10 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from ..config import WorkerConfig
-from ..data_models import APIResponse
+from ..data.models import APIResponse
 from ..enums import HTTPMethod
-from ..logging_utils import WorkerLogger
+from ..infrastructure.config.worker_config import WorkerConfig
+from ..infrastructure.logging import WorkerLogger
 
 logger = WorkerLogger.get_logger(__name__)
 

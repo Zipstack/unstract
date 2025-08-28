@@ -18,7 +18,7 @@ import os
 import sys
 from typing import Any
 
-from ..data_models import (
+from ..data.models import (
     APIResponse,
     BatchOperationRequest,
     BatchOperationResponse,
@@ -31,7 +31,7 @@ from ..enums import (
     BatchOperationType,
     TaskStatus,
 )
-from ..retry_utils import CircuitBreakerOpenError, circuit_breaker
+from ..utils.retry_temp import CircuitBreakerOpenError, circuit_breaker
 from .base_client import BaseAPIClient
 
 logger = logging.getLogger(__name__)

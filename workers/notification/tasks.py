@@ -25,8 +25,8 @@ from notification.utils import (
     log_notification_failure,
     log_notification_success,
 )
-from shared.config import WorkerConfig
-from shared.logging_utils import WorkerLogger
+from shared.infrastructure.config import WorkerConfig
+from shared.infrastructure.logging import WorkerLogger
 
 from unstract.core.notification_enums import NotificationType
 

@@ -4,7 +4,17 @@ Internal API endpoint paths used by workers.
 Configurable via environment variables for flexibility.
 """
 
-from ..worker_patterns import build_internal_endpoint
+# Avoid patterns import to prevent circular dependencies
+# from ..patterns.worker_patterns import build_internal_endpoint
+
+
+# Simple implementation to avoid circular imports
+def build_internal_endpoint(endpoint: str) -> str:
+    """Build internal API endpoint URL - simplified to avoid circular imports."""
+    import os
+
+    base_url = os.getenv("INTERNAL_API_BASE_URL", "http://localhost:8000")
+    return f"{base_url.rstrip('/')}/{endpoint.lstrip('/')}"
 
 
 class APIEndpoints:

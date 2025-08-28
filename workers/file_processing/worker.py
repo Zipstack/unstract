@@ -1,114 +1,70 @@
-"""Lightweight File Processing Worker
+"""File Processing Worker
 
-Handles file processing tasks using internal APIs instead of direct Django ORM access.
-This replaces the heavy Django workers for file processing operations.
+Celery worker for document processing and file handling.
+Handles file uploads, text extraction, and processing workflows.
 """
 
-import os
+from shared.enums.worker_enums import WorkerType
+from shared.infrastructure.config.builder import WorkerBuilder
+from shared.infrastructure.config.registry import WorkerRegistry
+from shared.infrastructure.logging import WorkerLogger
 
-from celery import Celery
-from shared.config import WorkerConfig
-from shared.health import HealthChecker, HealthServer
-from shared.logging_utils import WorkerLogger
+# Setup worker
+logger = WorkerLogger.setup(WorkerType.FILE_PROCESSING)
+app, config = WorkerBuilder.build_celery_app(WorkerType.FILE_PROCESSING)
 
-# Initialize configuration with file-processing-specific settings
-config = WorkerConfig.from_env("FILE_PROCESSING")
 
-# Configure logging to match Django backend
-WorkerLogger.configure(
-    log_level=os.getenv("LOG_LEVEL", "INFO"),
-    log_format=os.getenv("LOG_FORMAT", "django"),  # Use Django-style logging
-    worker_name="file-processing-worker",
-)
+def check_file_processing_health():
+    """Custom health check for file processing worker."""
+    from shared.infrastructure.monitoring.health import HealthCheckResult, HealthStatus
 
-# Initialize logger
-logger = WorkerLogger.get_logger(__name__)
+    try:
+        from shared.legacy.api_client_singleton import get_singleton_api_client
 
-# Initialize Celery app
-app = Celery("file_processing_worker")
+        client = get_singleton_api_client(config)
+        api_healthy = client is not None
 
-# Configure Celery
-app.conf.update(
-    broker_url=config.celery_broker_url,
-    result_backend=config.celery_result_backend,
-    task_serializer="json",
-    accept_content=["json"],
-    result_serializer="json",
-    timezone="UTC",
-    enable_utc=True,
-    # Worker configuration
-    worker_prefetch_multiplier=int(os.getenv("CELERY_WORKER_PREFETCH_MULTIPLIER", "1")),
-    task_acks_late=os.getenv("CELERY_TASK_ACKS_LATE", "true").lower() == "true",
-    worker_max_tasks_per_child=int(
-        os.getenv("CELERY_WORKER_MAX_TASKS_PER_CHILD", "1000")
-    ),
-    # Queue configuration
-    task_routes={
-        "process_file_batch": {"queue": "file_processing"},
-        "process_file_batch_api": {"queue": "api_file_processing"},
-    },
-    # Task configuration
-    task_reject_on_worker_lost=True,
-    task_acks_on_failure_or_timeout=True,
-    worker_disable_rate_limits=False,
-    # Retry configuration
-    task_default_retry_delay=60,
-    task_max_retries=3,
-    # Worker stability
-    worker_pool_restarts=True,  # Enable worker pool restarts for stability
-    broker_connection_retry_on_startup=True,  # Retry broker connection on startup
-    # Monitoring
-    worker_send_task_events=True,
-    task_send_sent_event=True,
-    # Task discovery
-    imports=[
-        "file_processing.tasks",
-    ],
-)
+        if api_healthy:
+            return HealthCheckResult(
+                name="file_processing_health",
+                status=HealthStatus.HEALTHY,
+                message="File processing worker is healthy",
+                details={
+                    "worker_type": "file_processing",
+                    "api_client": "healthy",
+                    "queues": ["file_processing", "api_file_processing"],
+                },
+            )
+        else:
+            return HealthCheckResult(
+                name="file_processing_health",
+                status=HealthStatus.DEGRADED,
+                message="File processing worker partially functional",
+                details={"api_client": "unhealthy"},
+            )
 
-# Initialize metrics
-# TODO: Fix metrics import - metrics = init_metrics("file_processing")
+    except Exception as e:
+        return HealthCheckResult(
+            name="file_processing_health",
+            status=HealthStatus.DEGRADED,
+            message=f"Health check failed: {e}",
+            details={"error": str(e)},
+        )
 
-# Initialize health checker and server
 
-health_checker = HealthChecker(config)
-health_server = HealthServer(
-    health_checker=health_checker,
-    port=int(os.getenv("FILE_PROCESSING_HEALTH_PORT", "8082")),
+# Register health check
+
+WorkerRegistry.register_health_check(
+    WorkerType.FILE_PROCESSING, "file_processing_health", check_file_processing_health
 )
 
 
 @app.task(bind=True)
 def healthcheck(self):
-    """Health check task for monitoring."""
+    """Health check task for monitoring systems."""
     return {
         "status": "healthy",
         "worker_type": "file_processing",
         "task_id": self.request.id,
+        "worker_name": config.worker_name if config else "file-processing-worker",
     }
-
-
-# Import tasks after app configuration
-
-if __name__ == "__main__":
-    logger.info(f"Starting File Processing Worker with config: {config}")
-
-    # Start health server
-    health_server.start()
-
-    try:
-        # Start Celery worker
-        app.worker_main(
-            [
-                "worker",
-                "--loglevel=info",
-                "--pool=threads",
-                "--concurrency=4",
-                "--queues=file_processing,api_file_processing",
-            ]
-        )
-    except KeyboardInterrupt:
-        logger.info("Shutting down File Processing Worker...")
-    finally:
-        # Stop health server
-        health_server.stop()

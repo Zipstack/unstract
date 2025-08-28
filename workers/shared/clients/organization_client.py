@@ -14,8 +14,8 @@ import logging
 
 from unstract.core.data_models import OrganizationContext
 
-from ..data_models import APIResponse
-from ..retry_utils import circuit_breaker
+from ..data.models import APIResponse
+from ..utils.retry_temp import circuit_breaker
 from .base_client import BaseAPIClient
 
 logger = logging.getLogger(__name__)

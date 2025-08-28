@@ -11,8 +11,7 @@ import time
 from typing import Any
 
 # Import shared worker infrastructure
-from shared.api_client import InternalAPIClient
-from shared.config import WorkerConfig
+from shared.api import InternalAPIClient
 
 # Import from shared worker modules
 from shared.constants import Account
@@ -20,22 +19,32 @@ from shared.constants import Account
 # Import shared enums and dataclasses
 from shared.enums import FileDestinationType
 from shared.enums.task_enums import TaskName
-
-# Import the new refactored file processor
-from shared.file_processor import FileProcessor
-from shared.local_context import StateStore
-from shared.logging_helpers import (
+from shared.infrastructure.config import WorkerConfig
+from shared.infrastructure.logging import (
+    WorkerLogger,
+    log_context,
+    monitor_performance,
+    with_execution_context,
+)
+from shared.infrastructure.logging.helpers import (
     log_file_processing_error,
     log_file_processing_start,
     log_file_processing_success,
 )
-from shared.logging_utils import WorkerLogger, log_context, monitor_performance
+from shared.legacy.local_context import StateStore
 
 # Import execution models for type-safe context handling
 from shared.models.execution_models import (
     WorkflowContextData,
     create_organization_context,
 )
+
+# Import the new refactored file processor
+from shared.processing.files.processor import FileProcessor
+
+# Import file execution tracking for recovery and status management
+# Import from local worker module (avoid circular import)
+from worker import app
 
 # Import WorkflowExecutionService direct integration
 # Import shared dataclasses for type safety
@@ -47,10 +56,6 @@ from unstract.core.data_models import (
     FileHashData,
     WorkerFileData,
 )
-
-# Import file execution tracking for recovery and status management
-# Import from local worker module (avoid circular import)
-from .worker import app
 
 logger = WorkerLogger.get_logger(__name__)
 
@@ -108,7 +113,7 @@ def _get_file_processing_timeouts():
     This ensures file processing and callback tasks have properly coordinated timeouts
     so that if file processing takes longer, callback still has adequate time to complete.
     """
-    from shared.config import WorkerConfig
+    from shared.infrastructure.config import WorkerConfig
 
     config = WorkerConfig()
     timeouts = config.get_coordinated_timeouts()
@@ -246,7 +251,7 @@ def _setup_execution_context(
         logger.warning(f"Failed to update execution status to EXECUTING: {status_error}")
 
     # Initialize WebSocket logger for UI logs
-    from shared.workflow_logger import WorkerWorkflowLogger
+    from shared.infrastructure.logging.workflow_logger import WorkerWorkflowLogger
 
     workflow_logger = WorkerWorkflowLogger.create_for_file_processing(
         execution_id=execution_id,
@@ -745,18 +750,123 @@ def _handle_file_processing_result(
         # This fixes the issue of files being processed repeatedly
         if file_hash.use_file_history:
             try:
+                # For API workflows, set file_path to None since it's an internal API registry path
+                # This allows the database unique constraint (workflow, cache_key) to work properly
+                file_path_for_history = None
+                if (
+                    hasattr(file_hash, "source_connection_type")
+                    and file_hash.source_connection_type == "API"
+                ):
+                    file_path_for_history = None  # API files don't have user file paths
+                else:
+                    file_path_for_history = (
+                        file_hash.file_path
+                    )  # ETL/TASK workflows use actual file paths
+
+                # CRITICAL FIX: Extract computed file hash from file_execution_result
+                computed_file_hash = file_hash.file_hash or ""  # Default to original
+                hash_source = "original_file_hash_data"
+
+                logger.info(
+                    f"🔍 ETL HASH DEBUG: Starting hash extraction for {file_hash.file_name}"
+                )
+                logger.info(
+                    f"🔍 ETL HASH DEBUG: Original file_hash.file_hash: '{computed_file_hash}'"
+                )
+                logger.info(
+                    f"🔍 ETL HASH DEBUG: file_execution_result keys: {list(file_execution_result.keys()) if file_execution_result else []}"
+                )
+
+                # Extract hash from file_execution_result (contains computed hash from processing)
+                if file_execution_result and isinstance(file_execution_result, dict):
+                    # Try different locations where the computed hash might be stored
+                    if (
+                        "file_hash" in file_execution_result
+                        and file_execution_result["file_hash"]
+                    ):
+                        computed_file_hash = file_execution_result["file_hash"]
+                        hash_source = "file_execution_result.file_hash"
+                        logger.info(
+                            f"🔍 ETL HASH DEBUG: Found hash in file_execution_result.file_hash: '{computed_file_hash}'"
+                        )
+                    elif "result" in file_execution_result and isinstance(
+                        file_execution_result["result"], dict
+                    ):
+                        result_data = file_execution_result["result"]
+                        logger.info(
+                            f"🔍 ETL HASH DEBUG: result keys: {list(result_data.keys())}"
+                        )
+
+                        if "file_hash" in result_data and result_data["file_hash"]:
+                            computed_file_hash = result_data["file_hash"]
+                            hash_source = "file_execution_result.result.file_hash"
+                            logger.info(
+                                f"🔍 ETL HASH DEBUG: Found hash in file_execution_result.result.file_hash: '{computed_file_hash}'"
+                            )
+                        elif "metadata" in result_data and isinstance(
+                            result_data["metadata"], dict
+                        ):
+                            metadata = result_data["metadata"]
+                            if "file_hash" in metadata and metadata["file_hash"]:
+                                computed_file_hash = metadata["file_hash"]
+                                hash_source = (
+                                    "file_execution_result.result.metadata.file_hash"
+                                )
+                                logger.info(
+                                    f"🔍 ETL HASH DEBUG: Found hash in file_execution_result.result.metadata.file_hash: '{computed_file_hash}'"
+                                )
+                    elif "metadata" in file_execution_result and isinstance(
+                        file_execution_result["metadata"], dict
+                    ):
+                        metadata = file_execution_result["metadata"]
+                        logger.info(
+                            f"🔍 ETL HASH DEBUG: metadata keys: {list(metadata.keys())}"
+                        )
+
+                        if "file_hash" in metadata and metadata["file_hash"]:
+                            computed_file_hash = metadata["file_hash"]
+                            hash_source = "file_execution_result.metadata.file_hash"
+                            logger.info(
+                                f"🔍 ETL HASH DEBUG: Found hash in file_execution_result.metadata.file_hash: '{computed_file_hash}'"
+                            )
+                    else:
+                        logger.info(
+                            "🔍 ETL HASH DEBUG: No file_hash found in file_execution_result structure"
+                        )
+
+                logger.info(
+                    f"🎯 ETL HASH PROPAGATION FIX: Using computed hash '{computed_file_hash}' from {hash_source} for file history (original: '{file_hash.file_hash}') for file {file_hash.file_name}"
+                )
+
                 api_client.create_file_history(
                     workflow_id=workflow_id,
                     file_name=file_hash.file_name,
-                    file_path=file_hash.file_path,
-                    result=str(file_execution_result.get("result", {})),
-                    metadata=str(file_execution_result.get("metadata", {})),
+                    file_path=file_path_for_history,
+                    file_hash=computed_file_hash,  # CRITICAL: Use computed hash instead of empty one
+                    file_size=getattr(file_hash, "file_size", 0),
+                    mime_type=getattr(file_hash, "mime_type", ""),
+                    result=_safe_json_dumps(file_execution_result.get("result", {})),
+                    metadata=_safe_json_dumps(file_execution_result.get("metadata", {})),
                     status=ExecutionStatus.COMPLETED.value,
                     provider_file_uuid=file_hash.provider_file_uuid,
                     is_api=False,  # This is file processing, not API workflow
                 )
                 logger.info(
-                    f"Created file history record for {file_name} with provider_file_uuid: {file_hash.provider_file_uuid}"
+                    f"Created ETL file history record for {file_name} with hash: {computed_file_hash[:16] if computed_file_hash else 'None'}..."
+                )
+                # DEBUG: Log the exact data being sent to create_file_history
+                logger.info(
+                    f"DEBUG: Sending file_hash='{computed_file_hash}' in request data (ETL path)"
+                )
+                logger.info(f"DEBUG: original file_path = '{file_hash.file_path}'")
+                logger.info(
+                    f"DEBUG: file_path_for_history = '{file_path_for_history}' (None for API workflows)"
+                )
+                logger.info(
+                    f"DEBUG: source_connection_type = '{getattr(file_hash, 'source_connection_type', 'Unknown')}'"
+                )
+                logger.info(
+                    f"DEBUG: provider_file_uuid = '{file_hash.provider_file_uuid}'"
                 )
             except Exception as history_error:
                 logger.warning(
@@ -972,10 +1082,13 @@ def _pre_create_file_executions(
 
         try:
             # Create WorkflowFileExecution record for ALL workflow types
+            # CRITICAL FIX: For use_file_history=False, force create fresh records to prevent
+            # reusing completed records from previous executions
             workflow_file_execution = api_client.get_or_create_workflow_file_execution(
                 execution_id=execution_id,
                 file_hash=file_hash_dict_for_api,
                 workflow_id=workflow_id,
+                force_create=not use_file_history,  # Force create when file history is disabled
             )
 
             # PROGRESSIVE STATUS UPDATE: Set initial status to PENDING (FIXED)
@@ -1671,7 +1784,6 @@ def process_file_batch_api(
         execution_id=execution_id,
         workflow_id=workflow_id,
         organization_id=schema_name,
-        batch_id=batch_id,
         pipeline_id=pipeline_id,
     ):
         logger.info(
@@ -1716,6 +1828,53 @@ def process_file_batch_api(
                         use_file_history=use_file_history,
                     )
                     file_results.append(file_result)
+
+                    # CRITICAL FIX: Cache all file results (both cached and fresh) for API response
+                    # This ensures the backend can collect all results via get_api_results()
+                    if file_result and not file_result.get("error"):
+                        try:
+                            from shared.workflow.execution.service import (
+                                WorkerWorkflowExecutionService,
+                            )
+
+                            # Create workflow service for caching
+                            workflow_service = WorkerWorkflowExecutionService(
+                                api_client=api_client,
+                                workflow_id=workflow_id,
+                                organization_id=schema_name,
+                                is_api=True,
+                            )
+
+                            # Convert file result to FileExecutionResult format for caching
+                            api_result = {
+                                "file": file_result.get("file_name", "unknown"),
+                                "file_execution_id": file_result.get(
+                                    "file_execution_id", ""
+                                ),
+                                "result": file_result.get("result_data"),
+                                "error": file_result.get("error"),
+                                "metadata": {
+                                    "processing_time": file_result.get(
+                                        "processing_time", 0
+                                    )
+                                },
+                            }
+
+                            # Cache the result for API response aggregation
+                            workflow_service.cache_api_result(
+                                workflow_id=workflow_id,
+                                execution_id=execution_id,
+                                result=api_result,
+                                is_api=True,
+                            )
+                            logger.debug(
+                                f"Cached API result for file {file_result.get('file_name')}"
+                            )
+
+                        except Exception as cache_error:
+                            logger.warning(
+                                f"Failed to cache API result for file {file_result.get('file_name')}: {cache_error}"
+                            )
 
                     # Count results like Django backend
                     if file_result.get("error"):
@@ -1951,7 +2110,7 @@ def _call_runner_service(
     # Prepare files for multipart upload
     files = {
         "file": (file_name, file_content, _detect_mime_type(file_name)),
-        "payload": (None, json.dumps(payload), "application/json"),
+        "payload": (None, _safe_json_dumps(payload), "application/json"),
     }
 
     # Request configuration
@@ -2110,16 +2269,115 @@ def _process_single_file(
         # Create file history record if processing was successful
         if use_file_history and all(tr.get("status") == "success" for tr in tool_results):
             try:
+                # CRITICAL FIX: Extract computed file hash from tool results
+                # Tool results contain the computed hash from file processing
+                computed_file_hash = file_hash_data.get(
+                    "file_hash", ""
+                )  # Default to original
+                hash_source = "original_file_data"
+
+                logger.info(
+                    f"🔍 HASH DEBUG: Starting hash extraction for {file_hash_data.get('file_name', 'unknown')}"
+                )
+                logger.info(
+                    f"🔍 HASH DEBUG: Original file_hash_data hash: '{computed_file_hash}'"
+                )
+                logger.info(
+                    f"🔍 HASH DEBUG: current_input type: {type(current_input)}, has_content: {bool(current_input)}"
+                )
+                logger.info(
+                    f"🔍 HASH DEBUG: tool_results count: {len(tool_results) if tool_results else 0}"
+                )
+
+                # Extract hash from final tool result (current_input)
+                if current_input and isinstance(current_input, dict):
+                    logger.info(
+                        f"🔍 HASH DEBUG: current_input keys: {list(current_input.keys())}"
+                    )
+
+                    # Try to extract from output or metadata
+                    if "file_hash" in current_input:
+                        computed_file_hash = current_input.get("file_hash")
+                        hash_source = "current_input.file_hash"
+                        logger.info(
+                            f"🔍 HASH DEBUG: Found hash in current_input.file_hash: '{computed_file_hash}'"
+                        )
+                    elif "metadata" in current_input and isinstance(
+                        current_input["metadata"], dict
+                    ):
+                        metadata_hash = current_input["metadata"].get("file_hash")
+                        if metadata_hash:
+                            computed_file_hash = metadata_hash
+                            hash_source = "current_input.metadata.file_hash"
+                            logger.info(
+                                f"🔍 HASH DEBUG: Found hash in current_input.metadata.file_hash: '{computed_file_hash}'"
+                            )
+                        else:
+                            logger.info(
+                                f"🔍 HASH DEBUG: current_input.metadata exists but no file_hash: {list(current_input['metadata'].keys())}"
+                            )
+                    elif "output" in current_input and isinstance(
+                        current_input["output"], dict
+                    ):
+                        output_hash = current_input["output"].get("file_hash")
+                        if output_hash:
+                            computed_file_hash = output_hash
+                            hash_source = "current_input.output.file_hash"
+                            logger.info(
+                                f"🔍 HASH DEBUG: Found hash in current_input.output.file_hash: '{computed_file_hash}'"
+                            )
+                        else:
+                            logger.info(
+                                f"🔍 HASH DEBUG: current_input.output exists but no file_hash: {list(current_input['output'].keys())}"
+                            )
+                    else:
+                        logger.info(
+                            "🔍 HASH DEBUG: No file_hash found in current_input structure"
+                        )
+
+                # Also check tool_results for computed hash as fallback
+                if not computed_file_hash:
+                    logger.info(
+                        "🔍 HASH DEBUG: No hash found yet, checking tool_results..."
+                    )
+                    for i, tool_result in enumerate(
+                        reversed(tool_results)
+                    ):  # Check from latest to earliest
+                        logger.info(
+                            f"🔍 HASH DEBUG: Checking tool_result[{len(tool_results)-1-i}] status: {tool_result.get('status')}"
+                        )
+                        if tool_result.get("status") == "success" and tool_result.get(
+                            "output"
+                        ):
+                            output = tool_result.get("output", {})
+                            if isinstance(output, dict):
+                                logger.info(
+                                    f"🔍 HASH DEBUG: tool_result[{len(tool_results)-1-i}].output keys: {list(output.keys())}"
+                                )
+                                if "file_hash" in output:
+                                    computed_file_hash = output.get("file_hash")
+                                    hash_source = f"tool_results[{len(tool_results)-1-i}].output.file_hash"
+                                    logger.info(
+                                        f"🔍 HASH DEBUG: Found hash in {hash_source}: '{computed_file_hash}'"
+                                    )
+                                    break
+
+                logger.info(
+                    f"🎯 HASH PROPAGATION FIX: Using computed hash '{computed_file_hash}' from {hash_source} for file history (original: '{file_hash_data.get('file_hash', '')}') for file {file_hash_data.get('file_name', 'unknown')}"
+                )
+
                 api_client.create_file_history(
                     workflow_id=workflow_id,
                     file_name=file_hash_data.get("file_name", "unknown"),
                     file_path=file_hash_data.get("file_path", ""),
-                    file_hash=file_hash_data.get("file_hash", ""),
+                    file_hash=computed_file_hash,  # CRITICAL: Use computed hash instead of empty one
                     file_size=file_hash_data.get("file_size", 0),
                     mime_type=file_hash_data.get("mime_type", ""),
                     provider_file_uuid=file_hash_data.get("provider_file_uuid"),
-                    result=str(current_input) if current_input else "",
-                    metadata="",  # Can be populated with workflow metadata if needed
+                    result=_safe_json_dumps(current_input) if current_input else "{}",
+                    metadata=_safe_json_dumps(
+                        {}
+                    ),  # Can be populated with workflow metadata if needed
                     status=ExecutionStatus.COMPLETED.value,
                     is_api=is_api,
                 )
@@ -2221,6 +2479,26 @@ def _execute_tool_for_file(
         }
 
 
+def _safe_json_dumps(data: Any) -> str:
+    """Safely encode data to JSON string with fallback error handling.
+
+    Args:
+        data: Data to be JSON encoded
+
+    Returns:
+        JSON string or fallback string representation
+    """
+    try:
+        return json.dumps(data)
+    except (TypeError, ValueError, json.JSONDecodeError) as e:
+        logger.warning(f"Failed to JSON encode data, falling back to str(): {e}")
+        try:
+            return str(data)
+        except Exception as str_error:
+            logger.error(f"Failed to convert data to string: {str_error}")
+            return "{}"
+
+
 # Simple resilient executor decorator (placeholder)
 def resilient_executor(func):
     """Simple resilient executor decorator."""
@@ -2230,6 +2508,7 @@ def resilient_executor(func):
 # Resilient file processor
 @app.task(bind=True)
 @resilient_executor
+@with_execution_context
 def process_file_batch_resilient(
     self,
     schema_name: str,
@@ -2239,28 +2518,25 @@ def process_file_batch_resilient(
     **kwargs,
 ) -> dict[str, Any]:
     """Resilient file batch processing with advanced error handling."""
-    task_id = self.request.id
+    logger.info(
+        f"Starting resilient file batch processing for {len(hash_values_of_files)} files"
+    )
 
-    with log_context(task_id=task_id, execution_id=execution_id, workflow_id=workflow_id):
-        logger.info(
-            f"Starting resilient file batch processing for {len(hash_values_of_files)} files"
+    try:
+        # Use the main processing function
+        result = process_file_batch(
+            schema_name=schema_name,
+            workflow_id=workflow_id,
+            execution_id=execution_id,
+            hash_values_of_files=hash_values_of_files,
+            **kwargs,
         )
 
-        try:
-            # Use the main processing function
-            result = process_file_batch(
-                schema_name=schema_name,
-                workflow_id=workflow_id,
-                execution_id=execution_id,
-                hash_values_of_files=hash_values_of_files,
-                **kwargs,
-            )
+        return result
 
-            return result
-
-        except Exception as e:
-            logger.error(f"Resilient file batch processing failed: {e}")
-            raise
+    except Exception as e:
+        logger.error(f"Resilient file batch processing failed: {e}")
+        raise
 
 
 # Backward compatibility aliases for Django backend during transition

@@ -14,7 +14,7 @@ import logging
 from typing import Any
 
 from ..enums import FileDestinationType
-from ..manual_review_response import ManualReviewResponse
+from ..legacy.manual_review_response import ManualReviewResponse
 
 logger = logging.getLogger(__name__)
 

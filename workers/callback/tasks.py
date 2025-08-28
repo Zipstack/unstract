@@ -25,34 +25,42 @@ import pytz
 from celery import current_app as app
 
 # Import shared worker infrastructure
-from shared.api_client import InternalAPIClient
-from shared.backoff_utils import (
-    get_backoff_manager,
-    get_retry_manager,
-    initialize_backoff_managers,
-)
-from shared.batch_utils import (
-    BatchConfig,
-    add_pipeline_update_to_batch,
-    add_status_update_to_batch,
-    get_batch_processor,
-    initialize_batch_processor,
-)
-
-# Import performance optimization utilities
-from shared.cache_utils import get_cache_manager, initialize_cache_manager
-from shared.config import WorkerConfig
+from shared.api import InternalAPIClient
 
 # Import from shared worker modules
 from shared.constants import Account
 from shared.enums import PipelineType
 from shared.enums.status_enums import PipelineStatus
 from shared.enums.task_enums import TaskName
-from shared.execution_context import WorkerExecutionContext
-from shared.local_context import StateStore
-from shared.logging_utils import WorkerLogger, log_context, monitor_performance
-from shared.notification_helper import handle_status_notifications
-from shared.retry_utils import CircuitBreakerOpenError, circuit_breaker
+
+# Import performance optimization utilities
+from shared.infrastructure.caching.cache_utils import (
+    get_cache_manager,
+    initialize_cache_manager,
+)
+from shared.infrastructure.config import WorkerConfig
+from shared.infrastructure.logging import (
+    WorkerLogger,
+    log_context,
+    monitor_performance,
+    with_execution_context,
+)
+from shared.legacy.local_context import StateStore
+from shared.patterns.notification.helper import handle_status_notifications
+from shared.patterns.retry.backoff import (
+    get_backoff_manager,
+    get_retry_manager,
+    initialize_backoff_managers,
+)
+from shared.patterns.retry.utils import CircuitBreakerOpenError, circuit_breaker
+from shared.processing.files.batch import (
+    BatchConfig,
+    add_pipeline_update_to_batch,
+    add_status_update_to_batch,
+    get_batch_processor,
+    initialize_batch_processor,
+)
+from shared.workflow.execution.context import WorkerExecutionContext
 
 from unstract.connectors import ConnectionType
 
@@ -74,7 +82,7 @@ def _get_callback_timeouts():
     This ensures callback tasks have adequate time to complete even if file processing
     took longer than expected. Uses workflow-level timeout coordination.
     """
-    from shared.config import WorkerConfig
+    from shared.infrastructure.config import WorkerConfig
 
     config = WorkerConfig()
     timeouts = config.get_coordinated_timeouts()
@@ -1036,35 +1044,244 @@ def _process_batch_callback_core(
                         else:
                             logger.warning(f"Failed to update pipeline status: {str(e)}")
 
-            # Cleanup resources (gracefully handle missing endpoint)
+            # Comprehensive resource cleanup (backend + directories)
+            cleanup_result = {"status": "partial", "backend": {}, "directories": {}}
+
+            # 1. Backend cleanup (existing API-based cleanup)
             try:
-                cleanup_result = api_client.cleanup_execution_resources(
+                backend_cleanup = api_client.cleanup_execution_resources(
                     execution_ids=[execution_id], cleanup_types=["cache", "temp_files"]
+                )
+                cleanup_result["backend"] = backend_cleanup
+                logger.info(
+                    f"✅ Backend resource cleanup completed: {backend_cleanup.get('status', 'unknown')}"
                 )
             except CircuitBreakerOpenError:
                 # TODO: Queue cleanup tasks for later when circuit breaker is open
                 # Similar to pipeline status updates, cleanup operations should be queued
                 # for retry rather than skipped entirely to prevent resource leaks
                 logger.info(
-                    "Cleanup endpoint circuit breaker open - skipping resource cleanup"
+                    "Cleanup endpoint circuit breaker open - skipping backend resource cleanup"
                 )
-                cleanup_result = {"status": "skipped", "message": "Circuit breaker open"}
+                cleanup_result["backend"] = {
+                    "status": "skipped",
+                    "message": "Circuit breaker open",
+                }
             except Exception as e:
                 if "404" in str(e) or NOT_FOUND_MSG in str(e):
                     logger.info(
-                        "Cleanup API endpoint not available, skipping resource cleanup"
+                        "Cleanup API endpoint not available, skipping backend resource cleanup"
                     )
-                    cleanup_result = {
+                    cleanup_result["backend"] = {
                         "status": "skipped",
                         "message": "Cleanup endpoint not available",
                     }
                 else:
-                    logger.warning(f"Cleanup failed but continuing execution: {str(e)}")
-                    cleanup_result = {
+                    logger.warning(
+                        f"Backend cleanup failed but continuing execution: {str(e)}"
+                    )
+                    cleanup_result["backend"] = {
                         "status": "failed",
                         "error": str(e),
                         "execution_continued": True,
                     }
+
+            # 2. Cloud storage directory cleanup using existing ExecutionFileHandler
+            try:
+                from unstract.workflow_execution.execution_file_handler import (
+                    ExecutionFileHandler,
+                )
+
+                # Determine if this is an API or workflow execution
+                is_api_execution = pipeline_data and pipeline_data.get("is_api", False)
+
+                if is_api_execution and pipeline_id:
+                    # API execution cleanup: Using existing ExecutionFileHandler with API path
+                    logger.info(
+                        f"🧹 Starting API execution directory cleanup for {execution_id}"
+                    )
+
+                    # Create ExecutionFileHandler for API execution directory
+                    # Note: For API, we use get_api_execution_dir but need to clean the entire execution
+                    api_execution_dir = ExecutionFileHandler.get_api_execution_dir(
+                        workflow_id=pipeline_id,  # For API executions, pipeline_id is the API deployment ID
+                        execution_id=execution_id,
+                        organization_id=organization_id,
+                    )
+
+                    try:
+                        # Use FileSystem to clean up API execution directory
+                        from unstract.filesystem import FileStorageType, FileSystem
+
+                        file_system = FileSystem(
+                            FileStorageType.API
+                        )  # Use API storage type
+                        file_storage = file_system.get_file_storage()
+
+                        # Check if directory exists and remove it
+                        if file_storage.exists(api_execution_dir):
+                            # Get directory info before cleanup
+                            try:
+                                # List files to get count (use ls method from interface)
+                                files = file_storage.ls(api_execution_dir)
+                                file_count = len(files) if files else 0
+
+                                # Remove the entire execution directory (use rm method from interface)
+                                file_storage.rm(api_execution_dir, recursive=True)
+
+                                cleanup_result["directories"] = {
+                                    "type": "api",
+                                    "status": "success",
+                                    "cleaned_paths": [api_execution_dir],
+                                    "files_deleted": file_count,
+                                    "message": f"API execution directory cleaned: {api_execution_dir}",
+                                }
+                                logger.info(
+                                    f"✅ Successfully cleaned up API execution directory: {api_execution_dir} ({file_count} files)"
+                                )
+
+                            except Exception as cleanup_error:
+                                logger.error(
+                                    f"Failed to clean API execution directory: {cleanup_error}"
+                                )
+                                cleanup_result["directories"] = {
+                                    "type": "api",
+                                    "status": "failed",
+                                    "error": str(cleanup_error),
+                                    "failed_paths": [api_execution_dir],
+                                }
+                        else:
+                            logger.warning(
+                                f"API execution directory not found: {api_execution_dir}"
+                            )
+                            cleanup_result["directories"] = {
+                                "type": "api",
+                                "status": "skipped",
+                                "message": f"Directory not found: {api_execution_dir}",
+                            }
+
+                    except Exception as fs_error:
+                        logger.error(f"Failed to initialize API file system: {fs_error}")
+                        cleanup_result["directories"] = {
+                            "type": "api",
+                            "status": "failed",
+                            "error": f"FileSystem error: {str(fs_error)}",
+                        }
+
+                elif workflow_id:
+                    # Workflow execution cleanup: Use existing ExecutionFileHandler method
+                    logger.info(
+                        f"🧹 Starting workflow execution directory cleanup for {execution_id}"
+                    )
+
+                    try:
+                        # Create ExecutionFileHandler for the specific execution (no file_execution_id = entire execution)
+                        file_handler = ExecutionFileHandler(
+                            workflow_id=workflow_id,
+                            execution_id=execution_id,
+                            organization_id=organization_id,
+                            file_execution_id=None,  # Clean entire execution, not individual file
+                        )
+
+                        # Use the existing delete method - but we need to enhance it for entire execution
+                        execution_dir = file_handler.execution_dir
+
+                        # Use FileSystem to clean up workflow execution directory
+                        from unstract.filesystem import FileStorageType, FileSystem
+
+                        file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+                        file_storage = file_system.get_file_storage()
+
+                        # Check if directory exists and remove it
+                        if file_storage.exists(execution_dir):
+                            # Get directory info before cleanup
+                            try:
+                                # List files to get count (use ls method from interface)
+                                files = file_storage.ls(execution_dir)
+                                file_count = len(files) if files else 0
+
+                                # Remove the entire execution directory (use rm method from interface)
+                                file_storage.rm(execution_dir, recursive=True)
+
+                                cleanup_result["directories"] = {
+                                    "type": "workflow",
+                                    "status": "success",
+                                    "cleaned_paths": [execution_dir],
+                                    "files_deleted": file_count,
+                                    "message": f"Workflow execution directory cleaned: {execution_dir}",
+                                }
+                                logger.info(
+                                    f"✅ Successfully cleaned up workflow execution directory: {execution_dir} ({file_count} files)"
+                                )
+
+                            except Exception as cleanup_error:
+                                logger.error(
+                                    f"Failed to clean workflow execution directory: {cleanup_error}"
+                                )
+                                cleanup_result["directories"] = {
+                                    "type": "workflow",
+                                    "status": "failed",
+                                    "error": str(cleanup_error),
+                                    "failed_paths": [execution_dir],
+                                }
+                        else:
+                            logger.warning(
+                                f"Workflow execution directory not found: {execution_dir}"
+                            )
+                            cleanup_result["directories"] = {
+                                "type": "workflow",
+                                "status": "skipped",
+                                "message": f"Directory not found: {execution_dir}",
+                            }
+
+                    except Exception as handler_error:
+                        logger.error(
+                            f"Failed to create ExecutionFileHandler: {handler_error}"
+                        )
+                        cleanup_result["directories"] = {
+                            "type": "workflow",
+                            "status": "failed",
+                            "error": f"ExecutionFileHandler error: {str(handler_error)}",
+                        }
+                else:
+                    logger.warning(
+                        f"⚠️ Cannot determine execution type for cleanup: is_api={is_api_execution}, workflow_id={workflow_id}, pipeline_id={pipeline_id}"
+                    )
+                    cleanup_result["directories"] = {
+                        "status": "skipped",
+                        "message": "Cannot determine execution type for directory cleanup",
+                    }
+
+            except ImportError as import_error:
+                logger.warning(
+                    f"Cloud storage directory cleanup module not available: {import_error}"
+                )
+                cleanup_result["directories"] = {
+                    "status": "failed",
+                    "error": f"Import error: {str(import_error)}",
+                }
+            except Exception as dir_cleanup_error:
+                logger.error(
+                    f"Cloud storage directory cleanup failed: {dir_cleanup_error}"
+                )
+                cleanup_result["directories"] = {
+                    "status": "failed",
+                    "error": str(dir_cleanup_error),
+                }
+
+            # Determine overall cleanup status
+            backend_success = cleanup_result["backend"].get("status") in [
+                "success",
+                "completed",
+                "skipped",
+            ]
+            directory_success = cleanup_result["directories"].get("status") in [
+                "success",
+                "skipped",
+            ]
+            cleanup_result["status"] = (
+                "completed" if (backend_success and directory_success) else "partial"
+            )
 
             # Get performance optimization statistics
             performance_stats = _get_performance_stats()
@@ -1816,6 +2033,7 @@ def _handle_destination_delivery_deprecated(
     retry_backoff=True,
 )
 @monitor_performance
+@with_execution_context
 def finalize_execution_callback(
     self, schema_name: str, execution_id: str, cleanup_resources: bool = True
 ) -> dict[str, Any]:
@@ -1824,43 +2042,65 @@ def finalize_execution_callback(
     This is a standalone task for execution finalization that can be
     called independently or as part of the callback processing.
     """
-    task_id = self.request.id
+    logger.info(f"Finalizing execution {execution_id}")
 
-    with log_context(
-        task_id=task_id, execution_id=execution_id, organization_id=schema_name
-    ):
-        logger.info(f"Finalizing execution {execution_id}")
+    try:
+        config = WorkerConfig()
+        with InternalAPIClient(config) as api_client:
+            api_client.set_organization_context(schema_name)
 
-        try:
-            config = WorkerConfig()
-            with InternalAPIClient(config) as api_client:
-                api_client.set_organization_context(schema_name)
+            # Get current execution status
+            finalization_status = api_client.get_execution_finalization_status(
+                execution_id
+            )
 
-                # Get current execution status
-                finalization_status = api_client.get_execution_finalization_status(
-                    execution_id
+            if finalization_status.get("is_finalized"):
+                logger.info(f"Execution {execution_id} already finalized")
+                return {
+                    "status": "already_finalized",
+                    "execution_id": execution_id,
+                    "current_status": finalization_status.get("current_status"),
+                }
+
+            # Perform comprehensive cleanup if requested (backend + directories)
+            cleanup_result = None
+            if cleanup_resources:
+                # Backend cleanup
+                backend_cleanup = api_client.cleanup_execution_resources(
+                    execution_ids=[execution_id],
+                    cleanup_types=["cache", "temp_files", "logs"],
                 )
 
-                if finalization_status.get("is_finalized"):
-                    logger.info(f"Execution {execution_id} already finalized")
-                    return {
-                        "status": "already_finalized",
-                        "execution_id": execution_id,
-                        "current_status": finalization_status.get("current_status"),
-                    }
-
-                # Perform cleanup if requested
-                cleanup_result = None
-                if cleanup_resources:
-                    cleanup_result = api_client.cleanup_execution_resources(
-                        execution_ids=[execution_id],
-                        cleanup_types=["cache", "temp_files", "logs"],
+                # Directory cleanup (if we can determine the context)
+                directory_cleanup = {
+                    "status": "skipped",
+                    "message": "Context not available in finalize_execution",
+                }
+                try:
+                    # Try to get execution context to determine cleanup type
+                    # Note: This function has limited context, so directory cleanup may be skipped
+                    # The main cleanup should happen in process_batch_callback with full context
+                    logger.info(
+                        "🧹 Finalize execution: Directory cleanup skipped - insufficient context"
                     )
+                    logger.info(
+                        "   (Main directory cleanup should occur in process_batch_callback)"
+                    )
+                except Exception as dir_error:
+                    logger.warning(
+                        f"Directory cleanup in finalize_execution failed: {dir_error}"
+                    )
+
+                cleanup_result = {
+                    "backend": backend_cleanup,
+                    "directories": directory_cleanup,
+                    "note": "Full directory cleanup should occur in main callback with complete context",
+                }
 
                 finalization_result = {
                     "status": "finalized",
                     "execution_id": execution_id,
-                    "task_id": task_id,
+                    "task_id": self.request.id,
                     "cleanup_result": cleanup_result,
                     "finalized_at": time.time(),
                 }
@@ -1869,9 +2109,9 @@ def finalize_execution_callback(
 
                 return finalization_result
 
-        except Exception as e:
-            logger.error(f"Failed to finalize execution {execution_id}: {e}")
-            raise
+    except Exception as e:
+        logger.error(f"Failed to finalize execution {execution_id}: {e}")
+        raise
 
 
 # Simple resilient executor decorator (placeholder)
@@ -1883,6 +2123,7 @@ def resilient_executor(func):
 # Resilient callback processor
 @app.task(bind=True)
 @resilient_executor
+@with_execution_context
 def process_batch_callback_resilient(
     self,
     schema_name: str,
@@ -1892,28 +2133,25 @@ def process_batch_callback_resilient(
     **kwargs,
 ) -> dict[str, Any]:
     """Resilient batch callback processing with advanced error handling."""
-    task_id = self.request.id
+    logger.info(
+        f"Starting resilient batch callback processing for execution {execution_id}"
+    )
 
-    with log_context(task_id=task_id, execution_id=execution_id, workflow_id=workflow_id):
-        logger.info(
-            f"Starting resilient batch callback processing for execution {execution_id}"
+    try:
+        # Use the main callback processing function
+        result = process_batch_callback(
+            schema_name=schema_name,
+            workflow_id=workflow_id,
+            execution_id=execution_id,
+            file_batch_results=file_batch_results,
+            **kwargs,
         )
 
-        try:
-            # Use the main callback processing function
-            result = process_batch_callback(
-                schema_name=schema_name,
-                workflow_id=workflow_id,
-                execution_id=execution_id,
-                file_batch_results=file_batch_results,
-                **kwargs,
-            )
+        return result
 
-            return result
-
-        except Exception as e:
-            logger.error(f"Resilient batch callback processing failed: {e}")
-            raise
+    except Exception as e:
+        logger.error(f"Resilient batch callback processing failed: {e}")
+        raise
 
 
 class WallClockTimeCalculator:
