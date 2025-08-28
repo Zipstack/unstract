@@ -33,19 +33,8 @@ function ToolSettings({ spec, isSpecLoading }) {
     return obj && Object.keys(obj).length === 0;
   };
 
-  const isFormValid = () => {
-    if (formRef) {
-      formRef?.current?.validateFields((errors) => {
-        if (errors) {
-          return false;
-        }
-      });
-    }
-    return true;
-  };
-
   const validateAndSubmit = (updatedFormData) => {
-    if (!isFormValid()) {
+    if (formRef && !formRef.current?.validateForm()) {
       return;
     }
     handleSubmit(updatedFormData);

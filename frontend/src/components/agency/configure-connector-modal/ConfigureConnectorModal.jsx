@@ -302,8 +302,8 @@ function ConfigureConnectorModal({
   const handleSave = async () => {
     const hasConfigChanges = !isEqual(formDataConfig, initialFormDataConfig);
 
-    if (hasConfigChanges && formRef.current) {
-      if (formRef.current.validateForm()) {
+    if (hasConfigChanges && formRef?.current) {
+      if (formRef?.current?.validateForm()) {
         await handleValidateAndSubmit(formDataConfig);
         return true;
       } else {
