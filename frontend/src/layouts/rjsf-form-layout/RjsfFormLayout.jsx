@@ -205,11 +205,32 @@ function RjsfFormLayout({
             };
 
           // Other validations
-          case "enum":
+          case "enum": {
+            let enumMessage = `'${fieldTitle}' must be one of the allowed values`;
+            if (fieldSchema?.enumNames && fieldSchema.enumNames.length > 0) {
+              const options = fieldSchema.enumNames;
+              const maxShow = 4; // Maximum options to show before truncating
+
+              if (options.length <= maxShow) {
+                // Show all options if list is small
+                enumMessage = `'${fieldTitle}' must be one of: ${options.join(
+                  ", "
+                )}`;
+              } else {
+                // Truncate long lists with "and X others" suffix
+                const firstFew = options.slice(0, maxShow).join(", ");
+                const remaining = options.length - maxShow;
+                enumMessage = `'${fieldTitle}' must be one of: ${firstFew} (and ${remaining} ${
+                  remaining === 1 ? "other" : "others"
+                })`;
+              }
+            }
+
             return {
               ...error,
-              message: `'${fieldTitle}' must be one of the allowed values`,
+              message: enumMessage,
             };
+          }
 
           case "const":
             return {
