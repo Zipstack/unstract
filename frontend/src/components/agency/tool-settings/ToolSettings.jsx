@@ -22,11 +22,49 @@ function ToolSettings({ spec, isSpecLoading }) {
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
 
+  // Transform adapter names to IDs for validation compatibility
+  const transformAdapterNamesToIds = (metadata, schema) => {
+    if (!metadata || !schema?.properties) {
+      return metadata || {};
+    }
+
+    const transformedMetadata = { ...metadata };
+
+    // Find all fields that have enum and enumNames (these are adapter fields)
+    Object.keys(schema.properties).forEach((fieldName) => {
+      const fieldSchema = schema.properties[fieldName];
+      if (
+        fieldSchema?.enum &&
+        fieldSchema?.enumNames &&
+        transformedMetadata[fieldName]
+      ) {
+        const currentValue = transformedMetadata[fieldName];
+
+        // Find the index of the current name in enumNames
+        const nameIndex = fieldSchema.enumNames.indexOf(currentValue);
+        if (nameIndex !== -1 && fieldSchema.enum[nameIndex]) {
+          // Replace name with corresponding ID from enum array
+          transformedMetadata[fieldName] = fieldSchema.enum[nameIndex];
+        } else {
+          // Handle case where adapter name is not found (possibly deleted/renamed)
+          console.warn(
+            `[ToolSettings] WARNING - Adapter '${currentValue}' for field '${fieldName}' not found in available options:`,
+            fieldSchema.enumNames
+          );
+          // Keep the original value, backend will handle the validation error
+        }
+      }
+    });
+
+    return transformedMetadata;
+  };
+
   useEffect(() => {
     // Set existing metadata
     const toolInstanceId = toolSettings?.id;
     const metadata = getMetadata(toolInstanceId);
-    setFormData(metadata);
+    const transformedMetadata = transformAdapterNamesToIds(metadata, spec);
+    setFormData(transformedMetadata);
   }, [toolSettings, spec]);
 
   const isObjectEmpty = (obj) => {
