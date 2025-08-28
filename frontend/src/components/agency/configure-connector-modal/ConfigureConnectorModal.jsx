@@ -68,6 +68,7 @@ function ConfigureConnectorModal({
   const [showUnsavedChangesModal, setShowUnsavedChangesModal] = useState(false);
 
   const fileExplorerRef = useRef(null);
+  const formRef = useRef(null);
 
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -261,8 +262,8 @@ function ConfigureConnectorModal({
     return hasConfigChanges || hasConnectorChanged;
   };
 
-  const handleSave = async () => {
-    const hasConfigChanges = !isEqual(formDataConfig, initialFormDataConfig);
+  const handleValidateAndSubmit = async (validatedFormData) => {
+    const hasConfigChanges = !isEqual(validatedFormData, initialFormDataConfig);
     const hasConnectorChanged = connDetails?.id !== initialConnectorId;
     const hasChanges = hasConfigChanges || hasConnectorChanged;
 
@@ -273,14 +274,14 @@ function ConfigureConnectorModal({
         if (hasConnectorChanged) {
           updatePayload.connector_instance_id = connDetails.id;
         }
-        if (hasConfigChanges && Object.keys(formDataConfig).length > 0) {
-          updatePayload.configuration = formDataConfig;
+        if (hasConfigChanges && Object.keys(validatedFormData).length > 0) {
+          updatePayload.configuration = validatedFormData;
         }
         if (Object.keys(updatePayload).length > 0) {
           await handleEndpointUpdate(updatePayload);
         }
         // Update initial values after successful save
-        setInitialFormDataConfig(cloneDeep(formDataConfig));
+        setInitialFormDataConfig(cloneDeep(validatedFormData));
         setInitialConnectorId(connDetails?.id);
         setAlertDetails({
           type: "success",
@@ -295,6 +296,24 @@ function ConfigureConnectorModal({
       } finally {
         setIsSavingEndpoint(false);
       }
+    }
+  };
+
+  const handleSave = async () => {
+    const hasConfigChanges = !isEqual(formDataConfig, initialFormDataConfig);
+
+    if (hasConfigChanges && formRef.current) {
+      if (formRef.current.validateForm()) {
+        await handleValidateAndSubmit(formDataConfig);
+        return true;
+      } else {
+        // RJSF shows validation errors
+        return false;
+      }
+    } else {
+      // No config changes, just save connector changes if any
+      await handleValidateAndSubmit(formDataConfig);
+      return true;
     }
   };
 
@@ -336,10 +355,12 @@ function ConfigureConnectorModal({
   };
 
   const handleSaveAndClose = async () => {
-    await handleSave();
+    const saveSuccessful = await handleSave();
     setShowUnsavedChangesModal(false);
-    // Delay closing the main modal to allow confirmation modal to close first
-    setTimeout(() => setOpen(false), 0);
+    if (saveSuccessful) {
+      // Delay closing the main modal to allow confirmation modal to close first
+      setTimeout(() => setOpen(false), 0);
+    }
   };
 
   // Load plugin tab for Human In The Loop (DATABASE connectors only)
@@ -569,6 +590,8 @@ function ConfigureConnectorModal({
                             formDataConfig={formDataConfig}
                             setFormDataConfig={setFormDataConfig}
                             isSpecConfigLoading={isSpecConfigLoading}
+                            formRef={formRef}
+                            validateAndSubmit={handleValidateAndSubmit}
                           />
                         )}
                         {item.key === "MANUALREVIEW" && DBRules && (
@@ -589,6 +612,8 @@ function ConfigureConnectorModal({
                       formDataConfig={formDataConfig}
                       setFormDataConfig={setFormDataConfig}
                       isSpecConfigLoading={isSpecConfigLoading}
+                      formRef={formRef}
+                      validateAndSubmit={handleValidateAndSubmit}
                     />
                   </div>
                 </Col>

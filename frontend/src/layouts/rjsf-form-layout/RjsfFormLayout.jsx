@@ -97,17 +97,149 @@ function RjsfFormLayout({
     return schema;
   }, []);
 
-  const transformErrors = useCallback((errors) => {
-    return errors.map((error) => {
-      if (error.name === "required") {
-        return {
-          ...error,
-          message: "This field is mandatory. Please provide a value.",
-        };
-      }
-      return error;
-    });
-  }, []);
+  const transformErrors = useCallback(
+    (errors) => {
+      return errors.map((error) => {
+        const { name, params, property } = error;
+
+        // property looks like ".maxFiles" → strip leading dot
+        const fieldName = property?.replace(/^\./, "");
+        const schemaProps = schema?.properties ?? {};
+        const fieldSchema = fieldName ? schemaProps[fieldName] : undefined;
+        const fieldTitle = fieldSchema?.title || fieldName || "This field";
+
+        // Special handling for "required", since Ajv attaches it at parent level
+        if (name === "required") {
+          const missingField = params?.missingProperty;
+          const missingSchema = schemaProps[missingField];
+          const missingTitle =
+            missingSchema?.title || missingField || "This field";
+
+          return {
+            ...error,
+            message: `'${missingTitle}' is required`,
+          };
+        }
+
+        switch (name) {
+          // Numeric validations
+          case "minimum":
+            return {
+              ...error,
+              message: `'${fieldTitle}' must be at least ${params?.limit}`,
+            };
+
+          case "maximum":
+            return {
+              ...error,
+              message: `'${fieldTitle}' must not exceed ${params?.limit}`,
+            };
+
+          case "exclusiveMinimum":
+            return {
+              ...error,
+              message: `'${fieldTitle}' must be greater than ${params?.limit}`,
+            };
+
+          case "exclusiveMaximum":
+            return {
+              ...error,
+              message: `'${fieldTitle}' must be less than ${params?.limit}`,
+            };
+
+          case "multipleOf":
+            return {
+              ...error,
+              message: `'${fieldTitle}' must be a multiple of ${params?.multipleOf}`,
+            };
+
+          // String validations
+          case "minLength":
+            return {
+              ...error,
+              message: `'${fieldTitle}' must be at least ${params?.limit} characters`,
+            };
+
+          case "maxLength":
+            return {
+              ...error,
+              message: `'${fieldTitle}' must not exceed ${params?.limit} characters`,
+            };
+
+          case "pattern":
+            return {
+              ...error,
+              message: `'${fieldTitle}' must match the required format`,
+            };
+
+          // Array validations
+          case "minItems":
+            return {
+              ...error,
+              message: `'${fieldTitle}' must have at least ${params?.limit} items`,
+            };
+
+          case "maxItems":
+            return {
+              ...error,
+              message: `'${fieldTitle}' must not exceed ${params?.limit} items`,
+            };
+
+          case "uniqueItems":
+            return {
+              ...error,
+              message: `'${fieldTitle}' must contain only unique items`,
+            };
+
+          // Object validations
+          case "minProperties":
+            return {
+              ...error,
+              message: `'${fieldTitle}' must have at least ${params?.limit} properties`,
+            };
+
+          case "maxProperties":
+            return {
+              ...error,
+              message: `'${fieldTitle}' must not exceed ${params?.limit} properties`,
+            };
+
+          // Other validations
+          case "enum":
+            return {
+              ...error,
+              message: `'${fieldTitle}' must be one of the allowed values`,
+            };
+
+          case "const":
+            return {
+              ...error,
+              message: `'${fieldTitle}' must be exactly ${params?.allowedValue}`,
+            };
+
+          case "type":
+            return {
+              ...error,
+              message: `'${fieldTitle}' must be of type ${params?.type}`,
+            };
+
+          case "format":
+            return {
+              ...error,
+              message: `'${fieldTitle}' must be a valid ${params?.format}`,
+            };
+
+          default:
+            // fallback: try to use Ajv stack if meaningful
+            if (error.stack && error.stack.trim()) {
+              return { ...error, message: error.stack };
+            }
+            return { ...error, message: `'${fieldTitle}': ${error.message}` };
+        }
+      });
+    },
+    [schema]
+  );
 
   const handleChange = useCallback(
     (event) => {
@@ -133,7 +265,7 @@ function RjsfFormLayout({
             />
           )}
           <Form
-            form={formRef}
+            ref={formRef}
             schema={removeBlankDefault(formSchema)}
             uiSchema={uiSchema}
             validator={validator}
