@@ -46,12 +46,7 @@ function ToolSettings({ spec, isSpecLoading }) {
           // Replace name with corresponding ID from enum array
           transformedMetadata[fieldName] = fieldSchema.enum[nameIndex];
         } else {
-          // Handle case where adapter name is not found (possibly deleted/renamed)
-          console.warn(
-            `[ToolSettings] WARNING - Adapter '${currentValue}' for field '${fieldName}' not found in available options:`,
-            fieldSchema.enumNames
-          );
-          // Keep the original value, backend will handle the validation error
+          // BE handles case where adapter name is not found (possibly deleted/renamed)
         }
       }
     });
