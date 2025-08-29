@@ -92,7 +92,7 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
             logger.info(f"Using OAuth cache key for {connector_id}")
             connector_metadata = ConnectorAuthHelper.get_oauth_creds_from_cache(
                 cache_key=oauth_key,
-                delete_key=True,  # Always delete - oauth_key presence = fresh auth flow
+                delete_key=False,  # Don't delete yet - wait for successful operation
             )
             if connector_metadata is None:
                 raise CacheMissException(
@@ -101,6 +101,19 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
         else:
             connector_metadata = self.request.data.get(CIKey.CONNECTOR_METADATA)
         return connector_metadata
+
+    def _cleanup_oauth_cache(self, connector_id: str) -> None:
+        """Clean up OAuth cache after successful operation."""
+        if not ConnectorInstance.supportsOAuth(connector_id=connector_id):
+            return
+
+        oauth_key = self.request.query_params.get(ConnectorAuthKey.OAUTH_KEY)
+        if oauth_key:
+            logger.info(f"Cleaning up OAuth cache for {connector_id}")
+            ConnectorAuthHelper.get_oauth_creds_from_cache(
+                cache_key=oauth_key,
+                delete_key=True,  # Delete after successful operation
+            )
 
     def perform_update(self, serializer: ConnectorInstanceSerializer) -> None:
         connector_metadata = None
@@ -123,6 +136,9 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
             modified_by=self.request.user,
         )  # type: ignore
 
+        # Clean up OAuth cache after successful update
+        self._cleanup_oauth_cache(connector_id)
+
     def perform_create(self, serializer: ConnectorInstanceSerializer) -> None:
         connector_metadata = None
         connector_id = self.request.data.get(CIKey.CONNECTOR_ID)
@@ -138,6 +154,9 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
             created_by=self.request.user,
             modified_by=self.request.user,
         )  # type: ignore
+
+        # Clean up OAuth cache after successful create
+        self._cleanup_oauth_cache(connector_id)
 
     def create(self, request: Any) -> Response:
         # Overriding default exception behavior
