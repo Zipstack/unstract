@@ -71,8 +71,6 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
     def _get_connector_metadata(self, connector_id: str) -> dict[str, str] | None:
         """Gets connector metadata for the ConnectorInstance.
 
-        For non oauth based - obtains from request
-        For oauth based - obtains from cache
 
         Raises:
             e: MissingParamException, CacheMissException
@@ -84,18 +82,21 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
         if ConnectorInstance.supportsOAuth(connector_id=connector_id):
             logger.info(f"Fetching oauth data for {connector_id}")
             oauth_key = self.request.query_params.get(ConnectorAuthKey.OAUTH_KEY)
-            if oauth_key is None:
-                raise MissingParamException(param=ConnectorAuthKey.OAUTH_KEY)
-            # Preserve OAuth cache for reuse across multiple operations (Test Connection, Submit,
-            # File System browsing). Frontend localStorage stores cache keys which must correspond
-            # to persistent backend credentials for tab switching and repeated operations to work.
+
+            if not oauth_key:
+                raise MissingParamException(
+                    "OAuth authentication required. Please sign in with Google first."
+                )
+
+            # Process valid oauth_key
+            logger.info(f"Using OAuth cache key for {connector_id}")
             connector_metadata = ConnectorAuthHelper.get_oauth_creds_from_cache(
                 cache_key=oauth_key,
-                delete_key=False,  # Keep cache - frontend persistence depends on backend credential storage
+                delete_key=True,  # Always delete - oauth_key presence = fresh auth flow
             )
             if connector_metadata is None:
                 raise CacheMissException(
-                    f"Couldn't find credentials for {oauth_key} from cache"
+                    "OAuth session expired. Please sign in with Google again."
                 )
         else:
             connector_metadata = self.request.data.get(CIKey.CONNECTOR_METADATA)

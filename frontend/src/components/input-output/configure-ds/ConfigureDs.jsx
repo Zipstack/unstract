@@ -4,15 +4,14 @@ import { createRef, useEffect, useState } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
+import useRequestUrl from "../../../hooks/useRequestUrl";
 import { RjsfFormLayout } from "../../../layouts/rjsf-form-layout/RjsfFormLayout.jsx";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
-import { useWorkflowStore } from "../../../store/workflow-store.js";
 import { OAuthDs } from "../../oauth-ds/oauth-ds/OAuthDs.jsx";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import "./ConfigureDs.css";
-import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
-import useRequestUrl from "../../../hooks/useRequestUrl";
 
 function ConfigureDs({
   spec,
@@ -38,7 +37,6 @@ function ConfigureDs({
   const [cacheKey, setCacheKey] = useState("");
   const [status, setStatus] = useState("");
   const { sessionDetails } = useSessionStore();
-  const { projectId: workflowId } = useWorkflowStore();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const { updateSessionDetails } = useSessionStore();
@@ -50,10 +48,13 @@ function ConfigureDs({
   } = usePostHogEvents();
   const { getUrl } = useRequestUrl();
 
-  // Create workflow and connector-type specific OAuth storage keys
-  const connectorType = type === "input" ? "source" : "destination";
-  const oauthCacheKey = `oauth-cachekey-${workflowId}-${connectorType}-${selectedSourceId}`;
-  const oauthStatusKey = `oauth-status-${workflowId}-${connectorType}-${selectedSourceId}`;
+  const oauthCacheKey = `oauth-cachekey-${selectedSourceId}`;
+  const oauthStatusKey = `oauth-status-${selectedSourceId}`;
+
+  // Determine if this is a new or existing connector
+  const hasOAuthCredentials =
+    metadata && (metadata.access_token || (metadata.provider && metadata.uid));
+  const isExistingConnector = Boolean(editItemId || hasOAuthCredentials);
 
   // Initialize OAuth state from localStorage after keys are available
   useEffect(() => {
@@ -135,6 +136,14 @@ function ConfigureDs({
       }
     }
   }, [selectedSourceId, oAuthProvider, oauthStatusKey, oauthCacheKey]);
+
+  // Cleanup OAuth localStorage when component unmounts (modal close)
+  useEffect(() => {
+    return () => {
+      localStorage.removeItem(oauthCacheKey);
+      localStorage.removeItem(oauthStatusKey);
+    };
+  }, [oauthCacheKey, oauthStatusKey]);
 
   const isFormValid = () => {
     if (formRef) {
@@ -335,8 +344,10 @@ function ConfigureDs({
           updateSession(type);
         }
 
-        // Keep OAuth state after successful submission for potential re-use
-        // OAuth state will be cleared only when switching to different connectors
+        if (oAuthProvider?.length > 0) {
+          localStorage.removeItem(oauthCacheKey);
+          localStorage.removeItem(oauthStatusKey);
+        }
 
         setOpen(false);
       })
@@ -366,8 +377,7 @@ function ConfigureDs({
           setCacheKey={handleSetCacheKey}
           setStatus={handleSetStatus}
           selectedSourceId={selectedSourceId}
-          workflowId={workflowId}
-          connectorType={connectorType}
+          isExistingConnector={isExistingConnector}
         />
       )}
       <RjsfFormLayout
