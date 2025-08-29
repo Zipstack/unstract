@@ -5,21 +5,25 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ('workflow_v2', '0015_executionlog_idx_wf_execution_event_time_and_more'),
+        ("workflow_v2", "0015_executionlog_idx_wf_execution_event_time_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='workflow',
-            name='shared_to_org',
-            field=models.BooleanField(db_comment='Whether this workflow is shared with the entire organization', default=False),
+            model_name="workflow",
+            name="shared_to_org",
+            field=models.BooleanField(
+                db_comment="Whether this workflow is shared with the entire organization",
+                default=False,
+            ),
         ),
         migrations.AddField(
-            model_name='workflow',
-            name='shared_users',
-            field=models.ManyToManyField(blank=True, related_name='shared_workflows', to=settings.AUTH_USER_MODEL),
+            model_name="workflow",
+            name="shared_users",
+            field=models.ManyToManyField(
+                blank=True, related_name="shared_workflows", to=settings.AUTH_USER_MODEL
+            ),
         ),
     ]
