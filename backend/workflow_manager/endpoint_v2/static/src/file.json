@@ -33,10 +33,11 @@
             }
         },
         "maxFiles": {
-            "type": "number",
+            "type": "integer",
             "title": "Max files to process",
             "default": 100,
-            "description": "The maximum number of files to process"
+            "description": "The maximum number of files to process",
+            "minimum": 1
         }
     }
 }

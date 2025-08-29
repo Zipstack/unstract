@@ -110,7 +110,13 @@
 }
 
 .conn-modal-fs-config {
-    overflow-y: hidden;
+    overflow-y: auto;
+}
+
+.conn-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
 }
 
 .file-browser-section {
