@@ -625,6 +625,9 @@ backend/plugins/subscription/*
 # API Deployment Plugins
 backend/plugins/api/**
 
+# Notfication plugins
+backend/plugins/notification/**
+
 # BE pluggable-apps
 backend/pluggable_apps/*
 

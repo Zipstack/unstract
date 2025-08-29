@@ -12,8 +12,17 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from utils.filtering import FilterHelper
-from utils.notification.constants import ResourceType
-from utils.notification.sharing_notification import sharing_notification_service
+
+try:
+    from plugins.notification.constants import ResourceType
+    from plugins.notification.sharing_notification import SharingNotificationService
+
+    NOTIFICATION_PLUGIN_AVAILABLE = True
+    sharing_notification_service = SharingNotificationService()
+except ImportError:
+    NOTIFICATION_PLUGIN_AVAILABLE = False
+    sharing_notification_service = None
+
 
 from backend.constants import RequestKey
 from workflow_manager.endpoint_v2.destination import DestinationConnector
@@ -129,7 +138,11 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         response = super().partial_update(request, *args, **kwargs)
 
         # If update was successful and shared_users field was modified
-        if response.status_code == 200 and "shared_users" in request.data:
+        if (
+            response.status_code == 200
+            and "shared_users" in request.data
+            and NOTIFICATION_PLUGIN_AVAILABLE
+        ):
             try:
                 # Get updated workflow to compare shared users
                 workflow.refresh_from_db()

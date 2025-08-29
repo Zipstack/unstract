@@ -562,15 +562,6 @@ SOCIAL_AUTH_GOOGLE_OAUTH2_AUTH_EXTRA_ARGUMENTS = {
 }
 SOCIAL_AUTH_GOOGLE_OAUTH2_USE_UNIQUE_USER_ID = True
 
-# SendGrid Email Configuration
-SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY")
-SENDGRID_FROM_EMAIL = os.environ.get("SENDGRID_FROM_EMAIL")
-SENDGRID_FROM_NAME = os.environ.get("SENDGRID_FROM_NAME")
-SENDGRID_TEMPLATE_ID = os.environ.get("SENDGRID_TEMPLATE_ID")
-ENABLE_EMAIL_NOTIFICATIONS = os.environ.get(
-    "ENABLE_EMAIL_NOTIFICATIONS", "False"
-).lower() in ["true"]
-
 
 # Always keep this line at the bottom of the file.
 if missing_settings:
