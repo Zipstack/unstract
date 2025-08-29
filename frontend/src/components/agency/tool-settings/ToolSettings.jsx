@@ -45,8 +45,6 @@ function ToolSettings({ spec, isSpecLoading }) {
         if (nameIndex !== -1 && fieldSchema.enum[nameIndex]) {
           // Replace name with corresponding ID from enum array
           transformedMetadata[fieldName] = fieldSchema.enum[nameIndex];
-        } else {
-          // BE handles case where adapter name is not found (possibly deleted/renamed)
         }
       }
     });
