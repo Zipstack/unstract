@@ -14,7 +14,6 @@ function OAuthStatus() {
   // Set status for the connector that initiated OAuth (stored in sessionStorage for callback)
   const currentConnector = sessionStorage.getItem("oauth-current-connector");
   if (currentConnector) {
-    // currentConnector contains the selectedSourceId
     const statusKey = `oauth-status-${currentConnector}`;
     localStorage.setItem(statusKey, status);
     // Clear the session storage after use
