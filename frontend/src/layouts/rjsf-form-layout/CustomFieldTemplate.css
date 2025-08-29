@@ -8,3 +8,8 @@
 .field-error-alert {
   margin-top: 4px;
 }
+
+.field-error-list {
+  margin: 0;
+  padding-left: 1.2em;
+}

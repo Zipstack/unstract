@@ -274,7 +274,7 @@ function ConfigureConnectorModal({
         if (hasConnectorChanged) {
           updatePayload.connector_instance_id = connDetails.id;
         }
-        if (hasConfigChanges && Object.keys(validatedFormData).length > 0) {
+        if (hasConfigChanges) {
           updatePayload.configuration = validatedFormData;
         }
         if (Object.keys(updatePayload).length > 0) {
@@ -482,7 +482,7 @@ function ConfigureConnectorModal({
       centered
       footer={
         connDetails?.id ? (
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <div className="conn-modal-footer">
             <Button onClick={handleModalClose}>Cancel</Button>
             <Button
               type="primary"

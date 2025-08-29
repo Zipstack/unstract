@@ -102,10 +102,28 @@ function RjsfFormLayout({
       return errors.map((error) => {
         const { name, params, property } = error;
 
-        // property looks like ".maxFiles" → strip leading dot
-        const fieldName = property?.replace(/^\./, "");
+        // Try to resolve nested schema/title from property path like ".a.b[0].c"
+        const path = (property || "").replace(/^\./, "");
+        const getFieldSchema = (root, pathStr) => {
+          if (!root || !pathStr) return undefined;
+          const tokens = pathStr
+            .replace(/\[(\d+)\]/g, ".$1")
+            .split(".")
+            .filter(Boolean);
+          let cur = root;
+          for (const tok of tokens) {
+            if (cur?.type === "array" && cur?.items) {
+              cur = cur.items;
+            }
+            if (cur?.properties && cur.properties[tok]) {
+              cur = cur.properties[tok];
+            }
+          }
+          return cur;
+        };
         const schemaProps = schema?.properties ?? {};
-        const fieldSchema = fieldName ? schemaProps[fieldName] : undefined;
+        const fieldSchema = getFieldSchema(schema, path);
+        const fieldName = path;
         const fieldTitle = fieldSchema?.title || fieldName || "This field";
 
         // Special handling for "required", since Ajv attaches it at parent level
@@ -250,9 +268,21 @@ function RjsfFormLayout({
               message: `'${fieldTitle}' must be a valid ${params?.format}`,
             };
 
+          case "additionalProperties":
+            return {
+              ...error,
+              message: `'${fieldTitle}' has an unsupported property '${params?.additionalProperty}'`,
+            };
+
+          case "dependentRequired":
+            return {
+              ...error,
+              message: `'${fieldTitle}' requires '${params?.missingProperty}'`,
+            };
+
           default:
             // fallback: try to use Ajv stack if meaningful
-            if (error.stack && error.stack.trim()) {
+            if (error.stack?.trim()) {
               return { ...error, message: error.stack };
             }
             return { ...error, message: `'${fieldTitle}': ${error.message}` };

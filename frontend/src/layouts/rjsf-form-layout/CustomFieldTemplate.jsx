@@ -11,11 +11,23 @@ const CustomFieldTemplate = (props) => {
       {children}
       {hasErrors && (
         <Alert
-          message={rawErrors.join(", ")}
           type="error"
-          size="small"
           showIcon
           className="field-error-alert"
+          message={
+            rawErrors.length === 1
+              ? rawErrors[0]
+              : "Multiple validation errors:"
+          }
+          description={
+            rawErrors.length > 1 ? (
+              <ul className="field-error-list">
+                {rawErrors.map((error, index) => (
+                  <li key={index}>{error}</li>
+                ))}
+              </ul>
+            ) : undefined
+          }
         />
       )}
       {help}
