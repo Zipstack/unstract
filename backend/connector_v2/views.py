@@ -82,13 +82,10 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
         if ConnectorInstance.supportsOAuth(connector_id=connector_id):
             logger.info(f"Fetching oauth data for {connector_id}")
             oauth_key = self.request.query_params.get(ConnectorAuthKey.OAUTH_KEY)
-
             if not oauth_key:
                 raise MissingParamException(
                     "OAuth authentication required. Please sign in with Google first."
                 )
-
-            # Process valid oauth_key
             logger.info(f"Using OAuth cache key for {connector_id}")
             connector_metadata = ConnectorAuthHelper.get_oauth_creds_from_cache(
                 cache_key=oauth_key,
