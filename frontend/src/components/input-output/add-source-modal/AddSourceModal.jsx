@@ -110,14 +110,16 @@ function AddSourceModal({
   const getListOfSources = () => {
     let url;
     if (isConnector) {
-      url = connectorMode
-        ? getUrl(`supported_connectors/?connector_mode=${connectorMode}`)
-        : getUrl(`supported_connectors/`);
+      if (connectorMode) {
+        url = getUrl(`supported_connectors/?connector_mode=${connectorMode}`);
+      } else {
+        url = getUrl(`supported_connectors/`);
+      }
     } else {
       if (!type) return;
       url = getUrl(`supported_adapters/?adapter_type=${type.toUpperCase()}`);
     }
-    // API to get the list of adapters.
+
     const requestOptions = {
       method: "GET",
       url,
@@ -174,9 +176,10 @@ function AddSourceModal({
       ) : (
         <ListOfSources
           setSelectedSourceId={setSelectedSourceId}
-          open={open}
           sourcesList={sourcesList}
           type={type}
+          isConnector={isConnector}
+          connectorMode={connectorMode}
         />
       )}
     </Modal>
