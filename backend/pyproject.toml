@@ -53,7 +53,6 @@ dependencies = [
     "unstract-tool-sandbox",
     "unstract-workflow-execution",
     "unstract-filesystem",
-    "sendgrid>=6.12.4",
 ]
 
 [dependency-groups]
