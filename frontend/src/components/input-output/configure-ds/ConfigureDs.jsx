@@ -145,20 +145,9 @@ function ConfigureDs({
     };
   }, [oauthCacheKey, oauthStatusKey]);
 
-  const isFormValid = () => {
-    if (formRef) {
-      formRef?.current?.validateFields((errors, values) => {
-        if (errors) {
-          return false;
-        }
-      });
-    }
-    return true;
-  };
-
   const handleTestConnection = (updatedFormData) => {
     // Check if there any error in form proceed to test connection only there is no error.
-    if (!isFormValid()) {
+    if (formRef && !formRef.current?.validateForm()) {
       return;
     }
     if (oAuthProvider?.length && (status !== "success" || !cacheKey?.length)) {
