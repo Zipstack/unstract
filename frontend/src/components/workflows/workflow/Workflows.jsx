@@ -164,11 +164,10 @@ function Workflows() {
             content: "Workflow deleted successfully",
           });
         })
-        .catch(() => {
-          setAlertDetails({
-            type: "error",
-            content: `Unable to delete workflow ${project.id}`,
-          });
+        .catch((err) => {
+          setAlertDetails(
+            handleException(err, `Unable to delete workflow ${project.id}`)
+          );
         });
     } else {
       setAlertDetails({
@@ -205,12 +204,11 @@ function Workflows() {
       setAllUsers(userList);
       setSelectedWorkflow(sharedUsersResponse.data);
       setShareOpen(true);
-    } catch (error) {
-      console.error("Error fetching sharing data:", error);
-      setAlertDetails({
-        type: "error",
-        content: "Unable to fetch sharing information",
-      });
+    } catch (err) {
+      console.error("Error fetching sharing data:", err);
+      setAlertDetails(
+        handleException(err, `Unable to fetch sharing information`)
+      );
     } finally {
       setShareLoading(false);
     }
@@ -232,10 +230,9 @@ function Workflows() {
       getProjectList(); // Refresh the list
     } catch (error) {
       console.error("Error updating sharing:", error);
-      setAlertDetails({
-        type: "error",
-        content: "Unable to update workflow sharing",
-      });
+      setAlertDetails(
+        handleException(error, "Unable to update workflow sharing")
+      );
     } finally {
       setShareLoading(false);
     }
