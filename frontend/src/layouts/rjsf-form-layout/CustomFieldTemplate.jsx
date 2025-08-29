@@ -23,7 +23,7 @@ const CustomFieldTemplate = (props) => {
             rawErrors.length > 1 ? (
               <ul className="field-error-list">
                 {rawErrors.map((error, index) => (
-                  <li key={index}>{error}</li>
+                  <li key={`err-${error}-${index}`}>{error}</li>
                 ))}
               </ul>
             ) : undefined

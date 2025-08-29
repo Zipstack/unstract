@@ -185,7 +185,7 @@ function RjsfFormLayout({
             if (cur?.type === "array" && cur?.items) {
               cur = cur.items;
             }
-            if (cur?.properties && cur.properties[tok]) {
+            if (cur?.properties?.[tok]) {
               cur = cur.properties[tok];
             }
           }
