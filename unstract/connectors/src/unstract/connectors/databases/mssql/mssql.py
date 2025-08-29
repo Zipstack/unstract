@@ -1,3 +1,4 @@
+import datetime
 import logging
 import os
 from typing import Any
@@ -57,6 +58,31 @@ class MSSQL(UnstractDB):
     def can_read() -> bool:
         return True
 
+    def get_string_type(self) -> str:
+        return "text"
+
+    def sql_to_db_mapping(self, value: str) -> str:
+        """Gets the python datatype of value and converts python datatype to
+        corresponding DB datatype.
+
+        Args:
+            value (str): python datatype
+
+        Returns:
+            str: database columntype
+        """
+        python_type = type(value)
+
+        mapping = {
+            str: "NVARCHAR(MAX)",
+            int: "INT",
+            float: "FLOAT",
+            datetime.datetime: "DATETIMEOFFSET",
+            dict: "NVARCHAR(MAX)",
+            list: "NVARCHAR(MAX)",
+        }
+        return mapping.get(python_type, "NVARCHAR(MAX)")
+
     def get_engine(self) -> Connection:
         return pymssql.connect(  # type: ignore
             server=self.server,
@@ -97,9 +123,28 @@ class MSSQL(UnstractDB):
 
         sql_query = (
             f"{existence_check} "
-            f"CREATE TABLE {table} "
-            f"(id TEXT, "
-            f"created_by TEXT, created_at DATETIMEOFFSET, "
+            f" CREATE TABLE {table} "
+            f"(id NVARCHAR(MAX), "
+            f"created_by NVARCHAR(MAX), created_at DATETIMEOFFSET, "
+            f"metadata NVARCHAR(MAX), "
+            f"user_field_1 BIT DEFAULT 0, "
+            f"user_field_2 INT DEFAULT 0, "
+            f"user_field_3 NVARCHAR(MAX) DEFAULT NULL, "
+            f"status NVARCHAR(10) CHECK (status IN ('ERROR', 'SUCCESS')), "
+            f"error_message NVARCHAR(MAX))"
+        )
+        return sql_query
+
+    def prepare_multi_column_migration(self, table_name: str, column_name: str) -> str:
+        sql_query = (
+            f"ALTER TABLE {table_name} "
+            f"ADD {column_name}_v2 NVARCHAR(MAX), "
+            + "metadata NVARCHAR(MAX), "
+            + "user_field_1 BIT DEFAULT 0, "
+            + "user_field_2 INT DEFAULT 0, "
+            + "user_field_3 NVARCHAR(MAX) DEFAULT NULL, "
+            + "status NVARCHAR(10) CHECK (status IN ('ERROR', 'SUCCESS')), "
+            + "error_message NVARCHAR(MAX)"
         )
         return sql_query
 

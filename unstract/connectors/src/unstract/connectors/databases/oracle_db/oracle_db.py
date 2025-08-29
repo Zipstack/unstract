@@ -59,6 +59,9 @@ class OracleDB(UnstractDB):
     def can_read() -> bool:
         return True
 
+    def get_string_type(self) -> str:
+        return "clob"
+
     def get_engine(self) -> Connection:
         con = oracledb.connect(
             config_dir=self.config_dir,
@@ -86,6 +89,8 @@ class OracleDB(UnstractDB):
             int: "NUMBER",
             float: "LONG",
             datetime.datetime: "TIMESTAMP",
+            dict: "CLOB CHECK (IS JSON)",
+            list: "CLOB CHECK (IS JSON)",
         }
         return mapping.get(python_type, "CLOB")
 
@@ -102,6 +107,25 @@ class OracleDB(UnstractDB):
             f"CREATE TABLE IF NOT EXISTS {table} "
             f"(id VARCHAR2(32767) , "
             f"created_by VARCHAR2(32767), created_at TIMESTAMP, "
+            f"metadata CLOB CHECK (metadata IS JSON), "
+            f"user_field_1 NUMBER(1) DEFAULT 0, "
+            f"user_field_2 NUMBER DEFAULT 0, "
+            f"user_field_3 VARCHAR2(32767) DEFAULT NULL, "
+            f"status VARCHAR2(10) CHECK (status IN ('ERROR', 'SUCCESS')), "
+            f"error_message VARCHAR2(32767), "
+        )
+        return sql_query
+
+    def prepare_multi_column_migration(self, table_name: str, column_name: str) -> str:
+        sql_query = (
+            f"ALTER TABLE {table_name} "
+            f"ADD {column_name}_v2 CLOB CHECK ({column_name}_v2 IS JSON), "
+            f"ADD metadata CLOB CHECK (metadata IS JSON), "
+            f"ADD user_field_1 NUMBER(1) DEFAULT 0, "
+            f"ADD user_field_2 NUMBER DEFAULT 0, "
+            f"ADD user_field_3 VARCHAR2(32767) DEFAULT NULL, "
+            f"ADD status VARCHAR2(10) CHECK (status IN ('ERROR', 'SUCCESS')), "
+            f"ADD error_message VARCHAR2(32767)"
         )
         return sql_query
 
