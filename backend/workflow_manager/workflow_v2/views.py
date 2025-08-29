@@ -12,6 +12,8 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from utils.filtering import FilterHelper
+from utils.notification.constants import ResourceType
+from utils.notification.sharing_notification import sharing_notification_service
 
 from backend.constants import RequestKey
 from workflow_manager.endpoint_v2.destination import DestinationConnector
@@ -114,6 +116,49 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             logger.error(f"Error creating workflow endpoints: {e}")
             raise WorkflowGenerationError
         return workflow
+
+    def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        """Override partial_update to handle sharing notifications."""
+        # Get the workflow instance before update
+        workflow = self.get_object()
+
+        # Store current shared users for comparison
+        current_shared_users = set(workflow.shared_users.all())
+
+        # Perform the standard partial update
+        response = super().partial_update(request, *args, **kwargs)
+
+        # If update was successful and shared_users field was modified
+        if response.status_code == 200 and "shared_users" in request.data:
+            try:
+                # Get updated workflow to compare shared users
+                workflow.refresh_from_db()
+                new_shared_users = set(workflow.shared_users.all())
+
+                # Find newly added users
+                newly_shared_users = new_shared_users - current_shared_users
+
+                if newly_shared_users:
+                    # Send notification to newly shared users
+                    sharing_notification_service.send_sharing_notification(
+                        resource_type=ResourceType.WORKFLOW.value,
+                        resource_name=workflow.workflow_name,
+                        resource_id=str(workflow.id),
+                        shared_by=request.user,
+                        shared_to=list(newly_shared_users),
+                        resource_instance=workflow,
+                    )
+
+                    logger.info(
+                        f"Sent sharing notifications for workflow {workflow.id} "
+                        f"to {len(newly_shared_users)} users"
+                    )
+
+            except Exception as e:
+                # Log error but don't fail the update operation
+                logger.error(f"Failed to send sharing notification: {str(e)}")
+
+        return response
 
     def get_execution(self, request: Request, pk: str) -> Response:
         execution = WorkflowHelper.get_current_execution(pk)
