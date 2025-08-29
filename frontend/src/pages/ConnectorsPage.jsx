@@ -163,6 +163,7 @@ function ConnectorsPage() {
             handleDelete={handleDeleteConnector}
             handleEdit={handleEditConnector}
             handleShare={handleShareConnector}
+            setOpenAddTool={setModalVisible}
             idProp="id"
             titleProp="connector_name"
             descriptionProp="connector_type"

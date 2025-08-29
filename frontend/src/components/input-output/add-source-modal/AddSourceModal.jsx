@@ -15,6 +15,7 @@ function AddSourceModal({
   setOpen,
   type,
   isConnector,
+  connectorMode,
   addNewItem,
   editItemId,
   setEditItemId,
@@ -109,8 +110,9 @@ function AddSourceModal({
   const getListOfSources = () => {
     let url;
     if (isConnector) {
-      // For centralized connectors, get all connectors
-      url = getUrl(`supported_connectors/`);
+      url = connectorMode
+        ? getUrl(`supported_connectors/?connector_mode=${connectorMode}`)
+        : getUrl(`supported_connectors/`);
     } else {
       if (!type) return;
       url = getUrl(`supported_adapters/?adapter_type=${type.toUpperCase()}`);
@@ -186,6 +188,7 @@ AddSourceModal.propTypes = {
   setOpen: PropTypes.func.isRequired,
   type: PropTypes.any,
   isConnector: PropTypes.bool,
+  connectorMode: PropTypes.string,
   addNewItem: PropTypes.func.isRequired,
   editItemId: PropTypes.string,
   setEditItemId: PropTypes.func.isRequired,
