@@ -664,6 +664,7 @@ function ConfigureConnectorModal({
           setOpen={setShowAddSourceModal}
           isConnector={true}
           type={connType}
+          connectorMode={connMode}
           addNewItem={handleConnectorCreated}
           editItemId={null}
           setEditItemId={() => {}}
