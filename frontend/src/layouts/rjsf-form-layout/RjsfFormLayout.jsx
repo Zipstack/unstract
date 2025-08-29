@@ -97,6 +97,76 @@ function RjsfFormLayout({
     return schema;
   }, []);
 
+  // Validation message generators to reduce complexity
+  const validationMessageGenerators = {
+    // Numeric validations
+    minimum: (fieldTitle, params) =>
+      `'${fieldTitle}' must be at least ${params?.limit}`,
+    maximum: (fieldTitle, params) =>
+      `'${fieldTitle}' must not exceed ${params?.limit}`,
+    exclusiveMinimum: (fieldTitle, params) =>
+      `'${fieldTitle}' must be greater than ${params?.limit}`,
+    exclusiveMaximum: (fieldTitle, params) =>
+      `'${fieldTitle}' must be less than ${params?.limit}`,
+    multipleOf: (fieldTitle, params) =>
+      `'${fieldTitle}' must be a multiple of ${params?.multipleOf}`,
+
+    // String validations
+    minLength: (fieldTitle, params) =>
+      `'${fieldTitle}' must be at least ${params?.limit} characters`,
+    maxLength: (fieldTitle, params) =>
+      `'${fieldTitle}' must not exceed ${params?.limit} characters`,
+    pattern: (fieldTitle) => `'${fieldTitle}' must match the required format`,
+
+    // Array validations
+    minItems: (fieldTitle, params) =>
+      `'${fieldTitle}' must have at least ${params?.limit} items`,
+    maxItems: (fieldTitle, params) =>
+      `'${fieldTitle}' must not exceed ${params?.limit} items`,
+    uniqueItems: (fieldTitle) =>
+      `'${fieldTitle}' must contain only unique items`,
+
+    // Object validations
+    minProperties: (fieldTitle, params) =>
+      `'${fieldTitle}' must have at least ${params?.limit} properties`,
+    maxProperties: (fieldTitle, params) =>
+      `'${fieldTitle}' must not exceed ${params?.limit} properties`,
+
+    // Simple validations
+    const: (fieldTitle, params) =>
+      `'${fieldTitle}' must be exactly ${params?.allowedValue}`,
+    type: (fieldTitle, params) =>
+      `'${fieldTitle}' must be of type ${params?.type}`,
+    format: (fieldTitle, params) =>
+      `'${fieldTitle}' must be a valid ${params?.format}`,
+    additionalProperties: (fieldTitle, params) =>
+      `'${fieldTitle}' has an unsupported property '${params?.additionalProperty}'`,
+    dependentRequired: (fieldTitle, params) =>
+      `'${fieldTitle}' requires '${params?.missingProperty}'`,
+  };
+
+  // Extract complex enum logic to separate function
+  const generateEnumMessage = useCallback((fieldTitle, fieldSchema) => {
+    let enumMessage = `'${fieldTitle}' must be one of the allowed values`;
+    if (fieldSchema?.enumNames && fieldSchema.enumNames.length > 0) {
+      const options = fieldSchema.enumNames;
+      const maxShow = 4; // Maximum options to show before truncating
+
+      if (options.length <= maxShow) {
+        // Show all options if list is small
+        enumMessage = `'${fieldTitle}' must be one of: ${options.join(", ")}`;
+      } else {
+        // Truncate long lists with "and X others" suffix
+        const firstFew = options.slice(0, maxShow).join(", ");
+        const remaining = options.length - maxShow;
+        enumMessage = `'${fieldTitle}' must be one of: ${firstFew} (and ${remaining} ${
+          remaining === 1 ? "other" : "others"
+        })`;
+      }
+    }
+    return enumMessage;
+  }, []);
+
   const transformErrors = useCallback(
     (errors) => {
       return errors.map((error) => {
@@ -126,170 +196,45 @@ function RjsfFormLayout({
         const fieldName = path;
         const fieldTitle = fieldSchema?.title || fieldName || "This field";
 
-        // Special handling for "required", since Ajv attaches it at parent level
+        // Handle required fields separately (special case)
         if (name === "required") {
           const missingField = params?.missingProperty;
           const missingSchema = schemaProps[missingField];
           const missingTitle =
             missingSchema?.title || missingField || "This field";
-
           return {
             ...error,
             message: `'${missingTitle}' is required`,
           };
         }
 
-        switch (name) {
-          // Numeric validations
-          case "minimum":
-            return {
-              ...error,
-              message: `'${fieldTitle}' must be at least ${params?.limit}`,
-            };
-
-          case "maximum":
-            return {
-              ...error,
-              message: `'${fieldTitle}' must not exceed ${params?.limit}`,
-            };
-
-          case "exclusiveMinimum":
-            return {
-              ...error,
-              message: `'${fieldTitle}' must be greater than ${params?.limit}`,
-            };
-
-          case "exclusiveMaximum":
-            return {
-              ...error,
-              message: `'${fieldTitle}' must be less than ${params?.limit}`,
-            };
-
-          case "multipleOf":
-            return {
-              ...error,
-              message: `'${fieldTitle}' must be a multiple of ${params?.multipleOf}`,
-            };
-
-          // String validations
-          case "minLength":
-            return {
-              ...error,
-              message: `'${fieldTitle}' must be at least ${params?.limit} characters`,
-            };
-
-          case "maxLength":
-            return {
-              ...error,
-              message: `'${fieldTitle}' must not exceed ${params?.limit} characters`,
-            };
-
-          case "pattern":
-            return {
-              ...error,
-              message: `'${fieldTitle}' must match the required format`,
-            };
-
-          // Array validations
-          case "minItems":
-            return {
-              ...error,
-              message: `'${fieldTitle}' must have at least ${params?.limit} items`,
-            };
-
-          case "maxItems":
-            return {
-              ...error,
-              message: `'${fieldTitle}' must not exceed ${params?.limit} items`,
-            };
-
-          case "uniqueItems":
-            return {
-              ...error,
-              message: `'${fieldTitle}' must contain only unique items`,
-            };
-
-          // Object validations
-          case "minProperties":
-            return {
-              ...error,
-              message: `'${fieldTitle}' must have at least ${params?.limit} properties`,
-            };
-
-          case "maxProperties":
-            return {
-              ...error,
-              message: `'${fieldTitle}' must not exceed ${params?.limit} properties`,
-            };
-
-          // Other validations
-          case "enum": {
-            let enumMessage = `'${fieldTitle}' must be one of the allowed values`;
-            if (fieldSchema?.enumNames && fieldSchema.enumNames.length > 0) {
-              const options = fieldSchema.enumNames;
-              const maxShow = 4; // Maximum options to show before truncating
-
-              if (options.length <= maxShow) {
-                // Show all options if list is small
-                enumMessage = `'${fieldTitle}' must be one of: ${options.join(
-                  ", "
-                )}`;
-              } else {
-                // Truncate long lists with "and X others" suffix
-                const firstFew = options.slice(0, maxShow).join(", ");
-                const remaining = options.length - maxShow;
-                enumMessage = `'${fieldTitle}' must be one of: ${firstFew} (and ${remaining} ${
-                  remaining === 1 ? "other" : "others"
-                })`;
-              }
-            }
-
-            return {
-              ...error,
-              message: enumMessage,
-            };
-          }
-
-          case "const":
-            return {
-              ...error,
-              message: `'${fieldTitle}' must be exactly ${params?.allowedValue}`,
-            };
-
-          case "type":
-            return {
-              ...error,
-              message: `'${fieldTitle}' must be of type ${params?.type}`,
-            };
-
-          case "format":
-            return {
-              ...error,
-              message: `'${fieldTitle}' must be a valid ${params?.format}`,
-            };
-
-          case "additionalProperties":
-            return {
-              ...error,
-              message: `'${fieldTitle}' has an unsupported property '${params?.additionalProperty}'`,
-            };
-
-          case "dependentRequired":
-            return {
-              ...error,
-              message: `'${fieldTitle}' requires '${params?.missingProperty}'`,
-            };
-
-          default:
-            // fallback: try to use Ajv stack if meaningful
-            if (error.stack?.trim()) {
-              return { ...error, message: error.stack };
-            }
-            return { ...error, message: `'${fieldTitle}': ${error.message}` };
+        // Handle enum separately due to complexity
+        if (name === "enum") {
+          return {
+            ...error,
+            message: generateEnumMessage(fieldTitle, fieldSchema),
+          };
         }
+
+        // Use lookup table for simple cases
+        const messageGenerator = validationMessageGenerators[name];
+        if (messageGenerator) {
+          return {
+            ...error,
+            message: messageGenerator(fieldTitle, params),
+          };
+        }
+
+        // Default fallback
+        return {
+          ...error,
+          message: error.stack?.trim()
+            ? error.stack
+            : `'${fieldTitle}': ${error.message}`,
+        };
       });
     },
-    [schema]
+    [schema, generateEnumMessage, validationMessageGenerators]
   );
 
   const handleChange = useCallback(
