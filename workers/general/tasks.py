@@ -23,6 +23,8 @@ from shared.infrastructure.logging import (
     log_context,
     monitor_performance,
 )
+from shared.infrastructure.logging.helpers import log_file_info
+from shared.infrastructure.logging.workflow_logger import WorkerWorkflowLogger
 
 # Import execution models for type-safe context handling
 from shared.models.execution_models import (
@@ -58,6 +60,119 @@ logger = WorkerLogger.get_logger(__name__)
 
 
 # Webhook tasks removed - they should only be handled by the notification worker
+
+
+def _log_batch_statistics_to_ui(
+    execution_id: str,
+    organization_id: str,
+    pipeline_id: str | None,
+    message: str,
+) -> None:
+    """Helper method to log batch processing statistics to UI.
+
+    Args:
+        execution_id: Execution ID for workflow logger
+        organization_id: Organization ID for workflow logger
+        pipeline_id: Pipeline ID for workflow logger
+        message: Message to log to UI
+    """
+    try:
+        workflow_logger = WorkerWorkflowLogger.create_for_general_workflow(
+            execution_id=execution_id,
+            organization_id=organization_id,
+            pipeline_id=pipeline_id,
+        )
+
+        if workflow_logger:
+            log_file_info(
+                workflow_logger,
+                None,  # Execution-level logging
+                message,
+            )
+    except Exception as log_error:
+        logger.debug(f"Failed to log batch statistics: {log_error}")
+
+
+def _log_file_filtering_statistics(
+    execution_id: str,
+    organization_id: str,
+    pipeline_id: str | None,
+    original_count: int,
+    final_count: int,
+    is_api: bool,
+    max_files_limit: int | None,
+) -> None:
+    """Helper method to log file filtering and limiting statistics to UI.
+
+    Args:
+        execution_id: Execution ID for workflow logger
+        organization_id: Organization ID for workflow logger
+        pipeline_id: Pipeline ID for workflow logger
+        original_count: Original number of files before filtering
+        final_count: Final number of files after filtering
+        is_api: Whether this is an API workflow
+        max_files_limit: Maximum files limit if applicable
+    """
+    # Log filtering results
+    if not is_api and original_count > 0:
+        filtered_count = original_count - final_count
+        if filtered_count > 0:
+            _log_batch_statistics_to_ui(
+                execution_id=execution_id,
+                organization_id=organization_id,
+                pipeline_id=pipeline_id,
+                message=f"🔍 Filtered out {filtered_count} files (already processed) - {final_count} files remaining",
+            )
+        else:
+            _log_batch_statistics_to_ui(
+                execution_id=execution_id,
+                organization_id=organization_id,
+                pipeline_id=pipeline_id,
+                message=f"✅ No files filtered - all {final_count} files are new",
+            )
+
+    # Log max files limit if applicable
+    if max_files_limit and final_count > max_files_limit:
+        _log_batch_statistics_to_ui(
+            execution_id=execution_id,
+            organization_id=organization_id,
+            pipeline_id=pipeline_id,
+            message=f"📊 Limited to {max_files_limit} files (max batch size) - {final_count - max_files_limit} files skipped",
+        )
+
+
+def _log_batch_creation_statistics(
+    execution_id: str,
+    organization_id: str,
+    pipeline_id: str | None,
+    batches: list,
+) -> None:
+    """Helper method to log batch creation statistics to UI.
+
+    Args:
+        execution_id: Execution ID for workflow logger
+        organization_id: Organization ID for workflow logger
+        pipeline_id: Pipeline ID for workflow logger
+        batches: List of file batches created
+    """
+    total_files_in_batches = sum(len(batch) for batch in batches)
+    batch_sizes = [len(batch) for batch in batches]
+    avg_batch_size = sum(batch_sizes) / len(batch_sizes) if batch_sizes else 0
+
+    _log_batch_statistics_to_ui(
+        execution_id=execution_id,
+        organization_id=organization_id,
+        pipeline_id=pipeline_id,
+        message=f"📦 Created {len(batches)} batches for {total_files_in_batches} files (avg: {avg_batch_size:.1f} files/batch)",
+    )
+
+    if len(batches) > 1:
+        _log_batch_statistics_to_ui(
+            execution_id=execution_id,
+            organization_id=organization_id,
+            pipeline_id=pipeline_id,
+            message=f"📊 Batch sizes: {', '.join(map(str, batch_sizes))}",
+        )
 
 
 @app.task(
@@ -132,8 +247,24 @@ def async_execute_bin_general(
             execution_context = execution_response.data
             logger.info(f"Retrieved execution context for {execution_id}")
 
-            # Get execution and workflow information
+            # Set LOG_EVENTS_ID in StateStore for WebSocket messaging (critical for UI logs)
+            # This enables the WorkerWorkflowLogger to send logs to the UI via WebSocket
             execution_data = execution_context.get("execution", {})
+            execution_log_id = execution_data.get("execution_log_id")
+            if execution_log_id:
+                # Import and set LOG_EVENTS_ID like backend Celery workers do
+                from shared.infrastructure.context import StateStore
+
+                StateStore.set("LOG_EVENTS_ID", execution_log_id)
+                logger.info(
+                    f"Set LOG_EVENTS_ID for WebSocket messaging: {execution_log_id}"
+                )
+            else:
+                logger.warning(
+                    f"No execution_log_id found for execution {execution_id}, WebSocket logs may not be delivered"
+                )
+
+            # Get execution and workflow information
             current_status = execution_data.get("status")
             workflow_id = execution_data.get("workflow_id")
 
@@ -243,6 +374,16 @@ def async_execute_bin_general(
                     "execution_result": execution_result,
                 }
             )
+
+            # CRITICAL: Clean up StateStore to prevent data leaks between tasks
+            try:
+                from shared.infrastructure.context import StateStore
+
+                StateStore.clear_all()
+                logger.debug("🧹 Cleaned up StateStore context to prevent data leaks")
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to cleanup StateStore context: {cleanup_error}")
+
             return response_dict
 
         except Exception as e:
@@ -292,6 +433,19 @@ def async_execute_bin_general(
                     f"Failed to cleanup cache entries on error: {cleanup_error}"
                 )
 
+            # CRITICAL: Clean up StateStore to prevent data leaks between tasks (error path)
+            try:
+                from shared.infrastructure.context import StateStore
+
+                StateStore.clear_all()
+                logger.debug(
+                    "🧹 Cleaned up StateStore context to prevent data leaks (error path)"
+                )
+            except Exception as cleanup_error:
+                logger.warning(
+                    f"Failed to cleanup StateStore context on error: {cleanup_error}"
+                )
+
             # Re-raise for Celery retry mechanism
             raise
 
@@ -320,6 +474,7 @@ def _process_file_batches_general(
     try:
         # Convert FileHash objects to file data format expected by API
         files_data = []
+        skipped_files_count = 0
         for file_key, file_hash_data in hash_values_of_files.items():
             # TRACE: Log incoming file data
             logger.info(f"Processing FileHash for file '{file_key}'")
@@ -341,9 +496,11 @@ def _process_file_batches_general(
                         logger.error(
                             f"Failed to convert dict to FileHash for '{file_key}': {e}"
                         )
+                        skipped_files_count += 1
                         continue
                 else:
                     logger.error(f"Cannot process file '{file_key}' - invalid data type")
+                    skipped_files_count += 1
                     continue
 
             # Use FileHash to_dict method for consistent data structure
@@ -357,6 +514,15 @@ def _process_file_batches_general(
 
         # VALIDATION: Check file data integrity before API call
         _validate_provider_file_uuid_integrity(files_data, "process_file_batches_general")
+
+        # Log skipped files to UI if any
+        if skipped_files_count > 0:
+            _log_batch_statistics_to_ui(
+                execution_id=execution_id,
+                organization_id=api_client.organization_id,
+                pipeline_id=pipeline_id,
+                message=f"⚠️ Skipped {skipped_files_count} files due to data conversion errors",
+            )
 
         # Create file batch via internal API
         batch_response = api_client.create_file_batch(
@@ -529,6 +695,8 @@ def _execute_general_workflow(
         # FILE PROCESSING: Choose appropriate processing method based on workflow type
         max_files_limit = source_connector.get_max_files_limit()
 
+        original_file_count = len(source_files) if source_files else 0
+
         if not is_api and source_files:
             # ETL/TASK workflows: Apply active file filtering to prevent duplicate processing
             source_files, total_files = (
@@ -552,12 +720,22 @@ def _execute_general_workflow(
             )
 
         # Initialize WebSocket logger for UI logs
-        from shared.infrastructure.logging.workflow_logger import WorkerWorkflowLogger
-
         workflow_logger = WorkerWorkflowLogger.create_for_general_workflow(
             execution_id=execution_id,
             organization_id=api_client.organization_id,
             pipeline_id=pipeline_id,
+        )
+
+        # Log filtering statistics to UI
+        final_file_count = len(source_files) if source_files else 0
+        _log_file_filtering_statistics(
+            execution_id=execution_id,
+            organization_id=api_client.organization_id,
+            pipeline_id=pipeline_id,
+            original_count=original_file_count,
+            final_count=final_file_count,
+            is_api=is_api,
+            max_files_limit=max_files_limit,
         )
 
         # Send source logs to UI
@@ -718,6 +896,14 @@ def _orchestrate_file_processing_general(
             api_client=api_client,
         )
         logger.info(f"Created {len(batches)} file batches for processing")
+
+        # Log batch statistics to UI
+        _log_batch_creation_statistics(
+            execution_id=execution_id,
+            organization_id=organization_id,
+            pipeline_id=pipeline_id,
+            batches=batches,
+        )
 
         # Create batch tasks following the exact Django pattern
         batch_tasks = []
@@ -1145,6 +1331,7 @@ def _create_batch_data_general(
             logger.info(
                 f"  MANUAL REVIEW (no source): File #{original_file_number} '{file_name}' (batch_index={file_index}) -> is_manualreview_required={is_manual_review_required}, global_q_file_no_list={global_q_file_no_list}"
             )
+
             enhanced_files.append((file_name, enhanced_file_hash))
 
     # Create FileBatchData object

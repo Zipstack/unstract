@@ -73,6 +73,26 @@ class FileExecutionResult:
         """Convert to dictionary for API response."""
         return serialize_dataclass_to_dict(self)
 
+    def to_api_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for API deployment response with correct status format.
+
+        This matches the backend's FileExecutionResult.to_json() format exactly.
+        """
+        # Convert ExecutionStatus to API deployment status strings
+        if self.error or self.status == ExecutionStatus.ERROR:
+            api_status = "Failed"  # ApiDeploymentResultStatus.FAILED
+        else:
+            api_status = "Success"  # ApiDeploymentResultStatus.SUCCESS
+
+        return {
+            "file": self.file,
+            "file_execution_id": self.file_execution_id,
+            "status": api_status,  # Use API deployment status format
+            "result": self.result,
+            "error": self.error,
+            "metadata": self.metadata,
+        }
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "FileExecutionResult":
         """Create from dictionary (e.g., task result)."""

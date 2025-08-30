@@ -68,6 +68,7 @@ def get_workflow_execution_data(request, execution_id: str):
             "total_files": execution.total_files,
             "completed_files": execution.completed_files,
             "failed_files": execution.failed_files,
+            "execution_log_id": execution.execution_log_id,  # Include for WebSocket messaging
         }
 
         return Response(
@@ -288,19 +289,24 @@ def create_workflow_execution(request):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Create execution
+        # Create execution with log_events_id for WebSocket messaging
+        log_events_id = data.get("log_events_id")
+        # If log_events_id not provided, fall back to pipeline_id for backward compatibility
+        execution_log_id = log_events_id if log_events_id else data.get("pipeline_id")
+
         execution = WorkflowExecution.objects.create(
             workflow=workflow,
             pipeline_id=data.get("pipeline_id"),
-            execution_mode=data.get("mode", ("INSTANT", "INSTANT")),
-            execution_method=("SCHEDULED", "SCHEDULED")
+            execution_mode=data.get("mode", WorkflowExecution.Mode.INSTANT),
+            execution_method=WorkflowExecution.Method.SCHEDULED
             if data.get("scheduled")
-            else ("DIRECT", "DIRECT"),
-            execution_type=("STEP", "STEP")
+            else WorkflowExecution.Method.DIRECT,
+            execution_type=WorkflowExecution.Type.STEP
             if data.get("single_step")
-            else ("COMPLETE", "COMPLETE"),
+            else WorkflowExecution.Type.COMPLETE,
             status=ExecutionStatus.PENDING.value,
             total_files=data.get("total_files", 0),
+            execution_log_id=execution_log_id,  # Set execution_log_id for WebSocket messaging
         )
 
         # Set tags if provided
@@ -312,6 +318,7 @@ def create_workflow_execution(request):
             {
                 "execution_id": str(execution.id),
                 "status": execution.status,
+                "execution_log_id": execution.execution_log_id,  # Return for workers to use
             }
         )
 

@@ -50,6 +50,8 @@ def _execute_scheduled_workflow(
         )
 
         # Step 1: Create workflow execution via internal API using dataclass
+        # For scheduled executions, let backend handle execution_log_id (falls back to pipeline_id)
+        # This matches the backend logic: log_events_id if provided, else pipeline_id
         execution_request = WorkflowExecutionRequest(
             workflow_id=context.workflow_id,
             pipeline_id=context.pipeline_id,
@@ -58,6 +60,7 @@ def _execute_scheduled_workflow(
             mode=ExecutionMode.QUEUE,
             total_files=0,  # Will be updated during execution
             scheduled=True,
+            # log_events_id=None - let backend fall back to pipeline_id for scheduled executions
         )
 
         workflow_execution = api_client.create_workflow_execution(
@@ -95,9 +98,11 @@ def _execute_scheduled_workflow(
                     context.workflow_id,  # workflow_id
                     execution_id,  # execution_id
                     {},  # hash_values_of_files (empty for scheduled)
-                    context.use_file_history,  # use_file_history
+                    True,  # scheduled (THIS IS A SCHEDULED EXECUTION)
                 ],
-                kwargs={},
+                kwargs={
+                    "use_file_history": context.use_file_history,  # Pass as kwarg
+                },
                 queue=QueueName.CELERY,  # Route to celery queue (what general worker listens to)
             )
 

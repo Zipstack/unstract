@@ -3,6 +3,20 @@
 This module provides a helper class to break down the extremely complex
 _process_file method found in file_processing/tasks.py into manageable,
 testable, and maintainable components.
+
+UI/WebSocket Log Icons:
+- 🚀 File processing started
+- 🔍 Checking cache/history
+- 📜 Checking processing history
+- ✅ Validating execution status
+- ⚡ File found in cache or history (fast path)
+- 🚀 Starting AI tool execution
+- 🔄 File marked for manual review
+- 📤 File marked for destination processing
+- 📥 Data inserted into database
+- 💾 Files copied to filesystem
+- 🔌 File processed via API
+- ✅ Processing completed successfully
 """
 
 import json
@@ -327,6 +341,14 @@ class ManualReviewHandler:
         if context.file_hash.file_destination == FileDestinationType.MANUALREVIEW.value:
             logger.info(f"File {context.file_name} routed to manual review queue")
 
+            # Log manual review routing to UI
+            if context.workflow_logger and context.workflow_file_execution_id:
+                log_file_info(
+                    context.workflow_logger,
+                    context.workflow_file_execution_id,
+                    f"🔄 File '{context.file_name}' flagged for MANUAL REVIEW based on destination rules",
+                )
+
             try:
                 # Route to manual review queue
                 review_result = context.api_client.route_to_manual_review(
@@ -420,11 +442,10 @@ class WorkflowExecutionProcessor:
             logger.info(
                 "DEBUG: About to create WorkerWorkflowExecutionService from service.py..."
             )
-            from ...workflow.execution.service import (
-                WorkerWorkflowExecutionService as WorkingWorkflowService,
-            )
 
-            working_service = WorkingWorkflowService(api_client=context.api_client)
+            working_service = WorkerWorkflowExecutionService(
+                api_client=context.api_client
+            )
             logger.info("DEBUG: WorkingWorkflowService created successfully")
 
             # Execute the workflow using the working service implementation
@@ -438,6 +459,7 @@ class WorkflowExecutionProcessor:
                 execution_id=context.execution_id,
                 is_api=context.is_api_workflow,
                 workflow_file_execution_id=context.workflow_file_execution_id,
+                workflow_logger=context.workflow_logger,
             )
             logger.info(
                 f"Tool execution completed for {context.file_name}. Result success: {execution_result.get('success')}"
@@ -582,7 +604,7 @@ class FileProcessor:
         log_file_info(
             workflow_logger,
             workflow_file_execution_id,
-            "Starting detailed file processing steps",
+            f"🚀 Starting processing for file '{context.file_name}' ({current_file_idx + 1}/{total_files})",
         )
 
         # Update file execution status to EXECUTING when processing starts (using common method)
@@ -596,12 +618,17 @@ class FileProcessor:
             log_file_info(
                 workflow_logger,
                 workflow_file_execution_id,
-                "Checking cache for previously processed file",
+                f"🔍 Checking if '{context.file_name}' has been processed before",
             )
 
             cached_result = CachedFileHandler.handle_cached_file(context)
             if cached_result:
                 logger.info(f"Returning cached result for {context.file_name}")
+                log_file_info(
+                    workflow_logger,
+                    workflow_file_execution_id,
+                    f"⚡ File '{context.file_name}' already processed - using cached results",
+                )
                 return cached_result
 
             # Step 2: Validate workflow file execution
@@ -611,7 +638,7 @@ class FileProcessor:
             log_file_info(
                 workflow_logger,
                 workflow_file_execution_id,
-                "Validating file execution status",
+                f"✅ Validating execution status for '{context.file_name}'",
             )
 
             completed_result = (
@@ -629,12 +656,17 @@ class FileProcessor:
             log_file_info(
                 workflow_logger,
                 workflow_file_execution_id,
-                "Checking file processing history",
+                f"📜 Checking processing history for '{context.file_name}'",
             )
 
             history_result = FileHistoryHandler.check_file_history(context)
             if history_result:
                 logger.info(f"Returning historical result for {context.file_name}")
+                log_file_info(
+                    workflow_logger,
+                    workflow_file_execution_id,
+                    f"⚡ File '{context.file_name}' found in history cache - using cached results",
+                )
                 log_file_processing_success(
                     workflow_logger, workflow_file_execution_id, context.file_name
                 )
@@ -647,7 +679,7 @@ class FileProcessor:
             log_file_info(
                 workflow_logger,
                 workflow_file_execution_id,
-                "Starting workflow tool execution",
+                f"🚀 Starting AI tool execution for '{context.file_name}'",
             )
 
             workflow_result = WorkflowExecutionProcessor.execute_workflow_processing(
@@ -671,7 +703,7 @@ class FileProcessor:
                 log_file_info(
                     workflow_logger,
                     workflow_file_execution_id,
-                    "File processing completed successfully",
+                    f"✅ File '{context.file_name}' processing completed, preparing for destination routing",
                 )
 
             # Return workflow results - destination processing will handle manual review routing

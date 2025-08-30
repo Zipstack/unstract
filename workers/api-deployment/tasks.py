@@ -18,6 +18,8 @@ from shared.infrastructure.logging import (
     monitor_performance,
     with_execution_context,
 )
+from shared.infrastructure.logging.helpers import log_file_info
+from shared.infrastructure.logging.workflow_logger import WorkerWorkflowLogger
 from shared.patterns.retry.utils import retry
 from shared.processing.files import FileProcessingUtils
 
@@ -33,6 +35,107 @@ from unstract.core.data_models import ExecutionStatus, FileHashData
 # Note: FileExecutionResult removed - file worker now handles all result caching
 
 logger = WorkerLogger.get_logger(__name__)
+
+
+def _log_api_statistics_to_ui(
+    execution_id: str,
+    organization_id: str,
+    pipeline_id: str | None,
+    message: str,
+) -> None:
+    """Helper method to log API deployment statistics to UI.
+
+    Args:
+        execution_id: Execution ID for workflow logger
+        organization_id: Organization ID for workflow logger
+        pipeline_id: Pipeline ID for workflow logger
+        message: Message to log to UI
+    """
+    try:
+        workflow_logger = WorkerWorkflowLogger.create_for_api_workflow(
+            execution_id=execution_id,
+            organization_id=organization_id,
+            pipeline_id=pipeline_id,
+        )
+
+        if workflow_logger:
+            log_file_info(
+                workflow_logger,
+                None,  # Execution-level logging for API workflows
+                message,
+            )
+    except Exception as log_error:
+        logger.debug(f"Failed to log API statistics: {log_error}")
+
+
+def _log_api_file_history_statistics(
+    execution_id: str,
+    organization_id: str,
+    pipeline_id: str | None,
+    total_files: int,
+    cached_count: int,
+    use_file_history: bool,
+) -> None:
+    """Helper method to log file history statistics for API deployments.
+
+    Args:
+        execution_id: Execution ID for workflow logger
+        organization_id: Organization ID for workflow logger
+        pipeline_id: Pipeline ID for workflow logger
+        total_files: Total number of files
+        cached_count: Number of cached files
+        use_file_history: Whether file history is enabled
+    """
+    if use_file_history and cached_count > 0:
+        processing_count = total_files - cached_count
+        _log_api_statistics_to_ui(
+            execution_id=execution_id,
+            organization_id=organization_id,
+            pipeline_id=pipeline_id,
+            message=f"📋 Processing {total_files} files: {cached_count} from cache, {processing_count} new files",
+        )
+    else:
+        _log_api_statistics_to_ui(
+            execution_id=execution_id,
+            organization_id=organization_id,
+            pipeline_id=pipeline_id,
+            message=f"📋 Processing {total_files} files (file history disabled)",
+        )
+
+
+def _log_api_batch_creation_statistics(
+    execution_id: str,
+    organization_id: str,
+    pipeline_id: str | None,
+    batches: list,
+    total_files: int,
+) -> None:
+    """Helper method to log batch creation statistics for API deployments.
+
+    Args:
+        execution_id: Execution ID for workflow logger
+        organization_id: Organization ID for workflow logger
+        pipeline_id: Pipeline ID for workflow logger
+        batches: List of file batches created
+        total_files: Total number of files
+    """
+    batch_sizes = [len(batch) for batch in batches]
+    avg_batch_size = sum(batch_sizes) / len(batch_sizes) if batch_sizes else 0
+
+    _log_api_statistics_to_ui(
+        execution_id=execution_id,
+        organization_id=organization_id,
+        pipeline_id=pipeline_id,
+        message=f"📦 Created {len(batches)} API batches for {total_files} files (avg: {avg_batch_size:.1f} files/batch)",
+    )
+
+    if len(batches) > 1:
+        _log_api_statistics_to_ui(
+            execution_id=execution_id,
+            organization_id=organization_id,
+            pipeline_id=pipeline_id,
+            message=f"📊 API batch sizes: {', '.join(map(str, batch_sizes))}",
+        )
 
 
 @with_execution_context
@@ -144,6 +247,15 @@ def _unified_api_execution(
             f"files_processed={len(converted_files)}",
         )
 
+        # CRITICAL: Clean up StateStore to prevent data leaks between tasks
+        try:
+            from shared.infrastructure.context import StateStore
+
+            StateStore.clear_all()
+            logger.debug("🧹 Cleaned up StateStore context to prevent data leaks")
+        except Exception as cleanup_error:
+            logger.warning(f"Failed to cleanup StateStore context: {cleanup_error}")
+
         return result
 
     except Exception as e:
@@ -162,6 +274,19 @@ def _unified_api_execution(
             False,
             f"error={str(e)}",
         )
+
+        # CRITICAL: Clean up StateStore to prevent data leaks between tasks (error path)
+        try:
+            from shared.infrastructure.context import StateStore
+
+            StateStore.clear_all()
+            logger.debug(
+                "🧹 Cleaned up StateStore context to prevent data leaks (error path)"
+            )
+        except Exception as cleanup_error:
+            logger.warning(
+                f"Failed to cleanup StateStore context on error: {cleanup_error}"
+            )
 
         return {
             "execution_id": execution_id,
@@ -400,6 +525,7 @@ def _run_workflow_api(
                             api_result = {
                                 "file": hash_data.file_name,
                                 "file_execution_id": hash_data.provider_file_uuid or "",
+                                "status": "Success",  # Cached results are always successful
                                 "result": cached_result_data,
                                 "error": None,
                                 "metadata": {
@@ -438,6 +564,16 @@ def _run_workflow_api(
     else:
         logger.info(f"Sending {total_files} files to file worker (file history disabled)")
 
+    # Log file history statistics to UI
+    _log_api_file_history_statistics(
+        execution_id=execution_id,
+        organization_id=schema_name,
+        pipeline_id=pipeline_id,
+        total_files=total_files,
+        cached_count=cached_count,
+        use_file_history=use_file_history,
+    )
+
     # Get file batches using the exact same logic as Django backend with organization-specific config
     batches = _get_file_batches(
         input_files=files_to_send,
@@ -448,6 +584,15 @@ def _run_workflow_api(
         f"Execution {execution_id} processing {total_files} files in {len(batches)} batches"
     )
 
+    # Log batch creation statistics to UI
+    _log_api_batch_creation_statistics(
+        execution_id=execution_id,
+        organization_id=schema_name,
+        pipeline_id=pipeline_id,
+        batches=batches,
+        total_files=total_files,
+    )
+
     # Create batch tasks following the exact Django pattern
     batch_tasks = []
     execution_mode_str = (
@@ -456,7 +601,7 @@ def _run_workflow_api(
         else None
     )
 
-    for batch in batches:
+    for batch_index, batch in enumerate(batches):
         # Create file data exactly matching Django FileBatchData structure
         file_data = _create_file_data(
             workflow_id=workflow_id,
@@ -845,7 +990,23 @@ def api_deployment_status_check(
                     f"Failed to get execution context: {execution_response.error}"
                 )
             execution_context = execution_response.data
+
+            # Set LOG_EVENTS_ID in StateStore for WebSocket messaging (critical for UI logs)
+            # This enables the WorkerWorkflowLogger to send logs to the UI via WebSocket
             execution_data = execution_context.get("execution", {})
+            execution_log_id = execution_data.get("execution_log_id")
+            if execution_log_id:
+                # Import and set LOG_EVENTS_ID like backend Celery workers do
+                from shared.infrastructure.context import StateStore
+
+                StateStore.set("LOG_EVENTS_ID", execution_log_id)
+                logger.info(
+                    f"Set LOG_EVENTS_ID for WebSocket messaging: {execution_log_id}"
+                )
+            else:
+                logger.warning(
+                    f"No execution_log_id found for execution {execution_id}, WebSocket logs may not be delivered"
+                )
 
             status_info = {
                 "execution_id": execution_id,

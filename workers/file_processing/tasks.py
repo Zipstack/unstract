@@ -20,6 +20,7 @@ from shared.constants import Account
 from shared.enums import FileDestinationType
 from shared.enums.task_enums import TaskName
 from shared.infrastructure.config import WorkerConfig
+from shared.infrastructure.context import StateStore
 from shared.infrastructure.logging import (
     WorkerLogger,
     log_context,
@@ -27,11 +28,11 @@ from shared.infrastructure.logging import (
     with_execution_context,
 )
 from shared.infrastructure.logging.helpers import (
+    log_file_info,
     log_file_processing_error,
     log_file_processing_start,
     log_file_processing_success,
 )
-from shared.legacy.local_context import StateStore
 
 # Import execution models for type-safe context handling
 from shared.models.execution_models import (
@@ -238,6 +239,18 @@ def _setup_execution_context(
         raise Exception(f"Failed to get execution context: {execution_response.error}")
     execution_context = execution_response.data
     workflow_execution = execution_context.get("execution", {})
+
+    # Set LOG_EVENTS_ID in StateStore for WebSocket messaging (critical for UI logs)
+    # This enables the WorkerWorkflowLogger to send logs to the UI via WebSocket
+    execution_log_id = workflow_execution.get("execution_log_id")
+    if execution_log_id:
+        # Set LOG_EVENTS_ID like backend Celery workers do
+        StateStore.set("LOG_EVENTS_ID", execution_log_id)
+        logger.info(f"Set LOG_EVENTS_ID for WebSocket messaging: {execution_log_id}")
+    else:
+        logger.warning(
+            f"No execution_log_id found for execution {execution_id}, WebSocket logs may not be delivered"
+        )
 
     # Update execution status to EXECUTING when processing starts
     # This fixes the missing EXECUTION status in logs
@@ -594,6 +607,24 @@ def _process_individual_files(context: WorkflowContextData) -> WorkflowContextDa
             total_files,
         )
 
+        # Send destination routing UI log now that we have workflow_logger and file_execution_id
+        if workflow_logger and workflow_file_execution_id:
+            if (
+                hasattr(file_hash, "is_manualreview_required")
+                and file_hash.is_manualreview_required
+            ):
+                log_file_info(
+                    workflow_logger,
+                    workflow_file_execution_id,
+                    f"🔄 File '{file_name}' marked for MANUAL REVIEW - sending to review queue",
+                )
+            else:
+                log_file_info(
+                    workflow_logger,
+                    workflow_file_execution_id,
+                    f"📤 File '{file_name}' marked for DESTINATION processing - sending to database",
+                )
+
         # Process single file using Django-like pattern but with API coordination
         file_execution_result = _process_file(
             current_file_idx=file_number,
@@ -947,6 +978,13 @@ def _compile_batch_result(context: WorkflowContextData) -> dict[str, Any]:
         f"Batch execution time: {result.execution_time:.2f}s for "
         f"{result.successful_files + result.failed_files} files"
     )
+
+    # CRITICAL: Clean up StateStore to prevent data leaks between tasks
+    try:
+        StateStore.clear_all()
+        logger.debug("🧹 Cleaned up StateStore context to prevent data leaks")
+    except Exception as cleanup_error:
+        logger.warning(f"Failed to cleanup StateStore context: {cleanup_error}")
 
     # Return the final result matching Django backend format
     return {
@@ -1812,6 +1850,9 @@ def process_file_batch_api(
                 log_events_id = workflow_execution.get("execution_log_id")
                 if log_events_id:
                     StateStore.set("LOG_EVENTS_ID", log_events_id)
+                    logger.info(
+                        f"Set LOG_EVENTS_ID for WebSocket messaging: {log_events_id}"
+                    )
 
                 # Process each file in the batch using Django-like pattern
                 file_results = []

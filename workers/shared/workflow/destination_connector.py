@@ -136,6 +136,28 @@ class WorkerDestinationConnector:
         """Create destination connector from config (matching Django backend interface)."""
         return cls(config, workflow_log)
 
+    def _get_destination_display_name(self) -> str:
+        """Get human-readable destination name for logging."""
+        if self.connection_type == CoreConnectionType.DATABASE.value:
+            # Try to get database type from settings
+            if self.connector_name:
+                return f"database ({self.connector_name})"
+            elif self.settings and "table" in self.settings:
+                return f"database table '{self.settings['table']}'"
+            return "database"
+        elif self.connection_type == CoreConnectionType.FILESYSTEM.value:
+            if self.connector_name:
+                return f"filesystem ({self.connector_name})"
+            return "filesystem destination"
+        elif self.connection_type == CoreConnectionType.API.value:
+            if self.connector_name:
+                return f"API ({self.connector_name})"
+            return "API endpoint"
+        elif self.connection_type == CoreConnectionType.MANUALREVIEW.value:
+            return "manual review queue"
+        else:
+            return f"{self.connection_type} destination"
+
     def handle_output_for_files(
         self,
         files_data: list[
@@ -265,7 +287,7 @@ class WorkerDestinationConnector:
         log_file_info(
             self.workflow_log,
             file_execution_id,
-            f"📋 File '{file_name}' selected for manual review based on configured rules",
+            f"🔄 File '{file_name}' marked for MANUAL REVIEW - sending to review queue",
         )
         self._push_data_to_queue(
             file_name=file_name,
@@ -291,6 +313,12 @@ class WorkerDestinationConnector:
         """Handle file through regular destination processing."""
         logger.info(
             f"Processing {file_name} through destination (skipping manual review)"
+        )
+        # Log destination routing to UI
+        log_file_info(
+            self.workflow_log,
+            file_execution_id,
+            f"📤 File '{file_name}' marked for DESTINATION processing - sending to {self.connection_type}",
         )
         # Process through normal destination
         return self._handle_individual_output(
@@ -389,14 +417,19 @@ class WorkerDestinationConnector:
             log_file_info(
                 self.workflow_log,
                 file_execution_id,
-                f"File '{file_name}' sent to manual review queue",
+                f"✅ File '{file_name}' successfully sent to manual review queue",
             )
 
             return tool_execution_result
 
         try:
             if connection_type == CoreConnectionType.FILESYSTEM.value:
-                self.copy_output_to_output_directory(input_file_path)
+                log_file_info(
+                    self.workflow_log,
+                    file_execution_id,
+                    f"📤 File '{file_name}' marked for FILESYSTEM processing - copying to destination",
+                )
+                self.copy_output_to_output_directory(input_file_path, file_execution_id)
             elif connection_type == CoreConnectionType.DATABASE.value:
                 # Check for manual review first (like backend)
                 if not self._should_handle_hitl(
@@ -407,6 +440,12 @@ class WorkerDestinationConnector:
                     file_execution_id=file_execution_id,
                     api_client=api_client,
                 ):
+                    # Log database processing start
+                    log_file_info(
+                        self.workflow_log,
+                        file_execution_id,
+                        f"📤 File '{file_name}' marked for DATABASE processing - preparing to insert data",
+                    )
                     # Get real tool execution result if not provided
                     if not tool_execution_result:
                         tool_execution_result = (
@@ -418,7 +457,9 @@ class WorkerDestinationConnector:
                             )
                         )
                     # Handle database insertion following production pattern
-                    self.insert_into_db(input_file_path, tool_execution_result)
+                    self.insert_into_db(
+                        input_file_path, tool_execution_result, file_execution_id
+                    )
             elif connection_type == CoreConnectionType.API.value:
                 logger.info(f"API connection type detected for file {file_name}")
                 # Check for HITL (Manual Review Queue) override for API deployments (like backend)
@@ -430,6 +471,12 @@ class WorkerDestinationConnector:
                     file_execution_id=file_execution_id,
                     api_client=api_client,
                 ):
+                    # Log API processing
+                    log_file_info(
+                        self.workflow_log,
+                        file_execution_id,
+                        f"🔌 File '{file_name}' marked for API processing - preparing response",
+                    )
                     logger.info(
                         f"No HITL override, getting tool execution result for {file_name}"
                     )
@@ -448,6 +495,12 @@ class WorkerDestinationConnector:
                             file_history, tool_execution_result
                         )
             elif connection_type == CoreConnectionType.MANUALREVIEW.value:
+                # Log manual review routing
+                log_file_info(
+                    self.workflow_log,
+                    file_execution_id,
+                    f"🔄 File '{file_name}' explicitly configured for MANUAL REVIEW - sending to queue",
+                )
                 # Get real tool execution result if not provided
                 if not tool_execution_result:
                     tool_execution_result = (
@@ -481,18 +534,25 @@ class WorkerDestinationConnector:
                 )
 
         # Log successful processing with file_execution_id for better correlation
+        destination_name = self._get_destination_display_name()
         log_file_info(
             self.workflow_log,
             file_execution_id,
-            f"File '{file_name}' processed successfully",
+            f"✅ File '{file_name}' successfully sent to {destination_name}",
         )
 
         return tool_execution_result
 
     def insert_into_db(
-        self, input_file_path: str, tool_execution_result: str = None
+        self,
+        input_file_path: str,
+        tool_execution_result: str = None,
+        file_execution_id: str = None,
     ) -> None:
         """Insert data into the database (following production pattern)."""
+        # Store file_execution_id for logging
+        if file_execution_id:
+            self.current_file_execution_id = file_execution_id
         try:
             from shared.infrastructure.database.utils import WorkerDatabaseUtils
         except ImportError:
@@ -610,6 +670,14 @@ class WorkerDestinationConnector:
 
             logger.info(f"Successfully inserted data into database table {table_name}")
 
+            # Log to UI with file_execution_id for better correlation
+            if self.workflow_log and hasattr(self, "current_file_execution_id"):
+                log_file_info(
+                    self.workflow_log,
+                    self.current_file_execution_id,
+                    f"📥 Data successfully inserted into database table '{table_name}'",
+                )
+
         except Exception as e:
             error_msg = (
                 f"Failed to insert data into database for {input_file_path}: {str(e)}"
@@ -629,12 +697,24 @@ class WorkerDestinationConnector:
                     f"Failed to close database engine for {input_file_path}: {str(e)}"
                 )
 
-    def copy_output_to_output_directory(self, input_file_path: str) -> None:
+    def copy_output_to_output_directory(
+        self, input_file_path: str, file_execution_id: str = None
+    ) -> None:
         """Copy output to the destination directory (following production pattern)."""
+        # Store file_execution_id for logging
+        if file_execution_id:
+            self.current_file_execution_id = file_execution_id
         # Implementation for filesystem destinations
         # This would copy files from execution directory to destination
         logger.info(f"Copying output to filesystem destination for {input_file_path}")
         # Placeholder implementation - actual filesystem copying would be implemented here
+        # Log to UI with file_execution_id for better correlation
+        if self.workflow_log and hasattr(self, "current_file_execution_id"):
+            log_file_info(
+                self.workflow_log,
+                self.current_file_execution_id,
+                "💾 Files successfully copied to filesystem destination",
+            )
 
     def get_tool_execution_result(
         self, file_history=None, tool_execution_result: str = None

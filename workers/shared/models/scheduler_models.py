@@ -46,6 +46,7 @@ class WorkflowExecutionRequest:
     mode: ExecutionMode = ExecutionMode.QUEUE
     total_files: int = 0
     scheduled: bool = True
+    log_events_id: str | None = None  # WebSocket channel ID for UI logs
 
     def __post_init__(self):
         """Validate required fields."""

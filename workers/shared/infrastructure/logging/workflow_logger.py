@@ -66,7 +66,7 @@ class WorkerWorkflowLogger:
         if not log_events_id:
             try:
                 # Try to import and use the worker's StateStore equivalent
-                from .local_context import StateStore
+                from ..context import StateStore
 
                 log_events_id = StateStore.get("LOG_EVENTS_ID")
             except ImportError:

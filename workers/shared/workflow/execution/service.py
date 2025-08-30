@@ -41,6 +41,7 @@ class WorkerWorkflowExecutionService:
         is_api: bool = False,
         workflow_file_execution_id: str = None,
         workflow_file_execution_object: Any = None,
+        workflow_logger=None,
     ) -> dict[str, Any]:
         """Execute workflow for a single file using actual WorkflowExecutionServiceHelper pattern."""
         start_time = time.time()
@@ -230,6 +231,7 @@ class WorkerWorkflowExecutionService:
                             workflow_result=workflow_result,
                             workflow_file_execution_id=workflow_file_execution_id,
                             organization_id=organization_id,
+                            workflow_logger=workflow_logger,
                         )
                         if destination_result:
                             logger.info(
@@ -1105,6 +1107,7 @@ class WorkerWorkflowExecutionService:
         workflow_result: Any,
         workflow_file_execution_id: str,
         organization_id: str,
+        workflow_logger=None,
     ) -> str | None:
         """Handle destination processing for ETL/TASK workflows following backend pattern.
 
@@ -1149,7 +1152,9 @@ class WorkerWorkflowExecutionService:
             )
 
             # Create destination connector (matching backend pattern)
-            destination = WorkerDestinationConnector.from_config(None, dest_config)
+            destination = WorkerDestinationConnector.from_config(
+                workflow_logger, dest_config
+            )
 
             # Create FileHashData for destination processing (matching backend FileHash)
             from unstract.core.data_models import FileHashData
@@ -1554,12 +1559,15 @@ class FileExecutionResult:
         self.result = result
         self.error = error
         self.metadata = metadata
+        # Set status based on error presence (matching backend __post_init__)
+        self.status = "Failed" if error else "Success"
 
     def to_json(self) -> dict:
-        """Convert to JSON-serializable dict."""
+        """Convert to JSON-serializable dict matching backend FileExecutionResult.to_json()."""
         return {
             "file": self.file,
             "file_execution_id": self.file_execution_id,
+            "status": self.status,  # Include status field for API compatibility
             "result": self.result,
             "error": self.error,
             "metadata": self.metadata,

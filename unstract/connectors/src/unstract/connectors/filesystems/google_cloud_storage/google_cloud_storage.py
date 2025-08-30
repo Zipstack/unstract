@@ -99,62 +99,6 @@ class GoogleCloudStorageFS(UnstractFileSystem):
         logger.error(f"[GCS] File hash not found for the metadata: {metadata}")
         return None
 
-    @staticmethod
-    def get_connector_root_dir(input_dir: str, **kwargs) -> str:
-        """Get the correct root directory for GCS operations.
-
-        This method handles GCS-specific path resolution, including:
-        - Bucket name extraction from paths
-        - Proper path formatting for GCS operations
-        - Compatibility with different path formats
-        - Backward compatibility with Django backend expectations
-
-        Args:
-            input_dir: Input directory path (may include bucket name)
-            root_path: Root path configured for the connector
-
-        Returns:
-            str: Properly formatted GCS path with trailing slash for directory compatibility
-        """
-        # For GCS, paths might be passed as "bucket-name/folder-path"
-        # But fsspec GCS expects just "folder-path" without bucket prefix
-
-        root_path = kwargs.get("root_path", "")
-
-        # If root_path is set, it should already contain the bucket
-        if root_path:
-            # Remove leading/trailing slashes
-            root_path = root_path.strip("/")
-            input_dir = input_dir.strip("/")
-
-            # If input_dir is just "/", use root_path
-            if not input_dir or input_dir == "/":
-                # BACKWARD COMPATIBILITY: Ensure trailing slash for directory operations
-                return f"{root_path}/" if not root_path.endswith("/") else root_path
-
-            # Combine paths with trailing slash for backward compatibility
-            combined_path = f"{root_path}/{input_dir}"
-            return (
-                f"{combined_path}/" if not combined_path.endswith("/") else combined_path
-            )
-
-        # If no root_path, clean up the input_dir
-        input_dir = input_dir.strip("/")
-
-        # Check if input_dir contains bucket name (has no slashes or is bucket/path format)
-        if "/" in input_dir:
-            # This might be "bucket/path" format
-            parts = input_dir.split("/", 1)
-            if len(parts) == 2:
-                bucket_name, folder_path = parts
-                # For GCS, we typically need the full path including bucket
-                # BACKWARD COMPATIBILITY: Add trailing slash for directory operations
-                return f"{input_dir}/" if not input_dir.endswith("/") else input_dir
-
-        # Return as-is if it's just a folder name or bucket name
-        # BACKWARD COMPATIBILITY: Add trailing slash for directory operations
-        return f"{input_dir}/" if not input_dir.endswith("/") else input_dir
-
     def is_dir_by_metadata(self, metadata: dict[str, Any]) -> bool:
         """Check if the given path is a directory.
 

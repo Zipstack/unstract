@@ -76,12 +76,12 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             log_events_id = StateStore.get(Common.LOG_EVENTS_ID)
             self.execution_log_id = log_events_id if log_events_id else pipeline_id
             self.execution_mode = mode
-            self.execution_method: tuple[str, str] = (
+            self.execution_method = (
                 WorkflowExecution.Method.SCHEDULED
                 if scheduled
                 else WorkflowExecution.Method.DIRECT
             )
-            self.execution_type: tuple[str, str] = (
+            self.execution_type = (
                 WorkflowExecution.Type.STEP
                 if single_step
                 else WorkflowExecution.Type.COMPLETE
@@ -138,12 +138,12 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         if existing_execution:
             return existing_execution
 
-        execution_method: tuple[str, str] = (
+        execution_method = (
             WorkflowExecution.Method.SCHEDULED
             if scheduled
             else WorkflowExecution.Method.DIRECT
         )
-        execution_type: tuple[str, str] = (
+        execution_type = (
             WorkflowExecution.Type.STEP
             if single_step
             else WorkflowExecution.Type.COMPLETE

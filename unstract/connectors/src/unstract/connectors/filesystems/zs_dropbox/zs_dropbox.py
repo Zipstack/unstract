@@ -104,10 +104,18 @@ class DropboxFS(UnstractFileSystem):
 
     @staticmethod
     def get_connector_root_dir(input_dir: str, **kwargs: Any) -> str:
-        """Get root dir of zs dropbox with backward compatibility."""
-        # BACKWARD COMPATIBILITY: Ensure trailing slash for directory operations
-        clean_path = input_dir.strip("/")
-        return f"/{clean_path}/" if clean_path else "/"
+        """Get root dir of zs dropbox with backward compatibility.
+
+        Dropbox requires leading slashes, so we override the base class behavior.
+        """
+        # Call base class implementation
+        result = super().get_connector_root_dir(input_dir, **kwargs)
+
+        # Dropbox needs leading slash - ensure it's present
+        if not result.startswith("/"):
+            result = f"/{result}"
+
+        return result
 
     def create_dir_if_not_exists(self, input_dir: str) -> None:
         """Create roor dir of zs dropbox if not exists."""
