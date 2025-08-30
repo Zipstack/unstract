@@ -220,7 +220,7 @@ class WorkerConfig:
         )
     )
     celery_backend_db_schema: str = field(
-        default_factory=lambda: os.getenv("CELERY_BACKEND_DB_SCHEMA", "unstract")
+        default_factory=lambda: os.getenv("CELERY_BACKEND_DB_SCHEMA") or "public"
     )
 
     # Redis Cache Configuration (separate from Celery broker)
@@ -478,7 +478,7 @@ class WorkerConfig:
         )
 
         # Add schema parameter if not using default 'public' schema
-        if self.celery_backend_db_schema != "public":
+        if self.celery_backend_db_schema and self.celery_backend_db_schema != "public":
             self.celery_result_backend += (
                 f"?options=-csearch_path%3D{self.celery_backend_db_schema}"
             )

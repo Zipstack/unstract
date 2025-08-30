@@ -1,10 +1,7 @@
-import logging
 from typing import Any
 
 from workflow_manager.endpoint_v2.dto import FileHash
 from workflow_manager.workflow_v2.models.workflow import Workflow
-
-logger = logging.getLogger(__name__)
 
 
 class WorkflowUtil:
@@ -65,55 +62,6 @@ class WorkflowUtil:
         return file_hash
 
     @staticmethod
-    def _check_confidence(field_entries, threshold):
-        """OSS stub for confidence checking.
-
-        Args:
-            field_entries: Field entries to check
-            threshold: Confidence threshold
-
-        Returns:
-            False (no confidence checking in OSS)
-        """
-        logger.debug(
-            f"_check_confidence called with threshold {threshold} - manual review not available in OSS"
-        )
-        return False
-
-    @classmethod
-    def _evaluate_rule(
-        cls, rule: dict[str, Any], context: dict[str, Any], conjunction: str
-    ) -> bool:
-        """OSS stub for rule evaluation.
-
-        Args:
-            rule: Rule to evaluate
-            context: Context data
-            conjunction: Rule conjunction (AND/OR)
-
-        Returns:
-            False (no rule evaluation in OSS)
-        """
-        logger.debug(
-            f"_evaluate_rule called with conjunction {conjunction} - manual review not available in OSS"
-        )
-        return False
-
-    @classmethod
-    def _evaluate_group(cls, group: dict[str, Any], context: dict[str, Any]) -> bool:
-        """OSS stub for group evaluation.
-
-        Args:
-            group: Group to evaluate
-            context: Context data
-
-        Returns:
-            False (no group evaluation in OSS)
-        """
-        logger.debug("_evaluate_group called - manual review not available in OSS")
-        return False
-
-    @classmethod
     def validate_db_rule(
         result: Any | None,
         workflow_id: Workflow,
