@@ -113,6 +113,20 @@ app.conf.update(
     task_acks_late=True,
     worker_send_task_events=True,
     task_send_sent_event=True,
+    # Disable gossip to prevent inter-worker sync overhead at scale
+    worker_gossip=os.getenv("CELERY_WORKER_GOSSIP", "false").lower() == "true",
+    worker_mingle=os.getenv("CELERY_WORKER_MINGLE", "false").lower() == "true",
+    # Additional optimizations for high-scale deployments
+    worker_disable_rate_limits=os.getenv("CELERY_DISABLE_RATE_LIMITS", "true").lower()
+    == "true",
+    worker_direct=os.getenv("CELERY_WORKER_DIRECT", "true").lower() == "true",
+    # Database connection pool settings for better scaling
+    result_backend_pool_limit=int(os.getenv("CELERY_RESULT_POOL_LIMIT", "10")),
+    broker_pool_limit=int(os.getenv("CELERY_BROKER_POOL_LIMIT", "10")),
+    broker_connection_retry_on_startup=os.getenv(
+        "CELERY_BROKER_RETRY_ON_STARTUP", "true"
+    ).lower()
+    == "true",
 )
 
 logger.info(f"✅ Successfully loaded {WORKER_TYPE} worker using simplified system")
