@@ -1,4 +1,14 @@
-import { Col, Modal, Row, Typography, Select, Space, Image, Tabs } from "antd";
+import {
+  Col,
+  Modal,
+  Row,
+  Typography,
+  Select,
+  Space,
+  Image,
+  Tabs,
+  Button,
+} from "antd";
 import { CloudDownloadOutlined, CloudUploadOutlined } from "@ant-design/icons";
 import PropTypes from "prop-types";
 import { useEffect, useState, useRef, useCallback } from "react";
@@ -55,8 +65,10 @@ function ConfigureConnectorModal({
   const [isFolderSelected, setIsFolderSelected] = useState(false);
   const [initialFormDataConfig, setInitialFormDataConfig] = useState({});
   const [initialConnectorId, setInitialConnectorId] = useState(null);
+  const [showUnsavedChangesModal, setShowUnsavedChangesModal] = useState(false);
 
   const fileExplorerRef = useRef(null);
+  const formRef = useRef(null);
 
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -244,12 +256,17 @@ function ConfigureConnectorModal({
   const currentConfig =
     folderSectionConfig[connType] || folderSectionConfig.input;
 
-  const handleModalClose = async () => {
+  const hasUnsavedChanges = () => {
     const hasConfigChanges = !isEqual(formDataConfig, initialFormDataConfig);
+    const hasConnectorChanged = connDetails?.id !== initialConnectorId;
+    return hasConfigChanges || hasConnectorChanged;
+  };
+
+  const handleValidateAndSubmit = async (validatedFormData) => {
+    const hasConfigChanges = !isEqual(validatedFormData, initialFormDataConfig);
     const hasConnectorChanged = connDetails?.id !== initialConnectorId;
     const hasChanges = hasConfigChanges || hasConnectorChanged;
 
-    // Auto-save if there are actual changes
     if (hasChanges && connDetails?.id) {
       setIsSavingEndpoint(true);
       try {
@@ -257,13 +274,19 @@ function ConfigureConnectorModal({
         if (hasConnectorChanged) {
           updatePayload.connector_instance_id = connDetails.id;
         }
-        if (hasConfigChanges && Object.keys(formDataConfig).length > 0) {
-          updatePayload.configuration = formDataConfig;
+        if (hasConfigChanges) {
+          updatePayload.configuration = validatedFormData;
         }
         if (Object.keys(updatePayload).length > 0) {
           await handleEndpointUpdate(updatePayload);
         }
-        setOpen(false);
+        // Update initial values after successful save
+        setInitialFormDataConfig(cloneDeep(validatedFormData));
+        setInitialConnectorId(connDetails?.id);
+        setAlertDetails({
+          type: "success",
+          content: "Configuration saved successfully.",
+        });
       } catch (error) {
         setAlertDetails({
           type: "error",
@@ -273,8 +296,70 @@ function ConfigureConnectorModal({
       } finally {
         setIsSavingEndpoint(false);
       }
+    }
+  };
+
+  const handleSave = async () => {
+    const hasConfigChanges = !isEqual(formDataConfig, initialFormDataConfig);
+
+    if (hasConfigChanges && formRef?.current) {
+      if (formRef?.current?.validateForm()) {
+        await handleValidateAndSubmit(formDataConfig);
+        return true;
+      } else {
+        // RJSF shows validation errors
+        return false;
+      }
+    } else {
+      // No config changes, just save connector changes if any
+      await handleValidateAndSubmit(formDataConfig);
+      return true;
+    }
+  };
+
+  const handleModalClose = () => {
+    if (hasUnsavedChanges()) {
+      setShowUnsavedChangesModal(true);
     } else {
       setOpen(false);
+    }
+  };
+
+  const handleConfirmClose = () => {
+    const hasConfigChanges = !isEqual(formDataConfig, initialFormDataConfig);
+    const hasConnectorChanged = connDetails?.id !== initialConnectorId;
+
+    // Reset form data to original DB values only if changed
+    if (hasConfigChanges) {
+      setFormDataConfig(cloneDeep(initialFormDataConfig));
+    }
+
+    // Reset connector to original selection only if changed
+    if (hasConnectorChanged) {
+      if (initialConnectorId && availableConnectors.length > 0) {
+        const originalConnector = availableConnectors.find(
+          (conn) => conn.value === initialConnectorId
+        );
+        if (originalConnector?.connector) {
+          setConnDetails(originalConnector.connector);
+        }
+      } else if (!initialConnectorId) {
+        // If no initial connector, reset to no selection
+        setConnDetails(null);
+      }
+    }
+
+    setShowUnsavedChangesModal(false);
+    // Delay closing the main modal to allow confirmation modal to close first
+    setTimeout(() => setOpen(false), 0);
+  };
+
+  const handleSaveAndClose = async () => {
+    const saveSuccessful = await handleSave();
+    setShowUnsavedChangesModal(false);
+    if (saveSuccessful) {
+      // Delay closing the main modal to allow confirmation modal to close first
+      setTimeout(() => setOpen(false), 0);
     }
   };
 
@@ -329,13 +414,11 @@ function ConfigureConnectorModal({
   // Capture initial configuration and connector when modal opens
   useEffect(() => {
     if (open) {
-      // Store a deep copy of the initial configuration
       if (endpointDetails?.configuration) {
         setInitialFormDataConfig(cloneDeep(endpointDetails.configuration));
       }
       setInitialConnectorId(endpointDetails?.connector_instance?.id || null);
     } else {
-      // Reset when modal closes
       setInitialFormDataConfig({});
       setInitialConnectorId(null);
     }
@@ -397,7 +480,21 @@ function ConfigureConnectorModal({
       confirmLoading={isSavingEndpoint}
       closable={!isSavingEndpoint}
       centered
-      footer={null}
+      footer={
+        connDetails?.id ? (
+          <div className="conn-modal-footer">
+            <Button onClick={handleModalClose}>Cancel</Button>
+            <Button
+              type="primary"
+              loading={isSavingEndpoint}
+              onClick={handleSave}
+              disabled={!hasUnsavedChanges()}
+            >
+              Save
+            </Button>
+          </div>
+        ) : null
+      }
       width={1200}
       maskClosable={false}
     >
@@ -493,6 +590,8 @@ function ConfigureConnectorModal({
                             formDataConfig={formDataConfig}
                             setFormDataConfig={setFormDataConfig}
                             isSpecConfigLoading={isSpecConfigLoading}
+                            formRef={formRef}
+                            validateAndSubmit={handleValidateAndSubmit}
                           />
                         )}
                         {item.key === "MANUALREVIEW" && DBRules && (
@@ -513,6 +612,8 @@ function ConfigureConnectorModal({
                       formDataConfig={formDataConfig}
                       setFormDataConfig={setFormDataConfig}
                       isSpecConfigLoading={isSpecConfigLoading}
+                      formRef={formRef}
+                      validateAndSubmit={handleValidateAndSubmit}
                     />
                   </div>
                 </Col>
@@ -563,11 +664,39 @@ function ConfigureConnectorModal({
           setOpen={setShowAddSourceModal}
           isConnector={true}
           type={connType}
+          connectorMode={connMode}
           addNewItem={handleConnectorCreated}
           editItemId={null}
           setEditItemId={() => {}}
         />
       )}
+
+      {/* Unsaved Changes Confirmation Modal */}
+      <Modal
+        title="Unsaved Changes"
+        open={showUnsavedChangesModal}
+        onCancel={() => setShowUnsavedChangesModal(false)}
+        footer={[
+          <Button
+            key="discard"
+            onClick={handleConfirmClose}
+            disabled={isSavingEndpoint}
+          >
+            Close without Saving
+          </Button>,
+          <Button
+            key="save"
+            type="primary"
+            onClick={handleSaveAndClose}
+            loading={isSavingEndpoint}
+          >
+            Save
+          </Button>,
+        ]}
+        centered
+      >
+        You have unsaved changes. Do you want to save them before closing?
+      </Modal>
     </Modal>
   );
 }
