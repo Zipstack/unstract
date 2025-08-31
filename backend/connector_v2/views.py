@@ -31,7 +31,10 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
     serializer_class = ConnectorInstanceSerializer
 
     def get_permissions(self) -> list[Any]:
-        if self.action == "destroy":
+        if self.action in ["update", "retrieve"]:
+            return [IsOwner()]
+
+        elif self.action == "destroy":
             return [IsOwner()]
 
         return [IsOwnerOrSharedUserOrSharedToOrg()]

@@ -63,6 +63,7 @@ function ConfigureConnectorModal({
   const [isSpecConfigLoading, setIsSpecConfigLoading] = useState(false);
   const [selectedFolderPath, setSelectedFolderPath] = useState("");
   const [isFolderSelected, setIsFolderSelected] = useState(false);
+  const [isPathFromFileBrowser, setIsPathFromFileBrowser] = useState(false);
   const [initialFormDataConfig, setInitialFormDataConfig] = useState({});
   const [initialConnectorId, setInitialConnectorId] = useState(null);
   const [showUnsavedChangesModal, setShowUnsavedChangesModal] = useState(false);
@@ -213,30 +214,43 @@ function ConfigureConnectorModal({
   const handleFolderSelect = (folderPath, itemType) => {
     setSelectedFolderPath(folderPath);
     setIsFolderSelected(itemType === "folder");
+    setIsPathFromFileBrowser(true);
   };
 
   const handleAddFolder = () => {
     if (!selectedFolderPath) return;
 
+    // HACK: For GDrive connectors, strip the "root/" prefix to avoid duplication
+    // since backend will add it back during execution. This helps avoid a migration
+    let folderPath = selectedFolderPath;
+    if (
+      isPathFromFileBrowser &&
+      connDetails?.connector_id?.startsWith("gdrive") &&
+      folderPath.startsWith("root/")
+    ) {
+      folderPath = folderPath.substring(5); // Remove "root/" prefix
+    }
+
     if (connType === "input") {
       // SOURCE mode: Add to folders array (existing behavior)
       const currentFolders = formDataConfig?.folders || [];
-      if (!currentFolders.includes(selectedFolderPath)) {
+      if (!currentFolders.includes(folderPath)) {
         setFormDataConfig((prev) => ({
           ...prev,
-          folders: [...currentFolders, selectedFolderPath],
+          folders: [...currentFolders, folderPath],
         }));
       }
     } else if (connType === "output") {
       // DESTINATION mode: Set outputFolder as single value
       setFormDataConfig((prev) => ({
         ...prev,
-        outputFolder: selectedFolderPath,
+        outputFolder: folderPath,
       }));
     }
 
     setSelectedFolderPath("");
     setIsFolderSelected(false);
+    setIsPathFromFileBrowser(false);
   };
 
   // Configuration for UI text based on connector type
@@ -391,6 +405,7 @@ function ConfigureConnectorModal({
       ) {
         setSelectedFolderPath("");
         setIsFolderSelected(false);
+        setIsPathFromFileBrowser(false);
       }
     };
 
