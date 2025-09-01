@@ -69,7 +69,7 @@ def postprocess_data(
                     return updated_parsed_data, updated_highlight_data
                 else:
                     logger.warning("Response missing 'structured_output' key")
-            except (json.JSONDecodeError, ValueError) as e:
+            except json.JSONDecodeError as e:
                 logger.warning(f"Invalid JSON response from postprocessing server: {e}")
         else:
             logger.warning(
