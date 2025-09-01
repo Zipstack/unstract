@@ -4,9 +4,9 @@ import { useEffect, useState } from "react";
 
 import { O_AUTH_PROVIDERS, getBaseUrl } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { useAlertStore } from "../../../store/alert-store";
 import GoogleOAuthButton from "../google/GoogleOAuthButton.jsx";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 function OAuthDs({
   oAuthProvider,
   setCacheKey,
@@ -23,7 +23,7 @@ function OAuthDs({
   const oauthStatusKey = `oauth-status-${selectedSourceId}`;
 
   // Determine button text based on connector state
-  const buttonText = isExistingConnector ? "Reauthenticate" : "Signin";
+  const buttonText = isExistingConnector ? "Reauthenticate" : "Authenticate with Google";
 
   const [oauthStatus, setOAuthStatus] = useState(() => {
     // Initialize from connector-specific status

@@ -92,9 +92,7 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
                 delete_key=False,  # Don't delete yet - wait for successful operation
             )
             if connector_metadata is None:
-                raise CacheMissException(
-                    "OAuth session expired. Please sign in with Google again."
-                )
+                raise MissingParamException(param=ConnectorAuthKey.OAUTH_KEY)
         else:
             connector_metadata = self.request.data.get(CIKey.CONNECTOR_METADATA)
         return connector_metadata
@@ -105,11 +103,19 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
             return
 
         oauth_key = self.request.query_params.get(ConnectorAuthKey.OAUTH_KEY)
-        if oauth_key:
-            logger.info(f"Cleaning up OAuth cache for {connector_id}")
+        if not oauth_key:
+            return
+        logger.info(f"Cleaning up OAuth cache for {connector_id}")
+        try:
             ConnectorAuthHelper.get_oauth_creds_from_cache(
                 cache_key=oauth_key,
                 delete_key=True,  # Delete after successful operation
+            )
+        except CacheMissException:
+            logger.debug("OAuth cache already cleared for %s", connector_id)
+        except Exception:
+            logger.warning(
+                "Failed to clean up OAuth cache for %s", connector_id, exc_info=True
             )
 
     def perform_update(self, serializer: ConnectorInstanceSerializer) -> None:
