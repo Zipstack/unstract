@@ -425,7 +425,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
                     file_stream.close()
                 except Exception as e:
                     logger.warning(
-                        f"Failed to close file stream during cleanup: {str(e)}"
+                        f"Failed to close file stream during cleanup for '{filename}': {str(e)}"
                     )
 
     @staticmethod
