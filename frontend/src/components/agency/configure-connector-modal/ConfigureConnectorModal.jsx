@@ -302,7 +302,11 @@ function ConfigureConnectorModal({
           content: "Configuration saved successfully.",
         });
       } catch (error) {
-        setAlertDetails(handleException(error, "Failed to save changes"));
+        setAlertDetails({
+          type: "error",
+          content:
+            error?.message || "Failed to save changes. Please try again.",
+        });
       } finally {
         setIsSavingEndpoint(false);
       }

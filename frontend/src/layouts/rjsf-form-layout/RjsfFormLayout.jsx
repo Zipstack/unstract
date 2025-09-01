@@ -261,7 +261,6 @@ function RjsfFormLayout({
         }
       : {
           FieldTemplate: CustomFieldTemplate,
-          // No ObjectFieldTemplate - use RJSF default for tool settings etc.
         };
   }, [formSchema]);
 
