@@ -58,6 +58,7 @@ def _make_webhook_request(
             json=payload,
             timeout=timeout,
             headers={"Content-Type": "application/json"},
+            allow_redirects=False,  # Prevent redirect-based SSRF
         )
 
         if response.status_code != 200:
