@@ -98,17 +98,145 @@ function RjsfFormLayout({
     return schema;
   }, []);
 
-  const transformErrors = useCallback((errors) => {
-    return errors.map((error) => {
-      if (error.name === "required") {
+  // Validation message generators to reduce complexity
+  const validationMessageGenerators = {
+    // Numeric validations
+    minimum: (fieldTitle, params) =>
+      `'${fieldTitle}' must be at least ${params?.limit}`,
+    maximum: (fieldTitle, params) =>
+      `'${fieldTitle}' must not exceed ${params?.limit}`,
+    exclusiveMinimum: (fieldTitle, params) =>
+      `'${fieldTitle}' must be greater than ${params?.limit}`,
+    exclusiveMaximum: (fieldTitle, params) =>
+      `'${fieldTitle}' must be less than ${params?.limit}`,
+    multipleOf: (fieldTitle, params) =>
+      `'${fieldTitle}' must be a multiple of ${params?.multipleOf}`,
+
+    // String validations
+    minLength: (fieldTitle, params) =>
+      `'${fieldTitle}' must be at least ${params?.limit} characters`,
+    maxLength: (fieldTitle, params) =>
+      `'${fieldTitle}' must not exceed ${params?.limit} characters`,
+    pattern: (fieldTitle) => `'${fieldTitle}' must match the required format`,
+
+    // Array validations
+    minItems: (fieldTitle, params) =>
+      `'${fieldTitle}' must have at least ${params?.limit} items`,
+    maxItems: (fieldTitle, params) =>
+      `'${fieldTitle}' must not exceed ${params?.limit} items`,
+    uniqueItems: (fieldTitle) =>
+      `'${fieldTitle}' must contain only unique items`,
+
+    // Object validations
+    minProperties: (fieldTitle, params) =>
+      `'${fieldTitle}' must have at least ${params?.limit} properties`,
+    maxProperties: (fieldTitle, params) =>
+      `'${fieldTitle}' must not exceed ${params?.limit} properties`,
+
+    // Simple validations
+    const: (fieldTitle, params) =>
+      `'${fieldTitle}' must be exactly ${params?.allowedValue}`,
+    type: (fieldTitle, params) =>
+      `'${fieldTitle}' must be of type ${params?.type}`,
+    format: (fieldTitle, params) =>
+      `'${fieldTitle}' must be a valid ${params?.format}`,
+    additionalProperties: (fieldTitle, params) =>
+      `'${fieldTitle}' has an unsupported property '${params?.additionalProperty}'`,
+    dependentRequired: (fieldTitle, params) =>
+      `'${fieldTitle}' requires '${params?.missingProperty}'`,
+  };
+
+  // Extract complex enum logic to separate function
+  const generateEnumMessage = useCallback((fieldTitle, fieldSchema) => {
+    let enumMessage = `'${fieldTitle}' must be one of the allowed values`;
+    if (fieldSchema?.enumNames && fieldSchema.enumNames.length > 0) {
+      const options = fieldSchema.enumNames;
+      const maxShow = 4; // Maximum options to show before truncating
+
+      if (options.length <= maxShow) {
+        // Show all options if list is small
+        enumMessage = `'${fieldTitle}' must be one of: ${options.join(", ")}`;
+      } else {
+        // Truncate long lists with "and X others" suffix
+        const firstFew = options.slice(0, maxShow).join(", ");
+        const remaining = options.length - maxShow;
+        enumMessage = `'${fieldTitle}' must be one of: ${firstFew} (and ${remaining} ${
+          remaining === 1 ? "other" : "others"
+        })`;
+      }
+    }
+    return enumMessage;
+  }, []);
+
+  const transformErrors = useCallback(
+    (errors) => {
+      return errors.map((error) => {
+        const { name, params, property } = error;
+
+        // Try to resolve nested schema/title from property path like ".a.b[0].c"
+        const path = (property || "").replace(/^\./, "");
+        const getFieldSchema = (root, pathStr) => {
+          if (!root || !pathStr) return undefined;
+          const tokens = pathStr
+            .replace(/\[(\d+)\]/g, ".$1")
+            .split(".")
+            .filter(Boolean);
+          let cur = root;
+          for (const tok of tokens) {
+            if (cur?.type === "array" && cur?.items) {
+              cur = cur.items;
+            }
+            if (cur?.properties?.[tok]) {
+              cur = cur.properties[tok];
+            }
+          }
+          return cur;
+        };
+        const schemaProps = schema?.properties ?? {};
+        const fieldSchema = getFieldSchema(schema, path);
+        const fieldName = path;
+        const fieldTitle = fieldSchema?.title || fieldName || "This field";
+
+        // Handle required fields separately (special case)
+        if (name === "required") {
+          const missingField = params?.missingProperty;
+          const missingSchema = schemaProps[missingField];
+          const missingTitle =
+            missingSchema?.title || missingField || "This field";
+          return {
+            ...error,
+            message: `'${missingTitle}' is required`,
+          };
+        }
+
+        // Handle enum separately due to complexity
+        if (name === "enum") {
+          return {
+            ...error,
+            message: generateEnumMessage(fieldTitle, fieldSchema),
+          };
+        }
+
+        // Use lookup table for simple cases
+        const messageGenerator = validationMessageGenerators[name];
+        if (messageGenerator) {
+          return {
+            ...error,
+            message: messageGenerator(fieldTitle, params),
+          };
+        }
+
+        // Default fallback
         return {
           ...error,
-          message: "This field is mandatory. Please provide a value.",
+          message: error.stack?.trim()
+            ? error.stack
+            : `'${fieldTitle}': ${error.message}`,
         };
-      }
-      return error;
-    });
-  }, []);
+      });
+    },
+    [schema, generateEnumMessage, validationMessageGenerators]
+  );
 
   const handleChange = useCallback(
     (event) => {
@@ -150,7 +278,7 @@ function RjsfFormLayout({
             />
           )}
           <Form
-            form={formRef}
+            ref={formRef}
             schema={removeBlankDefault(formSchema)}
             uiSchema={uiSchema}
             validator={validator}
