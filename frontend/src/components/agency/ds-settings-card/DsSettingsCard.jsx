@@ -167,14 +167,7 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
     }
   };
 
-  // TEMPORARY: Remove when save button is restored
-  // Added suppressError parameter to prevent duplicate error messages
-  // When proper form validation with save button returns, remove the third parameter
-  const handleEndpointUpdate = (
-    updatedData,
-    showSuccess,
-    suppressError = false
-  ) => {
+  const handleEndpointUpdate = (updatedData, showSuccess) => {
     if (!endpointDetails?.id) {
       return Promise.resolve();
     }
@@ -208,11 +201,7 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
         return res;
       })
       .catch((err) => {
-        // TEMPORARY: Remove when save button is restored
-        // This condition prevents duplicate error messages when called from modal
-        if (!suppressError) {
-          setAlertDetails(handleException(err, "Failed to update"));
-        }
+        setAlertDetails(handleException(err, "Failed to update"));
         throw err;
       });
   };

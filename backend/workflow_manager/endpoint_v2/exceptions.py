@@ -117,12 +117,3 @@ class SourceFileOrInfilePathNotFound(APIException):
 class UnsupportedMimeTypeError(APIException):
     status_code = 400
     default_detail = "Unsupported MIME type."
-
-
-class InvalidConfigurationError(APIException):
-    status_code = 400
-    default_detail = "Invalid configuration provided."
-
-    def __init__(self, field: str, detail: str, code: str | None = None) -> None:
-        full_detail = f"{field}: {detail}"
-        super().__init__(full_detail, code)
