@@ -23,7 +23,9 @@ function OAuthDs({
   const oauthStatusKey = `oauth-status-${selectedSourceId}`;
 
   // Determine button text based on connector state
-  const buttonText = isExistingConnector ? "Reauthenticate" : "Authenticate with Google";
+  const buttonText = isExistingConnector
+    ? "Reauthenticate"
+    : "Authenticate with Google";
 
   const [oauthStatus, setOAuthStatus] = useState(() => {
     // Initialize from connector-specific status

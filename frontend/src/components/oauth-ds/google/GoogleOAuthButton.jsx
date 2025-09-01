@@ -5,7 +5,11 @@ import { GoogleLoginButton } from "react-social-login-buttons";
 
 import "./GoogleOAuthButton.css";
 
-const GoogleOAuthButton = ({ handleOAuth, status, buttonText = "Authenticate with Google" }) => {
+const GoogleOAuthButton = ({
+  handleOAuth,
+  status,
+  buttonText = "Authenticate with Google",
+}) => {
   const [text, setText] = useState("");
   useEffect(() => {
     if (status === "success") {
