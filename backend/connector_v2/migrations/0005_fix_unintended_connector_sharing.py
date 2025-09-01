@@ -66,9 +66,13 @@ def identify_problem_endpoints(apps) -> list[Any]:
         # This is a problem case - connector is implicitly shared
         problem_endpoints.append(endpoint)
         logger.info(
-            f"Found problem: Workflow '{workflow.workflow_name}' (owner: {workflow.created_by.email}) "
-            f"uses connector '{connector.connector_name}' (owner: {connector.created_by.email}) "
-            f"without explicit sharing"
+        logger.info(
+            "Found problem: workflow_id=%s (owner_id=%s) endpoint_id=%s uses connector_id=%s (owner_id=%s) without explicit sharing",
+            workflow.id,
+            workflow.created_by_id,
+            endpoint.id,
+            connector.id,
+            connector.created_by_id,
         )
 
     return problem_endpoints
