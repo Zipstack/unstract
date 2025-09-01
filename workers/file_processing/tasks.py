@@ -622,7 +622,7 @@ def _process_individual_files(context: WorkflowContextData) -> WorkflowContextDa
                 log_file_info(
                     workflow_logger,
                     workflow_file_execution_id,
-                    f"📤 File '{file_name}' marked for DESTINATION processing - sending to database",
+                    f"📤 File '{file_name}' marked for DESTINATION processing",
                 )
 
         # Process single file using Django-like pattern but with API coordination
@@ -718,16 +718,60 @@ def _handle_file_processing_result(
     file_execution_id = file_execution_result.get("file_execution_id")
     if file_execution_id:
         try:
+            # DEBUG: Log the entire file_execution_result structure
+            logger.info(
+                f"DEBUG: Complete file_execution_result keys: {list(file_execution_result.keys()) if file_execution_result else []}"
+            )
+            logger.info(
+                f"DEBUG: file_execution_result.get('error'): '{file_execution_result.get('error')}'"
+            )
+            logger.info(
+                f"DEBUG: file_execution_result.get('destination_error'): '{file_execution_result.get('destination_error')}'"
+            )
+            logger.info(
+                f"DEBUG: file_execution_result.get('destination_processed'): {file_execution_result.get('destination_processed')}"
+            )
+
+            # Check for both workflow errors and destination errors
+            workflow_error = file_execution_result.get("error")
+            destination_error = file_execution_result.get("destination_error")
+            destination_processed = file_execution_result.get(
+                "destination_processed", True
+            )
+
+            # File should be marked as ERROR if:
+            # 1. There's a workflow execution error, OR
+            # 2. Destination processing failed (destination_error exists or destination_processed is False)
+            has_error = workflow_error or destination_error or not destination_processed
+
             final_status = (
                 ExecutionStatus.ERROR.value
-                if file_execution_result.get("error")
+                if has_error
                 else ExecutionStatus.COMPLETED.value
             )
+
+            # Combine error messages for better reporting
+            error_messages = []
+            if workflow_error:
+                error_messages.append(f"Workflow error: {workflow_error}")
+            if destination_error:
+                error_messages.append(f"Destination error: {destination_error}")
+            if not destination_processed and not destination_error:
+                error_messages.append("Destination processing failed")
+
+            combined_error = "; ".join(error_messages) if error_messages else None
+
+            # DEBUG: Log what error message we're sending in the final update
+            logger.info(
+                f"DEBUG: Final combined_error being sent to database: '{combined_error}'"
+            )
+            logger.info(f"DEBUG: error_messages list: {error_messages}")
+
             api_client.update_file_execution_status(
                 file_execution_id=file_execution_id,
                 status=final_status,
                 execution_time=file_execution_time,
-                error_message=file_execution_result.get("error"),
+                error_message=combined_error,
             )
             logger.info(
                 f"DEBUG: Updated file execution {file_execution_id} with status {final_status} and time {file_execution_time:.2f}s"
@@ -748,16 +792,35 @@ def _handle_file_processing_result(
         f"Total batch time: {result.execution_time:.2f}s"
     )
 
-    # DJANGO PATTERN: Check error field to determine success/failure
-    if file_execution_result.get("error"):
+    # DJANGO PATTERN: Check error field and destination status to determine success/failure
+    workflow_error = file_execution_result.get("error")
+    destination_error = file_execution_result.get("destination_error")
+    destination_processed = file_execution_result.get("destination_processed", True)
+
+    # File is considered failed if there's any error or destination processing failed
+    has_any_error = workflow_error or destination_error or not destination_processed
+
+    if has_any_error:
         result.increment_failure()
+
+        # Determine which error message to show
+        if workflow_error:
+            error_msg = workflow_error
+            error_type = "Workflow error"
+        elif destination_error:
+            error_msg = destination_error
+            error_type = "Destination error"
+        else:
+            error_msg = "Destination processing failed"
+            error_type = "Destination error"
+
         logger.info(
-            f"File execution for file {file_name} marked as failed with error: {file_execution_result['error']}"
+            f"File execution for file {file_name} marked as failed with {error_type.lower()}: {error_msg}"
         )
 
         # Send failed processing log to UI with file_execution_id
         log_file_processing_error(
-            workflow_logger, file_execution_id, file_name, file_execution_result["error"]
+            workflow_logger, file_execution_id, file_name, f"{error_type}: {error_msg}"
         )
 
         # Update failed file count in cache (like Django backend)

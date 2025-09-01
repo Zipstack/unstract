@@ -233,7 +233,20 @@ class WorkerWorkflowExecutionService:
                             organization_id=organization_id,
                             workflow_logger=workflow_logger,
                         )
-                        if destination_result:
+                        # Check if destination_result is an error dict
+                        if isinstance(
+                            destination_result, dict
+                        ) and destination_result.get("error"):
+                            # Destination processing failed
+                            error_msg = destination_result["error"]
+                            logger.warning(
+                                f"Destination processing failed for file {file_name}: {error_msg}"
+                            )
+                            final_result["destination_processed"] = False
+                            final_result["destination_error"] = error_msg
+                            final_result["error"] = error_msg
+                            final_result["success"] = False
+                        elif destination_result:
                             logger.info(
                                 f"Successfully processed file {file_name} through destination connector"
                             )
@@ -245,13 +258,21 @@ class WorkerWorkflowExecutionService:
                                 f"Destination processing returned None for file {file_name}"
                             )
                             final_result["destination_processed"] = False
+                            # CRITICAL FIX: Treat None destination result as an error
+                            error_msg = "Destination processing returned no result"
+                            final_result["destination_error"] = error_msg
+                            final_result["error"] = error_msg
+                            final_result["success"] = False
                     except Exception as dest_error:
                         logger.error(
                             f"Destination processing failed for file {file_name}: {dest_error}"
                         )
-                        # Don't fail the entire execution if destination fails
+                        # Mark the execution as failed when destination processing fails
                         final_result["destination_processed"] = False
                         final_result["destination_error"] = str(dest_error)
+                        # CRITICAL FIX: Set main error fields so file gets marked as ERROR
+                        final_result["error"] = str(dest_error)
+                        final_result["success"] = False
 
                 return final_result
             else:
@@ -1193,15 +1214,16 @@ class WorkerWorkflowExecutionService:
             output_result = None
             processing_error = None  # No processing error since workflow succeeded
 
-            if not processing_error:
+            try:
                 # CRITICAL: Log file destination routing decision
                 if file_hash.file_destination == FileDestinationType.MANUALREVIEW.value:
                     logger.info(
                         f"🔄 File {file_hash.file_name} marked for MANUAL REVIEW - sending to queue"
                     )
                 else:
+                    destination_display = destination._get_destination_display_name()
                     logger.info(
-                        f"📤 File {file_hash.file_name} marked for DESTINATION processing - sending to database"
+                        f"📤 File {file_hash.file_name} marked for DESTINATION processing - sending to {destination_display}"
                     )
 
                 # DEBUG: Log what we're about to pass to destination
@@ -1225,6 +1247,12 @@ class WorkerWorkflowExecutionService:
                     execution_id=execution_id,
                     organization_id=organization_id,
                 )
+            except Exception as dest_error:
+                logger.error(
+                    f"Destination processing failed in _handle_destination_processing: {dest_error}"
+                )
+                processing_error = str(dest_error)
+                output_result = None
 
             # Handle metadata for API workflows (matching backend pattern)
             execution_metadata = None
@@ -1249,10 +1277,17 @@ class WorkerWorkflowExecutionService:
                 )
                 logger.info(f"Created file history entry for {file_hash.file_name}")
 
-            logger.info(
-                f"Destination processing completed for file {file_hash.file_name}"
-            )
-            return output_result
+            if processing_error:
+                logger.error(
+                    f"Destination processing failed for file {file_hash.file_name}: {processing_error}"
+                )
+                # Return error information so the main method can handle it
+                return {"error": processing_error, "success": False, "result": None}
+            else:
+                logger.info(
+                    f"Destination processing completed for file {file_hash.file_name}"
+                )
+                return output_result
 
         except Exception as e:
             logger.error(f"Failed to process destination for workflow {workflow_id}: {e}")

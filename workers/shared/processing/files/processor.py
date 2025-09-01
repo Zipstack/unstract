@@ -29,6 +29,7 @@ from ...api.facades.legacy_client import InternalAPIClient
 from ...enums import FileDestinationType
 from ...infrastructure.logging import WorkerLogger
 from ...infrastructure.logging.helpers import (
+    log_file_error,
     log_file_info,
     log_file_processing_error,
     log_file_processing_success,
@@ -465,6 +466,15 @@ class WorkflowExecutionProcessor:
                 f"Tool execution completed for {context.file_name}. Result success: {execution_result.get('success')}"
             )
 
+            # DEBUG: Log the full execution result to debug error propagation
+            logger.info(
+                f"DEBUG: execution_result keys: {list(execution_result.keys()) if execution_result else []}"
+            )
+            logger.info(
+                f"DEBUG: execution_result.success: {execution_result.get('success')}"
+            )
+            logger.info(f"DEBUG: execution_result.error: {execution_result.get('error')}")
+
             # CRITICAL FIX: Check if workflow execution actually succeeded
             # WorkflowService returns {"success": False, "error": "..."} for failures
             execution_success = execution_result.get(
@@ -480,6 +490,13 @@ class WorkflowExecutionProcessor:
                 )
 
                 # Update file execution status to ERROR
+                # DEBUG: Log what we're about to send to database
+                logger.info(
+                    f"DEBUG: About to update database with error_message: '{error_message}'"
+                )
+                logger.info(
+                    f"DEBUG: file_execution_id: {context.workflow_file_execution_id}"
+                )
                 try:
                     context.api_client.update_file_execution_status(
                         file_execution_id=context.workflow_file_execution_id,
@@ -700,11 +717,24 @@ class FileProcessor:
                     workflow_result["error"],
                 )
             else:
-                log_file_info(
-                    workflow_logger,
-                    workflow_file_execution_id,
-                    f"✅ File '{context.file_name}' processing completed, preparing for destination routing",
-                )
+                # Check if destination processing failed
+                destination_error = workflow_result.get("destination_error")
+                destination_processed = workflow_result.get("destination_processed", True)
+
+                if destination_error or not destination_processed:
+                    # Log destination failure
+                    error_msg = destination_error or "Destination processing failed"
+                    log_file_error(
+                        workflow_logger,
+                        workflow_file_execution_id,
+                        f"❌ File '{context.file_name}' destination processing failed: {error_msg}",
+                    )
+                else:
+                    log_file_info(
+                        workflow_logger,
+                        workflow_file_execution_id,
+                        f"✅ File '{context.file_name}' processing completed, preparing for destination routing",
+                    )
 
             # Return workflow results - destination processing will handle manual review routing
             return workflow_result

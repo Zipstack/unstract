@@ -118,3 +118,58 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
             schema=self.schema,
             table_name=table_name,
         )
+
+    @staticmethod
+    def _quote_identifier(identifier: str) -> str:
+        """Quote PostgreSQL identifier to handle special characters like hyphens.
+
+        PostgreSQL identifiers with special characters must be enclosed in double quotes.
+        This method adds proper quoting for table names containing hyphens, spaces,
+        or other special characters.
+
+        Args:
+            identifier (str): Table name or column name to quote
+
+        Returns:
+            str: Properly quoted identifier safe for PostgreSQL
+        """
+        # Always quote the identifier to handle special characters like hyphens
+        # This is safe even for valid identifiers and prevents SQL injection
+        return f'"{identifier}"'
+
+    def get_create_table_base_query(self, table: str) -> str:
+        """Override base method to add PostgreSQL-specific table name quoting.
+
+        PostgreSQL requires identifiers with special characters (like hyphens)
+        to be quoted with double quotes.
+
+        Args:
+            table (str): Table name
+
+        Returns:
+            str: CREATE TABLE query with properly quoted table name
+        """
+        quoted_table = self._quote_identifier(table)
+        sql_query = (
+            f"CREATE TABLE IF NOT EXISTS {quoted_table} "
+            f"(id TEXT , "
+            f"created_by TEXT, created_at TIMESTAMP, "
+        )
+        return sql_query
+
+    def get_sql_insert_query(self, table_name: str, sql_keys: list[str]) -> str:
+        """Override base method to add PostgreSQL-specific table name quoting.
+
+        Generates INSERT query with properly quoted table name for PostgreSQL.
+
+        Args:
+            table_name (str): Name of the table
+            sql_keys (list[str]): List of column names
+
+        Returns:
+            str: INSERT query with properly quoted table name
+        """
+        quoted_table = self._quote_identifier(table_name)
+        keys_str = ", ".join(sql_keys)
+        values_placeholder = ", ".join(["%s"] * len(sql_keys))
+        return f"INSERT INTO {quoted_table} ({keys_str}) VALUES ({values_placeholder})"

@@ -359,7 +359,10 @@ class FileAPIClient(BaseAPIClient):
         if execution_time is not None:
             data["execution_time"] = execution_time
         if error_message is not None:
-            data["execution_error"] = error_message
+            data["error_message"] = error_message
+
+        # DEBUG: Log what we're sending to the backend
+        logger.info(f"DEBUG: FileClient sending data to backend: {data}")
 
         logger.info(
             f"Updating file execution {file_execution_id} status to {status_str}"
