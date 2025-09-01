@@ -169,8 +169,10 @@ def fix_unintended_sharing(apps, schema_editor):  # noqa: ARG001
             fixed_count += 1
 
             logger.info(
-                f"Updated workflow '{workflow.workflow_name}' endpoint to use "
-                f"connector '{new_connector.connector_name}'"
+                "Updated endpoint_id=%s for workflow_id=%s to connector_id=%s",
+                endpoint.id,
+                workflow.id,
+                new_connector.id,
             )
 
     logger.info(
