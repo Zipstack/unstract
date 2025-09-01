@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any
 
 from django.db.models import Count, QuerySet, Sum
@@ -13,6 +13,50 @@ logger = logging.getLogger(__name__)
 
 
 class UsageHelper:
+    @staticmethod
+    def normalize_to_timezone_aware_datetime(value, is_end_date=False, reference_tz=None):
+        """Normalize a date or datetime to a timezone-aware datetime.
+
+        Args:
+            value: A date, naive datetime, or timezone-aware datetime object to normalize.
+                  Can be None, in which case None is returned.
+            is_end_date: If True and value is a date object, combine with time.max (23:59:59.999999)
+                        to represent the end of the day. If False, combine with time.min (00:00:00).
+                        This ensures proper date range inclusivity.
+            reference_tz: Reference timezone to use for naive datetimes. If not provided,
+                         defaults to UTC. All output datetimes will be in this timezone.
+
+        Returns:
+            A timezone-aware datetime object in the reference timezone, or None if input is None.
+
+        """
+        if value is None:
+            return None
+
+        # Use UTC as default timezone if no reference provided
+        if reference_tz is None:
+            reference_tz = timezone.utc
+
+        # Handle date objects - convert to datetime with appropriate time
+        if isinstance(value, date) and not isinstance(value, datetime):
+            if is_end_date:
+                # For end dates, use end of day (23:59:59.999999)
+                value = datetime.combine(value, time.max.replace(microsecond=999999))
+            else:
+                # For start dates, use start of day (00:00:00)
+                value = datetime.combine(value, time.min)
+
+        # Handle datetime objects
+        if isinstance(value, datetime):
+            # If naive, make it timezone-aware using reference timezone
+            if value.tzinfo is None:
+                value = value.replace(tzinfo=reference_tz)
+            # If already timezone-aware but different timezone, convert to reference
+            elif reference_tz and value.tzinfo != reference_tz:
+                value = value.astimezone(reference_tz)
+
+        return value
+
     @staticmethod
     def get_aggregated_token_count(run_id: str) -> dict:
         """Retrieve aggregated token counts for the given run_id.
@@ -102,15 +146,44 @@ class UsageHelper:
 
     @staticmethod
     def get_trial_statistics(organization) -> dict[str, Any]:
-        """Get raw trial usage statistics for an organization.
+        """Get comprehensive trial usage statistics for an organization.
 
         Args:
-            organization: The organization object
+            organization: The organization object for which to retrieve trial statistics.
+                         Must have 'organization_id' and 'created_at' attributes.
 
         Returns:
-            dict: A dictionary containing raw trial usage data
+            dict: A dictionary containing comprehensive trial usage statistics with keys:
+                - trial_start_date (str): ISO formatted trial start date
+                - trial_end_date (str): ISO formatted trial end date
+                - total_cost (float): Total cost in dollars during trial period
+                - documents_processed (int): Number of unique document processing operations
+                - api_calls (int): Total number of API calls made
+                - etl_runs (int): Number of unique ETL pipeline runs
+                - error (str, optional): Error message if processing fails
+
         """
         try:
+            # Validate organization input
+            if not organization:
+                raise ValueError("Organization cannot be None")
+
+            if not hasattr(organization, "organization_id"):
+                raise ValueError("Organization must have organization_id attribute")
+
+            if not hasattr(organization, "created_at"):
+                raise ValueError("Organization must have created_at attribute")
+
+            # Get the timezone from organization.created_at or use UTC as fallback
+            org_created_at = organization.created_at
+            if hasattr(org_created_at, "tzinfo") and org_created_at.tzinfo:
+                reference_tz = org_created_at.tzinfo
+            else:
+                reference_tz = timezone.utc
+                # Make org_created_at timezone-aware if it isn't already
+                if org_created_at.tzinfo is None:
+                    org_created_at = org_created_at.replace(tzinfo=reference_tz)
+
             # Try to get subscription data if plugin is available
             trial_start_date = None
             trial_end_date = None
@@ -123,19 +196,40 @@ class UsageHelper:
                 org_plans = SubscriptionHelper.get_subscription(
                     organization.organization_id
                 )
-                if org_plans:
-                    trial_start_date = org_plans.start_date
-                    trial_end_date = org_plans.end_date
-            except (ModuleNotFoundError, AttributeError):
-                logger.info("Subscription plugin not found, using fallback dates")
+                if (
+                    org_plans
+                    and hasattr(org_plans, "start_date")
+                    and hasattr(org_plans, "end_date")
+                ):
+                    # Normalize subscription dates to timezone-aware datetimes
+                    trial_start_date = UsageHelper.normalize_to_timezone_aware_datetime(
+                        org_plans.start_date,
+                        is_end_date=False,
+                        reference_tz=reference_tz,
+                    )
+                    trial_end_date = UsageHelper.normalize_to_timezone_aware_datetime(
+                        org_plans.end_date, is_end_date=True, reference_tz=reference_tz
+                    )
+                    logger.info(
+                        f"Using subscription dates for org {organization.organization_id}"
+                    )
+            except (ModuleNotFoundError, AttributeError, ImportError) as e:
+                logger.info(
+                    f"Subscription plugin not available ({type(e).__name__}), using fallback dates"
+                )
 
             # Fallback to organization creation date for trial start if no subscription data
             if not trial_start_date:
-                trial_start_date = organization.created_at
+                trial_start_date = UsageHelper.normalize_to_timezone_aware_datetime(
+                    org_created_at, is_end_date=False, reference_tz=reference_tz
+                )
 
             # Fallback: assume 14-day trial period from organization creation if no subscription end date
             if not trial_end_date:
-                trial_end_date = organization.created_at + timedelta(days=14)
+                end_date_fallback = org_created_at + timedelta(days=14)
+                trial_end_date = UsageHelper.normalize_to_timezone_aware_datetime(
+                    end_date_fallback, is_end_date=True, reference_tz=reference_tz
+                )
 
             # Get all usage records for the organization during trial period
             usage_queryset = Usage.objects.filter(
@@ -170,12 +264,24 @@ class UsageHelper:
         except Exception as e:
             logger.error(f"Error calculating trial statistics: {str(e)}")
             # Return minimal error response with fallback dates
-            fallback_start = (
-                organization.created_at
-                if hasattr(organization, "created_at")
-                else timezone.now()
+            try:
+                fallback_start = (
+                    organization.created_at
+                    if hasattr(organization, "created_at")
+                    else timezone.now()
+                )
+            except Exception:
+                fallback_start = timezone.now()
+
+            # Ensure fallback dates are timezone-aware
+            fallback_start = UsageHelper.normalize_to_timezone_aware_datetime(
+                fallback_start, is_end_date=False, reference_tz=timezone.utc
             )
-            fallback_end = fallback_start + timedelta(days=14)
+            fallback_end = UsageHelper.normalize_to_timezone_aware_datetime(
+                fallback_start + timedelta(days=14),
+                is_end_date=True,
+                reference_tz=timezone.utc,
+            )
 
             return {
                 "error": "Failed to retrieve trial statistics",

@@ -110,13 +110,32 @@ class UsageView(viewsets.ModelViewSet):
         try:
             user_organization = UserContext.get_organization()
 
+            # Validate organization context
+            if not user_organization:
+                logger.warning("No organization context found for user")
+                return Response(
+                    status=status.HTTP_400_BAD_REQUEST,
+                    data={"error": "No organization context available"},
+                )
+
             # Get trial statistics from helper
             trial_stats = UsageHelper.get_trial_statistics(user_organization)
 
+            # Log successful retrieval for audit purposes
+            logger.info(
+                f"Trial statistics retrieved for organization {user_organization.organization_id}"
+            )
+
             return Response(status=status.HTTP_200_OK, data=trial_stats)
 
+        except ValueError as e:
+            logger.error(f"Validation error retrieving trial statistics: {str(e)}")
+            return Response(
+                status=status.HTTP_400_BAD_REQUEST,
+                data={"error": "Invalid organization data"},
+            )
         except Exception as e:
-            logger.error(f"Error retrieving trial statistics: {str(e)}")
+            logger.error(f"Unexpected error retrieving trial statistics: {str(e)}")
             return Response(
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 data={"error": "Unable to retrieve trial statistics"},
