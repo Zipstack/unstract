@@ -37,11 +37,14 @@ class WorkflowOrchestrationUtils:
             app_instance: Celery app instance
 
         Returns:
-            Chord result object
+            Chord result object or None if no batch tasks
 
         Note:
             This consolidates the identical chord creation pattern found in
             api-deployment and general workers.
+
+            CRITICAL: Returns None for zero batch tasks, signaling to parent
+            that direct pipeline status updates should be handled instead.
         """
         try:
             callback_signature = app_instance.signature(
@@ -50,6 +53,18 @@ class WorkflowOrchestrationUtils:
                 queue=callback_queue,
             )
 
+            # For zero files, skip chord entirely - parent should handle status updates directly
+            if not batch_tasks:
+                # Extract execution_id from callback kwargs for logging
+                execution_id = callback_kwargs.get("execution_id", "unknown")
+                pipeline_id = callback_kwargs.get("pipeline_id", "unknown")
+                logger.info(
+                    f"[exec:{execution_id}] [pipeline:{pipeline_id}] Zero batch tasks detected - skipping chord execution "
+                    f"(parent should handle pipeline status updates directly)"
+                )
+                return None  # Signal to parent that no chord was created
+
+            # Normal chord execution for non-empty batch tasks
             result = chord(batch_tasks)(callback_signature)
 
             logger.info(

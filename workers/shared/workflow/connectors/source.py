@@ -160,46 +160,19 @@ class WorkerSourceConnector:
                 )
 
                 logger.info(
-                    f"Checking directory: '{input_directory}' → '{resolved_directory}'"
+                    f"[exec:{self.execution_id}] Checking directory: '{input_directory}' → '{resolved_directory}'"
                 )
 
-                # Debug: Try to get bucket info and list root for GCS
-                if "google_cloud_storage" in connector_id:
-                    try:
-                        # Extract bucket name for debugging
-                        bucket_name = (
-                            resolved_directory.split("/")[0]
-                            if "/" in resolved_directory
-                            else resolved_directory
-                        )
-                        logger.info(f"[GCS Debug] Checking bucket: '{bucket_name}'")
-
-                        # Try to list the bucket to see if it exists and is accessible
-                        try:
-                            bucket_info = source_fs_fsspec.info(bucket_name)
-                            logger.info(
-                                f"[GCS Debug] Bucket '{bucket_name}' exists with info: {bucket_info}"
-                            )
-                        except Exception as bucket_error:
-                            logger.warning(
-                                f"[GCS Debug] Cannot access bucket '{bucket_name}': {bucket_error}"
-                            )
-
-                        # Try to list contents of the resolved directory
-                        try:
-                            dir_contents = source_fs_fsspec.ls(
-                                resolved_directory, detail=False
-                            )
-                            logger.info(
-                                f"[GCS Debug] Directory '{resolved_directory}' contents: {dir_contents[:10]}..."
-                            )  # First 10 items
-                        except Exception as ls_error:
-                            logger.warning(
-                                f"[GCS Debug] Cannot list directory '{resolved_directory}': {ls_error}"
-                            )
-
-                    except Exception as debug_error:
-                        logger.warning(f"[GCS Debug] Debug check failed: {debug_error}")
+                # Use connector-specific debugging via polymorphic interface
+                # This allows each connector to provide its own debugging logic
+                # without the worker knowing about specific connector implementations
+                debug_info = source_fs.debug_directory_access(
+                    directory_path=resolved_directory, execution_id=self.execution_id
+                )
+                if debug_info:
+                    logger.info(
+                        f"[exec:{self.execution_id}] Connector debug completed for {debug_info.get('connector_type', 'unknown')}"
+                    )
 
                 # Use connector-specific directory check instead of generic fsspec.isdir()
                 # This is especially important for GCS where fsspec.isdir() doesn't work correctly
@@ -214,22 +187,26 @@ class WorkerSourceConnector:
                         is_directory = source_fs_fsspec.isdir(resolved_directory)
                 except Exception as dir_check_error:
                     logger.warning(
-                        f"Failed to check if '{resolved_directory}' is directory: {dir_check_error}"
+                        f"[exec:{self.execution_id}] Failed to check if '{resolved_directory}' is directory: {dir_check_error}"
                     )
                     is_directory = False
 
                 if not is_directory:
                     logger.warning(
-                        f"Source directory not found or not accessible: '{resolved_directory}'. "
+                        f"[exec:{self.execution_id}] Source directory not found or not accessible: '{resolved_directory}'. "
                         f"This may be expected if the directory doesn't exist in the connector storage."
                     )
                     continue
 
                 valid_directories.append(resolved_directory)
-                logger.info(f"✓ Validated directory: '{resolved_directory}'")
+                logger.info(
+                    f"[exec:{self.execution_id}] ✓ Validated directory: '{resolved_directory}'"
+                )
 
             except Exception as e:
-                logger.error(f"Error accessing directory '{input_directory}': {e}")
+                logger.error(
+                    f"[exec:{self.execution_id}] Error accessing directory '{input_directory}': {e}"
+                )
                 continue
 
         # Process directories
@@ -242,7 +219,9 @@ class WorkerSourceConnector:
             matched_files, count = self._get_matched_files(
                 source_fs, input_directory, patterns, recursive, limit, unique_file_paths
             )
-            logger.info(f"Matched '{count}' files from '{input_directory}'")
+            logger.info(
+                f"[exec:{self.execution_id}] Matched '{count}' files from '{input_directory}'"
+            )
             total_matched_files.update(matched_files)
             total_files_to_process += count
 
@@ -282,7 +261,7 @@ class WorkerSourceConnector:
         fs_fsspec = source_fs.get_fsspec_fs()
 
         logger.info(
-            f"Starting file discovery - will apply limit after filtering (limit: {limit})"
+            f"[exec:{self.execution_id}] Starting file discovery - will apply limit after filtering (limit: {limit})"
         )
 
         # Step 1: Discover ALL matching files first (no limit applied)
@@ -312,7 +291,7 @@ class WorkerSourceConnector:
             )
 
         logger.info(
-            f"Discovery completed: found {len(matched_files)} matching files before filtering"
+            f"[exec:{self.execution_id}] Discovery completed: found {len(matched_files)} matching files before filtering"
         )
 
         # Step 2: Apply batch file history filtering (remove already processed files)
@@ -320,7 +299,7 @@ class WorkerSourceConnector:
         if self.use_file_history and matched_files:
             filtered_files = self._apply_file_history_filtering(matched_files)
             logger.info(
-                f"File history batch filtering: {len(filtered_files)}/{files_before_history_filtering} files after deduplication"
+                f"[exec:{self.execution_id}] File history batch filtering: {len(filtered_files)}/{files_before_history_filtering} files after deduplication"
             )
         else:
             filtered_files = matched_files
@@ -328,7 +307,7 @@ class WorkerSourceConnector:
         # Return all files for the general worker to handle filtering and limiting
         # The general worker will apply active file filtering first, then apply the limit
         logger.info(
-            f"File discovery completed: returning all {len(filtered_files)} files (limit will be applied after active filtering)"
+            f"[exec:{self.execution_id}] File discovery completed: returning all {len(filtered_files)} files (limit will be applied after active filtering)"
         )
         return filtered_files, len(filtered_files)
 

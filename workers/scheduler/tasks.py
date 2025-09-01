@@ -76,18 +76,20 @@ def _execute_scheduled_workflow(
             )
 
         logger.info(
-            f"Created workflow execution {execution_id} for scheduled pipeline {context.pipeline_name}"
+            f"[exec:{execution_id}] [pipeline:{context.pipeline_id}] Created workflow execution for scheduled pipeline {context.pipeline_name}"
         )
 
         # Step 2: Trigger async workflow execution via direct Celery dispatch
         logger.info(
-            f"Triggering async execution for workflow {context.workflow_id}, execution {execution_id}"
+            f"[exec:{execution_id}] [pipeline:{context.pipeline_id}] Triggering async execution for workflow {context.workflow_id}"
         )
 
         # Use Celery to dispatch async execution task directly (like backend scheduler does)
         from celery import current_app
 
-        logger.info(f"Dispatching async_execute_bin task for execution {execution_id}")
+        logger.info(
+            f"[exec:{execution_id}] [pipeline:{context.pipeline_id}] Dispatching async_execute_bin task for scheduled execution"
+        )
 
         try:
             # Dispatch the Celery task directly to the general queue
@@ -102,13 +104,14 @@ def _execute_scheduled_workflow(
                 ],
                 kwargs={
                     "use_file_history": context.use_file_history,  # Pass as kwarg
+                    "pipeline_id": context.pipeline_id,  # CRITICAL FIX: Pass pipeline_id for direct status updates
                 },
                 queue=QueueName.CELERY,  # Route to celery queue (what general worker listens to)
             )
 
             task_id = async_result.id
             logger.info(
-                f"Successfully dispatched async_execute_bin task {task_id} for execution {execution_id}"
+                f"[exec:{execution_id}] [pipeline:{context.pipeline_id}] Successfully dispatched async_execute_bin task {task_id} for scheduled execution"
             )
 
             execution_response = SchedulerExecutionResult.success(
@@ -258,12 +261,12 @@ def execute_pipeline_task_v2(
 
             if execution_result.is_success:
                 logger.info(
-                    f"Scheduled execution {execution_result.execution_id} completed for pipeline '{pipeline_name_from_api}' "
+                    f"[exec:{execution_result.execution_id}] [pipeline:{pipeline_id}] Scheduled execution completed for pipeline '{pipeline_name_from_api}' "
                     f"in organization {organization_id}"
                 )
             else:
                 logger.error(
-                    f"Scheduled execution failed for pipeline '{pipeline_name_from_api}': {execution_result.error}"
+                    f"[exec:{execution_result.execution_id}] [pipeline:{pipeline_id}] Scheduled execution failed for pipeline '{pipeline_name_from_api}': {execution_result.error}"
                 )
 
         except Exception as e:

@@ -208,6 +208,12 @@ class WorkerLogger:
         if worker_name:
             cls.set_context(LogContext(worker_name=worker_name))
 
+        # Suppress only generic HTTP/network libraries that are universally noisy
+        # Cloud-specific SDK logging is handled by each connector
+        logging.getLogger("urllib3").setLevel(logging.WARNING)
+        logging.getLogger("requests").setLevel(logging.WARNING)
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+
         cls._configured = True
 
     @classmethod

@@ -12,7 +12,17 @@ from unstract.connectors.filesystems.azure_cloud_storage.exceptions import (
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 from unstract.filesystem import FileStorageType, FileSystem
 
+# Suppress verbose Azure SDK HTTP request/response logging
 logging.getLogger("azurefs").setLevel(logging.ERROR)
+logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(
+    logging.WARNING
+)
+logging.getLogger("azure.storage.blob").setLevel(logging.WARNING)
+logging.getLogger("azure.storage").setLevel(logging.WARNING)
+logging.getLogger("azure.core").setLevel(logging.WARNING)
+# Keep ADLFS filesystem errors visible but suppress HTTP noise
+logging.getLogger("adlfs").setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 
@@ -139,6 +149,102 @@ class AzureCloudStorageFS(UnstractFileSystem):
             destination_connector_fs.write_bytes(normalized_path, data)
         except AzureException.HttpResponseError as e:
             self.raise_http_exception(e=e, path=normalized_path)
+
+    def debug_directory_access(
+        self, directory_path: str, execution_id: str = ""
+    ) -> dict[str, Any]:
+        """Azure-specific directory access debugging.
+
+        Args:
+            directory_path: The directory path being accessed
+            execution_id: Execution ID for log correlation
+
+        Returns:
+            dict[str, Any]: Azure-specific debug information
+        """
+        debug_info = {
+            "connector_type": "azure_cloud_storage",
+            "directory_path": directory_path,
+            "execution_id": execution_id,
+            "debug_results": {},
+        }
+
+        try:
+            # Extract container name (Azure equivalent of bucket)
+            container_name = (
+                directory_path.split("/")[0] if "/" in directory_path else directory_path
+            )
+
+            logger.info(
+                f"[exec:{execution_id}] [Azure Debug] Checking container: '{container_name}'"
+            )
+            debug_info["container_name"] = container_name
+
+            azure_fs = self.get_fsspec_fs()
+
+            # Check if container exists and is accessible
+            try:
+                container_info = azure_fs.info(container_name)
+                logger.info(
+                    f"[exec:{execution_id}] [Azure Debug] Container '{container_name}' exists with info: {container_info}"
+                )
+                debug_info["debug_results"]["container_exists"] = True
+                debug_info["debug_results"]["container_info"] = str(container_info)
+            except Exception as container_error:
+                logger.warning(
+                    f"[exec:{execution_id}] [Azure Debug] Cannot access container '{container_name}': {container_error}"
+                )
+                debug_info["debug_results"]["container_exists"] = False
+                debug_info["debug_results"]["container_error"] = str(container_error)
+
+            # Try to list contents of the directory
+            try:
+                dir_contents = azure_fs.ls(directory_path, detail=False)
+                logger.info(
+                    f"[exec:{execution_id}] [Azure Debug] Directory '{directory_path}' contents: {dir_contents[:10]}..."
+                )
+                debug_info["debug_results"]["directory_accessible"] = True
+                debug_info["debug_results"]["contents_count"] = len(dir_contents)
+                debug_info["debug_results"]["sample_contents"] = dir_contents[
+                    :5
+                ]  # First 5 items
+            except Exception as ls_error:
+                logger.warning(
+                    f"[exec:{execution_id}] [Azure Debug] Cannot list directory '{directory_path}': {ls_error}"
+                )
+                debug_info["debug_results"]["directory_accessible"] = False
+                debug_info["debug_results"]["directory_error"] = str(ls_error)
+
+            # Check container root access (diagnostic)
+            try:
+                root_contents = azure_fs.ls(container_name, detail=False)
+                logger.info(
+                    f"[exec:{execution_id}] [Azure Debug] Container root has {len(root_contents)} items"
+                )
+                debug_info["debug_results"]["container_root_accessible"] = True
+                debug_info["debug_results"]["container_root_items"] = len(root_contents)
+            except Exception as root_error:
+                logger.warning(
+                    f"[exec:{execution_id}] [Azure Debug] Cannot access container root: {root_error}"
+                )
+                debug_info["debug_results"]["container_root_accessible"] = False
+                debug_info["debug_results"]["container_root_error"] = str(root_error)
+
+            # Azure-specific checks
+            debug_info["debug_results"]["account_name"] = getattr(
+                azure_fs, "account_name", "unknown"
+            )
+            debug_info["debug_results"]["bucket_configured"] = bool(self.bucket)
+            debug_info["debug_results"]["bucket_value"] = self.bucket
+
+        except Exception as debug_error:
+            logger.warning(
+                f"[exec:{execution_id}] [Azure Debug] Debug check failed: {debug_error}"
+            )
+            debug_info["debug_results"]["debug_failed"] = True
+            debug_info["debug_results"]["debug_error"] = str(debug_error)
+
+        return debug_info
 
     def raise_http_exception(
         self, e: AzureException.HttpResponseError, path: str

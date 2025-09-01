@@ -117,11 +117,13 @@ def _log_file_filtering_statistics(
     if not is_api and original_count > 0:
         filtered_count = original_count - final_count
         if filtered_count > 0:
+            # More accurate message - could be file history, limits, or active conflicts
+            reason = "filtered (already processed, limits, or conflicts)"
             _log_batch_statistics_to_ui(
                 execution_id=execution_id,
                 organization_id=organization_id,
                 pipeline_id=pipeline_id,
-                message=f"🔍 Filtered out {filtered_count} files (already processed) - {final_count} files remaining",
+                message=f"🔍 Filtered out {filtered_count} files ({reason}) - {final_count} files remaining",
             )
         else:
             _log_batch_statistics_to_ui(
@@ -398,6 +400,23 @@ def async_execute_bin_general(
                         status=ExecutionStatus.ERROR.value,
                         error_message=str(e),
                     )
+
+                    # CRITICAL FIX: Also update pipeline status to FAILED for consistency
+                    if pipeline_id:
+                        try:
+                            api_client.update_pipeline_status(
+                                pipeline_id=pipeline_id,
+                                execution_id=execution_id,
+                                status=ExecutionStatus.FAILED.value,
+                            )
+                            logger.info(
+                                f"[exec:{execution_id}] [pipeline:{pipeline_id}] Pipeline status updated to FAILED after general workflow error"
+                            )
+                        except Exception as pipeline_error:
+                            logger.error(
+                                f"[exec:{execution_id}] [pipeline:{pipeline_id}] Failed to update pipeline status to FAILED: {pipeline_error}"
+                            )
+
             except Exception as update_error:
                 logger.error(f"Failed to update execution status: {update_error}")
 
@@ -669,10 +688,33 @@ def _execute_general_workflow(
             use_file_history=workflow_context.get_setting("use_file_history", True),
         )
 
+        # Initialize WebSocket logger EARLY for source connector logging
+        try:
+            workflow_logger = WorkerWorkflowLogger.create_for_general_workflow(
+                execution_id=execution_id,
+                organization_id=api_client.organization_id,
+                pipeline_id=pipeline_id,
+            )
+        except Exception as logger_error:
+            logger.warning(f"Failed to initialize UI logger: {logger_error}")
+            workflow_logger = None
+
         # Retrieve source files from the configured source
         try:
             source_files, total_files = source_connector.list_files_from_source()
             logger.info(f"Retrieved {total_files} source files from configured source")
+
+            # Log source discovery to UI
+            if workflow_logger:
+                if total_files > 0:
+                    workflow_logger.log_info(
+                        logger, f"🔍 Found {total_files} new files to process from source"
+                    )
+                else:
+                    workflow_logger.log_info(
+                        logger,
+                        "🔍 No new files to process (files may have been found but filtered out during file history check)",
+                    )
 
             # Get connection type from endpoint config
             connection_type = source_connector.endpoint_config.get(
@@ -682,6 +724,13 @@ def _execute_general_workflow(
 
         except Exception as source_error:
             logger.error(f"Failed to retrieve source files: {source_error}")
+
+            # CRITICAL FIX: Log source connector errors to UI
+            if workflow_logger:
+                workflow_logger.log_error(
+                    logger, f"❌ Failed to retrieve files from source: {source_error}"
+                )
+
             # Continue with empty source files but log the error
             source_files = {}
             total_files = 0
@@ -698,6 +747,13 @@ def _execute_general_workflow(
         original_file_count = len(source_files) if source_files else 0
 
         if not is_api and source_files:
+            # Log file filtering start to UI
+            if workflow_logger:
+                workflow_logger.log_info(
+                    logger,
+                    f"🔄 Checking {original_file_count} files for duplicates and active processing...",
+                )
+
             # ETL/TASK workflows: Apply active file filtering to prevent duplicate processing
             source_files, total_files = (
                 FileManagementUtils.process_files_with_active_filtering(
@@ -709,6 +765,19 @@ def _execute_general_workflow(
                     logger_instance=logger,
                 )
             )
+
+            # Log filtering results to UI
+            if workflow_logger:
+                filtered_count = original_file_count - total_files
+                if filtered_count > 0:
+                    workflow_logger.log_info(
+                        logger,
+                        f"📋 File filtering: {original_file_count} → {total_files} files ({filtered_count} filtered by history/limits/conflicts)",
+                    )
+                else:
+                    workflow_logger.log_info(
+                        logger, f"✅ File filtering: All {total_files} files are new"
+                    )
         else:
             # API workflows: Process without active file filtering (they have their own logic)
             source_files, total_files = (
@@ -718,13 +787,6 @@ def _execute_general_workflow(
                     logger_instance=logger,
                 )
             )
-
-        # Initialize WebSocket logger for UI logs
-        workflow_logger = WorkerWorkflowLogger.create_for_general_workflow(
-            execution_id=execution_id,
-            organization_id=api_client.organization_id,
-            pipeline_id=pipeline_id,
-        )
 
         # Log filtering statistics to UI
         final_file_count = len(source_files) if source_files else 0
@@ -752,6 +814,21 @@ def _execute_general_workflow(
 
         if not source_files:
             logger.info(f"Execution {execution_id} no files to process")
+
+            # Log detailed explanation to UI
+            if workflow_logger:
+                if original_file_count > 0:
+                    workflow_logger.log_info(
+                        logger,
+                        f"💤 All {original_file_count} files have been processed previously - no new files to process",
+                    )
+                else:
+                    # Since source connector already applied file history filtering, 0 files usually means
+                    # files were found but filtered out, not that no files exist in source
+                    workflow_logger.log_info(
+                        logger,
+                        "💤 No new files to process - all files have been processed previously or no files exist in source",
+                    )
 
             # Send completion log to UI
             workflow_logger.publish_execution_complete(
@@ -1043,9 +1120,69 @@ def _orchestrate_file_processing_general(
         )
 
         if not result:
-            exception = f"Failed to queue execution task {execution_id}"
-            logger.error(exception)
-            raise Exception(exception)
+            # Check if this is zero files case (no error, just no chord needed)
+            if not batch_tasks:
+                logger.info(
+                    f"[exec:{execution_id}] [pipeline:{pipeline_id}] No chord created for zero files - updating pipeline status directly"
+                )
+
+                # Update pipeline status directly (same as manual execution path)
+                try:
+                    api_client.update_pipeline_status(
+                        pipeline_id=pipeline_id,
+                        execution_id=execution_id,
+                        status=ExecutionStatus.COMPLETED.value,
+                    )
+                    logger.info(
+                        f"[exec:{execution_id}] [pipeline:{pipeline_id}] Pipeline status updated to COMPLETED for zero-files execution"
+                    )
+                except Exception as pipeline_error:
+                    logger.error(
+                        f"[exec:{execution_id}] [pipeline:{pipeline_id}] Failed to update pipeline status directly: {pipeline_error}"
+                    )
+
+                    # Try to update pipeline to FAILED status
+                    try:
+                        api_client.update_pipeline_status(
+                            pipeline_id=pipeline_id,
+                            execution_id=execution_id,
+                            status=ExecutionStatus.FAILED.value,
+                        )
+                        logger.info(
+                            f"[exec:{execution_id}] [pipeline:{pipeline_id}] Pipeline status updated to FAILED after error"
+                        )
+                    except Exception as failed_update_error:
+                        logger.error(
+                            f"[exec:{execution_id}] [pipeline:{pipeline_id}] Failed to update pipeline to FAILED status: {failed_update_error}"
+                        )
+
+                    # Re-raise to ensure proper error handling
+                    raise pipeline_error
+
+                # Return success response only if pipeline status was updated successfully
+                response = WorkerTaskResponse.success_response(
+                    execution_id=execution_id,
+                    workflow_id=workflow_id,
+                    task_id=None,  # No chord task for zero files
+                )
+                response.status = "completed_zero_files"
+
+                # Convert to dict and add additional fields for backward compatibility
+                response_dict = response.to_dict()
+                response_dict.update(
+                    {
+                        "execution_id": execution_id,
+                        "workflow_id": workflow_id,
+                        "files_processed": 0,
+                        "message": "No files to process - pipeline status updated directly",
+                    }
+                )
+                return response_dict
+            else:
+                # This is a real error - chord creation failed with non-empty batch_tasks
+                exception = f"Failed to queue execution task {execution_id}"
+                logger.error(exception)
+                raise Exception(exception)
 
         logger.info(f"Execution {execution_id} file processing orchestrated successfully")
 

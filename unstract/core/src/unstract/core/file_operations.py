@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from .constants import FilePatternConstants
 from .data_models import FileHash, FileHashData, FileOperationConstants
 
 logger = logging.getLogger(__name__)
@@ -147,6 +148,11 @@ class FileOperations:
         # Detect MIME type if possible
         mime_type = fs_metadata.get("ContentType") or fs_metadata.get("content_type")
 
+        # Sanitize metadata for JSON serialization (critical for Celery tasks)
+        sanitized_metadata = FileOperations._sanitize_metadata_for_serialization(
+            fs_metadata
+        )
+
         return FileHash(
             file_path=file_path,
             file_name=file_name,
@@ -155,8 +161,90 @@ class FileOperations:
             file_size=file_size,
             provider_file_uuid=provider_file_uuid,
             mime_type=mime_type,
-            fs_metadata=fs_metadata,
+            fs_metadata=sanitized_metadata,
         )
+
+    @staticmethod
+    def _sanitize_metadata_for_serialization(metadata: dict[str, Any]) -> dict[str, Any]:
+        """Sanitize file metadata for JSON serialization by converting non-serializable objects.
+
+        This is critical for Azure Blob Storage which includes ContentSettings objects
+        that cannot be serialized for Celery task distribution.
+
+        Args:
+            metadata: Raw metadata dictionary from fsspec/connector
+
+        Returns:
+            dict[str, Any]: Sanitized metadata safe for JSON serialization
+        """
+        if not isinstance(metadata, dict):
+            return {}
+
+        sanitized = {}
+
+        for key, value in metadata.items():
+            try:
+                # Handle Azure ContentSettings object or similar objects with content_type
+                if hasattr(value, "content_type") and hasattr(value, "__dict__"):
+                    # Convert ContentSettings-like objects to dictionary
+                    try:
+                        sanitized[key] = {
+                            "content_type": getattr(value, "content_type", None),
+                            "content_encoding": getattr(value, "content_encoding", None),
+                            "content_language": getattr(value, "content_language", None),
+                            "content_disposition": getattr(
+                                value, "content_disposition", None
+                            ),
+                            "cache_control": getattr(value, "cache_control", None),
+                            "content_md5": value.content_md5.hex()
+                            if getattr(value, "content_md5", None)
+                            else None,
+                        }
+                        continue
+                    except Exception as content_error:
+                        logger.debug(
+                            f"Failed to convert ContentSettings object: {content_error}"
+                        )
+                        sanitized[key] = str(value)
+                        continue
+
+                # Handle bytearray objects (like content_md5)
+                if isinstance(value, bytearray):
+                    sanitized[key] = value.hex()
+                    continue
+
+                # Handle datetime objects
+                if hasattr(value, "isoformat"):
+                    sanitized[key] = value.isoformat()
+                    continue
+
+                # Handle other complex objects by converting to string
+                if not FileOperations._is_json_serializable(value):
+                    sanitized[key] = str(value)
+                    continue
+
+                # Keep as-is if it's JSON serializable
+                sanitized[key] = value
+
+            except Exception as e:
+                # If anything fails, convert to string as fallback
+                logger.debug(
+                    f"Failed to sanitize metadata key '{key}': {e}, converting to string"
+                )
+                sanitized[key] = str(value)
+
+        return sanitized
+
+    @staticmethod
+    def _is_json_serializable(obj: Any) -> bool:
+        """Check if an object is JSON serializable."""
+        import json
+
+        try:
+            json.dumps(obj)
+            return True
+        except (TypeError, ValueError):
+            return False
 
     @staticmethod
     def process_file_fs_directory(
@@ -277,7 +365,7 @@ class FileOperations:
     def _should_skip_file_backend_compatible(
         file_hash: FileHash, patterns: list[str]
     ) -> bool:
-        """Check if file should be skipped based on patterns."""
+        """Check if file should be skipped based on patterns with case-insensitive matching."""
         if not patterns or patterns == ["*"]:
             return False
 
@@ -286,7 +374,8 @@ class FileOperations:
         file_name = file_hash.file_name
 
         for pattern in patterns:
-            if fnmatch.fnmatch(file_name, pattern):
+            # Case-insensitive pattern matching to handle Azure Blob Storage case variations
+            if fnmatch.fnmatch(file_name.lower(), pattern.lower()):
                 return False
 
         return True
@@ -307,7 +396,7 @@ class FileOperations:
 
     @staticmethod
     def valid_file_patterns(required_patterns: list[str]) -> list[str]:
-        """Get valid file patterns matching backend logic."""
+        """Get valid file patterns matching backend logic with display name translation."""
         if not required_patterns:
             return ["*"]
 
@@ -316,7 +405,47 @@ class FileOperations:
         if not valid_patterns:
             return ["*"]
 
-        return valid_patterns
+        # Translate display names to actual file patterns
+        translated_patterns = []
+        for pattern in valid_patterns:
+            translated = FileOperations._translate_display_name_to_pattern(pattern)
+            translated_patterns.extend(translated)
+
+        return translated_patterns if translated_patterns else ["*"]
+
+    @staticmethod
+    def _translate_display_name_to_pattern(display_name: str) -> list[str]:
+        """Translate UI display names to actual file matching patterns.
+
+        Args:
+            display_name: Display name from UI (e.g., "PDF documents")
+
+        Returns:
+            List of file patterns (e.g., ["*.pdf"])
+        """
+        # First, try exact display name match using constants
+        patterns = FilePatternConstants.get_patterns_for_display_name(display_name)
+        if patterns:
+            logger.info(
+                f"Translating display name '{display_name}' to patterns: {patterns}"
+            )
+            return patterns
+
+        # If it looks like a file pattern already (contains * or .), use as-is
+        if "*" in display_name or "." in display_name:
+            return [display_name]
+
+        # Try to infer patterns from keywords using constants
+        inferred_patterns = FilePatternConstants.infer_patterns_from_keyword(display_name)
+        if inferred_patterns:
+            logger.info(f"Inferred patterns for '{display_name}': {inferred_patterns}")
+            return inferred_patterns
+
+        # If no match, return the original pattern
+        logger.warning(
+            f"Unknown display name pattern '{display_name}', using as literal pattern"
+        )
+        return [display_name]
 
     @staticmethod
     def validate_file_compatibility(
