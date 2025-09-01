@@ -933,10 +933,17 @@ class PromptStudioHelper:
         output[TSPKeys.SECTION] = profile_manager.section
         output[TSPKeys.X2TEXT_ADAPTER] = x2text
         # Webhook postprocessing settings
-        output[TSPKeys.ENABLE_POSTPROCESSING_WEBHOOK] = (
-            prompt.enable_postprocessing_webhook
-        )
-        output[TSPKeys.POSTPROCESSING_WEBHOOK_URL] = prompt.postprocessing_webhook_url
+        webhook_enabled = bool(prompt.enable_postprocessing_webhook)
+        webhook_url = (prompt.postprocessing_webhook_url or "").strip()
+        if webhook_enabled and not webhook_url:
+            logger.warning(
+                "Postprocessing webhook enabled but URL missing for prompt %s; disabling.",
+                prompt.prompt_key,
+            )
+            webhook_enabled = False
+        output[TSPKeys.ENABLE_POSTPROCESSING_WEBHOOK] = webhook_enabled
+        if webhook_enabled:
+            output[TSPKeys.POSTPROCESSING_WEBHOOK_URL] = webhook_url
         # Eval settings for the prompt
         output[TSPKeys.EVAL_SETTINGS] = {}
         output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_EVALUATE] = prompt.evaluate
