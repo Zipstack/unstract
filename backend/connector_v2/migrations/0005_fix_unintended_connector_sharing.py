@@ -12,60 +12,60 @@ import uuid
 from typing import Any
 
 from django.db import migrations, transaction
+from django.db.models import Exists, F, OuterRef, Q
 
 logger = logging.getLogger(__name__)
 
 
-def identify_problem_endpoints(apps) -> list[Any]:
+def identify_problem_endpoints(apps, db_alias: str) -> list[Any]:
     """Identify WorkflowEndpoint instances with incorrectly shared connectors.
 
     Returns endpoints where:
     - The connector's created_by != workflow's created_by
     - The connector is NOT explicitly shared with the workflow owner
     - The connector is NOT shared to the entire organization
+
+    Args:
+        apps: Django apps registry from migration context
+        db_alias: Database alias for multi-database routing
     """
     WorkflowEndpoint = apps.get_model("endpoint_v2", "WorkflowEndpoint")
+    User = apps.get_model("account_v2", "User")
 
-    problem_endpoints = []
+    # Create a subquery to check if the workflow owner is in the connector's shared_users
+    shared_with_workflow_owner = User.objects.using(db_alias).filter(
+        shared_connectors=OuterRef("connector_instance"),
+        id=OuterRef("workflow__created_by"),
+    )
 
-    # Get all endpoints with their related data
-    endpoints = (
-        WorkflowEndpoint.objects.select_related(
+    # Build the main query with database-level filtering
+    problem_endpoints = list(
+        WorkflowEndpoint.objects.using(db_alias)
+        .select_related(
             "workflow",
             "workflow__created_by",
             "connector_instance",
             "connector_instance__created_by",
         )
-        .prefetch_related("connector_instance__shared_users")
-        .all()
+        # Exclude endpoints with no connector instance
+        .exclude(connector_instance__isnull=True)
+        # Exclude if workflow or connector has no owner
+        .exclude(
+            Q(workflow__created_by__isnull=True)
+            | Q(connector_instance__created_by__isnull=True)
+        )
+        # Exclude if same owner (connector owned by workflow owner)
+        .exclude(workflow__created_by=F("connector_instance__created_by"))
+        # Exclude if connector is shared to entire org
+        .exclude(connector_instance__shared_to_org=True)
+        # Exclude if connector is explicitly shared with workflow owner
+        .exclude(Exists(shared_with_workflow_owner))
     )
 
-    for endpoint in endpoints:
-        if not endpoint.connector_instance:
-            continue
-
+    # Log the found problems for debugging
+    for endpoint in problem_endpoints:
         workflow = endpoint.workflow
         connector = endpoint.connector_instance
-
-        # Skip if workflow or connector has no owner
-        if not workflow.created_by or not connector.created_by:
-            continue
-
-        # Check if connector is owned by a different user
-        if connector.created_by.id == workflow.created_by.id:
-            continue
-
-        # Check if connector is explicitly shared with workflow owner
-        if workflow.created_by in connector.shared_users.all():
-            continue
-
-        # Check if connector is shared to entire org
-        if connector.shared_to_org:
-            continue
-
-        # This is a problem case - connector is implicitly shared
-        problem_endpoints.append(endpoint)
-        logger.info(
         logger.info(
             "Found problem: workflow_id=%s (owner_id=%s) endpoint_id=%s uses connector_id=%s (owner_id=%s) without explicit sharing",
             workflow.id,
@@ -79,7 +79,7 @@ def identify_problem_endpoints(apps) -> list[Any]:
 
 
 def duplicate_connector_for_user(
-    connector: Any, user: Any, connector_instance_model: Any
+    connector: Any, user: Any, connector_instance_model: Any, db_alias: str
 ) -> Any:
     """Create a duplicate of the connector for the specified user.
 
@@ -87,12 +87,13 @@ def duplicate_connector_for_user(
         connector: The original connector to duplicate
         user: The user who should own the new connector
         connector_instance_model: The ConnectorInstance model class
+        db_alias: Database alias for multi-database routing
 
     Returns:
         The newly created connector instance
     """
     # Create a new connector with the same settings but different owner
-    new_connector = connector_instance_model.objects.create(
+    new_connector = connector_instance_model.objects.using(db_alias).create(
         connector_name=f"{connector.connector_name}-{uuid.uuid4().hex[:8]}",
         connector_id=connector.connector_id,
         connector_metadata=connector.connector_metadata,
@@ -113,7 +114,7 @@ def duplicate_connector_for_user(
     return new_connector
 
 
-def fix_unintended_sharing(apps, schema_editor):  # noqa: ARG001
+def fix_unintended_sharing(apps, schema_editor):
     """Fix unintended connector sharing by creating user-specific copies.
 
     This migration:
@@ -122,9 +123,10 @@ def fix_unintended_sharing(apps, schema_editor):  # noqa: ARG001
     3. Updates the WorkflowEndpoint to use the new connector
     """
     ConnectorInstance = apps.get_model("connector_v2", "ConnectorInstance")
+    db_alias = schema_editor.connection.alias
 
     # Find all problem endpoints
-    problem_endpoints = identify_problem_endpoints(apps)
+    problem_endpoints = identify_problem_endpoints(apps, db_alias)
 
     if not problem_endpoints:
         logger.info("No unintended connector sharing found. Migration complete.")
@@ -140,7 +142,7 @@ def fix_unintended_sharing(apps, schema_editor):  # noqa: ARG001
 
     # Fix each problem endpoint
     fixed_count = 0
-    with transaction.atomic():
+    with transaction.atomic(using=db_alias):
         for endpoint in problem_endpoints:
             workflow = endpoint.workflow
             original_connector = endpoint.connector_instance
@@ -159,13 +161,13 @@ def fix_unintended_sharing(apps, schema_editor):  # noqa: ARG001
             else:
                 # Create a new duplicate
                 new_connector = duplicate_connector_for_user(
-                    original_connector, workflow_owner, ConnectorInstance
+                    original_connector, workflow_owner, ConnectorInstance, db_alias
                 )
                 duplicated_connectors[cache_key] = new_connector
 
             # Update the endpoint to use the new connector
             endpoint.connector_instance = new_connector
-            endpoint.save()
+            endpoint.save(using=db_alias)
             fixed_count += 1
 
             logger.info(
