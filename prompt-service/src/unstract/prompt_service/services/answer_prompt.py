@@ -8,6 +8,7 @@ from unstract.prompt_service.constants import ExecutionSource, FileStorageKeys, 
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.exceptions import RateLimitError
 from unstract.prompt_service.helpers.plugin import PluginManager
+from unstract.prompt_service.helpers.postprocessor import postprocess_data
 from unstract.prompt_service.utils.env_loader import get_env_or_die
 from unstract.prompt_service.utils.json_repair_helper import (
     repair_json_with_best_structure,
@@ -40,7 +41,7 @@ class AnswerPromptService:
                     )
                 else:
                     raise ValueError(
-                        f"Variable {variable_name} not found " "in structured output"
+                        f"Variable {variable_name} not found in structured output"
                     )
 
         if promptx != output[PSKeys.PROMPT]:
@@ -109,8 +110,8 @@ class AnswerPromptService:
                     if PSKeys.SYNONYMS in grammar:
                         synonyms = grammar[PSKeys.SYNONYMS]
                 if len(synonyms) > 0 and word != "":
-                    prompt += f'\nNote: You can consider that the word {word} is same as \
-                        {", ".join(synonyms)} in both the quesiton and the context.'  # noqa
+                    prompt += f"\nNote: You can consider that the word {word} is same as \
+                        {', '.join(synonyms)} in both the quesiton and the context."  # noqa
         if prompt_type == PSKeys.JSON:
             json_postamble = get_env_or_die(
                 PSKeys.JSON_POSTAMBLE, PSKeys.DEFAULT_JSON_POSTAMBLE
@@ -250,7 +251,7 @@ class AnswerPromptService:
             parsed_data = repair_json_with_best_structure(answer)
 
             if isinstance(parsed_data, str):
-                err_msg = "Error parsing response (to json)\n" f"Candidate JSON: {answer}"
+                err_msg = f"Error parsing response (to json)\nCandidate JSON: {answer}"
                 app.logger.info(err_msg, LogLevel.ERROR)
                 publish_log(
                     log_events_id,
@@ -266,7 +267,29 @@ class AnswerPromptService:
                 )
                 structured_output[prompt_key] = {}
             else:
-                structured_output[prompt_key] = parsed_data
+                # Get webhook configuration from output settings
+                webhook_enabled = output.get("enable_postprocessing_webhook", False)
+                webhook_url = output.get("postprocessing_webhook_url")
+                
+                # Get highlight data from metadata if available and highlighting is enabled
+                highlight_data = None
+                if enable_highlight and metadata and PSKeys.HIGHLIGHT_DATA in metadata:
+                    highlight_data = metadata[PSKeys.HIGHLIGHT_DATA].get(prompt_key)
+                
+                # Process data and get updated highlight data
+                processed_data, updated_highlight_data = postprocess_data(
+                    parsed_data, 
+                    webhook_enabled=webhook_enabled, 
+                    webhook_url=webhook_url,
+                    highlight_data=highlight_data
+                )
+                
+                structured_output[prompt_key] = processed_data
+                
+                # Update metadata with processed highlight data if available and highlighting is enabled
+                if enable_highlight and metadata and updated_highlight_data is not None:
+                    metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})[prompt_key] = updated_highlight_data
+
 
     @staticmethod
     def extract_line_item(

@@ -100,7 +100,9 @@ class JsonSchemaKey:
     ENABLE_HIGHLIGHT = "enable_highlight"
     PLATFORM_POSTAMBLE = "platform_postamble"
     REQUIRED = "required"
-
+    # Webhook postprocessing settings
+    ENABLE_POSTPROCESSING_WEBHOOK = "enable_postprocessing_webhook"
+    POSTPROCESSING_WEBHOOK_URL = "postprocessing_webhook_url"
 
 class SpecKey:
     PROCESSOR = "processor"
