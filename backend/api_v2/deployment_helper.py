@@ -222,6 +222,15 @@ class DeploymentHelper(BaseAPIKeyValidator):
             file_objs=file_objs,
             use_file_history=use_file_history,
         )
+        
+        # Close uploaded files after they've been stored to free memory
+        # This is important for presigned URL files to prevent memory leaks
+        for file_obj in file_objs:
+            try:
+                if hasattr(file_obj, 'close'):
+                    file_obj.close()
+            except Exception as e:
+                logger.warning(f"Failed to close uploaded file {getattr(file_obj, 'name', 'unknown')}: {str(e)}")
         try:
             result = WorkflowHelper.execute_workflow_async(
                 workflow_id=workflow_id,
@@ -364,8 +373,8 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 f"Fetched file '{filename}' with MIME type '{content_type}' from presigned URL {sanitized_url}"
             )
 
-            # Return as an InMemoryUploadedFile
-            return InMemoryUploadedFile(
+            # Create InMemoryUploadedFile with proper stream management
+            uploaded_file = InMemoryUploadedFile(
                 file=file_stream,
                 field_name="file",
                 name=filename,
@@ -373,6 +382,11 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 size=downloaded,
                 charset=None,
             )
+            
+            # Don't close file_stream here as InMemoryUploadedFile takes ownership
+            # The stream will be closed when uploaded_file.close() is called
+            file_stream = None
+            return uploaded_file
 
         except requests.RequestException as e:
             if (
@@ -403,6 +417,12 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 url=sanitized_url, error_message=error_msg, status_code=status_code
             )
 
+        finally:
+            if file_stream:
+                try:
+                    file_stream.close()
+                except Exception as e:
+                    logger.warning(f"Failed to close file stream during cleanup: {str(e)}")
 
     @staticmethod
     def load_presigned_files(
