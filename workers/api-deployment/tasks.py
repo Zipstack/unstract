@@ -626,16 +626,16 @@ def _run_workflow_api(
                 f"Calculated manual review decisions for API batch: {sum(file_decisions)}/{len(file_decisions)} files selected"
             )
 
-        # Create batch data exactly matching Django FileBatchData structure
-        batch_data = _create_batch_data(files=batch, file_data=file_data)
-
         # Determine queue using the same logic as Django backend
         file_processing_queue = _get_queue_name_api()
+
+        # Create batch data exactly matching Django FileBatchData structure
+        batch_data = _create_batch_data(files=batch, file_data=file_data)
 
         # Create task signature matching Django backend pattern
         batch_tasks.append(
             app.signature(
-                "process_file_batch",  # Use same task name as Django
+                "process_file_batch",
                 args=[batch_data],
                 queue=file_processing_queue,
             )

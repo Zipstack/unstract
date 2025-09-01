@@ -651,6 +651,10 @@ def _process_individual_files(context: WorkflowContextData) -> WorkflowContextDa
             context.execution_id,
             workflow_logger,
             workflow_file_execution_id,
+            celery_task_id,  # Pass celery task ID to detect API queue
+            context.metadata.get(
+                "is_api_workflow", False
+            ),  # Pass existing API workflow detection
         )
 
     # Update metadata with results
@@ -674,6 +678,8 @@ def _handle_file_processing_result(
     execution_id: str,
     workflow_logger: Any,
     file_execution_id: str,
+    celery_task_id: str,
+    is_api_workflow: bool,
 ) -> None:
     """Handle the result of individual file processing.
 
@@ -689,6 +695,8 @@ def _handle_file_processing_result(
         execution_id: Execution ID
         workflow_logger: Workflow logger instance
         file_execution_id: File execution ID
+        celery_task_id: Celery task ID for queue detection
+        is_api_workflow: Whether this is an API workflow (from existing detection)
     """
     import time
 
@@ -966,6 +974,70 @@ def _handle_file_processing_result(
                 logger.warning(
                     f"Failed to create file history for {file_name}: {history_error}"
                 )
+
+    # CRITICAL FIX: Cache API results for API deployments only
+    # Check if this is specifically an API deployment by examining the execution context
+    should_cache_result = is_api_workflow
+
+    # Additional check: API deployments may have TASK workflows but still need result caching
+    # Only enable for actual API deployments to avoid affecting TASK/ETL workflows
+    if not should_cache_result:
+        try:
+            # Check if there's an API callback waiting (indication of API deployment)
+            execution_response = api_client.get_workflow_execution(execution_id)
+            if execution_response.success and execution_response.data:
+                # Check if this execution was initiated via API deployment
+                source_config = execution_response.data.get("source_config")
+                if source_config == "api_deployment":
+                    should_cache_result = True
+                    logger.info(
+                        "🎯 API deployment with TASK workflow detected - enabling result caching"
+                    )
+        except Exception as e:
+            logger.debug(f"Could not verify API deployment status: {e}")
+
+    if should_cache_result:
+        logger.info(
+            f"🔧 API deployment detected for {workflow_id} - caching file result for API response"
+        )
+
+        try:
+            from shared.workflow.execution.service import (
+                WorkerWorkflowExecutionService,
+            )
+
+            # Create workflow service for caching (same as process_file_batch_api)
+            workflow_service = WorkerWorkflowExecutionService(api_client=api_client)
+
+            # Convert file result to API format matching process_file_batch_api
+            api_result = {
+                "file": file_name,
+                "file_execution_id": file_execution_id,
+                "result": file_execution_result.get("result"),
+                "error": file_execution_result.get("error"),
+                "metadata": {"processing_time": time.time() - file_start_time},
+            }
+
+            # Cache the result for API response aggregation
+            workflow_service.cache_api_result(
+                workflow_id=workflow_id,
+                execution_id=execution_id,
+                result=api_result,
+                is_api=True,
+            )
+
+            # Log success/error differently for debugging
+            if file_execution_result.get("error"):
+                logger.info(
+                    f"✅ Cached API ERROR result for file {file_name}: {file_execution_result.get('error')}"
+                )
+            else:
+                logger.info(f"✅ Cached API success result for file {file_name}")
+
+        except Exception as cache_error:
+            logger.error(
+                f"❌ Failed to cache API result for file {file_name}: {cache_error}"
+            )
 
 
 def _evaluate_batch_manual_review(context: WorkflowContextData) -> WorkflowContextData:
@@ -1933,9 +2005,10 @@ def process_file_batch_api(
                     )
                     file_results.append(file_result)
 
-                    # CRITICAL FIX: Cache all file results (both cached and fresh) for API response
+                    # CRITICAL FIX: Cache ALL file results (including errors) for API response
                     # This ensures the backend can collect all results via get_api_results()
-                    if file_result and not file_result.get("error"):
+                    # INCLUDING error results which are needed for proper API error reporting
+                    if file_result:  # Cache both successful AND error results
                         try:
                             from shared.workflow.execution.service import (
                                 WorkerWorkflowExecutionService,
@@ -1943,10 +2016,7 @@ def process_file_batch_api(
 
                             # Create workflow service for caching
                             workflow_service = WorkerWorkflowExecutionService(
-                                api_client=api_client,
-                                workflow_id=workflow_id,
-                                organization_id=schema_name,
-                                is_api=True,
+                                api_client=api_client
                             )
 
                             # Convert file result to FileExecutionResult format for caching
@@ -1971,9 +2041,16 @@ def process_file_batch_api(
                                 result=api_result,
                                 is_api=True,
                             )
-                            logger.debug(
-                                f"Cached API result for file {file_result.get('file_name')}"
-                            )
+
+                            # Log differently for success vs error
+                            if file_result.get("error"):
+                                logger.info(
+                                    f"Cached API ERROR result for file {file_result.get('file_name')}: {file_result.get('error')}"
+                                )
+                            else:
+                                logger.debug(
+                                    f"Cached API success result for file {file_result.get('file_name')}"
+                                )
 
                         except Exception as cache_error:
                             logger.warning(

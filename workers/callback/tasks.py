@@ -820,6 +820,7 @@ def _process_results_and_update_status(
         aggregated_results["total_execution_time"] = wall_clock_time
 
     # Update execution with aggregated results using optimized batching
+    # Set ERROR status only if ALL files failed (per API documentation)
     final_status = (
         ExecutionStatus.COMPLETED.value
         if aggregated_results["failed_files"] != aggregated_results["total_files"]
@@ -1636,6 +1637,21 @@ def process_batch_callback_api(
                         total_files_processed += batch_result.get("files_processed", 0)
                         all_file_results.extend(batch_result.get("file_results", []))
 
+                # Check for errors in file results to determine execution status
+                failed_files = []
+                successful_files = 0
+
+                for file_result in all_file_results:
+                    if file_result.get("error"):
+                        failed_files.append(
+                            {
+                                "file": file_result.get("file_name", "unknown"),
+                                "error": file_result.get("error"),
+                            }
+                        )
+                    else:
+                        successful_files += 1
+
                 # Calculate execution time and finalize
                 # FIXED: Use wall-clock time instead of sum of file processing times
                 # For parallel execution: 3 files x 3 sec each = 4 sec wall-clock, not 9 sec
@@ -1652,11 +1668,26 @@ def process_batch_callback_api(
                         f"DEBUG: Execution time is 0! File results: {[r.get('processing_time', 'missing') for r in all_file_results[:3]]}"
                     )
 
-                # Update execution status to completed with execution time (FIXED)
+                # Determine execution status based on file results (ERROR only if ALL files failed)
+                total_files = len(all_file_results)
+                if failed_files and len(failed_files) == total_files:
+                    # ALL files failed - mark as ERROR
+                    execution_status = ExecutionStatus.ERROR.value
+                    logger.error(
+                        f"API deployment execution {execution_id} failed - all {total_files} files failed"
+                    )
+                else:
+                    # Some or all files succeeded - mark as COMPLETED
+                    execution_status = ExecutionStatus.COMPLETED.value
+                    if failed_files:
+                        logger.warning(
+                            f"API deployment execution {execution_id} completed with {len(failed_files)} failed files out of {total_files} total"
+                        )
+
                 api_client.update_workflow_execution_status(
                     execution_id=execution_id,
-                    status=ExecutionStatus.COMPLETED.value,
-                    execution_time=execution_time,  # Add the calculated execution time
+                    status=execution_status,
+                    execution_time=execution_time,
                 )
 
                 # OPTIMIZATION: Skip pipeline status update for API deployments
