@@ -270,26 +270,27 @@ class AnswerPromptService:
                 # Get webhook configuration from output settings
                 webhook_enabled = output.get("enable_postprocessing_webhook", False)
                 webhook_url = output.get("postprocessing_webhook_url")
-                
+
                 # Get highlight data from metadata if available and highlighting is enabled
                 highlight_data = None
                 if enable_highlight and metadata and PSKeys.HIGHLIGHT_DATA in metadata:
                     highlight_data = metadata[PSKeys.HIGHLIGHT_DATA].get(prompt_key)
-                
+
                 # Process data and get updated highlight data
                 processed_data, updated_highlight_data = postprocess_data(
-                    parsed_data, 
-                    webhook_enabled=webhook_enabled, 
+                    parsed_data,
+                    webhook_enabled=webhook_enabled,
                     webhook_url=webhook_url,
-                    highlight_data=highlight_data
+                    highlight_data=highlight_data,
                 )
-                
+
                 structured_output[prompt_key] = processed_data
-                
+
                 # Update metadata with processed highlight data if available and highlighting is enabled
                 if enable_highlight and metadata and updated_highlight_data is not None:
-                    metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})[prompt_key] = updated_highlight_data
-
+                    metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})[prompt_key] = (
+                        updated_highlight_data
+                    )
 
     @staticmethod
     def extract_line_item(

@@ -104,6 +104,7 @@ class JsonSchemaKey:
     ENABLE_POSTPROCESSING_WEBHOOK = "enable_postprocessing_webhook"
     POSTPROCESSING_WEBHOOK_URL = "postprocessing_webhook_url"
 
+
 class SpecKey:
     PROCESSOR = "processor"
     SPEC = "spec"

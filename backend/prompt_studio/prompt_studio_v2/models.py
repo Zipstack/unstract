@@ -134,13 +134,10 @@ class ToolStudioPrompt(BaseModel):
     )
     # Webhook postprocessing settings
     enable_postprocessing_webhook = models.BooleanField(
-        default=False,
-        db_comment="Enable postprocessing webhook for JSON responses"
+        default=False, db_comment="Enable postprocessing webhook for JSON responses"
     )
     postprocessing_webhook_url = models.TextField(
-        blank=True,
-        null=True,
-        db_comment="URL endpoint for postprocessing webhook"
+        blank=True, null=True, db_comment="URL endpoint for postprocessing webhook"
     )
     # Eval settings for the prompt
     # NOTE:

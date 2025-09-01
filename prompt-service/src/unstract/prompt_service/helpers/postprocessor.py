@@ -14,8 +14,7 @@ def postprocess_data(
     timeout: float = 2.0,
     highlight_data: list | None = None,
 ) -> tuple[dict[str, Any], list | None]:
-    """
-    Post-process parsed data by sending it to an external server.
+    """Post-process parsed data by sending it to an external server.
 
     Args:
         parsed_data: The parsed data to be post-processed
@@ -48,7 +47,9 @@ def postprocess_data(
                 response_data = response.json()
                 if "structured_output" in response_data:
                     updated_parsed_data = response_data["structured_output"]
-                    updated_highlight_data = response_data.get("highlight_data", highlight_data)
+                    updated_highlight_data = response_data.get(
+                        "highlight_data", highlight_data
+                    )
                     return updated_parsed_data, updated_highlight_data
                 else:
                     logger.warning("Response missing 'structured_output' key")
