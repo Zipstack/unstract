@@ -1,9 +1,13 @@
 import logging
+from io import BytesIO
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
+import requests
 from configuration.models import Configuration
-from django.core.files.uploadedfile import UploadedFile
+from django.conf import settings
+from django.core.files.uploadedfile import InMemoryUploadedFile, UploadedFile
+from plugins.workflow_manager.workflow_v2.api_hub_usage_utils import APIHubUsageUtil
 from rest_framework.request import Request
 from rest_framework.serializers import Serializer
 from rest_framework.utils.serializer_helpers import ReturnDict
@@ -25,6 +29,7 @@ from api_v2.exceptions import (
     APINotFound,
     InactiveAPI,
     InvalidAPIRequest,
+    PresignedURLFetchError,
 )
 from api_v2.key_helper import KeyHelper
 from api_v2.models import APIDeployment, APIKey
@@ -150,6 +155,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         tag_names: list[str] = [],
         llm_profile_id: str | None = None,
         hitl_queue_name: str | None = None,
+        request_headers=None,
     ) -> ReturnDict:
         """Execute workflow by api.
 
@@ -181,6 +187,33 @@ class DeploymentHelper(BaseAPIKeyValidator):
             total_files=len(file_objs),
         )
         execution_id = workflow_execution.id
+
+        # Store API hub headers for usage tracking (enterprise feature)
+        if request_headers:
+            try:
+                # Extract and normalize API hub headers
+                normalized_headers = APIHubUsageUtil.extract_api_hub_headers(
+                    request_headers
+                )
+
+                if normalized_headers:
+                    # Cache headers for later usage tracking by file execution tasks
+                    success = APIHubUsageUtil.cache_api_hub_headers(
+                        str(execution_id), normalized_headers
+                    )
+                    if not success:
+                        logger.warning(
+                            f"Failed to cache API hub headers for execution {execution_id}"
+                        )
+                else:
+                    logger.debug(
+                        "No API hub subscription headers found in request headers"
+                    )
+            except Exception as e:
+                # Log but don't fail the API execution for header caching issues
+                logger.debug(
+                    f"API hub header caching failed for execution {execution_id}: {e}"
+                )
 
         hash_values_of_files = SourceConnector.add_input_file_to_api_storage(
             pipeline_id=pipeline_id,
@@ -249,3 +282,149 @@ class DeploymentHelper(BaseAPIKeyValidator):
             execution_id=execution_id
         )
         return execution_response
+
+    @staticmethod
+    def fetch_presigned_file(url: str) -> InMemoryUploadedFile:
+        """Fetch a file from a presigned URL and convert it to an uploaded file.
+
+        Args:
+            url (str): The presigned URL to fetch the file from
+
+        Returns:
+            InMemoryUploadedFile: The fetched file as an uploaded file object
+
+        Raises:
+            PresignedURLFetchError: If the file cannot be fetched
+        """
+        parsed_url = urlparse(url)
+        sanitized_url = parsed_url._replace(query="").geturl()  # For logging
+        file_stream = None
+
+        try:
+            max_bytes = settings.API_DEPL_PRESIGNED_URL_MAX_FILE_SIZE_MB * 1024 * 1024
+
+            file_stream = BytesIO()
+            downloaded = 0
+            content_type = ""  # Default content type
+
+            # Download the file with streaming
+            with requests.get(
+                url, stream=True, timeout=(5, 30), allow_redirects=False
+            ) as resp:
+                resp.raise_for_status()
+
+                # Store content type for later use
+                content_type = resp.headers.get("Content-Type", "")
+
+                # Check Content-Length header if available
+                content_length = resp.headers.get("Content-Length")
+                if content_length:
+                    try:
+                        if int(content_length) > max_bytes:
+                            raise PresignedURLFetchError(
+                                url=sanitized_url,
+                                error_message=f"File too large ({content_length} bytes). Max allowed: {max_bytes} bytes",
+                                status_code=413,  # Payload Too Large
+                            )
+                    except ValueError:
+                        # Non-integer Content-Length; ignore and fall back to stream enforcement
+                        pass
+
+                # Stream the body with an upper bound to prevent memory exhaustion
+                for chunk in resp.iter_content(chunk_size=1024 * 1024):
+                    if not chunk:
+                        continue
+
+                    downloaded += len(chunk)
+                    if downloaded > max_bytes:
+                        raise PresignedURLFetchError(
+                            url=sanitized_url,
+                            error_message=f"File exceeds maximum allowed size of {max_bytes} bytes",
+                            status_code=413,  # Payload Too Large
+                        )
+
+                    file_stream.write(chunk)
+
+                # Reset stream position to beginning for reading
+                file_stream.seek(0)
+
+            # Extract filename from URL path
+            filename = (
+                parsed_url.path.split("/")[-1] if parsed_url.path else "unknown_file"
+            )
+
+            # Use octet-stream for generic or missing content types
+            if content_type in ["", "application/octet-stream", "binary/octet-stream"]:
+                content_type = "application/octet-stream"
+                logger.warning(
+                    f"Could not detect MIME type for file '{filename}' from URL '{sanitized_url}'"
+                )
+
+            logger.info(
+                f"Fetched file '{filename}' with MIME type '{content_type}' from presigned URL {sanitized_url}"
+            )
+
+            # Return as an InMemoryUploadedFile
+            return InMemoryUploadedFile(
+                file=file_stream,
+                field_name="file",
+                name=filename,
+                content_type=content_type,
+                size=downloaded,
+                charset=None,
+            )
+
+        except requests.RequestException as e:
+            if (
+                isinstance(e, requests.exceptions.HTTPError)
+                and hasattr(e, "response")
+                and e.response is not None
+            ):
+                status_code = e.response.status_code
+                error_msg = f"{e.response.status_code} {e.response.reason}"
+            elif isinstance(
+                e, (requests.exceptions.ConnectTimeout, requests.exceptions.ReadTimeout)
+            ):
+                status_code = 504  # Gateway Timeout
+                error_msg = f"Request timed out: {str(e)}"
+                logger.error(f"Timeout error fetching presigned URL {sanitized_url}: {e}")
+            elif isinstance(e, requests.exceptions.ConnectionError):
+                status_code = 502  # Bad Gateway
+                error_msg = f"Connection error: {str(e)}"
+                logger.error(
+                    f"Connection error fetching presigned URL {sanitized_url}: {e}"
+                )
+            else:
+                status_code = 400
+                error_msg = str(e)
+                logger.error(f"Error fetching presigned URL {sanitized_url}: {e}")
+
+            raise PresignedURLFetchError(
+                url=sanitized_url, error_message=error_msg, status_code=status_code
+            )
+
+        finally:
+            if file_stream:
+                try:
+                    file_stream.close()
+                except Exception as e:
+                    logger.warning(f"Failed to close file stream: {str(e)}")
+
+    @staticmethod
+    def load_presigned_files(
+        presigned_urls: list[str], file_objs: list[UploadedFile]
+    ) -> None:
+        """Load files from presigned URLs and append them to file_objs.
+
+        This method processes each URL individually, fetches the file,
+        and adds it to the provided file_objs list.
+
+        Note: URL validation is assumed to be already done by the serializer.
+
+        Args:
+            presigned_urls (list[str]): List of presigned URLs to fetch files from
+            file_objs (list[UploadedFile]): List to append the fetched files to
+        """
+        for url in presigned_urls:
+            uploaded_file = DeploymentHelper.fetch_presigned_file(url)
+            file_objs.append(uploaded_file)

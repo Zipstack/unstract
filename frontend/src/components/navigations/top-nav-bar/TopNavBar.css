@@ -31,7 +31,7 @@
   background: inherit;
   box-shadow: none;
   text-align: left;
-  padding: 0;
+  padding: 5px 12px;
   height: auto;
   border-radius: 0;
   border-color: transparent;
@@ -74,4 +74,8 @@
 .platform-switch-container {
   display: flex;
   align-items: center;
+}
+
+.user-profile-menu > .ant-dropdown-menu-item {
+  padding: 0 !important;
 }
