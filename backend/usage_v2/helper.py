@@ -48,12 +48,12 @@ class UsageHelper:
 
         # Handle datetime objects
         if isinstance(value, datetime):
-            # If naive, make it timezone-aware using reference timezone
+            # If naive, make it timezone-aware using Django's make_aware
             if value.tzinfo is None:
-                value = value.replace(tzinfo=reference_tz)
-            # If already timezone-aware but different timezone, convert to reference
+                value = timezone.make_aware(value, reference_tz)
+            # If already timezone-aware but different timezone, convert using localtime
             elif reference_tz and value.tzinfo != reference_tz:
-                value = value.astimezone(reference_tz)
+                value = timezone.localtime(value, reference_tz)
 
         return value
 
@@ -157,12 +157,18 @@ class UsageHelper:
     @staticmethod
     def _get_reference_timezone(org_created_at):
         """Get reference timezone from organization or use UTC."""
-        if hasattr(org_created_at, "tzinfo") and org_created_at.tzinfo:
+        # First normalize to datetime if it's a date object
+        if isinstance(org_created_at, date) and not isinstance(org_created_at, datetime):
+            org_created_at = datetime.combine(org_created_at, time.min)
+
+        # Now we can safely check tzinfo on datetime object
+        if isinstance(org_created_at, datetime) and org_created_at.tzinfo:
             return org_created_at.tzinfo, org_created_at
 
+        # Make timezone-aware using Django's timezone utilities
         reference_tz = timezone.utc
-        if org_created_at.tzinfo is None:
-            org_created_at = org_created_at.replace(tzinfo=reference_tz)
+        if isinstance(org_created_at, datetime) and org_created_at.tzinfo is None:
+            org_created_at = timezone.make_aware(org_created_at, reference_tz)
         return reference_tz, org_created_at
 
     @staticmethod
