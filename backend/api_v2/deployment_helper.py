@@ -403,12 +403,6 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 url=sanitized_url, error_message=error_msg, status_code=status_code
             )
 
-        finally:
-            if file_stream:
-                try:
-                    file_stream.close()
-                except Exception as e:
-                    logger.warning(f"Failed to close file stream: {str(e)}")
 
     @staticmethod
     def load_presigned_files(
