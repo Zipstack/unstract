@@ -1,5 +1,8 @@
+import ipaddress
+import socket
 from logging import Logger
 from typing import Any
+from urllib.parse import urlparse
 
 from flask import current_app as app
 
@@ -21,6 +24,39 @@ from unstract.sdk.file_storage import FileStorage, FileStorageProvider
 from unstract.sdk.file_storage.constants import StorageType
 from unstract.sdk.file_storage.env_helper import EnvHelper
 from unstract.sdk.llm import LLM
+
+
+def _is_safe_public_url(url: str) -> bool:
+    """Validate webhook URL for SSRF protection.
+
+    Only allows HTTPS and blocks private/loopback/internal addresses.
+    """
+    try:
+        p = urlparse(url)
+        if p.scheme not in ("https",):  # Only allow HTTPS for security
+            return False
+        host = p.hostname or ""
+        # Block obvious local hosts
+        if host in ("localhost",):
+            return False
+        try:
+            ip = ipaddress.ip_address(host)
+        except ValueError:
+            # Not an IP literal — resolve once to check common private ranges
+            try:
+                resolved = socket.gethostbyname(host)
+                ip = ipaddress.ip_address(resolved)
+            except Exception:
+                return False
+        return not (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+        )
+    except Exception:
+        return False
 
 
 class AnswerPromptService:
@@ -278,13 +314,31 @@ class AnswerPromptService:
                 if enable_highlight and metadata and PSKeys.HIGHLIGHT_DATA in metadata:
                     highlight_data = metadata[PSKeys.HIGHLIGHT_DATA].get(prompt_key)
 
-                # Process data and get updated highlight data
-                processed_data, updated_highlight_data = postprocess_data(
-                    parsed_data,
-                    webhook_enabled=webhook_enabled,
-                    webhook_url=webhook_url,
-                    highlight_data=highlight_data,
-                )
+                # Process data (optionally via webhook) with safety guards and fallback
+                processed_data = parsed_data
+                updated_highlight_data = None
+
+                if webhook_enabled:
+                    if not webhook_url:
+                        app.logger.warning(
+                            "Postprocessing webhook enabled but URL missing; skipping."
+                        )
+                    elif not _is_safe_public_url(webhook_url):
+                        app.logger.warning(
+                            "Postprocessing webhook URL is not allowed; skipping."
+                        )
+                    else:
+                        try:
+                            processed_data, updated_highlight_data = postprocess_data(
+                                parsed_data,
+                                webhook_enabled=True,
+                                webhook_url=webhook_url,
+                                highlight_data=highlight_data,
+                            )
+                        except Exception as e:
+                            app.logger.warning(
+                                f"Postprocessing webhook failed: {e}. Using unprocessed data."
+                            )
 
                 structured_output[prompt_key] = processed_data
 

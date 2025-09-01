@@ -47,9 +47,25 @@ def postprocess_data(
                 response_data = response.json()
                 if "structured_output" in response_data:
                     updated_parsed_data = response_data["structured_output"]
+                    # Ensure we only accept dict or list payloads
+                    if not isinstance(updated_parsed_data, (dict, list)):
+                        logger.warning(
+                            "Ignoring postprocessing due to invalid structured_output type"
+                        )
+                        return parsed_data, highlight_data
                     updated_highlight_data = response_data.get(
                         "highlight_data", highlight_data
                     )
+                    # Validate highlight_data type if it was updated from webhook
+                    if (
+                        updated_highlight_data is not None
+                        and updated_highlight_data != highlight_data
+                        and not isinstance(updated_highlight_data, list)
+                    ):
+                        logger.warning(
+                            "Ignoring webhook highlight_data due to invalid type (expected list)"
+                        )
+                        updated_highlight_data = highlight_data
                     return updated_parsed_data, updated_highlight_data
                 else:
                     logger.warning("Response missing 'structured_output' key")

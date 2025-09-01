@@ -14,6 +14,7 @@ dependencies = [
     "llama-index==0.12.39",
     "python-dotenv==1.0.0",
     "json-repair~=0.42.0",
+    "requests>=2.28,<3.0",
     # TODO: Temporarily removing the extra dependencies of aws and gcs from unstract-sdk
     # to resolve lock file. Will have to be re-looked into
     "unstract-sdk[azure]~=0.76.1",
@@ -22,11 +23,15 @@ dependencies = [
     "redis>=5.0.3,<5.3",
     "unstract-core",
     "unstract-flags",
+    "unstract-sdk1",
+    "unstract-autogen-client"
 ]
 
 [tool.uv.sources]
 unstract-flags = { path = "../unstract/flags", editable = true }
 unstract-core = { path = "../unstract/core", editable = true }
+unstract-sdk1 = { path = "../unstract/sdk1", editable = true }
+unstract-autogen-client = { path = "../unstract/autogen-client", editable = true }
 
 [dependency-groups]
 test = [
