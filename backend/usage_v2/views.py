@@ -121,6 +121,16 @@ class UsageView(viewsets.ModelViewSet):
             # Get trial statistics from helper
             trial_stats = UsageHelper.get_trial_statistics(user_organization)
 
+            # Check if the response contains an error
+            if isinstance(trial_stats, dict) and "error" in trial_stats:
+                logger.error(
+                    f"Error in trial statistics for organization {user_organization.organization_id}: "
+                    f"{trial_stats.get('error', 'Unknown error')}"
+                )
+                return Response(
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR, data=trial_stats
+                )
+
             # Log successful retrieval for audit purposes
             logger.info(
                 f"Trial statistics retrieved for organization {user_organization.organization_id}"
