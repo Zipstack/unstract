@@ -253,8 +253,8 @@ class AnswerPromptService:
             parsed_data = repair_json_with_best_structure(answer)
 
             if isinstance(parsed_data, str):
-                err_msg = f"Error parsing response (to json)\nCandidate JSON: {answer}"
-                app.logger.info(err_msg, LogLevel.ERROR)
+                err_msg = "Error parsing response to JSON"
+                app.logger.error(err_msg)
                 publish_log(
                     log_events_id,
                     {
@@ -262,7 +262,7 @@ class AnswerPromptService:
                         "prompt_key": prompt_key,
                         "doc_name": doc_name,
                     },
-                    LogLevel.INFO,
+                    LogLevel.WARNING,
                     RunLevel.RUN,
                     "Unable to parse JSON response from LLM, try using our"
                     " cloud / enterprise feature 'record' or 'table' type",
