@@ -198,7 +198,7 @@ function Header({
                   onChange={() => handleRequiredChange("any")}
                   className="required-checkbox-padding"
                 >
-                  Atleast 1 JSON Value Required
+                  At least 1 JSON Value Required
                 </Checkbox>
                 <Tooltip title="When set, saving this record won't be allowed in Human Quality Review without at least one value filled in this JSON structure.">
                   <InfoCircleOutlined />
@@ -361,7 +361,7 @@ function Header({
                   isCoverageLoading ||
                   indexDocs?.includes(selectedDoc?.document_id) ||
                   isPublicSource ||
-                  spsLoading[selectedDoc?.document_id]
+                  spsLoading?.[selectedDoc?.document_id]
                 }
               >
                 <PlayCircleOutlined className="prompt-card-actions-head" />
@@ -416,7 +416,7 @@ function Header({
 
 Header.propTypes = {
   promptDetails: PropTypes.object.isRequired,
-  promptKey: PropTypes.text,
+  promptKey: PropTypes.string,
   setPromptKey: PropTypes.func.isRequired,
   progressMsg: PropTypes.object.isRequired,
   handleRun: PropTypes.func.isRequired,
@@ -431,7 +431,7 @@ Header.propTypes = {
   setExpandCard: PropTypes.func.isRequired,
   spsLoading: PropTypes.object,
   handleSpsLoading: PropTypes.func.isRequired,
-  enforceType: PropTypes.text,
+  enforceType: PropTypes.string,
 };
 
 export { Header };

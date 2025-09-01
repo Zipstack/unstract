@@ -30,6 +30,7 @@ def _is_safe_public_url(url: str) -> bool:
     """Validate webhook URL for SSRF protection.
 
     Only allows HTTPS and blocks private/loopback/internal addresses.
+    Resolves all DNS records (A/AAAA) to prevent DNS rebinding attacks.
     """
     try:
         p = urlparse(url)
@@ -39,22 +40,40 @@ def _is_safe_public_url(url: str) -> bool:
         # Block obvious local hosts
         if host in ("localhost",):
             return False
+
+        addrs: set[str] = set()
+        # If literal IP, validate directly; else resolve all records (A/AAAA)
         try:
-            ip = ipaddress.ip_address(host)
+            ipaddress.ip_address(host)
+            addrs.add(host)
         except ValueError:
-            # Not an IP literal — resolve once to check common private ranges
             try:
-                resolved = socket.gethostbyname(host)
-                ip = ipaddress.ip_address(resolved)
+                for family, _type, _proto, _canonname, sockaddr in socket.getaddrinfo(
+                    host, None, type=socket.SOCK_STREAM
+                ):
+                    addr = sockaddr[0]
+                    addrs.add(addr)
             except Exception:
                 return False
-        return not (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_reserved
-            or ip.is_multicast
-        )
+
+        if not addrs:
+            return False
+
+        # Validate all resolved addresses
+        for addr in addrs:
+            try:
+                ip = ipaddress.ip_address(addr)
+            except ValueError:
+                return False
+            if (
+                ip.is_private
+                or ip.is_loopback
+                or ip.is_link_local
+                or ip.is_reserved
+                or ip.is_multicast
+            ):
+                return False
+        return True
     except Exception:
         return False
 
