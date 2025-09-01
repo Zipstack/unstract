@@ -110,8 +110,10 @@ class AnswerPromptService:
                     if PSKeys.SYNONYMS in grammar:
                         synonyms = grammar[PSKeys.SYNONYMS]
                 if len(synonyms) > 0 and word != "":
-                    prompt += f"\nNote: You can consider that the word {word} is same as \
-                        {', '.join(synonyms)} in both the quesiton and the context."  # noqa
+                    prompt += (
+                        f"\nNote: You can consider that the word '{word}' "
+                        f"is the same as {', '.join(synonyms)} in both the question and the context."
+                    )  # noqa
         if prompt_type == PSKeys.JSON:
             json_postamble = get_env_or_die(
                 PSKeys.JSON_POSTAMBLE, PSKeys.DEFAULT_JSON_POSTAMBLE
@@ -268,8 +270,8 @@ class AnswerPromptService:
                 structured_output[prompt_key] = {}
             else:
                 # Get webhook configuration from output settings
-                webhook_enabled = output.get("enable_postprocessing_webhook", False)
-                webhook_url = output.get("postprocessing_webhook_url")
+                webhook_enabled = output.get(PSKeys.ENABLE_POSTPROCESSING_WEBHOOK, False)
+                webhook_url = output.get(PSKeys.POSTPROCESSING_WEBHOOK_URL)
 
                 # Get highlight data from metadata if available and highlighting is enabled
                 highlight_data = None

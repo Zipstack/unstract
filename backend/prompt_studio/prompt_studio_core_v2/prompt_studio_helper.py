@@ -1828,6 +1828,10 @@ class PromptStudioHelper:
                     "eval_guidance_completeness",
                     DefaultValues.DEFAULT_EVAL_GUIDANCE_COMPLETENESS,
                 ),
+                enable_postprocessing_webhook=prompt_data.get(
+                    "enable_postprocessing_webhook", False
+                ),
+                postprocessing_webhook_url=prompt_data.get("postprocessing_webhook_url"),
                 tool_id=new_tool,
                 profile_manager=default_profile,
                 created_by=user,
