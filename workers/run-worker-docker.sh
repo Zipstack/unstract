@@ -259,6 +259,25 @@ run_worker() {
         celery_args="$celery_args --soft-time-limit=$CELERY_SOFT_TIME_LIMIT"
     fi
 
+    # Add gossip, mingle, and heartbeat control flags based on environment variables
+    # Default: gossip=true, mingle=true, heartbeat=true (Celery defaults)
+    # To disable, set environment variable to "false"
+
+    if [[ "${CELERY_WORKER_GOSSIP:-true}" == "false" ]]; then
+        celery_args="$celery_args --without-gossip"
+        print_status $YELLOW "  → Gossip disabled (inter-worker discovery)"
+    fi
+
+    if [[ "${CELERY_WORKER_MINGLE:-true}" == "false" ]]; then
+        celery_args="$celery_args --without-mingle"
+        print_status $YELLOW "  → Mingle disabled (startup synchronization)"
+    fi
+
+    if [[ "${CELERY_WORKER_HEARTBEAT:-true}" == "false" ]]; then
+        celery_args="$celery_args --without-heartbeat"
+        print_status $YELLOW "  → Heartbeat disabled (health monitoring)"
+    fi
+
     # Add any additional custom Celery arguments
     if [[ -n "$CELERY_EXTRA_ARGS" ]]; then
         celery_args="$celery_args $CELERY_EXTRA_ARGS"

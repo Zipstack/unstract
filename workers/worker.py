@@ -113,9 +113,6 @@ app.conf.update(
     task_acks_late=True,
     worker_send_task_events=True,
     task_send_sent_event=True,
-    # Disable gossip to prevent inter-worker sync overhead at scale
-    worker_gossip=os.getenv("CELERY_WORKER_GOSSIP", "false").lower() == "true",
-    worker_mingle=os.getenv("CELERY_WORKER_MINGLE", "false").lower() == "true",
     # Additional optimizations for high-scale deployments
     worker_disable_rate_limits=os.getenv("CELERY_DISABLE_RATE_LIMITS", "true").lower()
     == "true",
