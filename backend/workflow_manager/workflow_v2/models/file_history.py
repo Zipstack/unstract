@@ -11,10 +11,6 @@ HASH_LENGTH = 64
 FILE_PATH_LENGTH = 1000
 
 
-class FileHistoryManager(models.Manager):
-    """Custom manager for FileHistory with reprocessing logic."""
-
-
 class FileHistory(BaseModel):
     def is_completed(self) -> bool:
         """Check if the execution status is completed.
@@ -54,8 +50,6 @@ class FileHistory(BaseModel):
     file_path = models.CharField(
         max_length=FILE_PATH_LENGTH, null=True, db_comment="Full Path of the file"
     )
-
-    objects: FileHistoryManager = FileHistoryManager()
 
     class Meta:
         verbose_name = "File History"

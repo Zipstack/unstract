@@ -434,6 +434,7 @@ class SourceConnector(BaseConnector):
         """Find blocking file execution by file hash if it exists."""
         if not file_hash.file_hash:
             return None
+
         try:
             return WorkflowFileExecution.objects.get(
                 workflow_execution=execution,
@@ -493,10 +494,7 @@ class SourceConnector(BaseConnector):
             return True
 
         # Existing file history check
-        is_new_file = self._is_new_file(
-            file_hash=file_hash, workflow=self.endpoint.workflow
-        )
-        if not is_new_file:
+        if not self._is_new_file(file_hash=file_hash, workflow=self.endpoint.workflow):
             return True
 
         # NEW: Check if file is being processed
