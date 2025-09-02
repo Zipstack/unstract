@@ -72,18 +72,19 @@ class WorkerWorkflowExecutionService:
 
             if not tool_instances_data:
                 logger.warning(f"No tool instances found for workflow {workflow_id}")
-                return {
-                    "file_execution_id": workflow_file_execution_id,
-                    "file": file_name,
-                    "result": None,
-                    "success": False,
-                    "error": "No tool instances found for workflow",
-                    "metadata": {
+                return self._create_execution_result(
+                    workflow_file_execution_id=workflow_file_execution_id,
+                    file_name=file_name,
+                    file_data=file_data,
+                    success=False,
+                    result=None,
+                    error="No tool instances found for workflow",
+                    metadata={
                         "workflow_id": workflow_id,
                         "execution_id": execution_id,
                         "execution_time": time.time() - start_time,
                     },
-                }
+                )
 
             # Create a worker-compatible execution service
             execution_service = self._create_worker_execution_service(
@@ -193,17 +194,15 @@ class WorkerWorkflowExecutionService:
                     logger.error(f"ERROR: Traceback: {traceback.format_exc()}")
 
                 # Create final result
-                final_result = {
-                    "file_execution_id": workflow_file_execution_id,
-                    "file": file_name,
-                    "result": workflow_result,
-                    "success": True,
-                    "error": None,
-                    "metadata": result_metadata,
-                    "source_hash": file_data.get(
-                        "file_hash"
-                    ),  # Include computed hash for file history
-                }
+                final_result = self._create_execution_result(
+                    workflow_file_execution_id=workflow_file_execution_id,
+                    file_name=file_name,
+                    file_data=file_data,
+                    success=True,
+                    result=workflow_result,
+                    error=None,
+                    metadata=result_metadata,
+                )
 
                 # Handle destination processing for API vs ETL/TASK workflows
                 if is_api:
@@ -282,42 +281,77 @@ class WorkerWorkflowExecutionService:
                 )
                 logger.error(f"Returning error result for {file_name}: {specific_error}")
 
-                return {
-                    "file_execution_id": workflow_file_execution_id,
-                    "file": file_name,
-                    "result": None,
-                    "success": False,
-                    "error": specific_error,
-                    "metadata": {
+                error_result = self._create_execution_result(
+                    workflow_file_execution_id=workflow_file_execution_id,
+                    file_name=file_name,
+                    file_data=file_data,
+                    success=False,
+                    result=None,
+                    error=specific_error,
+                    metadata={
                         "workflow_id": workflow_id,
                         "execution_id": execution_id,
                         "execution_time": execution_time,
                     },
-                    "source_hash": file_data.get(
-                        "file_hash"
-                    ),  # Include computed hash if available
-                }
+                )
+
+                # Cache error results for API workflows
+                if is_api:
+                    try:
+                        self.cache_api_result(
+                            workflow_id=workflow_id,
+                            execution_id=execution_id,
+                            result=error_result,
+                            is_api=True,
+                        )
+                        logger.info(
+                            f"Successfully cached API error result for execution {execution_id}"
+                        )
+                    except Exception as cache_error:
+                        logger.warning(f"Failed to cache API error result: {cache_error}")
+                        # Don't fail the execution if caching fails
+
+                return error_result
 
         except Exception as e:
             execution_time = time.time() - start_time
             error_msg = f"Failed to execute workflow for file {file_name}: {str(e)}"
             logger.error(error_msg, exc_info=True)
 
-            return {
-                "file_execution_id": workflow_file_execution_id,
-                "file": file_name,
-                "result": None,
-                "success": False,
-                "error": str(e),
-                "metadata": {
+            return self._create_execution_result(
+                workflow_file_execution_id=workflow_file_execution_id,
+                file_name=file_name,
+                file_data=file_data,
+                success=False,
+                result=None,
+                error=str(e),
+                metadata={
                     "workflow_id": workflow_id,
                     "execution_id": execution_id,
                     "execution_time": execution_time,
                 },
-                "source_hash": file_data.get(
-                    "file_hash"
-                ),  # Include computed hash if available
-            }
+            )
+
+    def _create_execution_result(
+        self,
+        workflow_file_execution_id: str,
+        file_name: str,
+        file_data: dict[str, Any],
+        success: bool,
+        result: Any = None,
+        error: str = None,
+        metadata: dict[str, Any] = None,
+    ) -> dict[str, Any]:
+        """Create standardized execution result structure for both success and error cases."""
+        return {
+            "file_execution_id": workflow_file_execution_id,
+            "file": file_name,
+            "result": result,
+            "success": success,
+            "error": error,
+            "metadata": metadata,
+            "source_hash": file_data.get("file_hash"),
+        }
 
     def _create_worker_execution_service(
         self,

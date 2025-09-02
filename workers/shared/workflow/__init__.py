@@ -10,10 +10,12 @@ Components:
 
 from .destination_connector import DestinationConfig, WorkerDestinationConnector
 from .source_connector import SourceConfig, WorkerSourceConnector
+from .workflow_utils import detect_comprehensive_workflow_type
 
 __all__ = [
     "WorkerDestinationConnector",
     "DestinationConfig",
     "WorkerSourceConnector",
     "SourceConfig",
+    "detect_comprehensive_workflow_type",
 ]

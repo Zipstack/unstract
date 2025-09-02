@@ -24,20 +24,23 @@ from shared.infrastructure.database.utils import WorkerDatabaseUtils
 
 from unstract.connectors.connectorkit import Connectorkit
 from unstract.core.data_models import ConnectionType as CoreConnectionType
-from unstract.core.data_models import FileHashData
+from unstract.core.data_models import FileHashData, WorkflowType
 from unstract.filesystem import FileStorageType, FileSystem
 from unstract.sdk.constants import ToolExecKey
 from unstract.workflow_execution.constants import (
+    MetaDataKey,
+    ToolMetadataKey,
     ToolOutputType,
 )
 from unstract.workflow_execution.execution_file_handler import (
     ExecutionFileHandler,
 )
 
-from ..enums import FileDestinationType
+from ..enums import DestinationConfigKey, FileDestinationType
 from ..infrastructure.logging import WorkerLogger
 from ..infrastructure.logging.helpers import log_file_info
 from .connectors.service import WorkerConnectorService
+from .workflow_utils import detect_comprehensive_workflow_type
 
 if TYPE_CHECKING:
     from ..api_client import InternalAPIClient
@@ -575,14 +578,6 @@ class WorkerDestinationConnector:
         if file_execution_id:
             self.current_file_execution_id = file_execution_id
 
-        # DEBUG: Log what we received
-        logger.info(
-            f"DEBUG: insert_into_db called with tool_execution_result type: {type(tool_execution_result)}"
-        )
-        logger.info(
-            f"DEBUG: insert_into_db tool_execution_result value: {tool_execution_result}"
-        )
-
         # Extract connector instance details from instance variables (now properly set)
         connector_id = self.connector_id
         connector_settings = self.connector_settings
@@ -719,12 +714,28 @@ class WorkerDestinationConnector:
         file_execution_id: str = None,
         api_client: Optional["InternalAPIClient"] = None,
     ) -> None:
-        """Copy output to the destination directory (following backend production pattern)."""
+        """Copy output to the destination directory (following backend production pattern).
+
+        This method should ONLY be called for TASK workflows where destination is FILESYSTEM.
+        ETL workflows (destination=DATABASE) use insert_into_db() instead.
+        API workflows don't use this destination copying logic.
+        """
         # Store file_execution_id for logging
         if file_execution_id:
             self.current_file_execution_id = file_execution_id
 
-        logger.info(f"Copying output to filesystem destination for {input_file_path}")
+        # ARCHITECTURE VALIDATION: Ensure this is only called for TASK workflows
+        if api_client and self.workflow_id:
+            workflow_type, is_api = detect_comprehensive_workflow_type(
+                api_client, self.workflow_id
+            )
+            if workflow_type != WorkflowType.TASK:
+                logger.warning(
+                    f"copy_output_to_output_directory called for {workflow_type} workflow {self.workflow_id} - this should only be used for {WorkflowType.TASK} workflows"
+                )
+                return
+
+        # Copy output to filesystem destination
 
         try:
             # Get destination connector settings - exactly like backend
@@ -740,13 +751,11 @@ class WorkerDestinationConnector:
             connector_settings = self.connector_settings
             destination_configurations = self.settings or {}
 
-            # Extract destination path configuration (like backend lines 265-269)
-            root_path = str(
-                connector_settings.get("path", "")
-            )  # DestinationKey.PATH = "path"
+            # Extract destination path configuration using enums to prevent camelCase/snake_case issues
+            root_path = str(connector_settings.get(DestinationConfigKey.PATH, ""))
             output_directory = str(
-                destination_configurations.get("output_folder", "/")
-            )  # DestinationKey.OUTPUT_FOLDER = "output_folder"
+                destination_configurations.get(DestinationConfigKey.OUTPUT_FOLDER, "/")
+            )
 
             # Get the destination connector instance (lines 270-272)
             logger.debug(f"Initializing destination connector: {self.connector_id}")
@@ -759,7 +768,6 @@ class WorkerDestinationConnector:
             output_directory = destination_fs.get_connector_root_dir(
                 input_dir=output_directory, root_path=root_path
             )
-            logger.debug(f"destination output directory {output_directory}")
 
             # Build destination volume path like backend (lines 277-279)
             # Backend uses self.file_execution_dir which maps to our execution path
@@ -774,7 +782,16 @@ class WorkerDestinationConnector:
 
             # Backend logic: Create destination directory if needed (line 282)
             try:
-                destination_fs.create_dir_if_not_exists(input_dir=output_directory)
+                # CONNECTOR COMPATIBILITY: Skip root directory creation for certain paths
+                normalized_output_dir = output_directory.strip("/")
+                if normalized_output_dir and normalized_output_dir != ".":
+                    destination_fs.create_dir_if_not_exists(
+                        input_dir=normalized_output_dir
+                    )
+                else:
+                    logger.debug(
+                        f"Skipping root directory creation for path: '{output_directory}'"
+                    )
             except Exception as e:
                 logger.warning(
                     f"Could not create destination directory {output_directory}: {e}"
@@ -782,6 +799,7 @@ class WorkerDestinationConnector:
 
             # Backend logic: Walk the OUTPUT_DIR and copy everything (lines 287-307)
             copied_files = []
+            failed_files = []
             total_copied = 0
 
             # Check if OUTPUT_DIR exists before walking
@@ -806,10 +824,22 @@ class WorkerDestinationConnector:
                                 dir_name,
                             )
                             try:
-                                destination_fs.create_dir_if_not_exists(
-                                    input_dir=current_dir
-                                )
-                                logger.debug(f"Created directory: {current_dir}")
+                                # CONNECTOR COMPATIBILITY: Skip root directory creation for certain paths
+                                normalized_current_dir = current_dir.strip("/")
+                                if (
+                                    normalized_current_dir
+                                    and normalized_current_dir != "."
+                                ):
+                                    destination_fs.create_dir_if_not_exists(
+                                        input_dir=normalized_current_dir
+                                    )
+                                    logger.debug(
+                                        f"Created directory: {normalized_current_dir}"
+                                    )
+                                else:
+                                    logger.debug(
+                                        f"Skipping root directory creation for path: '{current_dir}'"
+                                    )
                             except Exception as e:
                                 logger.warning(
                                     f"Could not create directory {current_dir}: {e}"
@@ -818,26 +848,66 @@ class WorkerDestinationConnector:
                         # Copy files (lines 298-307)
                         for file_name in files:
                             source_path = os.path.join(root, file_name)
-                            destination_path = os.path.join(
-                                output_directory,
-                                os.path.relpath(root, destination_volume_path),
-                                file_name,
-                            )
+
+                            # Calculate relative path and handle path construction properly
+                            relative_path = os.path.relpath(root, destination_volume_path)
+
+                            if relative_path == "." or not relative_path:
+                                # When root == destination_volume_path, use output_directory directly
+                                destination_path = os.path.join(
+                                    output_directory, file_name
+                                )
+                            else:
+                                destination_path = os.path.join(
+                                    output_directory,
+                                    relative_path,
+                                    file_name,
+                                )
+
+                            # Normalize path and validate
+                            destination_path = os.path.normpath(destination_path)
+
+                            # ARCHITECTURE FIX: Proper error handling instead of inconsistent fallbacks
+                            if not destination_path or destination_path in [".", "/"]:
+                                error_msg = f"Invalid destination path '{destination_path}' constructed for file {file_name}"
+                                logger.error(f"ERROR: {error_msg}")
+                                logger.error(
+                                    f"ERROR: Debug info - output_directory='{output_directory}', relative_path='{relative_path}', root='{root}', destination_volume_path='{destination_volume_path}'"
+                                )
+                                raise ValueError(error_msg)
 
                             try:
-                                logger.debug(
-                                    f"Copying: {source_path} → {destination_path}"
+                                # CONNECTOR COMPATIBILITY: Handle path normalization for worker context
+                                # Remove leading slash that can cause issues with various connectors
+                                final_destination_path = (
+                                    destination_path.lstrip("/")
+                                    if destination_path.startswith("/")
+                                    else destination_path
                                 )
+
+                                # Validate the final path is not empty after normalization
+                                if (
+                                    not final_destination_path
+                                    or final_destination_path in [".", ""]
+                                ):
+                                    raise ValueError(
+                                        f"Invalid destination path after normalization: '{final_destination_path}' (original: '{destination_path}')"
+                                    )
+
                                 destination_fs.upload_file_to_storage(
                                     source_path=source_path,
-                                    destination_path=destination_path,
+                                    destination_path=final_destination_path,
                                 )
                                 copied_files.append(file_name)
                                 total_copied += 1
                                 logger.debug(f"✅ Successfully copied: {file_name}")
 
                             except Exception as copy_error:
-                                logger.error(f"Failed to copy {file_name}: {copy_error}")
+                                logger.error(
+                                    f"Failed to copy {file_name}: {copy_error}",
+                                    exc_info=True,
+                                )
+                                failed_files.append(file_name)
                                 # Continue with other files even if one fails
 
                 except Exception as walk_error:
@@ -845,27 +915,58 @@ class WorkerDestinationConnector:
                         f"Failed to walk output directory {destination_volume_path}: {walk_error}"
                     )
 
-            # Log success - match backend approach (no detailed file listing)
-            if total_copied > 0:
+            # Report results - handle both successes and failures
+            if failed_files:
+                # If any files failed, this should be treated as an error
+                failed_count = len(failed_files)
+                if failed_count == 1:
+                    error_message = (
+                        f"❌ Failed to copy file to destination: {failed_files[0]}"
+                    )
+                else:
+                    error_message = (
+                        f"❌ Failed to copy {failed_count} files to destination"
+                    )
+                logger.error(error_message)
+
+                # Log to UI with file_execution_id
+                if self.workflow_log and hasattr(self, "current_file_execution_id"):
+                    log_file_info(
+                        self.workflow_log,
+                        self.current_file_execution_id,
+                        error_message,
+                    )
+
+                # Raise exception to trigger proper error handling
+                raise Exception(f"Destination copy failed: {error_message}")
+            elif total_copied > 0:
                 success_message = f"💾 Successfully copied {total_copied} files to filesystem destination"
                 logger.info(success_message)
+
+                # Log to UI
+                if self.workflow_log and hasattr(self, "current_file_execution_id"):
+                    log_file_info(
+                        self.workflow_log,
+                        self.current_file_execution_id,
+                        success_message,
+                    )
             else:
                 success_message = (
                     "💾 No output files found to copy to filesystem destination"
                 )
                 logger.info(success_message)
 
-            # Log to UI with file_execution_id for better correlation
-            if self.workflow_log and hasattr(self, "current_file_execution_id"):
-                log_file_info(
-                    self.workflow_log,
-                    self.current_file_execution_id,
-                    success_message,
-                )
+                # Log to UI
+                if self.workflow_log and hasattr(self, "current_file_execution_id"):
+                    log_file_info(
+                        self.workflow_log,
+                        self.current_file_execution_id,
+                        success_message,
+                    )
 
         except Exception as e:
             error_msg = f"Failed to copy files to filesystem destination: {str(e)}"
-            logger.error(error_msg)
+            logger.error(error_msg, exc_info=True)
 
             # Log error to UI
             if self.workflow_log and hasattr(self, "current_file_execution_id"):
@@ -875,10 +976,8 @@ class WorkerDestinationConnector:
                     f"❌ {error_msg}",
                 )
 
-            # Don't raise the exception to allow workflow completion, but log the failure
-            logger.warning(
-                "Continuing workflow execution despite filesystem copy failure"
-            )
+            # Re-raise the exception so that destination processing can fail properly
+            raise Exception(f"Destination filesystem copy failed: {str(e)}") from e
 
     def get_tool_execution_result(
         self, file_history=None, tool_execution_result: str = None
@@ -971,12 +1070,6 @@ class WorkerDestinationConnector:
     def get_output_type_from_metadata(self, metadata: dict[str, Any]) -> str:
         """Get output type from metadata (following backend pattern)."""
         try:
-            from unstract.workflow_execution.constants import (
-                MetaDataKey,
-                ToolMetadataKey,
-                ToolOutputType,
-            )
-
             # Get tool metadata list
             tool_metadata = metadata.get(MetaDataKey.TOOL_METADATA, [])
             if not tool_metadata:

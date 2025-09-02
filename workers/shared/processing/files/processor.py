@@ -729,6 +729,28 @@ class FileProcessor:
                         workflow_file_execution_id,
                         f"❌ File '{context.file_name}' destination processing failed: {error_msg}",
                     )
+
+                    # Update file execution status to ERROR
+                    logger.info(
+                        f"Updating file execution status to ERROR for {context.workflow_file_execution_id} due to destination failure"
+                    )
+                    try:
+                        context.api_client.update_file_execution_status(
+                            file_execution_id=context.workflow_file_execution_id,
+                            status=ExecutionStatus.ERROR.value,
+                            error_message=error_msg,
+                        )
+                        logger.info(
+                            f"Updated file execution {context.workflow_file_execution_id} status to ERROR"
+                        )
+                    except Exception as status_error:
+                        logger.error(
+                            f"Failed to update file execution status: {status_error}"
+                        )
+
+                    # Mark workflow result as failed since destination failed
+                    workflow_result["success"] = False
+                    workflow_result["error"] = error_msg
                 else:
                     log_file_info(
                         workflow_logger,

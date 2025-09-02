@@ -117,3 +117,35 @@ class NotificationPlatform(str, Enum):
 
 # AuthorizationType moved to unstract.core.notification_enums to avoid duplication
 # Import from: from unstract.core.notification_enums import AuthorizationType
+
+
+class ErrorType(str, Enum):
+    """File processing error types."""
+
+    WORKFLOW_ERROR = "Workflow error"
+    DESTINATION_ERROR = "Destination error"
+    PROCESSING_ERROR = "Processing error"
+    VALIDATION_ERROR = "Validation error"
+
+    def __str__(self):
+        return self.value
+
+
+class DestinationConfigKey(str, Enum):
+    """Destination configuration keys for API response parsing.
+
+    Prevents camelCase vs snake_case mismatches between backend API
+    responses and worker parsing logic. This mirrors backend's
+    DestinationKey class but is accessible to workers.
+    """
+
+    # Connector settings keys (snake_case from connector configuration)
+    PATH = "path"
+    BUCKET = "bucket"
+    CONTAINER = "container"
+
+    # Destination settings keys (camelCase from API response)
+    OUTPUT_FOLDER = "outputFolder"  # Backend API returns camelCase
+
+    def __str__(self):
+        return self.value

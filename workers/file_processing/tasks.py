@@ -17,7 +17,7 @@ from shared.api import InternalAPIClient
 from shared.constants import Account
 
 # Import shared enums and dataclasses
-from shared.enums import FileDestinationType
+from shared.enums import ErrorType, FileDestinationType
 from shared.enums.task_enums import TaskName
 from shared.infrastructure.config import WorkerConfig
 from shared.infrastructure.context import StateStore
@@ -42,6 +42,7 @@ from shared.models.execution_models import (
 
 # Import the new refactored file processor
 from shared.processing.files.processor import FileProcessor
+from shared.workflow import detect_comprehensive_workflow_type
 
 # Import file execution tracking for recovery and status management
 # Import from local worker module (avoid circular import)
@@ -361,7 +362,7 @@ def _handle_manual_review_logic(context: WorkflowContextData) -> WorkflowContext
     )
 
     # Enhanced workflow type detection (API/ETL/TASK) by examining endpoints
-    workflow_type, is_api_workflow = _detect_comprehensive_workflow_type(
+    workflow_type, is_api_workflow = detect_comprehensive_workflow_type(
         api_client, workflow_id
     )
     logger.info(
@@ -698,346 +699,48 @@ def _handle_file_processing_result(
         celery_task_id: Celery task ID for queue detection
         is_api_workflow: Whether this is an API workflow (from existing detection)
     """
-    import time
-
-    # NULL CHECK: Ensure file_execution_result is not None
+    # Handle null execution result
     if file_execution_result is None:
-        result.increment_failure()
-        logger.error(
-            f"File execution for file {file_name} returned None - treating as failed"
+        _handle_null_execution_result(
+            file_name, result, api_client, workflow_id, execution_id
         )
-
-        # Update failed file count in cache
-        try:
-            api_client.increment_failed_files(
-                workflow_id=workflow_id, execution_id=execution_id
-            )
-        except Exception as increment_error:
-            logger.warning(f"Failed to increment failed files count: {increment_error}")
         return
 
-    # Calculate file execution time
-    file_execution_time = time.time() - file_start_time
-    logger.info(
-        f"File {file_name} processing completed in {file_execution_time:.2f} seconds"
+    # Calculate execution time
+    file_execution_time = _calculate_execution_time(file_name, file_start_time)
+
+    # Update file execution status in database
+    _update_file_execution_status(
+        file_execution_result, file_name, file_execution_time, api_client
     )
 
-    # Update WorkflowFileExecution with execution time (fixes execution_time not being updated)
-    file_execution_id = file_execution_result.get("file_execution_id")
-    if file_execution_id:
-        try:
-            # DEBUG: Log the entire file_execution_result structure
-            logger.info(
-                f"DEBUG: Complete file_execution_result keys: {list(file_execution_result.keys()) if file_execution_result else []}"
-            )
-            logger.info(
-                f"DEBUG: file_execution_result.get('error'): '{file_execution_result.get('error')}'"
-            )
-            logger.info(
-                f"DEBUG: file_execution_result.get('destination_error'): '{file_execution_result.get('destination_error')}'"
-            )
-            logger.info(
-                f"DEBUG: file_execution_result.get('destination_processed'): {file_execution_result.get('destination_processed')}"
-            )
+    # Update batch execution time
+    _update_batch_execution_time(result, file_execution_time)
 
-            # Check for both workflow errors and destination errors
-            workflow_error = file_execution_result.get("error")
-            destination_error = file_execution_result.get("destination_error")
-            destination_processed = file_execution_result.get(
-                "destination_processed", True
-            )
-
-            # File should be marked as ERROR if:
-            # 1. There's a workflow execution error, OR
-            # 2. Destination processing failed (destination_error exists or destination_processed is False)
-            has_error = workflow_error or destination_error or not destination_processed
-
-            final_status = (
-                ExecutionStatus.ERROR.value
-                if has_error
-                else ExecutionStatus.COMPLETED.value
-            )
-
-            # Combine error messages for better reporting
-            error_messages = []
-            if workflow_error:
-                error_messages.append(f"Workflow error: {workflow_error}")
-            if destination_error:
-                error_messages.append(f"Destination error: {destination_error}")
-            if not destination_processed and not destination_error:
-                error_messages.append("Destination processing failed")
-
-            combined_error = "; ".join(error_messages) if error_messages else None
-
-            # DEBUG: Log what error message we're sending in the final update
-            logger.info(
-                f"DEBUG: Final combined_error being sent to database: '{combined_error}'"
-            )
-            logger.info(f"DEBUG: error_messages list: {error_messages}")
-
-            api_client.update_file_execution_status(
-                file_execution_id=file_execution_id,
-                status=final_status,
-                execution_time=file_execution_time,
-                error_message=combined_error,
-            )
-            logger.info(
-                f"DEBUG: Updated file execution {file_execution_id} with status {final_status} and time {file_execution_time:.2f}s"
-            )
-        except Exception as update_error:
-            logger.warning(
-                f"Failed to update file execution status for {file_name}: {update_error}"
-            )
+    # Handle success or failure based on execution result
+    if _has_execution_errors(file_execution_result):
+        _handle_failed_execution(
+            file_execution_result,
+            file_name,
+            result,
+            workflow_logger,
+            file_execution_id,
+            api_client,
+            workflow_id,
+            execution_id,
+        )
     else:
-        logger.warning(
-            f"No file_execution_id found for {file_name}, cannot update execution time"
+        _handle_successful_execution(
+            file_execution_result,
+            file_name,
+            result,
+            successful_files_for_manual_review,
+            file_hash,
+            workflow_logger,
+            file_execution_id,
+            api_client,
+            workflow_id,
         )
-
-    # Add file execution time to batch result (FIX for execution_time staying at 0)
-    result.add_execution_time(file_execution_time)
-    logger.info(
-        f"DEBUG: Added {file_execution_time:.2f}s to batch execution time. "
-        f"Total batch time: {result.execution_time:.2f}s"
-    )
-
-    # DJANGO PATTERN: Check error field and destination status to determine success/failure
-    workflow_error = file_execution_result.get("error")
-    destination_error = file_execution_result.get("destination_error")
-    destination_processed = file_execution_result.get("destination_processed", True)
-
-    # File is considered failed if there's any error or destination processing failed
-    has_any_error = workflow_error or destination_error or not destination_processed
-
-    if has_any_error:
-        result.increment_failure()
-
-        # Determine which error message to show
-        if workflow_error:
-            error_msg = workflow_error
-            error_type = "Workflow error"
-        elif destination_error:
-            error_msg = destination_error
-            error_type = "Destination error"
-        else:
-            error_msg = "Destination processing failed"
-            error_type = "Destination error"
-
-        logger.info(
-            f"File execution for file {file_name} marked as failed with {error_type.lower()}: {error_msg}"
-        )
-
-        # Send failed processing log to UI with file_execution_id
-        log_file_processing_error(
-            workflow_logger, file_execution_id, file_name, f"{error_type}: {error_msg}"
-        )
-
-        # Update failed file count in cache (like Django backend)
-        try:
-            api_client.increment_failed_files(
-                workflow_id=workflow_id, execution_id=execution_id
-            )
-        except Exception as increment_error:
-            logger.warning(f"Failed to increment failed files count: {increment_error}")
-    else:
-        result.increment_success()
-        logger.info(f"File execution for file {file_name} marked as successful")
-
-        # Add to successful files for manual review evaluation
-        successful_files_for_manual_review.append((file_name, file_hash))
-
-        # Send successful processing log to UI with file_execution_id
-        log_file_processing_success(workflow_logger, file_execution_id, file_name)
-
-        # Create file history record for successful processing
-        # This fixes the issue of files being processed repeatedly
-        if file_hash.use_file_history:
-            try:
-                # For API workflows, set file_path to None since it's an internal API registry path
-                # This allows the database unique constraint (workflow, cache_key) to work properly
-                file_path_for_history = None
-                if (
-                    hasattr(file_hash, "source_connection_type")
-                    and file_hash.source_connection_type == "API"
-                ):
-                    file_path_for_history = None  # API files don't have user file paths
-                else:
-                    file_path_for_history = (
-                        file_hash.file_path
-                    )  # ETL/TASK workflows use actual file paths
-
-                # CRITICAL FIX: Extract computed file hash from file_execution_result
-                computed_file_hash = file_hash.file_hash or ""  # Default to original
-                hash_source = "original_file_hash_data"
-
-                logger.info(
-                    f"🔍 ETL HASH DEBUG: Starting hash extraction for {file_hash.file_name}"
-                )
-                logger.info(
-                    f"🔍 ETL HASH DEBUG: Original file_hash.file_hash: '{computed_file_hash}'"
-                )
-                logger.info(
-                    f"🔍 ETL HASH DEBUG: file_execution_result keys: {list(file_execution_result.keys()) if file_execution_result else []}"
-                )
-
-                # Extract hash from file_execution_result (contains computed hash from processing)
-                if file_execution_result and isinstance(file_execution_result, dict):
-                    # Try different locations where the computed hash might be stored
-                    if (
-                        "file_hash" in file_execution_result
-                        and file_execution_result["file_hash"]
-                    ):
-                        computed_file_hash = file_execution_result["file_hash"]
-                        hash_source = "file_execution_result.file_hash"
-                        logger.info(
-                            f"🔍 ETL HASH DEBUG: Found hash in file_execution_result.file_hash: '{computed_file_hash}'"
-                        )
-                    elif "result" in file_execution_result and isinstance(
-                        file_execution_result["result"], dict
-                    ):
-                        result_data = file_execution_result["result"]
-                        logger.info(
-                            f"🔍 ETL HASH DEBUG: result keys: {list(result_data.keys())}"
-                        )
-
-                        if "file_hash" in result_data and result_data["file_hash"]:
-                            computed_file_hash = result_data["file_hash"]
-                            hash_source = "file_execution_result.result.file_hash"
-                            logger.info(
-                                f"🔍 ETL HASH DEBUG: Found hash in file_execution_result.result.file_hash: '{computed_file_hash}'"
-                            )
-                        elif "metadata" in result_data and isinstance(
-                            result_data["metadata"], dict
-                        ):
-                            metadata = result_data["metadata"]
-                            if "file_hash" in metadata and metadata["file_hash"]:
-                                computed_file_hash = metadata["file_hash"]
-                                hash_source = (
-                                    "file_execution_result.result.metadata.file_hash"
-                                )
-                                logger.info(
-                                    f"🔍 ETL HASH DEBUG: Found hash in file_execution_result.result.metadata.file_hash: '{computed_file_hash}'"
-                                )
-                    elif "metadata" in file_execution_result and isinstance(
-                        file_execution_result["metadata"], dict
-                    ):
-                        metadata = file_execution_result["metadata"]
-                        logger.info(
-                            f"🔍 ETL HASH DEBUG: metadata keys: {list(metadata.keys())}"
-                        )
-
-                        if "file_hash" in metadata and metadata["file_hash"]:
-                            computed_file_hash = metadata["file_hash"]
-                            hash_source = "file_execution_result.metadata.file_hash"
-                            logger.info(
-                                f"🔍 ETL HASH DEBUG: Found hash in file_execution_result.metadata.file_hash: '{computed_file_hash}'"
-                            )
-                    else:
-                        logger.info(
-                            "🔍 ETL HASH DEBUG: No file_hash found in file_execution_result structure"
-                        )
-
-                logger.info(
-                    f"🎯 ETL HASH PROPAGATION FIX: Using computed hash '{computed_file_hash}' from {hash_source} for file history (original: '{file_hash.file_hash}') for file {file_hash.file_name}"
-                )
-
-                api_client.create_file_history(
-                    workflow_id=workflow_id,
-                    file_name=file_hash.file_name,
-                    file_path=file_path_for_history,
-                    file_hash=computed_file_hash,  # CRITICAL: Use computed hash instead of empty one
-                    file_size=getattr(file_hash, "file_size", 0),
-                    mime_type=getattr(file_hash, "mime_type", ""),
-                    result=_safe_json_dumps(file_execution_result.get("result", {})),
-                    metadata=_safe_json_dumps(file_execution_result.get("metadata", {})),
-                    status=ExecutionStatus.COMPLETED.value,
-                    provider_file_uuid=file_hash.provider_file_uuid,
-                    is_api=False,  # This is file processing, not API workflow
-                )
-                logger.info(
-                    f"Created ETL file history record for {file_name} with hash: {computed_file_hash[:16] if computed_file_hash else 'None'}..."
-                )
-                # DEBUG: Log the exact data being sent to create_file_history
-                logger.info(
-                    f"DEBUG: Sending file_hash='{computed_file_hash}' in request data (ETL path)"
-                )
-                logger.info(f"DEBUG: original file_path = '{file_hash.file_path}'")
-                logger.info(
-                    f"DEBUG: file_path_for_history = '{file_path_for_history}' (None for API workflows)"
-                )
-                logger.info(
-                    f"DEBUG: source_connection_type = '{getattr(file_hash, 'source_connection_type', 'Unknown')}'"
-                )
-                logger.info(
-                    f"DEBUG: provider_file_uuid = '{file_hash.provider_file_uuid}'"
-                )
-            except Exception as history_error:
-                logger.warning(
-                    f"Failed to create file history for {file_name}: {history_error}"
-                )
-
-    # CRITICAL FIX: Cache API results for API deployments only
-    # Check if this is specifically an API deployment by examining the execution context
-    should_cache_result = is_api_workflow
-
-    # Additional check: API deployments may have TASK workflows but still need result caching
-    # Only enable for actual API deployments to avoid affecting TASK/ETL workflows
-    if not should_cache_result:
-        try:
-            # Check if there's an API callback waiting (indication of API deployment)
-            execution_response = api_client.get_workflow_execution(execution_id)
-            if execution_response.success and execution_response.data:
-                # Check if this execution was initiated via API deployment
-                source_config = execution_response.data.get("source_config")
-                if source_config == "api_deployment":
-                    should_cache_result = True
-                    logger.info(
-                        "🎯 API deployment with TASK workflow detected - enabling result caching"
-                    )
-        except Exception as e:
-            logger.debug(f"Could not verify API deployment status: {e}")
-
-    if should_cache_result:
-        logger.info(
-            f"🔧 API deployment detected for {workflow_id} - caching file result for API response"
-        )
-
-        try:
-            from shared.workflow.execution.service import (
-                WorkerWorkflowExecutionService,
-            )
-
-            # Create workflow service for caching (same as process_file_batch_api)
-            workflow_service = WorkerWorkflowExecutionService(api_client=api_client)
-
-            # Convert file result to API format matching process_file_batch_api
-            api_result = {
-                "file": file_name,
-                "file_execution_id": file_execution_id,
-                "result": file_execution_result.get("result"),
-                "error": file_execution_result.get("error"),
-                "metadata": {"processing_time": time.time() - file_start_time},
-            }
-
-            # Cache the result for API response aggregation
-            workflow_service.cache_api_result(
-                workflow_id=workflow_id,
-                execution_id=execution_id,
-                result=api_result,
-                is_api=True,
-            )
-
-            # Log success/error differently for debugging
-            if file_execution_result.get("error"):
-                logger.info(
-                    f"✅ Cached API ERROR result for file {file_name}: {file_execution_result.get('error')}"
-                )
-            else:
-                logger.info(f"✅ Cached API success result for file {file_name}")
-
-        except Exception as cache_error:
-            logger.error(
-                f"❌ Failed to cache API result for file {file_name}: {cache_error}"
-            )
 
 
 def _evaluate_batch_manual_review(context: WorkflowContextData) -> WorkflowContextData:
@@ -1132,68 +835,6 @@ def _compile_batch_result(context: WorkflowContextData) -> dict[str, Any]:
 
 # HELPER FUNCTIONS (originally part of the massive process_file_batch function)
 # These functions support the refactored file processing workflow
-
-
-def _detect_comprehensive_workflow_type(
-    api_client: InternalAPIClient, workflow_id: str
-) -> tuple[str, bool]:
-    """Detect workflow type (API/ETL/TASK) by examining source and destination endpoints.
-
-    This matches the backend pattern in workflow_helper.py and source.py:
-    - API workflows: Source=API -> Destination=API
-    - ETL workflows: Source=FILESYSTEM -> Destination=DATABASE
-    - TASK workflows: Source=FILESYSTEM -> Destination=FILESYSTEM/other
-
-    Args:
-        api_client: Internal API client
-        workflow_id: Workflow ID
-
-    Returns:
-        tuple: (workflow_type: str, is_api: bool)
-    """
-    try:
-        # Get workflow endpoints to determine types
-        workflow_endpoints = api_client.get_workflow_endpoints(workflow_id)
-
-        if isinstance(workflow_endpoints, dict):
-            endpoints = workflow_endpoints.get("endpoints", [])
-
-            # Find source and destination endpoints
-            source_connection_type = None
-            dest_connection_type = None
-
-            for endpoint in endpoints:
-                if endpoint.get("endpoint_type") == "SOURCE":
-                    source_connection_type = endpoint.get("connection_type")
-                elif endpoint.get("endpoint_type") == "DESTINATION":
-                    dest_connection_type = endpoint.get("connection_type")
-
-            # Determine workflow type based on endpoint combinations
-            if source_connection_type == "API":
-                return "API", True
-            elif dest_connection_type == "DATABASE":
-                return "ETL", False
-            elif source_connection_type == "FILESYSTEM":
-                return "TASK", False
-            else:
-                logger.warning(
-                    f"Unknown endpoint combination: source={source_connection_type}, dest={dest_connection_type}"
-                )
-                return "TASK", False
-
-        # Fallback: use legacy API detection
-        elif isinstance(workflow_endpoints, dict) and workflow_endpoints.get(
-            "has_api_endpoints", False
-        ):
-            return "API", True
-        else:
-            return "TASK", False
-
-    except Exception as e:
-        logger.warning(
-            f"Failed to detect comprehensive workflow type for {workflow_id}: {e} - defaulting to TASK"
-        )
-        return "TASK", False
 
 
 def _pre_create_file_executions(
@@ -2755,3 +2396,262 @@ def process_file_batch_django_compat(
 
     # Delegate to the core implementation (same as main task)
     return _process_file_batch_core(self, file_batch_data)
+
+
+# Helper functions for refactored _handle_file_processing_result
+
+
+def _handle_null_execution_result(
+    file_name: str,
+    result: FileBatchResult,
+    api_client: Any,
+    workflow_id: str,
+    execution_id: str,
+) -> None:
+    """Handle case where file execution result is None."""
+    result.increment_failure()
+    logger.error(
+        f"File execution for file {file_name} returned None - treating as failed"
+    )
+
+    try:
+        api_client.increment_failed_files(
+            workflow_id=workflow_id, execution_id=execution_id
+        )
+    except Exception as increment_error:
+        logger.warning(f"Failed to increment failed files count: {increment_error}")
+
+
+def _calculate_execution_time(file_name: str, file_start_time: float) -> float:
+    """Calculate and log file execution time."""
+    import time
+
+    file_execution_time = time.time() - file_start_time
+    logger.info(
+        f"File {file_name} processing completed in {file_execution_time:.2f} seconds"
+    )
+    return file_execution_time
+
+
+def _update_file_execution_status(
+    file_execution_result: dict[str, Any],
+    file_name: str,
+    file_execution_time: float,
+    api_client: Any,
+) -> None:
+    """Update file execution status in database."""
+    file_execution_id = file_execution_result.get("file_execution_id")
+    if not file_execution_id:
+        logger.warning(
+            f"No file_execution_id found for {file_name}, cannot update execution time"
+        )
+        return
+
+    try:
+        # Check for both workflow errors and destination errors
+        workflow_error = file_execution_result.get("error")
+        destination_error = file_execution_result.get("destination_error")
+        destination_processed = file_execution_result.get("destination_processed", True)
+
+        # File should be marked as ERROR if there's any error or destination processing failed
+        has_error = workflow_error or destination_error or not destination_processed
+        final_status = (
+            ExecutionStatus.ERROR.value if has_error else ExecutionStatus.COMPLETED.value
+        )
+
+        # Combine error messages for better reporting
+        error_messages = []
+        if workflow_error:
+            error_messages.append(f"{ErrorType.WORKFLOW_ERROR}: {workflow_error}")
+        if destination_error:
+            error_messages.append(f"{ErrorType.DESTINATION_ERROR}: {destination_error}")
+        if not destination_processed and not destination_error:
+            error_messages.append("Destination processing failed")
+
+        combined_error = "; ".join(error_messages) if error_messages else None
+
+        # Update database
+        api_client.update_file_execution_status(
+            file_execution_id=file_execution_id,
+            status=final_status,
+            execution_time=file_execution_time,
+            error_message=combined_error,
+        )
+        logger.info(
+            f"Updated file execution {file_execution_id} with status {final_status} and time {file_execution_time:.2f}s"
+        )
+    except Exception as update_error:
+        logger.warning(
+            f"Failed to update file execution status for {file_name}: {update_error}"
+        )
+
+
+def _update_batch_execution_time(
+    result: FileBatchResult, file_execution_time: float
+) -> None:
+    """Update batch execution time."""
+    result.add_execution_time(file_execution_time)
+    logger.info(
+        f"Added {file_execution_time:.2f}s to batch execution time. "
+        f"Total batch time: {result.execution_time:.2f}s"
+    )
+
+
+def _has_execution_errors(file_execution_result: dict[str, Any]) -> bool:
+    """Check if file execution has any errors."""
+    workflow_error = file_execution_result.get("error")
+    destination_error = file_execution_result.get("destination_error")
+    destination_processed = file_execution_result.get("destination_processed", True)
+
+    return bool(workflow_error or destination_error or not destination_processed)
+
+
+def _handle_failed_execution(
+    file_execution_result: dict[str, Any],
+    file_name: str,
+    result: FileBatchResult,
+    workflow_logger: Any,
+    file_execution_id: str,
+    api_client: Any,
+    workflow_id: str,
+    execution_id: str,
+) -> None:
+    """Handle failed file execution."""
+    result.increment_failure()
+
+    # Determine error type and message
+    workflow_error = file_execution_result.get("error")
+    destination_error = file_execution_result.get("destination_error")
+
+    if workflow_error:
+        error_msg = workflow_error
+        error_type = ErrorType.WORKFLOW_ERROR
+    elif destination_error:
+        error_msg = destination_error
+        error_type = ErrorType.DESTINATION_ERROR
+    else:
+        error_msg = "Destination processing failed"
+        error_type = ErrorType.DESTINATION_ERROR
+
+    logger.info(
+        f"File execution for file {file_name} marked as failed with {error_type.lower()}: {error_msg}"
+    )
+
+    # Send failed processing log to UI
+    log_file_processing_error(
+        workflow_logger, file_execution_id, file_name, f"{error_type}: {error_msg}"
+    )
+
+    # Update failed file count in cache
+    try:
+        api_client.increment_failed_files(
+            workflow_id=workflow_id, execution_id=execution_id
+        )
+    except Exception as increment_error:
+        logger.warning(f"Failed to increment failed files count: {increment_error}")
+
+
+def _handle_successful_execution(
+    file_execution_result: dict[str, Any],
+    file_name: str,
+    result: FileBatchResult,
+    successful_files_for_manual_review: list,
+    file_hash: FileHashData,
+    workflow_logger: Any,
+    file_execution_id: str,
+    api_client: Any,
+    workflow_id: str,
+) -> None:
+    """Handle successful file execution."""
+    result.increment_success()
+    logger.info(f"File execution for file {file_name} marked as successful")
+
+    # Add to successful files for manual review evaluation
+    successful_files_for_manual_review.append((file_name, file_hash))
+
+    # Send successful processing log to UI
+    log_file_processing_success(workflow_logger, file_execution_id, file_name)
+
+    # Create file history record for successful processing if needed
+    if file_hash.use_file_history:
+        _create_file_history_record(
+            file_execution_result, file_name, file_hash, api_client, workflow_id
+        )
+
+
+def _create_file_history_record(
+    file_execution_result: dict[str, Any],
+    file_name: str,
+    file_hash: FileHashData,
+    api_client: Any,
+    workflow_id: str,
+) -> None:
+    """Create file history record for successful processing."""
+    try:
+        # Determine file path for history (API vs ETL/TASK workflows)
+        file_path_for_history = (
+            None
+            if (
+                hasattr(file_hash, "source_connection_type")
+                and file_hash.source_connection_type == "API"
+            )
+            else file_hash.file_path
+        )
+
+        # Extract computed file hash from execution result
+        computed_file_hash = _extract_computed_file_hash(file_execution_result, file_hash)
+
+        # Create file history entry
+        api_client.create_file_history(
+            workflow_id=workflow_id,
+            file_name=file_hash.file_name,
+            file_path=file_path_for_history,
+            file_hash=computed_file_hash,
+            file_size=getattr(file_hash, "file_size", 0),
+            mime_type=getattr(file_hash, "mime_type", ""),
+            result=_safe_json_dumps(file_execution_result.get("result", {})),
+            metadata=_safe_json_dumps(file_execution_result.get("metadata", {})),
+            status=ExecutionStatus.COMPLETED.value,
+            provider_file_uuid=file_hash.provider_file_uuid,
+            is_api=False,  # This is file processing, not API workflow
+        )
+        logger.info(
+            f"Created file history record for {file_name} with hash: {computed_file_hash[:16] if computed_file_hash else 'None'}..."
+        )
+    except Exception as history_error:
+        logger.warning(f"Failed to create file history for {file_name}: {history_error}")
+
+
+def _extract_computed_file_hash(
+    file_execution_result: dict[str, Any], file_hash: FileHashData
+) -> str:
+    """Extract computed file hash from execution result."""
+    computed_file_hash = file_hash.file_hash or ""
+
+    if not file_execution_result or not isinstance(file_execution_result, dict):
+        return computed_file_hash
+
+    # Try different locations where the computed hash might be stored
+    direct_hash = file_execution_result.get("file_hash")
+    if direct_hash:
+        return direct_hash
+
+    result_data = file_execution_result.get("result")
+    if result_data and isinstance(result_data, dict):
+        result_hash = result_data.get("file_hash")
+        if result_hash:
+            return result_hash
+
+        result_metadata = result_data.get("metadata")
+        if result_metadata and isinstance(result_metadata, dict):
+            metadata_hash = result_metadata.get("file_hash")
+            if metadata_hash:
+                return metadata_hash
+
+    execution_metadata = file_execution_result.get("metadata")
+    if execution_metadata and isinstance(execution_metadata, dict):
+        metadata_hash = execution_metadata.get("file_hash")
+        if metadata_hash:
+            return metadata_hash
+
+    return computed_file_hash
