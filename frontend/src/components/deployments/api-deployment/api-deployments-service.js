@@ -96,6 +96,32 @@ function apiDeploymentsService() {
       };
       return axiosPrivate(options);
     },
+    getSharedUsers: (id) => {
+      options = {
+        method: "GET",
+        url: `${path}/api/deployment/${id}/users/`,
+      };
+      return axiosPrivate(options);
+    },
+    updateSharing: (id, sharedUsers, shareWithEveryone) => {
+      options = {
+        method: "PATCH",
+        url: `${path}/api/deployment/${id}/`,
+        headers: requestHeaders,
+        data: {
+          shared_users: sharedUsers,
+          shared_to_org: shareWithEveryone,
+        },
+      };
+      return axiosPrivate(options);
+    },
+    getAllUsers: () => {
+      options = {
+        method: "GET",
+        url: `${path}/users/`,
+      };
+      return axiosPrivate(options);
+    },
   };
 }
 

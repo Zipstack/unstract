@@ -17,6 +17,7 @@ from rest_framework.serializers import (
     ListField,
     ModelSerializer,
     Serializer,
+    SerializerMethodField,
     URLField,
     ValidationError,
 )
@@ -392,6 +393,7 @@ class ExecutionQuerySerializer(Serializer):
 
 class APIDeploymentListSerializer(ModelSerializer):
     workflow_name = CharField(source="workflow.workflow_name", read_only=True)
+    created_by_email = SerializerMethodField()
 
     class Meta:
         model = APIDeployment
@@ -405,7 +407,12 @@ class APIDeploymentListSerializer(ModelSerializer):
             "api_endpoint",
             "api_name",
             "created_by",
+            "created_by_email",
         ]
+
+    def get_created_by_email(self, obj):
+        """Get the email of the creator."""
+        return obj.created_by.email if obj.created_by else None
 
 
 class APIKeyListSerializer(ModelSerializer):
@@ -438,3 +445,24 @@ class APIExecutionResponseSerializer(Serializer):
     status_api = CharField()
     error = CharField()
     result = JSONField()
+
+
+class SharedUserListSerializer(ModelSerializer):
+    """Serializer for returning API deployment with shared user details."""
+
+    shared_users = SerializerMethodField()
+    created_by = SerializerMethodField()
+
+    class Meta:
+        model = APIDeployment
+        fields = ["id", "display_name", "shared_users", "shared_to_org", "created_by"]
+
+    def get_shared_users(self, obj):
+        """Return list of shared users with id and email."""
+        return [{"id": user.id, "email": user.email} for user in obj.shared_users.all()]
+
+    def get_created_by(self, obj):
+        """Return creator details."""
+        if obj.created_by:
+            return {"id": obj.created_by.id, "email": obj.created_by.email}
+        return None

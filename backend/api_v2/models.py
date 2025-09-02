@@ -20,7 +20,17 @@ API_ENDPOINT_MAX_LENGTH = 255
 
 
 class APIDeploymentModelManager(DefaultOrganizationManagerMixin, models.Manager):
-    pass
+    def for_user(self, user):
+        """Filter API deployments that the user can access:
+        - API deployments created by the user
+        - API deployments shared with the user
+        """
+        from django.db.models import Q
+
+        return self.filter(
+            Q(created_by=user)  # Owned by user
+            | Q(shared_users=user)  # Shared with user
+        ).distinct()
 
 
 class APIDeployment(DefaultOrganizationMixin, BaseModel):
@@ -74,6 +84,14 @@ class APIDeployment(DefaultOrganizationMixin, BaseModel):
         null=True,
         blank=True,
         editable=False,
+    )
+    # Sharing fields
+    shared_users = models.ManyToManyField(
+        User, related_name="shared_api_deployments", blank=True
+    )
+    shared_to_org = models.BooleanField(
+        default=False,
+        db_comment="Whether this API deployment is shared with the entire organization",
     )
 
     # Manager
