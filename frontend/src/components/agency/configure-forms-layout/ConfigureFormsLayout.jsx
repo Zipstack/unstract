@@ -1,6 +1,6 @@
 import PropTypes from "prop-types";
 
-import { SettingsForm } from "../settings-form/SettingsForm";
+import { RjsfFormLayout } from "../../../layouts/rjsf-form-layout/RjsfFormLayout";
 import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 
@@ -11,6 +11,8 @@ function ConfigureFormsLayout({
   formDataConfig,
   setFormDataConfig,
   isSpecConfigLoading,
+  formRef,
+  validateAndSubmit,
 }) {
   // First check: Still loading
   if (isSpecConfigLoading) {
@@ -32,11 +34,14 @@ function ConfigureFormsLayout({
 
   return (
     <div className="config-content-area">
-      <SettingsForm
-        spec={specConfig}
+      <RjsfFormLayout
+        schema={specConfig}
         formData={formDataConfig}
         setFormData={setFormDataConfig}
         isLoading={isSpecConfigLoading}
+        isStateUpdateRequired={true}
+        formRef={formRef}
+        validateAndSubmit={validateAndSubmit}
       />
     </div>
   );
@@ -47,6 +52,8 @@ ConfigureFormsLayout.propTypes = {
   formDataConfig: PropTypes.object,
   setFormDataConfig: PropTypes.func.isRequired,
   isSpecConfigLoading: PropTypes.bool.isRequired,
+  formRef: PropTypes.object,
+  validateAndSubmit: PropTypes.func,
 };
 
 export { ConfigureFormsLayout };

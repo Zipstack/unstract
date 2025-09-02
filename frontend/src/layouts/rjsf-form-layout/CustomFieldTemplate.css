@@ -1,0 +1,15 @@
+.field-with-errors {
+  border: 1px solid #ff4d4f;
+  border-radius: 4px;
+  padding: 8px;
+  background-color: #fff2f0;
+}
+
+.field-error-alert {
+  margin-top: 4px;
+}
+
+.field-error-list {
+  margin: 0;
+  padding-left: 1.2em;
+}

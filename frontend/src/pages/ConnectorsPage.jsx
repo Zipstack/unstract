@@ -52,10 +52,12 @@ function ConnectorsPage() {
       const response = await axiosPrivate.get(getUrl("users/"));
       const users = response?.data?.members || [];
       setUserList(
-        users.map((user) => ({
-          id: user?.id,
-          email: user?.email,
-        }))
+        users
+          .filter((user) => user?.id !== sessionDetails?.id)
+          .map((user) => ({
+            id: user?.id,
+            email: user?.email,
+          }))
       );
     } catch (error) {
       setAlertDetails(handleException(error, "Failed to load users"));
@@ -163,6 +165,7 @@ function ConnectorsPage() {
             handleDelete={handleDeleteConnector}
             handleEdit={handleEditConnector}
             handleShare={handleShareConnector}
+            setOpenAddTool={setModalVisible}
             idProp="id"
             titleProp="connector_name"
             descriptionProp="connector_type"
