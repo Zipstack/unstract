@@ -48,8 +48,9 @@ class FileHistoryHelper:
             )
             return None
 
-        # Delete expired file histories before querying
+        # Delete expired file histories and file executions before querying
         cls._delete_expired_file_histories(workflow)
+        cls._delete_expired_file_executions(workflow)
 
         filters = Q(workflow=workflow)
         if cache_key:
@@ -155,10 +156,6 @@ class FileHistoryHelper:
             now = timezone.now()
             expiry_date = now - timedelta(days=reprocessing_interval)
 
-            print(
-                f"####### Deleting expired file histories ######### workflow={workflow}, interval={reprocessing_interval} days, expiry_date={expiry_date}"
-            )
-
             # Delete file histories that are older than the reprocessing interval
             deleted_count, _ = FileHistory.objects.filter(
                 workflow=workflow, created_at__lt=expiry_date
@@ -172,6 +169,30 @@ class FileHistoryHelper:
         except Exception as e:
             logger.error(
                 f"Error deleting expired file histories for workflow {workflow}: {e}"
+            )
+
+    @classmethod
+    def _delete_expired_file_executions(cls, workflow: Workflow) -> None:
+        """Delete expired WorkflowFileExecution records based on reprocessing interval."""
+        try:
+            reprocessing_interval = cls._get_reprocessing_interval_from_config(workflow)
+            if reprocessing_interval and reprocessing_interval > 0:
+                expiry_date = timezone.now() - timedelta(days=reprocessing_interval)
+
+                # Delete expired COMPLETED file executions (keep EXECUTING/PENDING for safety)
+                deleted_count, _ = WorkflowFileExecution.objects.filter(
+                    workflow_execution__workflow=workflow,
+                    created_at__lt=expiry_date,
+                    status=ExecutionStatus.COMPLETED,
+                ).delete()
+
+                if deleted_count > 0:
+                    logger.info(
+                        f"Deleted {deleted_count} expired file executions for workflow {workflow}"
+                    )
+        except Exception as e:
+            logger.error(
+                f"Error deleting expired file executions for workflow {workflow}: {e}"
             )
 
     @staticmethod
@@ -210,7 +231,6 @@ class FileHistoryHelper:
             # Convert to days
             if interval_unit == "months":
                 return interval_value * 30
-            print("####### interval_value ####### ", interval_value)
             return interval_value
 
         except Exception as e:
