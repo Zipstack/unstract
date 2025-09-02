@@ -1,11 +1,5 @@
 /* Styles for Agency */
 
-.agency-layout {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
 .agency-sider-layout {
   height: 100%;
   background-color: transparent !important;
@@ -17,6 +11,9 @@
   flex-direction: column;
 }
 
+.island-layout > div:has(.agency-layout) {
+  overflow: auto;
+}
 .agency-main {
   flex: 1;
 }
@@ -50,10 +47,246 @@
   border-radius: 0px;
 }
 
-.agency-ide-log-modal .ant-modal-content{
+.agency-ide-log-modal .ant-modal-content {
   height: 80vh;
 }
 
-.agency-ide-log-modal .agency-ide-logs{
+.agency-ide-log-modal .agency-ide-logs {
   height: 70vh !important;
+}
+
+.agency-layout {
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+
+.agency-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  gap: 24px;
+}
+
+.workflow-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workflow-progress-section {
+  padding: 8px;
+  width: 100%;
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.progress-label {
+  font-weight: 500;
+  font-size: 16px;
+}
+
+.progress-count {
+  font-size: 14px;
+  color: #8c8c8c;
+}
+
+.workflow-grid-container {
+  padding: 24px;
+}
+
+.workflow-card {
+  background: #f9fafb;
+  border-radius: 12px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.deployment-alert {
+  margin: 0 24px;
+}
+.workflow-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px 24px 16px;
+}
+
+.workflow-card-number {
+  width: 32px;
+  height: 32px;
+  background: #1890ff;
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  flex-shrink: 0;
+  transition: background-color 0.3s ease;
+}
+
+.workflow-card-number.completed {
+  background: #e6f7ff;
+  color: #1890ff;
+}
+
+.workflow-card-number.completed .anticon {
+  font-size: 16px;
+  color: #1890ff;
+}
+
+.workflow-card-info {
+  flex: 1;
+}
+
+.workflow-card-info .ant-typography {
+  margin: 0;
+}
+
+.workflow-card-info h4 {
+  margin: 0 0 4px 0;
+  font-size: 16px;
+}
+
+.workflow-card-content {
+  flex: 1;
+  padding: 10px 0px;
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+}
+
+.workflow-select {
+  width: 200px !important;
+}
+
+.workflow-select:focus {
+  outline: none;
+  border-color: #1890ff;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+}
+
+.debug-panel {
+  background: white;
+  margin: 12px;
+}
+
+.debug-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  border: 1px solid #f0f0f0;
+}
+
+.debug-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.debug-panel-content {
+  padding: 16px;
+  text-align: center;
+  color: #8c8c8c;
+  height: 600px;
+}
+
+.workflow-sidebar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 400px;
+  height: 100vh;
+  background: white;
+  border-left: 1px solid #d9d9d9;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  overflow-y: auto;
+}
+
+.close-sidebar-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: #f0f0f0;
+  color: #8c8c8c;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.show-debug-btn {
+  color: #8c8c8c;
+}
+
+/* Tool Selection Display */
+.tool-selection-display {
+  margin-bottom: 16px;
+}
+
+.selected-tool-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 12px;
+  background: #f6f8fa;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+}
+
+.selected-tool-name {
+  font-weight: 500;
+  color: #24292f;
+}
+
+.select-tool-btn {
+  width: 100%;
+  height: 32px;
+  border-style: dashed;
+  border-color: #d9d9d9;
+  color: #8c8c8c;
+  background: #fafafa;
+}
+
+.select-tool-btn:hover {
+  border-color: #1890ff;
+  color: #1890ff;
+}
+
+/* Status Message */
+.status-message {
+  padding: 8px 16px;
+  background: #f6f8fa;
+  border: 1px solid #e1e4e8;
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+
+.status-text {
+  font-size: 14px;
+  color: #586069;
+  font-style: italic;
+}
+
+/* Loading Container */
+.agency-loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 60vh;
+  width: 100%;
 }

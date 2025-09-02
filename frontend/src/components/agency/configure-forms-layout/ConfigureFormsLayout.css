@@ -1,0 +1,5 @@
+.config-content-area {
+    padding: 16px;
+    overflow-y: auto;
+    overflow-x: hidden;
+}

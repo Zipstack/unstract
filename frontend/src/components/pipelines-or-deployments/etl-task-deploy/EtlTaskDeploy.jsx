@@ -35,6 +35,7 @@ const EtlTaskDeploy = ({
   isEdit,
   selectedRow = {},
   setDeploymentName,
+  onDeploymentCreated,
 }) => {
   const [form] = Form.useForm();
   const workflowStore = useWorkflowStore();
@@ -136,13 +137,17 @@ const EtlTaskDeploy = ({
   };
 
   useEffect(() => {
-    if (type === "app") {
-      getWorkflowList();
-    } else {
-      getWorkflows();
+    // Only fetch workflow list when workflowId is not provided
+    // If workflowId exists, the workflow dropdown is hidden and list fetching is unnecessary
+    if (!workflowId) {
+      if (type === "app") {
+        getWorkflowList();
+      } else {
+        getWorkflows();
+      }
     }
     fetchCount();
-  }, [type, fetchCount]);
+  }, [type, fetchCount, workflowId]);
 
   const clearFormDetails = () => {
     setFormDetails({ ...defaultFromDetails });
@@ -247,6 +252,11 @@ const EtlTaskDeploy = ({
           // Update - can update workflow endpoint status in store
           updateWorkflow({ allowChangeEndpoint: false });
           setDeploymentName(body.pipeline_name);
+
+          // Call the callback to refresh deployment info
+          if (onDeploymentCreated) {
+            onDeploymentCreated();
+          }
         } else {
           addPipeline(res?.data);
         }
@@ -395,6 +405,7 @@ EtlTaskDeploy.propTypes = {
   isEdit: PropTypes.bool,
   selectedRow: PropTypes.object,
   setDeploymentName: PropTypes.func,
+  onDeploymentCreated: PropTypes.func,
 };
 
 export { EtlTaskDeploy };

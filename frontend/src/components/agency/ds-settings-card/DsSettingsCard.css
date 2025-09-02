@@ -5,3 +5,30 @@
 .ds-set-card-col2 {
   z-index: 20;
 }
+
+.ds-set-card-select {
+  width: 200px !important;
+}
+
+.ds-set-card-btn {
+  align-self: flex-end;
+}
+
+.ds-connector-info-wrapper {
+  margin-top: 16px;
+  max-width: 400px;
+}
+
+.ds-connector-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ds-connector-name {
+  max-width: 100%;
+}
+
+.ds-set-card-message {
+  margin-bottom: 0px !important;
+}

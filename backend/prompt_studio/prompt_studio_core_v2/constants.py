@@ -7,6 +7,7 @@ class ToolStudioKeys:
     PROMPTS = "prompts"
     PLATFORM_SERVICE_API_KEY = "PLATFORM_SERVICE_API_KEY"
     SUMMARIZE_LLM_PROFILE = "summarize_llm_profile"
+    SUMMARIZE_LLM_ADAPTER = "summarize_llm_adapter"
     DEFAULT_PROFILE = "default_profile"
 
 
@@ -100,6 +101,9 @@ class ToolStudioPromptKeys:
     REQUIRED = "required"
     EXECUTION_SOURCE = "execution_source"
     LINE_ITEM = "line-item"
+    # Webhook postprocessing settings
+    ENABLE_POSTPROCESSING_WEBHOOK = "enable_postprocessing_webhook"
+    POSTPROCESSING_WEBHOOK_URL = "postprocessing_webhook_url"
 
 
 class FileViewTypes:

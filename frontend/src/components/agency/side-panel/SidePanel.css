@@ -8,6 +8,16 @@
     padding-bottom: 10px;
 }
 
+.sidepanel-header {
+    padding: 16px 0;
+    border-bottom: 1px solid #f0f0f0;
+    margin-bottom: 16px;
+}
+
+.sidepanel-header h4 {
+    margin: 0;
+}
+
 .sidepanel-content {
     flex: 1;
     overflow-y: auto;

@@ -50,6 +50,9 @@ from prompt_studio.prompt_studio_core_v2.exceptions import (
     PermissionError,
     ToolNotValid,
 )
+from prompt_studio.prompt_studio_core_v2.migration_utils import (
+    SummarizeMigrationUtils,
+)
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
 from prompt_studio.prompt_studio_core_v2.prompt_ide_base_tool import PromptIdeBaseTool
 from prompt_studio.prompt_studio_core_v2.prompt_variable_service import (
@@ -321,7 +324,6 @@ class PromptStudioHelper:
         org_id: str,
         user_id: str,
         document_id: str,
-        is_summary: bool = False,
         run_id: str = None,
     ) -> Any:
         """Method to index a document.
@@ -331,8 +333,6 @@ class PromptStudioHelper:
             file_name (str): File to parse
             org_id (str): The ID of the organization to which the user belongs.
             user_id (str): The ID of the user who uploaded the document.
-            is_summary (bool, optional): Whether the document is a summary
-                or not. Defaults to False.
 
         Raises:
             ToolNotValid
@@ -347,14 +347,35 @@ class PromptStudioHelper:
         )
         file_path = str(Path(file_path) / file_name)
 
-        if is_summary:
-            profile_manager: ProfileManager = ProfileManager.objects.get(
-                prompt_studio_tool=tool, is_summarize_llm=True
-            )
-            profile_manager.chunk_size == 0
-            default_profile = profile_manager
-        else:
-            default_profile = ProfileManager.get_default_llm_profile(tool)
+        # Always get the default profile first
+        default_profile = ProfileManager.get_default_llm_profile(tool)
+        summary_profile = (
+            default_profile  # Constructed profile for summarization, not stored in DB
+        )
+
+        # Check if summarization is enabled and handle accordingly
+        if tool.summarize_context:
+            # Trigger migration if needed
+            SummarizeMigrationUtils.migrate_tool_to_adapter_based(tool)
+
+            if tool.summarize_llm_adapter:
+                # For summarization with adapter-based approach, we'll use the default profile
+                # but override the LLM when needed in the summarization process
+                summary_profile = default_profile
+            else:
+                # Fallback to old profile-based approach
+                try:
+                    profile_manager: ProfileManager = ProfileManager.objects.get(
+                        prompt_studio_tool=tool, is_summarize_llm=True
+                    )
+                    profile_manager.chunk_size = 0
+                    summary_profile = profile_manager
+                except ProfileManager.DoesNotExist:
+                    # If no summarize profile exists, continue with default profile
+                    logger.warning(
+                        f"No summarize profile found for tool {tool_id}, using default profile"
+                    )
+                    summary_profile = default_profile
 
         if not tool:
             logger.error(f"No tool instance found for the ID {tool_id}")
@@ -365,6 +386,11 @@ class PromptStudioHelper:
         # Need to check the user who created profile manager
         # has access to adapters configured in profile manager
         PromptStudioHelper.validate_profile_manager_owner_access(default_profile)
+
+        # Also validate summary profile if it's different from default
+        if tool.summarize_context and summary_profile != default_profile:
+            PromptStudioHelper.validate_adapter_status(summary_profile)
+            PromptStudioHelper.validate_profile_manager_owner_access(summary_profile)
 
         fs_instance = EnvHelper.get_storage(
             storage_type=StorageType.PERMANENT,
@@ -392,24 +418,24 @@ class PromptStudioHelper:
             doc_id=doc_id,
             reindex=True,
         )
-        if is_summary:
+        if tool.summarize_context:
             summarize_file_path = PromptStudioHelper.summarize(
-                file_name, org_id, document_id, is_summary, run_id, tool, doc_id
+                file_name, org_id, document_id, run_id, tool, doc_id
             )
             summarize_doc_id = IndexingUtils.generate_index_key(
-                vector_db=str(default_profile.vector_store.id),
-                embedding=str(default_profile.embedding_model.id),
-                x2text=str(default_profile.x2text.id),
-                chunk_size=str(default_profile.chunk_size),
-                chunk_overlap=str(default_profile.chunk_overlap),
+                vector_db=str(summary_profile.vector_store.id),
+                embedding=str(summary_profile.embedding_model.id),
+                x2text=str(summary_profile.x2text.id),
+                chunk_size="0",  # Summarization always uses chunk_size=0
+                chunk_overlap=str(summary_profile.chunk_overlap),
                 file_path=summarize_file_path,
                 fs=fs_instance,
                 tool=util,
             )
             PromptStudioIndexHelper.handle_index_manager(
                 document_id=document_id,
-                is_summary=is_summary,
-                profile_manager=profile_manager,
+                is_summary=True,
+                profile_manager=summary_profile,
                 doc_id=summarize_doc_id,
             )
         start_time = time.time()
@@ -450,9 +476,7 @@ class PromptStudioHelper:
         return doc_id
 
     @staticmethod
-    def summarize(
-        file_name, org_id, document_id, is_summary, run_id, tool, doc_id
-    ) -> str:
+    def summarize(file_name, org_id, document_id, run_id, tool, doc_id) -> str:
         cls = get_plugin_class_by_name(
             name="summarizer",
             plugins=PromptStudioHelper.processor_plugins,
@@ -471,17 +495,21 @@ class PromptStudioHelper:
                 usage_kwargs=usage_kwargs.copy(),
                 prompts=prompts,
             )
-            profile_manager: ProfileManager = ProfileManager.objects.get(
-                prompt_studio_tool=tool, is_summarize_llm=True
-            )
-            default_profile = profile_manager
-            default_profile.chunk_size = 0
-            PromptStudioIndexHelper.handle_index_manager(
-                document_id=document_id,
-                is_summary=is_summary,
-                profile_manager=default_profile,
-                doc_id=doc_id,
-            )
+            # Trigger migration if needed
+            SummarizeMigrationUtils.migrate_tool_to_adapter_based(tool)
+
+            # Validate that summarization is properly configured
+            if not tool.summarize_llm_adapter:
+                # Fallback to old approach if no adapter - just validate it exists
+                try:
+                    ProfileManager.objects.get(
+                        prompt_studio_tool=tool, is_summarize_llm=True
+                    )
+                except ProfileManager.DoesNotExist:
+                    logger.warning(
+                        f"No summarize profile found for tool {tool.tool_id}, using default profile"
+                    )
+
             return summarize_file_path
 
     @staticmethod
@@ -904,6 +932,18 @@ class PromptStudioHelper:
         output[TSPKeys.SIMILARITY_TOP_K] = profile_manager.similarity_top_k
         output[TSPKeys.SECTION] = profile_manager.section
         output[TSPKeys.X2TEXT_ADAPTER] = x2text
+        # Webhook postprocessing settings
+        webhook_enabled = bool(prompt.enable_postprocessing_webhook)
+        webhook_url = (prompt.postprocessing_webhook_url or "").strip()
+        if webhook_enabled and not webhook_url:
+            logger.warning(
+                "Postprocessing webhook enabled but URL missing for prompt %s; disabling.",
+                prompt.prompt_key,
+            )
+            webhook_enabled = False
+        output[TSPKeys.ENABLE_POSTPROCESSING_WEBHOOK] = webhook_enabled
+        if webhook_enabled:
+            output[TSPKeys.POSTPROCESSING_WEBHOOK_URL] = webhook_url
         # Eval settings for the prompt
         output[TSPKeys.EVAL_SETTINGS] = {}
         output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_EVALUATE] = prompt.evaluate
@@ -1795,6 +1835,10 @@ class PromptStudioHelper:
                     "eval_guidance_completeness",
                     DefaultValues.DEFAULT_EVAL_GUIDANCE_COMPLETENESS,
                 ),
+                enable_postprocessing_webhook=prompt_data.get(
+                    "enable_postprocessing_webhook", False
+                ),
+                postprocessing_webhook_url=prompt_data.get("postprocessing_webhook_url"),
                 tool_id=new_tool,
                 profile_manager=default_profile,
                 created_by=user,

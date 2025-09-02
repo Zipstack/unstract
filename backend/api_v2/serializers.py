@@ -1,6 +1,7 @@
 import uuid
 from collections import OrderedDict
 from typing import Any
+from urllib.parse import urlparse
 
 from django.core.validators import RegexValidator
 from pipeline_v2.models import Pipeline
@@ -14,6 +15,7 @@ from rest_framework.serializers import (
     ListField,
     ModelSerializer,
     Serializer,
+    URLField,
     ValidationError,
 )
 from tags.serializers import TagParamsSerializer
@@ -205,6 +207,8 @@ class ExecutionRequestSerializer(TagParamsSerializer):
             If not provided, the default profile will be used.
         hitl_queue_name (str, optional): Document class name for manual review queue.
             If not provided, uses API name as document class.
+        presigned_urls (list): List of presigned URLs to fetch files from.
+            URLs are validated for HTTPS and S3 endpoint requirements.
     """
 
     MAX_FILES_ALLOWED = 32
@@ -215,6 +219,8 @@ class ExecutionRequestSerializer(TagParamsSerializer):
     include_metadata = BooleanField(default=False)
     include_metrics = BooleanField(default=False)
     use_file_history = BooleanField(default=False)
+
+    presigned_urls = ListField(child=URLField(), required=False)
     llm_profile_id = CharField(required=False, allow_null=True, allow_blank=True)
     hitl_queue_name = CharField(required=False, allow_null=True, allow_blank=True)
 
@@ -235,26 +241,81 @@ class ExecutionRequestSerializer(TagParamsSerializer):
                 "Learn more at https://docs.unstract.com/unstract/unstract_platform/features/workflows/hqr_deployment_workflows/ or "
                 "contact our sales team at https://unstract.com/contact/"
             )
-
         return value
 
     files = ListField(
         child=FileField(),
-        required=True,
-        allow_empty=False,
-        error_messages={
-            "required": "At least one file must be provided.",
-            "empty": "The file list cannot be empty.",
-        },
+        required=False,
+        allow_empty=True,
     )
 
-    def validate_files(self, value):
-        """Validate the files field."""
-        if len(value) == 0:
-            raise ValidationError("The file list cannot be empty.")
-        if len(value) > self.MAX_FILES_ALLOWED:
-            raise ValidationError(f"Maximum '{self.MAX_FILES_ALLOWED}' files allowed.")
-        return value
+    def _validate_presigned_url(self, url: str) -> bool:
+        """Validate presigned URL for security and compatibility.
+
+        Args:
+            url (str): The presigned URL to validate
+
+        Returns:
+            bool: True if URL is valid
+
+        Raises:
+            ValidationError: If the URL is invalid or not secure
+        """
+        parsed_url = urlparse(url)
+        scheme = parsed_url.scheme.lower()
+        host = (parsed_url.hostname or "").lower()
+
+        # Require HTTPS for security
+        if scheme != "https":
+            raise ValidationError(
+                {
+                    "presigned_urls": f"Only HTTPS presigned URLs are allowed. URL scheme found: {scheme}"
+                }
+            )
+
+        # Only allow S3 endpoints
+        is_aws = host.endswith(".amazonaws.com")
+        looks_like_s3 = (
+            host == "s3.amazonaws.com"
+            or host.endswith(".s3.amazonaws.com")
+            or re.match(r"(^|.*\.)s3[.-]([a-z0-9-]+)\.amazonaws\.com$", host) is not None
+        )
+
+        if not (is_aws and looks_like_s3):
+            raise ValidationError(
+                {
+                    "presigned_urls": f"URL host '{host}' is not a valid S3 endpoint. Only S3 pre-signed URLs are supported currently."
+                }
+            )
+
+        return True
+
+    def validate_presigned_urls(self, urls):
+        """Validate presigned URLs for proper format and endpoint requirements."""
+        if not urls:
+            return urls
+
+        for url in urls:
+            self._validate_presigned_url(url)
+
+        return urls
+
+    def validate(self, data):
+        """Validate all parameters including presigned URLs."""
+        data = super().validate(data)
+
+        files = data.get("files", [])
+        urls = data.get("presigned_urls", [])
+        total = len(files) + len(urls)
+
+        if total == 0:
+            raise ValidationError("You must provide at least one file or presigned URL.")
+
+        if total > self.MAX_FILES_ALLOWED:
+            raise ValidationError(
+                f"You can upload a maximum of {self.MAX_FILES_ALLOWED} files in total (uploaded or via presigned URLs)."
+            )
+        return data
 
     def validate_llm_profile_id(self, value):
         """Validate that the llm_profile_id belongs to the API key owner."""
