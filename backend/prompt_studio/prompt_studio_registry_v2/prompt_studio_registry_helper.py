@@ -342,6 +342,15 @@ class PromptStudioRegistryHelper:
             output[JsonSchemaKey.SECTION] = prompt.profile_manager.section
             output[JsonSchemaKey.REINDEX] = prompt.profile_manager.reindex
             output[JsonSchemaKey.EMBEDDING_SUFFIX] = embedding_suffix
+            # Webhook postprocessing settings
+            output[JsonSchemaKey.ENABLE_POSTPROCESSING_WEBHOOK] = (
+                prompt.enable_postprocessing_webhook
+            )
+            # Do NOT export raw URLs by default to avoid leakage
+            if getattr(settings, "EXPORT_WEBHOOK_URLS", False):
+                output[JsonSchemaKey.POSTPROCESSING_WEBHOOK_URL] = (
+                    prompt.postprocessing_webhook_url
+                )
             # Retaining the old fields in condition
             # for backward compatibility. To be removed in future.
             if (

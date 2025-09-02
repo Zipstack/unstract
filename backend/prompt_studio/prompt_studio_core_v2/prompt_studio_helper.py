@@ -932,6 +932,18 @@ class PromptStudioHelper:
         output[TSPKeys.SIMILARITY_TOP_K] = profile_manager.similarity_top_k
         output[TSPKeys.SECTION] = profile_manager.section
         output[TSPKeys.X2TEXT_ADAPTER] = x2text
+        # Webhook postprocessing settings
+        webhook_enabled = bool(prompt.enable_postprocessing_webhook)
+        webhook_url = (prompt.postprocessing_webhook_url or "").strip()
+        if webhook_enabled and not webhook_url:
+            logger.warning(
+                "Postprocessing webhook enabled but URL missing for prompt %s; disabling.",
+                prompt.prompt_key,
+            )
+            webhook_enabled = False
+        output[TSPKeys.ENABLE_POSTPROCESSING_WEBHOOK] = webhook_enabled
+        if webhook_enabled:
+            output[TSPKeys.POSTPROCESSING_WEBHOOK_URL] = webhook_url
         # Eval settings for the prompt
         output[TSPKeys.EVAL_SETTINGS] = {}
         output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_EVALUATE] = prompt.evaluate
@@ -1823,6 +1835,10 @@ class PromptStudioHelper:
                     "eval_guidance_completeness",
                     DefaultValues.DEFAULT_EVAL_GUIDANCE_COMPLETENESS,
                 ),
+                enable_postprocessing_webhook=prompt_data.get(
+                    "enable_postprocessing_webhook", False
+                ),
+                postprocessing_webhook_url=prompt_data.get("postprocessing_webhook_url"),
                 tool_id=new_tool,
                 profile_manager=default_profile,
                 created_by=user,
