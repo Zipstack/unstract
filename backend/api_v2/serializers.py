@@ -1,4 +1,3 @@
-import re
 import uuid
 from collections import OrderedDict
 from typing import Any
@@ -220,32 +219,21 @@ class ExecutionRequestSerializer(TagParamsSerializer):
     hitl_queue_name = CharField(required=False, allow_null=True, allow_blank=True)
 
     def validate_hitl_queue_name(self, value: str | None) -> str | None:
-        """Validate queue name format: a-z0-9-_ with length and pattern restrictions."""
-        if not value:
-            return value
-
-        # Length validation
-        if len(value) < 3:
-            raise ValidationError("Queue name must be at least 3 characters long.")
-        if len(value) > 50:
-            raise ValidationError("Queue name cannot exceed 50 characters.")
-
-        # Check valid characters: a-z, 0-9, _, -
-        if not re.match(r"^[a-z0-9_-]+$", value):
-            raise ValidationError(
-                "Queue name can only contain lowercase letters, numbers, underscores, and hyphens."
+        """Validate queue name format using enterprise validation if available."""
+        # Try to use enterprise validation from pluggable_apps
+        try:
+            from pluggable_apps.manual_review_v2.serializers import (
+                validate_hitl_queue_name_format,
             )
 
-        # Check no starting/ending with _ or -
-        if value.startswith(("_", "-")) or value.endswith(("_", "-")):
+            return validate_hitl_queue_name_format(value)
+        except ModuleNotFoundError:
+            # Fallback to basic validation if enterprise features not available
             raise ValidationError(
-                "Queue name cannot start or end with underscore or hyphen."
-            )
-
-        # Check no consecutive special characters
-        if re.search(r"[_-]{2,}", value):
-            raise ValidationError(
-                "Queue name cannot have repeating underscores or hyphens."
+                "Human-in-the-Loop (HITL) queue management requires Unstract Enterprise. "
+                "This advanced workflow feature is available in our enterprise version. "
+                "Learn more at https://docs.unstract.com/unstract/unstract_platform/features/workflows/hqr_deployment_workflows/ or "
+                "contact our sales team at https://unstract.com/contact/"
             )
 
         return value
