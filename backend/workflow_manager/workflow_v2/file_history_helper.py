@@ -1,8 +1,10 @@
 import logging
+from datetime import timedelta
 from typing import Any
 
 from django.db.models import Q
 from django.db.utils import IntegrityError
+from django.utils import timezone
 
 from workflow_manager.endpoint_v2.dto import FileHash
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
@@ -27,6 +29,9 @@ class FileHistoryHelper:
     ) -> FileHistory | None:
         """Retrieve a file history record based on the cache key.
 
+        First deletes expired file histories based on reprocessing interval,
+        then returns the remaining file history if it exists.
+
         Args:
             workflow (Workflow): The workflow associated with the file history.
             cache_key (Optional[str]): The cache key to search for.
@@ -42,6 +47,10 @@ class FileHistoryHelper:
                 f"while fetching file history for {workflow}"
             )
             return None
+
+        # Delete expired file histories before querying
+        cls._delete_expired_file_histories(workflow)
+
         filters = Q(workflow=workflow)
         if cache_key:
             filters &= Q(cache_key=cache_key)
@@ -50,16 +59,12 @@ class FileHistoryHelper:
 
         try:
             if file_path:
-                file_history: FileHistory = (
-                    FileHistory.objects.exclude_reprocessable().get(
-                        filters & Q(file_path=file_path)
-                    )
+                file_history: FileHistory = FileHistory.objects.get(
+                    filters & Q(file_path=file_path)
                 )
             else:
-                file_history: FileHistory = (
-                    FileHistory.objects.exclude_reprocessable().get(
-                        filters & Q(file_path__isnull=True)
-                    )
+                file_history: FileHistory = FileHistory.objects.get(
+                    filters & Q(file_path__isnull=True)
                 )
             return file_history
         except FileHistory.DoesNotExist:
@@ -81,7 +86,7 @@ class FileHistoryHelper:
     ) -> FileHistory | None:
         """Handle fallback for workflows where file_path was not stored (e.g., API deployments or older records)."""
         try:
-            file_history: FileHistory = FileHistory.objects.exclude_reprocessable().get(
+            file_history: FileHistory = FileHistory.objects.get(
                 filters & Q(file_path__isnull=True)
             )
             file_execution = cls.get_file_execution_by_file_hash(
@@ -135,6 +140,40 @@ class FileHistoryHelper:
         )
         return None
 
+    @classmethod
+    def _delete_expired_file_histories(cls, workflow: Workflow) -> None:
+        """Delete expired file histories based on reprocessing interval from WorkflowEndpoint configuration.
+
+        Args:
+            workflow: The workflow to check for expired file histories.
+        """
+        try:
+            reprocessing_interval = cls._get_reprocessing_interval_from_config(workflow)
+            if reprocessing_interval is None or reprocessing_interval <= 0:
+                return  # No reprocessing configured, keep all histories
+
+            now = timezone.now()
+            expiry_date = now - timedelta(days=reprocessing_interval)
+
+            print(
+                f"####### Deleting expired file histories ######### workflow={workflow}, interval={reprocessing_interval} days, expiry_date={expiry_date}"
+            )
+
+            # Delete file histories that are older than the reprocessing interval
+            deleted_count, _ = FileHistory.objects.filter(
+                workflow=workflow, created_at__lt=expiry_date
+            ).delete()
+
+            if deleted_count > 0:
+                logger.info(
+                    f"Deleted {deleted_count} expired file histories for workflow {workflow}"
+                )
+
+        except Exception as e:
+            logger.error(
+                f"Error deleting expired file histories for workflow {workflow}: {e}"
+            )
+
     @staticmethod
     def _get_reprocessing_interval_from_config(workflow: Workflow) -> int | None:
         """Get reprocessing interval in days from workflow configuration.
@@ -171,10 +210,11 @@ class FileHistoryHelper:
             # Convert to days
             if interval_unit == "months":
                 return interval_value * 30
+            print("####### interval_value ####### ", interval_value)
             return interval_value
 
         except Exception as e:
-            logger.debug(
+            logger.error(
                 f"Error getting reprocessing interval for workflow {workflow}: {e}"
             )
             return None
@@ -203,11 +243,6 @@ class FileHistoryHelper:
         try:
             file_path = file_hash.file_path if not is_api else None
 
-            # Get reprocessing interval from WorkflowEndpoint configuration
-            reprocessing_interval = (
-                FileHistoryHelper._get_reprocessing_interval_from_config(workflow)
-            )
-
             FileHistory.objects.create(
                 workflow=workflow,
                 cache_key=file_hash.file_hash,
@@ -217,7 +252,6 @@ class FileHistoryHelper:
                 metadata=str(metadata) if metadata else "",
                 error=str(error) if error else "",
                 file_path=file_path,
-                file_reprocessing_interval=reprocessing_interval,
             )
         except IntegrityError as e:
             # TODO: Need to find why duplicate insert is coming

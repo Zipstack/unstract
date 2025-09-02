@@ -212,7 +212,12 @@ class SourceConnector(BaseConnector):
         for input_directory in valid_directories:
             logger.debug(f"Listing files from:  {input_directory}")
             matched_files, count = self._get_matched_files(
-                source_fs, input_directory, patterns, recursive, limit, unique_file_paths
+                source_fs,
+                input_directory,
+                patterns,
+                recursive,
+                limit,
+                unique_file_paths,
             )
             self.publish_user_sys_log(f"Matched '{count}' files from '{input_directory}'")
             total_matched_files.update(matched_files)
@@ -429,7 +434,6 @@ class SourceConnector(BaseConnector):
         """Find blocking file execution by file hash if it exists."""
         if not file_hash.file_hash:
             return None
-
         try:
             return WorkflowFileExecution.objects.get(
                 workflow_execution=execution,
@@ -489,7 +493,10 @@ class SourceConnector(BaseConnector):
             return True
 
         # Existing file history check
-        if not self._is_new_file(file_hash=file_hash, workflow=self.endpoint.workflow):
+        is_new_file = self._is_new_file(
+            file_hash=file_hash, workflow=self.endpoint.workflow
+        )
+        if not is_new_file:
             return True
 
         # NEW: Check if file is being processed
