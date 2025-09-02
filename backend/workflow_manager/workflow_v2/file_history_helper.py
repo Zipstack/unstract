@@ -3,6 +3,7 @@ from typing import Any
 
 from django.db.models import Q
 from django.db.utils import IntegrityError
+from utils.cache_service import CacheService
 
 from workflow_manager.endpoint_v2.dto import FileHash
 from workflow_manager.file_execution.models import WorkflowFileExecution
@@ -213,9 +214,24 @@ class FileHistoryHelper:
     def clear_history_for_workflow(
         workflow: Workflow,
     ) -> None:
-        """Clear all file history records associated with a workflow.
+        """Clear all file history records and Redis caches associated with a workflow.
 
         Args:
             workflow (Workflow): The workflow to clear the history for.
         """
+        # Clear database records
         FileHistory.objects.filter(workflow=workflow).delete()
+        logger.info(f"Cleared database records for workflow {workflow.id}")
+
+        # Clear Redis caches for file_active entries
+        pattern = f"file_active:{workflow.id}:*"
+
+        try:
+            CacheService.clear_cache(pattern)
+            logger.info(
+                f"Cleared Redis cache entries for workflow {workflow.id} with pattern: {pattern}"
+            )
+        except Exception as e:
+            logger.warning(
+                f"Failed to clear Redis caches for workflow {workflow.id}: {str(e)}"
+            )
