@@ -58,15 +58,12 @@ class FileHistoryHelper:
         elif provider_file_uuid:
             filters &= Q(provider_file_uuid=provider_file_uuid)
 
+        file_history: FileHistory | None
         try:
             if file_path:
-                file_history: FileHistory = FileHistory.objects.get(
-                    filters & Q(file_path=file_path)
-                )
-            else:
-                file_history: FileHistory = FileHistory.objects.get(
-                    filters & Q(file_path__isnull=True)
-                )
+                file_history = FileHistory.objects.get(filters & Q(file_path=file_path))
+                return file_history
+            file_history = FileHistory.objects.get(filters & Q(file_path__isnull=True))
             return file_history
         except FileHistory.DoesNotExist:
             if file_path:
