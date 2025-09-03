@@ -14,55 +14,6 @@ logger = logging.getLogger(__name__)
 
 class UsageHelper:
     @staticmethod
-    def normalize_to_timezone_aware_datetime(value, is_end_date=False, reference_tz=None):
-        """Normalize a date or datetime to a timezone-aware datetime.
-
-        This wrapper uses Django's timezone utilities (make_aware, localtime) but adds:
-        - Conversion of date objects to datetime with proper time bounds
-        - Handling of end dates to include the entire day (23:59:59)
-        - Uniform handling of various input types (date, naive datetime, aware datetime)
-
-        Args:
-            value: A date, naive datetime, or timezone-aware datetime object to normalize.
-                  Can be None, in which case None is returned.
-            is_end_date: If True and value is a date object, combine with time.max (23:59:59.999999)
-                        to represent the end of the day. If False, combine with time.min (00:00:00).
-                        This ensures proper date range inclusivity.
-            reference_tz: Reference timezone to use for naive datetimes. If not provided,
-                         defaults to UTC. All output datetimes will be in this timezone.
-
-        Returns:
-            A timezone-aware datetime object in the reference timezone, or None if input is None.
-
-        """
-        if value is None:
-            return None
-
-        # Use UTC as default timezone if no reference provided
-        if reference_tz is None:
-            reference_tz = timezone.utc
-
-        # Handle date objects - convert to datetime with appropriate time
-        if isinstance(value, date) and not isinstance(value, datetime):
-            if is_end_date:
-                # For end dates, use end of day (23:59:59.999999)
-                value = datetime.combine(value, time.max.replace(microsecond=999999))
-            else:
-                # For start dates, use start of day (00:00:00)
-                value = datetime.combine(value, time.min)
-
-        # Handle datetime objects
-        if isinstance(value, datetime):
-            # If naive, make it timezone-aware using Django's make_aware
-            if value.tzinfo is None:
-                value = timezone.make_aware(value, reference_tz)
-            # If already timezone-aware but different timezone, convert using localtime
-            elif reference_tz and value.tzinfo != reference_tz:
-                value = timezone.localtime(value, reference_tz)
-
-        return value
-
-    @staticmethod
     def get_aggregated_token_count(run_id: str) -> dict:
         """Retrieve aggregated token counts for the given run_id.
 
@@ -150,25 +101,12 @@ class UsageHelper:
         }
 
     @staticmethod
-    def _get_reference_timezone(org_created_at):
-        """Get reference timezone from organization or use UTC."""
-        # First normalize to datetime if it's a date object
-        if isinstance(org_created_at, date) and not isinstance(org_created_at, datetime):
-            org_created_at = datetime.combine(org_created_at, time.min)
+    def _get_subscription_dates(organization_id):
+        """Attempt to get trial dates from subscription plugin.
 
-        # Now we can safely check tzinfo on datetime object
-        if isinstance(org_created_at, datetime) and org_created_at.tzinfo:
-            return org_created_at.tzinfo, org_created_at
-
-        # Make timezone-aware using Django's timezone utilities
-        reference_tz = timezone.utc
-        if isinstance(org_created_at, datetime) and org_created_at.tzinfo is None:
-            org_created_at = timezone.make_aware(org_created_at, reference_tz)
-        return reference_tz, org_created_at
-
-    @staticmethod
-    def _get_subscription_dates(organization_id, reference_tz):
-        """Attempt to get trial dates from subscription plugin."""
+        Assumes subscription plugin returns timezone-aware datetimes or dates
+        that can be safely used without normalization (uniform storage).
+        """
         try:
             from pluggable_apps.subscription_v2.subscription_helper import (
                 SubscriptionHelper,
@@ -182,12 +120,20 @@ class UsageHelper:
             ):
                 return None, None
 
-            start_date = UsageHelper.normalize_to_timezone_aware_datetime(
-                org_plans.start_date, is_end_date=False, reference_tz=reference_tz
-            )
-            end_date = UsageHelper.normalize_to_timezone_aware_datetime(
-                org_plans.end_date, is_end_date=True, reference_tz=reference_tz
-            )
+            # If subscription returns dates, convert to datetime with proper times
+            start_date = org_plans.start_date
+            end_date = org_plans.end_date
+
+            # Handle date objects by converting to start/end of day (assuming UTC)
+            if isinstance(start_date, date) and not isinstance(start_date, datetime):
+                start_date = datetime.combine(start_date, time.min).replace(
+                    tzinfo=timezone.utc
+                )
+            if isinstance(end_date, date) and not isinstance(end_date, datetime):
+                end_date = datetime.combine(end_date, time.max).replace(
+                    tzinfo=timezone.utc
+                )
+
             logger.info(f"Using subscription dates for org {organization_id}")
             return start_date, end_date
 
@@ -238,31 +184,20 @@ class UsageHelper:
                 - error (str, optional): Error message if processing fails
         """
         try:
-            # Get reference timezone
-            reference_tz, org_created_at = UsageHelper._get_reference_timezone(
-                organization.created_at
-            )
-
             # Try to get subscription dates
             trial_start_date, trial_end_date = UsageHelper._get_subscription_dates(
-                organization.organization_id, reference_tz
+                organization.organization_id
             )
 
-            # Use fallback dates if needed
-            # Normalization is required because:
-            # 1. Subscription plugin may return date objects (not datetime)
-            # 2. organization.created_at timezone awareness varies by DB config
-            # 3. We need consistent timezone-aware datetimes for DB filtering
+            # Use fallback dates if needed (assuming uniform UTC storage)
             if not trial_start_date:
-                trial_start_date = UsageHelper.normalize_to_timezone_aware_datetime(
-                    org_created_at, is_end_date=False, reference_tz=reference_tz
-                )
+                trial_start_date = organization.created_at
 
             if not trial_end_date:
-                trial_end_date = UsageHelper.normalize_to_timezone_aware_datetime(
-                    org_created_at + timedelta(days=14),
-                    is_end_date=True,
-                    reference_tz=reference_tz,
+                # For end date, set to end of day (23:59:59.999999)
+                end_of_trial_date = organization.created_at + timedelta(days=14)
+                trial_end_date = end_of_trial_date.replace(
+                    hour=23, minute=59, second=59, microsecond=999999
                 )
 
             # Calculate usage metrics
