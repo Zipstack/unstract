@@ -104,8 +104,15 @@ class TokenCounterCompat:
 
 
 class LLMResponseCompat:
+    """Compatibility class to mimic llama-index CompletionResponse interface."""
+    
     def __init__(self, text):
         self.text = text
+        # Add other CompletionResponse attributes for compatibility
+        self.additional_kwargs = {}
+        self.raw = None
+        self.logprobs = None
+        self.delta = None
 
 
 # Mapping from python log level to Unstract counterpart

@@ -34,6 +34,7 @@ def handle_service_exceptions(context: str) -> Callable[[Callable[P, R]], Callab
                 msg = f"Error while {context}. Unable to connect to prompt service."
                 logger.error(f"{msg}\n{e}")
                 args[0].tool.stream_error_and_exit(msg, e)
+                return None
             except RequestException as e:
                 error_message = str(e)
                 response = getattr(e, "response", None)
@@ -47,6 +48,13 @@ def handle_service_exceptions(context: str) -> Callable[[Callable[P, R]], Callab
                         error_message = response.text
                 msg = f"Error while {context}. {error_message}"
                 args[0].tool.stream_error_and_exit(msg, e)
+                return None
+            except Exception as e:
+                # Handle any other unexpected exceptions
+                msg = f"Error while {context}. An unexpected error occurred"
+                logger.error(f"{msg}: {type(e).__name__}: {str(e)}", exc_info=True)
+                args[0].tool.stream_error_and_exit(msg, e)
+                return None
 
         return wrapper
 

@@ -47,9 +47,13 @@ class LLM:
         adapter_metadata: dict[str, Any] = {},
         adapter_instance_id: str = "",
         tool: BaseTool = None,
+        usage_kwargs: dict[str, Any] = {},
         system_prompt: str = "",
         kwargs: dict[str, Any] = {},
+        capture_metrics: bool = False,
     ) -> None:
+        self._usage_kwargs = usage_kwargs
+        self._capture_metrics = capture_metrics
         try:
             llm_config = None
 
@@ -82,7 +86,11 @@ class LLM:
             )
 
         try:
-            self.platform_kwargs = kwargs
+            self.platform_kwargs = {**kwargs, **usage_kwargs}
+
+            if self._adapter_instance_id:
+                self.platform_kwargs["adapter_instance_id"] = self._adapter_instance_id
+                
             self.kwargs = self.adapter.validate(self._adapter_metadata)
 
             # REF: https://docs.litellm.ai/docs/completion/input#translated-openai-params
@@ -111,7 +119,7 @@ class LLM:
         """Test connection to the LLM provider."""
         try:
             response = self.complete("What is the capital of Tamilnadu?")
-            text = response["response"]["text"]
+            text = response["response"].text
 
             find_match = re.search("chennai", text.lower())
             if find_match:
@@ -161,6 +169,7 @@ class LLM:
             messages=messages,
             **completion_kwargs,
         )
+
         response_text = response["choices"][0]["message"]["content"]
 
         self._record_usage(
@@ -182,7 +191,8 @@ class LLM:
             response_text, extract_json, post_process_fn
         )
 
-        return {"response": {"text": response_text}, **post_processed_output}
+        response_object = LLMResponseCompat(response_text)
+        return {"response": response_object, **post_processed_output}
 
     def stream_complete(
         self,
@@ -243,7 +253,8 @@ class LLM:
             self.kwargs["model"], messages, response.get("usage"), "acomplete"
         )
 
-        return {"response": {"text": response_text}}
+        response_object = LLMResponseCompat(response_text)
+        return {"response": response_object}
 
     @classmethod
     def get_context_window_size(

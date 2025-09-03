@@ -5,6 +5,7 @@ import tiktoken
 from llama_index.core.callbacks import CallbackManager as LlamaIndexCallbackManager
 from llama_index.core.callbacks import TokenCountingHandler
 from llama_index.core.embeddings import BaseEmbedding
+from llama_index.core.llms import LLM
 from unstract.sdk1.usage_handler import UsageHandler
 
 logger = logging.getLogger(__name__)
@@ -22,7 +23,7 @@ class CallbackManager:
     @staticmethod
     def set_callback(
         platform_api_key: str,
-        model: BaseEmbedding,
+        model: LLM | BaseEmbedding,
         kwargs,
     ) -> None:
         """Sets the standard callback manager for LlamaIndex embedding. This is
@@ -53,7 +54,7 @@ class CallbackManager:
 
     @staticmethod
     def get_callback_manager(
-        model: BaseEmbedding,
+        model: LLM | BaseEmbedding,
         platform_api_key: str,
         kwargs,
     ) -> LlamaIndexCallbackManager:
