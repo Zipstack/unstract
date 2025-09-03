@@ -1,0 +1,16 @@
+/* Additional styles for ConnectorCard that extend DataSourceCard */
+.connector-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.connector-card.selected {
+  border-color: #1890ff;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+}
+
+.display-flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

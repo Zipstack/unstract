@@ -233,12 +233,6 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["get"])
-    def clear_cache(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        workflow = self.get_object()
-        response: dict[str, Any] = WorkflowHelper.clear_cache(workflow_id=workflow.id)
-        return Response(response.get("message"), status=response.get("status"))
-
-    @action(detail=True, methods=["get"])
     def can_update(self, request: Request, pk: str) -> Response:
         response: dict[str, Any] = WorkflowHelper.can_update_workflow(pk)
         return Response(response, status=status.HTTP_200_OK)
