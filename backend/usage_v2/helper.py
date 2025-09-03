@@ -111,37 +111,38 @@ class UsageHelper:
             from pluggable_apps.subscription_v2.subscription_helper import (
                 SubscriptionHelper,
             )
-
-            org_plans = SubscriptionHelper.get_subscription(organization_id)
-            if (
-                not org_plans
-                or not hasattr(org_plans, "start_date")
-                or not hasattr(org_plans, "end_date")
-            ):
-                return None, None
-
-            # If subscription returns dates, convert to datetime with proper times
-            start_date = org_plans.start_date
-            end_date = org_plans.end_date
-
-            # Handle date objects by converting to start/end of day (assuming UTC)
-            if isinstance(start_date, date) and not isinstance(start_date, datetime):
-                start_date = datetime.combine(start_date, time.min).replace(
-                    tzinfo=timezone.utc
-                )
-            if isinstance(end_date, date) and not isinstance(end_date, datetime):
-                end_date = datetime.combine(end_date, time.max).replace(
-                    tzinfo=timezone.utc
-                )
-
-            logger.info(f"Using subscription dates for org {organization_id}")
-            return start_date, end_date
-
-        except Exception as e:
-            logger.info(
-                f"Subscription plugin not available ({type(e).__name__}), using fallback dates"
-            )
+        except (ImportError, ModuleNotFoundError):
+            logger.debug("Subscription plugin not available, using fallback dates")
             return None, None
+
+        # Plugin is available, attempt to get subscription data
+        try:
+            org_plans = SubscriptionHelper.get_subscription(organization_id)
+        except AttributeError as e:
+            logger.warning(f"Subscription plugin missing expected methods: {e}")
+            return None, None
+
+        if (
+            not org_plans
+            or not hasattr(org_plans, "start_date")
+            or not hasattr(org_plans, "end_date")
+        ):
+            return None, None
+
+        # If subscription returns dates, convert to datetime with proper times
+        start_date = org_plans.start_date
+        end_date = org_plans.end_date
+
+        # Handle date objects by converting to start/end of day (assuming UTC)
+        if isinstance(start_date, date) and not isinstance(start_date, datetime):
+            start_date = datetime.combine(start_date, time.min).replace(
+                tzinfo=timezone.utc
+            )
+        if isinstance(end_date, date) and not isinstance(end_date, datetime):
+            end_date = datetime.combine(end_date, time.max).replace(tzinfo=timezone.utc)
+
+        logger.info(f"Using subscription dates for org {organization_id}")
+        return start_date, end_date
 
     @staticmethod
     def _calculate_usage_metrics(organization, trial_start_date, trial_end_date):
@@ -199,6 +200,10 @@ class UsageHelper:
                 trial_end_date = end_of_trial_date.replace(
                     hour=23, minute=59, second=59, microsecond=999999
                 )
+
+            # Validate trial window - guard against inverted date range
+            if trial_end_date < trial_start_date:
+                raise ValueError("trial_end_date must be on or after trial_start_date")
 
             # Calculate usage metrics
             aggregated_data, documents_processed = UsageHelper._calculate_usage_metrics(
