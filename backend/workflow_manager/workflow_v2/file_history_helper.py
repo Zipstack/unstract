@@ -48,9 +48,9 @@ class FileHistoryHelper:
             )
             return None
 
-        # Delete expired file histories and file executions before querying
+        # Deleting expired file histories before querying based on
+        # metadata delation behaviour in connector settings
         cls._delete_expired_file_histories(workflow)
-        cls._delete_expired_file_executions(workflow)
 
         filters = Q(workflow=workflow)
         if cache_key:
@@ -169,30 +169,6 @@ class FileHistoryHelper:
         except Exception as e:
             logger.error(
                 f"Error deleting expired file histories for workflow {workflow}: {e}"
-            )
-
-    @classmethod
-    def _delete_expired_file_executions(cls, workflow: Workflow) -> None:
-        """Delete expired WorkflowFileExecution records based on reprocessing interval."""
-        try:
-            reprocessing_interval = cls._get_reprocessing_interval_from_config(workflow)
-            if reprocessing_interval and reprocessing_interval > 0:
-                expiry_date = timezone.now() - timedelta(days=reprocessing_interval)
-
-                # Delete expired COMPLETED file executions (keep EXECUTING/PENDING for safety)
-                deleted_count, _ = WorkflowFileExecution.objects.filter(
-                    workflow_execution__workflow=workflow,
-                    created_at__lt=expiry_date,
-                    status=ExecutionStatus.COMPLETED,
-                ).delete()
-
-                if deleted_count > 0:
-                    logger.info(
-                        f"Deleted {deleted_count} expired file executions for workflow {workflow}"
-                    )
-        except Exception as e:
-            logger.error(
-                f"Error deleting expired file executions for workflow {workflow}: {e}"
             )
 
     @staticmethod

@@ -1,5 +1,6 @@
 import { Row, Col } from "antd";
 import PropTypes from "prop-types";
+import "./CustomFieldTemplate.css";
 
 const CustomObjectFieldTemplate = (props) => {
   const { properties, title, description, formData } = props;
@@ -66,14 +67,9 @@ const CustomObjectFieldTemplate = (props) => {
                   key="conditional-fields"
                   gutter={[4, 2]}
                   className="compact-expiry-fields"
-                  style={{ width: "100%" }}
                 >
-                  <Col span={12} style={{ paddingRight: "2px" }}>
-                    {intervalProperty.content}
-                  </Col>
-                  <Col span={12} style={{ paddingLeft: "2px" }}>
-                    {unitProperty.content}
-                  </Col>
+                  <Col span={12}>{intervalProperty.content}</Col>
+                  <Col span={12}>{unitProperty.content}</Col>
                 </Row>
               );
             }
