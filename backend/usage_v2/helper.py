@@ -17,6 +17,11 @@ class UsageHelper:
     def normalize_to_timezone_aware_datetime(value, is_end_date=False, reference_tz=None):
         """Normalize a date or datetime to a timezone-aware datetime.
 
+        This wrapper uses Django's timezone utilities (make_aware, localtime) but adds:
+        - Conversion of date objects to datetime with proper time bounds
+        - Handling of end dates to include the entire day (23:59:59)
+        - Uniform handling of various input types (date, naive datetime, aware datetime)
+
         Args:
             value: A date, naive datetime, or timezone-aware datetime object to normalize.
                   Can be None, in which case None is returned.
@@ -145,16 +150,6 @@ class UsageHelper:
         }
 
     @staticmethod
-    def _validate_organization(organization):
-        """Validate organization has required attributes."""
-        if not organization:
-            raise ValueError("Organization cannot be None")
-        if not hasattr(organization, "organization_id"):
-            raise ValueError("Organization must have organization_id attribute")
-        if not hasattr(organization, "created_at"):
-            raise ValueError("Organization must have created_at attribute")
-
-    @staticmethod
     def _get_reference_timezone(org_created_at):
         """Get reference timezone from organization or use UTC."""
         # First normalize to datetime if it's a date object
@@ -225,37 +220,6 @@ class UsageHelper:
         return aggregated_data, documents_processed
 
     @staticmethod
-    def _get_error_response(organization):
-        """Generate error response with fallback dates."""
-        try:
-            fallback_start = (
-                organization.created_at
-                if hasattr(organization, "created_at")
-                else timezone.now()
-            )
-        except Exception:
-            fallback_start = timezone.now()
-
-        fallback_start = UsageHelper.normalize_to_timezone_aware_datetime(
-            fallback_start, is_end_date=False, reference_tz=timezone.utc
-        )
-        fallback_end = UsageHelper.normalize_to_timezone_aware_datetime(
-            fallback_start + timedelta(days=14),
-            is_end_date=True,
-            reference_tz=timezone.utc,
-        )
-
-        return {
-            "error": "Failed to retrieve trial statistics",
-            "trial_start_date": fallback_start.isoformat(),
-            "trial_end_date": fallback_end.isoformat(),
-            "total_cost": 0,
-            "documents_processed": 0,
-            "api_calls": 0,
-            "etl_runs": 0,
-        }
-
-    @staticmethod
     def get_trial_statistics(organization) -> dict[str, Any]:
         """Get comprehensive trial usage statistics for an organization.
 
@@ -274,9 +238,6 @@ class UsageHelper:
                 - error (str, optional): Error message if processing fails
         """
         try:
-            # Validate organization
-            UsageHelper._validate_organization(organization)
-
             # Get reference timezone
             reference_tz, org_created_at = UsageHelper._get_reference_timezone(
                 organization.created_at
@@ -288,6 +249,10 @@ class UsageHelper:
             )
 
             # Use fallback dates if needed
+            # Normalization is required because:
+            # 1. Subscription plugin may return date objects (not datetime)
+            # 2. organization.created_at timezone awareness varies by DB config
+            # 3. We need consistent timezone-aware datetimes for DB filtering
             if not trial_start_date:
                 trial_start_date = UsageHelper.normalize_to_timezone_aware_datetime(
                     org_created_at, is_end_date=False, reference_tz=reference_tz
@@ -314,6 +279,6 @@ class UsageHelper:
                 "etl_runs": aggregated_data.get("unique_runs", 0) or 0,
             }
 
-        except Exception as e:
-            logger.error(f"Error calculating trial statistics: {str(e)}")
-            return UsageHelper._get_error_response(organization)
+        except Exception:
+            logger.exception("Error calculating trial statistics")
+            raise

@@ -5,6 +5,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from permissions.permission import IsOrganizationMember
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.filters import OrderingFilter
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -113,23 +114,10 @@ class UsageView(viewsets.ModelViewSet):
             # Validate organization context
             if not user_organization:
                 logger.warning("No organization context found for user")
-                return Response(
-                    status=status.HTTP_400_BAD_REQUEST,
-                    data={"error": "No organization context available"},
-                )
+                raise ValidationError("No organization context available")
 
             # Get trial statistics from helper
             trial_stats = UsageHelper.get_trial_statistics(user_organization)
-
-            # If helper returns an error payload, surface it as 500 to clients.
-            if isinstance(trial_stats, dict) and trial_stats.get("error"):
-                logger.error(
-                    "Trial statistics helper returned error payload; responding with 500"
-                )
-                return Response(
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    data={"error": trial_stats["error"]},
-                )
 
             # Log successful retrieval for audit purposes
             logger.info(
@@ -138,15 +126,6 @@ class UsageView(viewsets.ModelViewSet):
 
             return Response(status=status.HTTP_200_OK, data=trial_stats)
 
-        except ValueError as e:
-            logger.error(f"Validation error retrieving trial statistics: {str(e)}")
-            return Response(
-                status=status.HTTP_400_BAD_REQUEST,
-                data={"error": "Invalid organization data"},
-            )
-        except Exception as e:
-            logger.error(f"Unexpected error retrieving trial statistics: {str(e)}")
-            return Response(
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                data={"error": "Unable to retrieve trial statistics"},
-            )
+        except (ValueError, ValidationError):
+            logger.exception("Validation error retrieving trial statistics")
+            raise
