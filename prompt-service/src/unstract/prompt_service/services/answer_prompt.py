@@ -1,5 +1,8 @@
+import ipaddress
+import socket
 from logging import Logger
 from typing import Any
+from urllib.parse import urlparse
 
 from flask import current_app as app
 
@@ -8,6 +11,7 @@ from unstract.prompt_service.constants import ExecutionSource, FileStorageKeys, 
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.exceptions import RateLimitError
 from unstract.prompt_service.helpers.plugin import PluginManager
+from unstract.prompt_service.helpers.postprocessor import postprocess_data
 from unstract.prompt_service.utils.env_loader import get_env_or_die
 from unstract.prompt_service.utils.json_repair_helper import (
     repair_json_with_best_structure,
@@ -20,6 +24,58 @@ from unstract.sdk.file_storage import FileStorage, FileStorageProvider
 from unstract.sdk.file_storage.constants import StorageType
 from unstract.sdk.file_storage.env_helper import EnvHelper
 from unstract.sdk.llm import LLM
+
+
+def _is_safe_public_url(url: str) -> bool:
+    """Validate webhook URL for SSRF protection.
+
+    Only allows HTTPS and blocks private/loopback/internal addresses.
+    Resolves all DNS records (A/AAAA) to prevent DNS rebinding attacks.
+    """
+    try:
+        p = urlparse(url)
+        if p.scheme not in ("https",):  # Only allow HTTPS for security
+            return False
+        host = p.hostname or ""
+        # Block obvious local hosts
+        if host in ("localhost",):
+            return False
+
+        addrs: set[str] = set()
+        # If literal IP, validate directly; else resolve all records (A/AAAA)
+        try:
+            ipaddress.ip_address(host)
+            addrs.add(host)
+        except ValueError:
+            try:
+                for family, _type, _proto, _canonname, sockaddr in socket.getaddrinfo(
+                    host, None, type=socket.SOCK_STREAM
+                ):
+                    addr = sockaddr[0]
+                    addrs.add(addr)
+            except Exception:
+                return False
+
+        if not addrs:
+            return False
+
+        # Validate all resolved addresses
+        for addr in addrs:
+            try:
+                ip = ipaddress.ip_address(addr)
+            except ValueError:
+                return False
+            if (
+                ip.is_private
+                or ip.is_loopback
+                or ip.is_link_local
+                or ip.is_reserved
+                or ip.is_multicast
+            ):
+                return False
+        return True
+    except Exception:
+        return False
 
 
 class AnswerPromptService:
@@ -40,7 +96,7 @@ class AnswerPromptService:
                     )
                 else:
                     raise ValueError(
-                        f"Variable {variable_name} not found " "in structured output"
+                        f"Variable {variable_name} not found in structured output"
                     )
 
         if promptx != output[PSKeys.PROMPT]:
@@ -109,8 +165,10 @@ class AnswerPromptService:
                     if PSKeys.SYNONYMS in grammar:
                         synonyms = grammar[PSKeys.SYNONYMS]
                 if len(synonyms) > 0 and word != "":
-                    prompt += f'\nNote: You can consider that the word {word} is same as \
-                        {", ".join(synonyms)} in both the quesiton and the context.'  # noqa
+                    prompt += (
+                        f"\nNote: You can consider that the word '{word}' "
+                        f"is the same as {', '.join(synonyms)} in both the question and the context."
+                    )  # noqa
         if prompt_type == PSKeys.JSON:
             json_postamble = get_env_or_die(
                 PSKeys.JSON_POSTAMBLE, PSKeys.DEFAULT_JSON_POSTAMBLE
@@ -250,8 +308,8 @@ class AnswerPromptService:
             parsed_data = repair_json_with_best_structure(answer)
 
             if isinstance(parsed_data, str):
-                err_msg = "Error parsing response (to json)\n" f"Candidate JSON: {answer}"
-                app.logger.info(err_msg, LogLevel.ERROR)
+                err_msg = "Error parsing response to JSON"
+                app.logger.error(err_msg)
                 publish_log(
                     log_events_id,
                     {
@@ -259,14 +317,55 @@ class AnswerPromptService:
                         "prompt_key": prompt_key,
                         "doc_name": doc_name,
                     },
-                    LogLevel.INFO,
+                    LogLevel.WARNING,
                     RunLevel.RUN,
                     "Unable to parse JSON response from LLM, try using our"
                     " cloud / enterprise feature 'record' or 'table' type",
                 )
                 structured_output[prompt_key] = {}
             else:
-                structured_output[prompt_key] = parsed_data
+                # Get webhook configuration from output settings
+                webhook_enabled = output.get(PSKeys.ENABLE_POSTPROCESSING_WEBHOOK, False)
+                webhook_url = output.get(PSKeys.POSTPROCESSING_WEBHOOK_URL)
+
+                # Get highlight data from metadata if available and highlighting is enabled
+                highlight_data = None
+                if enable_highlight and metadata and PSKeys.HIGHLIGHT_DATA in metadata:
+                    highlight_data = metadata[PSKeys.HIGHLIGHT_DATA].get(prompt_key)
+
+                # Process data (optionally via webhook) with safety guards and fallback
+                processed_data = parsed_data
+                updated_highlight_data = None
+
+                if webhook_enabled:
+                    if not webhook_url:
+                        app.logger.warning(
+                            "Postprocessing webhook enabled but URL missing; skipping."
+                        )
+                    elif not _is_safe_public_url(webhook_url):
+                        app.logger.warning(
+                            "Postprocessing webhook URL is not allowed; skipping."
+                        )
+                    else:
+                        try:
+                            processed_data, updated_highlight_data = postprocess_data(
+                                parsed_data,
+                                webhook_enabled=True,
+                                webhook_url=webhook_url,
+                                highlight_data=highlight_data,
+                            )
+                        except Exception as e:
+                            app.logger.warning(
+                                f"Postprocessing webhook failed: {e}. Using unprocessed data."
+                            )
+
+                structured_output[prompt_key] = processed_data
+
+                # Update metadata with processed highlight data if available and highlighting is enabled
+                if enable_highlight and metadata and updated_highlight_data is not None:
+                    metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})[prompt_key] = (
+                        updated_highlight_data
+                    )
 
     @staticmethod
     def extract_line_item(
