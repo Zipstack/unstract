@@ -346,11 +346,9 @@ class PromptStudioRegistryHelper:
             output[JsonSchemaKey.ENABLE_POSTPROCESSING_WEBHOOK] = (
                 prompt.enable_postprocessing_webhook
             )
-            # Do NOT export raw URLs by default to avoid leakage
-            if getattr(settings, "EXPORT_WEBHOOK_URLS", False):
-                output[JsonSchemaKey.POSTPROCESSING_WEBHOOK_URL] = (
-                    prompt.postprocessing_webhook_url
-                )
+            output[JsonSchemaKey.POSTPROCESSING_WEBHOOK_URL] = (
+                prompt.postprocessing_webhook_url
+            )
             # Retaining the old fields in condition
             # for backward compatibility. To be removed in future.
             if (
