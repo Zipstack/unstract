@@ -111,7 +111,7 @@ class UsageHelper:
             from pluggable_apps.subscription_v2.subscription_helper import (
                 SubscriptionHelper,
             )
-        except (ImportError, ModuleNotFoundError):
+        except ImportError:
             logger.debug("Subscription plugin not available, using fallback dates")
             return None, None
 
