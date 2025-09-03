@@ -186,7 +186,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
       if (pathSegments[1].includes("/approve")) {
         setReviewPageHeader("Approve");
       } else if (pathSegments[1].includes("/download_and_sync")) {
-        setReviewPageHeader("Download and syncmanager");
+        setReviewPageHeader("Download and Sync Manager");
       } else {
         setReviewPageHeader("Review");
       }
@@ -258,6 +258,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
             onClick={() => navigate(`/${orgName}/profile`)}
             className="logout-button"
             disabled={shouldDisableRouting}
+            type="text"
           >
             <UserOutlined /> Profile
           </Button>
@@ -280,7 +281,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
             }}
             placement="left"
           >
-            <div>
+            <div className="ant-dropdown-trigger">
               <UserSwitchOutlined /> Switch Org
             </div>
           </Dropdown>
@@ -297,6 +298,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
             onClick={() => navigate(`/${orgName}/review`)}
             className="logout-button"
             disabled={shouldDisableRouting}
+            type="text"
           >
             <FileProtectOutlined /> Review
           </Button>
@@ -313,6 +315,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
             onClick={() => navigate(`/${orgName}/review/approve`)}
             className="logout-button"
             disabled={shouldDisableRouting}
+            type="text"
           >
             <LikeOutlined /> Approve
           </Button>
@@ -326,6 +329,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
             onClick={() => navigate(`/${orgName}/review/download_and_sync`)}
             className="logout-button"
             disabled={shouldDisableRouting}
+            type="text"
           >
             <DownloadOutlined /> Download and Sync Manager
           </Button>
@@ -360,7 +364,12 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
     menuItems.push({
       key: "2",
       label: (
-        <Button onClick={handleClick} icon={icon} className="logout-button">
+        <Button
+          onClick={handleClick}
+          icon={icon}
+          className="logout-button"
+          type="text"
+        >
           {label}
         </Button>
       ),
@@ -440,7 +449,12 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
           <Space>
             {topNavBarOptions}
             {isUnstract && TrialDaysInfo && <TrialDaysInfo />}
-            <Dropdown menu={{ items }} placement="bottomLeft" arrow>
+            <Dropdown
+              menu={{ items, className: "user-profile-menu" }}
+              placement="bottomLeft"
+              arrow
+              className="top-navbar-dp"
+            >
               <div className="top-navbar-dp">
                 {sessionDetails?.picture ? (
                   <Image

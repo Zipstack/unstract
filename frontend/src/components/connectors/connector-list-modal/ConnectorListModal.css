@@ -1,0 +1,49 @@
+.connector-list-modal {
+  padding: 0;
+}
+
+.connector-search-section {
+  margin-bottom: 20px;
+}
+
+.connector-search-section .search-icon {
+  color: #bfbfbf;
+}
+
+.connector-tabs {
+  margin-bottom: 20px;
+}
+
+.connector-tabs .ant-tabs-nav {
+  margin-bottom: 16px;
+}
+
+.connector-grid-container {
+  min-height: 300px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 16px 0;
+}
+
+.no-connectors {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  text-align: center;
+}
+
+.connector-list-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  padding: 40px;
+}
+
+.connector-list-loading-text {
+  margin-top: 16px;
+  display: block;
+  text-align: center;
+}

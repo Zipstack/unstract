@@ -4,6 +4,7 @@ from uuid import UUID
 
 from account_v2.constants import Common
 from django.conf import settings
+from plugins.workflow_manager.workflow_v2.api_hub_usage_utils import APIHubUsageUtil
 from plugins.workflow_manager.workflow_v2.utils import WorkflowUtil
 from tool_instance_v2.constants import ToolInstanceKey
 from tool_instance_v2.models import ToolInstance
@@ -557,7 +558,7 @@ class FileExecutionTasks:
                 result=result,
                 workflow_file_execution=None,
                 error=error_msg,
-                is_api=destination.is_api,
+                is_api=destination.is_api if destination else False,
                 destination=destination,
             )
         except Exception as error:
@@ -578,7 +579,7 @@ class FileExecutionTasks:
                 result=result,
                 workflow_file_execution=workflow_file_execution,
                 error=error_msg,
-                is_api=destination.is_api,
+                is_api=destination.is_api if destination else False,
                 destination=destination,
             )
 
@@ -1135,11 +1136,39 @@ class FileExecutionTasks:
                 api_result=final_result,
             )
 
+            # Track usage for API Hub deployments (graceful fallback for OSS)
+            try:
+                organization_id = None
+                if workflow_execution and workflow_execution.workflow:
+                    if (
+                        hasattr(workflow_execution.workflow, "organization")
+                        and workflow_execution.workflow.organization
+                    ):
+                        organization_id = (
+                            workflow_execution.workflow.organization.organization_id
+                        )
+
+                APIHubUsageUtil.track_api_hub_usage(
+                    workflow_execution_id=str(workflow_execution.id),
+                    workflow_file_execution_id=str(workflow_file_execution.id),
+                    organization_id=organization_id,
+                )
+            except Exception as e:
+                # Log but don't fail the main execution for usage tracking issues
+                logger.debug(f"Could not track API hub usage: {e}")
+
         if destination:
-            logger.info(
-                f"Deleting file execution directory for file: '{file_hash.file_name}'"
-            )
-            destination.delete_file_execution_directory()
+            try:
+                logger.info(
+                    f"Deleting file execution directory for file: '{file_hash.file_name}'"
+                )
+                destination.delete_file_execution_directory()
+            except Exception as cleanup_error:
+                logger.exception(
+                    f"[Execution ID: {workflow_execution.id}, File Execution ID: {workflow_file_execution.id}] "
+                    f"Failed to delete file execution directory for '{file_hash.file_name}': {cleanup_error}. "
+                    f"This is non-critical and needs to be cleaned up later."
+                )
 
         status = (
             FileExecutionStageStatus.SUCCESS
