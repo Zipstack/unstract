@@ -169,7 +169,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
 
             except Exception as e:
                 # Log error but don't fail the update operation
-                logger.error(f"Failed to send sharing notification: {str(e)}")
+                logger.exception(f"Failed to send sharing notification, continuing update though: {str(e)}")
 
         return response
 
