@@ -163,17 +163,6 @@ class WorkerSourceConnector:
                     f"[exec:{self.execution_id}] Checking directory: '{input_directory}' → '{resolved_directory}'"
                 )
 
-                # Use connector-specific debugging via polymorphic interface
-                # This allows each connector to provide its own debugging logic
-                # without the worker knowing about specific connector implementations
-                debug_info = source_fs.debug_directory_access(
-                    directory_path=resolved_directory, execution_id=self.execution_id
-                )
-                if debug_info:
-                    logger.info(
-                        f"[exec:{self.execution_id}] Connector debug completed for {debug_info.get('connector_type', 'unknown')}"
-                    )
-
                 # Use connector-specific directory check instead of generic fsspec.isdir()
                 # This is especially important for GCS where fsspec.isdir() doesn't work correctly
                 is_directory = False

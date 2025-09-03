@@ -166,9 +166,9 @@ class WorkflowFileExecution(BaseModel):
         elif (
             status
             in [
-                ExecutionStatus.COMPLETED,
-                ExecutionStatus.ERROR,
-                ExecutionStatus.STOPPED,
+                ExecutionStatus.COMPLETED.value,
+                ExecutionStatus.ERROR.value,
+                ExecutionStatus.STOPPED.value,
             ]
             and not self.execution_time
         ):

@@ -40,21 +40,6 @@ services:
     build:
       dockerfile: docker/dockerfiles/x2text.Dockerfile
       context: ..
-  worker-api-deployment:
-    image: unstract/worker-api-deployment:${VERSION}
-    build:
-      dockerfile: docker/dockerfiles/worker-api-deployment.Dockerfile
-      context: ..
-  worker-callback:
-    image: unstract/worker-callback:${VERSION}
-    build:
-      dockerfile: docker/dockerfiles/worker-callback.Dockerfile
-      context: ..
-  worker-file-processing:
-    image: unstract/worker-file-processing:${VERSION}
-    build:
-      dockerfile: docker/dockerfiles/worker-file-processing.Dockerfile
-      context: ..
   # Unified worker image (replaces all individual worker images)
   worker-unified:
     image: unstract/worker-unified:${VERSION}
@@ -63,10 +48,3 @@ services:
       context: ..
       args:
         MINIMAL_BUILD: ${MINIMAL_BUILD:-0}  # Set to 1 for faster dev builds
-
-  # Legacy individual worker images (kept for backward compatibility)
-  worker-general:
-    image: unstract/worker-general:${VERSION}
-    build:
-      dockerfile: docker/dockerfiles/worker-general.Dockerfile
-      context: ..

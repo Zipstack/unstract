@@ -112,10 +112,6 @@ help = "Runs the Unstract backend (Gunicorn)"
 cmd = "uv run manage.py migrate"
 help = "Performs DB migrations for Unstract backend"
 
-[tool.poe.tasks.worker-events]
-cmd = "celery --broker=amqp://admin:password@unstract-rabbitmq:5672// flower"
-help = "Runs the Unstract file events worker"
-
 [tool.poe.tasks.worker]
 cmd = "celery -A backend worker --loglevel=info -Q celery --autoscale 4,1"
 help = "Runs the Unstract default worker"
@@ -129,7 +125,7 @@ cmd = "celery -A backend worker --loglevel=info -Q celery_api_deployments --auto
 help = "Runs the Unstract API deployment worker"
 
 [tool.poe.tasks.worker-file-processing]
-cmd = "celery -A backend.workers.file_processing worker --pool=threads --loglevel=info -Q file_processing --concurrency 4"
+cmd = "celery -A backend.workers.file_processing worker --loglevel=info -Q file_processing --autoscale 4,1"
 help = "Runs the Unstract file processing worker"
 
 [tool.poe.tasks.worker-api-file-processing]

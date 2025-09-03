@@ -339,9 +339,7 @@ class WorkflowExecutionService:
     def validate_execution_result(self, step: int) -> bool:
         try:
             workflow_metadata = self.file_handler.get_workflow_metadata()
-            print(f"workflow_metadata ----------------------->>: {workflow_metadata}")
             metadata_list = self.file_handler.get_list_of_tool_metadata(workflow_metadata)
-            print(f"metadata_list ----------------------->>: {metadata_list}")
             if len(metadata_list) == step:
                 return True
             return False

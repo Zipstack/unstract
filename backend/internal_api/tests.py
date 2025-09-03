@@ -119,17 +119,21 @@ class WorkflowExecutionInternalAPITestCase(APITestCase):
     def test_update_workflow_execution_status(self):
         """Test updating workflow execution status."""
         url = f"/internal/api/v1/workflow-execution/{self.workflow_execution.id}/update_status/"
-        data = {"status": ExecutionStatus.PROCESSING, "total_files": 5, "attempts": 1}
+        data = {
+            "status": ExecutionStatus.EXECUTING.value,
+            "total_files": 5,
+            "attempts": 1,
+        }
 
         response = self.client.post(url, data, format="json", **self.headers)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["status"], "updated")
-        self.assertEqual(response.data["new_status"], ExecutionStatus.PROCESSING)
+        self.assertEqual(response.data["new_status"], ExecutionStatus.EXECUTING.value)
 
         # Verify database update
         self.workflow_execution.refresh_from_db()
-        self.assertEqual(self.workflow_execution.status, ExecutionStatus.PROCESSING)
+        self.assertEqual(self.workflow_execution.status, ExecutionStatus.EXECUTING.value)
         self.assertEqual(self.workflow_execution.total_files, 5)
 
     @override_settings(INTERNAL_SERVICE_API_KEY="test-internal-api-key")

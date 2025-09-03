@@ -341,16 +341,12 @@ class WorkflowHelper:
             execution_id (str): workflow execution id
 
         Raises:
-            InvalidRequest: Not found exception
             ExecutionDoesNotExistError: If execution is not found
 
         Returns:
             ExecutionResponse: _description_
         """
         execution: WorkflowExecution = WorkflowExecution.objects.get(id=execution_id)
-        if not execution.task_id:
-            raise InvalidRequest(f"No task ID found for execution: {execution_id}")
-
         task_result = None
         result_acknowledged = execution.result_acknowledged
         # Prepare the initial response with the task's current status and result.
@@ -478,8 +474,18 @@ class WorkflowHelper:
             workflow_execution: WorkflowExecution = WorkflowExecution.objects.get(
                 id=execution_id
             )
-            workflow_execution.task_id = async_execution.id
-            workflow_execution.save()
+            if not async_execution.id:
+                logger.warning(
+                    f"[{org_schema}] Celery returned empty task_id for execution_id '{execution_id}'. "
+                )
+                # Continue without setting task_id - execution can still complete
+            else:
+                logger.info(
+                    f"[{org_schema}] Setting task_id for execution_id '{execution_id}' to '{async_execution.id}'"
+                )
+                workflow_execution.task_id = async_execution.id
+                workflow_execution.save()
+
             execution_status = workflow_execution.status
             if timeout > -1:
                 while not ExecutionStatus.is_completed(execution_status) and timeout > 0:

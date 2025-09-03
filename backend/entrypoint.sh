@@ -32,8 +32,8 @@ fi
 # Configure Gunicorn based on --dev flag
 gunicorn_args=(
     --bind 0.0.0.0:8000
-    --workers 4
-    --threads 8
+    --workers 2
+    --threads 2
     --log-level debug
     --timeout 600
     --access-logfile -

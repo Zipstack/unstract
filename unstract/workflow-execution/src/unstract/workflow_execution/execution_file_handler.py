@@ -53,7 +53,6 @@ class ExecutionFileHandler:
             raise FileMetadataJsonNotFound()
         file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
         file_storage = file_system.get_file_storage()
-        print(f"metadata_file ----------------------->>: {self.metadata_file}")
         metadata_content = file_storage.read(path=self.metadata_file, mode="r")
         metadata = json.loads(metadata_content)
         return metadata

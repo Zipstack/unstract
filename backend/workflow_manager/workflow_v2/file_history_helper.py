@@ -208,7 +208,6 @@ class FileHistoryHelper:
                     f"Failed to retrieve existing FileHistory record after constraint violation - "
                     f"file_name='{file_hash.file_name}', workflow={workflow}"
                 )
-                raise e
 
     @staticmethod
     def clear_history_for_workflow(

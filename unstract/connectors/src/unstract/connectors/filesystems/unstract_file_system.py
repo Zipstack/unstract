@@ -205,26 +205,6 @@ class UnstractFileSystem(UnstractConnector, ABC):
             # Last resort: convert to string
             return str(value)
 
-    def debug_directory_access(
-        self, directory_path: str, execution_id: str = ""
-    ) -> dict[str, Any]:
-        """Debug directory access for this specific connector.
-
-        This is an optional method that connectors can override to provide
-        connector-specific debugging information when directory access fails
-        or returns unexpected results.
-
-        Args:
-            directory_path: The directory path being accessed
-            execution_id: Execution ID for log correlation
-
-        Returns:
-            dict[str, Any]: Debug information specific to this connector.
-                           Empty dict if no specific debugging is available.
-        """
-        # Default implementation does nothing - connectors can override
-        return {}
-
     def get_file_metadata(self, file_path: str) -> dict[str, Any]:
         """Get the metadata of a file.
 

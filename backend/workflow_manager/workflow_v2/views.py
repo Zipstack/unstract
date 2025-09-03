@@ -884,7 +884,7 @@ def reserve_file_processing_internal(request):
             "workflow": workflow,
             "cache_key": cache_key,
             "provider_file_uuid": provider_file_uuid,
-            "status": ExecutionStatus.PENDING,  # Use PENDING as reservation status
+            "status": ExecutionStatus.PENDING.value,  # Use PENDING as reservation status
             "result": f"Reserved by worker {worker_id}",
             "metadata": f"Processing reserved at {timezone.now()}",
             "error": "",

@@ -1,5 +1,4 @@
 import uuid
-from typing import Any
 
 from connector_v2.models import ConnectorInstance
 from django.db import models
@@ -65,15 +64,3 @@ class WorkflowEndpoint(BaseModel):
         verbose_name = "Workflow Endpoint"
         verbose_name_plural = "Workflow Endpoints"
         db_table = "workflow_endpoints"
-
-    def _to_dict(self) -> dict[str, Any]:
-        return {
-            "id": str(self.id),
-            "workflow": str(self.workflow.id),
-            "endpoint_type": self.endpoint_type,
-            "connection_type": self.connection_type,
-            "configuration": self.configuration,
-            "connector_instance": self.connector_instance._to_dict()
-            if self.connector_instance
-            else None,
-        }
