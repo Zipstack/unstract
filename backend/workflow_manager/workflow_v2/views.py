@@ -62,7 +62,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
 
     def get_permissions(self) -> list[Any]:
-        if self.action in ["destroy", "partial_update"]:
+        if self.action in ["destroy", "partial_update", "update"]:
             return [IsOwner()]
 
         return [IsOwnerOrSharedUser()]
