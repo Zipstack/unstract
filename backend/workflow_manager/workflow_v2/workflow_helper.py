@@ -750,7 +750,7 @@ class WorkflowHelper:
             # Normal Workflow page execution
             workflow_execution = WorkflowExecution.objects.get(pk=execution_id)
             if (
-                workflow_execution.status != ExecutionStatus.PENDING
+                workflow_execution.status != ExecutionStatus.PENDING.value
                 or workflow_execution.execution_type != WorkflowExecution.Type.COMPLETE
             ):
                 raise InvalidRequest(WorkflowErrors.INVALID_EXECUTION_ID)
@@ -784,7 +784,8 @@ class WorkflowHelper:
             ExecutionResponse: The execution response.
         """
         if (
-            result.execution_status in [ExecutionStatus.COMPLETED, ExecutionStatus.ERROR]
+            result.execution_status
+            in [ExecutionStatus.COMPLETED.value, ExecutionStatus.ERROR.value]
             or not timeout
         ):
             return result
@@ -850,7 +851,7 @@ class WorkflowHelper:
             except WorkflowExecution.DoesNotExist:
                 raise WorkflowExecutionNotExist(WorkflowErrors.INVALID_EXECUTION_ID)
             if (
-                workflow_execution.status != ExecutionStatus.PENDING
+                workflow_execution.status != ExecutionStatus.PENDING.value
                 or workflow_execution.execution_type != WorkflowExecution.Type.STEP
             ):
                 raise InvalidRequest(WorkflowErrors.INVALID_EXECUTION_ID)

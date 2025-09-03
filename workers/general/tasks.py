@@ -406,7 +406,6 @@ def async_execute_bin_general(
                         try:
                             api_client.update_pipeline_status(
                                 pipeline_id=pipeline_id,
-                                execution_id=execution_id,
                                 status=ExecutionStatus.FAILED.value,
                             )
                             logger.info(
@@ -850,7 +849,6 @@ def _execute_general_workflow(
                 try:
                     api_client.update_pipeline_status(
                         pipeline_id=pipeline_id,
-                        execution_id=execution_id,
                         status=ExecutionStatus.COMPLETED.value,
                     )
                 except Exception as pipeline_error:
@@ -1130,7 +1128,6 @@ def _orchestrate_file_processing_general(
                 try:
                     api_client.update_pipeline_status(
                         pipeline_id=pipeline_id,
-                        execution_id=execution_id,
                         status=ExecutionStatus.COMPLETED.value,
                     )
                     logger.info(
@@ -1145,7 +1142,6 @@ def _orchestrate_file_processing_general(
                     try:
                         api_client.update_pipeline_status(
                             pipeline_id=pipeline_id,
-                            execution_id=execution_id,
                             status=ExecutionStatus.FAILED.value,
                         )
                         logger.info(

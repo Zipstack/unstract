@@ -679,15 +679,15 @@ class InternalAPIClient(CachedAPIClientMixin):
     def update_pipeline_status(
         self,
         pipeline_id: str | UUID,
-        execution_id: str | UUID,
         status: str,
         organization_id: str | None = None,
+        execution_id: str | UUID | None = None,  # Optional for backward compatibility
         **kwargs,
     ) -> dict[str, Any]:
         """Update pipeline status with flexible parameters."""
         return self.execution_client.update_pipeline_status(
-            pipeline_id, execution_id, status, organization_id, **kwargs
-        )
+            pipeline_id, status, organization_id, execution_id, **kwargs
+        ).data
 
     def batch_update_pipeline_status(
         self, updates: list[dict[str, Any]], organization_id: str | None = None
@@ -707,9 +707,9 @@ class InternalAPIClient(CachedAPIClientMixin):
                 # Call individual update with remaining kwargs (last_run_time, last_run_status, etc)
                 self.update_pipeline_status(
                     pipeline_id=pipeline_id,
-                    execution_id=execution_id,
                     status=status,
                     organization_id=organization_id,
+                    execution_id=execution_id,  # Pass as optional parameter
                     **update,
                 )
                 results["updated"] += 1

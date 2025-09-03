@@ -430,7 +430,6 @@ def _update_pipeline_with_batching(
     try:
         api_client.update_pipeline_status(
             pipeline_id=pipeline_id,
-            execution_id=execution_id,
             status=status,
             organization_id=organization_id,
             **additional_fields,
@@ -746,34 +745,52 @@ def _fetch_and_validate_pipeline_data(context: CallbackContext) -> None:
 
         # Now try to fetch pipeline data with the extracted pipeline_id
         if context.pipeline_id:
-            # CRITICAL FIX: Check if this is an API deployment first (even from execution context)
-            api_deployment_data = _fetch_api_deployment_data(
-                context.pipeline_id, context.organization_id, context.api_client
-            )
-            if api_deployment_data:
-                context.pipeline_name = api_deployment_data.get("resolved_pipeline_name")
-                context.pipeline_type = api_deployment_data.get(
-                    "resolved_pipeline_type"
-                )  # Should be "API"
-                context.pipeline_data = api_deployment_data
+            # Validate that pipeline_id is a proper UUID before attempting API calls
+            try:
+                import uuid
+
+                uuid.UUID(str(context.pipeline_id))
+            except ValueError:
+                # Invalid UUID - this is likely an execution_log_id from worker-based execution
                 logger.info(
-                    f"✅ ROUTING FIX: APIDeployment from execution context - correcting type: name='{context.pipeline_name}', type='{context.pipeline_type}'"
+                    f"WORKERS FLOW: Skipping pipeline data fetch - pipeline_id '{context.pipeline_id}' is not a valid UUID (likely execution_log_id from worker-based execution)"
                 )
+                context.pipeline_id = None  # Clear invalid pipeline_id
+                context.pipeline_data = None
+                context.pipeline_name = None
+                context.pipeline_type = None
             else:
-                # Fallback to regular pipeline lookup
-                context.pipeline_data = _fetch_pipeline_data(
+                # Valid UUID - proceed with pipeline data fetching
+                # CRITICAL FIX: Check if this is an API deployment first (even from execution context)
+                api_deployment_data = _fetch_api_deployment_data(
                     context.pipeline_id, context.organization_id, context.api_client
                 )
-                if context.pipeline_data:
-                    context.pipeline_name = context.pipeline_data.get(
+                if api_deployment_data:
+                    context.pipeline_name = api_deployment_data.get(
                         "resolved_pipeline_name"
                     )
-                    context.pipeline_type = context.pipeline_data.get(
+                    context.pipeline_type = api_deployment_data.get(
                         "resolved_pipeline_type"
-                    )
+                    )  # Should be "API"
+                    context.pipeline_data = api_deployment_data
                     logger.info(
-                        f"✅ Pipeline data from execution context: name='{context.pipeline_name}', type='{context.pipeline_type}', is_api={context.pipeline_data.get('is_api', False)}"
+                        f"✅ ROUTING FIX: APIDeployment from execution context - correcting type: name='{context.pipeline_name}', type='{context.pipeline_type}'"
                     )
+                else:
+                    # Fallback to regular pipeline lookup
+                    context.pipeline_data = _fetch_pipeline_data(
+                        context.pipeline_id, context.organization_id, context.api_client
+                    )
+                    if context.pipeline_data:
+                        context.pipeline_name = context.pipeline_data.get(
+                            "resolved_pipeline_name"
+                        )
+                        context.pipeline_type = context.pipeline_data.get(
+                            "resolved_pipeline_type"
+                        )
+                        logger.info(
+                            f"✅ Pipeline data from execution context: name='{context.pipeline_name}', type='{context.pipeline_type}', is_api={context.pipeline_data.get('is_api', False)}"
+                        )
         else:
             # No pipeline_id found anywhere - this is a critical error for ETL/TASK/APP callbacks
             error_msg = f"No pipeline_id found for ETL/TASK/APP callback. execution_id={context.execution_id}, workflow_id={context.workflow_id}"
@@ -934,6 +951,18 @@ def _update_pipeline_status(context: CallbackContext, final_status: str) -> bool
     # OPTIMIZATION: Skip pipeline status update for API deployments to avoid 404 errors
     pipeline_updated = False
     if context.pipeline_id:
+        # First validate that pipeline_id is a proper UUID
+        try:
+            import uuid
+
+            uuid.UUID(str(context.pipeline_id))
+        except ValueError:
+            # Invalid UUID - this is likely an execution_log_id from worker-based execution
+            logger.info(
+                f"WORKERS FLOW: Skipping pipeline status update - pipeline_id '{context.pipeline_id}' is not a valid UUID (likely execution_log_id from worker-based execution)"
+            )
+            return True  # Return True to indicate successful handling (no pipeline to update)
+
         # Check if this is an API deployment (has pipeline_data with is_api=True)
         is_api_deployment = context.pipeline_data and context.pipeline_data.get(
             "is_api", False

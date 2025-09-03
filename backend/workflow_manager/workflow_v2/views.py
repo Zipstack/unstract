@@ -195,7 +195,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_200_OK,
             )
         except Exception as exception:
-            logger.error(f"Error while executing workflow: {exception}")
+            logger.error(f"Error while executing workflow: {exception}", exc_info=True)
             if file_objs and execution_id and workflow_id:
                 DestinationConnector.delete_api_storage_dir(
                     workflow_id=workflow_id, execution_id=execution_id
@@ -845,7 +845,10 @@ def reserve_file_processing_internal(request):
 
         from workflow_manager.workflow_v2.enums import ExecutionStatus
 
-        if existing_history and existing_history.status == ExecutionStatus.COMPLETED:
+        if (
+            existing_history
+            and existing_history.status == ExecutionStatus.COMPLETED.value
+        ):
             # File already processed - return existing result
             logger.info(
                 f"File already processed: cache_key={cache_key}, workflow={workflow_id}"
@@ -919,7 +922,7 @@ def reserve_file_processing_internal(request):
                 )
             else:
                 # File already reserved/processed by another worker
-                if file_history.status == ExecutionStatus.COMPLETED:
+                if file_history.status == ExecutionStatus.COMPLETED.value:
                     # Another worker completed it while we were checking
                     logger.info(
                         f"File completed by another worker: cache_key={cache_key}, workflow={workflow_id}"

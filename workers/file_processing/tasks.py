@@ -830,6 +830,7 @@ def _compile_batch_result(context: WorkflowContextData) -> dict[str, Any]:
         "failed_files": result.failed_files,
         "total_files": result.successful_files + result.failed_files,
         "execution_time": result.execution_time,
+        "organization_id": context.organization_context.organization_id,
     }
 
 

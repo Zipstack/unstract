@@ -8,6 +8,7 @@ import traceback
 from typing import Any
 
 from celery import shared_task
+from shared.enums.status_enums import PipelineStatus
 from shared.enums.task_enums import QueueName
 from shared.infrastructure.config import WorkerConfig
 from shared.infrastructure.logging import WorkerLogger
@@ -236,11 +237,22 @@ def execute_pipeline_task_v2(
         # backend plugins. This can be added later via internal API if needed.
         logger.debug("Skipping subscription validation in worker context")
 
-        # For scheduler tasks, we skip the initial pipeline status update to INPROGRESS
-        # because we don't have an execution_id yet. The workflow execution will handle this.
-        logger.debug(
-            "Skipping initial pipeline status update - will be handled by workflow execution"
-        )
+        # Update pipeline status to INPROGRESS when scheduled execution starts
+        try:
+            logger.info(
+                f"Updating pipeline {pipeline_id} status to {PipelineStatus.INPROGRESS}"
+            )
+            api_client.update_pipeline_status(
+                pipeline_id=pipeline_id,
+                status=PipelineStatus.INPROGRESS.value,
+                organization_id=organization_id,
+            )
+            logger.info(
+                f"Successfully updated pipeline {pipeline_id} status to {PipelineStatus.INPROGRESS}"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to update pipeline status to INPROGRESS: {e}")
+            # Don't fail the entire execution for status update failures
 
         # Implement scheduler logic directly in worker using type-safe dataclasses
         # This replaces the Django-heavy backend complete_execution method
@@ -261,18 +273,45 @@ def execute_pipeline_task_v2(
 
             if execution_result.is_success:
                 logger.info(
-                    f"[exec:{execution_result.execution_id}] [pipeline:{pipeline_id}] Scheduled execution completed for pipeline '{pipeline_name_from_api}' "
+                    f"[exec:{execution_result.execution_id}] [pipeline:{pipeline_id}] Scheduled execution task dispatched successfully for pipeline '{pipeline_name_from_api}' "
                     f"in organization {organization_id}"
                 )
+                # Pipeline status will be updated to COMPLETED/FAILED by the actual workflow execution
             else:
                 logger.error(
-                    f"[exec:{execution_result.execution_id}] [pipeline:{pipeline_id}] Scheduled execution failed for pipeline '{pipeline_name_from_api}': {execution_result.error}"
+                    f"[exec:{execution_result.execution_id}] [pipeline:{pipeline_id}] Failed to dispatch scheduled execution for pipeline '{pipeline_name_from_api}': {execution_result.error}"
                 )
+                # Update pipeline status to FAILED since we couldn't even start the execution
+                try:
+                    api_client.update_pipeline_status(
+                        pipeline_id=pipeline_id,
+                        status=PipelineStatus.FAILURE.value,
+                        organization_id=organization_id,
+                    )
+                    logger.info(
+                        f"Updated pipeline {pipeline_id} status to {PipelineStatus.FAILURE} due to dispatch failure"
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to update pipeline status to FAILED: {e}")
 
         except Exception as e:
             logger.error(
                 f"Error during scheduled workflow execution for pipeline '{pipeline_name_from_api}': {e}"
             )
+            # Update pipeline status to FAILED due to scheduler error
+            try:
+                api_client.update_pipeline_status(
+                    pipeline_id=pipeline_id,
+                    status=PipelineStatus.FAILURE.value,
+                    organization_id=organization_id,
+                )
+                logger.info(
+                    f"Updated pipeline {pipeline_id} status to {PipelineStatus.FAILURE} due to scheduler exception"
+                )
+            except Exception as status_error:
+                logger.warning(
+                    f"Failed to update pipeline status to FAILED: {status_error}"
+                )
             raise
 
     except Exception as e:
@@ -281,11 +320,27 @@ def execute_pipeline_task_v2(
             f"\n\n'''{traceback.format_exc()}```"
         )
 
-        # For scheduler tasks, we skip the error status update
-        # because we don't have an execution_id. The workflow execution handles status.
-        logger.debug(
-            "Skipping pipeline error status update - handled by workflow execution"
-        )
+        # Update pipeline status to FAILED for top-level scheduler errors
+        try:
+            api_client = get_singleton_api_client(config)
+            api_client.set_organization_context(
+                organization_id if "organization_id" in locals() else None
+            )
+            if "pipeline_id" in locals() and pipeline_id:
+                api_client.update_pipeline_status(
+                    pipeline_id=pipeline_id,
+                    status=PipelineStatus.FAILURE.value,
+                    organization_id=organization_id
+                    if "organization_id" in locals()
+                    else None,
+                )
+                logger.info(
+                    f"Updated pipeline {pipeline_id} status to {PipelineStatus.FAILURE} due to top-level scheduler error"
+                )
+        except Exception as status_error:
+            logger.warning(
+                f"Failed to update pipeline status to FAILED in outer exception: {status_error}"
+            )
 
 
 # Health check task for monitoring

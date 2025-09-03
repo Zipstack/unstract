@@ -16,6 +16,8 @@ import uuid
 from typing import Any
 from uuid import UUID
 
+from unstract.core.data_models import ExecutionStatus
+
 from ..data.models import (
     BatchOperationRequest,
     StatusUpdateRequest,
@@ -27,6 +29,7 @@ from ..data.response_models import (
     convert_dict_response,
 )
 from ..enums import BatchOperationType, TaskStatus
+from ..enums.status_enums import PipelineStatus
 from ..models.pipeline_models import PipelineApiResponse
 from .base_client import BaseAPIClient
 
@@ -441,18 +444,18 @@ class ExecutionAPIClient(BaseAPIClient):
     def update_pipeline_status(
         self,
         pipeline_id: str | UUID,
-        execution_id: str | UUID,
         status: str | TaskStatus,
         organization_id: str | None = None,
+        execution_id: str | UUID | None = None,  # Optional for backward compatibility
         **kwargs,
     ) -> APIResponse:
         """Update pipeline status.
 
         Args:
             pipeline_id: Pipeline ID
-            execution_id: Execution ID
             status: New status
             organization_id: Optional organization ID override
+            execution_id: Optional execution ID (for backward compatibility)
 
         Returns:
             Update response
@@ -460,25 +463,48 @@ class ExecutionAPIClient(BaseAPIClient):
         # Convert status to string if it's an enum
         status_str = status.value if hasattr(status, "value") else status
 
-        data = {
-            "execution_id": str(execution_id),
-            "status": status_str,
-            **kwargs,  # Include any additional parameters like last_run_status
+        # Map execution status to pipeline status if needed
+        execution_to_pipeline_mapping = {
+            ExecutionStatus.COMPLETED.value: PipelineStatus.SUCCESS.value,
+            ExecutionStatus.ERROR.value: PipelineStatus.FAILURE.value,
+            ExecutionStatus.STOPPED.value: PipelineStatus.FAILURE.value,
+            ExecutionStatus.EXECUTING.value: PipelineStatus.INPROGRESS.value,
+            ExecutionStatus.PENDING.value: PipelineStatus.YET_TO_START.value,
+            ExecutionStatus.QUEUED.value: PipelineStatus.INPROGRESS.value,
+            ExecutionStatus.CANCELED.value: PipelineStatus.FAILURE.value,
         }
 
+        # Map to pipeline status if it's an execution status, otherwise use as-is
+        pipeline_status = execution_to_pipeline_mapping.get(status_str, status_str)
+
+        # Use PipelineStatus to determine if this is a completion state
+        is_completion_state = PipelineStatus.is_completion_status(pipeline_status)
+
+        data = {
+            "status": pipeline_status,  # Use mapped pipeline status
+            "is_end": is_completion_state,  # Set is_end=True for completion states
+            **kwargs,  # Include any additional parameters like error_message
+        }
+
+        # DON'T include execution_id to avoid duplicate notifications
+        # Callback worker already handles notifications via handle_status_notifications()
+
         try:
-            # Use the workflow-manager pipeline endpoint for status updates
-            endpoint = f"v1/workflow-manager/pipeline/{pipeline_id}/status/"
+            # Use the pipeline internal API endpoint
+            endpoint = f"v1/pipeline/{pipeline_id}/"
 
             response = self._make_request(
-                method="POST",
+                method="PUT",  # Use PUT for update operation
                 endpoint=endpoint,
                 data=data,
                 timeout=self.config.api_timeout,
                 organization_id=organization_id,
             )
 
-            logger.debug(f"Updated pipeline {pipeline_id} status to {status_str}")
+            logger.debug(
+                f"Updated pipeline {pipeline_id} status to {status_str} "
+                f"(is_end={is_completion_state})"
+            )
             return APIResponse(
                 success=response.get("success", True),
                 data=response,

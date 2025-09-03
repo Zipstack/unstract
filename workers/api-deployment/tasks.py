@@ -441,7 +441,6 @@ def _run_workflow_api(
         if pipeline_id:
             api_client.update_pipeline_status(
                 pipeline_id=pipeline_id,
-                execution_id=execution_id,
                 status=ExecutionStatus.COMPLETED.value,
             )
 

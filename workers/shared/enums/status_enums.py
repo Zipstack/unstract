@@ -34,6 +34,29 @@ class PipelineStatus(str, Enum):
         """Return enum value for API updates."""
         return self.value
 
+    @classmethod
+    def is_completion_status(cls, status: str) -> bool:
+        """Check if a pipeline status represents a completion state.
+
+        Completion states are final states that should trigger last_run_time updates.
+
+        Args:
+            status: Status string to check
+
+        Returns:
+            True if status is a completion state
+        """
+        # Pipeline completion states - these are final states
+        completion_statuses = {
+            cls.SUCCESS.value,
+            cls.FAILURE.value,
+            cls.PARTIAL_SUCCESS.value,  # Also a completion state with mixed results
+        }
+
+        # Check if the status (uppercased) matches any completion status
+        status_upper = status.upper()
+        return status_upper in completion_statuses
+
 
 class PipelineType(str, Enum):
     """Pipeline types for workflows."""
@@ -75,6 +98,24 @@ class TaskStatus(str, Enum):
 
     def __str__(self):
         return self.value
+
+    @classmethod
+    def is_completion_status(cls, status: str) -> bool:
+        """Check if a status represents a completion state.
+
+        Args:
+            status: Status string to check
+
+        Returns:
+            True if status is a completion state
+        """
+        completion_statuses = {
+            cls.COMPLETED.value.upper(),
+            cls.SUCCESS.value.upper(),
+            cls.FAILED.value.upper(),
+            cls.CANCELLED.value.upper(),
+        }
+        return status.upper() in completion_statuses
 
 
 class ToolOutputType(str, Enum):

@@ -77,13 +77,16 @@ class PipelineInternalViewSet(ViewSet):
         return None  # Not found in this model
 
     def update(self, request, pk=None):
-        """Update pipeline status for scheduler worker."""
+        """Update pipeline status with support for completion states."""
         try:
             new_status = request.data.get("status")
             if not new_status:
                 return Response(
                     {"status": "error", "message": "Status is required"}, status=400
                 )
+
+            # Extract additional parameters for completion states
+            is_end = request.data.get("is_end", False)
 
             # Import here to avoid circular imports
             from pipeline_v2.pipeline_processor import PipelineProcessor
@@ -97,14 +100,20 @@ class PipelineInternalViewSet(ViewSet):
                 pipeline = pipeline_qs.first()
 
                 if pipeline:
-                    # Use the PipelineProcessor to update status properly
-                    PipelineProcessor.update_pipeline(pk, new_status)
+                    # Use PipelineProcessor.update_pipeline() without execution_id and error_message
+                    # This will update status but skip notifications (since execution_id=None)
+                    PipelineProcessor.update_pipeline(
+                        pipeline_guid=pk,
+                        status=new_status,
+                        is_end=is_end,
+                    )
 
                     return Response(
                         {
                             "status": "success",
                             "pipeline_id": pk,
                             "new_status": new_status,
+                            "is_end": is_end,
                             "message": "Pipeline status updated successfully",
                         }
                     )

@@ -2,6 +2,8 @@
 Handles serialization for workflow execution related internal endpoints.
 """
 
+import logging
+
 from pipeline_v2.models import Pipeline
 from rest_framework import serializers
 
@@ -13,6 +15,8 @@ from unstract.core.data_models import (
 from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
+
+logger = logging.getLogger(__name__)
 
 
 class WorkflowExecutionSerializer(serializers.ModelSerializer):

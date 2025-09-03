@@ -60,11 +60,7 @@ def finalize_workflow_execution_internal(request, execution_id):
 
         execution.execution_time = total_execution_time
 
-        # Handle completion timestamp
-        if final_status in ["COMPLETED", "FAILED"]:
-            from django.utils import timezone
-
-            execution.completed_at = timezone.now()
+        # Handle completion timestamp - updated_at will be set automatically on save()
 
         # Save the execution
         execution.save()
@@ -86,8 +82,8 @@ def finalize_workflow_execution_internal(request, execution_id):
                 "final_status": final_status,
                 "total_files_processed": total_files_processed,
                 "total_execution_time": total_execution_time,
-                "finalized_at": execution.completed_at.isoformat()
-                if execution.completed_at
+                "finalized_at": execution.modified_at.isoformat()
+                if execution.modified_at
                 else None,
             },
             status=status.HTTP_200_OK,
