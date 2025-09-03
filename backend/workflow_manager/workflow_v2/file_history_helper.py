@@ -48,8 +48,7 @@ class FileHistoryHelper:
             )
             return None
 
-        # Deleting expired file histories before querying based on
-        # metadata delation behaviour in connector settings
+        # Delete expired file histories before querying based on reprocessing interval
         cls._delete_expired_file_histories(workflow)
 
         filters = Q(workflow=workflow)
@@ -152,10 +151,10 @@ class FileHistoryHelper:
 
             now = timezone.now()
             expiry_date = now - timedelta(days=reprocessing_interval)
+            expiry_date_only = expiry_date.date()
 
-            # Delete file histories that are older than the reprocessing interval
             deleted_count, _ = FileHistory.objects.filter(
-                workflow=workflow, created_at__lt=expiry_date
+                workflow=workflow, created_at__date__lte=expiry_date_only
             ).delete()
 
             if deleted_count > 0:
