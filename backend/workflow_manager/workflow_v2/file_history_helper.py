@@ -141,6 +141,14 @@ class FileHistoryHelper:
     def _delete_expired_file_histories(cls, workflow: Workflow) -> None:
         """Delete expired file histories based on reprocessing interval from WorkflowEndpoint configuration.
 
+        TODO: Move deletion logic to background job instead
+        of calling during get_file_history().
+        1. This cleanup should run periodically in the
+        background (cron/Celery) rather than blocking file
+        queries.
+        2. Current approach impacts performance since every
+        get_file_history() call triggers deletion.
+
         Args:
             workflow: The workflow to check for expired file histories.
         """
