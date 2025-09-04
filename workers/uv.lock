@@ -4219,7 +4219,6 @@ dependencies = [
     { name = "s3fs", extra = ["boto3"] },
     { name = "singleton-decorator" },
     { name = "snowflake-connector-python", extra = ["pandas"] },
-    { name = "unstract-core" },
 ]
 
 [package.metadata]
@@ -4242,7 +4241,6 @@ requires-dist = [
     { name = "s3fs", extras = ["boto3"], specifier = "==2024.10.0" },
     { name = "singleton-decorator", specifier = "~=1.0.0" },
     { name = "snowflake-connector-python", extras = ["pandas"], specifier = "~=3.14.0" },
-    { name = "unstract-core" },
 ]
 
 [[package]]
