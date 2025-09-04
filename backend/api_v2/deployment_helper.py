@@ -222,6 +222,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
             file_objs=file_objs,
             use_file_history=use_file_history,
         )
+
         try:
             result = WorkflowHelper.execute_workflow_async(
                 workflow_id=workflow_id,
@@ -364,8 +365,8 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 f"Fetched file '{filename}' with MIME type '{content_type}' from presigned URL {sanitized_url}"
             )
 
-            # Return as an InMemoryUploadedFile
-            return InMemoryUploadedFile(
+            # Create InMemoryUploadedFile with proper stream management
+            uploaded_file = InMemoryUploadedFile(
                 file=file_stream,
                 field_name="file",
                 name=filename,
@@ -373,6 +374,11 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 size=downloaded,
                 charset=None,
             )
+
+            # Don't close file_stream here as InMemoryUploadedFile takes ownership
+            # The stream will be closed when uploaded_file.close() is called
+            file_stream = None
+            return uploaded_file
 
         except requests.RequestException as e:
             if (
@@ -408,7 +414,9 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 try:
                     file_stream.close()
                 except Exception as e:
-                    logger.warning(f"Failed to close file stream: {str(e)}")
+                    logger.warning(
+                        f"Failed to close file stream during cleanup for '{filename}': {str(e)}"
+                    )
 
     @staticmethod
     def load_presigned_files(
