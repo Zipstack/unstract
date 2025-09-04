@@ -1,11 +1,15 @@
 import logging
+from datetime import timedelta
 from typing import Any
 
 from django.db.models import Q
 from django.db.utils import IntegrityError
+from django.utils import timezone
 
 from workflow_manager.endpoint_v2.dto import FileHash
+from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.file_execution.models import WorkflowFileExecution
+from workflow_manager.utils.workflow_log import WorkflowLog
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models.file_history import FileHistory
 from workflow_manager.workflow_v2.models.workflow import Workflow
@@ -23,14 +27,19 @@ class FileHistoryHelper:
         cache_key: str | None = None,
         provider_file_uuid: str | None = None,
         file_path: str | None = None,
+        workflow_log: WorkflowLog | None = None,
     ) -> FileHistory | None:
         """Retrieve a file history record based on the cache key.
+
+        First deletes expired file histories based on reprocessing interval,
+        then returns the remaining file history if it exists.
 
         Args:
             workflow (Workflow): The workflow associated with the file history.
             cache_key (Optional[str]): The cache key to search for.
             provider_file_uuid (Optional[str]): The provider file UUID to search for.
             file_path (Optional[str]): The file path to search for.
+            workflow_log (Optional[WorkflowLog]): The workflow log for user notifications.
 
         Returns:
             Optional[FileHistory]: The matching file history record, if found.
@@ -41,16 +50,23 @@ class FileHistoryHelper:
                 f"while fetching file history for {workflow}"
             )
             return None
+
+        # Delete expired file histories before querying based on reprocessing interval
+        cls._delete_expired_file_histories(workflow, workflow_log)
+
         filters = Q(workflow=workflow)
         if cache_key:
             filters &= Q(cache_key=cache_key)
         elif provider_file_uuid:
             filters &= Q(provider_file_uuid=provider_file_uuid)
 
+        file_history: FileHistory | None
         try:
             if file_path:
-                return FileHistory.objects.get(filters & Q(file_path=file_path))
-            return FileHistory.objects.get(filters & Q(file_path__isnull=True))
+                file_history = FileHistory.objects.get(filters & Q(file_path=file_path))
+                return file_history
+            file_history = FileHistory.objects.get(filters & Q(file_path__isnull=True))
+            return file_history
         except FileHistory.DoesNotExist:
             if file_path:
                 # Legacy fallback: file_path was not stored in older file history records; fallback ensures backward compatibility.
@@ -124,6 +140,102 @@ class FileHistoryHelper:
         )
         return None
 
+    @classmethod
+    def _delete_expired_file_histories(
+        cls, workflow: Workflow, workflow_log: WorkflowLog | None = None
+    ) -> None:
+        """Delete expired file histories based on reprocessing interval from WorkflowEndpoint configuration.
+
+        TODO: Move deletion logic to background job instead
+        of calling during get_file_history().
+        1. This cleanup should run periodically in the
+        background (cron/Celery) rather than blocking file
+        queries.
+        2. Current approach impacts performance since every
+        get_file_history() call triggers deletion.
+
+        Args:
+            workflow: The workflow to check for expired file histories.
+            workflow_log: Optional workflow log for user notifications.
+        """
+        try:
+            reprocessing_interval = cls._get_reprocessing_interval_from_config(
+                workflow, workflow_log
+            )
+            if reprocessing_interval is None or reprocessing_interval <= 0:
+                return  # No reprocessing configured, keep all histories
+
+            now = timezone.now()
+            expiry_date = now - timedelta(days=reprocessing_interval)
+            deleted_count, _ = FileHistory.objects.filter(
+                workflow=workflow, created_at__lt=expiry_date
+            ).delete()
+
+            if deleted_count > 0:
+                logger.info(
+                    f"Deleted {deleted_count} expired file histories for workflow {workflow.id}"
+                )
+
+        except Exception as ex:
+            error_msg = (
+                "Unable to clean up expired file metadata. "
+                "files may not be reprocessed if its expected to. "
+            )
+            logger.exception(f"{error_msg}:{ex}")
+            if workflow_log:
+                workflow_log.log_error(logger=logger, message=error_msg)
+
+    @staticmethod
+    def _get_reprocessing_interval_from_config(
+        workflow: Workflow, workflow_log: WorkflowLog | None = None
+    ) -> int | None:
+        """Get reprocessing interval in days from workflow configuration.
+
+        Args:
+            workflow: The workflow to get configuration from.
+            workflow_log: Optional workflow log for user notifications.
+
+        Returns:
+            int | None: Reprocessing interval in days, or None if no reprocessing.
+        """
+        try:
+            source_endpoint = WorkflowEndpoint.objects.get(
+                workflow=workflow,
+                endpoint_type=WorkflowEndpoint.EndpointType.SOURCE,
+            )
+
+            if not source_endpoint.configuration:
+                return None
+
+            duplicate_handling = source_endpoint.configuration.get(
+                "fileReprocessingHandling"
+            )
+            if duplicate_handling != "reprocess_after_interval":
+                return None  # Skip duplicates
+
+            interval_value: int = source_endpoint.configuration.get(
+                "reprocessInterval", 0
+            )
+            interval_unit: str = source_endpoint.configuration.get("intervalUnit", "days")
+
+            if interval_value <= 0:
+                return None
+
+            # Convert to days
+            if interval_unit == "months":
+                return interval_value * 30
+            return interval_value
+
+        except Exception as ex:
+            error_msg = (
+                "Unable to fetch file metadata deletion settings, "
+                "file may not be reprocessed if its expected to. "
+            )
+            logger.exception(f"{error_msg}:{ex}")
+            if workflow_log:
+                workflow_log.log_error(logger=logger, message=error_msg)
+            return None
+
     @staticmethod
     def create_file_history(
         file_hash: FileHash,
@@ -143,9 +255,11 @@ class FileHistoryHelper:
             result (Any): The result from the execution.
             metadata (str | None): The metadata from the execution.
             error (str | None): The error from the execution.
+            is_api (bool): Whether this is an API call.
         """
         try:
             file_path = file_hash.file_path if not is_api else None
+
             FileHistory.objects.create(
                 workflow=workflow,
                 cache_key=file_hash.file_hash,

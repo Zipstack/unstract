@@ -212,7 +212,12 @@ class SourceConnector(BaseConnector):
         for input_directory in valid_directories:
             logger.debug(f"Listing files from:  {input_directory}")
             matched_files, count = self._get_matched_files(
-                source_fs, input_directory, patterns, recursive, limit, unique_file_paths
+                source_fs,
+                input_directory,
+                patterns,
+                recursive,
+                limit,
+                unique_file_paths,
             )
             self.publish_user_sys_log(f"Matched '{count}' files from '{input_directory}'")
             total_matched_files.update(matched_files)
@@ -671,6 +676,7 @@ class SourceConnector(BaseConnector):
                 workflow=workflow,
                 provider_file_uuid=provider_file_uuid,
                 file_path=file_hash.file_path,
+                workflow_log=self.workflow_log,
             )
         return None
 
