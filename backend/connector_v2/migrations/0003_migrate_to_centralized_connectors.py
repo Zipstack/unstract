@@ -42,10 +42,22 @@ def _group_connectors(
 ) -> dict[tuple[Any, str, str | None], list[Any]]:
     """Group connectors by organization, connector type, and metadata hash."""
     connector_groups = {}
+    skipped_connectors = 0
 
     for connector in connector_instances:
         try:
-            metadata_hash = _compute_metadata_hash(connector.connector_metadata)
+            # Try to access connector_metadata - this may fail due to encryption key mismatch
+            try:
+                metadata_hash = _compute_metadata_hash(connector.connector_metadata)
+            except Exception as decrypt_error:
+                # Log the encryption error and skip this connector
+                logger.warning(
+                    f"Skipping connector {connector.id} due to encryption error: {str(decrypt_error)}. "
+                    f"This is likely due to a changed ENCRYPTION_KEY."
+                )
+                skipped_connectors += 1
+                continue
+
             connector_sys_name = _extract_connector_sys_name(connector.connector_id)
 
             group_key = (
@@ -61,6 +73,11 @@ def _group_connectors(
         except Exception as e:
             logger.error(f"Error processing connector {connector.id}: {str(e)}")
             raise
+
+    if skipped_connectors > 0:
+        logger.warning(
+            f"Skipped {skipped_connectors} connectors due to encryption key issues"
+        )
 
     return connector_groups
 
@@ -187,6 +204,17 @@ def migrate_to_centralized_connectors(apps, schema_editor):  # noqa: ARG001
     # Group connectors by organization and unique credential fingerprint
     connector_groups = _group_connectors(connector_instances)
 
+    # Safety check: If we have connectors but all were skipped, this indicates a serious issue
+    if total_connectors > 0 and len(connector_groups) == 0:
+        error_msg = (
+            f"CRITICAL: All {total_connectors} connectors were skipped due to encryption errors. "
+            f"This likely means the ENCRYPTION_KEY has changed. Please restore the correct "
+            f"ENCRYPTION_KEY and retry the migration. The migration has been aborted to prevent "
+            f"data loss."
+        )
+        logger.error(error_msg)
+        raise RuntimeError(error_msg)
+
     # Process each group and centralize connectors
     processed_groups = 0
     centralized_count = 0
@@ -273,19 +301,28 @@ def _create_workflow_specific_connector(
     connector_instance_model: Any,
 ) -> Any:
     """Create a new workflow-specific connector from a centralized one."""
-    return connector_instance_model.objects.create(
-        connector_name=centralized_connector.connector_name,
-        connector_id=centralized_connector.connector_id,
-        connector_metadata=centralized_connector.connector_metadata,
-        connector_version=centralized_connector.connector_version,
-        connector_type=connector_type,
-        connector_auth=centralized_connector.connector_auth,
-        connector_mode=centralized_connector.connector_mode,
-        workflow=workflow,
-        organization=centralized_connector.organization,
-        created_by=centralized_connector.created_by,
-        modified_by=centralized_connector.modified_by,
-    )
+    try:
+        # Try to access connector_metadata to ensure it's readable
+        metadata = centralized_connector.connector_metadata
+        return connector_instance_model.objects.create(
+            connector_name=centralized_connector.connector_name,
+            connector_id=centralized_connector.connector_id,
+            connector_metadata=metadata,
+            connector_version=centralized_connector.connector_version,
+            connector_type=connector_type,
+            connector_auth=centralized_connector.connector_auth,
+            connector_mode=centralized_connector.connector_mode,
+            workflow=workflow,
+            organization=centralized_connector.organization,
+            created_by=centralized_connector.created_by,
+            modified_by=centralized_connector.modified_by,
+        )
+    except Exception as e:
+        logger.warning(
+            f"Skipping creation of workflow-specific connector from {centralized_connector.id} "
+            f"due to encryption error: {str(e)}"
+        )
+        raise
 
 
 def _process_connector_endpoints(
@@ -375,6 +412,7 @@ def reverse_centralized_connectors(apps, schema_editor):  # noqa: ARG001
     # Process connectors with endpoints to create workflow-specific copies
     added_connector_count = 0
     processed_connectors = 0
+    skipped_reverse_connectors = 0
 
     for centralized_connector in centralized_connectors:
         processed_connectors += 1
@@ -384,6 +422,17 @@ def reverse_centralized_connectors(apps, schema_editor):  # noqa: ARG001
             continue
 
         try:
+            # Test if we can access encrypted fields before processing
+            try:
+                _ = centralized_connector.connector_metadata
+            except Exception as decrypt_error:
+                logger.warning(
+                    f"Skipping reverse migration for connector {centralized_connector.id} "
+                    f"due to encryption error: {str(decrypt_error)}"
+                )
+                skipped_reverse_connectors += 1
+                continue
+
             endpoints = WorkflowEndpoint.objects.filter(
                 connector_instance=centralized_connector
             )
@@ -403,6 +452,22 @@ def reverse_centralized_connectors(apps, schema_editor):  # noqa: ARG001
                 f"Error processing connector {centralized_connector.id}: {str(e)}"
             )
             raise
+
+    if skipped_reverse_connectors > 0:
+        logger.warning(
+            f"Skipped {skipped_reverse_connectors} connectors during reverse migration due to encryption issues"
+        )
+
+        # Safety check for reverse migration: if we skipped everything, abort
+        if skipped_reverse_connectors == total_connectors and total_connectors > 0:
+            error_msg = (
+                f"CRITICAL: All {total_connectors} connectors were skipped during reverse migration "
+                f"due to encryption errors. This likely means the ENCRYPTION_KEY has changed. "
+                f"Please restore the correct ENCRYPTION_KEY and retry the reverse migration. "
+                f"The reverse migration has been aborted to prevent data loss."
+            )
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
 
     # Delete unused centralized connectors
     _delete_unused_centralized_connectors(unused_connectors, ConnectorInstance)
