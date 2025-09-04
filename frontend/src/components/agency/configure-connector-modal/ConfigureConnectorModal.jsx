@@ -1,28 +1,28 @@
+import { CloudDownloadOutlined, CloudUploadOutlined } from "@ant-design/icons";
 import {
+  Button,
   Col,
+  Image,
   Modal,
   Row,
-  Typography,
   Select,
   Space,
-  Image,
   Tabs,
-  Button,
+  Typography,
 } from "antd";
-import { CloudDownloadOutlined, CloudUploadOutlined } from "@ant-design/icons";
+import { cloneDeep, isEqual } from "lodash";
 import PropTypes from "prop-types";
-import { useEffect, useState, useRef, useCallback } from "react";
-import { isEqual, cloneDeep } from "lodash";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { useAlertStore } from "../../../store/alert-store";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
-import useRequestUrl from "../../../hooks/useRequestUrl";
-import { AddSourceModal } from "../../input-output/add-source-modal/AddSourceModal";
-import { ManageFiles } from "../../input-output/manage-files/ManageFiles";
-import { ConfigureFormsLayout } from "../configure-forms-layout/ConfigureFormsLayout";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import useRequestUrl from "../../../hooks/useRequestUrl";
+import { useAlertStore } from "../../../store/alert-store";
+import { AddSourceModal } from "../../input-output/add-source-modal/AddSourceModal";
+import { ManageFiles } from "../../input-output/manage-files/ManageFiles";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
+import { ConfigureFormsLayout } from "../configure-forms-layout/ConfigureFormsLayout";
 import "./ConfigureConnectorModal.css";
 
 let DBRules;
