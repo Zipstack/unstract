@@ -4,14 +4,14 @@ import { createRef, useEffect, useState } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
+import useRequestUrl from "../../../hooks/useRequestUrl";
 import { RjsfFormLayout } from "../../../layouts/rjsf-form-layout/RjsfFormLayout.jsx";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { OAuthDs } from "../../oauth-ds/oauth-ds/OAuthDs.jsx";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import "./ConfigureDs.css";
-import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
-import useRequestUrl from "../../../hooks/useRequestUrl";
 
 function ConfigureDs({
   spec,
@@ -50,6 +50,11 @@ function ConfigureDs({
 
   const oauthCacheKey = `oauth-cachekey-${selectedSourceId}`;
   const oauthStatusKey = `oauth-status-${selectedSourceId}`;
+
+  // Determine if this is a new or existing connector
+  const hasOAuthCredentials =
+    metadata && (metadata.access_token || (metadata.provider && metadata.uid));
+  const isExistingConnector = Boolean(editItemId || hasOAuthCredentials);
 
   // Initialize OAuth state from localStorage after keys are available
   useEffect(() => {
@@ -132,20 +137,17 @@ function ConfigureDs({
     }
   }, [selectedSourceId, oAuthProvider, oauthStatusKey, oauthCacheKey]);
 
-  const isFormValid = () => {
-    if (formRef) {
-      formRef?.current?.validateFields((errors, values) => {
-        if (errors) {
-          return false;
-        }
-      });
-    }
-    return true;
-  };
+  // Cleanup OAuth localStorage when component unmounts (modal close)
+  useEffect(() => {
+    return () => {
+      localStorage.removeItem(oauthCacheKey);
+      localStorage.removeItem(oauthStatusKey);
+    };
+  }, [oauthCacheKey, oauthStatusKey]);
 
   const handleTestConnection = (updatedFormData) => {
     // Check if there any error in form proceed to test connection only there is no error.
-    if (!isFormValid()) {
+    if (formRef && !formRef.current?.validateForm()) {
       return;
     }
     if (oAuthProvider?.length && (status !== "success" || !cacheKey?.length)) {
@@ -331,8 +333,10 @@ function ConfigureDs({
           updateSession(type);
         }
 
-        // Keep OAuth state after successful submission for potential re-use
-        // OAuth state will be cleared only when switching to different connectors
+        if (oAuthProvider?.length > 0) {
+          localStorage.removeItem(oauthCacheKey);
+          localStorage.removeItem(oauthStatusKey);
+        }
 
         setOpen(false);
       })
@@ -362,6 +366,7 @@ function ConfigureDs({
           setCacheKey={handleSetCacheKey}
           setStatus={handleSetStatus}
           selectedSourceId={selectedSourceId}
+          isExistingConnector={isExistingConnector}
         />
       )}
       <RjsfFormLayout
