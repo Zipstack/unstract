@@ -287,6 +287,14 @@ class LLM:
             )
             return cls.MAX_TOKENS - reserved_for_output
 
+    def get_model_name(self) -> str:
+        """Gets the name of the LLM model.
+
+        Returns:
+            LLM model name
+        """
+        return self.kwargs["model"]
+
     def get_metrics(self):
         return self._metrics
 

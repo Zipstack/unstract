@@ -361,16 +361,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def create_profile_manager(self, request: HttpRequest, pk: Any = None) -> Response:
         context = super().get_serializer_context()
-        
-        # Get the current tool instance
-        custom_tool = self.get_object()
-        
-        # Add the prompt_studio_tool to the request data
-        request_data = request.data.copy()
-        request_data[ProfileManagerKeys.PROMPT_STUDIO_TOOL] = custom_tool.tool_id
-        
-        serializer = ProfileManagerSerializer(data=request_data, context=context)
-
+        serializer = ProfileManagerSerializer(data=request.data, context=context)
         serializer.is_valid(raise_exception=True)
         # Check for the maximum number of profiles constraint
         prompt_studio_tool = serializer.validated_data[

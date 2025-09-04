@@ -72,6 +72,10 @@ class Audit(StreamMixin):
         llm_usage_reason = ""
         if event_type == "llm":
             llm_usage_reason = kwargs.get("llm_usage_reason", "")
+
+        if model_name is not None and model_name != "":
+            model_name = model_name.split("/", 1)[-1]
+
         data = {
             "workflow_id": workflow_id,
             "execution_id": execution_id,

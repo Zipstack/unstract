@@ -1,6 +1,7 @@
 import logging
 from typing import Any
 
+from unstract.flags.feature_flag import check_feature_flag_status
 from account_v2.models import User
 from account_v2.serializer import UserSerializer
 from adapter_processor_v2.models import AdapterInstance
@@ -19,7 +20,11 @@ from prompt_studio.prompt_studio_output_manager_v2.output_manager_util import (
 )
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_v2.serializers import ToolStudioPromptSerializer
-from unstract.sdk.adapters.enums import AdapterTypes
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.adapters.enums import AdapterTypes
+else:
+    from unstract.sdk.adapters.enums import AdapterTypes
 
 from .models import CustomTool
 

@@ -51,7 +51,6 @@ class CostCalculationHelper:
     ) -> str:
         cost = 0.0
         item = None
-        model_name = model_name.split("/", 1)[-1]
 
         if not self.model_token_data:
             return json.loads(format_float_positional(cost))
