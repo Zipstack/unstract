@@ -193,10 +193,15 @@ def migrate_to_centralized_connectors(apps, schema_editor):  # noqa: ARG001
     ConnectorInstance = apps.get_model("connector_v2", "ConnectorInstance")  # NOSONAR
     WorkflowEndpoint = apps.get_model("endpoint_v2", "WorkflowEndpoint")  # NOSONAR
 
-    # Get all connector instances with select_related for performance
-    connector_instances = ConnectorInstance.objects.select_related(
-        "organization", "created_by", "modified_by"
-    ).all()
+    # Get all connector instances, but defer the encrypted metadata field to avoid
+    # automatic decryption failures when the encryption key has changed
+    connector_instances = (
+        ConnectorInstance.objects.select_related(
+            "organization", "created_by", "modified_by"
+        )
+        .defer("connector_metadata")
+        .all()
+    )
 
     total_connectors = connector_instances.count()
     logger.info(f"Processing {total_connectors} connector instances for centralization")
@@ -396,10 +401,13 @@ def reverse_centralized_connectors(apps, schema_editor):  # noqa: ARG001
     ConnectorInstance = apps.get_model("connector_v2", "ConnectorInstance")  # NOSONAR
     WorkflowEndpoint = apps.get_model("endpoint_v2", "WorkflowEndpoint")  # NOSONAR
 
-    # Get all centralized connectors with prefetch for better performance
-    centralized_connectors = ConnectorInstance.objects.prefetch_related(
-        "workflow_endpoints"
-    ).all()
+    # Get all centralized connectors, but defer the encrypted metadata field to avoid
+    # automatic decryption failures when the encryption key has changed
+    centralized_connectors = (
+        ConnectorInstance.objects.prefetch_related("workflow_endpoints")
+        .defer("connector_metadata")
+        .all()
+    )
 
     total_connectors = centralized_connectors.count()
     logger.info(f"Processing {total_connectors} centralized connectors for reversal")
