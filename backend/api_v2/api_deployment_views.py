@@ -5,7 +5,7 @@ from typing import Any
 from configuration.models import Configuration
 from django.db.models import QuerySet
 from django.http import HttpResponse
-from permissions.permission import IsOwner
+from permissions.permission import IsOwner, IsOwnerOrSharedUser
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from rest_framework import serializers, status, views, viewsets
 from rest_framework.decorators import action
@@ -28,6 +28,7 @@ from api_v2.serializers import (
     DeploymentResponseSerializer,
     ExecutionQuerySerializer,
     ExecutionRequestSerializer,
+    SharedUserListSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -150,10 +151,13 @@ class DeploymentExecution(views.APIView):
 
 
 class APIDeploymentViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsOwner]
+    def get_permissions(self) -> list[Any]:
+        if self.action in ["destroy", "partial_update"]:
+            return [IsOwner()]
+        return [IsOwnerOrSharedUser()]
 
     def get_queryset(self) -> QuerySet | None:
-        queryset = APIDeployment.objects.filter(created_by=self.request.user)
+        queryset = APIDeployment.objects.for_user(self.request.user)
 
         # Filter by workflow ID if provided
         workflow_filter = self.request.query_params.get("workflow", None)
@@ -249,4 +253,47 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
         response["Content-Disposition"] = (
             f'attachment; filename="{instance.display_name}.json"'
         )
+        return response
+
+    @action(detail=True, methods=["get"], permission_classes=[IsOwner])
+    def list_of_shared_users(self, request: Request, pk: str | None = None) -> Response:
+        """List users who have access to this API deployment."""
+        instance = self.get_object()
+        serializer = SharedUserListSerializer(instance)
+        return Response(serializer.data)
+
+    def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        """Override partial_update to handle sharing notifications."""
+        # Get current instance and shared users
+        instance = self.get_object()
+        current_shared_users = set(instance.shared_users.all())
+
+        # Perform the update
+        response = super().partial_update(request, *args, **kwargs)
+
+        # If successful and shared_users changed, send notifications
+        if response.status_code == 200 and "shared_users" in request.data:
+            try:
+                instance.refresh_from_db()
+                new_shared_users = set(instance.shared_users.all())
+                newly_shared_users = new_shared_users - current_shared_users
+
+                if newly_shared_users:
+                    from plugins.notification.constants import ResourceType
+                    from plugins.notification.sharing_notification import (
+                        SharingNotificationService,
+                    )
+
+                    notification_service = SharingNotificationService()
+                    notification_service.send_sharing_notification(
+                        resource_type=ResourceType.API_DEPLOYMENT.value,
+                        resource_name=instance.display_name,
+                        resource_id=str(instance.id),
+                        shared_by=request.user,
+                        shared_to=list(newly_shared_users),
+                        resource_instance=instance,
+                    )
+            except Exception as e:
+                logger.error(f"Failed to send sharing notification: {e}")
+
         return response

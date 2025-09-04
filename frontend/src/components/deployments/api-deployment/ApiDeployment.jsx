@@ -8,6 +8,7 @@ import {
   CloudDownloadOutlined,
   FileSearchOutlined,
   NotificationOutlined,
+  ShareAltOutlined,
 } from "@ant-design/icons";
 import { Button, Dropdown, Space, Switch, Tooltip, Typography } from "antd";
 import { useEffect, useState } from "react";
@@ -24,6 +25,7 @@ import { DisplayCode } from "../display-code/DisplayCode";
 import { Layout } from "../layout/Layout";
 import { ManageKeys } from "../manage-keys/ManageKeys";
 import { PromptStudioModal } from "../../common/PromptStudioModal";
+import { SharePermission } from "../../widgets/share-permission/SharePermission";
 import { apiDeploymentsService } from "./api-deployments-service";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { LogsModal } from "../../pipelines-or-deployments/log-modal/LogsModal.jsx";
@@ -61,6 +63,9 @@ function ApiDeployment() {
   const { getApiKeys, downloadPostmanCollection, copyUrl } =
     usePipelineHelper();
   const [openNotificationModal, setOpenNotificationModal] = useState(false);
+  const [openShareModal, setOpenShareModal] = useState(false);
+  const [allUsers, setAllUsers] = useState([]);
+  const [isLoadingShare, setIsLoadingShare] = useState(false);
   const { count, isLoading, fetchCount } = usePromptStudioStore();
   const { getPromptStudioCount } = usePromptStudioService();
 
@@ -139,6 +144,20 @@ function ApiDeployment() {
           </Space>
         </Tooltip>
       ),
+      align: "left",
+    },
+    {
+      title: "Owner",
+      key: "created_by",
+      render: (_, record) => {
+        const currentUser = sessionDetails?.userId;
+        const isOwner = record?.created_by === currentUser;
+        return (
+          <Space>
+            {isOwner ? "You" : record?.created_by_email || "Unknown"}
+          </Space>
+        );
+      },
       align: "left",
     },
     {
@@ -247,6 +266,62 @@ function ApiDeployment() {
     setOpenAddApiModal(true);
   };
 
+  const handleShare = async () => {
+    setIsLoadingShare(true);
+    setOpenShareModal(true);
+    // Fetch all users
+    try {
+      const [usersResponse, sharedUsersResponse] = await Promise.all([
+        apiDeploymentsApiService.getAllUsers(),
+        apiDeploymentsApiService.getSharedUsers(selectedRow.id),
+      ]);
+
+      const userList =
+        usersResponse?.data?.members?.map((member) => ({
+          id: member.id,
+          email: member.email,
+        })) || [];
+
+      // Pass the complete user list - SharePermission component will handle filtering
+      setAllUsers(userList);
+
+      // Update selected row with shared user info for the SharePermission component
+      const updatedSelectedRow = {
+        ...selectedRow,
+        ...sharedUsersResponse.data,
+      };
+      setSelectedRow(updatedSelectedRow);
+    } catch (err) {
+      console.error("Error fetching sharing data:", err);
+      setAlertDetails(
+        handleException(err, `Unable to fetch sharing information`)
+      );
+      setOpenShareModal(false);
+    } finally {
+      setIsLoadingShare(false);
+    }
+  };
+
+  const onShare = (sharedUsers, api, shareWithEveryone) => {
+    setIsLoadingShare(true);
+    apiDeploymentsApiService
+      .updateSharing(selectedRow.id, sharedUsers, shareWithEveryone)
+      .then(() => {
+        setAlertDetails({
+          type: "success",
+          content: "Sharing permissions updated successfully",
+        });
+        setOpenShareModal(false);
+        getApiDeploymentList(); // Refresh the list
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err));
+      })
+      .finally(() => {
+        setIsLoadingShare(false);
+      });
+  };
+
   const actionItems = [
     // Configuration Section
     {
@@ -296,6 +371,23 @@ function ApiDeployment() {
         <Space
           direction="horizontal"
           className="action-items"
+          onClick={handleShare}
+        >
+          <div>
+            <ShareAltOutlined />
+          </div>
+          <div>
+            <Typography.Text>Share</Typography.Text>
+          </div>
+        </Space>
+      ),
+    },
+    {
+      key: "4",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
           onClick={() => setOpenNotificationModal(true)}
         >
           <div>
@@ -313,7 +405,7 @@ function ApiDeployment() {
     },
     // Operation Section
     {
-      key: "4",
+      key: "5",
       label: (
         <Space
           direction="horizontal"
@@ -346,7 +438,7 @@ function ApiDeployment() {
     },
     // Developer related Section
     {
-      key: "5",
+      key: "6",
       label: (
         <Space
           direction="horizontal"
@@ -363,7 +455,7 @@ function ApiDeployment() {
       ),
     },
     {
-      key: "6",
+      key: "7",
       label: (
         <Space
           direction="horizontal"
@@ -387,7 +479,7 @@ function ApiDeployment() {
     },
     // Delete related section
     {
-      key: "7",
+      key: "8",
       label: (
         <Space
           direction="horizontal"
@@ -467,6 +559,16 @@ function ApiDeployment() {
         setOpen={setOpenNotificationModal}
         type={deploymentApiTypes.api}
         id={selectedRow?.id}
+      />
+      <SharePermission
+        open={openShareModal}
+        setOpen={setOpenShareModal}
+        adapter={selectedRow}
+        permissionEdit={true}
+        loading={isLoadingShare}
+        allUsers={allUsers}
+        onApply={onShare}
+        isSharableToOrg={false}
       />
     </>
   );

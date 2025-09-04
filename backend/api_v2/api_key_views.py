@@ -1,3 +1,4 @@
+from permissions.permission import IsOwnerOrSharedUser
 from pipeline_v2.exceptions import PipelineNotFound
 from pipeline_v2.pipeline_processor import PipelineProcessor
 from rest_framework import serializers, viewsets
@@ -9,13 +10,12 @@ from api_v2.deployment_helper import DeploymentHelper
 from api_v2.exceptions import APINotFound, PathVariablesNotFound
 from api_v2.key_helper import KeyHelper
 from api_v2.models import APIKey
-from api_v2.permission import IsOwnerOrOrganizationMember
 from api_v2.serializers import APIKeyListSerializer, APIKeySerializer
 
 
 class APIKeyViewSet(viewsets.ModelViewSet):
     queryset = APIKey.objects.all()
-    permission_classes = [IsOwnerOrOrganizationMember]
+    permission_classes = [IsOwnerOrSharedUser]
 
     def get_serializer_class(self) -> serializers.Serializer:
         if self.action in ["api_keys"]:
