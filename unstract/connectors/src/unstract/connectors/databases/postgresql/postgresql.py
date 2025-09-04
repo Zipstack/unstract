@@ -1,3 +1,4 @@
+import datetime
 import os
 from typing import Any
 
@@ -66,6 +67,31 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
     def can_read() -> bool:
         return True
 
+    def get_string_type(self) -> str:
+        return "text"
+
+    def sql_to_db_mapping(self, value: str) -> str:
+        """Gets the python datatype of value and converts python datatype to
+        corresponding DB datatype.
+
+        Args:
+            value (str): python datatype
+
+        Returns:
+            str: database columntype
+        """
+        python_type = type(value)
+
+        mapping = {
+            str: "TEXT",
+            int: "INTEGER",
+            float: "DOUBLE PRECISION",
+            datetime.datetime: "TIMESTAMP",
+            dict: "JSONB",
+            list: "JSONB",
+        }
+        return mapping.get(python_type, "TEXT")
+
     def get_engine(self) -> connection:
         """Returns a connection to the PostgreSQL database.
 
@@ -105,6 +131,41 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
                 cur.execute(f"SET search_path TO {self.schema};")
 
         return con
+
+    def get_create_table_base_query(self, table: str) -> str:
+        """Function to create a base create table sql query with PostgreSQL specific types.
+
+        Args:
+            table (str): db-connector table name
+
+        Returns:
+            str: generates a create sql base query with the constant columns
+        """
+        sql_query = (
+            f"CREATE TABLE IF NOT EXISTS {table} "
+            f"(id TEXT, "
+            f"created_by TEXT, created_at TIMESTAMP, "
+            f"metadata JSONB, "
+            f"user_field_1 BOOLEAN DEFAULT FALSE, "
+            f"user_field_2 INTEGER DEFAULT 0, "
+            f"user_field_3 TEXT DEFAULT NULL, "
+            f"status TEXT CHECK (status IN ('ERROR', 'SUCCESS')), "
+            f"error_message TEXT, "
+        )
+        return sql_query
+
+    def prepare_multi_column_migration(self, table_name: str, column_name: str) -> str:
+        sql_query = (
+            f"ALTER TABLE {table_name} "
+            f"ADD COLUMN {column_name}_v2 JSONB, "
+            f"ADD COLUMN metadata JSONB, "
+            f"ADD COLUMN user_field_1 BOOLEAN DEFAULT FALSE, "
+            f"ADD COLUMN user_field_2 INTEGER DEFAULT 0, "
+            f"ADD COLUMN user_field_3 TEXT DEFAULT NULL, "
+            f"ADD COLUMN status TEXT CHECK (status IN ('ERROR', 'SUCCESS')), "
+            f"ADD COLUMN error_message TEXT"
+        )
+        return sql_query
 
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
