@@ -227,6 +227,17 @@ class WorkflowExecution(BaseModel):
     def is_completed(self) -> bool:
         return ExecutionStatus.is_completed(self.status)
 
+    @property
+    def organization_id(self) -> str | None:
+        """Get the organization ID from the associated workflow."""
+        if (
+            self.workflow
+            and hasattr(self.workflow, "organization")
+            and self.workflow.organization
+        ):
+            return str(self.workflow.organization.organization_id)
+        return None
+
     def __str__(self) -> str:
         return (
             f"Workflow execution: {self.id} ("

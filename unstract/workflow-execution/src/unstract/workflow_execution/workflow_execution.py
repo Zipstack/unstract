@@ -344,6 +344,7 @@ class WorkflowExecutionService:
                 return True
             return False
         except Exception:
+            logger.error("Error validating execution result ", exc_info=True)
             return False
 
     def publish_log(

@@ -113,7 +113,12 @@ class PipelineProcessor:
         pipeline = PipelineProcessor._update_pipeline_status(
             pipeline=pipeline, is_end=is_end, status=status, is_active=is_active
         )
-        PipelineProcessor._send_notification(
-            pipeline=pipeline, execution_id=execution_id, error_message=error_message
-        )
+
+        # Only send notifications if execution_id is provided
+        # This avoids duplicate notifications when called from workers (who handle notifications separately)
+        if execution_id:
+            PipelineProcessor._send_notification(
+                pipeline=pipeline, execution_id=execution_id, error_message=error_message
+            )
+
         logger.info(f"Updated pipeline {pipeline_guid} status: {status}")

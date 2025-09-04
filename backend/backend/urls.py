@@ -61,4 +61,5 @@ urlpatterns = [
         include("prompt_studio.prompt_studio_index_manager.urls"),
     ),
     path("notifications/", include("notification.urls")),
+    path("internal/", include("backend.internal_urls")),
 ]

@@ -71,6 +71,8 @@ display_help() {
   echo -e "   -p, --only-pull     Only do docker images pull"
   echo -e "   -b, --build-local   Build docker images locally"
   echo -e "   -u, --update        Update services version"
+  echo -e "   -w, --workers-new   Use new dedicated worker containers (temporary)"
+  echo -e "   -d, --dev-reload    Enable development hot reload with volume mounts"
   echo -e "   -x, --trace         Enables trace mode"
   echo -e "   -V, --verbose       Print verbose logs"
   echo -e "   -v, --version       Docker images version tag (default \"latest\")"
@@ -96,6 +98,13 @@ parse_args() {
         ;;
       -u | --update)
         opt_update=true
+        ;;
+      -w | --workers-new)
+        opt_workers_new=true
+        ;;
+      -d | --dev-reload)
+        opt_dev_reload=true
+        opt_workers_new=true  # Dev reload requires new workers
         ;;
       -x | --trace)
         set -o xtrace  # display every line before execution; enables PS4
@@ -128,6 +137,8 @@ parse_args() {
   debug "OPTION only_pull: $opt_only_pull"
   debug "OPTION build_local: $opt_build_local"
   debug "OPTION upgrade: $opt_update"
+  debug "OPTION workers_new: $opt_workers_new"
+  debug "OPTION dev_reload: $opt_dev_reload"
   debug "OPTION verbose: $opt_verbose"
   debug "OPTION version: $opt_version"
 }
@@ -280,8 +291,16 @@ build_services() {
 run_services() {
   pushd "$script_dir/docker" 1>/dev/null
 
-  echo -e "$blue_text""Starting docker containers in detached mode""$default_text"
-  VERSION=$opt_version $docker_compose_cmd up -d
+  if [ "$opt_dev_reload" = true ]; then
+    echo -e "$blue_text""Starting docker containers with development hot reload enabled""$default_text"
+    VERSION=$opt_version $docker_compose_cmd -f docker-compose.yaml -f docker-compose.dev.yaml --profile workers-new up -d
+  elif [ "$opt_workers_new" = true ]; then
+    echo -e "$blue_text""Starting docker containers with NEW dedicated workers in detached mode""$default_text"
+    VERSION=$opt_version $docker_compose_cmd --profile workers-new up -d
+  else
+    echo -e "$blue_text""Starting docker containers with existing backend-based workers in detached mode""$default_text"
+    VERSION=$opt_version $docker_compose_cmd up -d
+  fi
 
   if [ "$opt_update" = true ]; then
     echo ""
@@ -324,6 +343,8 @@ opt_only_env=false
 opt_only_pull=false
 opt_build_local=false
 opt_update=false
+opt_workers_new=false
+opt_dev_reload=false
 opt_verbose=false
 opt_version="latest"
 
@@ -331,6 +352,8 @@ script_dir=$(dirname "$(readlink -f "$BASH_SOURCE")")
 first_setup=false
 # Extract service names from docker compose file
 services=($(VERSION=$opt_version $docker_compose_cmd -f "$script_dir/docker/docker-compose.build.yaml" config --services))
+# Add workers manually for env setup
+services+=("workers")
 spawned_services=("tool-structure" "tool-sidecar")
 current_version=""
 target_branch=""

@@ -108,8 +108,46 @@ class GoogleCloudStorageFS(UnstractFileSystem):
         Returns:
             bool: True if the path is a directory, False otherwise.
         """
-        # Note: Here Metadata type seems to be always "file" even for directories
-        return metadata.get("type") == "directory"
+        # Primary check: Standard directory type
+        if metadata.get("type") == "directory":
+            return True
+
+        # GCS-specific directory detection
+        # In GCS, folders are represented as objects with specific characteristics
+        object_name = metadata.get("name", "")
+        size = metadata.get("size", 0)
+        content_type = metadata.get("contentType", "")
+
+        # GCS folder indicators:
+        # 1. Object name ends with "/" (most reliable indicator)
+        if object_name.endswith("/"):
+            logger.debug(
+                f"[GCS Directory Check] '{object_name}' identified as directory: name ends with '/'"
+            )
+            return True
+
+        # 2. Zero-size object with text/plain content type (common for GCS folders)
+        if size == 0 and content_type == "text/plain":
+            logger.debug(
+                f"[GCS Directory Check] '{object_name}' identified as directory: zero-size with text/plain content type"
+            )
+            return True
+
+        # 3. Check for GCS-specific folder metadata
+        # Some GCS folder objects have no contentType or have application/x-www-form-urlencoded
+        if size == 0 and (
+            not content_type
+            or content_type
+            in ["application/x-www-form-urlencoded", "binary/octet-stream"]
+        ):
+            # Additional validation: check if this looks like a folder path
+            if "/" in object_name and not object_name.split("/")[-1]:  # Path ends with /
+                logger.debug(
+                    f"[GCS Directory Check] '{object_name}' identified as directory: zero-size folder-like object"
+                )
+                return True
+
+        return False
 
     def test_credentials(self) -> bool:
         """Test Google Cloud Storage credentials by accessing the root path info.

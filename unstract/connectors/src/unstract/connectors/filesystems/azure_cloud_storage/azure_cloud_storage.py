@@ -12,7 +12,17 @@ from unstract.connectors.filesystems.azure_cloud_storage.exceptions import (
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 from unstract.filesystem import FileStorageType, FileSystem
 
+# Suppress verbose Azure SDK HTTP request/response logging
 logging.getLogger("azurefs").setLevel(logging.ERROR)
+logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(
+    logging.WARNING
+)
+logging.getLogger("azure.storage.blob").setLevel(logging.WARNING)
+logging.getLogger("azure.storage").setLevel(logging.WARNING)
+logging.getLogger("azure.core").setLevel(logging.WARNING)
+# Keep ADLFS filesystem errors visible but suppress HTTP noise
+logging.getLogger("adlfs").setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 

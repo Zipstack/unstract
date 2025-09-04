@@ -105,8 +105,54 @@ class UnstractFileSystem(UnstractConnector, ABC):
 
     @staticmethod
     def get_connector_root_dir(input_dir: str, **kwargs: Any) -> str:
-        """Override to get root dir of a connector."""
-        return f"{input_dir.strip('/')}/"
+        """Get the correct root directory for filesystem operations.
+
+        This method provides a common implementation for path resolution that handles:
+        - Root path combination logic
+        - Proper path formatting for different connectors
+        - Backward compatibility with Django backend expectations
+        - Container/bucket-aware path handling for cloud storage
+
+        Args:
+            input_dir: Input directory path (may include bucket/container name)
+            root_path: Root path configured for the connector (optional)
+            connector_type: Type of connector for specific handling (optional)
+
+        Returns:
+            str: Properly formatted path with trailing slash for directory compatibility
+        """
+        root_path = kwargs.get("root_path", "")
+
+        # If root_path is set, combine with input_dir
+        if root_path:
+            # Remove leading/trailing slashes
+            root_path = root_path.strip("/")
+            input_dir = input_dir.strip("/")
+
+            # If input_dir is just "/", use root_path
+            if not input_dir or input_dir == "/":
+                # BACKWARD COMPATIBILITY: Ensure trailing slash for directory operations
+                return f"{root_path}/" if not root_path.endswith("/") else root_path
+
+            # Combine paths with trailing slash for backward compatibility
+            combined_path = f"{root_path}/{input_dir}"
+            return (
+                f"{combined_path}/" if not combined_path.endswith("/") else combined_path
+            )
+
+        # If no root_path, clean up the input_dir
+        input_dir = input_dir.strip("/")
+
+        # Handle cloud storage paths (bucket/container format)
+        if "/" in input_dir:
+            # This might be "bucket/path" or "container/path" format
+            # For cloud storage, we typically need the full path
+            # BACKWARD COMPATIBILITY: Add trailing slash for directory operations
+            return f"{input_dir}/" if not input_dir.endswith("/") else input_dir
+
+        # Single path component (might be bucket/container name or folder)
+        # BACKWARD COMPATIBILITY: Add trailing slash for directory operations
+        return f"{input_dir}/" if not input_dir.endswith("/") else input_dir
 
     def get_file_size(
         self, file_path: str | None = None, metadata: dict[str, Any] | None = None
