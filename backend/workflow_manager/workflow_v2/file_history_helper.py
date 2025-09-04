@@ -9,6 +9,7 @@ from django.utils import timezone
 from workflow_manager.endpoint_v2.dto import FileHash
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.file_execution.models import WorkflowFileExecution
+from workflow_manager.utils.workflow_log import WorkflowLog
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models.file_history import FileHistory
 from workflow_manager.workflow_v2.models.workflow import Workflow
@@ -26,6 +27,7 @@ class FileHistoryHelper:
         cache_key: str | None = None,
         provider_file_uuid: str | None = None,
         file_path: str | None = None,
+        workflow_log: WorkflowLog | None = None,
     ) -> FileHistory | None:
         """Retrieve a file history record based on the cache key.
 
@@ -37,6 +39,7 @@ class FileHistoryHelper:
             cache_key (Optional[str]): The cache key to search for.
             provider_file_uuid (Optional[str]): The provider file UUID to search for.
             file_path (Optional[str]): The file path to search for.
+            workflow_log (Optional[WorkflowLog]): The workflow log for user notifications.
 
         Returns:
             Optional[FileHistory]: The matching file history record, if found.
@@ -49,7 +52,7 @@ class FileHistoryHelper:
             return None
 
         # Delete expired file histories before querying based on reprocessing interval
-        cls._delete_expired_file_histories(workflow)
+        cls._delete_expired_file_histories(workflow, workflow_log)
 
         filters = Q(workflow=workflow)
         if cache_key:
@@ -138,7 +141,9 @@ class FileHistoryHelper:
         return None
 
     @classmethod
-    def _delete_expired_file_histories(cls, workflow: Workflow) -> None:
+    def _delete_expired_file_histories(
+        cls, workflow: Workflow, workflow_log: WorkflowLog | None = None
+    ) -> None:
         """Delete expired file histories based on reprocessing interval from WorkflowEndpoint configuration.
 
         TODO: Move deletion logic to background job instead
@@ -151,9 +156,12 @@ class FileHistoryHelper:
 
         Args:
             workflow: The workflow to check for expired file histories.
+            workflow_log: Optional workflow log for user notifications.
         """
         try:
-            reprocessing_interval = cls._get_reprocessing_interval_from_config(workflow)
+            reprocessing_interval = cls._get_reprocessing_interval_from_config(
+                workflow, workflow_log
+            )
             if reprocessing_interval is None or reprocessing_interval <= 0:
                 return  # No reprocessing configured, keep all histories
 
@@ -168,24 +176,21 @@ class FileHistoryHelper:
                     f"Deleted {deleted_count} expired file histories for workflow {workflow.id}"
                 )
 
-        except Exception:
-            logger.error(
-                f"Failed to delete expired file histories for workflow {workflow.id}",
-                exc_info=True,
-            )
-
-            logger.info(
-                f"Unable to clean up expired file history records for workflow "
-                f"'{workflow.id}'. This may prevent automatic file reprocessing. Files "
-                f"may need manual reprocessing or system administrator intervention."
-            )
+        except Exception as ex:
+            error_msg = f"Error deleting expired file history records. {ex}"
+            logger.error(error_msg, exc_info=True)
+            if workflow_log:
+                workflow_log.log_error(logger=logger, message=error_msg)
 
     @staticmethod
-    def _get_reprocessing_interval_from_config(workflow: Workflow) -> int | None:
+    def _get_reprocessing_interval_from_config(
+        workflow: Workflow, workflow_log: WorkflowLog | None = None
+    ) -> int | None:
         """Get reprocessing interval in days from workflow configuration.
 
         Args:
             workflow: The workflow to get configuration from.
+            workflow_log: Optional workflow log for user notifications.
 
         Returns:
             int | None: Reprocessing interval in days, or None if no reprocessing.
@@ -218,16 +223,11 @@ class FileHistoryHelper:
                 return interval_value * 30
             return interval_value
 
-        except Exception:
-            logger.error(
-                f"Error getting reprocessing interval for workflow {workflow.id}",
-                exc_info=True,
-            )
-
-            logger.info(
-                f"Unable to retrieve file reprocessing settings for workflow "
-                f"'{workflow.id}'. Using default behavior (no automatic reprocessing)."
-            )
+        except Exception as ex:
+            error_msg = f"Error getting reprocessing interval for workflow. {ex}"
+            logger.error(error_msg, exc_info=True)
+            if workflow_log:
+                workflow_log.log_error(logger=logger, message=error_msg)
             return None
 
     @staticmethod

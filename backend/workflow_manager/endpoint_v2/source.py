@@ -676,6 +676,7 @@ class SourceConnector(BaseConnector):
                 workflow=workflow,
                 provider_file_uuid=provider_file_uuid,
                 file_path=file_hash.file_path,
+                workflow_log=self.workflow_log,
             )
         return None
 
