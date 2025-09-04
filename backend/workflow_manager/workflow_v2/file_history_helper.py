@@ -177,8 +177,11 @@ class FileHistoryHelper:
                 )
 
         except Exception as ex:
-            error_msg = f"Error deleting expired file history records. {ex}"
-            logger.error(error_msg, exc_info=True)
+            error_msg = (
+                "Unable to clean up expired file metadata. "
+                "files may not be reprocessed if its expected to. "
+            )
+            logger.exception(f"{error_msg}:{ex}")
             if workflow_log:
                 workflow_log.log_error(logger=logger, message=error_msg)
 
@@ -224,8 +227,11 @@ class FileHistoryHelper:
             return interval_value
 
         except Exception as ex:
-            error_msg = f"Error getting reprocessing interval for workflow. {ex}"
-            logger.error(error_msg, exc_info=True)
+            error_msg = (
+                "Unable to fetch file metadata deletion settings, "
+                "file may not be reprocessed if its expected to. "
+            )
+            logger.exception(f"{error_msg}:{ex}")
             if workflow_log:
                 workflow_log.log_error(logger=logger, message=error_msg)
             return None
