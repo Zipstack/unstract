@@ -151,20 +151,25 @@ class FileHistoryHelper:
 
             now = timezone.now()
             expiry_date = now - timedelta(days=reprocessing_interval)
-            expiry_date_only = expiry_date.date()
-
             deleted_count, _ = FileHistory.objects.filter(
-                workflow=workflow, created_at__date__lte=expiry_date_only
+                workflow=workflow, created_at__lt=expiry_date
             ).delete()
 
             if deleted_count > 0:
                 logger.info(
-                    f"Deleted {deleted_count} expired file histories for workflow {workflow}"
+                    f"Deleted {deleted_count} expired file histories for workflow {workflow.id}"
                 )
 
-        except Exception as e:
+        except Exception:
             logger.error(
-                f"Error deleting expired file histories for workflow {workflow}: {e}"
+                f"Failed to delete expired file histories for workflow {workflow.id}",
+                exc_info=True,
+            )
+
+            logger.info(
+                f"Unable to clean up expired file history records for workflow "
+                f"'{workflow.id}'. This may prevent automatic file reprocessing. Files "
+                f"may need manual reprocessing or system administrator intervention."
             )
 
     @staticmethod
@@ -205,9 +210,15 @@ class FileHistoryHelper:
                 return interval_value * 30
             return interval_value
 
-        except Exception as e:
+        except Exception:
             logger.error(
-                f"Error getting reprocessing interval for workflow {workflow}: {e}"
+                f"Error getting reprocessing interval for workflow {workflow.id}",
+                exc_info=True,
+            )
+
+            logger.info(
+                f"Unable to retrieve file reprocessing settings for workflow "
+                f"'{workflow.id}'. Using default behavior (no automatic reprocessing)."
             )
             return None
 
