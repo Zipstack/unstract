@@ -8,6 +8,7 @@ from typing import Any
 from connector_v2.models import ConnectorInstance
 from plugins.workflow_manager.workflow_v2.utils import WorkflowUtil
 from rest_framework.exceptions import APIException
+from usage_v2.helper import UsageHelper
 from utils.user_context import UserContext
 from workflow_manager.endpoint_v2.base_connector import BaseConnector
 from workflow_manager.endpoint_v2.constants import (
@@ -177,6 +178,7 @@ class DestinationConnector(BaseConnector):
 
         # Otherwise use existing workflow-based HITL logic
         execution_result = self.get_tool_execution_result()
+
         if WorkflowUtil.validate_db_rule(
             execution_result, workflow, file_hash.file_destination
         ):
@@ -187,6 +189,7 @@ class DestinationConnector(BaseConnector):
                 file_execution_id=file_execution_id,
             )
             return True
+
         return False
 
     def _push_data_to_queue(
@@ -215,6 +218,7 @@ class DestinationConnector(BaseConnector):
         workflow: Workflow,
         input_file_path: str,
         file_execution_id: str = None,
+        error: str | None = None,
     ) -> str | None:
         """Handle the output based on the connection type."""
         connection_type = self.endpoint.connection_type
@@ -222,15 +226,22 @@ class DestinationConnector(BaseConnector):
 
         if connection_type == WorkflowEndpoint.ConnectionType.FILESYSTEM:
             self.copy_output_to_output_directory()
+
         elif connection_type == WorkflowEndpoint.ConnectionType.DATABASE:
-            if not self._should_handle_hitl(
-                file_name=file_name,
-                file_hash=file_hash,
-                workflow=workflow,
-                input_file_path=input_file_path,
-                file_execution_id=file_execution_id,
-            ):
-                self.insert_into_db(input_file_path=input_file_path)
+            # For error cases, skip HITL and directly insert error record
+            if error:
+                self.insert_into_db(input_file_path=input_file_path, error=error)
+            else:
+                # For success cases, check HITL first, then insert if not HITL
+                if not self._should_handle_hitl(
+                    file_name=file_name,
+                    file_hash=file_hash,
+                    workflow=workflow,
+                    input_file_path=input_file_path,
+                    file_execution_id=file_execution_id,
+                ):
+                    self.insert_into_db(input_file_path=input_file_path, error=error)
+
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
             logger.info(f"API connection type detected for file {file_name}")
             # Check for HITL (Manual Review Queue) override for API deployments
@@ -245,6 +256,7 @@ class DestinationConnector(BaseConnector):
                     f"No HITL override, getting tool execution result for {file_name}"
                 )
                 tool_execution_result = self.get_tool_execution_result(file_history)
+
         elif connection_type == WorkflowEndpoint.ConnectionType.MANUALREVIEW:
             self._push_data_to_queue(
                 file_name,
@@ -252,6 +264,7 @@ class DestinationConnector(BaseConnector):
                 input_file_path,
                 file_execution_id,
             )
+
         self.workflow_log.publish_log(
             message=f"File '{file_name}' processed successfully"
         )
@@ -308,7 +321,7 @@ class DestinationConnector(BaseConnector):
         except ConnectorError as e:
             raise UnstractFSException(core_err=e) from e
 
-    def insert_into_db(self, input_file_path: str) -> None:
+    def insert_into_db(self, input_file_path: str, error: str | None) -> None:
         """Insert data into the database."""
         connector_instance: ConnectorInstance = self.endpoint.connector_instance
         connector_settings: dict[str, Any] = connector_instance.connector_metadata
@@ -331,9 +344,12 @@ class DestinationConnector(BaseConnector):
         execution_id_name = str(
             destination_configurations.get(DestinationKey.EXECUTION_ID, "execution_id")
         )
+
         data = self.get_tool_execution_result()
-        # If data is None, don't execute CREATE or INSERT query
-        if not data:
+        metadata = self.get_combined_metadata()
+
+        # If no data and no error, don't execute CREATE or INSERT query
+        if not data and not error:
             logger.info("No data obtained from tool to insert into destination DB.")
             return
 
@@ -342,36 +358,59 @@ class DestinationConnector(BaseConnector):
         # Don't pop out metadata in this case.
         if isinstance(data, dict):
             data.pop("metadata", None)
+
+        db_class = DatabaseUtils.get_db_class(
+            connector_id=connector_instance.connector_id,
+            connector_settings=connector_settings,
+        )
+
+        engine = db_class.get_engine()
+
+        table_info = db_class.get_information_schema(table_name=table_name)
+
+        # Check whether to migrate table to include new columns
+        if table_info:
+            if db_class.is_string_column(
+                table_info=table_info, column_name=single_column_name
+            ):
+                db_class.migrate_table_to_v2(
+                    table_name=table_name,
+                    column_name=single_column_name,
+                    engine=engine,
+                )
+
         values = DatabaseUtils.get_columns_and_values(
             column_mode_str=column_mode,
             data=data,
+            metadata=metadata,
             include_timestamp=include_timestamp,
             include_agent=include_agent,
             agent_name=agent_name,
             single_column_name=single_column_name,
             file_path_name=file_path_name,
             execution_id_name=execution_id_name,
+            table_info=table_info,
             file_path=input_file_path,
             execution_id=self.execution_id,
+            error=error,
         )
-        engine = None
+
         try:
-            db_class = DatabaseUtils.get_db_class(
-                connector_id=connector_instance.connector_id,
-                connector_settings=connector_settings,
-            )
-            engine = db_class.get_engine()
+            # Reuse the same db_class and engine created earlier
+
             DatabaseUtils.create_table_if_not_exists(
                 db_class=db_class,
                 engine=engine,
                 table_name=table_name,
                 database_entry=values,
             )
+
             sql_columns_and_values = DatabaseUtils.get_sql_query_data(
                 conn_cls=db_class,
                 table_name=table_name,
                 values=values,
             )
+
             DatabaseUtils.execute_write_query(
                 db_class=db_class,
                 engine=engine,
@@ -379,6 +418,7 @@ class DestinationConnector(BaseConnector):
                 sql_keys=list(sql_columns_and_values.keys()),
                 sql_values=list(sql_columns_and_values.values()),
             )
+
         except ConnectorError as e:
             error_msg = f"Database connection failed for {input_file_path}: {str(e)}"
             logger.error(error_msg)
@@ -564,6 +604,27 @@ class DestinationConnector(BaseConnector):
                 return None
         metadata: dict[str, Any] = self.get_workflow_metadata()
         return metadata
+
+    def get_combined_metadata(self) -> dict[str, Any]:
+        """Get combined workflow and usage metadata.
+
+        Returns:
+            dict[str, Any]: Combined metadata including workflow and usage data.
+        """
+        # Get workflow metadata
+        workflow_metadata = self.get_metadata()
+
+        # Get file_execution_id from metadata
+        file_execution_id = workflow_metadata.get("file_execution_id")
+        if not file_execution_id:
+            return workflow_metadata
+
+        usage_metadata = UsageHelper.get_aggregated_token_count(file_execution_id)
+
+        # Combine both metadata
+        workflow_metadata["usage"] = usage_metadata
+
+        return workflow_metadata
 
     def delete_file_execution_directory(self) -> None:
         """Delete the file execution directory.

@@ -1,3 +1,4 @@
+import datetime
 import logging
 import os
 from typing import Any
@@ -55,6 +56,31 @@ class SnowflakeDB(UnstractDB):
     def can_read() -> bool:
         return True
 
+    def get_string_type(self) -> str:
+        return "text"
+
+    def sql_to_db_mapping(self, value: str) -> str:
+        """Gets the python datatype of value and converts python datatype to
+        corresponding DB datatype.
+
+        Args:
+            value (str): python datatype
+
+        Returns:
+            str: database columntype
+        """
+        python_type = type(value)
+
+        mapping = {
+            str: "TEXT",
+            int: "INT",
+            float: "FLOAT",
+            datetime.datetime: "TIMESTAMP",
+            dict: "VARIANT",
+            list: "VARIANT",
+        }
+        return mapping.get(python_type, "TEXT")
+
     def get_engine(self) -> SnowflakeConnection:
         con = snowflake.connector.connect(
             user=self.user,
@@ -72,6 +98,25 @@ class SnowflakeDB(UnstractDB):
             f"CREATE TABLE {table} IF NOT EXISTS "
             f"(id TEXT ,"
             f"created_by TEXT, created_at TIMESTAMP, "
+            f"metadata VARIANT, "
+            f"user_field_1 BOOLEAN DEFAULT FALSE, "
+            f"user_field_2 INT DEFAULT 0, "
+            f"user_field_3 TEXT DEFAULT NULL, "
+            f"status VARCHAR CHECK (status IN ('ERROR', 'SUCCESS')), "
+            f"error_message VARCHAR, "
+        )
+        return sql_query
+
+    def prepare_multi_column_migration(self, table_name: str, column_name: str) -> str:
+        sql_query = (
+            f"ALTER TABLE {table_name} "
+            f"ADD COLUMN {column_name}_v2 VARIANT, "
+            f"ADD COLUMN metadata VARIANT, "
+            f"ADD COLUMN user_field_1 BOOLEAN DEFAULT FALSE, "
+            f"ADD COLUMN user_field_2 INT DEFAULT 0, "
+            f"ADD COLUMN user_field_3 TEXT DEFAULT NULL, "
+            f"ADD COLUMN status VARCHAR CHECK (status IN ('ERROR', 'SUCCESS')), "
+            f"ADD COLUMN error_message VARCHAR"
         )
         return sql_query
 
