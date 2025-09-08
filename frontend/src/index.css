@@ -13,6 +13,7 @@ body {
   height: 100%;
   background-color: var(--page-bg-2);
   min-width: 1024px;
+  overflow: hidden;
 }
 
 .page-bg-2 {
@@ -228,11 +229,11 @@ body {
   height: 100vh;
 }
 
-.mar-bottom-12{
+.mar-bottom-12 {
   margin-bottom: 12px;
 }
 
-.mar-0{
+.mar-0 {
   margin: 0;
 }
 
