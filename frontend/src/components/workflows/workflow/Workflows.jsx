@@ -205,7 +205,6 @@ function Workflows() {
       setSelectedWorkflow(sharedUsersResponse.data);
       setShareOpen(true);
     } catch (err) {
-      console.error("Error fetching sharing data:", err);
       setAlertDetails(
         handleException(err, `Unable to fetch sharing information`)
       );
@@ -229,7 +228,6 @@ function Workflows() {
       });
       getProjectList(); // Refresh the list
     } catch (error) {
-      console.error("Error updating sharing:", error);
       setAlertDetails(
         handleException(error, "Unable to update workflow sharing")
       );
