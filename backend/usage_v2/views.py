@@ -101,31 +101,26 @@ class UsageView(viewsets.ModelViewSet):
 
         Returns:
             Response: A Response object containing trial usage statistics including:
-                     - LLM cost saved
-                     - Documents processed
-                     - API calls made
-                     - ETL pipeline runs
-                     - Processing accuracy metrics
-                     - Trial period information
+                     - trial_start_date: ISO formatted trial start date
+                     - trial_end_date: ISO formatted trial end date
+                     - total_cost: Total cost in dollars during trial period
+                     - documents_processed: Number of unique document processing operations
+                     - api_calls: Total number of API calls made
+                     - etl_runs: Number of unique ETL pipeline runs
         """
-        try:
-            user_organization = UserContext.get_organization()
+        user_organization = UserContext.get_organization()
 
-            # Validate organization context
-            if not user_organization:
-                logger.warning("No organization context found for user")
-                raise ValidationError("No organization context available")
+        # Validate organization context
+        if not user_organization:
+            logger.warning("No organization context found for user")
+            raise ValidationError("No organization context available")
 
-            # Get trial statistics from helper
-            trial_stats = UsageHelper.get_trial_statistics(user_organization)
+        # Get trial statistics from helper
+        trial_stats = UsageHelper.get_trial_statistics(user_organization)
 
-            # Log successful retrieval for audit purposes
-            logger.info(
-                f"Trial statistics retrieved for organization {user_organization.organization_id}"
-            )
+        # Log successful retrieval for audit purposes
+        logger.info(
+            f"Trial statistics retrieved for organization {user_organization.organization_id}"
+        )
 
-            return Response(status=status.HTTP_200_OK, data=trial_stats)
-
-        except (ValueError, ValidationError):
-            logger.exception("Validation error retrieving trial statistics")
-            raise
+        return Response(status=status.HTTP_200_OK, data=trial_stats)

@@ -4,10 +4,20 @@ from typing import Any
 
 from django.db.models import Count, QuerySet, Sum
 from django.utils import timezone
-from rest_framework.exceptions import APIException
+from rest_framework.exceptions import APIException, ValidationError
 
 from .constants import UsageKeys
 from .models import Usage
+
+# Try to import subscription plugin at module level
+try:
+    from pluggable_apps.subscription_v2.subscription_helper import (
+        SubscriptionHelper,
+    )
+
+    SUBSCRIPTION_HELPER = SubscriptionHelper
+except ImportError:
+    SUBSCRIPTION_HELPER = None
 
 logger = logging.getLogger(__name__)
 
@@ -101,23 +111,28 @@ class UsageHelper:
         }
 
     @staticmethod
-    def _get_subscription_dates(organization_id):
+    def _get_subscription_dates(
+        organization_id: str,
+    ) -> tuple[datetime | None, datetime | None]:
         """Attempt to get trial dates from subscription plugin.
 
         Assumes subscription plugin returns timezone-aware datetimes or dates
         that can be safely used without normalization (uniform storage).
+
+        Args:
+            organization_id: The organization identifier
+
+        Returns:
+            Tuple of (start_date, end_date) or (None, None) if not available
         """
-        try:
-            from pluggable_apps.subscription_v2.subscription_helper import (
-                SubscriptionHelper,
-            )
-        except ImportError:
+        # Exit early if subscription plugin is not available
+        if SUBSCRIPTION_HELPER is None:
             logger.debug("Subscription plugin not available, using fallback dates")
             return None, None
 
         # Plugin is available, attempt to get subscription data
         try:
-            org_plans = SubscriptionHelper.get_subscription(organization_id)
+            org_plans = SUBSCRIPTION_HELPER.get_subscription(organization_id)
         except AttributeError as e:
             logger.warning(f"Subscription plugin missing expected methods: {e}")
             return None, None
@@ -145,8 +160,19 @@ class UsageHelper:
         return start_date, end_date
 
     @staticmethod
-    def _calculate_usage_metrics(organization, trial_start_date, trial_end_date):
-        """Calculate usage metrics for the trial period."""
+    def _calculate_usage_metrics(
+        organization: Any, trial_start_date: datetime, trial_end_date: datetime
+    ) -> tuple[dict, int]:
+        """Calculate usage metrics for the trial period.
+
+        Args:
+            organization: The organization object
+            trial_start_date: Start of trial period
+            trial_end_date: End of trial period
+
+        Returns:
+            Tuple of (aggregated_data, documents_processed)
+        """
         usage_queryset = Usage.objects.filter(
             organization=organization,
             created_at__gte=trial_start_date,
@@ -182,43 +208,31 @@ class UsageHelper:
                 - documents_processed (int): Number of unique document processing operations
                 - api_calls (int): Total number of API calls made
                 - etl_runs (int): Number of unique ETL pipeline runs
-                - error (str, optional): Error message if processing fails
         """
-        try:
-            # Try to get subscription dates
-            trial_start_date, trial_end_date = UsageHelper._get_subscription_dates(
-                organization.organization_id
+        trial_start_date, trial_end_date = UsageHelper._get_subscription_dates(
+            organization.organization_id
+        )
+        # Use fallback dates if needed (assuming uniform UTC storage)
+        if not trial_start_date:
+            trial_start_date = organization.created_at
+        if not trial_end_date:
+            # For end date, set to end of day (23:59:59.999999)
+            end_of_trial_date = organization.created_at + timedelta(days=14)
+            trial_end_date = end_of_trial_date.replace(
+                hour=23, minute=59, second=59, microsecond=999999
             )
-
-            # Use fallback dates if needed (assuming uniform UTC storage)
-            if not trial_start_date:
-                trial_start_date = organization.created_at
-
-            if not trial_end_date:
-                # For end date, set to end of day (23:59:59.999999)
-                end_of_trial_date = organization.created_at + timedelta(days=14)
-                trial_end_date = end_of_trial_date.replace(
-                    hour=23, minute=59, second=59, microsecond=999999
-                )
-
-            # Validate trial window - guard against inverted date range
-            if trial_end_date < trial_start_date:
-                raise ValueError("trial_end_date must be on or after trial_start_date")
-
-            # Calculate usage metrics
-            aggregated_data, documents_processed = UsageHelper._calculate_usage_metrics(
-                organization, trial_start_date, trial_end_date
-            )
-
-            return {
-                "trial_start_date": trial_start_date.isoformat(),
-                "trial_end_date": trial_end_date.isoformat(),
-                "total_cost": aggregated_data.get("total_cost", 0) or 0,
-                "documents_processed": documents_processed,
-                "api_calls": aggregated_data.get("api_calls", 0) or 0,
-                "etl_runs": aggregated_data.get("unique_runs", 0) or 0,
-            }
-
-        except Exception:
-            logger.exception("Error calculating trial statistics")
-            raise
+        # Validate trial window - guard against inverted date range
+        if trial_end_date < trial_start_date:
+            raise ValidationError("trial_end_date must be on or after trial_start_date")
+        # Calculate usage metrics
+        aggregated_data, documents_processed = UsageHelper._calculate_usage_metrics(
+            organization, trial_start_date, trial_end_date
+        )
+        return {
+            "trial_start_date": trial_start_date.isoformat(),
+            "trial_end_date": trial_end_date.isoformat(),
+            "total_cost": aggregated_data.get("total_cost", 0) or 0,
+            "documents_processed": documents_processed,
+            "api_calls": aggregated_data.get("api_calls", 0) or 0,
+            "etl_runs": aggregated_data.get("unique_runs", 0) or 0,
+        }
