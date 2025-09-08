@@ -353,6 +353,7 @@ class AnswerPromptService:
                                 webhook_enabled=True,
                                 webhook_url=webhook_url,
                                 highlight_data=highlight_data,
+                                timeout=60,
                             )
                         except Exception as e:
                             app.logger.warning(

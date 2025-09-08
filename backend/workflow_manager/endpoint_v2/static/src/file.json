@@ -36,8 +36,50 @@
             "type": "integer",
             "title": "Max files to process",
             "default": 100,
-            "description": "The maximum number of files to process",
-            "minimum": 1
+            "minimum": 1,
+            "description": "The maximum number of files to process"
+        },
+        "fileReprocessingHandling": {
+            "type": "string",
+            "title": "File metadata deletion behavior",
+            "description": "File metadata will not be deleted until the expiration interval passes",
+            "default": "skip_duplicates",
+            "enum": ["skip_duplicates", "reprocess_after_interval"],
+            "enumNames": ["Never delete", "Delete after"]
+        }
+    },
+    "dependencies": {
+        "fileReprocessingHandling": {
+            "oneOf": [
+                {
+                    "properties": {
+                        "fileReprocessingHandling": {
+                            "enum": ["skip_duplicates"]
+                        }
+                    }
+                },
+                {
+                    "properties": {
+                        "fileReprocessingHandling": {
+                            "enum": ["reprocess_after_interval"]
+                        },
+                        "reprocessInterval": {
+                            "type": "integer",
+                            "title": "Duration",
+                            "default": 30,
+                            "minimum": 1
+                        },
+                        "intervalUnit": {
+                            "type": "string",
+                            "title": "Duration Type",
+                            "default": "days",
+                            "enum": ["days", "months"],
+                            "enumNames": ["Days", "Months"]
+                        }
+                    },
+                    "required": ["reprocessInterval", "intervalUnit"]
+                }
+            ]
         }
     }
 }
