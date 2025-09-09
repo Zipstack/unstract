@@ -4,6 +4,7 @@ from typing import Any
 
 from django.db.models import QuerySet, Sum
 from rest_framework.exceptions import APIException
+from utils.db_retry import db_retry
 
 from .constants import UsageKeys
 from .models import Usage
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 class UsageHelper:
     @staticmethod
+    @db_retry()  # Add retry for connection drops during usage aggregation
     def get_aggregated_token_count(run_id: str) -> dict:
         """Retrieve aggregated token counts for the given run_id.
 
@@ -64,6 +66,7 @@ class UsageHelper:
             raise APIException("Error while aggregating token counts")
 
     @staticmethod
+    @db_retry()  # Add retry for connection drops during metrics aggregation
     def aggregate_usage_metrics(queryset: QuerySet) -> dict[str, Any]:
         """Aggregate usage metrics from a queryset of Usage objects.
 

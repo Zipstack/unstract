@@ -7,6 +7,7 @@ from pprint import pformat
 
 from celery import Celery
 
+from backend.celery_db_retry import patch_celery_database_backend
 from backend.settings.base import LOGGING
 from backend.workers.constants import CeleryWorkerNames
 from backend.workers.file_processing.celery_config import CeleryConfig
@@ -24,6 +25,9 @@ logging.config.dictConfig(LOGGING)
 
 # Create a Celery instance. Default time zone is UTC.
 app = Celery(CeleryWorkerNames.FILE_PROCESSING)
+
+# Patch Celery database backend to add connection retry logic
+patch_celery_database_backend()
 
 # Load task modules from all registered Django app configs.
 app.config_from_object(CeleryConfig)

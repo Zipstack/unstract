@@ -115,6 +115,18 @@ DB_PASSWORD = os.environ.get("DB_PASSWORD", "unstract_pass")
 DB_PORT = os.environ.get("DB_PORT", 5432)
 DB_SCHEMA = os.environ.get("DB_SCHEMA", "unstract")
 
+# Database connection retry settings
+DB_CONNECTION_RETRY_COUNT = int(os.environ.get("DB_CONNECTION_RETRY_COUNT", "3"))
+DB_CONNECTION_RETRY_DELAY = int(os.environ.get("DB_CONNECTION_RETRY_DELAY", "1"))
+DB_CONNECTION_RETRY_MAX_DELAY = int(os.environ.get("DB_CONNECTION_RETRY_MAX_DELAY", "30"))
+
+# Celery database backend retry settings
+CELERY_DB_RETRY_COUNT = int(os.environ.get("CELERY_DB_RETRY_COUNT", "3"))
+CELERY_DB_RETRY_DELAY = int(os.environ.get("CELERY_DB_RETRY_DELAY", "1"))
+CELERY_DB_RETRY_MAX_DELAY = int(os.environ.get("CELERY_DB_RETRY_MAX_DELAY", "30"))
+CELERY_DB_CONNECT_TIMEOUT = int(os.environ.get("CELERY_DB_CONNECT_TIMEOUT", "30"))
+CELERY_DB_ECHO_SQL = os.environ.get("CELERY_DB_ECHO_SQL", "False").lower() == "true"
+
 # Celery Backend Database Name (falls back to main DB when unset or empty)
 CELERY_BACKEND_DB_NAME = os.environ.get("CELERY_BACKEND_DB_NAME") or DB_NAME
 DEFAULT_ORGANIZATION = "default_org"
