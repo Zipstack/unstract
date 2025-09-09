@@ -314,16 +314,13 @@ def db_retry(
     return decorator
 
 
-def _handle_context_non_retryable_error(error: BaseException) -> None:
-    """Handle non-retryable errors in context manager."""
+def _log_context_non_retryable_error(error: BaseException) -> None:
+    """Log non-retryable errors in context manager."""
     logger.debug(LogMessages.format_message(LogMessages.NON_RETRYABLE_ERROR, error=error))
-    raise
 
 
-def _handle_context_max_retries_exceeded(
-    error: BaseException, total_retries: int
-) -> None:
-    """Handle max retries exceeded in context manager."""
+def _log_context_max_retries_exceeded(error: BaseException, total_retries: int) -> None:
+    """Log max retries exceeded in context manager."""
     logger.error(
         LogMessages.format_message(
             LogMessages.MAX_RETRIES_EXCEEDED,
@@ -331,7 +328,6 @@ def _handle_context_max_retries_exceeded(
             error=error,
         )
     )
-    raise
 
 
 def _update_context_retry_settings(
@@ -426,7 +422,8 @@ def db_retry_context(
             error_type, needs_refresh, use_extended = _classify_database_error(e)
 
             if not DatabaseErrorPatterns.is_retryable_error(error_type):
-                _handle_context_non_retryable_error(e)
+                _log_context_non_retryable_error(e)
+                raise
 
             # Update settings for extended retry if needed
             current_settings = _update_context_retry_settings(
@@ -447,9 +444,8 @@ def db_retry_context(
                 time.sleep(delay)
                 continue
             else:
-                _handle_context_max_retries_exceeded(
-                    e, current_settings["max_retries"] + 1
-                )
+                _log_context_max_retries_exceeded(e, current_settings["max_retries"] + 1)
+                raise
 
 
 def retry_database_operation(

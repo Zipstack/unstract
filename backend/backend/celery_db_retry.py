@@ -105,16 +105,14 @@ def _log_retry_attempt(
     )
 
 
-def _handle_non_sqlalchemy_error(error: BaseException) -> None:
-    """Handle non-SQLAlchemy errors by logging and re-raising."""
+def _log_non_sqlalchemy_error(error: BaseException) -> None:
+    """Log non-SQLAlchemy errors."""
     logger.debug(LogMessages.format_message(LogMessages.NON_RETRYABLE_ERROR, error=error))
-    raise
 
 
-def _handle_non_retryable_error(error: BaseException) -> None:
-    """Handle non-retryable errors by logging and re-raising."""
+def _log_non_retryable_error(error: BaseException) -> None:
+    """Log non-retryable errors."""
     logger.debug(LogMessages.format_message(LogMessages.NON_RETRYABLE_ERROR, error=error))
-    raise
 
 
 def _execute_retry_attempt(
@@ -146,8 +144,8 @@ def _execute_retry_attempt(
     return retry_count, delay
 
 
-def _handle_max_retries_exceeded(error: BaseException, total_retries: int) -> None:
-    """Handle the case when max retries are exceeded."""
+def _log_max_retries_exceeded(error: BaseException, total_retries: int) -> None:
+    """Log when max retries are exceeded."""
     logger.error(
         LogMessages.format_message(
             LogMessages.MAX_RETRIES_EXCEEDED,
@@ -155,7 +153,6 @@ def _handle_max_retries_exceeded(error: BaseException, total_retries: int) -> No
             error=error,
         )
     )
-    raise
 
 
 def _process_celery_exception(
@@ -172,13 +169,15 @@ def _process_celery_exception(
         None: if should not retry (will re-raise)
     """
     if not _is_sqlalchemy_error(error):
-        _handle_non_sqlalchemy_error(error)
+        _log_non_sqlalchemy_error(error)
+        raise
 
     # Use centralized error classification
     error_type, needs_refresh = DatabaseErrorPatterns.classify_error(error)
 
     if not DatabaseErrorPatterns.is_retryable_error(error_type):
-        _handle_non_retryable_error(error)
+        _log_non_retryable_error(error)
+        raise
 
     # Get appropriate retry settings for this error type
     current_settings = _get_retry_settings_for_error(
@@ -190,8 +189,8 @@ def _process_celery_exception(
             error, error_type, needs_refresh, retry_count, current_settings
         )
     else:
-        _handle_max_retries_exceeded(error, current_settings["max_retries"] + 1)
-        return None  # This line will never be reached due to exception, but added for completeness
+        _log_max_retries_exceeded(error, current_settings["max_retries"] + 1)
+        raise
 
 
 def _log_success(retry_count: int) -> None:
