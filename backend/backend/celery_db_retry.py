@@ -25,6 +25,99 @@ def should_use_builtin_retry() -> bool:
     )
 
 
+def _is_sqlalchemy_error(exception: Exception) -> bool:
+    """Check if exception is a SQLAlchemy error."""
+    try:
+        from sqlalchemy.exc import OperationalError as SQLAlchemyOperationalError
+
+        return isinstance(exception, SQLAlchemyOperationalError)
+    except ImportError:
+        return False
+
+
+def _get_retry_settings_for_error(
+    error_type: DatabaseErrorType,
+    retry_count: int,
+    max_retries: int,
+    base_delay: float,
+    max_delay: float,
+) -> dict:
+    """Get appropriate retry settings based on error type."""
+    if error_type == DatabaseErrorType.DATABASE_UNAVAILABLE and retry_count == 0:
+        extended_settings = RetryConfiguration.get_retry_settings(use_extended=True)
+        return {
+            "max_retries": extended_settings["max_retries"],
+            "base_delay": extended_settings["base_delay"],
+            "max_delay": extended_settings["max_delay"],
+        }
+    return {
+        "max_retries": max_retries,
+        "base_delay": base_delay,
+        "max_delay": max_delay,
+    }
+
+
+def _handle_pool_refresh(
+    func: Callable, error: Exception, retry_count: int, total_retries: int
+) -> None:
+    """Handle SQLAlchemy connection pool disposal."""
+    logger.warning(
+        LogMessages.format_message(
+            LogMessages.POOL_CORRUPTION_DETECTED,
+            attempt=retry_count,
+            total=total_retries,
+            error=error,
+        )
+    )
+    try:
+        _dispose_sqlalchemy_engine()
+        logger.info("SQLAlchemy connection pool disposed successfully")
+    except Exception as refresh_error:
+        logger.warning(
+            LogMessages.format_message(
+                LogMessages.POOL_REFRESH_FAILED,
+                error=refresh_error,
+            )
+        )
+
+
+def _log_retry_attempt(
+    error_type: DatabaseErrorType,
+    retry_count: int,
+    total_retries: int,
+    error: Exception,
+    delay: float,
+) -> None:
+    """Log retry attempt with appropriate message."""
+    if error_type == DatabaseErrorType.DATABASE_UNAVAILABLE:
+        message = LogMessages.DATABASE_UNAVAILABLE_RETRY
+    else:
+        message = LogMessages.CONNECTION_ERROR_RETRY
+
+    logger.warning(
+        LogMessages.format_message(
+            message,
+            attempt=retry_count,
+            total=total_retries,
+            error=error,
+            delay=delay,
+        )
+    )
+
+
+def _log_success(retry_count: int) -> None:
+    """Log operation success."""
+    if retry_count == 0:
+        logger.debug(LogMessages.OPERATION_SUCCESS)
+    else:
+        logger.info(
+            LogMessages.format_message(
+                LogMessages.OPERATION_SUCCESS_AFTER_RETRY,
+                retry_count=retry_count,
+            )
+        )
+
+
 def celery_db_retry_with_backoff(
     max_retries: int | None = None,
     base_delay: float | None = None,
@@ -62,28 +155,10 @@ def celery_db_retry_with_backoff(
             while retry_count <= max_retries:
                 try:
                     result = func(*args, **kwargs)
-                    if retry_count == 0:
-                        logger.debug(LogMessages.OPERATION_SUCCESS)
-                    else:
-                        logger.info(
-                            LogMessages.format_message(
-                                LogMessages.OPERATION_SUCCESS_AFTER_RETRY,
-                                retry_count=retry_count,
-                            )
-                        )
+                    _log_success(retry_count)
                     return result
                 except Exception as e:
-                    # Import here to avoid circular import
-                    try:
-                        from sqlalchemy.exc import (
-                            OperationalError as SQLAlchemyOperationalError,
-                        )
-
-                        is_sqlalchemy_error = isinstance(e, SQLAlchemyOperationalError)
-                    except ImportError:
-                        is_sqlalchemy_error = False
-
-                    if not is_sqlalchemy_error:
+                    if not _is_sqlalchemy_error(e):
                         logger.debug(
                             LogMessages.format_message(
                                 LogMessages.NON_RETRYABLE_ERROR, error=e
@@ -94,84 +169,48 @@ def celery_db_retry_with_backoff(
                     # Use centralized error classification
                     error_type, needs_refresh = DatabaseErrorPatterns.classify_error(e)
 
-                    if DatabaseErrorPatterns.is_retryable_error(error_type):
-                        # For database unavailable errors, use extended settings if configured
-                        current_max_retries = max_retries
-                        current_base_delay = base_delay
-                        current_max_delay = max_delay
-
-                        if (
-                            error_type == DatabaseErrorType.DATABASE_UNAVAILABLE
-                            and retry_count == 0
-                        ):
-                            extended_settings = RetryConfiguration.get_retry_settings(
-                                use_extended=True
-                            )
-                            current_max_retries = extended_settings["max_retries"]
-                            current_base_delay = extended_settings["base_delay"]
-                            current_max_delay = extended_settings["max_delay"]
-
-                        if retry_count < current_max_retries:
-                            delay = min(
-                                current_base_delay * (2**retry_count), current_max_delay
-                            )
-                            retry_count += 1
-
-                            # Handle SQLAlchemy connection pool disposal for severe connection issues
-                            if needs_refresh:
-                                logger.warning(
-                                    LogMessages.format_message(
-                                        LogMessages.POOL_CORRUPTION_DETECTED,
-                                        attempt=retry_count,
-                                        total=current_max_retries + 1,
-                                        error=e,
-                                    )
-                                )
-                                try:
-                                    _dispose_sqlalchemy_engine(func)
-                                    logger.info(
-                                        "SQLAlchemy connection pool disposed successfully"
-                                    )
-                                except Exception as refresh_error:
-                                    logger.warning(
-                                        LogMessages.format_message(
-                                            LogMessages.POOL_REFRESH_FAILED,
-                                            error=refresh_error,
-                                        )
-                                    )
-                            else:
-                                # Choose appropriate retry message based on error type
-                                if error_type == DatabaseErrorType.DATABASE_UNAVAILABLE:
-                                    message = LogMessages.DATABASE_UNAVAILABLE_RETRY
-                                else:
-                                    message = LogMessages.CONNECTION_ERROR_RETRY
-
-                                logger.warning(
-                                    LogMessages.format_message(
-                                        message,
-                                        attempt=retry_count,
-                                        total=current_max_retries + 1,
-                                        error=e,
-                                        delay=delay,
-                                    )
-                                )
-
-                            time.sleep(delay)
-                            continue
-                        else:
-                            logger.error(
-                                LogMessages.format_message(
-                                    LogMessages.MAX_RETRIES_EXCEEDED,
-                                    total=current_max_retries + 1,
-                                    error=e,
-                                )
-                            )
-                            raise
-                    else:
-                        # Not a connection error, re-raise immediately
+                    if not DatabaseErrorPatterns.is_retryable_error(error_type):
                         logger.debug(
                             LogMessages.format_message(
                                 LogMessages.NON_RETRYABLE_ERROR, error=e
+                            )
+                        )
+                        raise
+
+                    # Get appropriate retry settings for this error type
+                    current_settings = _get_retry_settings_for_error(
+                        error_type, retry_count, max_retries, base_delay, max_delay
+                    )
+
+                    if retry_count < current_settings["max_retries"]:
+                        delay = min(
+                            current_settings["base_delay"] * (2**retry_count),
+                            current_settings["max_delay"],
+                        )
+                        retry_count += 1
+
+                        # Handle connection pool refresh if needed
+                        if needs_refresh:
+                            _handle_pool_refresh(
+                                func, e, retry_count, current_settings["max_retries"] + 1
+                            )
+                        else:
+                            _log_retry_attempt(
+                                error_type,
+                                retry_count,
+                                current_settings["max_retries"] + 1,
+                                e,
+                                delay,
+                            )
+
+                        time.sleep(delay)
+                        continue
+                    else:
+                        logger.error(
+                            LogMessages.format_message(
+                                LogMessages.MAX_RETRIES_EXCEEDED,
+                                total=current_settings["max_retries"] + 1,
+                                error=e,
                             )
                         )
                         raise
@@ -184,7 +223,7 @@ def celery_db_retry_with_backoff(
     return decorator
 
 
-def _dispose_sqlalchemy_engine(func):
+def _dispose_sqlalchemy_engine():
     """Dispose SQLAlchemy engine to force connection pool recreation.
 
     This is called when we detect severe connection issues that require

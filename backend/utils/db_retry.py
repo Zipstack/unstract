@@ -110,6 +110,76 @@ def _classify_database_error(error: Exception):
     return error_type, needs_refresh, use_extended_retry
 
 
+def _update_retry_settings_for_extended(retry_count: int, use_extended: bool) -> dict:
+    """Get extended retry settings if needed for database unavailable errors."""
+    if use_extended and retry_count == 0:
+        return get_default_retry_settings(use_extended=True)
+    return {}
+
+
+def _handle_connection_pool_refresh(
+    error: Exception, retry_count: int, max_retries: int
+) -> None:
+    """Handle connection pool refresh for stale connections."""
+    logger.warning(
+        LogMessages.format_message(
+            LogMessages.POOL_CORRUPTION_DETECTED,
+            attempt=retry_count,
+            total=max_retries + 1,
+            error=error,
+        )
+    )
+    try:
+        close_old_connections()
+        logger.info(LogMessages.POOL_REFRESH_SUCCESS)
+    except Exception as refresh_error:
+        logger.warning(
+            LogMessages.format_message(
+                LogMessages.POOL_REFRESH_FAILED, error=refresh_error
+            )
+        )
+
+
+def _log_retry_attempt(
+    error_type: DatabaseErrorType,
+    retry_count: int,
+    max_retries: int,
+    error: Exception,
+    delay: float,
+) -> None:
+    """Log retry attempt with appropriate message based on error type."""
+    if error_type == DatabaseErrorType.DATABASE_UNAVAILABLE:
+        message = LogMessages.DATABASE_UNAVAILABLE_RETRY
+    else:
+        message = LogMessages.CONNECTION_ERROR_RETRY
+
+    logger.warning(
+        LogMessages.format_message(
+            message,
+            attempt=retry_count,
+            total=max_retries + 1,
+            error=error,
+            delay=delay,
+        )
+    )
+
+
+def _handle_retry_attempt(
+    error: Exception,
+    error_type: DatabaseErrorType,
+    needs_refresh: bool,
+    force_refresh: bool,
+    retry_count: int,
+    max_retries: int,
+    delay: float,
+) -> None:
+    """Handle a single retry attempt - either refresh pool or log retry."""
+    if needs_refresh and force_refresh:
+        _handle_connection_pool_refresh(error, retry_count, max_retries)
+    else:
+        _log_retry_attempt(error_type, retry_count, max_retries, error, delay)
+
+
 def _execute_with_retry(
     operation: Callable,
     max_retries: int = 3,
@@ -147,9 +217,11 @@ def _execute_with_retry(
                 )
                 raise
 
-            # For database unavailable errors, use extended settings if configured
-            if use_extended and retry_count == 0:
-                extended_settings = get_default_retry_settings(use_extended=True)
+            # Update settings for extended retry if needed
+            extended_settings = _update_retry_settings_for_extended(
+                retry_count, use_extended
+            )
+            if extended_settings:
                 max_retries = extended_settings["max_retries"]
                 base_delay = extended_settings["base_delay"]
                 max_delay = extended_settings["max_delay"]
@@ -158,41 +230,15 @@ def _execute_with_retry(
                 delay = min(base_delay * (2**retry_count), max_delay)
                 retry_count += 1
 
-                # Handle connection pool refresh for stale connections
-                if needs_refresh and force_refresh:
-                    logger.warning(
-                        LogMessages.format_message(
-                            LogMessages.POOL_CORRUPTION_DETECTED,
-                            attempt=retry_count,
-                            total=max_retries + 1,
-                            error=e,
-                        )
-                    )
-                    try:
-                        close_old_connections()
-                        logger.info(LogMessages.POOL_REFRESH_SUCCESS)
-                    except Exception as refresh_error:
-                        logger.warning(
-                            LogMessages.format_message(
-                                LogMessages.POOL_REFRESH_FAILED, error=refresh_error
-                            )
-                        )
-                else:
-                    # Choose appropriate retry message based on error type
-                    if error_type == DatabaseErrorType.DATABASE_UNAVAILABLE:
-                        message = LogMessages.DATABASE_UNAVAILABLE_RETRY
-                    else:
-                        message = LogMessages.CONNECTION_ERROR_RETRY
-
-                    logger.warning(
-                        LogMessages.format_message(
-                            message,
-                            attempt=retry_count,
-                            total=max_retries + 1,
-                            error=e,
-                            delay=delay,
-                        )
-                    )
+                _handle_retry_attempt(
+                    e,
+                    error_type,
+                    needs_refresh,
+                    force_refresh,
+                    retry_count,
+                    max_retries,
+                    delay,
+                )
 
                 time.sleep(delay)
                 continue
@@ -268,6 +314,33 @@ def db_retry(
     return decorator
 
 
+def _handle_context_retry_logic(
+    retry_count: int,
+    final_max_retries: int,
+    final_base_delay: float,
+    final_max_delay: float,
+    final_force_refresh: bool,
+    error: Exception,
+    error_type: DatabaseErrorType,
+    needs_refresh: bool,
+) -> tuple[int, float]:
+    """Handle retry logic for context manager - returns updated retry_count and delay."""
+    delay = min(final_base_delay * (2**retry_count), final_max_delay)
+    retry_count += 1
+
+    _handle_retry_attempt(
+        error,
+        error_type,
+        needs_refresh,
+        final_force_refresh,
+        retry_count,
+        final_max_retries,
+        delay,
+    )
+
+    return retry_count, delay
+
+
 @contextmanager
 def db_retry_context(
     max_retries: int | None = None,
@@ -321,53 +394,26 @@ def db_retry_context(
                 )
                 raise
 
-            # For database unavailable errors, use extended settings if configured
-            if use_extended and retry_count == 0:
-                extended_settings = get_default_retry_settings(use_extended=True)
+            # Update settings for extended retry if needed
+            extended_settings = _update_retry_settings_for_extended(
+                retry_count, use_extended
+            )
+            if extended_settings:
                 final_max_retries = extended_settings["max_retries"]
                 final_base_delay = extended_settings["base_delay"]
                 final_max_delay = extended_settings["max_delay"]
 
             if retry_count < final_max_retries:
-                delay = min(final_base_delay * (2**retry_count), final_max_delay)
-                retry_count += 1
-
-                # Handle connection pool refresh for stale connections
-                if needs_refresh and final_force_refresh:
-                    logger.warning(
-                        LogMessages.format_message(
-                            LogMessages.POOL_CORRUPTION_DETECTED,
-                            attempt=retry_count,
-                            total=final_max_retries + 1,
-                            error=e,
-                        )
-                    )
-                    try:
-                        close_old_connections()
-                        logger.info(LogMessages.POOL_REFRESH_SUCCESS)
-                    except Exception as refresh_error:
-                        logger.warning(
-                            LogMessages.format_message(
-                                LogMessages.POOL_REFRESH_FAILED, error=refresh_error
-                            )
-                        )
-                else:
-                    # Choose appropriate retry message based on error type
-                    if error_type == DatabaseErrorType.DATABASE_UNAVAILABLE:
-                        message = LogMessages.DATABASE_UNAVAILABLE_RETRY
-                    else:
-                        message = LogMessages.CONNECTION_ERROR_RETRY
-
-                    logger.warning(
-                        LogMessages.format_message(
-                            message,
-                            attempt=retry_count,
-                            total=final_max_retries + 1,
-                            error=e,
-                            delay=delay,
-                        )
-                    )
-
+                retry_count, delay = _handle_context_retry_logic(
+                    retry_count,
+                    final_max_retries,
+                    final_base_delay,
+                    final_max_delay,
+                    final_force_refresh,
+                    e,
+                    error_type,
+                    needs_refresh,
+                )
                 time.sleep(delay)
                 continue
             else:
