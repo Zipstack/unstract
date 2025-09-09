@@ -368,12 +368,16 @@ class DestinationConnector(BaseConnector):
 
         table_info = db_class.get_information_schema(table_name=table_name)
 
+        print("##### destination.py engine #####", engine)
+        print("##### destination.py table_info #####", table_info)
+
         # Check whether to migrate table to include new columns
         if table_info:
             if db_class.is_string_column(
                 table_info=table_info, column_name=single_column_name
             ):
-                db_class.migrate_table_to_v2(
+                print("##### destination.py migrate_table_to_v2 #####")
+                table_info = db_class.migrate_table_to_v2(
                     table_name=table_name,
                     column_name=single_column_name,
                     engine=engine,
@@ -395,9 +399,12 @@ class DestinationConnector(BaseConnector):
             error=error,
         )
 
+        print("##### destination.py values #####", values)
+
         try:
             # Reuse the same db_class and engine created earlier
 
+            print("##### destination.py create_table_if_not_exists #####")
             DatabaseUtils.create_table_if_not_exists(
                 db_class=db_class,
                 engine=engine,
@@ -409,6 +416,10 @@ class DestinationConnector(BaseConnector):
                 conn_cls=db_class,
                 table_name=table_name,
                 values=values,
+            )
+            print(
+                "##### destination.py sql_columns_and_values #####",
+                sql_columns_and_values,
             )
 
             DatabaseUtils.execute_write_query(

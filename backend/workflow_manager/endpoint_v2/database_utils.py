@@ -71,6 +71,7 @@ class DatabaseUtils:
         """
         sql_values: dict[str, Any] = {}
         for column in values:
+            value = values[column]
             if cls_name == DBConnectionClass.SNOWFLAKE:
                 col = column.lower()
                 type_x = column_types.get(col, "")
@@ -95,6 +96,21 @@ class DatabaseUtils:
                 else:
                     # Non-VARIANT Snowflake types remain unchanged
                     sql_values[column] = f"{values[column]}"
+            elif cls_name == DBConnectionClass.BIGQUERY:
+                if isinstance(value, (dict, list)):
+                    sql_values[column] = value
+                elif isinstance(value, str):
+                    # Try to parse JSON strings back to objects for BigQuery
+                    try:
+                        parsed_value = json.loads(value)
+                        sql_values[column] = parsed_value
+                    except (TypeError, ValueError, json.JSONDecodeError):
+                        # Not a JSON string, keep as string
+                        sql_values[column] = f"{value}"
+                elif isinstance(value, Enum):
+                    sql_values[column] = value.value
+                else:
+                    sql_values[column] = f"{value}"
             else:
                 # Handle JSON and Enum types for each database
                 value = values[column]
@@ -236,27 +252,23 @@ class DatabaseUtils:
             values[TableColumns.STATUS] = (
                 FileProcessingStatus.ERROR if error else FileProcessingStatus.SUCCESS
             )
-
+        # if column_mode == ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN:
+        #     if isinstance(data, str):
+        #         wrapped_dict = {"result": data}
+        #         values[single_column_name] = wrapped_dict
+        #         if table_info and any(
+        #             k.lower() == f"{single_column_name}_v2".lower() for k in table_info
+        #         ):
+        #             values[f"{single_column_name}_v2"] = wrapped_dict
+        #     else:
+        #         values[single_column_name] = data
+        #         if table_info and any(
+        #             k.lower() == f"{single_column_name}_v2".lower() for k in table_info
+        #         ):
+        #             values[f"{single_column_name}_v2"] = data
         if column_mode == ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN:
-            if isinstance(data, str):
-                wrapped_dict = {"result": data}
-                values[single_column_name] = wrapped_dict
-                if table_info and any(
-                    k.lower() == f"{single_column_name}_v2".lower() for k in table_info
-                ):
-                    values[f"{single_column_name}_v2"] = wrapped_dict
-            else:
+            if isinstance(data, (dict, str)):
                 values[single_column_name] = data
-                if table_info and any(
-                    k.lower() == f"{single_column_name}_v2".lower() for k in table_info
-                ):
-                    values[f"{single_column_name}_v2"] = data
-        if column_mode == ColumnModes.SPLIT_JSON_INTO_COLUMNS:
-            if isinstance(data, dict):
-                values[single_column_name] = data
-            elif isinstance(data, str):
-                values[single_column_name] = data
-                # Only write to v2 if it exists
                 if table_info and any(
                     k.lower() == f"{single_column_name}_v2".lower() for k in table_info
                 ):
@@ -297,6 +309,7 @@ class DatabaseUtils:
 
         values[file_path_name] = file_path
         values[execution_id_name] = execution_id
+        print("***** database_utils.py get_columns_and_values  values *****", values)
         return values
 
     @staticmethod
@@ -329,11 +342,21 @@ class DatabaseUtils:
         column_types: dict[str, str] = DatabaseUtils.get_column_types(
             conn_cls=conn_cls, table_name=table_name
         )
+        print(
+            "***** database_utils.py get_sql_query_data column_types *****",
+            column_types,
+        )
+
         sql_columns_and_values = DatabaseUtils.get_sql_values_for_query(
             values=values,
             column_types=column_types,
             cls_name=cls_name,
         )
+        print(
+            "***** database_utils.py get_sql_query_data sql_columns_and_values *****",
+            sql_columns_and_values,
+        )
+
         return sql_columns_and_values
 
     @staticmethod
@@ -398,6 +421,7 @@ class DatabaseUtils:
             e: _description_
         """
         sql = db_class.create_table_query(table=table_name, database_entry=database_entry)
+        print("***** database_utils.py create_table_if_not_exists sql *****", sql)
         logger.debug(f"creating table {table_name} with: {sql} query")
         try:
             db_class.execute_query(

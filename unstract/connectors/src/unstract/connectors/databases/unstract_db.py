@@ -71,23 +71,6 @@ class UnstractDB(UnstractConnector, ABC):
         pass
 
     @abstractmethod
-    def prepare_multi_column_migration(
-        self, table_name: str, column_name: str
-    ) -> str | list:
-        """Returns the ALTER TABLE query specific to the database.
-
-        Args:
-            table_name (str): The name of the table to alter
-            column_name (str): The base name of the column to add a _v2 version for
-
-        Returns:
-            str | list: Either a single SQL ALTER TABLE statement (str) or
-                       a list of separate ALTER TABLE statements for databases
-                       that don't support multiple column additions in one statement
-        """
-        pass
-
-    @abstractmethod
     def get_engine(self) -> Any:
         pass
 
@@ -125,6 +108,24 @@ class UnstractDB(UnstractConnector, ABC):
         }
         return mapping.get(python_type, "TEXT")
 
+    @abstractmethod
+    def prepare_multi_column_migration(
+        self, table_name: str, column_name: str
+    ) -> str | list:
+        """Returns the ALTER TABLE query specific to the database.
+
+        Args:
+            table_name (str): The name of the table to alter
+            column_name (str): The base name of the column to add a _v2 version for
+
+        Returns:
+            str | list: Either a single SQL ALTER TABLE statement (str) or
+                       a list of separate ALTER TABLE statements for databases
+                       that don't support multiple column additions in one statement
+        """
+        pass
+
+    @abstractmethod
     def get_create_table_base_query(self, table: str) -> str:
         """Function to create a base create table sql query.
 
@@ -134,13 +135,6 @@ class UnstractDB(UnstractConnector, ABC):
         Returns:
             str: generates a create sql base query with the constant columns
         """
-        sql_query = (
-            f"CREATE TABLE IF NOT EXISTS {table} "
-            f"(id TEXT , "
-            f"created_by TEXT, created_at TIMESTAMP, "
-            f"metadata TEXT, "
-        )
-        return sql_query
 
     def create_table_query(self, table: str, database_entry: dict[str, Any]) -> Any:
         """Function to create a create table sql query.
@@ -156,6 +150,8 @@ class UnstractDB(UnstractConnector, ABC):
 
         sql_query = ""
         create_table_query = self.get_create_table_base_query(table=table)
+        print("***** unstract_db.py create_table_query *****", create_table_query)
+
         sql_query += create_table_query
 
         for key, val in database_entry.items():
@@ -239,7 +235,12 @@ class UnstractDB(UnstractConnector, ABC):
         Returns:
             bool: True if column is a string type
         """
+        print("***** unstract_db.py is_string_column table_info *****", table_info)
+
         column_type = table_info.get(column_name)
+
+        print("***** unstract_db.py is_string_column column_type *****", column_type)
+
         if column_type is None:
             return False
 
@@ -249,10 +250,27 @@ class UnstractDB(UnstractConnector, ABC):
 
         return column_type.lower() == self.get_string_type().lower()
 
-    def migrate_table_to_v2(self, table_name: str, column_name: str, engine: Any) -> None:
+    def migrate_table_to_v2(
+        self, table_name: str, column_name: str, engine: Any
+    ) -> dict[str, str]:
+        """Retruns the information schema of table after alteraring table
+        This will add column _v2 to the table and return the information schema
+
+        Args:
+            table_name (str): _description_
+            column_name (str): _description_
+            engine (Any): _description_
+
+        Raises:
+            UnstractDBException: _description_
+
+        Returns:
+            dict[str, str]: _description_
+        """
         sql_query = self.prepare_multi_column_migration(
             table_name=table_name, column_name=column_name
         )
+        print("***** migrate_table_to_v2 unstract_db.py sql_query *****", sql_query)
 
         try:
             self.execute_query(
@@ -261,6 +279,7 @@ class UnstractDB(UnstractConnector, ABC):
                 sql_values=None,
                 table_name=table_name,
             )
+            return self.get_information_schema(table_name=table_name)
         except UnstractDBConnectorException as e:
             raise UnstractDBException(detail=e.detail) from e
 

@@ -71,6 +71,24 @@ class BigQuery(UnstractDB):
         try:
             query_job = self.get_engine().query(query)
             return query_job.result()
+        except google.api_core.exceptions.NotFound as e:
+            # Resource not found - suppress for table-not-found scenarios
+            logger.info(f"Resource not found: {str(e)}")
+            return None
+        except google.api_core.exceptions.Forbidden as e:
+            error_message = str(e).lower()
+            if any(
+                keyword in error_message
+                for keyword in [
+                    "does not exist",
+                    "or perhaps it does not exist",
+                    "user does not have permission to query table",
+                ]
+            ):
+                logger.info(f"Table does not exist (403): {str(e)}")
+                return None
+            else:
+                raise ConnectorError(str(e))
         except Exception as e:
             raise ConnectorError(str(e))
 
@@ -121,8 +139,8 @@ class BigQuery(UnstractDB):
             f"user_field_1 BOOL DEFAULT FALSE, "
             f"user_field_2 INT64 DEFAULT 0, "
             f"user_field_3 STRING DEFAULT NULL, "
-            f"status STRING CHECK (status IN ('ERROR', 'SUCCESS')), "
-            f"error_message STRING"
+            f"status STRING, "
+            f"error_message STRING, "
         )
         return sql_query
 
@@ -131,10 +149,10 @@ class BigQuery(UnstractDB):
             f"ALTER TABLE {table_name} "
             f"ADD COLUMN {column_name}_v2 JSON, "
             f"ADD COLUMN metadata JSON, "
-            f"ADD COLUMN user_field_1 BOOL DEFAULT FALSE, "
-            f"ADD COLUMN user_field_2 INT64 DEFAULT 0, "
-            f"ADD COLUMN user_field_3 STRING DEFAULT NULL, "
-            f"ADD COLUMN status STRING CHECK (status IN ('ERROR', 'SUCCESS')), "
+            f"ADD COLUMN user_field_1 BOOL, "
+            f"ADD COLUMN user_field_2 INT64, "
+            f"ADD COLUMN user_field_3 STRING, "
+            f"ADD COLUMN status STRING, "
             f"ADD COLUMN error_message STRING"
         )
         return sql_query
@@ -173,14 +191,41 @@ class BigQuery(UnstractDB):
         if table_name is None:
             raise ValueError("Please enter a valid table_name to to create/insert table")
         sql_keys = list(kwargs.get("sql_keys", []))
+
+        # Get column types to identify JSON columns
+        try:
+            column_types = self.get_information_schema(table_name=table_name)
+        except Exception:
+            column_types = {}
+
         try:
             if sql_values:
-                query_parameters = [
-                    bigquery.ScalarQueryParameter(key, "STRING", value)
-                    for key, value in zip(sql_keys, sql_values, strict=False)
-                ]
+                query_parameters = []
+                # Modify SQL query to use PARSE_JSON for JSON columns
+                modified_sql = sql_query
+
+                for key, value in zip(sql_keys, sql_values, strict=False):
+                    column_type = column_types.get(key.lower(), "").upper()
+
+                    if isinstance(value, (dict, list)) and column_type == "JSON":
+                        # For JSON objects in JSON columns, convert to string and use PARSE_JSON
+                        json_str = json.dumps(value) if value else None
+                        if json_str:
+                            # Replace @key with PARSE_JSON(@key) in the SQL query
+                            modified_sql = modified_sql.replace(
+                                f"@{key}", f"PARSE_JSON(@{key})"
+                            )
+                        query_parameters.append(
+                            bigquery.ScalarQueryParameter(key, "STRING", json_str)
+                        )
+                    else:
+                        # For other values, use STRING as before
+                        query_parameters.append(
+                            bigquery.ScalarQueryParameter(key, "STRING", value)
+                        )
+
                 query_params = bigquery.QueryJobConfig(query_parameters=query_parameters)
-                query_job = engine.query(sql_query, job_config=query_params)
+                query_job = engine.query(modified_sql, job_config=query_params)
             else:
                 query_job = engine.query(sql_query)
             query_job.result()
@@ -232,6 +277,13 @@ class BigQuery(UnstractDB):
             f"table_name = '{table}'"
         )
         results = self.execute(query=query)
+
+        # If table doesn't exist, execute returns None
+        if results is None:
+            logger.info(f"Table {table_name} does not exist, returning empty schema")
+            return {}
+
+        # Process the schema results
         column_types: dict[str, str] = self.get_db_column_types(
             columns_with_types=results
         )

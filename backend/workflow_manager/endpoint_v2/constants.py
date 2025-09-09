@@ -25,6 +25,7 @@ class TableColumns:
 
 class DBConnectionClass:
     SNOWFLAKE = "SnowflakeDB"
+    BIGQUERY = "BigQuery"
 
 
 class Snowflake:
