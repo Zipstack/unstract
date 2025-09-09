@@ -118,7 +118,7 @@ def _update_retry_settings_for_extended(retry_count: int, use_extended: bool) ->
 
 
 def _handle_connection_pool_refresh(
-    error: Exception, retry_count: int, max_retries: int
+    error: BaseException, retry_count: int, max_retries: int
 ) -> None:
     """Handle connection pool refresh for stale connections."""
     logger.warning(
@@ -144,7 +144,7 @@ def _log_retry_attempt(
     error_type: DatabaseErrorType,
     retry_count: int,
     max_retries: int,
-    error: Exception,
+    error: BaseException,
     delay: float,
 ) -> None:
     """Log retry attempt with appropriate message based on error type."""
@@ -165,7 +165,7 @@ def _log_retry_attempt(
 
 
 def _handle_retry_attempt(
-    error: Exception,
+    error: BaseException,
     error_type: DatabaseErrorType,
     needs_refresh: bool,
     force_refresh: bool,
@@ -314,13 +314,15 @@ def db_retry(
     return decorator
 
 
-def _handle_context_non_retryable_error(error: Exception) -> None:
+def _handle_context_non_retryable_error(error: BaseException) -> None:
     """Handle non-retryable errors in context manager."""
     logger.debug(LogMessages.format_message(LogMessages.NON_RETRYABLE_ERROR, error=error))
-    raise error
+    raise
 
 
-def _handle_context_max_retries_exceeded(error: Exception, total_retries: int) -> None:
+def _handle_context_max_retries_exceeded(
+    error: BaseException, total_retries: int
+) -> None:
     """Handle max retries exceeded in context manager."""
     logger.error(
         LogMessages.format_message(
@@ -329,7 +331,7 @@ def _handle_context_max_retries_exceeded(error: Exception, total_retries: int) -
             error=error,
         )
     )
-    raise error
+    raise
 
 
 def _update_context_retry_settings(
@@ -353,7 +355,7 @@ def _handle_context_retry_logic(
     final_base_delay: float,
     final_max_delay: float,
     final_force_refresh: bool,
-    error: Exception,
+    error: BaseException,
     error_type: DatabaseErrorType,
     needs_refresh: bool,
 ) -> tuple[int, float]:

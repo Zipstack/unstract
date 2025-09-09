@@ -57,7 +57,9 @@ def _get_retry_settings_for_error(
     }
 
 
-def _handle_pool_refresh(error: Exception, retry_count: int, total_retries: int) -> None:
+def _handle_pool_refresh(
+    error: BaseException, retry_count: int, total_retries: int
+) -> None:
     """Handle SQLAlchemy connection pool disposal."""
     logger.warning(
         LogMessages.format_message(
@@ -83,7 +85,7 @@ def _log_retry_attempt(
     error_type: DatabaseErrorType,
     retry_count: int,
     total_retries: int,
-    error: Exception,
+    error: BaseException,
     delay: float,
 ) -> None:
     """Log retry attempt with appropriate message."""
@@ -103,20 +105,20 @@ def _log_retry_attempt(
     )
 
 
-def _handle_non_sqlalchemy_error(error: Exception) -> None:
+def _handle_non_sqlalchemy_error(error: BaseException) -> None:
     """Handle non-SQLAlchemy errors by logging and re-raising."""
     logger.debug(LogMessages.format_message(LogMessages.NON_RETRYABLE_ERROR, error=error))
-    raise error
+    raise
 
 
-def _handle_non_retryable_error(error: Exception) -> None:
+def _handle_non_retryable_error(error: BaseException) -> None:
     """Handle non-retryable errors by logging and re-raising."""
     logger.debug(LogMessages.format_message(LogMessages.NON_RETRYABLE_ERROR, error=error))
-    raise error
+    raise
 
 
 def _execute_retry_attempt(
-    error: Exception,
+    error: BaseException,
     error_type: DatabaseErrorType,
     needs_refresh: bool,
     retry_count: int,
@@ -144,7 +146,7 @@ def _execute_retry_attempt(
     return retry_count, delay
 
 
-def _handle_max_retries_exceeded(error: Exception, total_retries: int) -> None:
+def _handle_max_retries_exceeded(error: BaseException, total_retries: int) -> None:
     """Handle the case when max retries are exceeded."""
     logger.error(
         LogMessages.format_message(
@@ -153,7 +155,43 @@ def _handle_max_retries_exceeded(error: Exception, total_retries: int) -> None:
             error=error,
         )
     )
-    raise error
+    raise
+
+
+def _process_celery_exception(
+    error: BaseException,
+    retry_count: int,
+    max_retries: int,
+    base_delay: float,
+    max_delay: float,
+) -> tuple[int, float] | None:
+    """Process a Celery exception and return retry info or None if not retryable.
+
+    Returns:
+        tuple[int, float]: (updated_retry_count, delay) if should retry
+        None: if should not retry (will re-raise)
+    """
+    if not _is_sqlalchemy_error(error):
+        _handle_non_sqlalchemy_error(error)
+
+    # Use centralized error classification
+    error_type, needs_refresh = DatabaseErrorPatterns.classify_error(error)
+
+    if not DatabaseErrorPatterns.is_retryable_error(error_type):
+        _handle_non_retryable_error(error)
+
+    # Get appropriate retry settings for this error type
+    current_settings = _get_retry_settings_for_error(
+        error_type, retry_count, max_retries, base_delay, max_delay
+    )
+
+    if retry_count < current_settings["max_retries"]:
+        return _execute_retry_attempt(
+            error, error_type, needs_refresh, retry_count, current_settings
+        )
+    else:
+        _handle_max_retries_exceeded(error, current_settings["max_retries"] + 1)
+        return None  # This line will never be reached due to exception, but added for completeness
 
 
 def _log_success(retry_count: int) -> None:
@@ -209,30 +247,13 @@ def celery_db_retry_with_backoff(
                     _log_success(retry_count)
                     return result
                 except Exception as e:
-                    if not _is_sqlalchemy_error(e):
-                        _handle_non_sqlalchemy_error(e)
-
-                    # Use centralized error classification
-                    error_type, needs_refresh = DatabaseErrorPatterns.classify_error(e)
-
-                    if not DatabaseErrorPatterns.is_retryable_error(error_type):
-                        _handle_non_retryable_error(e)
-
-                    # Get appropriate retry settings for this error type
-                    current_settings = _get_retry_settings_for_error(
-                        error_type, retry_count, max_retries, base_delay, max_delay
+                    retry_info = _process_celery_exception(
+                        e, retry_count, max_retries, base_delay, max_delay
                     )
-
-                    if retry_count < current_settings["max_retries"]:
-                        retry_count, delay = _execute_retry_attempt(
-                            e, error_type, needs_refresh, retry_count, current_settings
-                        )
+                    if retry_info:
+                        retry_count, delay = retry_info
                         time.sleep(delay)
                         continue
-                    else:
-                        _handle_max_retries_exceeded(
-                            e, current_settings["max_retries"] + 1
-                        )
 
             # This should never be reached, but included for completeness
             return func(*args, **kwargs)
