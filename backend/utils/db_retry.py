@@ -314,6 +314,39 @@ def db_retry(
     return decorator
 
 
+def _handle_context_non_retryable_error(error: Exception) -> None:
+    """Handle non-retryable errors in context manager."""
+    logger.debug(LogMessages.format_message(LogMessages.NON_RETRYABLE_ERROR, error=error))
+    raise error
+
+
+def _handle_context_max_retries_exceeded(error: Exception, total_retries: int) -> None:
+    """Handle max retries exceeded in context manager."""
+    logger.error(
+        LogMessages.format_message(
+            LogMessages.MAX_RETRIES_EXCEEDED,
+            total=total_retries,
+            error=error,
+        )
+    )
+    raise error
+
+
+def _update_context_retry_settings(
+    retry_count: int, use_extended: bool, current_settings: dict
+) -> dict:
+    """Update retry settings for extended retry if needed."""
+    extended_settings = _update_retry_settings_for_extended(retry_count, use_extended)
+    if extended_settings:
+        return {
+            "max_retries": extended_settings["max_retries"],
+            "base_delay": extended_settings["base_delay"],
+            "max_delay": extended_settings["max_delay"],
+            "force_refresh": current_settings["force_refresh"],
+        }
+    return current_settings
+
+
 def _handle_context_retry_logic(
     retry_count: int,
     final_max_retries: int,
@@ -370,18 +403,20 @@ def db_retry_context(
     """
     # Get defaults from environment if not provided
     defaults = get_default_retry_settings()
-    final_max_retries = (
-        max_retries if max_retries is not None else defaults["max_retries"]
-    )
-    final_base_delay = base_delay if base_delay is not None else defaults["base_delay"]
-    final_max_delay = max_delay if max_delay is not None else defaults["max_delay"]
-    final_force_refresh = (
-        force_refresh if force_refresh is not None else defaults["force_refresh"]
-    )
+    current_settings = {
+        "max_retries": max_retries
+        if max_retries is not None
+        else defaults["max_retries"],
+        "base_delay": base_delay if base_delay is not None else defaults["base_delay"],
+        "max_delay": max_delay if max_delay is not None else defaults["max_delay"],
+        "force_refresh": force_refresh
+        if force_refresh is not None
+        else defaults["force_refresh"],
+    }
 
     retry_count = 0
 
-    while retry_count <= final_max_retries:
+    while retry_count <= current_settings["max_retries"]:
         try:
             yield
             return  # Success - exit the retry loop
@@ -389,27 +424,20 @@ def db_retry_context(
             error_type, needs_refresh, use_extended = _classify_database_error(e)
 
             if not DatabaseErrorPatterns.is_retryable_error(error_type):
-                logger.debug(
-                    LogMessages.format_message(LogMessages.NON_RETRYABLE_ERROR, error=e)
-                )
-                raise
+                _handle_context_non_retryable_error(e)
 
             # Update settings for extended retry if needed
-            extended_settings = _update_retry_settings_for_extended(
-                retry_count, use_extended
+            current_settings = _update_context_retry_settings(
+                retry_count, use_extended, current_settings
             )
-            if extended_settings:
-                final_max_retries = extended_settings["max_retries"]
-                final_base_delay = extended_settings["base_delay"]
-                final_max_delay = extended_settings["max_delay"]
 
-            if retry_count < final_max_retries:
+            if retry_count < current_settings["max_retries"]:
                 retry_count, delay = _handle_context_retry_logic(
                     retry_count,
-                    final_max_retries,
-                    final_base_delay,
-                    final_max_delay,
-                    final_force_refresh,
+                    current_settings["max_retries"],
+                    current_settings["base_delay"],
+                    current_settings["max_delay"],
+                    current_settings["force_refresh"],
                     e,
                     error_type,
                     needs_refresh,
@@ -417,14 +445,9 @@ def db_retry_context(
                 time.sleep(delay)
                 continue
             else:
-                logger.error(
-                    LogMessages.format_message(
-                        LogMessages.MAX_RETRIES_EXCEEDED,
-                        total=final_max_retries + 1,
-                        error=e,
-                    )
+                _handle_context_max_retries_exceeded(
+                    e, current_settings["max_retries"] + 1
                 )
-                raise
 
 
 def retry_database_operation(
