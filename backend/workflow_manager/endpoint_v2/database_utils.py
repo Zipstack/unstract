@@ -75,27 +75,45 @@ class DatabaseUtils:
             if cls_name == DBConnectionClass.SNOWFLAKE:
                 col = column.lower()
                 type_x = column_types.get(col, "")
-                if type_x == "VARIANT":
-                    payload = values[column]
-                    if isinstance(payload, Enum):
-                        payload = payload.value
-                    # Ensure valid JSON for VARIANT
-                    try:
-                        payload_json = json.dumps(payload, default=str)
-                        sql_values[column] = f"parse_json($${payload_json}$$)"
-                    except (TypeError, ValueError) as e:
-                        logger.error(
-                            f"Failed to serialize payload to JSON for column {column}: {e}"
-                        )
-                        # Create a safe fallback error object
-                        fallback_payload = DatabaseUtils._create_safe_error_json(
-                            f"column_{column}", e
-                        )
-                        payload_json = json.dumps(fallback_payload)
-                        sql_values[column] = f"parse_json($${payload_json}$$)"
+
+                if isinstance(value, Enum):
+                    sql_values[column] = value.value
+                elif type_x == "VARIANT":
+                    # For VARIANT columns, serialize to JSON strings
+                    if isinstance(value, (dict, list)):
+                        try:
+                            sql_values[column] = json.dumps(value)
+                        except (TypeError, ValueError) as e:
+                            logger.error(
+                                f"Failed to serialize value to JSON for column {column}: {e}"
+                            )
+                            fallback_value = DatabaseUtils._create_safe_error_json(
+                                f"column_{column}", e
+                            )
+                            sql_values[column] = json.dumps(fallback_value)
+                    elif isinstance(value, str):
+                        try:
+                            # Validate if it's already valid JSON
+                            json.loads(value)
+                            sql_values[column] = value
+                        except (json.JSONDecodeError, TypeError):
+                            # Not JSON, convert to JSON string
+                            sql_values[column] = json.dumps(value)
+                    else:
+                        # Convert other types to JSON
+                        try:
+                            sql_values[column] = json.dumps(value)
+                        except (TypeError, ValueError) as e:
+                            logger.error(
+                                f"Failed to serialize value to JSON for column {column}: {e}"
+                            )
+                            fallback_value = DatabaseUtils._create_safe_error_json(
+                                f"column_{column}", e
+                            )
+                            sql_values[column] = json.dumps(fallback_value)
                 else:
-                    # Non-VARIANT Snowflake types remain unchanged
-                    sql_values[column] = f"{values[column]}"
+                    # Non-VARIANT columns get string representation
+                    sql_values[column] = f"{value}"
             elif cls_name == DBConnectionClass.BIGQUERY:
                 if isinstance(value, (dict, list)):
                     sql_values[column] = value
@@ -137,6 +155,7 @@ class DatabaseUtils:
         if any(key in column_types for key in ["id", "ID"]):
             uuid_id = str(uuid.uuid4())
             sql_values["id"] = f"{uuid_id}"
+
         return sql_values
 
     @staticmethod

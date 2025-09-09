@@ -267,20 +267,36 @@ class UnstractDB(UnstractConnector, ABC):
         Returns:
             dict[str, str]: _description_
         """
-        sql_query = self.prepare_multi_column_migration(
+        sql_query_or_list = self.prepare_multi_column_migration(
             table_name=table_name, column_name=column_name
         )
-        print("***** migrate_table_to_v2 unstract_db.py sql_query *****", sql_query)
+        print(
+            "***** migrate_table_to_v2 unstract_db.py sql_query *****", sql_query_or_list
+        )
 
         try:
-            self.execute_query(
-                engine=engine,
-                sql_query=sql_query,
-                sql_values=None,
-                table_name=table_name,
-            )
+            # Handle both single string and list of SQL statements
+            if isinstance(sql_query_or_list, list):
+                # Execute each statement separately for databases like Snowflake
+                for sql_query in sql_query_or_list:
+                    self.execute_query(
+                        engine=engine,
+                        sql_query=sql_query,
+                        sql_values=None,
+                        table_name=table_name,
+                    )
+            else:
+                # Execute single statement for databases like PostgreSQL/BigQuery
+                self.execute_query(
+                    engine=engine,
+                    sql_query=sql_query_or_list,
+                    sql_values=None,
+                    table_name=table_name,
+                )
             return self.get_information_schema(table_name=table_name)
         except UnstractDBConnectorException as e:
             raise UnstractDBException(detail=e.detail) from e
 
-        logger.debug(f"successfully migrated table {table_name} with: {sql_query} query")
+        logger.debug(
+            f"successfully migrated table {table_name} with: {sql_query_or_list} query"
+        )
