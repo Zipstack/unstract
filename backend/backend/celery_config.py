@@ -1,9 +1,12 @@
+import logging
 import os
 from urllib.parse import quote_plus
 
 from django.conf import settings
 
 from backend.celery_db_retry import get_celery_db_engine_options, should_use_builtin_retry
+
+logger = logging.getLogger(__name__)
 
 
 class CeleryConfig:
@@ -57,12 +60,10 @@ class CeleryConfig:
             os.environ.get("CELERY_RESULT_BACKEND_MAX_SLEEP_BETWEEN_RETRIES_MS", "30000")
         )
 
-        print(
+        logger.info(
             f"[Celery Config] Using built-in retry: max_retries={result_backend_max_retries}, "
-        )
-        print(
             f"base_sleep={result_backend_base_sleep_between_retries_ms}ms, max_sleep={result_backend_max_sleep_between_retries_ms}ms"
         )
     else:
         # Custom retry is handled by patch_celery_database_backend()
-        print("[Celery Config] Using custom retry system (patching enabled)")
+        logger.info("[Celery Config] Using custom retry system (patching enabled)")

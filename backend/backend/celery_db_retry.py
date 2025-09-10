@@ -214,7 +214,7 @@ def celery_db_retry_with_backoff(
     """Decorator to retry Celery database backend operations with exponential backoff.
 
     This is specifically designed for Celery's database result backend operations
-    that may experience connection drops when using PgBouncer or database restarts.
+    that may experience connection drops when using database proxy or database restarts.
 
     Args:
         max_retries: Maximum number of retry attempts (defaults to settings or 3)
@@ -419,23 +419,33 @@ def _configure_builtin_retry():
 
 
 def get_celery_db_engine_options():
-    """Get SQLAlchemy engine options optimized for use with PgBouncer.
+    """Get SQLAlchemy engine options optimized for database connection pooling.
 
     Includes built-in retry configuration if CELERY_USE_BUILTIN_RETRY is enabled.
 
-    These options are designed to work well with PgBouncer connection pooling
-    without interfering with PgBouncer's pool management.
+    These options are designed to work well with database proxy connection pooling
+    without interfering with the database proxy's pool management.
+
+    All options are configurable via environment variables for flexibility.
 
     Returns:
         dict: SQLAlchemy engine options
     """
     return {
         # Connection health checking
-        "pool_pre_ping": True,  # Test connections before use
-        # Minimal pooling (let PgBouncer handle the real pooling)
-        "pool_size": 5,  # Small pool since PgBouncer handles real pooling
-        "max_overflow": 0,  # No overflow, rely on PgBouncer
-        "pool_recycle": 3600,  # Recycle connections every hour
+        "pool_pre_ping": RetryConfiguration.get_setting_value(
+            "CELERY_DB_POOL_PRE_PING", True
+        ),  # Test connections before use
+        # Minimal pooling (let database proxy handle the real pooling)
+        "pool_size": RetryConfiguration.get_setting_value(
+            "CELERY_DB_POOL_SIZE", 5
+        ),  # Small pool since database proxy handles real pooling
+        "max_overflow": RetryConfiguration.get_setting_value(
+            "CELERY_DB_MAX_OVERFLOW", 0
+        ),  # No overflow, rely on database proxy
+        "pool_recycle": RetryConfiguration.get_setting_value(
+            "CELERY_DB_POOL_RECYCLE", 3600
+        ),  # Recycle connections every hour
         # Connection timeouts using centralized configuration
         "connect_args": {
             "connect_timeout": RetryConfiguration.get_setting_value(
