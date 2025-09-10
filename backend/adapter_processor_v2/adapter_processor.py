@@ -6,8 +6,12 @@ from account_v2.models import User
 from cryptography.fernet import Fernet
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
-from platform_settings_v2.platform_auth_service import PlatformAuthenticationService
-from tenant_account_v2.organization_member_service import OrganizationMemberService
+from platform_settings_v2.platform_auth_service import (
+    PlatformAuthenticationService,
+)
+from tenant_account_v2.organization_member_service import (
+    OrganizationMemberService,
+)
 
 from adapter_processor_v2.constants import AdapterKeys, AllowedDomains
 from adapter_processor_v2.exceptions import (
@@ -27,7 +31,9 @@ from .models import AdapterInstance, UserDefaultAdapter
 logger = logging.getLogger(__name__)
 
 try:
-    from plugins.subscription.time_trials.subscription_adapter import add_unstract_key
+    from plugins.subscription.time_trials.subscription_adapter import (
+        add_unstract_key,
+    )
 except ImportError:
     add_unstract_key = None
 
@@ -129,6 +135,36 @@ class AdapterProcessor:
             adapter_metadata_b = f.encrypt(json.dumps(adapter_metadata).encode("utf-8"))
             return adapter_metadata_b
         return adapter_metadata_b
+
+    @staticmethod
+    def validate_adapter_urls(adapter_id: str, adapter_metadata: dict) -> None:
+        """Validate URLs for an adapter configuration without full connection test.
+
+        This method only validates URLs for security (SSRF protection) without
+        attempting actual network connections.
+
+        Args:
+            adapter_id: The adapter ID (e.g., "postgres|70ab6cc2...")
+            adapter_metadata: The adapter configuration metadata
+
+        Raises:
+            AdapterError: If URL validation fails due to security violations
+        """
+        try:
+            # Get the adapter class
+            adapterkit = Adapterkit()
+            adapter_class = adapterkit.get_adapter_class_by_adapter_id(adapter_id)
+
+            # Create a temporary instance just to get configured URLs
+            # This will trigger URL validation in __init__ but not full connection test
+            adapter_class(adapter_metadata)
+
+            # If we reach here, URL validation passed
+            logger.debug(f"URL validation passed for adapter {adapter_id}")
+
+        except Exception as e:
+            logger.error(f"URL validation failed for adapter {adapter_id}: {str(e)}")
+            raise
 
     @staticmethod
     def __fetch_adapters_by_key_value(key: str, value: Any) -> Adapter:

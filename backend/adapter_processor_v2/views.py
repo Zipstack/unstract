@@ -1,7 +1,10 @@
+import json
 import logging
 import uuid
 from typing import Any
 
+from cryptography.fernet import Fernet
+from django.conf import settings
 from django.db import IntegrityError
 from django.db.models import ProtectedError, QuerySet
 from django.http import HttpRequest
@@ -40,6 +43,7 @@ from adapter_processor_v2.serializers import (
     TestAdapterSerializer,
     UserDefaultAdapterSerializer,
 )
+from unstract.sdk.exceptions import SdkError
 
 from .constants import AdapterKeys as constant
 from .models import AdapterInstance, UserDefaultAdapter
@@ -177,6 +181,29 @@ class AdapterInstanceViewSet(ModelViewSet):
             use_platform_unstract_key = True
 
         serializer.is_valid(raise_exception=True)
+
+        # Validate URLs for security without full adapter testing
+        adapter_id = serializer.validated_data.get(AdapterKeys.ADAPTER_ID)
+        adapter_metadata_b = serializer.validated_data.get(AdapterKeys.ADAPTER_METADATA_B)
+
+        # Decrypt metadata to get configuration
+        decrypted_metadata = json.loads(
+            Fernet(settings.ENCRYPTION_KEY.encode("utf-8"))
+            .decrypt(adapter_metadata_b)
+            .decode("utf-8")
+        )
+
+        # Validate URLs for this adapter configuration
+        try:
+            AdapterProcessor.validate_adapter_urls(adapter_id, decrypted_metadata)
+        except SdkError as e:
+            from rest_framework.exceptions import ValidationError
+
+            # Format error message similar to test adapter API
+            adapter_name = decrypted_metadata.get(AdapterKeys.ADAPTER_NAME, "adapter")
+            error_detail = f"Error testing '{adapter_name}'. {str(e)}"
+            raise ValidationError(error_detail)
+
         try:
             adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
 
