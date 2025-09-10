@@ -2,6 +2,8 @@ import datetime
 import json
 import logging
 import os
+import uuid
+from enum import Enum
 from typing import Any
 
 import snowflake.connector
@@ -135,76 +137,18 @@ class SnowflakeDB(UnstractDB):
 
         try:
             with engine.cursor() as cursor:
-                if sql_values:
-                    # Check if we need PARSE_JSON for VARIANT columns
-                    sql_keys = kwargs.get("sql_keys", [])
-
-                    if sql_keys:
-                        # Get table schema to identify VARIANT columns
-                        try:
-                            column_types = self.get_information_schema(
-                                table_name=table_name
-                            )
-                        except Exception:
-                            column_types = {}
-
-                        # Check if we need to build complete SQL for VARIANT columns
-                        has_variant_json = any(
-                            column_types.get(key.lower(), "").upper() == "VARIANT"
-                            and i < len(sql_values)
-                            and isinstance(sql_values[i], str)
-                            for i, key in enumerate(sql_keys)
-                        )
-
-                        if has_variant_json:
-                            # Build complete SQL with PARSE_JSON embedded directly
-                            values_list = []
-                            for i, key in enumerate(sql_keys):
-                                column_type = column_types.get(key.lower(), "").upper()
-                                value = sql_values[i] if i < len(sql_values) else None
-
-                                if column_type == "VARIANT" and isinstance(value, str):
-                                    try:
-                                        # Validate it's JSON
-                                        json.loads(value)
-                                        # Escape single quotes in JSON for Snowflake
-                                        escaped_value = value.replace("'", "''")
-                                        values_list.append(
-                                            f"PARSE_JSON('{escaped_value}')"
-                                        )
-                                    except (json.JSONDecodeError, TypeError):
-                                        # Not JSON, use quoted string
-                                        escaped_value = str(value).replace("'", "''")
-                                        values_list.append(f"'{escaped_value}'")
-                                else:
-                                    # Non-VARIANT columns - quote appropriately
-                                    if value is None:
-                                        values_list.append("NULL")
-                                    else:
-                                        escaped_value = str(value).replace("'", "''")
-                                        values_list.append(f"'{escaped_value}'")
-
-                            # Extract table and columns part from original SQL
-                            # Use SELECT instead of VALUES for Snowflake VARIANT handling
-                            if "VALUES (" in sql_query:
-                                values_start = sql_query.find("VALUES (")
-                                prefix = sql_query[:values_start]
-                                # Use SELECT for PARSE_JSON support instead of VALUES
-                                complete_sql = f"{prefix}SELECT {', '.join(values_list)}"
-                            else:
-                                complete_sql = sql_query
-
-                            logger.debug(f"Complete SQL: {complete_sql}")
-                            cursor.execute(complete_sql)
-                        else:
-                            # Use standard parameterized query
-                            logger.debug("Using standard parameterized query")
-                            cursor.execute(sql_query, sql_values)
-                    else:
-                        logger.debug("Using standard parameterized query (no sql_keys)")
-                        cursor.execute(sql_query, sql_values)
+                # Check if the SQL query is already complete (contains SELECT)
+                if "SELECT" in sql_query.upper():
+                    # Complete SQL query - execute directly
+                    logger.debug("Executing complete SQL query")
+                    cursor.execute(sql_query)
+                elif sql_values:
+                    # Parameterized query - execute with values
+                    logger.debug("Executing parameterized query")
+                    cursor.execute(sql_query, sql_values)
                 else:
-                    logger.debug("No sql_values, executing query directly")
+                    # Direct SQL execution (used for DDL statements)
+                    logger.debug("Executing SQL directly (no parameters)")
                     cursor.execute(sql_query)
             engine.commit()
         except SnowflakeError.ProgrammingError as e:
@@ -244,16 +188,156 @@ class SnowflakeDB(UnstractDB):
                 raise
         return column_types
 
-    def get_sql_insert_query(self, table_name: str, sql_keys: list[str]) -> str:
+    def get_sql_values_for_query(
+        self, values: dict[str, Any], column_types: dict[str, str]
+    ) -> dict[str, str]:
+        """Prepare SQL values for Snowflake queries with VARIANT column support.
+
+        Args:
+            values (dict[str, Any]): dictionary of columns and values
+            column_types (dict[str, str]): types of columns from database schema
+
+        Returns:
+            dict[str, str]: Dictionary of column names to SQL values or SQL fragments
+
+        Note:
+            For VARIANT columns, this returns SQL fragments like PARSE_JSON('...')
+            instead of parameterized values, since Snowflake needs special handling
+            for JSON data in VARIANT columns.
+        """
+        sql_values: dict[str, Any] = {}
+        has_variant_columns = any(
+            column_types.get(col.lower(), "").upper() == "VARIANT"
+            for col in values.keys()
+        )
+
+        for column in values:
+            value = values[column]
+            col = column.lower()
+            type_x = column_types.get(col, "")
+
+            if isinstance(value, Enum):
+                if has_variant_columns and type_x.upper() == "VARIANT":
+                    # For VARIANT Enum values, create SQL fragment
+                    escaped_value = str(value.value).replace("'", "''")
+                    sql_values[column] = f"'{escaped_value}'"
+                else:
+                    # For non-VARIANT Enum values, create SQL fragment when we have VARIANT columns
+                    if has_variant_columns:
+                        escaped_value = str(value.value).replace("'", "''")
+                        sql_values[column] = f"'{escaped_value}'"
+                    else:
+                        sql_values[column] = value.value
+            elif isinstance(value, (dict, list)):
+                # For dict/list values, check if this is a VARIANT column
+                try:
+                    json_str = json.dumps(value)
+                    if has_variant_columns and type_x.upper() == "VARIANT":
+                        # For VARIANT columns, return SQL fragment with PARSE_JSON
+                        escaped_value = json_str.replace("'", "''")
+                        sql_values[column] = f"PARSE_JSON('{escaped_value}')"
+                    else:
+                        # For non-VARIANT columns with VARIANT columns present, create quoted SQL fragment
+                        if has_variant_columns:
+                            escaped_value = json_str.replace("'", "''")
+                            sql_values[column] = f"'{escaped_value}'"
+                        else:
+                            # No VARIANT columns, use regular parameterization
+                            sql_values[column] = json_str
+                except (TypeError, ValueError) as e:
+                    logger.error(
+                        f"Failed to serialize value to JSON for column {column}: {e}"
+                    )
+                    fallback_value = {
+                        "error": "JSON serialization failed",
+                        "error_type": e.__class__.__name__,
+                        "error_message": str(e),
+                        "data_type": str(type(value)),
+                        "data_description": f"column_{column}",
+                        "timestamp": datetime.datetime.now().isoformat(),
+                    }
+                    fallback_json = json.dumps(fallback_value)
+                    if has_variant_columns and type_x.upper() == "VARIANT":
+                        escaped_value = fallback_json.replace("'", "''")
+                        sql_values[column] = f"PARSE_JSON('{escaped_value}')"
+                    else:
+                        # For non-VARIANT columns with VARIANT columns present, create quoted SQL fragment
+                        if has_variant_columns:
+                            escaped_value = fallback_json.replace("'", "''")
+                            sql_values[column] = f"'{escaped_value}'"
+                        else:
+                            # No VARIANT columns, use regular parameterization
+                            sql_values[column] = fallback_json
+            elif type_x.upper() == "VARIANT" and isinstance(value, str):
+                if has_variant_columns:
+                    try:
+                        # For VARIANT columns with string values, validate if it's already valid JSON
+                        json.loads(value)
+                        escaped_value = value.replace("'", "''")
+                        sql_values[column] = f"PARSE_JSON('{escaped_value}')"
+                    except (json.JSONDecodeError, TypeError):
+                        # Not JSON, convert to JSON string and create SQL fragment
+                        json_str = json.dumps(value)
+                        escaped_value = json_str.replace("'", "''")
+                        sql_values[column] = f"PARSE_JSON('{escaped_value}')"
+                else:
+                    # No VARIANT columns, use regular parameterization
+                    try:
+                        json.loads(value)
+                        sql_values[column] = value
+                    except (json.JSONDecodeError, TypeError):
+                        sql_values[column] = json.dumps(value)
+            else:
+                # All other values
+                if has_variant_columns:
+                    # When we have VARIANT columns, create SQL fragments for consistency
+                    if value is None:
+                        sql_values[column] = "NULL"
+                    else:
+                        escaped_value = str(value).replace("'", "''")
+                        sql_values[column] = f"'{escaped_value}'"
+                else:
+                    # No VARIANT columns, use regular parameterization
+                    sql_values[column] = f"{value}"
+
+        # If table has a column 'id', unstract inserts a unique value to it
+        if any(key in column_types for key in ["id", "ID"]):
+            uuid_id = str(uuid.uuid4())
+            if has_variant_columns:
+                sql_values["id"] = f"'{uuid_id}'"
+            else:
+                sql_values["id"] = uuid_id
+
+        return sql_values
+
+    def get_sql_insert_query(
+        self, table_name: str, sql_keys: list[str], sql_values: list[str] = None
+    ) -> str:
         """Generate SQL insert query for Snowflake with special handling for VARIANT columns.
 
         Args:
             table_name (str): db-connector table name
             sql_keys (list[str]): column names
+            sql_values (list[str], optional): SQL values, may contain fragments like PARSE_JSON(...)
 
         Returns:
-            str: SQL insert query with VARIANT columns handled appropriately
+            str: Complete SQL insert query with VARIANT columns handled appropriately
         """
         keys_str = ",".join(sql_keys)
+
+        if sql_values:
+            # Check if we have SQL fragments that need SELECT format
+            has_sql_fragments = any(
+                isinstance(v, str)
+                and ("PARSE_JSON(" in v or "NULL" == v or v.startswith("'"))
+                for v in sql_values
+            )
+
+            if has_sql_fragments:
+                # Build complete SQL with SELECT format for VARIANT columns
+                values_str = ",".join(str(v) for v in sql_values)
+                return f"INSERT INTO {table_name} ({keys_str}) SELECT {values_str}"
+
+        # Fall back to parameterized format for standard queries
         values_placeholder = ",".join(["%s" for _ in sql_keys])
         return f"INSERT INTO {table_name} ({keys_str}) VALUES ({values_placeholder})"

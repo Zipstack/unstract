@@ -1,6 +1,9 @@
 import datetime
+import json
 import logging
+import uuid
 from abc import ABC, abstractmethod
+from enum import Enum
 from typing import Any
 
 from workflow_manager.endpoint_v2.constants import TableColumns
@@ -162,16 +165,20 @@ class UnstractDB(UnstractConnector, ABC):
         return sql_query.rstrip(", ") + ")"
 
     @staticmethod
-    def get_sql_insert_query(table_name: str, sql_keys: list[str]) -> str:
+    def get_sql_insert_query(
+        table_name: str, sql_keys: list[str], sql_values: list[str] = None
+    ) -> str:
         """Function to generate parameterised insert sql query.
 
         Args:
             table_name (str): db-connector table name
             sql_keys (list[str]): column names
+            sql_values (list[str], optional): SQL values for database-specific handling
 
         Returns:
             str: returns a string with parameterised insert sql query
         """
+        # Base implementation ignores sql_values and returns parameterized query
         keys_str = ",".join(sql_keys)
         values_placeholder = ",".join(["%s" for _ in sql_keys])
         return f"INSERT INTO {table_name} ({keys_str}) VALUES ({values_placeholder})"
@@ -271,7 +278,8 @@ class UnstractDB(UnstractConnector, ABC):
             table_name=table_name, column_name=column_name
         )
         print(
-            "***** migrate_table_to_v2 unstract_db.py sql_query *****", sql_query_or_list
+            "***** migrate_table_to_v2 unstract_db.py sql_query *****",
+            sql_query_or_list,
         )
 
         try:
@@ -300,3 +308,53 @@ class UnstractDB(UnstractConnector, ABC):
         logger.debug(
             f"successfully migrated table {table_name} with: {sql_query_or_list} query"
         )
+
+    def get_sql_values_for_query(
+        self, values: dict[str, Any], column_types: dict[str, str]
+    ) -> dict[str, str]:
+        """Prepare SQL values for query execution.
+
+        Args:
+            values (dict[str, Any]): dictionary of columns and values
+            column_types (dict[str, str]): types of columns from database schema
+
+        Returns:
+            dict[str, str]: Dictionary of column names to SQL values for parameterized queries
+
+        Note:
+            This is the base implementation for standard databases.
+            Database-specific connectors can override this method for custom logic.
+        """
+        sql_values: dict[str, Any] = {}
+        for column in values:
+            value = values[column]
+            # Handle JSON and Enum types for standard databases
+            if isinstance(value, (dict, list)):
+                try:
+                    sql_values[column] = json.dumps(value)
+                except (TypeError, ValueError) as e:
+                    logger.error(
+                        f"Failed to serialize value to JSON for column {column}: {e}"
+                    )
+                    # Create a safe fallback error object
+                    fallback_value = {
+                        "error": "JSON serialization failed",
+                        "error_type": e.__class__.__name__,
+                        "error_message": str(e),
+                        "data_type": str(type(value)),
+                        "data_description": f"column_{column}",
+                        "timestamp": datetime.datetime.now().isoformat(),
+                    }
+                    sql_values[column] = json.dumps(fallback_value)
+            elif isinstance(value, Enum):
+                sql_values[column] = value.value
+            else:
+                sql_values[column] = f"{value}"
+
+        # If table has a column 'id', unstract inserts a unique value to it
+        # Oracle db has column 'ID' instead of 'id'
+        if any(key in column_types for key in ["id", "ID"]):
+            uuid_id = str(uuid.uuid4())
+            sql_values["id"] = f"{uuid_id}"
+
+        return sql_values

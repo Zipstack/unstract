@@ -2,6 +2,8 @@ import datetime
 import json
 import logging
 import os
+import uuid
+from enum import Enum
 from typing import Any
 
 import google.api_core.exceptions
@@ -158,16 +160,20 @@ class BigQuery(UnstractDB):
         return sql_query
 
     @staticmethod
-    def get_sql_insert_query(table_name: str, sql_keys: list[str]) -> str:
+    def get_sql_insert_query(
+        table_name: str, sql_keys: list[str], sql_values: list[str] = None
+    ) -> str:
         """Function to generate parameterised insert sql query.
 
         Args:
             table_name (str): db-connector table name
             sql_keys (list[str]): column names
+            sql_values (list[str], optional): SQL values for database-specific handling
 
         Returns:
             str: returns a string with parameterised insert sql query
         """
+        # BigQuery uses @ parameterization, ignore sql_values for now
         keys_str = ",".join(sql_keys)
         values_placeholder = ",".join(["@" + key for key in sql_keys])
         return f"INSERT INTO {table_name} ({keys_str}) VALUES ({values_placeholder})"
@@ -288,3 +294,41 @@ class BigQuery(UnstractDB):
             columns_with_types=results
         )
         return column_types
+
+    def get_sql_values_for_query(
+        self, values: dict[str, Any], column_types: dict[str, str]
+    ) -> dict[str, str]:
+        """Prepare SQL values for BigQuery queries with JSON column support.
+
+        Args:
+            values (dict[str, Any]): dictionary of columns and values
+            column_types (dict[str, str]): types of columns from database schema
+
+        Returns:
+            dict[str, str]: Dictionary of column names to SQL values for parameterized queries
+        """
+        sql_values: dict[str, Any] = {}
+        for column in values:
+            value = values[column]
+            if isinstance(value, (dict, list)):
+                # For BigQuery, keep dict/list objects as-is for JSON columns
+                sql_values[column] = value
+            elif isinstance(value, str):
+                # Try to parse JSON strings back to objects for BigQuery
+                try:
+                    parsed_value = json.loads(value)
+                    sql_values[column] = parsed_value
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    # Not a JSON string, keep as string
+                    sql_values[column] = f"{value}"
+            elif isinstance(value, Enum):
+                sql_values[column] = value.value
+            else:
+                sql_values[column] = f"{value}"
+
+        # If table has a column 'id', unstract inserts a unique value to it
+        if any(key in column_types for key in ["id", "ID"]):
+            uuid_id = str(uuid.uuid4())
+            sql_values["id"] = f"{uuid_id}"
+
+        return sql_values

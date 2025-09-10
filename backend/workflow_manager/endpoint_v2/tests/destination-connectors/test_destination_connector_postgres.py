@@ -21,7 +21,7 @@ class TestDestinationConnectorPostgreSQL(TestCase):
             "database": os.getenv("DB_NAME", "test_unstract"),
             "user": os.getenv("DB_USER", "postgres"),
             "password": os.getenv("DB_PASSWORD", "password"),
-            "schema": "public",  # Add schema to fix PostgreSQL issue
+            "schema": "test",  # Add schema to fix PostgreSQL issue
         }
 
         # Test data that will be inserted into the database
@@ -32,7 +32,7 @@ class TestDestinationConnectorPostgreSQL(TestCase):
             "processing_time": 1.5,
         }
         self.input_file_path = "/path/to/test/file.pdf"
-        self.test_table_name = "output"
+        self.test_table_name = "OUTPUT_2"
 
         # Create real PostgreSQL connector instance
         self.postgres_connector = PostgreSQL(settings=self.postgres_config)

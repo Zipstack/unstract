@@ -42,7 +42,7 @@ class TestDestinationConnectorBigQuery(TestCase):
 
         # BigQuery table format: project.dataset.table
         dataset_name = "temp_dataset"  # Use your dataset name
-        self.test_table_name = f"{project_id}.{dataset_name}.output_2"
+        self.test_table_name = f"{project_id}.{dataset_name}.output_5"
 
         # Create real BigQuery connector instance
         self.bigquery_connector = BigQuery(settings=self.bigquery_config)
