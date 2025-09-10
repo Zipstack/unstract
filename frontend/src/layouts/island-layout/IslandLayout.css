@@ -8,4 +8,5 @@
 .island-layout > div {
     background-color: var(--white);
     height: 100%;
+    overflow-y: auto;
 }

@@ -1,3 +1,4 @@
+import datetime
 import logging
 import os
 from typing import Any
@@ -57,6 +58,31 @@ class MSSQL(UnstractDB):
     def can_read() -> bool:
         return True
 
+    def get_string_type(self) -> str:
+        return "text"
+
+    def sql_to_db_mapping(self, value: str) -> str:
+        """Gets the python datatype of value and converts python datatype to
+        corresponding DB datatype.
+
+        Args:
+            value (str): python datatype
+
+        Returns:
+            str: database columntype
+        """
+        python_type = type(value)
+
+        mapping = {
+            str: "NVARCHAR(MAX)",
+            int: "INT",
+            float: "FLOAT",
+            datetime.datetime: "DATETIMEOFFSET",
+            dict: "NVARCHAR(MAX)",
+            list: "NVARCHAR(MAX)",
+        }
+        return mapping.get(python_type, "NVARCHAR(MAX)")
+
     def get_engine(self) -> Connection:
         return pymssql.connect(  # type: ignore
             server=self.server,
@@ -67,20 +93,58 @@ class MSSQL(UnstractDB):
         )
 
     def get_create_table_base_query(self, table: str) -> str:
-        """Function to create a base create table sql query.
+        """Function to create a base create table sql query with proper schema support.
 
         Args:
-            table (str): db-connector table name
+            table (str): db-connector table name (supports schema.table format)
 
         Returns:
             str: generates a create sql base query with the constant columns
         """
+        # Parse schema and table name for existence check
+        if "." in table:
+            # Handle schema.table format like "[schema].[table]"
+            parts = table.rsplit(".", 1)
+            schema_name, table_name = parts[0], parts[1]
+            existence_check = (
+                f"IF NOT EXISTS ("
+                f"SELECT * FROM INFORMATION_SCHEMA.TABLES "
+                f"WHERE TABLE_SCHEMA = '{schema_name}' AND TABLE_NAME = '{table_name}'"
+                f")"
+            )
+        else:
+            # Handle unqualified table names (default to dbo schema)
+            existence_check = (
+                f"IF NOT EXISTS ("
+                f"SELECT * FROM INFORMATION_SCHEMA.TABLES "
+                f"WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = '{table}'"
+                f")"
+            )
+
         sql_query = (
-            f"IF NOT EXISTS ("
-            f"SELECT * FROM sysobjects WHERE name='{table}' and xtype='U')"
+            f"{existence_check} "
             f" CREATE TABLE {table} "
-            f"(id TEXT ,"
-            f"created_by TEXT, created_at DATETIMEOFFSET, "
+            f"(id NVARCHAR(MAX), "
+            f"created_by NVARCHAR(MAX), created_at DATETIMEOFFSET, "
+            f"metadata NVARCHAR(MAX), "
+            f"user_field_1 BIT DEFAULT 0, "
+            f"user_field_2 INT DEFAULT 0, "
+            f"user_field_3 NVARCHAR(MAX) DEFAULT NULL, "
+            f"status NVARCHAR(10) CHECK (status IN ('ERROR', 'SUCCESS')), "
+            f"error_message NVARCHAR(MAX))"
+        )
+        return sql_query
+
+    def prepare_multi_column_migration(self, table_name: str, column_name: str) -> str:
+        sql_query = (
+            f"ALTER TABLE {table_name} "
+            f"ADD {column_name}_v2 NVARCHAR(MAX), "
+            + "metadata NVARCHAR(MAX), "
+            + "user_field_1 BIT DEFAULT 0, "
+            + "user_field_2 INT DEFAULT 0, "
+            + "user_field_3 NVARCHAR(MAX) DEFAULT NULL, "
+            + "status NVARCHAR(10) CHECK (status IN ('ERROR', 'SUCCESS')), "
+            + "error_message NVARCHAR(MAX)"
         )
         return sql_query
 
@@ -123,3 +187,37 @@ class MSSQL(UnstractDB):
                 database=self.database,
                 table_name=table_name,
             ) from e
+
+    def get_information_schema(self, table_name: str) -> dict[str, str]:
+        """Function to generate information schema with proper schema and database support.
+
+        Args:
+            table_name (str): db-connector table name (supports schema.table format)
+
+        Returns:
+            dict[str, str]: a dictionary contains db column name and
+                db column types of corresponding table
+        """
+        table_name = str.lower(table_name)
+        if "." in table_name:
+            # Handle schema.table format
+            parts = table_name.rsplit(".", 1)
+            schema_name, table_only = parts[0], parts[1]
+            query = (
+                f"SELECT column_name, data_type FROM "
+                f"information_schema.columns WHERE "
+                f"table_schema = '{schema_name}' AND table_name = '{table_only}'"
+            )
+        else:
+            # Handle unqualified table names (default to dbo)
+            query = (
+                f"SELECT column_name, data_type FROM "
+                f"information_schema.columns WHERE "
+                f"table_schema = 'dbo' AND table_name = '{table_name}'"
+            )
+
+        results = self.execute(query=query)
+        column_types: dict[str, str] = self.get_db_column_types(
+            columns_with_types=results
+        )
+        return column_types

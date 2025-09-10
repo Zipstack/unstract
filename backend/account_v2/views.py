@@ -150,6 +150,7 @@ def make_session_response(
             organization_id=UserSessionUtils.get_organization_id(request),
             role=UserSessionUtils.get_organization_member_role(request),
             provider=provider,
+            is_staff=request.user.is_staff,
         )
     ).data
 

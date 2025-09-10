@@ -2,10 +2,12 @@ import datetime
 import json
 import logging
 import uuid
+from enum import Enum
 from typing import Any
 
 from utils.constants import Common
 from workflow_manager.endpoint_v2.constants import DBConnectionClass, TableColumns
+from workflow_manager.endpoint_v2.enums import FileProcessingStatus
 from workflow_manager.endpoint_v2.exceptions import UnstractDBException
 from workflow_manager.workflow_v2.enums import AgentName, ColumnModes
 
@@ -18,6 +20,26 @@ logger = logging.getLogger(__name__)
 
 
 class DatabaseUtils:
+    @staticmethod
+    def _create_safe_error_json(data_description: str, original_error: Exception) -> dict:
+        """Create a standardized error JSON object that can be safely serialized.
+
+        Args:
+            data_description (str): Description of the data being serialized
+            original_error (Exception): The original exception that occurred
+
+        Returns:
+            dict: A safely serializable JSON object with error details
+        """
+        return {
+            "error": "JSON serialization failed",
+            "error_type": original_error.__class__.__name__,
+            "error_message": str(original_error),
+            "data_type": str(type(original_error)),
+            "data_description": data_description,
+            "timestamp": datetime.datetime.now().isoformat(),
+        }
+
     @staticmethod
     def get_sql_values_for_query(
         values: dict[str, Any], column_types: dict[str, str], cls_name: str
@@ -53,14 +75,47 @@ class DatabaseUtils:
                 col = column.lower()
                 type_x = column_types.get(col, "")
                 if type_x == "VARIANT":
-                    values[column] = values[column].replace("'", "\\'")
-                    sql_values[column] = f"parse_json($${values[column]}$$)"
+                    payload = values[column]
+                    if isinstance(payload, Enum):
+                        payload = payload.value
+                    # Ensure valid JSON for VARIANT
+                    try:
+                        payload_json = json.dumps(payload, default=str)
+                        sql_values[column] = f"parse_json($${payload_json}$$)"
+                    except (TypeError, ValueError) as e:
+                        logger.error(
+                            f"Failed to serialize payload to JSON for column {column}: {e}"
+                        )
+                        # Create a safe fallback error object
+                        fallback_payload = DatabaseUtils._create_safe_error_json(
+                            f"column_{column}", e
+                        )
+                        payload_json = json.dumps(fallback_payload)
+                        sql_values[column] = f"parse_json($${payload_json}$$)"
                 else:
+                    # Non-VARIANT Snowflake types remain unchanged
                     sql_values[column] = f"{values[column]}"
             else:
-                # Default to Other SQL DBs
-                # TODO: Handle numeric types with no quotes
-                sql_values[column] = f"{values[column]}"
+                # Handle JSON and Enum types for each database
+                value = values[column]
+                if isinstance(value, (dict, list)):
+                    try:
+                        sql_values[column] = json.dumps(value)
+                    except (TypeError, ValueError) as e:
+                        logger.error(
+                            f"Failed to serialize value to JSON for column {column}: {e}"
+                        )
+                        # Create a safe fallback error object - consistent with Snowflake approach
+                        fallback_value = DatabaseUtils._create_safe_error_json(
+                            f"column_{column}", e
+                        )
+                        sql_values[column] = json.dumps(fallback_value)
+                elif isinstance(value, Enum):
+                    sql_values[column] = value.value
+                else:
+                    sql_values[column] = (
+                        f"{value}"  # Non-JSON/Enum types handled as before
+                    )
         # If table has a column 'id', unstract inserts a unique value to it
         # Oracle db has column 'ID' instead of 'id'
         if any(key in column_types for key in ["id", "ID"]):
@@ -109,6 +164,9 @@ class DatabaseUtils:
         include_agent: bool = False,
         agent_name: str | None = AgentName.UNSTRACT_DBWRITER.value,
         single_column_name: str = "data",
+        table_info: dict[str, str] | None = None,
+        metadata: dict[str, Any] | None = None,
+        error: str | None = None,
     ) -> dict[str, Any]:
         """Generate a dictionary of columns and values based on specified
         parameters.
@@ -144,18 +202,99 @@ class DatabaseUtils:
         if include_timestamp:
             values[TableColumns.CREATED_AT] = datetime.datetime.now()
 
+        has_metadata_col = (
+            (table_info is None)
+            or any(k.lower() == TableColumns.METADATA.lower() for k in table_info)
+            if table_info
+            else True
+        )
+        has_error_col = (
+            (table_info is None)
+            or any(k.lower() == TableColumns.ERROR_MESSAGE.lower() for k in table_info)
+            if table_info
+            else True
+        )
+        has_status_col = (
+            (table_info is None)
+            or any(k.lower() == TableColumns.STATUS.lower() for k in table_info)
+            if table_info
+            else True
+        )
+
+        if metadata and has_metadata_col:
+            try:
+                values[TableColumns.METADATA] = json.dumps(metadata)
+            except (TypeError, ValueError) as e:
+                logger.error(f"Failed to serialize metadata to JSON: {e}")
+                # Create a safe fallback error object
+                fallback_metadata = DatabaseUtils._create_safe_error_json("metadata", e)
+                values[TableColumns.METADATA] = json.dumps(fallback_metadata)
+
+        if error and has_error_col:
+            values[TableColumns.ERROR_MESSAGE] = error
+        if has_status_col:
+            values[TableColumns.STATUS] = (
+                FileProcessingStatus.ERROR if error else FileProcessingStatus.SUCCESS
+            )
+
         if column_mode == ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN:
             if isinstance(data, str):
-                values[single_column_name] = data
+                wrapped_dict = {"result": data}
+                values[single_column_name] = wrapped_dict
+                if table_info and any(
+                    k.lower() == f"{single_column_name}_v2".lower() for k in table_info
+                ):
+                    values[f"{single_column_name}_v2"] = wrapped_dict
             else:
-                values[single_column_name] = json.dumps(data)
+                values[single_column_name] = data
+                if table_info and any(
+                    k.lower() == f"{single_column_name}_v2".lower() for k in table_info
+                ):
+                    values[f"{single_column_name}_v2"] = data
         if column_mode == ColumnModes.SPLIT_JSON_INTO_COLUMNS:
             if isinstance(data, dict):
-                values.update(data)
+                values[single_column_name] = data
             elif isinstance(data, str):
                 values[single_column_name] = data
+                # Only write to v2 if it exists
+                if table_info and any(
+                    k.lower() == f"{single_column_name}_v2".lower() for k in table_info
+                ):
+                    values[f"{single_column_name}_v2"] = data
             else:
-                values[single_column_name] = json.dumps(data)
+                try:
+                    values[single_column_name] = json.dumps(
+                        data
+                    )  # Legacy column gets JSON string
+                except (TypeError, ValueError) as e:
+                    logger.error(
+                        f"Failed to serialize data to JSON for column {single_column_name}: {e}"
+                    )
+                    # Create a safe fallback error object
+                    fallback_data = DatabaseUtils._create_safe_error_json(
+                        single_column_name, e
+                    )
+                    values[single_column_name] = json.dumps(fallback_data)
+
+                # Only write to v2 if it exists
+                if table_info and any(
+                    k.lower() == f"{single_column_name}_v2".lower() for k in table_info
+                ):
+                    # Make sure v2 gets a serializable value too if needed
+                    if isinstance(data, (dict, list)):
+                        values[f"{single_column_name}_v2"] = data
+                    else:
+                        try:
+                            # Test if it's JSON serializable before assigning
+                            json.dumps(data)
+                            values[f"{single_column_name}_v2"] = data
+                        except (TypeError, ValueError) as e:
+                            # Create a safe fallback error object
+                            fallback_data = DatabaseUtils._create_safe_error_json(
+                                f"{single_column_name}_v2", e
+                            )
+                            values[f"{single_column_name}_v2"] = fallback_data
+
         values[file_path_name] = file_path
         values[execution_id_name] = execution_id
         return values

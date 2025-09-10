@@ -27,6 +27,7 @@ function getSessionData(sessionData) {
     flags: sessionData?.flags,
     role: sessionData?.role,
     provider: sessionData?.provider,
+    isStaff: sessionData?.is_staff,
   };
 }
 

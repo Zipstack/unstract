@@ -53,6 +53,9 @@ class Redshift(UnstractDB, PsycoPgHandler):
     def can_read() -> bool:
         return True
 
+    def get_string_type(self) -> str:
+        return "character varying"
+
     def get_engine(self) -> connection:
         return psycopg2.connect(
             host=self.host,
@@ -66,20 +69,54 @@ class Redshift(UnstractDB, PsycoPgHandler):
     def sql_to_db_mapping(self, value: str) -> str:
         python_type = type(value)
         mapping = {
-            str: "VARCHAR(65535)",
+            str: "VARCHAR(MAX)",
             int: "BIGINT",
             float: "DOUBLE PRECISION",
             datetime.datetime: "TIMESTAMP",
+            dict: "VARCHAR(MAX)",
+            list: "VARCHAR(MAX)",
         }
-        return mapping.get(python_type, "VARCHAR(65535)")
+        return mapping.get(python_type, "VARCHAR(MAX)")
 
     def get_create_table_base_query(self, table: str) -> str:
         sql_query = (
             f"CREATE TABLE IF NOT EXISTS {table} "
             f"(id VARCHAR(65535) ,"
             f"created_by VARCHAR(65535), created_at TIMESTAMP, "
+            f"metadata SUPER, "
+            f"user_field_1 BOOLEAN DEFAULT FALSE, "
+            f"user_field_2 INTEGER DEFAULT 0, "
+            f"user_field_3 VARCHAR(65535) DEFAULT NULL, "
+            f"status VARCHAR(10) CHECK (status IN ('ERROR', 'SUCCESS')), "
+            f"error_message VARCHAR(65535), "
         )
         return sql_query
+
+    def prepare_multi_column_migration(self, table_name: str, column_name: str) -> list:
+        """Prepare ALTER TABLE statements for adding new columns to an existing table.
+
+        Args:
+            table_name (str): The name of the table to alter
+            column_name (str): The base name of the column to add a _v2 version for
+
+        Returns:
+            list: List of ALTER TABLE statements, one per column addition
+
+        Note:
+            Redshift does not support multiple ADD COLUMN clauses in a single ALTER TABLE statement
+            and has no ADD COLUMN IF NOT EXISTS syntax. Callers should check information_schema.columns
+            or use dynamic SQL to make these operations idempotent.
+        """
+        # Return one ALTER statement per column for Redshift compatibility
+        return [
+            f"ALTER TABLE {table_name} ADD COLUMN {column_name}_v2 VARCHAR(65535);",
+            f"ALTER TABLE {table_name} ADD COLUMN metadata VARCHAR(65535);",
+            f"ALTER TABLE {table_name} ADD COLUMN user_field_1 BOOLEAN DEFAULT FALSE;",
+            f"ALTER TABLE {table_name} ADD COLUMN user_field_2 INTEGER DEFAULT 0;",
+            f"ALTER TABLE {table_name} ADD COLUMN user_field_3 VARCHAR(65535) DEFAULT NULL;",
+            f"ALTER TABLE {table_name} ADD COLUMN status VARCHAR(10) CHECK (status IN ('ERROR', 'SUCCESS'));",
+            f"ALTER TABLE {table_name} ADD COLUMN error_message VARCHAR(65535);",
+        ]
 
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any

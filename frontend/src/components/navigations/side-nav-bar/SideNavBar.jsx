@@ -16,6 +16,7 @@ import task from "../../../assets/task.svg";
 import VectorDbIcon from "../../../assets/vector-db.svg";
 import TextExtractorIcon from "../../../assets/text-extractor.svg";
 import TerminalIcon from "../../../assets/terminal.svg";
+import ConnectorsIcon from "../../../assets/connectors.svg";
 
 import "./SideNavBar.css";
 
@@ -193,6 +194,16 @@ const SideNavBar = ({ collapsed }) => {
         },
         {
           id: 3.5,
+          title: "Connectors",
+          description: "Manage connectors for data sources and destinations",
+          image: ConnectorsIcon,
+          path: `/${orgName}/settings/connectors`,
+          active: window.location.pathname.startsWith(
+            `/${orgName}/settings/connectors`
+          ),
+        },
+        {
+          id: 3.6,
           title: "Platform",
           description: "Settings for the platform",
           image: PlatformSettingsIcon,
@@ -211,7 +222,11 @@ const SideNavBar = ({ collapsed }) => {
     unstractMenuItems[1].subMenu.unshift(dashboardSideMenuItem(orgName));
   }
 
-  const data = menu || unstractMenuItems;
+  // If selectedProduct is verticals and menu is null, don't show any sidebar items
+  const data =
+    selectedProduct === "verticals" && menu === null
+      ? []
+      : menu || unstractMenuItems;
 
   if (getMenuItem && flags?.app_deployment) {
     data[1]?.subMenu?.splice(1, 0, getMenuItem.default(orgName));

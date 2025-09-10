@@ -1,6 +1,7 @@
 import logging
 from typing import Any
 
+from django.conf import settings
 from rest_framework.serializers import (
     CharField,
     ChoiceField,
@@ -65,7 +66,7 @@ class WorkflowSerializer(IntegrityErrorMixin, AuditSerializer):
 
 
 class ExecuteWorkflowSerializer(Serializer):
-    workflow_id = UUIDField(required=False)
+    workflow_id = UUIDField(required=True)
     execution_action = ChoiceField(
         choices=Workflow.ExecutionAction.choices, required=False
     )
@@ -86,10 +87,20 @@ class ExecuteWorkflowSerializer(Serializer):
         return validated_data.get(WorkflowKey.EXECUTION_ACTION)
 
     def validate(self, data: dict[str, str | None]) -> dict[str, str | None]:
-        workflow_id = data.get(WorkflowKey.WF_ID)
-
-        if not workflow_id:
-            raise ValidationError("'workflow_id' is required.")
+        # Validate file count from request context
+        request = self.context.get(RequestKey.REQUEST)
+        if request and hasattr(request, "FILES"):
+            files = request.FILES.getlist("files")
+            if len(files) > settings.WORKFLOW_PAGE_MAX_FILES:
+                raise ValidationError(
+                    {
+                        "files": (
+                            f"Maximum {settings.WORKFLOW_PAGE_MAX_FILES} files are allowed for workflow execution. "
+                            f"You have uploaded '{len(files)}' files."
+                        )
+                    },
+                    code="max_file_limit_exceeded",
+                )
 
         return data
 

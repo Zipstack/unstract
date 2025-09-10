@@ -88,3 +88,15 @@ class DeleteAdapterInUseError(APIException):
                 "It is used in a workflow or a prompt studio project"
             )
         super().__init__(detail, code)
+
+
+class AdapterNotFound(APIException):
+    status_code = 404
+    default_detail = "Adapter not found"
+
+    def __init__(
+        self,
+        detail: str | None = None,
+        code: str | None = None,
+    ) -> None:
+        super().__init__(detail, code)

@@ -11,6 +11,7 @@ from tenant_account_v2.organization_member_service import OrganizationMemberServ
 
 from adapter_processor_v2.constants import AdapterKeys, AllowedDomains
 from adapter_processor_v2.exceptions import (
+    AdapterNotFound,
     InternalServiceError,
     InValidAdapterId,
     TestAdapterError,
@@ -227,7 +228,7 @@ class AdapterProcessor:
     def get_adapter_by_name_and_type(
         adapter_type: AdapterTypes,
         adapter_name: str | None = None,
-    ) -> AdapterInstance | None:
+    ) -> AdapterInstance:
         """Get the adapter instance by its name and type.
 
         Parameters:
@@ -236,18 +237,27 @@ class AdapterProcessor:
 
         Returns:
         - AdapterInstance: The adapter with the specified name and type.
+
+        Raises:
+        - AdapterNotFound: If the adapter is not found.
         """
-        if adapter_name:
-            adapter: AdapterInstance = AdapterInstance.objects.get(
-                adapter_name=adapter_name, adapter_type=adapter_type.value
-            )
-        else:
-            try:
+        try:
+            if adapter_name:
+                adapter: AdapterInstance = AdapterInstance.objects.get(
+                    adapter_name=adapter_name, adapter_type=adapter_type.value
+                )
+            else:
                 adapter = AdapterInstance.objects.get(
                     adapter_type=adapter_type.value, is_default=True
                 )
-            except AdapterInstance.DoesNotExist:
-                return None
+        except AdapterInstance.DoesNotExist:
+            error_msg = (
+                f"Couldn't find adapter with name '{adapter_name}' and type '{adapter_type.value}'"
+                if adapter_name
+                else f"Couldn't find default adapter with type '{adapter_type.value}'"
+            )
+            logger.error(error_msg)
+            raise AdapterNotFound(error_msg)
         return adapter
 
     @staticmethod

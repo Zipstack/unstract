@@ -346,12 +346,6 @@ class AdapterInstanceViewSet(ModelViewSet):
     def update(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
-        import logging
-
-        logger = logging.getLogger(__name__)
-
-        logger.info("ADAPTER UPDATE CALLED")
-
         # Check if adapter metadata is being updated and contains the platform key flag
         use_platform_unstract_key = False
         adapter_metadata = request.data.get(AdapterKeys.ADAPTER_METADATA)

@@ -28,9 +28,7 @@ from utils.user_context import UserContext
 from backend.celery_service import app as celery_app
 from unstract.workflow_execution.enums import LogStage
 from workflow_manager.endpoint_v2.destination import DestinationConnector
-from workflow_manager.endpoint_v2.dto import (
-    FileHash,
-)
+from workflow_manager.endpoint_v2.dto import FileHash
 from workflow_manager.endpoint_v2.result_cache_utils import ResultCacheUtils
 from workflow_manager.endpoint_v2.source import SourceConnector
 from workflow_manager.execution.dto import ExecutionCache
@@ -42,11 +40,7 @@ from workflow_manager.workflow_v2.constants import (
     WorkflowExecutionKey,
     WorkflowMessages,
 )
-from workflow_manager.workflow_v2.dto import (
-    ExecutionResponse,
-    FileBatchData,
-    FileData,
-)
+from workflow_manager.workflow_v2.dto import ExecutionResponse, FileBatchData, FileData
 from workflow_manager.workflow_v2.enums import (
     ExecutionStatus,
     SchemaEntity,
@@ -238,10 +232,15 @@ class WorkflowHelper:
         tool_instances: list[ToolInstance],
     ) -> None:
         for tool in tool_instances:
+            # Ensure adapter IDs are resolved before validation
+            user = tool.workflow.created_by
+            migrated_metadata = ToolInstanceHelper.ensure_adapter_ids_in_metadata(
+                tool, user=user
+            )
             ToolInstanceHelper.validate_tool_settings(
-                user=tool.workflow.created_by,
+                user=user,
                 tool_uid=tool.tool_id,
-                tool_meta=tool.metadata,
+                tool_meta=migrated_metadata,
             )
 
     @staticmethod
@@ -906,23 +905,6 @@ class WorkflowHelper:
             error=workflow_execution.error_message,
             mode=workflow_execution.execution_mode,
         )
-
-    # TODO: Access cache through a manager
-    @staticmethod
-    def clear_cache(workflow_id: str) -> dict[str, Any]:
-        """Function to clear cache with a specific pattern."""
-        response: dict[str, Any] = {}
-        try:
-            key_pattern = f"*:cache:{workflow_id}:*"
-            CacheService.clear_cache(key_pattern)
-            response["message"] = WorkflowMessages.CACHE_CLEAR_SUCCESS
-            response["status"] = 200
-            return response
-        except Exception as exc:
-            logger.error(f"Error occurred while clearing cache : {exc}")
-            response["message"] = WorkflowMessages.CACHE_CLEAR_FAILED
-            response["status"] = 400
-            return response
 
     @staticmethod
     def clear_file_marker(workflow_id: str) -> dict[str, Any]:

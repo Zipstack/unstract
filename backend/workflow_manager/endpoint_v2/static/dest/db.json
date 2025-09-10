@@ -12,7 +12,9 @@
             "type": "string",
             "title": "Table",
             "default": "",
-            "description": "Table to store the output. If your database supports schemas, use the format `schema.table`"
+            "description": "Table to store the output. If your database supports schemas, use the format `schema.table`",
+            "minLength": 1
+
         },
         "includeAgent": {
             "type": "boolean",

@@ -3,9 +3,15 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
+from workflow_manager.endpoint_v2.constants import TableColumns
+from workflow_manager.endpoint_v2.exceptions import UnstractDBException
+
 from unstract.connectors.base import UnstractConnector
+from unstract.connectors.databases.exceptions import UnstractDBConnectorException
 from unstract.connectors.enums import ConnectorMode
 from unstract.connectors.exceptions import ConnectorError
+
+logger = logging.getLogger(__name__)
 
 
 class UnstractDB(UnstractConnector, ABC):
@@ -60,6 +66,28 @@ class UnstractDB(UnstractConnector, ABC):
         return ""
 
     @abstractmethod
+    def get_string_type(self) -> str:
+        """Child classes implement this to return the string type name for their DB."""
+        pass
+
+    @abstractmethod
+    def prepare_multi_column_migration(
+        self, table_name: str, column_name: str
+    ) -> str | list:
+        """Returns the ALTER TABLE query specific to the database.
+
+        Args:
+            table_name (str): The name of the table to alter
+            column_name (str): The base name of the column to add a _v2 version for
+
+        Returns:
+            str | list: Either a single SQL ALTER TABLE statement (str) or
+                       a list of separate ALTER TABLE statements for databases
+                       that don't support multiple column additions in one statement
+        """
+        pass
+
+    @abstractmethod
     def get_engine(self) -> Any:
         pass
 
@@ -110,6 +138,7 @@ class UnstractDB(UnstractConnector, ABC):
             f"CREATE TABLE IF NOT EXISTS {table} "
             f"(id TEXT , "
             f"created_by TEXT, created_at TIMESTAMP, "
+            f"metadata TEXT, "
         )
         return sql_query
 
@@ -123,7 +152,7 @@ class UnstractDB(UnstractConnector, ABC):
         Returns:
             Any: generates a create sql query for all the columns
         """
-        PERMANENT_COLUMNS = ["created_by", "created_at"]
+        PERMANENT_COLUMNS = TableColumns.PERMANENT_COLUMNS
 
         sql_query = ""
         create_table_query = self.get_create_table_base_query(table=table)
@@ -199,3 +228,40 @@ class UnstractDB(UnstractConnector, ABC):
         for column_name, data_type in columns_with_types:
             column_types[column_name] = data_type
         return column_types
+
+    def is_string_column(self, table_info: dict[str, str], column_name: str) -> bool:
+        """Check if the column is a string type specific to the DB connector.
+
+        Args:
+            table_info (dict): column_name -> column_type
+            column_name (str): name of column to check
+
+        Returns:
+            bool: True if column is a string type
+        """
+        column_type = table_info.get(column_name)
+        if column_type is None:
+            return False
+
+        # Skip migration if *_v2 column already exists
+        if f"{column_name}_v2" in table_info:
+            return False
+
+        return column_type.lower() == self.get_string_type().lower()
+
+    def migrate_table_to_v2(self, table_name: str, column_name: str, engine: Any) -> None:
+        sql_query = self.prepare_multi_column_migration(
+            table_name=table_name, column_name=column_name
+        )
+
+        try:
+            self.execute_query(
+                engine=engine,
+                sql_query=sql_query,
+                sql_values=None,
+                table_name=table_name,
+            )
+        except UnstractDBConnectorException as e:
+            raise UnstractDBException(detail=e.detail) from e
+
+        logger.debug(f"successfully migrated table {table_name} with: {sql_query} query")

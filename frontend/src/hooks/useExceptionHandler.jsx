@@ -35,7 +35,23 @@ const useExceptionHandler = () => {
     }
 
     if (err?.response?.data) {
-      const { type, errors } = err.response.data;
+      const responseData = err.response.data;
+      const { type, errors } = responseData;
+
+      // First, try to extract common API error messages (for DRF and other APIs)
+      const commonErrorMessage =
+        responseData.error || responseData.detail || responseData.message;
+
+      if (commonErrorMessage) {
+        return {
+          title: title,
+          type: "error",
+          content: commonErrorMessage,
+          duration: duration,
+        };
+      }
+
+      // Then handle specific error types
       switch (type) {
         case "validation_error":
           // Handle validation errors

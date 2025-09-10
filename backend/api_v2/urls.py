@@ -23,6 +23,11 @@ download_postman_collection = APIDeploymentViewSet.as_view(
         "get": APIDeploymentViewSet.download_postman_collection.__name__,
     }
 )
+by_prompt_studio_tool = APIDeploymentViewSet.as_view(
+    {
+        "get": APIDeploymentViewSet.by_prompt_studio_tool.__name__,
+    }
+)
 
 execute = DeploymentExecution.as_view()
 
@@ -47,6 +52,11 @@ urlpatterns = format_suffix_patterns(
             "deployment/<uuid:pk>/",
             deployment_details,
             name="api_deployment_details",
+        ),
+        path(
+            "deployment/by-prompt-studio-tool/",
+            by_prompt_studio_tool,
+            name="api_deployment_by_prompt_studio_tool",
         ),
         path(
             "postman_collection/<uuid:pk>/",

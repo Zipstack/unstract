@@ -2,11 +2,9 @@ import re
 from pathlib import Path
 from typing import Any
 
-from unstract.sdk.cache import ToolCache
-from unstract.sdk.constants import LogLevel, MetadataKey, ToolEnv, UsageKwargs
+from unstract.sdk.constants import LogLevel, MetadataKey, UsageKwargs
 from unstract.sdk.llm import LLM
 from unstract.sdk.tool.base import BaseTool
-from unstract.sdk.utils import ToolUtils
 from unstract.sdk.x2txt import TextExtractionResult, X2Text
 
 
@@ -185,37 +183,18 @@ class ClassifierHelper:
         """Find classification for text.
 
         Args:
-            use_cache (bool): Whether to use cache
-            settings_string (str): hash of settings
+            use_cache (bool): Whether to use cache (deprecated, not used)
+            settings_string (str): hash of settings (deprecated, not used)
             prompt (str): Prompt
             bins (list[str]): Classification Bins
             llm (LLM): LLM
 
         Returns:
-            Optional[str]: Classification or None if not found in cache.
-            If found in cache, returns the classification from the cache.
-            If not found in cache, calls the LLM and returns the
-            classification.
+            Optional[str]: Classification from the LLM.
         """
-        classification = None
-        cache_key = None
-        if use_cache:
-            cache_key = (
-                f"cache:{self.tool.workflow_id}:"
-                f"{ToolUtils.hash_str(settings_string)}:"
-                f"{ToolUtils.hash_str(prompt)}"
-            )
-            self.tool.stream_log("Trying to fetch result from cache.")
-            classification = self.get_result_from_cache(cache_key=cache_key)
-            if classification is not None:
-                return classification
-
-        self.tool.stream_log("No classification found in cache, calling LLM.")
+        self.tool.stream_log("Calling LLM for classification.")
         llm_response = self.call_llm(prompt=prompt, llm=llm)
         classification = self.clean_llm_response(llm_response=llm_response, bins=bins)
-        if use_cache and cache_key:
-            self.tool.stream_log("Saving result to cache.")
-            self.save_result_to_cache(cache_key=cache_key, result=classification)
         return classification
 
     def call_llm(self, prompt: str, llm: LLM) -> str:
@@ -279,40 +258,3 @@ class ClassifierHelper:
                 bin_to_copy_to=ReservedBins.UNKNOWN,
             )
         return classification
-
-    def get_result_from_cache(self, cache_key: str) -> str | None:
-        """Get result from cache.
-
-        Args:
-            cache_key (str): key
-
-        Returns:
-            Optional[str]: result
-        """
-        cache = ToolCache(
-            tool=self.tool,
-            platform_host=self.tool.get_env_or_die(ToolEnv.PLATFORM_HOST),
-            platform_port=int(self.tool.get_env_or_die(ToolEnv.PLATFORM_PORT)),
-        )
-        cached_response: str | None = cache.get(cache_key)
-        if cached_response is not None:
-            classification = cached_response
-            self.tool.stream_cost(cost=0.0, cost_units="cache")
-            return classification
-        return None
-
-    def save_result_to_cache(self, cache_key: str, result: Any) -> None:
-        """Save result to cache.
-
-        Args:
-            cache_key (str): key
-            result (Any): result to save in cache
-        Returns:
-            None: None
-        """
-        cache = ToolCache(
-            tool=self.tool,
-            platform_host=self.tool.get_env_or_die(ToolEnv.PLATFORM_HOST),
-            platform_port=int(self.tool.get_env_or_die(ToolEnv.PLATFORM_PORT)),
-        )
-        cache.set(cache_key, result)

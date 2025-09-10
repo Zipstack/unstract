@@ -48,9 +48,6 @@ class Tool:
 
 
 class WorkflowMessages:
-    CACHE_CLEAR_SUCCESS = "Cache cleared successfully."
-    CACHE_CLEAR_FAILED = "Failed to clear cache."
-    CACHE_EMPTY = "Cache is already empty."
     CELERY_TIMEOUT_MESSAGE = (
         "Your request is being processed. Please wait."
         "You can check the status using the status API."

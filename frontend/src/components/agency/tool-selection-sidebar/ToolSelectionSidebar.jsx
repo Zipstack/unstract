@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 
 import "./ToolSelectionSidebar.css";
+import { ToolIcon } from "../tool-icon/ToolIcon";
 
 function ToolSelectionSidebar({
   visible,
@@ -60,9 +61,11 @@ function ToolSelectionSidebar({
     <div className="tool-selection-sidebar-overlay">
       <div className="tool-selection-sidebar">
         <div className="tool-selection-header">
-          <Typography.Title level={4}>Select Exported Tool</Typography.Title>
+          <Typography.Title level={4}>
+            Select Exported Prompt Studio project
+          </Typography.Title>
           <Input
-            placeholder="Search tools..."
+            placeholder="Search Prompt Studio project..."
             prefix={<SearchOutlined />}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -90,9 +93,13 @@ function ToolSelectionSidebar({
                   <div className="tool-card-content">
                     <div className="tool-info">
                       <div className="tool-header">
-                        {tool.icon || (
-                          <FileTextOutlined className="tool-icon" />
-                        )}
+                        <div className="wf-tools-list">
+                          {tool.icon ? (
+                            <ToolIcon iconSrc={tool.icon} showBorder={true} />
+                          ) : (
+                            <FileTextOutlined className="tool-icon" />
+                          )}
+                        </div>
                         <div className="tool-details">
                           <Typography.Text strong className="tool-name">
                             {tool.name}
@@ -127,7 +134,7 @@ function ToolSelectionSidebar({
             onClick={handleSave}
             disabled={!tempSelectedTool}
           >
-            {hasChanges ? "Save Changes" : "Select Tool"}
+            {hasChanges ? "Save Changes" : "Select Prompt Studio project"}
           </Button>
         </div>
       </div>

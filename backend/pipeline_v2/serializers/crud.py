@@ -2,8 +2,6 @@ import logging
 from collections import OrderedDict
 from typing import Any
 
-from connector_processor.connector_processor import ConnectorProcessor
-from connector_v2.models import ConnectorInstance
 from croniter import croniter
 from django.conf import settings
 from pipeline_v2.constants import PipelineConstants as PC
@@ -286,6 +284,3 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
             )
 
         return repr
-
-    def get_connector_data(self, connector: ConnectorInstance, key: str) -> Any:
-        return ConnectorProcessor.get_connector_data_with_key(connector.connector_id, key)
