@@ -4,6 +4,7 @@ from typing import Any
 
 from django.db import models
 from utils.common_utils import CommonUtils
+from utils.db_retry import db_retry
 from utils.models.base_model import BaseModel
 
 from workflow_manager.endpoint_v2.dto import FileHash
@@ -16,6 +17,7 @@ MIME_TYPE_LENGTH = 128
 
 
 class WorkflowFileExecutionManager(models.Manager):
+    @db_retry()  # Use environment defaults for retry settings
     def get_or_create_file_execution(
         self,
         workflow_execution: Any,
@@ -53,6 +55,7 @@ class WorkflowFileExecutionManager(models.Manager):
 
         return execution_file
 
+    @db_retry()  # Use environment defaults for retry settings
     def _update_execution_file(
         self, execution_file: "WorkflowFileExecution", file_hash: FileHash
     ) -> None:
@@ -118,6 +121,7 @@ class WorkflowFileExecution(BaseModel):
             f"(WorkflowExecution: {self.workflow_execution})"
         )
 
+    @db_retry()  # Use environment defaults for retry settings
     def update_status(
         self,
         status: ExecutionStatus,
@@ -221,6 +225,7 @@ class WorkflowFileExecution(BaseModel):
         """
         return self.status is not None and self.status == ExecutionStatus.COMPLETED
 
+    @db_retry()  # Use environment defaults for retry settings
     def update(
         self,
         file_hash: str = None,

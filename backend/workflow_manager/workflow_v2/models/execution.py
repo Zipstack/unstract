@@ -12,6 +12,7 @@ from tags.models import Tag
 from usage_v2.constants import UsageKeys
 from usage_v2.models import Usage
 from utils.common_utils import CommonUtils
+from utils.db_retry import db_retry
 from utils.models.base_model import BaseModel
 
 from workflow_manager.execution.dto import ExecutionCache
@@ -41,6 +42,7 @@ class WorkflowExecutionManager(models.Manager):
         # Return executions where the workflow's created_by matches the user
         return self.filter(workflow__created_by=user)
 
+    @db_retry()  # Use environment defaults for retry settings
     def clean_invalid_workflows(self):
         """Remove execution records with invalid workflow references.
 
@@ -237,6 +239,7 @@ class WorkflowExecution(BaseModel):
             f"error message: {self.error_message})"
         )
 
+    @db_retry()  # Use environment defaults for retry settings
     def update_execution(
         self,
         status: ExecutionStatus | None = None,
@@ -271,6 +274,7 @@ class WorkflowExecution(BaseModel):
 
         self.save()
 
+    @db_retry()  # Use environment defaults for retry settings
     def update_execution_err(self, err_msg: str = "") -> None:
         """Update execution status to ERROR with an error message.
 
@@ -279,6 +283,7 @@ class WorkflowExecution(BaseModel):
         """
         self.update_execution(status=ExecutionStatus.ERROR, error=err_msg)
 
+    @db_retry()  # Use environment defaults for retry settings
     def _handle_execution_cache(self):
         if not ExecutionCacheUtils.is_execution_exists(
             workflow_id=self.workflow.id, execution_id=self.id

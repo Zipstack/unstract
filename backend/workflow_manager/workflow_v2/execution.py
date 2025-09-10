@@ -9,6 +9,7 @@ from tags.models import Tag
 from tool_instance_v2.models import ToolInstance
 from tool_instance_v2.tool_processor import ToolProcessor
 from usage_v2.helper import UsageHelper
+from utils.db_retry import db_retry
 from utils.local_context import StateStore
 from utils.user_context import UserContext
 
@@ -391,6 +392,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         self.publish_log("Trying to fetch results from cache")
 
     @staticmethod
+    @db_retry()
     def update_execution_err(execution_id: str, err_msg: str = "") -> WorkflowExecution:
         try:
             execution = WorkflowExecution.objects.get(pk=execution_id)

@@ -7,6 +7,7 @@ from pprint import pformat
 
 from celery import Celery
 
+from backend.celery_db_retry import patch_celery_database_backend
 from backend.celery_task import TaskRegistry
 from backend.settings.base import LOGGING
 
@@ -23,6 +24,9 @@ logging.config.dictConfig(LOGGING)
 
 # Create a Celery instance. Default time zone is UTC.
 app = Celery("backend")
+
+# Patch Celery database backend to add connection retry logic
+patch_celery_database_backend()
 
 # Register custom tasks
 TaskRegistry()

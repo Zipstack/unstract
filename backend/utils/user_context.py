@@ -2,6 +2,7 @@ from account_v2.models import Organization
 from django.db.utils import ProgrammingError
 
 from utils.constants import Account
+from utils.db_retry import db_retry
 from utils.local_context import StateStore
 
 
@@ -16,6 +17,7 @@ class UserContext:
         StateStore.set(Account.ORGANIZATION_ID, organization_identifier)
 
     @staticmethod
+    @db_retry()  # Add retry for connection drops during organization lookup
     def get_organization() -> Organization | None:
         organization_id = StateStore.get(Account.ORGANIZATION_ID)
         try:
