@@ -152,7 +152,7 @@ class UnstractDB(UnstractConnector, ABC):
 
         sql_query = ""
         create_table_query = self.get_create_table_base_query(table=table)
-        print("***** unstract_db.py create_table_query *****", create_table_query)
+        logger.debug(f"Create table base query {create_table_query}")
 
         sql_query += create_table_query
 
@@ -240,7 +240,6 @@ class UnstractDB(UnstractConnector, ABC):
         Returns:
             bool: False if metadata exists, True if metadata does not exist
         """
-        print("$$$$$ table_info $$$$$", table_info)
         # Check case-insensitively for metadata column
         metadata_exists = any(key.lower() == "metadata" for key in table_info.keys())
         return not metadata_exists
@@ -265,10 +264,7 @@ class UnstractDB(UnstractConnector, ABC):
         sql_query_or_list = self.prepare_multi_column_migration(
             table_name=table_name, column_name=column_name
         )
-        print(
-            "***** migrate_table_to_v2 unstract_db.py sql_query *****",
-            sql_query_or_list,
-        )
+        logger.debug(f"Multi column prepared with values {sql_query_or_list}")
 
         try:
             # Handle both single string and list of SQL statements
