@@ -53,9 +53,6 @@ class Redshift(UnstractDB, PsycoPgHandler):
     def can_read() -> bool:
         return True
 
-    def get_string_type(self) -> str:
-        return "character varying"
-
     def get_engine(self) -> connection:
         return psycopg2.connect(
             host=self.host,
@@ -69,14 +66,14 @@ class Redshift(UnstractDB, PsycoPgHandler):
     def sql_to_db_mapping(self, value: str) -> str:
         python_type = type(value)
         mapping = {
-            str: "VARCHAR(MAX)",
+            str: "VARCHAR(65535)",
             int: "BIGINT",
             float: "DOUBLE PRECISION",
             datetime.datetime: "TIMESTAMP",
-            dict: "VARCHAR(MAX)",
-            list: "VARCHAR(MAX)",
+            dict: "VARCHAR(65535)",
+            list: "VARCHAR(65535)",
         }
-        return mapping.get(python_type, "VARCHAR(MAX)")
+        return mapping.get(python_type, "VARCHAR(65535)")
 
     def get_create_table_base_query(self, table: str) -> str:
         sql_query = (
@@ -87,7 +84,7 @@ class Redshift(UnstractDB, PsycoPgHandler):
             f"user_field_1 BOOLEAN DEFAULT FALSE, "
             f"user_field_2 INTEGER DEFAULT 0, "
             f"user_field_3 VARCHAR(65535) DEFAULT NULL, "
-            f"status VARCHAR(10) CHECK (status IN ('ERROR', 'SUCCESS')), "
+            f"status VARCHAR(256), "
             f"error_message VARCHAR(65535), "
         )
         return sql_query
@@ -114,7 +111,7 @@ class Redshift(UnstractDB, PsycoPgHandler):
             f"ALTER TABLE {table_name} ADD COLUMN user_field_1 BOOLEAN DEFAULT FALSE;",
             f"ALTER TABLE {table_name} ADD COLUMN user_field_2 INTEGER DEFAULT 0;",
             f"ALTER TABLE {table_name} ADD COLUMN user_field_3 VARCHAR(65535) DEFAULT NULL;",
-            f"ALTER TABLE {table_name} ADD COLUMN status VARCHAR(10) CHECK (status IN ('ERROR', 'SUCCESS'));",
+            f"ALTER TABLE {table_name} ADD COLUMN status VARCHAR(256);",
             f"ALTER TABLE {table_name} ADD COLUMN error_message VARCHAR(65535);",
         ]
 
@@ -130,3 +127,24 @@ class Redshift(UnstractDB, PsycoPgHandler):
             schema=self.schema,
             table_name=table_name,
         )
+
+    def is_string_column(self, table_info: dict[str, str], column_name: str) -> bool:
+        """Check if the column is a string type specific to the DB connector.
+
+        Args:
+            table_info (dict): column_name -> column_type
+            column_name (str): name of column to check
+
+        Returns:
+            bool: True if column is a string type
+        """
+        print("***** unstract_db.py is_string_column table_info *****", table_info)
+
+        column_type = table_info.get(column_name)
+
+        print("***** unstract_db.py is_string_column column_type *****", column_type)
+
+        if column_type is None:
+            return False
+
+        return f"{column_name}_v2" not in table_info

@@ -5,36 +5,37 @@ from django.test import TestCase
 from workflow_manager.endpoint_v2.constants import DestinationKey
 from workflow_manager.endpoint_v2.destination import DestinationConnector
 
-from unstract.connectors.databases.mssql import MSSQL
+from unstract.connectors.databases.redshift import Redshift
 
 
-class TestDestinationConnectorMSSQL(TestCase):
-    """Integration test for insert_into_db method with real MSSQL connector."""
+class TestDestinationConnectorRedshift(TestCase):
+    """Integration test for insert_into_db method with real Redshift connector."""
 
     def setUp(self) -> None:
-        """Set up test data and real MSSQL configuration."""
+        """Set up test data and real Redshift configuration."""
 
-        # MSSQL connection settings for testing
+        # Redshift connection settings for testing
         required_env_vars = [
-            "MSSQL_SERVER",
-            "MSSQL_USER",
-            "MSSQL_PASSWORD",
-            "MSSQL_DATABASE",
+            "REDSHIFT_HOST",
+            "REDSHIFT_USER",
+            "REDSHIFT_PASSWORD",
+            "REDSHIFT_DATABASE",
         ]
 
         # Check if all required environment variables are set
         missing_vars = [var for var in required_env_vars if not os.getenv(var)]
         if missing_vars:
             self.skipTest(
-                f"Required MSSQL environment variables not set: {', '.join(missing_vars)}"
+                f"Required Redshift environment variables not set: {', '.join(missing_vars)}"
             )
 
-        self.mssql_config = {
-            "server": os.getenv("MSSQL_SERVER"),
-            "port": os.getenv("MSSQL_PORT", "1433"),
-            "user": os.getenv("MSSQL_USER"),
-            "password": os.getenv("MSSQL_PASSWORD"),
-            "database": os.getenv("MSSQL_DATABASE"),
+        self.redshift_config = {
+            "host": os.getenv("REDSHIFT_HOST"),
+            "port": os.getenv("REDSHIFT_PORT", "5439"),
+            "user": os.getenv("REDSHIFT_USER"),
+            "password": os.getenv("REDSHIFT_PASSWORD"),
+            "database": os.getenv("REDSHIFT_DATABASE"),
+            "schema": os.getenv("REDSHIFT_SCHEMA", "public"),
         }
 
         # Test data that will be inserted into the database
@@ -46,52 +47,73 @@ class TestDestinationConnectorMSSQL(TestCase):
         }
         self.input_file_path = "/path/to/test/file.pdf"
 
-        # MSSQL table naming (use schema.table format)
-        self.test_table_name = "test_schema_1.output_1"
+        # Redshift table naming (use schema.table format)
+        self.test_table_name = "output_1"
 
-        # Create real MSSQL connector instance
-        self.mssql_connector = MSSQL(settings=self.mssql_config)
+        # Create real Redshift connector instance
+        self.redshift_connector = Redshift(settings=self.redshift_config)
 
-        # Expected columns based on configuration (MSSQL data types)
+        # Expected columns based on configuration (Redshift data types)
         self.expected_columns = {
-            "id": "NVARCHAR",
-            "file_path": "NVARCHAR",
-            "execution_id": "NVARCHAR",
-            "data": "NVARCHAR",  # Legacy column remains NVARCHAR after migration
-            "data_v2": "NVARCHAR",  # New NVARCHAR column added during migration
-            "metadata": "NVARCHAR",  # New NVARCHAR column added during migration
-            "created_at": "DATETIMEOFFSET",
-            "created_by": "NVARCHAR",
-            "status": "NVARCHAR",
-            "error_message": "NVARCHAR",
-            "user_field_1": "BIT",
-            "user_field_2": "INT",
-            "user_field_3": "NVARCHAR",
+            "id": "CHARACTER VARYING",
+            "file_path": "CHARACTER VARYING",
+            "execution_id": "CHARACTER VARYING",
+            "data": "CHARACTER VARYING",  # Legacy column remains VARCHAR after migration
+            "data_v2": "CHARACTER VARYING",  # New VARCHAR column added during migration
+            "metadata": "CHARACTER VARYING",  # New VARCHAR column added during migration
+            "created_at": "TIMESTAMP WITHOUT TIME ZONE",
+            "created_by": "CHARACTER VARYING",
+            "status": "CHARACTER VARYING",
+            "error_message": "CHARACTER VARYING",
+            "user_field_1": "BOOLEAN",
+            "user_field_2": "INTEGER",
+            "user_field_3": "CHARACTER VARYING",
         }
 
     def verify_table_columns(self, table_name: str) -> None:
         """Verify that the table has expected columns with correct data types."""
-        table_info = self.mssql_connector.get_information_schema(table_name=table_name)
+        table_info = self.redshift_connector.get_information_schema(
+            table_name=table_name
+        )
 
         print(f"🔍 Actual table structure for '{table_name}': {table_info}")
 
         # Check that key columns exist (some columns may be created on-demand)
         required_columns = {
-            "id": ["NVARCHAR", "TEXT"],  # MSSQL uses NVARCHAR
-            "file_path": ["NVARCHAR", "TEXT"],  # MSSQL uses NVARCHAR
-            "execution_id": ["NVARCHAR", "TEXT"],  # MSSQL uses NVARCHAR
-            "data": ["NVARCHAR", "TEXT"],  # Can be NVARCHAR, migration might convert
+            "id": [
+                "CHARACTER VARYING",
+                "VARCHAR",
+            ],  # Redshift uses CHARACTER VARYING or VARCHAR
+            "file_path": [
+                "CHARACTER VARYING",
+                "VARCHAR",
+            ],  # Redshift uses CHARACTER VARYING or VARCHAR
+            "execution_id": [
+                "CHARACTER VARYING",
+                "VARCHAR",
+            ],  # Redshift uses CHARACTER VARYING or VARCHAR
+            "data": [
+                "CHARACTER VARYING",
+                "VARCHAR",
+            ],  # Can be VARCHAR, migration might convert
             "metadata": [
-                "NVARCHAR",
-                "TEXT",
-            ],  # New NVARCHAR column added during migration
-            "created_at": "DATETIMEOFFSET",
-            "created_by": ["NVARCHAR", "TEXT"],  # MSSQL uses NVARCHAR
+                "CHARACTER VARYING",
+                "VARCHAR",
+                "SUPER",
+            ],  # New VARCHAR column added during migration, or SUPER for JSON
+            "created_at": ["TIMESTAMP WITHOUT TIME ZONE", "TIMESTAMP"],
+            "created_by": [
+                "CHARACTER VARYING",
+                "VARCHAR",
+            ],  # Redshift uses CHARACTER VARYING or VARCHAR
         }
 
         # Optional columns that may exist in migration scenarios
         optional_columns = {
-            "data_v2": ["NVARCHAR"],  # Only exists in migration scenarios
+            "data_v2": [
+                "CHARACTER VARYING",
+                "VARCHAR",
+            ],  # Only exists in migration scenarios
         }
 
         for expected_column, expected_type in required_columns.items():
@@ -110,7 +132,7 @@ class TestDestinationConnectorMSSQL(TestCase):
                     f"Column '{expected_column}' has type '{actual_type}', expected one of {expected_type}",
                 )
             else:
-                # MSSQL may return different type names, normalize for comparison
+                # Redshift may return different type names, normalize for comparison
                 self.assertEqual(
                     actual_type.upper(),
                     expected_type.upper(),
@@ -145,12 +167,12 @@ class TestDestinationConnectorMSSQL(TestCase):
         return Mock()
 
     def create_real_connector_instance(self) -> Mock:
-        """Create connector instance using real MSSQL connector."""
+        """Create connector instance using real Redshift connector."""
         connector = Mock()
-        connector.connector_id = MSSQL.get_id()
-        connector.connector_metadata = self.mssql_config
+        connector.connector_id = Redshift.get_id()
+        connector.connector_metadata = self.redshift_config
         # Store reference to real connector for potential future use
-        connector._real_mssql_connector = self.mssql_connector
+        connector._real_redshift_connector = self.redshift_connector
         return connector
 
     def create_mock_endpoint(self, mock_connector_instance: Mock) -> Mock:
@@ -196,8 +218,8 @@ class TestDestinationConnectorMSSQL(TestCase):
                     )
                     return connector
 
-    def test_insert_into_db_happy_path_mssql(self) -> None:
-        """Test successful insertion into real MSSQL database."""
+    def test_insert_into_db_happy_path_redshift(self) -> None:
+        """Test successful insertion into real Redshift database."""
         # Create mock objects for Django models
         mock_workflow = self.create_mock_workflow()
         mock_workflow_log = self.create_mock_workflow_log()
@@ -209,7 +231,7 @@ class TestDestinationConnectorMSSQL(TestCase):
             mock_workflow, mock_workflow_log, mock_endpoint
         )
 
-        # Test the insert_into_db method with real MSSQL
+        # Test the insert_into_db method with real Redshift
         try:
             # Mock only the methods that get data, let database operations be real
             with patch.object(
@@ -222,7 +244,7 @@ class TestDestinationConnectorMSSQL(TestCase):
                     "get_combined_metadata",
                     return_value=self.test_metadata,
                 ):
-                    # This will execute real database operations using MSSQL connector
+                    # This will execute real database operations using Redshift connector
                     destination_connector.insert_into_db(
                         input_file_path=self.input_file_path, error=None
                     )
@@ -230,14 +252,14 @@ class TestDestinationConnectorMSSQL(TestCase):
             # Verify the table structure
             self.verify_table_columns(self.test_table_name)
 
-            print("✅ MSSQL integration test completed successfully!")
+            print("✅ Redshift integration test completed successfully!")
 
         except Exception as e:
-            print(f"❌ MSSQL integration test failed: {str(e)}")
+            print(f"❌ Redshift integration test failed: {str(e)}")
             raise
 
-    def test_insert_into_db_with_error_mssql(self) -> None:
-        """Test insertion with error parameter into real MSSQL database."""
+    def test_insert_into_db_with_error_redshift(self) -> None:
+        """Test insertion with error parameter into real Redshift database."""
         # Create mock objects
         mock_workflow = self.create_mock_workflow()
         mock_workflow_log = self.create_mock_workflow_log()
@@ -271,29 +293,29 @@ class TestDestinationConnectorMSSQL(TestCase):
         self.verify_table_columns(self.test_table_name)
 
         print(
-            f"✅ Successfully inserted error data into MSSQL table: {self.test_table_name}"
+            f"✅ Successfully inserted error data into Redshift table: {self.test_table_name}"
         )
 
-    def test_mssql_connector_connection(self) -> None:
-        """Test that the MSSQL connector can establish a connection."""
-        # Test the real MSSQL connector directly
+    def test_redshift_connector_connection(self) -> None:
+        """Test that the Redshift connector can establish a connection."""
+        # Test the real Redshift connector directly
         try:
-            engine = self.mssql_connector.get_engine()
+            engine = self.redshift_connector.get_engine()
             self.assertIsNotNone(engine)
-            print("✅ MSSQL connector successfully established connection")
+            print("✅ Redshift connector successfully established connection")
 
             # Test a simple query to verify connection works
             with engine.cursor() as cursor:
                 cursor.execute("SELECT 1 as test_column")
                 result = cursor.fetchall()
                 self.assertIsNotNone(result)
-                print("✅ MSSQL connector successfully executed test query")
+                print("✅ Redshift connector successfully executed test query")
 
             # Clean up
             if hasattr(engine, "close"):
                 engine.close()
         except Exception as e:
-            self.fail(f"MSSQL connector failed to connect: {str(e)}")
+            self.fail(f"Redshift connector failed to connect: {str(e)}")
 
     def tearDown(self) -> None:
         """Clean up test resources."""

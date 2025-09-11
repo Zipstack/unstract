@@ -68,10 +68,9 @@ class UnstractDB(UnstractConnector, ABC):
     def python_social_auth_backend() -> str:
         return ""
 
-    @abstractmethod
     def get_string_type(self) -> str:
         """Child classes implement this to return the string type name for their DB."""
-        pass
+        return "Text"
 
     @abstractmethod
     def get_engine(self) -> Any:
