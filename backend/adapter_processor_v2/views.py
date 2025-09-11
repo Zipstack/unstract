@@ -193,23 +193,14 @@ class AdapterInstanceViewSet(ModelViewSet):
 
         # Decrypt metadata to get configuration
         try:
-        # Validate URLs for security without full adapter testing
-        adapter_id = serializer.validated_data.get(AdapterKeys.ADAPTER_ID)
-        adapter_metadata_b = serializer.validated_data.get(AdapterKeys.ADAPTER_METADATA_B)
-
-        from rest_framework.exceptions import ValidationError
-        if not adapter_metadata_b:
-            raise ValidationError("Missing adapter metadata for validation.")
-
-        # Decrypt metadata to get configuration
-        try:
             fernet = Fernet(settings.ENCRYPTION_KEY.encode("utf-8"))
             decrypted_json = fernet.decrypt(adapter_metadata_b)
             decrypted_metadata = json.loads(decrypted_json.decode("utf-8"))
             # Ensure object shape
-            from rest_framework.exceptions import ValidationError
             if not isinstance(decrypted_metadata, dict):
-                raise ValidationError("Invalid adapter metadata format: expected JSON object.")
+                raise ValidationError(
+                    "Invalid adapter metadata format: expected JSON object."
+                )
         except Exception as e:  # InvalidToken/JSONDecodeError/TypeError/etc.
             raise ValidationError("Invalid adapter metadata.") from e
 
