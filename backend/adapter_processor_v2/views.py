@@ -421,7 +421,7 @@ class AdapterInstanceViewSet(ModelViewSet):
                 AdapterKeys.ADAPTER_METADATA_B
             )
 
-        if not adapter_id or adapter_metadata_b:
+        if not adapter_id or not adapter_metadata_b:
             raise ValidationError("Missing adapter metadata for validation.")
 
         # Decrypt metadata to get configuration
