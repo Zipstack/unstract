@@ -120,7 +120,7 @@ function Workflows() {
       })
       .catch((err) => {
         setAlertDetails(
-          handleException(err, `Unable to delete workflow ${editingProject.id}`)
+          handleException(err, `Unable to update workflow ${editingProject.id}`)
         );
       })
       .finally(() => {
