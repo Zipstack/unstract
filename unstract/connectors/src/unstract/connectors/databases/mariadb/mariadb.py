@@ -49,6 +49,30 @@ class MariaDB(UnstractDB, MysqlHandler):
     def can_read() -> bool:
         return True
 
+    def get_string_type(self) -> str:
+        return "longtext"
+
+    def get_information_schema(self, table_name: str) -> dict[str, str]:
+        """Function to generate information schema of the MariaDB table.
+
+        Args:
+            table_name (str): db-connector table name
+
+        Returns:
+            dict[str, str]: a dictionary contains db column name and
+            db column types of corresponding table
+        """
+        query = (
+            "SELECT column_name, data_type FROM "
+            "information_schema.columns WHERE "
+            f"table_name = '{table_name}' AND table_schema = '{self.database}'"
+        )
+        results = self.execute(query=query)
+        column_types: dict[str, str] = self.get_db_column_types(
+            columns_with_types=results
+        )
+        return column_types
+
     def get_engine(self) -> Connection:  # type: ignore[type-arg]
         con = pymysql.connect(
             host=self.host,
