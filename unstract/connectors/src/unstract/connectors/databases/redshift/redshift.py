@@ -127,24 +127,3 @@ class Redshift(UnstractDB, PsycoPgHandler):
             schema=self.schema,
             table_name=table_name,
         )
-
-    def is_string_column(self, table_info: dict[str, str], column_name: str) -> bool:
-        """Check if the column is a string type specific to the DB connector.
-
-        Args:
-            table_info (dict): column_name -> column_type
-            column_name (str): name of column to check
-
-        Returns:
-            bool: True if column is a string type
-        """
-        print("***** unstract_db.py is_string_column table_info *****", table_info)
-
-        column_type = table_info.get(column_name)
-
-        print("***** unstract_db.py is_string_column column_type *****", column_type)
-
-        if column_type is None:
-            return False
-
-        return f"{column_name}_v2" not in table_info
