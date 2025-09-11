@@ -119,7 +119,9 @@ function Workflows() {
         getProjectList();
       })
       .catch((err) => {
-        handleException(err, "", setBackendErrors);
+        setAlertDetails(
+          handleException(err, `Unable to delete workflow ${editingProject.id}`)
+        );
       })
       .finally(() => {
         setLoading(false);
