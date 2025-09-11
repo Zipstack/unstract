@@ -91,7 +91,7 @@ class OracleDB(UnstractDB):
             float: "LONG",
             datetime.datetime: "TIMESTAMP",
             dict: "CLOB",
-            list: "VARCHAR2(32767)",
+            list: "CLOB",
         }
         return mapping.get(python_type, "VARCHAR2(32767)")
 
@@ -167,7 +167,7 @@ class OracleDB(UnstractDB):
         """
         # Return one ALTER statement per column for Oracle compatibility
         return [
-            f"ALTER TABLE {table_name} ADD {column_name}_v2 VARCHAR2(32767)",
+            f"ALTER TABLE {table_name} ADD {column_name}_v2 CLOB",
             f"ALTER TABLE {table_name} ADD metadata CLOB",
             f"ALTER TABLE {table_name} ADD user_field_1 NUMBER(1) DEFAULT 0",
             f"ALTER TABLE {table_name} ADD user_field_2 NUMBER DEFAULT 0",
