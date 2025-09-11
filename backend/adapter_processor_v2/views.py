@@ -186,24 +186,26 @@ class AdapterInstanceViewSet(ModelViewSet):
         adapter_id = serializer.validated_data.get(AdapterKeys.ADAPTER_ID)
         adapter_metadata_b = serializer.validated_data.get(AdapterKeys.ADAPTER_METADATA_B)
 
+        from rest_framework.exceptions import ValidationError
+        if not adapter_metadata_b:
+            raise ValidationError("Missing adapter metadata for validation.")
+
         # Decrypt metadata to get configuration
-        decrypted_metadata = json.loads(
-            Fernet(settings.ENCRYPTION_KEY.encode("utf-8"))
-            .decrypt(adapter_metadata_b)
-            .decode("utf-8")
-        )
+        try:
+            fernet = Fernet(settings.ENCRYPTION_KEY.encode("utf-8"))
+            decrypted_json = fernet.decrypt(adapter_metadata_b)
+            decrypted_metadata = json.loads(decrypted_json.decode("utf-8"))
+        except Exception as e:  # InvalidToken/JSONDecodeError/TypeError/etc.
+            raise ValidationError("Invalid adapter metadata.") from e
 
         # Validate URLs for this adapter configuration
         try:
             AdapterProcessor.validate_adapter_urls(adapter_id, decrypted_metadata)
-        except SdkError as e:
-            from rest_framework.exceptions import ValidationError
-
+        except Exception as e:
             # Format error message similar to test adapter API
             adapter_name = decrypted_metadata.get(AdapterKeys.ADAPTER_NAME, "adapter")
-            error_detail = f"Error testing '{adapter_name}'. {str(e)}"
-            raise ValidationError(error_detail)
-
+            error_detail = f"Error testing '{adapter_name}'. {e!s}"
+            raise ValidationError(error_detail) from e
         try:
             adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
 
