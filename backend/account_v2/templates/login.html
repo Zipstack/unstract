@@ -94,8 +94,7 @@
         .logo-box{
             width: 100%;
             text-align: center;
-            margin-bottom: 20px;
-            margin-top: 20px;
+            transform: scale(0.8);
         }
         .login-heading{
             font-size: 24px;
@@ -109,9 +108,8 @@
             <!-- Spinner animation -->
             <div class="lds-dual-ring"></div>
         </div>
-        {% load static %}
         <div class="logo-box">
-            <img src="{% static 'logo.svg' %}" alt="My image">
+            <img src="/favicon.ico" alt="Unstract Logo">
         </div>
         <h2 class="login-heading">Login</h2>
         {% if error_message %}
