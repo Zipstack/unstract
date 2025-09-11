@@ -17,6 +17,7 @@ from permissions.permission import (
 )
 from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import ModelSerializer
@@ -187,8 +188,6 @@ class AdapterInstanceViewSet(ModelViewSet):
         adapter_id = serializer.validated_data.get(AdapterKeys.ADAPTER_ID)
         adapter_metadata_b = serializer.validated_data.get(AdapterKeys.ADAPTER_METADATA_B)
 
-        from rest_framework.exceptions import ValidationError
-
         if not adapter_metadata_b:
             raise ValidationError("Missing adapter metadata for validation.")
 
@@ -202,7 +201,7 @@ class AdapterInstanceViewSet(ModelViewSet):
 
         # Validate URLs for this adapter configuration
         try:
-            AdapterProcessor.validate_adapter_urls(adapter_id, decrypted_metadata)
+            _ = AdapterProcessor.validate_adapter_urls(adapter_id, decrypted_metadata)
         except Exception as e:
             # Format error message similar to test adapter API
             adapter_name = decrypted_metadata.get(AdapterKeys.ADAPTER_NAME, "adapter")
@@ -404,9 +403,7 @@ class AdapterInstanceViewSet(ModelViewSet):
                 AdapterKeys.ADAPTER_METADATA_B
             )
 
-        from rest_framework.exceptions import ValidationError
-
-        if not adapter_metadata_b:
+        if not adapter_id or adapter_metadata_b:
             raise ValidationError("Missing adapter metadata for validation.")
 
         # Decrypt metadata to get configuration
@@ -419,7 +416,7 @@ class AdapterInstanceViewSet(ModelViewSet):
 
         # Validate URLs for this adapter configuration
         try:
-            AdapterProcessor.validate_adapter_urls(adapter_id, decrypted_metadata)
+            _ = AdapterProcessor.validate_adapter_urls(adapter_id, decrypted_metadata)
         except Exception as e:
             # Format error message similar to test adapter API
             adapter_name = decrypted_metadata.get(AdapterKeys.ADAPTER_NAME, "adapter")

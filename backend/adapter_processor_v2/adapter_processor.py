@@ -9,6 +9,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from platform_settings_v2.platform_auth_service import (
     PlatformAuthenticationService,
 )
+from rest_framework.exceptions import ValidationError
 from tenant_account_v2.organization_member_service import (
     OrganizationMemberService,
 )
@@ -98,8 +99,6 @@ class AdapterProcessor:
     def test_adapter(adapter_id: str, adapter_metadata: dict[str, Any]) -> bool:
         logger.info(f"Testing adapter: {adapter_id}")
         try:
-            adapter_class = Adapterkit().get_adapter_class_by_adapter_id(adapter_id)
-
             if adapter_metadata.pop(AdapterKeys.ADAPTER_TYPE) == AdapterKeys.X2TEXT:
                 if (
                     adapter_metadata.get(AdapterKeys.PLATFORM_PROVIDED_UNSTRACT_KEY)
@@ -113,7 +112,17 @@ class AdapterProcessor:
                     platform_key.key
                 )
 
-            adapter_instance = adapter_class(adapter_metadata)
+            # Validate URLs for this adapter configuration
+            try:
+                adapter_instance = AdapterProcessor.validate_adapter_urls(
+                    adapter_id, adapter_metadata
+                )
+            except Exception as e:
+                # Format error message similar to test adapter API
+                adapter_name = adapter_metadata.get(AdapterKeys.ADAPTER_NAME, "adapter")
+                error_detail = f"Error testing '{adapter_name}'. {e!s}"
+                raise ValidationError(error_detail) from e
+            # adapter_instance = adapter_class(adapter_metadata)
             test_result: bool = adapter_instance.test_connection()
             return test_result
         except SdkError as e:
@@ -137,7 +146,7 @@ class AdapterProcessor:
         return adapter_metadata_b
 
     @staticmethod
-    def validate_adapter_urls(adapter_id: str, adapter_metadata: dict) -> None:
+    def validate_adapter_urls(adapter_id: str, adapter_metadata: dict) -> Adapter:
         """Validate URLs for an adapter configuration without full connection test.
 
         This method only validates URLs for security (SSRF protection) without
@@ -146,6 +155,9 @@ class AdapterProcessor:
         Args:
             adapter_id: The adapter ID (e.g., "postgres|70ab6cc2...")
             adapter_metadata: The adapter configuration metadata
+
+        Returns:
+            Adapter: The adapter instance if validation passes
 
         Raises:
             AdapterError: If URL validation fails due to security violations
@@ -157,10 +169,7 @@ class AdapterProcessor:
 
             # Create a temporary instance just to get configured URLs
             # This will trigger URL validation in __init__ but not full connection test
-            adapter_class(adapter_metadata)
-
-            # If we reach here, URL validation passed
-            logger.debug(f"URL validation passed for adapter {adapter_id}")
+            return adapter_class(adapter_metadata)
 
         except Exception as e:
             logger.error(f"URL validation failed for adapter {adapter_id}: {str(e)}")
