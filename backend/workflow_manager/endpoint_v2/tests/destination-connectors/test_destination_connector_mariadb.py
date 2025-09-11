@@ -18,7 +18,7 @@ class TestDestinationConnectorMariaDB(TestCase):
         # MariaDB connection settings for testing
         required_env_vars = [
             "MARIADB_HOST",
-            "MARIADB_PORT", 
+            "MARIADB_PORT",
             "MARIADB_DATABASE",
             "MARIADB_USER",
             "MARIADB_PASSWORD",
@@ -363,7 +363,7 @@ class TestDestinationConnectorMariaDB(TestCase):
         engine = self.mariadb_connector.get_engine()
         try:
             cursor = engine.cursor()
-            
+
             # Create the table first if it doesn't exist
             create_table_query = self.mariadb_connector.get_create_table_base_query(
                 self.test_table_name
@@ -374,34 +374,34 @@ class TestDestinationConnectorMariaDB(TestCase):
                 "execution_id LONGTEXT, "
                 "data LONGTEXT)"
             )
-            
+
             cursor.execute(create_table_query)
-            
+
             # Test inserting valid ENUM values
             cursor.execute(
                 f"INSERT INTO {self.test_table_name} (id, status, created_at) VALUES (%s, %s, NOW())",
                 ("test-enum-1", "SUCCESS")
             )
-            
+
             cursor.execute(
                 f"INSERT INTO {self.test_table_name} (id, status, created_at) VALUES (%s, %s, NOW())",
                 ("test-enum-2", "ERROR")
             )
-            
+
             # Verify the data was inserted
             cursor.execute(
                 f"SELECT id, status FROM {self.test_table_name} WHERE id IN (%s, %s)",
                 ("test-enum-1", "test-enum-2")
             )
             results = cursor.fetchall()
-            
+
             self.assertEqual(len(results), 2, "Expected 2 rows to be inserted")
-            
+
             # Verify ENUM values
             statuses = [row[1] for row in results]
             self.assertIn("SUCCESS", statuses)
             self.assertIn("ERROR", statuses)
-            
+
             cursor.close()
             print("✅ MariaDB ENUM data type verification successful")
 
@@ -412,28 +412,28 @@ class TestDestinationConnectorMariaDB(TestCase):
     def test_mariadb_legacy_to_v2_migration(self) -> None:
         """Test complete legacy table to v2 migration workflow."""
         legacy_table_name = "output_1"
-        
+
         # # Step 1: Create a legacy table manually (simulating old table structure)
         # print("🏗️ Step 1: Creating legacy table...")
         # self._create_legacy_table(legacy_table_name)
-        
+
         # Step 2: Verify table is detected as legacy
         print("🔍 Step 2: Verifying table is detected as legacy...")
         is_legacy = self._verify_table_is_legacy(legacy_table_name)
         self.assertTrue(is_legacy, "Table should be detected as legacy")
-        
+
         # Step 3: Trigger migration using the real migration flow
         print("⚡ Step 3: Initiating migration...")
         self._initiate_migration_via_workflow(legacy_table_name)
-        
+
         # Step 4: Verify migration was successful
         print("✅ Step 4: Verifying migration success...")
         self._verify_migration_success(legacy_table_name)
-        
+
         # Step 5: Test dual column writing (legacy + v2)
         print("📝 Step 5: Testing dual column writing...")
         self._test_dual_column_writing(legacy_table_name)
-        
+
         print("🎉 Migration test completed successfully!")
 
     def _create_legacy_table(self, table_name: str) -> None:
@@ -441,11 +441,11 @@ class TestDestinationConnectorMariaDB(TestCase):
         engine = self.mariadb_connector.get_engine()
         try:
             cursor = engine.cursor()
-            
+
             # FORCE DROP AND RECREATE to ensure clean legacy table
             cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
             print(f"🗑️ Dropped existing table '{table_name}' if it existed")
-            
+
             # Create fresh legacy table with LONGTEXT data column (not JSON)
             legacy_create_query = f"""
             CREATE TABLE {table_name} (
@@ -457,20 +457,20 @@ class TestDestinationConnectorMariaDB(TestCase):
                 execution_id LONGTEXT
             )
             """
-            
+
             cursor.execute(legacy_create_query)
             print(f"📋 Created fresh legacy table '{table_name}' with LONGTEXT data column")
-            
+
             # Insert some legacy data to make it realistic
             cursor.execute(
                 f"INSERT INTO {table_name} (id, created_by, created_at, data, file_path, execution_id) VALUES (%s, %s, NOW(), %s, %s, %s)",
                 ("legacy-1", "Legacy/DBWriter", '{"old": "legacy_data"}', "/legacy/file.pdf", "legacy-exec-1")
             )
             print(f"📝 Inserted legacy test data into '{table_name}'")
-            
+
             cursor.close()
             print(f"✅ Legacy table '{table_name}' setup completed")
-            
+
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -483,14 +483,14 @@ class TestDestinationConnectorMariaDB(TestCase):
                 table_info=self.mariadb_connector.get_information_schema(table_name),
                 column_name="data"
             )
-            
+
             if is_string_column:
                 print(f"✅ Table '{table_name}' correctly detected as legacy (data column is string type)")
                 return True
             else:
                 print(f"❌ Table '{table_name}' not detected as legacy")
                 return False
-                
+
         except Exception as e:
             print(f"❌ Error checking legacy status: {e}")
             return False
@@ -501,7 +501,7 @@ class TestDestinationConnectorMariaDB(TestCase):
         mock_workflow = self.create_mock_workflow()
         mock_workflow_log = self.create_mock_workflow_log()
         mock_connector_instance = self.create_real_connector_instance()
-        
+
         # Create endpoint with the legacy table name
         mock_endpoint = Mock()
         mock_endpoint.connector_instance = mock_connector_instance
@@ -541,7 +541,7 @@ class TestDestinationConnectorMariaDB(TestCase):
             ):
                 # This should trigger the migration logic automatically
                 destination_connector.insert_into_db(
-                    input_file_path="/migration/test/file.pdf", 
+                    input_file_path="/migration/test/file.pdf",
                     error=None
                 )
 
@@ -550,25 +550,25 @@ class TestDestinationConnectorMariaDB(TestCase):
     def _verify_migration_success(self, table_name: str) -> None:
         """Verify that migration was successful by checking for v2 columns."""
         table_info = self.mariadb_connector.get_information_schema(table_name)
-        
+
         # Check for v2 columns that should have been added during migration
         expected_v2_columns = {
             "data_v2": "json",
-            "metadata": "json", 
+            "metadata": "json",
             "user_field_1": "tinyint",
             "user_field_2": "bigint",
             "user_field_3": "longtext",
             "status": "enum",
             "error_message": "longtext"
         }
-        
+
         for column_name, expected_type in expected_v2_columns.items():
             self.assertIn(
-                column_name, 
-                table_info, 
+                column_name,
+                table_info,
                 f"Migration failed: Column '{column_name}' not found after migration"
             )
-            
+
             actual_type = table_info[column_name].lower()
             if expected_type == "json":
                 # MariaDB might return different representations for JSON
@@ -589,7 +589,7 @@ class TestDestinationConnectorMariaDB(TestCase):
                     expected_type,
                     f"Column '{column_name}' has type '{actual_type}', expected '{expected_type}'"
                 )
-        
+
         print(f"✅ Migration verification successful - all v2 columns present in '{table_name}'")
 
     def _test_dual_column_writing(self, table_name: str) -> None:
@@ -597,35 +597,35 @@ class TestDestinationConnectorMariaDB(TestCase):
         engine = self.mariadb_connector.get_engine()
         try:
             cursor = engine.cursor()
-            
+
             # Query the latest inserted row to verify dual writing
             cursor.execute(
                 f"""
-                SELECT data, data_v2, metadata, status, error_message 
-                FROM {table_name} 
+                SELECT data, data_v2, metadata, status, error_message
+                FROM {table_name}
                 WHERE file_path = '/migration/test/file.pdf'
-                ORDER BY created_at DESC 
+                ORDER BY created_at DESC
                 LIMIT 1
                 """
             )
             row = cursor.fetchone()
-            
+
             self.assertIsNotNone(row, "No migrated data found in table")
-            
+
             data_legacy, data_v2, metadata, status, error_message = row
-            
+
             # Verify legacy column has data
             self.assertIsNotNone(data_legacy, "Legacy data column should not be empty")
-            
-            # Verify v2 column has data  
+
+            # Verify v2 column has data
             self.assertIsNotNone(data_v2, "V2 data column should not be empty")
-            
+
             # Verify metadata column has data
             self.assertIsNotNone(metadata, "Metadata column should not be empty")
-            
+
             # Verify status is set correctly
             self.assertEqual(status, "SUCCESS", "Status should be SUCCESS for successful migration")
-            
+
             # Parse and verify JSON data (if stored as JSON string in legacy)
             if isinstance(data_legacy, str):
                 try:
@@ -634,10 +634,10 @@ class TestDestinationConnectorMariaDB(TestCase):
                 except json.JSONDecodeError:
                     # If not JSON, just verify it contains our test data somehow
                     self.assertIn("migration_test", str(data_legacy))
-            
+
             cursor.close()
             print(f"✅ Dual column writing verification successful for '{table_name}'")
-            
+
         finally:
             if hasattr(engine, "close"):
                 engine.close()
