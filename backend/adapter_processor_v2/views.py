@@ -412,6 +412,7 @@ class AdapterInstanceViewSet(ModelViewSet):
         serializer.is_valid(raise_exception=True)
 
         # Validate URLs for security if metadata is being updated
+        # Validate URLs for security if metadata is being updated
         if AdapterKeys.ADAPTER_METADATA_B in serializer.validated_data:
             adapter_id = (
                 serializer.validated_data.get(AdapterKeys.ADAPTER_ID)
@@ -420,27 +421,30 @@ class AdapterInstanceViewSet(ModelViewSet):
             adapter_metadata_b = serializer.validated_data.get(
                 AdapterKeys.ADAPTER_METADATA_B
             )
-
-        if not adapter_id or not adapter_metadata_b:
-            raise ValidationError("Missing adapter metadata for validation.")
-
-        # Decrypt metadata to get configuration
-        try:
-            fernet = Fernet(settings.ENCRYPTION_KEY.encode("utf-8"))
-            decrypted_json = fernet.decrypt(adapter_metadata_b)
-            decrypted_metadata = json.loads(decrypted_json.decode("utf-8"))
-        except Exception as e:  # InvalidToken/JSONDecodeError/TypeError/etc.
-            raise ValidationError("Invalid adapter metadata.") from e
-
-        # Validate URLs for this adapter configuration
-        try:
-            _ = AdapterProcessor.validate_adapter_urls(adapter_id, decrypted_metadata)
-        except Exception as e:
-            # Format error message similar to test adapter API
-            adapter_name = decrypted_metadata.get(AdapterKeys.ADAPTER_NAME, "adapter")
-            error_detail = f"Error testing '{adapter_name}'. {e!s}"
-            raise ValidationError(error_detail) from e
-
+            if not adapter_id or not adapter_metadata_b:
+                raise ValidationError("Missing adapter metadata for validation.")
+            # Decrypt metadata to get configuration
+            try:
+                fernet = Fernet(settings.ENCRYPTION_KEY.encode("utf-8"))
+                decrypted_json = fernet.decrypt(adapter_metadata_b)
+                decrypted_metadata = json.loads(decrypted_json.decode("utf-8"))
+                if not isinstance(decrypted_metadata, dict):
+                    raise ValidationError(
+                        "Invalid adapter metadata format: expected JSON object."
+                    )
+            except Exception as e:  # InvalidToken/JSONDecodeError/TypeError/etc.
+                raise ValidationError("Invalid adapter metadata.") from e
+            # Validate URLs for this adapter configuration
+            try:
+                AdapterProcessor.validate_adapter_urls(adapter_id, decrypted_metadata)
+            except Exception as e:
+                adapter_name = (
+                    decrypted_metadata.get(AdapterKeys.ADAPTER_NAME, "adapter")
+                    if isinstance(decrypted_metadata, dict)
+                    else "adapter"
+                )
+                error_detail = f"Error testing '{adapter_name}'. {e!s}"
+                raise ValidationError(error_detail) from e
         if use_platform_unstract_key:
             logger.error("Processing adapter with platform key")
             serializer = self.get_serializer(adapter, data=request.data, partial=True)
