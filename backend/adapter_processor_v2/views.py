@@ -43,7 +43,6 @@ from adapter_processor_v2.serializers import (
     TestAdapterSerializer,
     UserDefaultAdapterSerializer,
 )
-from unstract.sdk.exceptions import SdkError
 
 from .constants import AdapterKeys as constant
 from .models import AdapterInstance, UserDefaultAdapter
@@ -187,6 +186,7 @@ class AdapterInstanceViewSet(ModelViewSet):
         adapter_metadata_b = serializer.validated_data.get(AdapterKeys.ADAPTER_METADATA_B)
 
         from rest_framework.exceptions import ValidationError
+
         if not adapter_metadata_b:
             raise ValidationError("Missing adapter metadata for validation.")
 
