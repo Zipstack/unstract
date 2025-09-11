@@ -68,10 +68,9 @@ class UnstractDB(UnstractConnector, ABC):
     def python_social_auth_backend() -> str:
         return ""
 
-    @abstractmethod
     def get_string_type(self) -> str:
         """Child classes implement this to return the string type name for their DB."""
-        pass
+        return "Text"
 
     @abstractmethod
     def get_engine(self) -> Any:
@@ -232,30 +231,19 @@ class UnstractDB(UnstractConnector, ABC):
             column_types[column_name] = data_type
         return column_types
 
-    def is_string_column(self, table_info: dict[str, str], column_name: str) -> bool:
-        """Check if the column is a string type specific to the DB connector.
+    def has_no_metadata(self, table_info: dict[str, str]) -> bool:
+        """Check if metadata field exists in table_info (case-insensitive).
 
         Args:
-            table_info (dict): column_name -> column_type
-            column_name (str): name of column to check
+            table_info: Dictionary containing table field names and their types
 
         Returns:
-            bool: True if column is a string type
+            bool: False if metadata exists, True if metadata does not exist
         """
-        print("***** unstract_db.py is_string_column table_info *****", table_info)
-
-        column_type = table_info.get(column_name)
-
-        print("***** unstract_db.py is_string_column column_type *****", column_type)
-
-        if column_type is None:
-            return False
-
-        # Skip migration if *_v2 column already exists
-        if f"{column_name}_v2" in table_info:
-            return False
-
-        return column_type.lower() == self.get_string_type().lower()
+        print("$$$$$ table_info $$$$$", table_info)
+        # Check case-insensitively for metadata column
+        metadata_exists = any(key.lower() == "metadata" for key in table_info.keys())
+        return not metadata_exists
 
     def migrate_table_to_v2(
         self, table_name: str, column_name: str, engine: Any

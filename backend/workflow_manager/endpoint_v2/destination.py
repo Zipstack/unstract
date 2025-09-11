@@ -373,9 +373,7 @@ class DestinationConnector(BaseConnector):
 
         # Check whether to migrate table to include new columns
         if table_info:
-            if db_class.is_string_column(
-                table_info=table_info, column_name=single_column_name
-            ):
+            if db_class.has_no_metadata(table_info=table_info):
                 print("##### destination.py migrate_table_to_v2 #####")
                 table_info = db_class.migrate_table_to_v2(
                     table_name=table_name,

@@ -5,41 +5,39 @@ from django.test import TestCase
 from workflow_manager.endpoint_v2.constants import DestinationKey
 from workflow_manager.endpoint_v2.destination import DestinationConnector
 
-from unstract.connectors.databases.snowflake import SnowflakeDB
+from unstract.connectors.databases.oracle_db import OracleDB
 
 
-class TestDestinationConnectorSnowflake(TestCase):
-    """Integration test for insert_into_db method with real Snowflake connector."""
+class TestDestinationConnectorOracle(TestCase):
+    """Integration test for insert_into_db method with real Oracle DB connector."""
 
     def setUp(self) -> None:
-        """Set up test data and real Snowflake configuration."""
+        """Set up test data and real Oracle DB configuration."""
 
-        # Snowflake connection settings for testing
+        # Oracle DB connection settings for testing
         required_env_vars = [
-            "SNOWFLAKE_ACCOUNT",
-            "SNOWFLAKE_USER",
-            "SNOWFLAKE_PASSWORD",
-            "SNOWFLAKE_DATABASE",
-            "SNOWFLAKE_SCHEMA",
-            "SNOWFLAKE_WAREHOUSE",
-            "SNOWFLAKE_ROLE",
+            "ORACLE_CONFIG_DIR",
+            "ORACLE_USER",
+            "ORACLE_PASSWORD",
+            "ORACLE_DSN",
+            "ORACLE_WALLET_LOCATION",
+            "ORACLE_WALLET_PASSWORD",
         ]
 
         # Check if all required environment variables are set
         missing_vars = [var for var in required_env_vars if not os.getenv(var)]
         if missing_vars:
             self.skipTest(
-                f"Required Snowflake environment variables not set: {', '.join(missing_vars)}"
+                f"Required Oracle DB environment variables not set: {', '.join(missing_vars)}"
             )
 
-        self.snowflake_config = {
-            "account": os.getenv("SNOWFLAKE_ACCOUNT"),
-            "user": os.getenv("SNOWFLAKE_USER"),
-            "password": os.getenv("SNOWFLAKE_PASSWORD"),
-            "database": os.getenv("SNOWFLAKE_DATABASE"),
-            "schema": os.getenv("SNOWFLAKE_SCHEMA"),
-            "warehouse": os.getenv("SNOWFLAKE_WAREHOUSE"),
-            "role": os.getenv("SNOWFLAKE_ROLE"),
+        self.oracle_config = {
+            "config_dir": os.getenv("ORACLE_CONFIG_DIR"),
+            "user": os.getenv("ORACLE_USER"),
+            "password": os.getenv("ORACLE_PASSWORD"),
+            "dsn": os.getenv("ORACLE_DSN"),
+            "wallet_location": os.getenv("ORACLE_WALLET_LOCATION"),
+            "wallet_password": os.getenv("ORACLE_WALLET_PASSWORD"),
         }
 
         # Test data that will be inserted into the database
@@ -51,51 +49,60 @@ class TestDestinationConnectorSnowflake(TestCase):
         }
         self.input_file_path = "/path/to/test/file.pdf"
 
-        # Snowflake table naming (use schema.table format)
-        self.test_table_name = f"{self.snowflake_config['schema']}.output_1"
+        # Oracle table naming (typically uppercase)
+        self.test_table_name = "output_1"
 
-        # Create real Snowflake connector instance
-        self.snowflake_connector = SnowflakeDB(settings=self.snowflake_config)
+        # Create real Oracle DB connector instance
+        self.oracle_connector = OracleDB(settings=self.oracle_config)
 
-        # Expected columns based on configuration (Snowflake data types)
+        # Expected columns based on configuration (Oracle data types)
         self.expected_columns = {
-            "id": "TEXT",
-            "file_path": "TEXT",
-            "execution_id": "TEXT",
-            "data": "TEXT",  # Legacy column remains TEXT after migration
-            "data_v2": "VARIANT",  # New VARIANT column added during migration
-            "metadata": "VARIANT",  # New VARIANT column added during migration
-            "created_at": "TIMESTAMP_NTZ",
-            "created_by": "TEXT",
-            "status": "TEXT",
-            "error_message": "TEXT",
-            "user_field_1": "BOOLEAN",
-            "user_field_2": "NUMBER",
-            "user_field_3": "TEXT",
+            "ID": "VARCHAR2",
+            "FILE_PATH": "VARCHAR2",
+            "EXECUTION_ID": "VARCHAR2",
+            "DATA": "CLOB",  # Legacy column remains CLOB after migration
+            "DATA_V2": "CLOB",  # New CLOB column added during migration
+            "METADATA": "CLOB",  # New CLOB column added during migration
+            "CREATED_AT": "TIMESTAMP",
+            "CREATED_BY": "VARCHAR2",
+            "STATUS": "VARCHAR2",
+            "ERROR_MESSAGE": "VARCHAR2",
+            "USER_FIELD_1": "NUMBER",
+            "USER_FIELD_2": "NUMBER",
+            "USER_FIELD_3": "VARCHAR2",
         }
 
     def verify_table_columns(self, table_name: str) -> None:
         """Verify that the table has expected columns with correct data types."""
-        table_info = self.snowflake_connector.get_information_schema(
-            table_name=table_name
-        )
+        table_info = self.oracle_connector.get_information_schema(table_name=table_name)
 
         print(f"🔍 Actual table structure for '{table_name}': {table_info}")
 
         # Check that key columns exist (some columns may be created on-demand)
         required_columns = {
-            "id": "VARCHAR",  # Snowflake uses VARCHAR instead of TEXT
-            "file_path": "VARCHAR",  # Snowflake uses VARCHAR instead of TEXT
-            "execution_id": "VARCHAR",  # Snowflake uses VARCHAR instead of TEXT
-            "data": ["VARCHAR", "VARIANT"],  # Can be either, migration might convert
-            "metadata": "VARIANT",  # New VARIANT column added during migration
-            "created_at": "TIMESTAMP_NTZ",
-            "created_by": "VARCHAR",  # Snowflake uses VARCHAR instead of TEXT
+            "ID": ["VARCHAR2"],  # Oracle uses VARCHAR2
+            "FILE_PATH": ["CLOB", "VARCHAR2"],  # Oracle can use either CLOB or VARCHAR2
+            "EXECUTION_ID": [
+                "CLOB",
+                "VARCHAR2",
+            ],  # Oracle can use either CLOB or VARCHAR2
+            "DATA": [
+                "CLOB",
+                "VARCHAR2",
+            ],  # Can be CLOB or VARCHAR2, depends on migration scenario
+            "METADATA": [
+                "CLOB",
+            ],  # New CLOB column added during migration for JSON data
+            "CREATED_AT": ["TIMESTAMP", "TIMESTAMP(6)"],  # Oracle timestamp types
+            "CREATED_BY": ["VARCHAR2"],  # Oracle uses VARCHAR2
         }
 
         # Optional columns that may exist in migration scenarios
         optional_columns = {
-            "data_v2": ["VARCHAR", "VARIANT"],  # Only exists in migration scenarios
+            "DATA_V2": [
+                "CLOB",
+                "VARCHAR2",
+            ],  # Can be CLOB or VARCHAR2 in migration scenarios
         }
 
         for expected_column, expected_type in required_columns.items():
@@ -114,7 +121,7 @@ class TestDestinationConnectorSnowflake(TestCase):
                     f"Column '{expected_column}' has type '{actual_type}', expected one of {expected_type}",
                 )
             else:
-                # Snowflake may return different type names, normalize for comparison
+                # Oracle may return different type names, normalize for comparison
                 self.assertEqual(
                     actual_type.upper(),
                     expected_type.upper(),
@@ -149,12 +156,12 @@ class TestDestinationConnectorSnowflake(TestCase):
         return Mock()
 
     def create_real_connector_instance(self) -> Mock:
-        """Create connector instance using real Snowflake connector."""
+        """Create connector instance using real Oracle DB connector."""
         connector = Mock()
-        connector.connector_id = SnowflakeDB.get_id()
-        connector.connector_metadata = self.snowflake_config
+        connector.connector_id = OracleDB.get_id()
+        connector.connector_metadata = self.oracle_config
         # Store reference to real connector for potential future use
-        connector._real_snowflake_connector = self.snowflake_connector
+        connector._real_oracle_connector = self.oracle_connector
         return connector
 
     def create_mock_endpoint(self, mock_connector_instance: Mock) -> Mock:
@@ -162,9 +169,7 @@ class TestDestinationConnectorSnowflake(TestCase):
         endpoint = Mock()
         endpoint.connector_instance = mock_connector_instance
         endpoint.configuration = {
-            DestinationKey.TABLE: self.test_table_name.split(".")[
-                -1
-            ],  # Just table name
+            DestinationKey.TABLE: self.test_table_name,
             DestinationKey.INCLUDE_AGENT: True,
             DestinationKey.INCLUDE_TIMESTAMP: True,
             DestinationKey.AGENT_NAME: "Unstract/DBWriter",
@@ -202,8 +207,8 @@ class TestDestinationConnectorSnowflake(TestCase):
                     )
                     return connector
 
-    def test_insert_into_db_happy_path_snowflake(self) -> None:
-        """Test successful insertion into real Snowflake database."""
+    def test_insert_into_db_happy_path_oracle(self) -> None:
+        """Test successful insertion into real Oracle DB database."""
         # Create mock objects for Django models
         mock_workflow = self.create_mock_workflow()
         mock_workflow_log = self.create_mock_workflow_log()
@@ -215,7 +220,7 @@ class TestDestinationConnectorSnowflake(TestCase):
             mock_workflow, mock_workflow_log, mock_endpoint
         )
 
-        # Test the insert_into_db method with real Snowflake
+        # Test the insert_into_db method with real Oracle DB
         try:
             # Mock only the methods that get data, let database operations be real
             with patch.object(
@@ -228,7 +233,7 @@ class TestDestinationConnectorSnowflake(TestCase):
                     "get_combined_metadata",
                     return_value=self.test_metadata,
                 ):
-                    # This will execute real database operations using Snowflake connector
+                    # This will execute real database operations using Oracle DB connector
                     destination_connector.insert_into_db(
                         input_file_path=self.input_file_path, error=None
                     )
@@ -236,14 +241,14 @@ class TestDestinationConnectorSnowflake(TestCase):
             # Verify the table structure
             self.verify_table_columns(self.test_table_name)
 
-            print("✅ Snowflake integration test completed successfully!")
+            print("✅ Oracle DB integration test completed successfully!")
 
         except Exception as e:
-            print(f"❌ Snowflake integration test failed: {str(e)}")
+            print(f"❌ Oracle DB integration test failed: {str(e)}")
             raise
 
-    def test_insert_into_db_with_error_snowflake(self) -> None:
-        """Test insertion with error parameter into real Snowflake database."""
+    def test_insert_into_db_with_error_oracle(self) -> None:
+        """Test insertion with error parameter into real Oracle DB database."""
         # Create mock objects
         mock_workflow = self.create_mock_workflow()
         mock_workflow_log = self.create_mock_workflow_log()
@@ -277,29 +282,29 @@ class TestDestinationConnectorSnowflake(TestCase):
         self.verify_table_columns(self.test_table_name)
 
         print(
-            f"✅ Successfully inserted error data into Snowflake table: {self.test_table_name}"
+            f"✅ Successfully inserted error data into Oracle DB table: {self.test_table_name}"
         )
 
-    def test_snowflake_connector_connection(self) -> None:
-        """Test that the Snowflake connector can establish a connection."""
-        # Test the real Snowflake connector directly
+    def test_oracle_connector_connection(self) -> None:
+        """Test that the Oracle DB connector can establish a connection."""
+        # Test the real Oracle DB connector directly
         try:
-            engine = self.snowflake_connector.get_engine()
+            engine = self.oracle_connector.get_engine()
             self.assertIsNotNone(engine)
-            print("✅ Snowflake connector successfully established connection")
+            print("✅ Oracle DB connector successfully established connection")
 
             # Test a simple query to verify connection works
             with engine.cursor() as cursor:
-                cursor.execute("SELECT 1 as test_column")
+                cursor.execute("SELECT 1 as test_column FROM DUAL")
                 result = cursor.fetchall()
                 self.assertIsNotNone(result)
-                print("✅ Snowflake connector successfully executed test query")
+                print("✅ Oracle DB connector successfully executed test query")
 
             # Clean up
             if hasattr(engine, "close"):
                 engine.close()
         except Exception as e:
-            self.fail(f"Snowflake connector failed to connect: {str(e)}")
+            self.fail(f"Oracle DB connector failed to connect: {str(e)}")
 
     def tearDown(self) -> None:
         """Clean up test resources."""

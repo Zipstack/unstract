@@ -335,6 +335,12 @@ class DatabaseUtils:
         sql = db_class.create_table_query(table=table_name, database_entry=database_entry)
         print("***** database_utils.py create_table_if_not_exists sql *****", sql)
         logger.debug(f"creating table {table_name} with: {sql} query")
+
+        # Skip execution if SQL is empty (table already exists for Oracle)
+        if not sql or sql.strip() == "":
+            logger.debug(f"Table {table_name} already exists, skipping creation")
+            return
+
         try:
             db_class.execute_query(
                 engine=engine, sql_query=sql, sql_values=None, table_name=table_name

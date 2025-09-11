@@ -4,6 +4,7 @@ from typing import Any
 
 import oracledb
 from oracledb.connection import Connection
+from workflow_manager.endpoint_v2.exceptions import UnstractDBException
 
 from unstract.connectors.databases.unstract_db import UnstractDB
 
@@ -60,7 +61,7 @@ class OracleDB(UnstractDB):
         return True
 
     def get_string_type(self) -> str:
-        return "clob"
+        return "VARCHAR2(32767)"
 
     def get_engine(self) -> Connection:
         con = oracledb.connect(
@@ -85,14 +86,14 @@ class OracleDB(UnstractDB):
         """
         python_type = type(value)
         mapping = {
-            str: "CLOB",
+            str: "VARCHAR2(32767)",
             int: "NUMBER",
             float: "LONG",
             datetime.datetime: "TIMESTAMP",
-            dict: "CLOB CHECK (IS JSON)",
-            list: "CLOB CHECK (IS JSON)",
+            dict: "CLOB",
+            list: "VARCHAR2(32767)",
         }
-        return mapping.get(python_type, "CLOB")
+        return mapping.get(python_type, "VARCHAR2(32767)")
 
     def get_create_table_base_query(self, table: str) -> str:
         """Function to create a base create table sql query.
@@ -104,38 +105,87 @@ class OracleDB(UnstractDB):
             str: generates a create sql base query with the constant columns
         """
         sql_query = (
-            f"CREATE TABLE IF NOT EXISTS {table} "
+            f"CREATE TABLE {table} "
             f"(id VARCHAR2(32767) , "
             f"created_by VARCHAR2(32767), created_at TIMESTAMP, "
-            f"metadata CLOB CHECK (metadata IS JSON), "
+            f"metadata CLOB, "
             f"user_field_1 NUMBER(1) DEFAULT 0, "
             f"user_field_2 NUMBER DEFAULT 0, "
             f"user_field_3 VARCHAR2(32767) DEFAULT NULL, "
-            f"status VARCHAR2(10) CHECK (status IN ('ERROR', 'SUCCESS')), "
+            f"status VARCHAR2(10), "
             f"error_message VARCHAR2(32767), "
         )
         return sql_query
 
-    def prepare_multi_column_migration(self, table_name: str, column_name: str) -> str:
-        sql_query = (
-            f"ALTER TABLE {table_name} "
-            f"ADD {column_name}_v2 CLOB CHECK ({column_name}_v2 IS JSON), "
-            f"ADD metadata CLOB CHECK (metadata IS JSON), "
-            f"ADD user_field_1 NUMBER(1) DEFAULT 0, "
-            f"ADD user_field_2 NUMBER DEFAULT 0, "
-            f"ADD user_field_3 VARCHAR2(32767) DEFAULT NULL, "
-            f"ADD status VARCHAR2(10) CHECK (status IN ('ERROR', 'SUCCESS')), "
-            f"ADD error_message VARCHAR2(32767)"
-        )
-        return sql_query
+    def create_table_query(self, table: str, database_entry: dict[str, Any]) -> str:
+        """Function to create a create table sql query with Oracle-specific handling.
+
+        Args:
+            table (str): db-connector table name
+            database_entry (dict[str, Any]): a dictionary of column name and types
+
+        Returns:
+            str: generates a create sql query for all the columns, or empty string if table exists
+
+        Raises:
+            UnstractDBException: If there's an error checking table existence
+        """
+        try:
+            # Check if table already exists using Oracle's user_tables
+            query = (
+                f"SELECT COUNT(*) FROM user_tables WHERE table_name = UPPER('{table}')"
+            )
+            results = self.execute(query=query)
+
+            # If table exists, return empty string to skip creation
+            if results and results[0][0] > 0:
+                return ""
+
+            # Table doesn't exist - return CREATE TABLE query
+            result = super().create_table_query(table, database_entry)
+            return str(result) if result else ""
+
+        except Exception as e:
+            # If there's an error checking table existence, raise UnstractDBException
+            raise UnstractDBException(
+                detail=f"Error checking table existence: {str(e)}"
+            ) from e
+
+    def prepare_multi_column_migration(self, table_name: str, column_name: str) -> list:
+        """Prepare ALTER TABLE statements for adding new columns to an existing table.
+
+        Args:
+            table_name (str): The name of the table to alter
+            column_name (str): The base name of the column to add a _v2 version for
+
+        Returns:
+            list: List of ALTER TABLE statements, one per column addition
+
+        Note:
+            Oracle does not support multiple ADD clauses in a single ALTER TABLE statement.
+            Each column addition requires a separate ALTER TABLE statement.
+        """
+        # Return one ALTER statement per column for Oracle compatibility
+        return [
+            f"ALTER TABLE {table_name} ADD {column_name}_v2 VARCHAR2(32767)",
+            f"ALTER TABLE {table_name} ADD metadata CLOB",
+            f"ALTER TABLE {table_name} ADD user_field_1 NUMBER(1) DEFAULT 0",
+            f"ALTER TABLE {table_name} ADD user_field_2 NUMBER DEFAULT 0",
+            f"ALTER TABLE {table_name} ADD user_field_3 VARCHAR2(32767) DEFAULT NULL",
+            f"ALTER TABLE {table_name} ADD status VARCHAR2(10)",
+            f"ALTER TABLE {table_name} ADD error_message VARCHAR2(32767)",
+        ]
 
     @staticmethod
-    def get_sql_insert_query(table_name: str, sql_keys: list[str]) -> str:
+    def get_sql_insert_query(
+        table_name: str, sql_keys: list[str], sql_values: list[str] | None = None
+    ) -> str:
         """Function to generate parameterised insert sql query.
 
         Args:
             table_name (str): db-connector table name
             sql_keys (list[str]): column names
+            sql_values (list[str], optional): SQL values for database-specific handling (ignored for Oracle)
 
         Returns:
             str: returns a string with parameterised insert sql query

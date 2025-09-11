@@ -5,41 +5,37 @@ from django.test import TestCase
 from workflow_manager.endpoint_v2.constants import DestinationKey
 from workflow_manager.endpoint_v2.destination import DestinationConnector
 
-from unstract.connectors.databases.snowflake import SnowflakeDB
+from unstract.connectors.databases.redshift import Redshift
 
 
-class TestDestinationConnectorSnowflake(TestCase):
-    """Integration test for insert_into_db method with real Snowflake connector."""
+class TestDestinationConnectorRedshift(TestCase):
+    """Integration test for insert_into_db method with real Redshift connector."""
 
     def setUp(self) -> None:
-        """Set up test data and real Snowflake configuration."""
+        """Set up test data and real Redshift configuration."""
 
-        # Snowflake connection settings for testing
+        # Redshift connection settings for testing
         required_env_vars = [
-            "SNOWFLAKE_ACCOUNT",
-            "SNOWFLAKE_USER",
-            "SNOWFLAKE_PASSWORD",
-            "SNOWFLAKE_DATABASE",
-            "SNOWFLAKE_SCHEMA",
-            "SNOWFLAKE_WAREHOUSE",
-            "SNOWFLAKE_ROLE",
+            "REDSHIFT_HOST",
+            "REDSHIFT_USER",
+            "REDSHIFT_PASSWORD",
+            "REDSHIFT_DATABASE",
         ]
 
         # Check if all required environment variables are set
         missing_vars = [var for var in required_env_vars if not os.getenv(var)]
         if missing_vars:
             self.skipTest(
-                f"Required Snowflake environment variables not set: {', '.join(missing_vars)}"
+                f"Required Redshift environment variables not set: {', '.join(missing_vars)}"
             )
 
-        self.snowflake_config = {
-            "account": os.getenv("SNOWFLAKE_ACCOUNT"),
-            "user": os.getenv("SNOWFLAKE_USER"),
-            "password": os.getenv("SNOWFLAKE_PASSWORD"),
-            "database": os.getenv("SNOWFLAKE_DATABASE"),
-            "schema": os.getenv("SNOWFLAKE_SCHEMA"),
-            "warehouse": os.getenv("SNOWFLAKE_WAREHOUSE"),
-            "role": os.getenv("SNOWFLAKE_ROLE"),
+        self.redshift_config = {
+            "host": os.getenv("REDSHIFT_HOST"),
+            "port": os.getenv("REDSHIFT_PORT", "5439"),
+            "user": os.getenv("REDSHIFT_USER"),
+            "password": os.getenv("REDSHIFT_PASSWORD"),
+            "database": os.getenv("REDSHIFT_DATABASE"),
+            "schema": os.getenv("REDSHIFT_SCHEMA", "public"),
         }
 
         # Test data that will be inserted into the database
@@ -51,32 +47,32 @@ class TestDestinationConnectorSnowflake(TestCase):
         }
         self.input_file_path = "/path/to/test/file.pdf"
 
-        # Snowflake table naming (use schema.table format)
-        self.test_table_name = f"{self.snowflake_config['schema']}.output_1"
+        # Redshift table naming (use schema.table format)
+        self.test_table_name = "output_1"
 
-        # Create real Snowflake connector instance
-        self.snowflake_connector = SnowflakeDB(settings=self.snowflake_config)
+        # Create real Redshift connector instance
+        self.redshift_connector = Redshift(settings=self.redshift_config)
 
-        # Expected columns based on configuration (Snowflake data types)
+        # Expected columns based on configuration (Redshift data types)
         self.expected_columns = {
-            "id": "TEXT",
-            "file_path": "TEXT",
-            "execution_id": "TEXT",
-            "data": "TEXT",  # Legacy column remains TEXT after migration
-            "data_v2": "VARIANT",  # New VARIANT column added during migration
-            "metadata": "VARIANT",  # New VARIANT column added during migration
-            "created_at": "TIMESTAMP_NTZ",
-            "created_by": "TEXT",
-            "status": "TEXT",
-            "error_message": "TEXT",
+            "id": "CHARACTER VARYING",
+            "file_path": "CHARACTER VARYING",
+            "execution_id": "CHARACTER VARYING",
+            "data": "CHARACTER VARYING",  # Legacy column remains VARCHAR after migration
+            "data_v2": "CHARACTER VARYING",  # New VARCHAR column added during migration
+            "metadata": "CHARACTER VARYING",  # New VARCHAR column added during migration
+            "created_at": "TIMESTAMP WITHOUT TIME ZONE",
+            "created_by": "CHARACTER VARYING",
+            "status": "CHARACTER VARYING",
+            "error_message": "CHARACTER VARYING",
             "user_field_1": "BOOLEAN",
-            "user_field_2": "NUMBER",
-            "user_field_3": "TEXT",
+            "user_field_2": "INTEGER",
+            "user_field_3": "CHARACTER VARYING",
         }
 
     def verify_table_columns(self, table_name: str) -> None:
         """Verify that the table has expected columns with correct data types."""
-        table_info = self.snowflake_connector.get_information_schema(
+        table_info = self.redshift_connector.get_information_schema(
             table_name=table_name
         )
 
@@ -84,18 +80,40 @@ class TestDestinationConnectorSnowflake(TestCase):
 
         # Check that key columns exist (some columns may be created on-demand)
         required_columns = {
-            "id": "VARCHAR",  # Snowflake uses VARCHAR instead of TEXT
-            "file_path": "VARCHAR",  # Snowflake uses VARCHAR instead of TEXT
-            "execution_id": "VARCHAR",  # Snowflake uses VARCHAR instead of TEXT
-            "data": ["VARCHAR", "VARIANT"],  # Can be either, migration might convert
-            "metadata": "VARIANT",  # New VARIANT column added during migration
-            "created_at": "TIMESTAMP_NTZ",
-            "created_by": "VARCHAR",  # Snowflake uses VARCHAR instead of TEXT
+            "id": [
+                "CHARACTER VARYING",
+                "VARCHAR",
+            ],  # Redshift uses CHARACTER VARYING or VARCHAR
+            "file_path": [
+                "CHARACTER VARYING",
+                "VARCHAR",
+            ],  # Redshift uses CHARACTER VARYING or VARCHAR
+            "execution_id": [
+                "CHARACTER VARYING",
+                "VARCHAR",
+            ],  # Redshift uses CHARACTER VARYING or VARCHAR
+            "data": [
+                "CHARACTER VARYING",
+                "VARCHAR",
+            ],  # Can be VARCHAR, migration might convert
+            "metadata": [
+                "CHARACTER VARYING",
+                "VARCHAR",
+                "SUPER",
+            ],  # New VARCHAR column added during migration, or SUPER for JSON
+            "created_at": ["TIMESTAMP WITHOUT TIME ZONE", "TIMESTAMP"],
+            "created_by": [
+                "CHARACTER VARYING",
+                "VARCHAR",
+            ],  # Redshift uses CHARACTER VARYING or VARCHAR
         }
 
         # Optional columns that may exist in migration scenarios
         optional_columns = {
-            "data_v2": ["VARCHAR", "VARIANT"],  # Only exists in migration scenarios
+            "data_v2": [
+                "CHARACTER VARYING",
+                "VARCHAR",
+            ],  # Only exists in migration scenarios
         }
 
         for expected_column, expected_type in required_columns.items():
@@ -114,7 +132,7 @@ class TestDestinationConnectorSnowflake(TestCase):
                     f"Column '{expected_column}' has type '{actual_type}', expected one of {expected_type}",
                 )
             else:
-                # Snowflake may return different type names, normalize for comparison
+                # Redshift may return different type names, normalize for comparison
                 self.assertEqual(
                     actual_type.upper(),
                     expected_type.upper(),
@@ -149,12 +167,12 @@ class TestDestinationConnectorSnowflake(TestCase):
         return Mock()
 
     def create_real_connector_instance(self) -> Mock:
-        """Create connector instance using real Snowflake connector."""
+        """Create connector instance using real Redshift connector."""
         connector = Mock()
-        connector.connector_id = SnowflakeDB.get_id()
-        connector.connector_metadata = self.snowflake_config
+        connector.connector_id = Redshift.get_id()
+        connector.connector_metadata = self.redshift_config
         # Store reference to real connector for potential future use
-        connector._real_snowflake_connector = self.snowflake_connector
+        connector._real_redshift_connector = self.redshift_connector
         return connector
 
     def create_mock_endpoint(self, mock_connector_instance: Mock) -> Mock:
@@ -162,9 +180,7 @@ class TestDestinationConnectorSnowflake(TestCase):
         endpoint = Mock()
         endpoint.connector_instance = mock_connector_instance
         endpoint.configuration = {
-            DestinationKey.TABLE: self.test_table_name.split(".")[
-                -1
-            ],  # Just table name
+            DestinationKey.TABLE: self.test_table_name,
             DestinationKey.INCLUDE_AGENT: True,
             DestinationKey.INCLUDE_TIMESTAMP: True,
             DestinationKey.AGENT_NAME: "Unstract/DBWriter",
@@ -202,8 +218,8 @@ class TestDestinationConnectorSnowflake(TestCase):
                     )
                     return connector
 
-    def test_insert_into_db_happy_path_snowflake(self) -> None:
-        """Test successful insertion into real Snowflake database."""
+    def test_insert_into_db_happy_path_redshift(self) -> None:
+        """Test successful insertion into real Redshift database."""
         # Create mock objects for Django models
         mock_workflow = self.create_mock_workflow()
         mock_workflow_log = self.create_mock_workflow_log()
@@ -215,7 +231,7 @@ class TestDestinationConnectorSnowflake(TestCase):
             mock_workflow, mock_workflow_log, mock_endpoint
         )
 
-        # Test the insert_into_db method with real Snowflake
+        # Test the insert_into_db method with real Redshift
         try:
             # Mock only the methods that get data, let database operations be real
             with patch.object(
@@ -228,7 +244,7 @@ class TestDestinationConnectorSnowflake(TestCase):
                     "get_combined_metadata",
                     return_value=self.test_metadata,
                 ):
-                    # This will execute real database operations using Snowflake connector
+                    # This will execute real database operations using Redshift connector
                     destination_connector.insert_into_db(
                         input_file_path=self.input_file_path, error=None
                     )
@@ -236,14 +252,14 @@ class TestDestinationConnectorSnowflake(TestCase):
             # Verify the table structure
             self.verify_table_columns(self.test_table_name)
 
-            print("✅ Snowflake integration test completed successfully!")
+            print("✅ Redshift integration test completed successfully!")
 
         except Exception as e:
-            print(f"❌ Snowflake integration test failed: {str(e)}")
+            print(f"❌ Redshift integration test failed: {str(e)}")
             raise
 
-    def test_insert_into_db_with_error_snowflake(self) -> None:
-        """Test insertion with error parameter into real Snowflake database."""
+    def test_insert_into_db_with_error_redshift(self) -> None:
+        """Test insertion with error parameter into real Redshift database."""
         # Create mock objects
         mock_workflow = self.create_mock_workflow()
         mock_workflow_log = self.create_mock_workflow_log()
@@ -277,29 +293,29 @@ class TestDestinationConnectorSnowflake(TestCase):
         self.verify_table_columns(self.test_table_name)
 
         print(
-            f"✅ Successfully inserted error data into Snowflake table: {self.test_table_name}"
+            f"✅ Successfully inserted error data into Redshift table: {self.test_table_name}"
         )
 
-    def test_snowflake_connector_connection(self) -> None:
-        """Test that the Snowflake connector can establish a connection."""
-        # Test the real Snowflake connector directly
+    def test_redshift_connector_connection(self) -> None:
+        """Test that the Redshift connector can establish a connection."""
+        # Test the real Redshift connector directly
         try:
-            engine = self.snowflake_connector.get_engine()
+            engine = self.redshift_connector.get_engine()
             self.assertIsNotNone(engine)
-            print("✅ Snowflake connector successfully established connection")
+            print("✅ Redshift connector successfully established connection")
 
             # Test a simple query to verify connection works
             with engine.cursor() as cursor:
                 cursor.execute("SELECT 1 as test_column")
                 result = cursor.fetchall()
                 self.assertIsNotNone(result)
-                print("✅ Snowflake connector successfully executed test query")
+                print("✅ Redshift connector successfully executed test query")
 
             # Clean up
             if hasattr(engine, "close"):
                 engine.close()
         except Exception as e:
-            self.fail(f"Snowflake connector failed to connect: {str(e)}")
+            self.fail(f"Redshift connector failed to connect: {str(e)}")
 
     def tearDown(self) -> None:
         """Clean up test resources."""
