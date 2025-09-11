@@ -404,23 +404,27 @@ class AdapterInstanceViewSet(ModelViewSet):
                 AdapterKeys.ADAPTER_METADATA_B
             )
 
-            # Decrypt metadata to get configuration
-            decrypted_metadata = json.loads(
-                Fernet(settings.ENCRYPTION_KEY.encode("utf-8"))
-                .decrypt(adapter_metadata_b)
-                .decode("utf-8")
-            )
+        from rest_framework.exceptions import ValidationError
 
-            # Validate URLs for this adapter configuration
-            try:
-                AdapterProcessor.validate_adapter_urls(adapter_id, decrypted_metadata)
-            except SdkError as e:
-                from rest_framework.exceptions import ValidationError
+        if not adapter_metadata_b:
+            raise ValidationError("Missing adapter metadata for validation.")
 
-                # Format error message similar to test adapter API
-                adapter_name = decrypted_metadata.get(AdapterKeys.ADAPTER_NAME, "adapter")
-                error_detail = f"Error testing '{adapter_name}'. {str(e)}"
-                raise ValidationError(error_detail)
+        # Decrypt metadata to get configuration
+        try:
+            fernet = Fernet(settings.ENCRYPTION_KEY.encode("utf-8"))
+            decrypted_json = fernet.decrypt(adapter_metadata_b)
+            decrypted_metadata = json.loads(decrypted_json.decode("utf-8"))
+        except Exception as e:  # InvalidToken/JSONDecodeError/TypeError/etc.
+            raise ValidationError("Invalid adapter metadata.") from e
+
+        # Validate URLs for this adapter configuration
+        try:
+            AdapterProcessor.validate_adapter_urls(adapter_id, decrypted_metadata)
+        except Exception as e:
+            # Format error message similar to test adapter API
+            adapter_name = decrypted_metadata.get(AdapterKeys.ADAPTER_NAME, "adapter")
+            error_detail = f"Error testing '{adapter_name}'. {e!s}"
+            raise ValidationError(error_detail) from e
 
         if use_platform_unstract_key:
             logger.error("Processing adapter with platform key")
