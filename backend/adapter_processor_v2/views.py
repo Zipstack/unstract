@@ -22,7 +22,9 @@ from rest_framework.response import Response
 from rest_framework.serializers import ModelSerializer
 from rest_framework.versioning import URLPathVersioning
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
-from tenant_account_v2.organization_member_service import OrganizationMemberService
+from tenant_account_v2.organization_member_service import (
+    OrganizationMemberService,
+)
 from utils.filtering import FilterHelper
 
 from adapter_processor_v2.adapter_processor import AdapterProcessor
@@ -385,6 +387,38 @@ class AdapterInstanceViewSet(ModelViewSet):
 
         # Get the adapter instance for update
         adapter = self.get_object()
+
+        # Get serializer and validate data first
+        serializer = self.get_serializer(adapter, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+
+        # Validate URLs for security if metadata is being updated
+        if AdapterKeys.ADAPTER_METADATA_B in serializer.validated_data:
+            adapter_id = (
+                serializer.validated_data.get(AdapterKeys.ADAPTER_ID)
+                or adapter.adapter_id
+            )
+            adapter_metadata_b = serializer.validated_data.get(
+                AdapterKeys.ADAPTER_METADATA_B
+            )
+
+            # Decrypt metadata to get configuration
+            decrypted_metadata = json.loads(
+                Fernet(settings.ENCRYPTION_KEY.encode("utf-8"))
+                .decrypt(adapter_metadata_b)
+                .decode("utf-8")
+            )
+
+            # Validate URLs for this adapter configuration
+            try:
+                AdapterProcessor.validate_adapter_urls(adapter_id, decrypted_metadata)
+            except SdkError as e:
+                from rest_framework.exceptions import ValidationError
+
+                # Format error message similar to test adapter API
+                adapter_name = decrypted_metadata.get(AdapterKeys.ADAPTER_NAME, "adapter")
+                error_detail = f"Error testing '{adapter_name}'. {str(e)}"
+                raise ValidationError(error_detail)
 
         if use_platform_unstract_key:
             logger.error("Processing adapter with platform key")
