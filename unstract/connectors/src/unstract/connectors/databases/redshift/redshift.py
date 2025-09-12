@@ -70,8 +70,8 @@ class Redshift(UnstractDB, PsycoPgHandler):
             int: "BIGINT",
             float: "DOUBLE PRECISION",
             datetime.datetime: "TIMESTAMP",
-            dict: "VARCHAR(65535)",
-            list: "VARCHAR(65535)",
+            dict: "SUPER",
+            list: "SUPER",
         }
         return mapping.get(python_type, "VARCHAR(65535)")
 
@@ -106,8 +106,8 @@ class Redshift(UnstractDB, PsycoPgHandler):
         """
         # Return one ALTER statement per column for Redshift compatibility
         return [
-            f"ALTER TABLE {table_name} ADD COLUMN {column_name}_v2 VARCHAR(65535);",
-            f"ALTER TABLE {table_name} ADD COLUMN metadata VARCHAR(65535);",
+            f"ALTER TABLE {table_name} ADD COLUMN {column_name}_v2 SUPER;",
+            f"ALTER TABLE {table_name} ADD COLUMN metadata SUPER;",
             f"ALTER TABLE {table_name} ADD COLUMN user_field_1 BOOLEAN DEFAULT FALSE;",
             f"ALTER TABLE {table_name} ADD COLUMN user_field_2 INTEGER DEFAULT 0;",
             f"ALTER TABLE {table_name} ADD COLUMN user_field_3 VARCHAR(65535) DEFAULT NULL;",

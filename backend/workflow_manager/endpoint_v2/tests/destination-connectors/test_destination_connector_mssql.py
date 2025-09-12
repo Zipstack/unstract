@@ -47,7 +47,7 @@ class TestDestinationConnectorMSSQL(TestCase):
         self.input_file_path = "/path/to/test/file.pdf"
 
         # MSSQL table naming (use schema.table format)
-        self.test_table_name = "test_schema_1.output_1"
+        self.test_table_name = "test_schema_1.MIGRATION"
 
         # Create real MSSQL connector instance
         self.mssql_connector = MSSQL(settings=self.mssql_config)

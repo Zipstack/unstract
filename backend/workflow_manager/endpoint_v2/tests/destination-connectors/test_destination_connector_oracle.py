@@ -50,7 +50,7 @@ class TestDestinationConnectorOracle(TestCase):
         self.input_file_path = "/path/to/test/file.pdf"
 
         # Oracle table naming (typically uppercase)
-        self.test_table_name = "output_3"
+        self.test_table_name = "MIGRATION"
 
         # Create real Oracle DB connector instance
         self.oracle_connector = OracleDB(settings=self.oracle_config)

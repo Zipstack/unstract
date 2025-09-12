@@ -368,10 +368,10 @@ class DestinationConnector(BaseConnector):
 
         table_info = db_class.get_information_schema(table_name=table_name)
 
-        logger.debug(f"destination.py engine: {engine}")
-        logger.debug(f"destination.py table_info: {table_info}")
+        logger.info(
+            f"destination connector engine: {engine} with table name: {table_name}"
+        )
 
-        # Check whether to migrate table to include new columns
         if table_info:
             if db_class.has_no_metadata(table_info=table_info):
                 table_info = db_class.migrate_table_to_v2(
@@ -413,7 +413,7 @@ class DestinationConnector(BaseConnector):
                 table_name=table_name,
                 values=values,
             )
-            logger.debug(
+            logger.info(
                 f"destination.py sql_columns_and_values: {sql_columns_and_values}"
             )
             DatabaseUtils.execute_write_query(

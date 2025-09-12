@@ -60,9 +60,6 @@ class SnowflakeDB(UnstractDB):
     def can_read() -> bool:
         return True
 
-    def get_string_type(self) -> str:
-        return "VARCHAR"
-
     def sql_to_db_mapping(self, value: str) -> str:
         """Gets the python datatype of value and converts python datatype to
         corresponding DB datatype.

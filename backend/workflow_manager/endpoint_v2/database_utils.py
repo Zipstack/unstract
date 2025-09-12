@@ -164,46 +164,19 @@ class DatabaseUtils:
                 FileProcessingStatus.ERROR if error else FileProcessingStatus.SUCCESS
             )
         if column_mode == ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN:
-            if isinstance(data, (dict, str)):
+            if isinstance(data, str):
+                wrapped_dict = {"result": data}
+                values[single_column_name] = wrapped_dict
+                if table_info and any(
+                    k.lower() == f"{single_column_name}_v2".lower() for k in table_info
+                ):
+                    values[f"{single_column_name}_v2"] = wrapped_dict
+            else:
                 values[single_column_name] = data
                 if table_info and any(
                     k.lower() == f"{single_column_name}_v2".lower() for k in table_info
                 ):
                     values[f"{single_column_name}_v2"] = data
-            else:
-                try:
-                    values[single_column_name] = json.dumps(
-                        data
-                    )  # Legacy column gets JSON string
-                except (TypeError, ValueError) as e:
-                    logger.error(
-                        f"Failed to serialize data to JSON for column {single_column_name}: {e}"
-                    )
-                    # Create a safe fallback error object
-                    fallback_data = DatabaseUtils._create_safe_error_json(
-                        single_column_name, e
-                    )
-                    values[single_column_name] = json.dumps(fallback_data)
-
-                # Only write to v2 if it exists
-                if table_info and any(
-                    k.lower() == f"{single_column_name}_v2".lower() for k in table_info
-                ):
-                    # Make sure v2 gets a serializable value too if needed
-                    if isinstance(data, (dict, list)):
-                        values[f"{single_column_name}_v2"] = data
-                    else:
-                        try:
-                            # Test if it's JSON serializable before assigning
-                            json.dumps(data)
-                            values[f"{single_column_name}_v2"] = data
-                        except (TypeError, ValueError) as e:
-                            # Create a safe fallback error object
-                            fallback_data = DatabaseUtils._create_safe_error_json(
-                                f"{single_column_name}_v2", e
-                            )
-                            values[f"{single_column_name}_v2"] = fallback_data
-
         values[file_path_name] = file_path
         values[execution_id_name] = execution_id
         logger.debug(f"database_utils.py get_columns_and_values  values: {values}")
@@ -316,11 +289,6 @@ class DatabaseUtils:
         """
         sql = db_class.create_table_query(table=table_name, database_entry=database_entry)
         logger.debug(f"creating table {table_name} with: {sql} query")
-
-        # Skip execution if SQL is empty (table already exists for Oracle)
-        if not sql or sql.strip() == "":
-            logger.debug(f"Table {table_name} already exists, skipping creation")
-            return
 
         try:
             db_class.execute_query(

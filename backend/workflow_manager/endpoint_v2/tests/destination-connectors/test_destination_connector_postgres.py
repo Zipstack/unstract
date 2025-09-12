@@ -32,7 +32,7 @@ class TestDestinationConnectorPostgreSQL(TestCase):
             "processing_time": 1.5,
         }
         self.input_file_path = "/path/to/test/file.pdf"
-        self.test_table_name = "OUTPUT_2"
+        self.test_table_name = "OUTPUT_3"
 
         # Create real PostgreSQL connector instance
         self.postgres_connector = PostgreSQL(settings=self.postgres_config)

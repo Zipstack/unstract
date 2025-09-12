@@ -48,7 +48,7 @@ class TestDestinationConnectorRedshift(TestCase):
         self.input_file_path = "/path/to/test/file.pdf"
 
         # Redshift table naming (use schema.table format)
-        self.test_table_name = "output_1"
+        self.test_table_name = "MIGRATION"
 
         # Create real Redshift connector instance
         self.redshift_connector = Redshift(settings=self.redshift_config)
@@ -95,6 +95,7 @@ class TestDestinationConnectorRedshift(TestCase):
             "data": [
                 "CHARACTER VARYING",
                 "VARCHAR",
+                "SUPER",
             ],  # Can be VARCHAR, migration might convert
             "metadata": [
                 "CHARACTER VARYING",
@@ -113,6 +114,7 @@ class TestDestinationConnectorRedshift(TestCase):
             "data_v2": [
                 "CHARACTER VARYING",
                 "VARCHAR",
+                "SUPER",
             ],  # Only exists in migration scenarios
         }
 

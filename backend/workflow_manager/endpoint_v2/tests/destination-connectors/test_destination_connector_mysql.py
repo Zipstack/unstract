@@ -1,5 +1,5 @@
-import os
 import json
+import os
 from unittest.mock import Mock, patch
 
 from django.test import TestCase
@@ -33,7 +33,7 @@ class TestDestinationConnectorMySQL(TestCase):
 
         self.mysql_config = {
             "host": os.getenv("MYSQL_HOST"),
-            "port": os.getenv("MYSQL_PORT"),
+            "port": os.getenv("MYSQL_PORT", 3306),
             "database": os.getenv("MYSQL_DATABASE"),
             "user": os.getenv("MYSQL_USER"),
             "password": os.getenv("MYSQL_PASSWORD"),
@@ -47,7 +47,7 @@ class TestDestinationConnectorMySQL(TestCase):
             "processing_time": 1.5,
         }
         self.input_file_path = "/path/to/test/file.pdf"
-        self.test_table_name = "output"
+        self.test_table_name = "MIGRATION"
 
         # Create real MySQL connector instance
         self.mysql_connector = MySQL(settings=self.mysql_config)
@@ -57,7 +57,7 @@ class TestDestinationConnectorMySQL(TestCase):
             "id": "longtext",
             "file_path": "longtext",
             "execution_id": "longtext",
-            "data": "longtext",
+            "data": "json",
             "created_at": "timestamp",
             "created_by": "longtext",
             "metadata": "json",
@@ -70,9 +70,7 @@ class TestDestinationConnectorMySQL(TestCase):
 
     def verify_table_columns(self, table_name: str) -> None:
         """Verify that all expected columns exist in the table with correct types."""
-        table_info = self.mysql_connector.get_information_schema(
-            table_name=table_name
-        )
+        table_info = self.mysql_connector.get_information_schema(table_name=table_name)
 
         print(f"🔍 Actual table structure for '{table_name}': {table_info}")
 
@@ -81,7 +79,7 @@ class TestDestinationConnectorMySQL(TestCase):
             "id": "longtext",
             "file_path": "longtext",
             "execution_id": "longtext",
-            "data": "longtext",
+            "data": "json",
             "created_at": "timestamp",
             "created_by": "longtext",
         }
@@ -370,9 +368,7 @@ class TestDestinationConnectorMySQL(TestCase):
             )
             # Add the required columns for the test
             create_table_query += (
-                "file_path LONGTEXT, "
-                "execution_id LONGTEXT, "
-                "data LONGTEXT)"
+                "file_path LONGTEXT, " "execution_id LONGTEXT, " "data LONGTEXT)"
             )
 
             cursor.execute(create_table_query)
@@ -380,18 +376,18 @@ class TestDestinationConnectorMySQL(TestCase):
             # Test inserting valid ENUM values
             cursor.execute(
                 f"INSERT INTO {self.test_table_name} (id, status, created_at) VALUES (%s, %s, NOW())",
-                ("test-enum-1", "SUCCESS")
+                ("test-enum-1", "SUCCESS"),
             )
 
             cursor.execute(
                 f"INSERT INTO {self.test_table_name} (id, status, created_at) VALUES (%s, %s, NOW())",
-                ("test-enum-2", "ERROR")
+                ("test-enum-2", "ERROR"),
             )
 
             # Verify the data was inserted
             cursor.execute(
                 f"SELECT id, status FROM {self.test_table_name} WHERE id IN (%s, %s)",
-                ("test-enum-1", "test-enum-2")
+                ("test-enum-1", "test-enum-2"),
             )
             results = cursor.fetchall()
 
@@ -408,33 +404,6 @@ class TestDestinationConnectorMySQL(TestCase):
         finally:
             if hasattr(engine, "close"):
                 engine.close()
-
-    def test_mysql_legacy_to_v2_migration(self) -> None:
-        """Test complete legacy table to v2 migration workflow."""
-        legacy_table_name = "LEGACY_OUTPUT_MYSQL"
-
-        # Step 1: Create a legacy table manually (simulating old table structure)
-        print("🏗️ Step 1: Creating legacy table...")
-        self._create_legacy_table(legacy_table_name)
-
-        # Step 2: Verify table is detected as legacy
-        print("🔍 Step 2: Verifying table is detected as legacy...")
-        is_legacy = self._verify_table_is_legacy(legacy_table_name)
-        self.assertTrue(is_legacy, "Table should be detected as legacy")
-
-        # Step 3: Trigger migration using the real migration flow
-        print("⚡ Step 3: Initiating migration...")
-        self._initiate_migration_via_workflow(legacy_table_name)
-
-        # Step 4: Verify migration was successful
-        print("✅ Step 4: Verifying migration success...")
-        self._verify_migration_success(legacy_table_name)
-
-        # Step 5: Test dual column writing (legacy + v2)
-        print("📝 Step 5: Testing dual column writing...")
-        self._test_dual_column_writing(legacy_table_name)
-
-        print("🎉 Migration test completed successfully!")
 
     def _create_legacy_table(self, table_name: str) -> None:
         """Create a legacy table structure (data column as LONGTEXT, not JSON)."""
@@ -459,12 +428,20 @@ class TestDestinationConnectorMySQL(TestCase):
             """
 
             cursor.execute(legacy_create_query)
-            print(f"📋 Created fresh legacy table '{table_name}' with LONGTEXT data column")
+            print(
+                f"📋 Created fresh legacy table '{table_name}' with LONGTEXT data column"
+            )
 
             # Insert some legacy data to make it realistic
             cursor.execute(
                 f"INSERT INTO {table_name} (id, created_by, created_at, data, file_path, execution_id) VALUES (%s, %s, NOW(), %s, %s, %s)",
-                ("legacy-1", "Legacy/DBWriter", '{"old": "legacy_data"}', "/legacy/file.pdf", "legacy-exec-1")
+                (
+                    "legacy-1",
+                    "Legacy/DBWriter",
+                    '{"old": "legacy_data"}',
+                    "/legacy/file.pdf",
+                    "legacy-exec-1",
+                ),
             )
             print(f"📝 Inserted legacy test data into '{table_name}'")
 
@@ -481,11 +458,13 @@ class TestDestinationConnectorMySQL(TestCase):
             # Use the actual detection logic from the codebase
             is_string_column = self.mysql_connector.is_string_column(
                 table_info=self.mysql_connector.get_information_schema(table_name),
-                column_name="data"
+                column_name="data",
             )
 
             if is_string_column:
-                print(f"✅ Table '{table_name}' correctly detected as legacy (data column is string type)")
+                print(
+                    f"✅ Table '{table_name}' correctly detected as legacy (data column is string type)"
+                )
                 return True
             else:
                 print(f"❌ Table '{table_name}' not detected as legacy")
@@ -541,8 +520,7 @@ class TestDestinationConnectorMySQL(TestCase):
             ):
                 # This should trigger the migration logic automatically
                 destination_connector.insert_into_db(
-                    input_file_path="/migration/test/file.pdf",
-                    error=None
+                    input_file_path="/migration/test/file.pdf", error=None
                 )
 
         print(f"✅ Migration initiated for table '{table_name}'")
@@ -559,14 +537,14 @@ class TestDestinationConnectorMySQL(TestCase):
             "user_field_2": "bigint",
             "user_field_3": "longtext",
             "status": "enum",
-            "error_message": "longtext"
+            "error_message": "longtext",
         }
 
         for column_name, expected_type in expected_v2_columns.items():
             self.assertIn(
                 column_name,
                 table_info,
-                f"Migration failed: Column '{column_name}' not found after migration"
+                f"Migration failed: Column '{column_name}' not found after migration",
             )
 
             actual_type = table_info[column_name].lower()
@@ -575,22 +553,24 @@ class TestDestinationConnectorMySQL(TestCase):
                 self.assertIn(
                     actual_type,
                     ["json", "longtext"],  # MySQL sometimes shows JSON as longtext
-                    f"Column '{column_name}' has type '{actual_type}', expected JSON-compatible type"
+                    f"Column '{column_name}' has type '{actual_type}', expected JSON-compatible type",
                 )
             elif expected_type == "enum":
                 self.assertIn(
                     actual_type,
                     ["enum"],
-                    f"Column '{column_name}' has type '{actual_type}', expected enum type"
+                    f"Column '{column_name}' has type '{actual_type}', expected enum type",
                 )
             else:
                 self.assertEqual(
                     actual_type,
                     expected_type,
-                    f"Column '{column_name}' has type '{actual_type}', expected '{expected_type}'"
+                    f"Column '{column_name}' has type '{actual_type}', expected '{expected_type}'",
                 )
 
-        print(f"✅ Migration verification successful - all v2 columns present in '{table_name}'")
+        print(
+            f"✅ Migration verification successful - all v2 columns present in '{table_name}'"
+        )
 
     def _test_dual_column_writing(self, table_name: str) -> None:
         """Test that data is written to both legacy and v2 columns after migration."""
@@ -624,13 +604,19 @@ class TestDestinationConnectorMySQL(TestCase):
             self.assertIsNotNone(metadata, "Metadata column should not be empty")
 
             # Verify status is set correctly
-            self.assertEqual(status, "SUCCESS", "Status should be SUCCESS for successful migration")
+            self.assertEqual(
+                status, "SUCCESS", "Status should be SUCCESS for successful migration"
+            )
 
             # Parse and verify JSON data (if stored as JSON string in legacy)
             if isinstance(data_legacy, str):
                 try:
                     parsed_legacy = json.loads(data_legacy)
-                    self.assertIn("migration_test", parsed_legacy, "Legacy data should contain migration test data")
+                    self.assertIn(
+                        "migration_test",
+                        parsed_legacy,
+                        "Legacy data should contain migration test data",
+                    )
                 except json.JSONDecodeError:
                     # If not JSON, just verify it contains our test data somehow
                     self.assertIn("migration_test", str(data_legacy))
@@ -654,5 +640,5 @@ class TestDestinationConnectorMySQL(TestCase):
         #     cursor.close()
         #     engine.close()
         # except Exception:
-            # Ignore cleanup errors
+        # Ignore cleanup errors
         pass

@@ -61,9 +61,6 @@ class BigQuery(UnstractDB):
     def can_read() -> bool:
         return True
 
-    def get_string_type(self) -> str:
-        return "string"
-
     def get_engine(self) -> Client:
         return bigquery.Client.from_service_account_info(  # type: ignore
             info=self.json_credentials
@@ -73,24 +70,6 @@ class BigQuery(UnstractDB):
         try:
             query_job = self.get_engine().query(query)
             return query_job.result()
-        except google.api_core.exceptions.NotFound as e:
-            # Resource not found - suppress for table-not-found scenarios
-            logger.info(f"Resource not found: {str(e)}")
-            return None
-        except google.api_core.exceptions.Forbidden as e:
-            error_message = str(e).lower()
-            if any(
-                keyword in error_message
-                for keyword in [
-                    "does not exist",
-                    "or perhaps it does not exist",
-                    "user does not have permission to query table",
-                ]
-            ):
-                logger.info(f"Table does not exist (403): {str(e)}")
-                return None
-            else:
-                raise ConnectorError(str(e))
         except Exception as e:
             raise ConnectorError(str(e))
 
@@ -196,13 +175,9 @@ class BigQuery(UnstractDB):
         table_name = kwargs.get("table_name", None)
         if table_name is None:
             raise ValueError("Please enter a valid table_name to to create/insert table")
-        sql_keys = list(kwargs.get("sql_keys", []))
 
-        # Get column types to identify JSON columns
-        try:
-            column_types = self.get_information_schema(table_name=table_name)
-        except Exception:
-            column_types = {}
+        sql_keys = list(kwargs.get("sql_keys", []))
+        column_types = self.get_information_schema(table_name=table_name)
 
         try:
             if sql_values:
@@ -221,6 +196,12 @@ class BigQuery(UnstractDB):
                             modified_sql = modified_sql.replace(
                                 f"@{key}", f"PARSE_JSON(@{key})"
                             )
+                        query_parameters.append(
+                            bigquery.ScalarQueryParameter(key, "STRING", json_str)
+                        )
+                    elif isinstance(value, (dict, list)):
+                        # For dict/list values in STRING columns, serialize to JSON string
+                        json_str = json.dumps(value) if value else None
                         query_parameters.append(
                             bigquery.ScalarQueryParameter(key, "STRING", json_str)
                         )

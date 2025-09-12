@@ -42,7 +42,7 @@ class TestDestinationConnectorBigQuery(TestCase):
 
         # BigQuery table format: project.dataset.table
         dataset_name = "temp_dataset"  # Use your dataset name
-        self.test_table_name = f"{project_id}.{dataset_name}.output_4"
+        self.test_table_name = f"{project_id}.{dataset_name}.output_1"
 
         # Create real BigQuery connector instance
         self.bigquery_connector = BigQuery(settings=self.bigquery_config)
@@ -113,7 +113,7 @@ class TestDestinationConnectorBigQuery(TestCase):
     def create_real_connector_instance(self) -> Mock:
         """Create connector instance using real BigQuery connector."""
         connector = Mock()
-        connector.connector_id = "bigquery|79e1d681-9b8b-4f6b-b972-1a6a095312f4"
+        connector.connector_id = BigQuery.get_id()
         connector.connector_metadata = self.bigquery_config
         # Store reference to real connector for potential future use
         connector._real_bigquery_connector = self.bigquery_connector

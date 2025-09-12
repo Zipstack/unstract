@@ -68,10 +68,6 @@ class UnstractDB(UnstractConnector, ABC):
     def python_social_auth_backend() -> str:
         return ""
 
-    def get_string_type(self) -> str:
-        """Child classes implement this to return the string type name for their DB."""
-        return "Text"
-
     @abstractmethod
     def get_engine(self) -> Any:
         pass
@@ -153,7 +149,7 @@ class UnstractDB(UnstractConnector, ABC):
 
         sql_query = ""
         create_table_query = self.get_create_table_base_query(table=table)
-        logger.debug(f"Create table base query {create_table_query}")
+        logger.info(f"Create table base query {create_table_query}")
 
         sql_query += create_table_query
 
@@ -241,8 +237,12 @@ class UnstractDB(UnstractConnector, ABC):
         Returns:
             bool: False if metadata exists, True if metadata does not exist
         """
-        # Check case-insensitively for metadata column
+        logger.info("Checking if column 'metadata' exists in table_info")
         metadata_exists = any(key.lower() == "metadata" for key in table_info.keys())
+        if metadata_exists:
+            logger.info(
+                "column 'metadata' exists for corresponding table. No migration needed"
+            )
         return not metadata_exists
 
     def migrate_table_to_v2(
@@ -265,12 +265,14 @@ class UnstractDB(UnstractConnector, ABC):
         sql_query_or_list = self.prepare_multi_column_migration(
             table_name=table_name, column_name=column_name
         )
-        logger.debug(f"Multi column prepared with values {sql_query_or_list}")
+        logger.info(
+            "Running table migration for table %s by adding following columns %s",
+            table_name,
+            sql_query_or_list,
+        )
 
         try:
-            # Handle both single string and list of SQL statements
             if isinstance(sql_query_or_list, list):
-                # Execute each statement separately for databases like Snowflake
                 for sql_query in sql_query_or_list:
                     self.execute_query(
                         engine=engine,
@@ -279,20 +281,20 @@ class UnstractDB(UnstractConnector, ABC):
                         table_name=table_name,
                     )
             else:
-                # Execute single statement for databases like PostgreSQL/BigQuery
                 self.execute_query(
                     engine=engine,
                     sql_query=sql_query_or_list,
                     sql_values=None,
                     table_name=table_name,
                 )
+                logger.info(
+                    "successfully migrated table %s with: %s query",
+                    table_name,
+                    sql_query_or_list,
+                )
             return self.get_information_schema(table_name=table_name)
         except UnstractDBConnectorException as e:
             raise UnstractDBException(detail=e.detail) from e
-
-        logger.debug(
-            f"successfully migrated table {table_name} with: {sql_query_or_list} query"
-        )
 
     def get_sql_values_for_query(
         self, values: dict[str, Any], column_types: dict[str, str]
