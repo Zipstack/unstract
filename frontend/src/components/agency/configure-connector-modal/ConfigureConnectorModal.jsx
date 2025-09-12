@@ -1,28 +1,28 @@
+import { CloudDownloadOutlined, CloudUploadOutlined } from "@ant-design/icons";
 import {
+  Button,
   Col,
+  Image,
   Modal,
   Row,
-  Typography,
   Select,
   Space,
-  Image,
   Tabs,
-  Button,
+  Typography,
 } from "antd";
-import { CloudDownloadOutlined, CloudUploadOutlined } from "@ant-design/icons";
+import { cloneDeep, isEqual } from "lodash";
 import PropTypes from "prop-types";
-import { useEffect, useState, useRef, useCallback } from "react";
-import { isEqual, cloneDeep } from "lodash";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { useAlertStore } from "../../../store/alert-store";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
-import useRequestUrl from "../../../hooks/useRequestUrl";
-import { AddSourceModal } from "../../input-output/add-source-modal/AddSourceModal";
-import { ManageFiles } from "../../input-output/manage-files/ManageFiles";
-import { ConfigureFormsLayout } from "../configure-forms-layout/ConfigureFormsLayout";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import useRequestUrl from "../../../hooks/useRequestUrl";
+import { useAlertStore } from "../../../store/alert-store";
+import { AddSourceModal } from "../../input-output/add-source-modal/AddSourceModal";
+import { ManageFiles } from "../../input-output/manage-files/ManageFiles";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
+import { ConfigureFormsLayout } from "../configure-forms-layout/ConfigureFormsLayout";
 import "./ConfigureConnectorModal.css";
 
 let DBRules;
@@ -63,6 +63,7 @@ function ConfigureConnectorModal({
   const [isSpecConfigLoading, setIsSpecConfigLoading] = useState(false);
   const [selectedFolderPath, setSelectedFolderPath] = useState("");
   const [isFolderSelected, setIsFolderSelected] = useState(false);
+  const [isPathFromFileBrowser, setIsPathFromFileBrowser] = useState(false);
   const [initialFormDataConfig, setInitialFormDataConfig] = useState({});
   const [initialConnectorId, setInitialConnectorId] = useState(null);
   const [showUnsavedChangesModal, setShowUnsavedChangesModal] = useState(false);
@@ -213,30 +214,43 @@ function ConfigureConnectorModal({
   const handleFolderSelect = (folderPath, itemType) => {
     setSelectedFolderPath(folderPath);
     setIsFolderSelected(itemType === "folder");
+    setIsPathFromFileBrowser(true);
   };
 
   const handleAddFolder = () => {
     if (!selectedFolderPath) return;
 
+    // HACK: For GDrive connectors, strip the "root/" prefix to avoid duplication
+    // since backend will add it back during execution. This helps avoid a migration
+    let folderPath = selectedFolderPath;
+    if (
+      isPathFromFileBrowser &&
+      connDetails?.connector_id?.startsWith("gdrive") &&
+      folderPath.startsWith("root/")
+    ) {
+      folderPath = folderPath.substring(5); // Remove "root/" prefix
+    }
+
     if (connType === "input") {
       // SOURCE mode: Add to folders array (existing behavior)
       const currentFolders = formDataConfig?.folders || [];
-      if (!currentFolders.includes(selectedFolderPath)) {
+      if (!currentFolders.includes(folderPath)) {
         setFormDataConfig((prev) => ({
           ...prev,
-          folders: [...currentFolders, selectedFolderPath],
+          folders: [...currentFolders, folderPath],
         }));
       }
     } else if (connType === "output") {
       // DESTINATION mode: Set outputFolder as single value
       setFormDataConfig((prev) => ({
         ...prev,
-        outputFolder: selectedFolderPath,
+        outputFolder: folderPath,
       }));
     }
 
     setSelectedFolderPath("");
     setIsFolderSelected(false);
+    setIsPathFromFileBrowser(false);
   };
 
   // Configuration for UI text based on connector type
@@ -391,6 +405,7 @@ function ConfigureConnectorModal({
       ) {
         setSelectedFolderPath("");
         setIsFolderSelected(false);
+        setIsPathFromFileBrowser(false);
       }
     };
 

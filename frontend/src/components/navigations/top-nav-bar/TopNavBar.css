@@ -35,6 +35,14 @@
   height: auto;
   border-radius: 0;
   border-color: transparent;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logout-button:hover {
+  background-color: rgba(0, 0, 0, 0.04);
 }
 
 .logout-button:active {
@@ -57,6 +65,19 @@
 
 .switch-org-menu .ant-dropdown-menu-title-content .ant-space {
   display: block;
+}
+
+.user-profile-menu .ant-dropdown-menu-item .ant-dropdown-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  padding: 5px 12px;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.user-profile-menu .ant-dropdown-menu-item .ant-dropdown-trigger:hover {
+  background-color: rgba(0, 0, 0, 0.04);
 }
 
 .page-identifier {

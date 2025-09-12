@@ -281,7 +281,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
             }}
             placement="left"
           >
-            <div>
+            <div className="ant-dropdown-trigger">
               <UserSwitchOutlined /> Switch Org
             </div>
           </Dropdown>
