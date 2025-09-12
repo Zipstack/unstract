@@ -60,10 +60,6 @@ class MariaDB(UnstractDB, MysqlHandler):
         return con
 
     def sql_to_db_mapping(self, value: Any) -> str:
-        """Override to handle JSON columns correctly for MySQL."""
-        if isinstance(value, (dict, list)):
-            return "JSON"
-
         return str(MysqlHandler.sql_to_db_mapping(value=value))
 
     def execute_query(

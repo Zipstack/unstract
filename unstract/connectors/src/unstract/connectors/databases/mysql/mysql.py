@@ -78,11 +78,6 @@ class MySQL(UnstractDB, MysqlHandler):
 
     def sql_to_db_mapping(self, value: Any) -> str:
         """Override to handle JSON columns correctly for MySQL."""
-        # Handle dict/list types directly - these should be JSON
-        if isinstance(value, (dict, list)):
-            return "JSON"
-
-        # Fall back to handler logic for other types
         return str(MysqlHandler.sql_to_db_mapping(value=value))
 
     def get_create_table_base_query(self, table: str) -> str:

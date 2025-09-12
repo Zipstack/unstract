@@ -369,7 +369,7 @@ class DestinationConnector(BaseConnector):
         table_info = db_class.get_information_schema(table_name=table_name)
 
         logger.info(
-            f"destination connector engine: {engine} with table name: {table_name}"
+            f"destination connector engine: {engine} with table info: {table_info}"
         )
 
         if table_info:

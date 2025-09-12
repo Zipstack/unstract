@@ -47,7 +47,7 @@ class TestDestinationConnectorMariaDB(TestCase):
             "processing_time": 1.5,
         }
         self.input_file_path = "/path/to/test/file.pdf"
-        self.test_table_name = "NO_MIGRATION"
+        self.test_table_name = "MIGRATION"
 
         # Create real MariaDB connector instance
         self.mariadb_connector = MariaDB(settings=self.mariadb_config)
