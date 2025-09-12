@@ -172,117 +172,138 @@ class AdapterInstanceViewSet(ModelViewSet):
             return AdapterListSerializer
         return AdapterInstanceSerializer
 
-    def create(self, request: Any) -> Response:
-        serializer = self.get_serializer(data=request.data)
-
-        use_platform_unstract_key = False
-        adapter_metadata = request.data.get(AdapterKeys.ADAPTER_METADATA)
-        if adapter_metadata and adapter_metadata.get(
-            AdapterKeys.PLATFORM_PROVIDED_UNSTRACT_KEY, False
-        ):
-            use_platform_unstract_key = True
-
-        serializer.is_valid(raise_exception=True)
-
-        # Validate URLs for security without full adapter testing
-        adapter_id = serializer.validated_data.get(AdapterKeys.ADAPTER_ID)
-        adapter_metadata_b = serializer.validated_data.get(AdapterKeys.ADAPTER_METADATA_B)
-
+    def _decrypt_and_validate_metadata(self, adapter_metadata_b: bytes) -> dict[str, Any]:
+        """Decrypt adapter metadata and validate its format."""
         if not adapter_metadata_b:
             raise ValidationError("Missing adapter metadata for validation.")
 
-        # Decrypt metadata to get configuration
         try:
             fernet = Fernet(settings.ENCRYPTION_KEY.encode("utf-8"))
             decrypted_json = fernet.decrypt(adapter_metadata_b)
             decrypted_metadata = json.loads(decrypted_json.decode("utf-8"))
-            # Ensure object shape
+
             if not isinstance(decrypted_metadata, dict):
                 raise ValidationError(
                     "Invalid adapter metadata format: expected JSON object."
                 )
-        except Exception as e:  # InvalidToken/JSONDecodeError/TypeError/etc.
+            return decrypted_metadata
+        except Exception as e:
             raise ValidationError("Invalid adapter metadata.") from e
 
-        # Validate URLs for this adapter configuration
-        try:
-            _ = AdapterProcessor.validate_adapter_urls(adapter_id, decrypted_metadata)
-        except Exception as e:
-            # Format error message similar to test adapter API
-            adapter_name = (
-                decrypted_metadata.get(AdapterKeys.ADAPTER_NAME, "adapter")
-                if isinstance(decrypted_metadata, dict)
-                else "adapter"
-            )
-            error_detail = f"Error testing '{adapter_name}'. {e!s}"
-            raise ValidationError(error_detail) from e
-
-        # Validate URLs for this adapter configuration
+    def _validate_adapter_urls(
+        self, adapter_id: str, decrypted_metadata: dict[str, Any]
+    ) -> None:
+        """Validate URLs for adapter configuration."""
         try:
             AdapterProcessor.validate_adapter_urls(adapter_id, decrypted_metadata)
         except Exception as e:
-            # Format error message similar to test adapter API
             adapter_name = decrypted_metadata.get(AdapterKeys.ADAPTER_NAME, "adapter")
             error_detail = f"Error testing '{adapter_name}'. {e!s}"
             raise ValidationError(error_detail) from e
+
+    def _check_platform_key_usage(self, request_data: dict[str, Any]) -> bool:
+        """Check if platform unstract key should be used."""
+        adapter_metadata = request_data.get(AdapterKeys.ADAPTER_METADATA)
+        return bool(
+            adapter_metadata
+            and adapter_metadata.get(AdapterKeys.PLATFORM_PROVIDED_UNSTRACT_KEY, False)
+        )
+
+    def _update_metadata_for_platform_key(
+        self,
+        serializer_validated_data: dict[str, Any],
+        adapter_type: str,
+        is_paid_subscription: bool = False,
+    ) -> None:
+        """Update adapter metadata when using platform key."""
+        if adapter_type == AdapterKeys.X2TEXT:
+            adapter_metadata_b = serializer_validated_data.get(
+                AdapterKeys.ADAPTER_METADATA_B
+            )
+            updated_metadata_b = AdapterProcessor.update_adapter_metadata(
+                adapter_metadata_b, is_paid_subscription=is_paid_subscription
+            )
+            serializer_validated_data[AdapterKeys.ADAPTER_METADATA_B] = updated_metadata_b
+
+    def _set_default_adapter_if_needed(
+        self, adapter_instance: AdapterInstance, adapter_type: str, user_id: int
+    ) -> None:
+        """Set adapter as default if no default exists for this type."""
+        organization_member = OrganizationMemberService.get_user_by_id(user_id)
+        user_default_adapter, created = UserDefaultAdapter.objects.get_or_create(
+            organization_member=organization_member
+        )
+
+        # Map adapter types to their default fields
+        adapter_type_mapping = {
+            AdapterKeys.LLM: "default_llm_adapter",
+            AdapterKeys.EMBEDDING: "default_embedding_adapter",
+            AdapterKeys.VECTOR_DB: "default_vector_db_adapter",
+            AdapterKeys.X2TEXT: "default_x2text_adapter",
+        }
+
+        if adapter_type in adapter_type_mapping:
+            field_name = adapter_type_mapping[adapter_type]
+            if not getattr(user_default_adapter, field_name):
+                setattr(user_default_adapter, field_name, adapter_instance)
+                user_default_adapter.organization_member = organization_member
+                user_default_adapter.save()
+
+    def _validate_update_metadata(
+        self, serializer_validated_data: dict[str, Any], current_adapter: AdapterInstance
+    ) -> tuple[str | None, dict[str, Any] | None]:
+        """Validate metadata for update operations."""
+        if AdapterKeys.ADAPTER_METADATA_B not in serializer_validated_data:
+            return None, None
+
+        adapter_id = (
+            serializer_validated_data.get(AdapterKeys.ADAPTER_ID)
+            or current_adapter.adapter_id
+        )
+        adapter_metadata_b = serializer_validated_data.get(AdapterKeys.ADAPTER_METADATA_B)
+
+        if not adapter_id or not adapter_metadata_b:
+            raise ValidationError("Missing adapter metadata for validation.")
+
+        decrypted_metadata = self._decrypt_and_validate_metadata(adapter_metadata_b)
+        self._validate_adapter_urls(adapter_id, decrypted_metadata)
+
+        return adapter_id, decrypted_metadata
+
+    def create(self, request: Any) -> Response:
+        serializer = self.get_serializer(data=request.data)
+        use_platform_unstract_key = self._check_platform_key_usage(request.data)
+
+        serializer.is_valid(raise_exception=True)
+
+        # Extract and validate metadata
+        adapter_id = serializer.validated_data.get(AdapterKeys.ADAPTER_ID)
+        adapter_metadata_b = serializer.validated_data.get(AdapterKeys.ADAPTER_METADATA_B)
+        decrypted_metadata = self._decrypt_and_validate_metadata(adapter_metadata_b)
+
+        # Validate URLs for security
+        self._validate_adapter_urls(adapter_id, decrypted_metadata)
+
         try:
             adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
 
-            if adapter_type == AdapterKeys.X2TEXT and use_platform_unstract_key:
-                adapter_metadata_b = serializer.validated_data.get(
-                    AdapterKeys.ADAPTER_METADATA_B
-                )
-                adapter_metadata_b = AdapterProcessor.update_adapter_metadata(
-                    adapter_metadata_b
-                )
-                # Update the validated data with the new adapter_metadata
-                serializer.validated_data[AdapterKeys.ADAPTER_METADATA_B] = (
-                    adapter_metadata_b
+            # Update metadata if using platform key
+            if use_platform_unstract_key:
+                self._update_metadata_for_platform_key(
+                    serializer.validated_data, adapter_type
                 )
 
+            # Save the adapter instance
             instance = serializer.save()
-            organization_member = OrganizationMemberService.get_user_by_id(
-                request.user.id
-            )
 
-            # Check to see if there is a default configured
-            # for this adapter_type and for the current user
-            (
-                user_default_adapter,
-                created,
-            ) = UserDefaultAdapter.objects.get_or_create(
-                organization_member=organization_member
-            )
-
-            if (adapter_type == AdapterKeys.LLM) and (
-                not user_default_adapter.default_llm_adapter
-            ):
-                user_default_adapter.default_llm_adapter = instance
-
-            elif (adapter_type == AdapterKeys.EMBEDDING) and (
-                not user_default_adapter.default_embedding_adapter
-            ):
-                user_default_adapter.default_embedding_adapter = instance
-            elif (adapter_type == AdapterKeys.VECTOR_DB) and (
-                not user_default_adapter.default_vector_db_adapter
-            ):
-                user_default_adapter.default_vector_db_adapter = instance
-            elif (adapter_type == AdapterKeys.X2TEXT) and (
-                not user_default_adapter.default_x2text_adapter
-            ):
-                user_default_adapter.default_x2text_adapter = instance
-
-            organization_member = OrganizationMemberService.get_user_by_id(
-                request.user.id
-            )
-            user_default_adapter.organization_member = organization_member
-
-            user_default_adapter.save()
+            # Set as default adapter if needed
+            self._set_default_adapter_if_needed(instance, adapter_type, request.user.id)
 
         except IntegrityError:
             raise DuplicateAdapterNameError(
                 name=serializer.validated_data.get(AdapterKeys.ADAPTER_NAME)
             )
+
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
@@ -394,76 +415,30 @@ class AdapterInstanceViewSet(ModelViewSet):
     def update(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
-        # Check if adapter metadata is being updated and contains the platform key flag
-        use_platform_unstract_key = False
-        adapter_metadata = request.data.get(AdapterKeys.ADAPTER_METADATA)
-
-        if adapter_metadata and adapter_metadata.get(
-            AdapterKeys.PLATFORM_PROVIDED_UNSTRACT_KEY, False
-        ):
-            use_platform_unstract_key = True
-            logger.error(f"Platform key flag detected: {use_platform_unstract_key}")
-
-        # Get the adapter instance for update
+        use_platform_unstract_key = self._check_platform_key_usage(request.data)
         adapter = self.get_object()
 
-        # Get serializer and validate data first
+        # Get serializer and validate data
         serializer = self.get_serializer(adapter, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
 
-        # Validate URLs for security if metadata is being updated
-        if AdapterKeys.ADAPTER_METADATA_B in serializer.validated_data:
-            adapter_id = (
-                serializer.validated_data.get(AdapterKeys.ADAPTER_ID)
-                or adapter.adapter_id
-            )
-            adapter_metadata_b = serializer.validated_data.get(
-                AdapterKeys.ADAPTER_METADATA_B
-            )
+        # Validate metadata if being updated
+        adapter_id, decrypted_metadata = self._validate_update_metadata(
+            serializer.validated_data, adapter
+        )
 
-        if not adapter_id or not adapter_metadata_b:
-            raise ValidationError("Missing adapter metadata for validation.")
-
-        # Decrypt metadata to get configuration
-        try:
-            fernet = Fernet(settings.ENCRYPTION_KEY.encode("utf-8"))
-            decrypted_json = fernet.decrypt(adapter_metadata_b)
-            decrypted_metadata = json.loads(decrypted_json.decode("utf-8"))
-        except Exception as e:  # InvalidToken/JSONDecodeError/TypeError/etc.
-            raise ValidationError("Invalid adapter metadata.") from e
-
-        # Validate URLs for this adapter configuration
-        try:
-            _ = AdapterProcessor.validate_adapter_urls(adapter_id, decrypted_metadata)
-        except Exception as e:
-            # Format error message similar to test adapter API
-            adapter_name = decrypted_metadata.get(AdapterKeys.ADAPTER_NAME, "adapter")
-            error_detail = f"Error testing '{adapter_name}'. {e!s}"
-            raise ValidationError(error_detail) from e
-
+        # Handle platform key updates
         if use_platform_unstract_key:
             logger.error("Processing adapter with platform key")
-            serializer = self.get_serializer(adapter, data=request.data, partial=True)
-            serializer.is_valid(raise_exception=True)
-
-            # Get adapter_type from validated data (consistent with create method)
             adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
             logger.error(f"Adapter type from validated data: {adapter_type}")
 
-            if adapter_type == AdapterKeys.X2TEXT:
-                logger.error("Processing X2TEXT adapter with platform key")
-                adapter_metadata_b = serializer.validated_data.get(
-                    AdapterKeys.ADAPTER_METADATA_B
-                )
-                adapter_metadata_b = AdapterProcessor.update_adapter_metadata(
-                    adapter_metadata_b, is_paid_subscription=True
-                )
-                # Update the validated data with the new adapter_metadata
-                serializer.validated_data[AdapterKeys.ADAPTER_METADATA_B] = (
-                    adapter_metadata_b
-                )
+            # Update metadata for platform key usage
+            self._update_metadata_for_platform_key(
+                serializer.validated_data, adapter_type, is_paid_subscription=True
+            )
 
-            # Save the instance with updated metadata
+            # Save and return updated instance
             serializer.save()
             return Response(serializer.data)
 

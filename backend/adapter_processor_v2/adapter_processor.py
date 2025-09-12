@@ -122,7 +122,6 @@ class AdapterProcessor:
                 adapter_name = adapter_metadata.get(AdapterKeys.ADAPTER_NAME, "adapter")
                 error_detail = f"Error testing '{adapter_name}'. {e!s}"
                 raise ValidationError(error_detail) from e
-            # adapter_instance = adapter_class(adapter_metadata)
             test_result: bool = adapter_instance.test_connection()
             return test_result
         except SdkError as e:
