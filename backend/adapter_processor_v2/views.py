@@ -230,7 +230,7 @@ class AdapterInstanceViewSet(ModelViewSet):
     ) -> None:
         """Set adapter as default if no default exists for this type."""
         organization_member = OrganizationMemberService.get_user_by_id(user_id)
-        user_default_adapter, created = UserDefaultAdapter.objects.get_or_create(
+        user_default_adapter, _ = UserDefaultAdapter.objects.get_or_create(
             organization_member=organization_member
         )
 
@@ -425,9 +425,7 @@ class AdapterInstanceViewSet(ModelViewSet):
         serializer.is_valid(raise_exception=True)
 
         # Validate metadata if being updated
-        adapter_id, decrypted_metadata = self._validate_update_metadata(
-            serializer.validated_data, adapter
-        )
+        _, _ = self._validate_update_metadata(serializer.validated_data, adapter)
 
         # Handle platform key updates
         if use_platform_unstract_key:
