@@ -250,7 +250,9 @@ class AdapterInstanceViewSet(ModelViewSet):
                 user_default_adapter.save()
 
     def _validate_update_metadata(
-        self, serializer_validated_data: dict[str, Any], current_adapter: AdapterInstance
+        self,
+        serializer_validated_data: dict[str, Any],
+        current_adapter: AdapterInstance,
     ) -> tuple[str | None, dict[str, Any] | None]:
         """Validate metadata for update operations."""
         if AdapterKeys.ADAPTER_METADATA_B not in serializer_validated_data:
@@ -435,7 +437,9 @@ class AdapterInstanceViewSet(ModelViewSet):
 
             # Update metadata for platform key usage
             self._update_metadata_for_platform_key(
-                serializer.validated_data, adapter_type, is_paid_subscription=True
+                serializer.validated_data,
+                adapter_type,
+                is_paid_subscription=True,
             )
 
             # Save and return updated instance
