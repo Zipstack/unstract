@@ -7,9 +7,13 @@ falls back to minimal OSS null service otherwise.
 
 from typing import Any, Protocol
 
+from client_plugin_registry import get_client_plugin, has_client_plugin
+
 from ..infrastructure.logging import WorkerLogger
 
 logger = WorkerLogger.get_logger(__name__)
+
+MANUAL_REVIEW_PLUGIN_NAME = "manual_review"
 
 
 class ManualReviewServiceProtocol(Protocol):
@@ -184,11 +188,11 @@ class ManualReviewServiceFactory:
     ) -> ManualReviewServiceProtocol | None:
         """Try to create enhanced service from plugins."""
         try:
-            from client_plugin_registry import get_client_plugin, has_client_plugin
-
             # Check for manual review service plugin
-            if has_client_plugin("manual_review"):
-                service_plugin = get_client_plugin("manual_review", api_client.config)
+            if has_client_plugin(MANUAL_REVIEW_PLUGIN_NAME):
+                service_plugin = get_client_plugin(
+                    MANUAL_REVIEW_PLUGIN_NAME, api_client.config
+                )
                 if service_plugin:
                     # Set organization context on the service
                     service_plugin.set_organization_context(organization_id)
@@ -341,7 +345,7 @@ class ManualReviewEnhancedService:
 
 
 # Simplified direct access functions
-def get_manual_review_workflow_util(api_client: Any, organization_id: str) -> Any:
+def get_manual_review_workflow_util(api_client: Any, organization_id: str) -> Any | None:
     """Get WorkflowUtil directly via plugin registry (simplified access).
 
     This eliminates the service layer for direct WorkflowUtil access.
@@ -354,24 +358,26 @@ def get_manual_review_workflow_util(api_client: Any, organization_id: str) -> An
         ManualReviewWorkflowUtil if plugin available, null implementation otherwise
     """
     try:
-        from client_plugin_registry import get_client_plugin, has_client_plugin
-
-        if has_client_plugin("manual_review"):
+        if has_client_plugin(MANUAL_REVIEW_PLUGIN_NAME):
             # Get WorkflowUtil directly from plugin registry
-            workflow_util = get_client_plugin("manual_review", api_client.config)
+            workflow_util = get_client_plugin(
+                MANUAL_REVIEW_PLUGIN_NAME, api_client.config
+            )
             if workflow_util:
                 # Set organization context
                 workflow_util.organization_id = organization_id
                 workflow_util.client.set_organization_context(organization_id)
-                logger.debug("Using direct WorkflowUtil from plugin registry")
                 return workflow_util
 
-        logger.debug("Plugin not available, using null WorkflowUtil")
         return _create_null_workflow_util()
 
     except Exception as e:
         logger.debug(f"Failed to get WorkflowUtil from plugin: {e}")
         return _create_null_workflow_util()
+
+
+def has_manual_review_plugin():
+    return has_client_plugin(MANUAL_REVIEW_PLUGIN_NAME)
 
 
 def _create_null_workflow_util():
@@ -394,10 +400,6 @@ def _create_null_workflow_util():
             result, workflow_id, file_destination, is_manual_review_required
         ):
             return False
-
-        @staticmethod
-        def get_hitl_ttl_seconds(workflow):
-            return None
 
         def create_workflow_file_data_with_manual_review(
             self,
@@ -428,6 +430,12 @@ def _create_null_workflow_util():
         def calculate_batch_decisions(self, batch, source_files, config):
             return [False] * len(batch)
 
+        def enqueue_manual_review(self, *args, **kwargs):
+            return
+
+        def get_hitl_ttl_seconds(self, *args, **kwargs):
+            return None
+
     return WorkflowUtilNull()
 
 
@@ -443,7 +451,7 @@ def get_manual_review_service(
     workflow_util = get_manual_review_workflow_util(api_client, organization_id)
 
     class LegacyServiceWrapper:
-        def __init__(self, workflow_util):
+        def __init__(self, workflow_util: Any | None):
             self.workflow_util = workflow_util
 
         def get_workflow_util(self):

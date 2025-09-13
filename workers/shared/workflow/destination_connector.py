@@ -24,7 +24,10 @@ from shared.enums import QueueResultStatus
 # Import database utils (stable path)
 from shared.infrastructure.database.utils import WorkerDatabaseUtils
 from shared.models.result_models import QueueResult
-from shared.utils.manual_review_factory import get_manual_review_service
+from shared.utils.manual_review_factory import (
+    get_manual_review_service,
+    has_manual_review_plugin,
+)
 
 from unstract.connectors.connectorkit import Connectorkit
 from unstract.core.data_models import ConnectionType as CoreConnectionType
@@ -1216,6 +1219,9 @@ class WorkerDestinationConnector:
 
         This method replicates the backend DestinationConnector._push_to_queue logic.
         """
+        if not has_manual_review_plugin():
+            logger.warning(f"No manual review service available to enqueue {file_name}")
+            return
         logger.info(f"Pushing {file_name} to manual review queue")
         log_file_info(
             self.workflow_log,
@@ -1226,11 +1232,6 @@ class WorkerDestinationConnector:
         try:
             # Ensure manual review service is available and use it
             manual_review_service = self._ensure_manual_review_service(api_client)
-            if not manual_review_service:
-                logger.warning(
-                    f"No manual review service available to enqueue {file_name}"
-                )
-                return
 
             # Get tool execution result if not provided
             if not tool_execution_result:
