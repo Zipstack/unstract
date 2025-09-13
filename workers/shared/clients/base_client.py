@@ -8,7 +8,6 @@ All specialized clients inherit from BaseAPIClient to get consistent HTTP behavi
 """
 
 import json
-import logging
 import os
 import time
 import uuid
@@ -233,15 +232,6 @@ class BaseAPIClient:
 
         for attempt in range(max_retries + 1):
             try:
-                is_retry = attempt > 0
-                log_level = (
-                    logging.WARNING if is_retry else logging.INFO
-                )  # Changed to INFO for debugging
-                logger.log(
-                    log_level,
-                    f"DEBUG: Making {method} request to {url} (attempt {attempt + 1}/{max_retries + 1})",
-                )
-
                 # Prepare request kwargs
                 kwargs = {"timeout": timeout, "params": params, "allow_redirects": True}
 
@@ -250,26 +240,9 @@ class BaseAPIClient:
                 current_org_id = organization_id or self.organization_id
                 if current_org_id:
                     headers["X-Organization-ID"] = current_org_id
-                    if attempt == 0:  # Only log on first attempt
-                        logger.info(
-                            f"DEBUG: Including organization header: X-Organization-ID={current_org_id}"
-                        )
-                else:
-                    if attempt == 0:  # Only log on first attempt
-                        logger.warning(
-                            f"DEBUG: NO organization header - current_org_id={current_org_id}, "
-                            f"organization_id param={organization_id}, self.organization_id={self.organization_id}"
-                        )
 
                 if headers:
                     kwargs["headers"] = headers
-                    if attempt == 0:  # Only log on first attempt
-                        logger.info(
-                            f"DEBUG: Request headers being sent: {list(headers.keys())}"
-                        )
-                else:
-                    if attempt == 0:  # Only log on first attempt
-                        logger.warning("DEBUG: NO custom headers being sent")
 
                 # Serialize request data
                 if data is not None:
@@ -281,13 +254,6 @@ class BaseAPIClient:
 
                 # Make request with session (includes connection pooling)
                 response = self.session.request(method, url, **kwargs)
-
-                # Enhanced response logging
-                logger.info(
-                    f"DEBUG: Response: {response.status_code} {response.reason} "
-                    f"(Content-Length: {response.headers.get('Content-Length', 'unknown')}) "
-                    f"URL: {url}"
-                )
 
                 # Handle authentication errors (don't retry)
                 if response.status_code == auth_error_status:
@@ -523,42 +489,18 @@ class BaseAPIClient:
             and self._cached_org_id == org_id
             and self.config.enable_organization_context_cache
         ):
-            if self.config.debug_organization_context:
-                logger.info(
-                    f"DEBUG: Using cached organization context '{org_id}' - skipping redundant call"
-                )
             return
 
-        if self.config.debug_organization_context:
-            logger.info(
-                f"DEBUG: set_organization_context called with org_id='{org_id}' (type: {type(org_id).__name__})"
-            )
-
         if org_id is None or str(org_id).lower() == "none":
-            if self.config.debug_organization_context:
-                logger.error(
-                    f"DEBUG: Attempted to set organization context with invalid value: '{org_id}' - skipping header"
-                )
             self.organization_id = None
             self._cached_org_id = None
-            # Don't set the header if org_id is None
             if "X-Organization-ID" in self.session.headers:
                 del self.session.headers["X-Organization-ID"]
-                if self.config.debug_organization_context:
-                    logger.info("DEBUG: Removed X-Organization-ID header from session")
             return
 
         self.organization_id = org_id
         self._cached_org_id = org_id  # Cache for future calls
         self.session.headers["X-Organization-ID"] = org_id
-
-        if self.config.debug_organization_context:
-            logger.info(
-                f"DEBUG: Set organization context to '{org_id}' - header added to session"
-            )
-            logger.info(
-                f"DEBUG: Session headers now include: {list(self.session.headers.keys())}"
-            )
 
     def clear_organization_context(self):
         """Clear organization context."""

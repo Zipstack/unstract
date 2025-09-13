@@ -16,7 +16,6 @@ from shared.data.models import (
     WorkerTaskResponse,
     WorkflowExecutionStatusUpdate,
 )
-from shared.enums import FileDestinationType
 from shared.enums.task_enums import TaskName
 from shared.infrastructure.logging import (
     WorkerLogger,
@@ -34,6 +33,8 @@ from shared.models.execution_models import (
 from shared.patterns.retry.utils import circuit_breaker
 from shared.processing.files import FileProcessingUtils
 from shared.processing.types import FileDataValidator, TypeConverter
+from shared.utils.manual_review_factory import get_manual_review_service
+from shared.workflow.connectors.source import WorkerSourceConnector
 from shared.workflow.execution import (
     WorkerExecutionContext,
     WorkflowOrchestrationUtils,
@@ -48,13 +49,12 @@ from worker import app, config
 from unstract.core.data_models import (
     ExecutionStatus,
     FileBatchData,
-    FileHash,
     FileHashData,
     WorkerFileData,
 )
 
 # Import common workflow utilities
-from unstract.core.workflow_utils import PipelineTypeResolver, WorkflowTypeDetector
+from unstract.core.workflow_utils import WorkflowTypeDetector
 
 logger = WorkerLogger.get_logger(__name__)
 
@@ -193,7 +193,7 @@ def async_execute_bin_general(
     schema_name: str,
     workflow_id: str,
     execution_id: str,
-    hash_values_of_files: dict[str, FileHash],
+    hash_values_of_files: dict[str, FileHashData],
     scheduled: bool = False,
     execution_mode: tuple | None = None,
     pipeline_id: str | None = None,
@@ -471,7 +471,7 @@ def async_execute_bin_general(
 def _process_file_batches_general(
     api_client: InternalAPIClient,
     execution_id: str,
-    hash_values_of_files: dict[str, FileHash],
+    hash_values_of_files: dict[str, FileHashData],
     pipeline_id: str | None = None,
 ) -> list:
     """Process file batches for general workflow execution.
@@ -490,18 +490,18 @@ def _process_file_batches_general(
     )
 
     try:
-        # Convert FileHash objects to file data format expected by API
+        # Convert FileHashData objects to file data format expected by API
         files_data = []
         skipped_files_count = 0
         for file_key, file_hash_data in hash_values_of_files.items():
             # TRACE: Log incoming file data
-            logger.info(f"Processing FileHash for file '{file_key}'")
-            logger.info(f"  FileHash: {file_hash_data}")
+            logger.info(f"Processing FileHashData for file '{file_key}'")
+            logger.info(f"  FileHashData: {file_hash_data}")
 
-            # Validate that we have a FileHash object
-            if not isinstance(file_hash_data, FileHash):
+            # Validate that we have a FileHashData object
+            if not isinstance(file_hash_data, FileHashData):
                 logger.error(
-                    f"Expected FileHash object for '{file_key}', got {type(file_hash_data)}"
+                    f"Expected FileHashData object for '{file_key}', got {type(file_hash_data)}"
                 )
                 # Try to convert from dict if possible
                 if isinstance(file_hash_data, dict):
@@ -512,7 +512,7 @@ def _process_file_batches_general(
                         )
                     except Exception as e:
                         logger.error(
-                            f"Failed to convert dict to FileHash for '{file_key}': {e}"
+                            f"Failed to convert dict to FileHashData for '{file_key}': {e}"
                         )
                         skipped_files_count += 1
                         continue
@@ -521,7 +521,7 @@ def _process_file_batches_general(
                     skipped_files_count += 1
                     continue
 
-            # Use FileHash to_dict method for consistent data structure
+            # Use FileHashData to_dict method for consistent data structure
             file_data = file_hash_data.to_dict()
 
             # TRACE: Log final file data
@@ -634,22 +634,14 @@ def _execute_general_workflow(
             f"Starting real workflow execution for workflow {workflow_context.workflow_id}, execution {workflow_context.execution_id}, organization_id={workflow_context.organization_context.organization_id}"
         )
 
-        # Get workflow endpoints to determine connection type
-        workflow_endpoints = api_client.get_workflow_endpoints(
-            workflow_context.workflow_id
-        )
-        # Handle both reconstructed objects and cached dicts for backward compatibility
-        if hasattr(workflow_endpoints, "has_api_endpoints"):
-            has_api_endpoints = workflow_endpoints.has_api_endpoints
-        elif isinstance(workflow_endpoints, dict):
-            has_api_endpoints = workflow_endpoints.get("has_api_endpoints", False)
-        else:
-            has_api_endpoints = False
-
-        if has_api_endpoints:
-            logger.warning(
-                f"Workflow {workflow_context.workflow_id} has API endpoints but routed to general worker - this should use API worker"
-            )
+        # workflow_endpoints: WorkflowEndpointConfigResponseData = api_client.get_workflow_endpoints(
+        #     workflow_context.workflow_id
+        # )
+        # has_api_endpoints = workflow_endpoints.has_api_endpoints
+        # if has_api_endpoints:
+        #     logger.warning(
+        #         f"Workflow {workflow_context.workflow_id} has API endpoints but routed to general worker - this should use API worker"
+        #     )
 
         # For ETL/TASK workflows, we need to:
         # 1. Get source files from the source connector
@@ -659,7 +651,6 @@ def _execute_general_workflow(
 
         # For ETL/TASK workflows, we use file processing orchestration
         # The workflow execution already exists and is managed by the backend
-        execution_id = workflow_context.execution_id
         if not execution_id:
             raise ValueError("Execution ID required for general workflow execution")
 
@@ -676,7 +667,6 @@ def _execute_general_workflow(
 
         # Execute workflow - retrieve source files from configured source connector
         # Import the source connector
-        from shared.workflow.connectors.source import WorkerSourceConnector
 
         # Create source connector instance
         source_connector = WorkerSourceConnector(
@@ -687,16 +677,11 @@ def _execute_general_workflow(
             use_file_history=workflow_context.get_setting("use_file_history", True),
         )
 
-        # Initialize WebSocket logger EARLY for source connector logging
-        try:
-            workflow_logger = WorkerWorkflowLogger.create_for_general_workflow(
-                execution_id=execution_id,
-                organization_id=api_client.organization_id,
-                pipeline_id=pipeline_id,
-            )
-        except Exception as logger_error:
-            logger.warning(f"Failed to initialize UI logger: {logger_error}")
-            workflow_logger = None
+        workflow_logger = WorkerWorkflowLogger.create_for_general_workflow(
+            execution_id=execution_id,
+            organization_id=api_client.organization_id,
+            pipeline_id=pipeline_id,
+        )
 
         # Retrieve source files from the configured source
         try:
@@ -716,19 +701,16 @@ def _execute_general_workflow(
                     )
 
             # Get connection type from endpoint config
-            connection_type = source_connector.endpoint_config.get(
-                "connection_type", "unknown"
-            )
-            is_api = connection_type == "API"
+            connection_type = source_connector.endpoint_config.connection_type
+            is_api = source_connector.is_api
 
         except Exception as source_error:
             logger.error(f"Failed to retrieve source files: {source_error}")
 
             # CRITICAL FIX: Log source connector errors to UI
-            if workflow_logger:
-                workflow_logger.log_error(
-                    logger, f"❌ Failed to retrieve files from source: {source_error}"
-                )
+            workflow_logger.log_error(
+                logger, f"❌ Failed to retrieve files from source: {source_error}"
+            )
 
             # Continue with empty source files but log the error
             source_files = {}
@@ -745,13 +727,13 @@ def _execute_general_workflow(
 
         original_file_count = len(source_files) if source_files else 0
 
-        if not is_api and source_files:
+        # if not is_api and source_files:
+        if source_files:
             # Log file filtering start to UI
-            if workflow_logger:
-                workflow_logger.log_info(
-                    logger,
-                    f"🔄 Checking {original_file_count} files for duplicates and active processing...",
-                )
+            workflow_logger.log_info(
+                logger,
+                f"🔄 Checking {original_file_count} files for duplicates and active processing...",
+            )
 
             # ETL/TASK workflows: Apply active file filtering to prevent duplicate processing
             source_files, total_files = (
@@ -766,26 +748,25 @@ def _execute_general_workflow(
             )
 
             # Log filtering results to UI
-            if workflow_logger:
-                filtered_count = original_file_count - total_files
-                if filtered_count > 0:
-                    workflow_logger.log_info(
-                        logger,
-                        f"📋 File filtering: {original_file_count} → {total_files} files ({filtered_count} filtered by history/limits/conflicts)",
-                    )
-                else:
-                    workflow_logger.log_info(
-                        logger, f"✅ File filtering: All {total_files} files are new"
-                    )
-        else:
-            # API workflows: Process without active file filtering (they have their own logic)
-            source_files, total_files = (
-                FileManagementUtils.process_files_without_active_filtering(
-                    source_files=source_files,
-                    max_limit=max_files_limit,
-                    logger_instance=logger,
+            filtered_count = original_file_count - total_files
+            if filtered_count > 0:
+                workflow_logger.log_info(
+                    logger,
+                    f"📋 File filtering: {original_file_count} → {total_files} files ({filtered_count} filtered by history/limits/conflicts)",
                 )
-            )
+            else:
+                workflow_logger.log_info(
+                    logger, f"✅ File filtering: All {total_files} files are new"
+                )
+        # else:
+        #     # API workflows: Process without active file filtering (they have their own logic)
+        #     source_files, total_files = (
+        #         FileManagementUtils.process_files_without_active_filtering(
+        #             source_files=source_files,
+        #             max_limit=max_files_limit,
+        #             logger_instance=logger,
+        #         )
+        #     )
 
         # Log filtering statistics to UI
         final_file_count = len(source_files) if source_files else 0
@@ -815,19 +796,18 @@ def _execute_general_workflow(
             logger.info(f"Execution {execution_id} no files to process")
 
             # Log detailed explanation to UI
-            if workflow_logger:
-                if original_file_count > 0:
-                    workflow_logger.log_info(
-                        logger,
-                        f"💤 All {original_file_count} files have been processed previously - no new files to process",
-                    )
-                else:
-                    # Since source connector already applied file history filtering, 0 files usually means
-                    # files were found but filtered out, not that no files exist in source
-                    workflow_logger.log_info(
-                        logger,
-                        "💤 No new files to process - all files have been processed previously or no files exist in source",
-                    )
+            if original_file_count > 0:
+                workflow_logger.log_info(
+                    logger,
+                    f"💤 All {original_file_count} files have been processed previously - no new files to process",
+                )
+            else:
+                # Since source connector already applied file history filtering, 0 files usually means
+                # files were found but filtered out, not that no files exist in source
+                workflow_logger.log_info(
+                    logger,
+                    "💤 No new files to process - all files have been processed previously or no files exist in source",
+                )
 
             # Send completion log to UI
             workflow_logger.publish_execution_complete(
@@ -934,7 +914,7 @@ def _orchestrate_file_processing_general(
     api_client: InternalAPIClient,
     workflow_id: str,
     execution_id: str,
-    source_files: dict[str, FileHash],
+    source_files: dict[str, FileHashData],
     pipeline_id: str | None,
     scheduled: bool,
     execution_mode: tuple | None,
@@ -997,22 +977,20 @@ def _orchestrate_file_processing_general(
         )
 
         # Calculate manual review configuration ONCE for all files before batching
-        from shared.legacy.manual_review_factory import get_manual_review_service
-
         manual_review_service = get_manual_review_service(
-            api_client, api_client.organization_id
+            api_client=api_client, organization_id=api_client.organization_id
         )
-        global_file_data = (
-            manual_review_service.create_workflow_file_data_with_manual_review(
-                workflow_id=workflow_id,
-                execution_id=execution_id,
-                organization_id=api_client.organization_id,
-                pipeline_id=pipeline_id,
-                scheduled=scheduled,
-                execution_mode=execution_mode_str,
-                use_file_history=use_file_history,
-                total_files=len(source_files),
-            )
+        # Use consistent WorkflowUtil pattern like other workers
+        workflow_util = manual_review_service.get_workflow_util()
+        global_file_data = workflow_util.create_workflow_file_data_with_manual_review(
+            workflow_id=workflow_id,
+            execution_id=execution_id,
+            organization_id=api_client.organization_id,
+            pipeline_id=pipeline_id,
+            scheduled=scheduled,
+            execution_mode=execution_mode_str,
+            use_file_history=use_file_history,
+            total_files=len(source_files),
         )
         logger.debug("Global file data configured for manual review")
         # Pre-calculate file decisions for ALL files based on total count - not per batch!
@@ -1087,11 +1065,6 @@ def _orchestrate_file_processing_general(
 
         # Create callback queue using FILESYSTEM logic
         file_processing_callback_queue = _get_callback_queue_name_general()
-
-        # Execute chord using shared orchestration utility
-        logger.info(
-            f"DEBUG: Creating callback kwargs with organization_id={organization_id}"
-        )
         callback_data = CallbackTaskData(
             execution_id=execution_id,
             organization_id=organization_id,
@@ -1216,7 +1189,7 @@ def _orchestrate_file_processing_general(
 
 
 def _get_file_batches_general(
-    input_files: dict[str, FileHash],
+    input_files: dict[str, FileHashData],
     organization_id: str | None = None,
     api_client=None,
 ) -> list:
@@ -1226,12 +1199,12 @@ def _get_file_batches_general(
     MAX_PARALLEL_FILE_BATCHES configuration.
 
     Args:
-        input_files: Dictionary of FileHash objects
+        input_files: Dictionary of FileHashData objects
 
     Returns:
         List of file batches
     """
-    # Convert FileHash objects to dict format for serialization
+    # Convert FileHashData objects to dict format for serialization
     try:
         standardized_files = TypeConverter.ensure_file_dict_format(input_files)
         logger.info(
@@ -1249,7 +1222,7 @@ def _get_file_batches_general(
         for error in errors:
             logger.warning(f"Validation error: {error}")
 
-    # Convert FileHash objects to serializable format for batching
+    # Convert FileHashData objects to serializable format for batching
     json_serializable_files = {}
     for file_name, file_hash_data in standardized_files.items():
         try:
@@ -1272,7 +1245,7 @@ def _get_file_batches_general(
 
 
 def _create_batch_data_general(
-    files: list, file_data: WorkerFileData, source_files: dict[str, FileHash] = None
+    files: list, file_data: WorkerFileData, source_files: dict[str, FileHashData] = None
 ) -> FileBatchData:
     """Create batch data matching Django FileBatchData structure exactly.
 
@@ -1311,9 +1284,9 @@ def _create_batch_data_general(
 
             # DEBUG: Log source file data lookup
             if source_file_data:
-                if isinstance(source_file_data, FileHash):
+                if isinstance(source_file_data, FileHashData):
                     logger.info(
-                        f"  Found FileHash for '{file_name}': provider_file_uuid='{source_file_data.provider_file_uuid}'"
+                        f"  Found FileHashData for '{file_name}': provider_file_uuid='{source_file_data.provider_file_uuid}'"
                     )
                     source_dict = source_file_data.to_dict()
                 elif isinstance(source_file_data, dict):
@@ -1404,11 +1377,11 @@ def _create_batch_data_general(
 
             # Set manual review fields in file hash
             enhanced_file_hash["is_manualreview_required"] = is_manual_review_required
-            enhanced_file_hash["file_destination"] = (
-                FileDestinationType.MANUALREVIEW.value
-                if is_manual_review_required
-                else FileDestinationType.DESTINATION.value
-            )
+            # enhanced_file_hash["file_destination"] = (
+            #     FileDestinationType.MANUALREVIEW.value
+            #     if is_manual_review_required
+            #     else FileDestinationType.DESTINATION.value
+            # )
 
             logger.info(
                 f"  MANUAL REVIEW: File #{original_file_number} '{file_name}' (batch_index={file_index}) -> is_manualreview_required={is_manual_review_required}, global_q_file_no_list={global_q_file_no_list}"
@@ -1424,9 +1397,9 @@ def _create_batch_data_general(
             logger.info(
                 f"    is_manualreview_required: '{enhanced_file_hash.get('is_manualreview_required')}'"
             )
-            logger.info(
-                f"    file_destination: '{enhanced_file_hash.get('file_destination')}'"
-            )
+            # logger.info(
+            #     f"    file_destination: '{enhanced_file_hash.get('file_destination')}'"
+            # )
             if enhanced_file_hash.get("connector_id"):
                 logger.info(
                     f"    connector_id: '{enhanced_file_hash.get('connector_id')}'"
@@ -1455,11 +1428,11 @@ def _create_batch_data_general(
 
             # Set manual review fields in file hash
             enhanced_file_hash["is_manualreview_required"] = is_manual_review_required
-            enhanced_file_hash["file_destination"] = (
-                FileDestinationType.MANUALREVIEW.value
-                if is_manual_review_required
-                else FileDestinationType.DESTINATION.value
-            )
+            # enhanced_file_hash["file_destination"] = (
+            #     FileDestinationType.MANUALREVIEW.value
+            #     if is_manual_review_required
+            #     else FileDestinationType.DESTINATION.value
+            # )
 
             logger.info(
                 f"  MANUAL REVIEW (no source): File #{original_file_number} '{file_name}' (batch_index={file_index}) -> is_manualreview_required={is_manual_review_required}, global_q_file_no_list={global_q_file_no_list}"
@@ -1686,46 +1659,46 @@ def async_execute_bin(
         pipeline_id=pipeline_id,
     ):
         logger.info(
-            f"Router task async_execute_bin received for execution {execution_id}"
+            f"Router task async_execute_bin received for organization {schema_name} and execution {execution_id}"
         )
 
         try:
             with InternalAPIClient(config) as api_client:
                 api_client.set_organization_context(schema_name)
 
-                # Use common resolver to determine routing
-                resolver = PipelineTypeResolver(api_client)
-                should_use_api, routing_info = resolver.should_route_to_api_worker(
-                    pipeline_id, workflow_id
-                )
+                # # Use common resolver to determine routing
+                # resolver = PipelineTypeResolver(api_client)
+                # should_use_api, routing_info = resolver.should_route_to_api_worker(
+                #     pipeline_id, workflow_id
+                # )
 
-                logger.info(
-                    f"Routing decision: {routing_info['routing_reason']} "
-                    f"(use_api: {should_use_api})"
-                )
+                # logger.info(
+                #     f"Routing decision: {routing_info['routing_reason']} "
+                #     f"(use_api: {should_use_api})"
+                # )
 
-                if should_use_api:
-                    # API workflows should be handled by the dedicated API deployment worker
-                    logger.warning(
-                        f"API workflow {workflow_id} routed to general worker - should use API deployment worker"
-                    )
-                    # For now, reject API tasks from general worker to prevent conflicts
-                    raise Exception(
-                        f"API workflow {workflow_id} should be handled by API deployment worker, not general worker"
-                    )
-                else:
-                    # Route to general workflow handler
-                    return async_execute_bin_general(
-                        schema_name=schema_name,
-                        workflow_id=workflow_id,
-                        execution_id=execution_id,
-                        hash_values_of_files=hash_values_of_files,
-                        scheduled=scheduled,
-                        execution_mode=execution_mode,
-                        pipeline_id=pipeline_id,
-                        use_file_history=use_file_history,
-                        **kwargs,
-                    )
+                # if should_use_api:
+                #     # API workflows should be handled by the dedicated API deployment worker
+                #     logger.warning(
+                #         f"API workflow {workflow_id} routed to general worker - should use API deployment worker"
+                #     )
+                #     # For now, reject API tasks from general worker to prevent conflicts
+                #     raise Exception(
+                #         f"API workflow {workflow_id} should be handled by API deployment worker, not general worker"
+                #     )
+                # else:
+                # Route to general workflow handler
+                return async_execute_bin_general(
+                    schema_name=schema_name,
+                    workflow_id=workflow_id,
+                    execution_id=execution_id,
+                    hash_values_of_files=hash_values_of_files,
+                    scheduled=scheduled,
+                    execution_mode=execution_mode,
+                    pipeline_id=pipeline_id,
+                    use_file_history=use_file_history,
+                    **kwargs,
+                )
 
         except Exception as e:
             logger.error(f"Router task failed for execution {execution_id}: {e}")

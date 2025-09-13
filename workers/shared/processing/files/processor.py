@@ -19,13 +19,16 @@ UI/WebSocket Log Icons:
 - ✅ Processing completed successfully
 """
 
+import ast
 import json
-import time
 from typing import Any
 
-from unstract.core.data_models import ExecutionStatus, FileHashData
+from shared.models.file_processing import FileProcessingContext
 
-from ...api.facades.legacy_client import InternalAPIClient
+from unstract.core.data_models import ExecutionStatus, FileHashData, WorkerFileData
+from unstract.core.worker_models import FileProcessingResult, WorkflowExecutionResult
+
+from ...api.internal_client import InternalAPIClient
 from ...enums import FileDestinationType
 from ...infrastructure.logging import WorkerLogger
 from ...infrastructure.logging.helpers import (
@@ -35,144 +38,24 @@ from ...infrastructure.logging.helpers import (
     log_file_processing_success,
 )
 from ...infrastructure.logging.workflow_logger import WorkerWorkflowLogger
+from ...utils.api_result_cache import get_api_cache_manager
 from ...workflow.execution.service import WorkerWorkflowExecutionService
 
 logger = WorkerLogger.get_logger(__name__)
 
 
-class FileProcessingContext:
-    """Container for file processing context and state."""
-
-    def __init__(
-        self,
-        file_data: dict[str, Any],
-        file_hash: FileHashData,
-        api_client: InternalAPIClient,
-        workflow_execution: dict[str, Any],
-        workflow_file_execution_id: str = None,
-        workflow_file_execution_object: Any = None,
-        workflow_logger: WorkerWorkflowLogger = None,
-        current_file_idx: int = 1,
-        total_files: int = 1,
-    ):
-        self.file_data = file_data
-        self.file_hash = file_hash
-        self.api_client = api_client
-        self.workflow_execution = workflow_execution
-        self.workflow_file_execution_id = workflow_file_execution_id
-        self.workflow_file_execution_object = workflow_file_execution_object
-        self.workflow_logger = workflow_logger
-        self.current_file_idx = current_file_idx
-        self.total_files = total_files
-
-        # Extract common identifiers
-        if hasattr(file_data, "execution_id"):
-            self.execution_id = file_data.execution_id
-            self.workflow_id = file_data.workflow_id
-            self.organization_id = file_data.organization_id
-            self.use_file_history = getattr(file_data, "use_file_history", True)
-        else:
-            self.execution_id = file_data["execution_id"]
-            self.workflow_id = file_data["workflow_id"]
-            self.organization_id = file_data["organization_id"]
-            self.use_file_history = file_data.get("use_file_history", True)
-
-        self.file_name = file_hash.file_name or "unknown"
-        self.file_start_time = time.time()
-
-        logger.info(
-            f"[Execution {self.execution_id}] Processing file: '{self.file_name}'"
-        )
-
-    @property
-    def is_api_workflow(self) -> bool:
-        """Check if this is an API workflow based on file path."""
-        return self.file_hash.file_path and "/api/" in self.file_hash.file_path
-
-    def get_processing_duration(self) -> float:
-        """Get the processing duration in seconds."""
-        return time.time() - self.file_start_time
-
-
 class CachedFileHandler:
-    """Handles cached file processing logic."""
+    """Handles cached file processing logic with file history support."""
 
     @staticmethod
-    def handle_cached_file(context: FileProcessingContext) -> dict[str, Any] | None:
-        """Handle already executed (cached) files.
+    def handle_cached_file(context: FileProcessingContext) -> FileProcessingResult | None:
+        """Handle files with file history enabled (cached/historical files).
 
         Args:
             context: File processing context
 
         Returns:
-            Cached result dictionary if found, None otherwise
-        """
-        if not getattr(context.file_hash, "is_executed", False):
-            return None
-
-        logger.info(
-            f"File {context.file_name} is already executed (cached), fetching from file_history"
-        )
-
-        try:
-            cache_key = context.file_hash.file_hash
-            if not cache_key:
-                logger.warning(
-                    f"No cache key available for cached file {context.file_name}"
-                )
-                return None
-
-            history_result = context.api_client.get_file_history_by_cache_key(
-                cache_key=cache_key,
-                workflow_id=context.workflow_id,
-                file_path=context.file_hash.file_path,
-            )
-
-            if not (history_result.get("found") and history_result.get("result")):
-                return None
-
-            logger.info(f"✓ Retrieved cached result for {context.file_name}")
-
-            # Parse cached JSON result
-            cached_result = json.loads(history_result.get("result", "{}"))
-            cached_metadata = json.loads(history_result.get("metadata", "{}"))
-
-            # Update workflow file execution with cached result
-            context.api_client.update_file_execution_status(
-                file_execution_id=context.workflow_file_execution_id,
-                status=ExecutionStatus.COMPLETED.value,
-                result=cached_result,
-                metadata=cached_metadata,
-            )
-
-            return {
-                "file": context.file_name,
-                "file_execution_id": context.workflow_file_execution_id,
-                "error": None,
-                "result": cached_result,
-                "metadata": cached_metadata,
-                "from_cache": True,
-            }
-
-        except Exception as cache_error:
-            logger.error(
-                f"Failed to retrieve cached result for {context.file_name}: {cache_error}"
-            )
-            return None
-
-
-class FileHistoryHandler:
-    """Handles file history checking and retrieval logic."""
-
-    @staticmethod
-    def check_file_history(context: FileProcessingContext) -> dict[str, Any] | None:
-        """Check file history for previously processed files.
-
-        Args:
-            context: File processing context
-
-        Returns:
-            Historical result dictionary if found, None otherwise
+            FileProcessingResult if found, None otherwise
         """
         if not context.file_hash.use_file_history:
             return None
@@ -184,6 +67,7 @@ class FileHistoryHandler:
         try:
             cache_key = context.file_hash.file_hash
             if not cache_key:
+                logger.warning(f"No cache key available for file {context.file_name}")
                 return None
 
             # For API workflows, don't pass file_path since execution paths are unique per execution
@@ -197,77 +81,74 @@ class FileHistoryHandler:
                 file_path=lookup_file_path,
             )
 
-            if not (history_result.get("found") and history_result.get("file_history")):
-                return None
+            # Handle both legacy format (result field) and new format (file_history field)
+            if history_result.get("found") and history_result.get("file_history"):
+                # Legacy format - direct result field
+                logger.info(f"✓ Retrieved cached result for {context.file_name}")
 
-            logger.info(
-                f"✓ File {context.file_name} found in history - returning cached result"
-            )
+                file_history_data = history_result.get("file_history")
 
-            file_history_data = history_result["file_history"]
+                if not file_history_data:
+                    logger.warning(
+                        f"No file history data available for file {context.file_name}"
+                    )
+                    return FileProcessingResult(
+                        file_name=context.file_name,
+                        file_execution_id=context.workflow_file_execution_id,
+                        success=False,
+                        error="No file history result available",
+                        result=None,
+                        metadata=None,
+                        from_cache=True,
+                    )
 
-            # Parse JSON strings from file history
-            try:
-                result_data = (
-                    json.loads(file_history_data.get("result", "{}"))
-                    if file_history_data.get("result")
-                    else None
+                # Parse cached JSON result
+                try:
+                    cached_result = json.loads(file_history_data.get("result", "{}"))
+                except json.JSONDecodeError:
+                    try:
+                        cached_result = ast.literal_eval(
+                            file_history_data.get("result", "{}")
+                        )
+                    except (ValueError, SyntaxError) as ast_error:
+                        logger.warning(
+                            f"Failed to parse result with both JSON and ast: {ast_error}"
+                        )
+                        cached_result = file_history_data.get("result", "{}")
+
+                try:
+                    cached_metadata = json.loads(file_history_data.get("metadata", "{}"))
+                except json.JSONDecodeError:
+                    try:
+                        cached_metadata = ast.literal_eval(
+                            file_history_data.get("metadata", "{}")
+                        )
+                    except (ValueError, SyntaxError) as ast_error:
+                        logger.warning(
+                            f"Failed to parse metadata with both JSON and ast: {ast_error}"
+                        )
+                        cached_metadata = file_history_data.get("metadata", "{}")
+
+                logger.info(
+                    f"✓ Cached cached_metadata {cached_metadata} for {context.file_name}"
                 )
-                metadata_data = (
-                    json.loads(file_history_data.get("metadata", "{}"))
-                    if file_history_data.get("metadata")
-                    else {"from_cache": True}
+                return FileProcessingResult(
+                    file_name=context.file_name,
+                    file_execution_id=context.workflow_file_execution_id,
+                    success=True,
+                    error=None,
+                    result=cached_result,
+                    metadata=cached_metadata,
+                    from_file_history=True,
                 )
-            except (json.JSONDecodeError, TypeError) as e:
-                logger.warning(f"Failed to parse JSON from file history: {e}")
-                result_data = file_history_data.get("result")
-                metadata_data = file_history_data.get("metadata", {"from_cache": True})
 
-            cached_file_result = {
-                "file": context.file_name,
-                "file_execution_id": context.workflow_file_execution_id,
-                "error": None,
-                "result": result_data,
-                "metadata": metadata_data,
-                "from_file_history": True,
-            }
-
-            # Cache the result for API response if it's an API workflow
-            if context.is_api_workflow:
-                FileHistoryHandler._cache_api_result(context, cached_file_result)
-
-            return cached_file_result
+            return None
 
         except Exception as history_error:
             logger.error(
                 f"Failed to check file history for {context.file_name}: {history_error}"
             )
             return None
-
-    @staticmethod
-    def _cache_api_result(context: FileProcessingContext, result: dict[str, Any]) -> None:
-        """Cache result for API workflows."""
-        try:
-            workflow_service = WorkerWorkflowExecutionService(
-                api_client=context.api_client,
-                workflow_id=context.workflow_id,
-                organization_id=context.organization_id,
-                execution_id=context.execution_id,
-                is_api=context.is_api_workflow,
-            )
-            workflow_id = context.workflow_execution.get("workflow_id")
-            execution_id = context.workflow_execution.get("id")
-
-            if workflow_id and execution_id:
-                workflow_service.cache_api_result(
-                    workflow_id=workflow_id,
-                    execution_id=execution_id,
-                    result=result,
-                )
-                logger.debug(f"Cached API result for {context.file_name}")
-
-        except Exception as cache_error:
-            logger.warning(f"Failed to cache API result: {cache_error}")
 
 
 class WorkflowFileExecutionHandler:
@@ -276,14 +157,14 @@ class WorkflowFileExecutionHandler:
     @staticmethod
     def validate_workflow_file_execution(
         context: FileProcessingContext,
-    ) -> dict[str, Any] | None:
+    ) -> FileProcessingResult | None:
         """Validate and check workflow file execution status.
 
         Args:
             context: File processing context
 
         Returns:
-            Result if already completed, None if processing should continue
+            FileProcessingResult if already completed, None if processing should continue
 
         Raises:
             ValueError: If workflow file execution is not properly configured
@@ -312,13 +193,14 @@ class WorkflowFileExecutionHandler:
                 f"file_execution_id: {workflow_file_execution.id}"
             )
 
-            return {
-                "file": context.file_name,
-                "file_execution_id": workflow_file_execution.id,
-                "error": None,
-                "result": getattr(workflow_file_execution, "result", None),
-                "metadata": getattr(workflow_file_execution, "metadata", None),
-            }
+            return FileProcessingResult(
+                file_name=context.file_name,
+                file_execution_id=workflow_file_execution.id,
+                success=True,
+                error=None,
+                result=getattr(workflow_file_execution, "result", None),
+                metadata=getattr(workflow_file_execution, "metadata", None) or {},
+            )
 
         return None
 
@@ -329,14 +211,14 @@ class ManualReviewHandler:
     @staticmethod
     def check_manual_review_routing(
         context: FileProcessingContext,
-    ) -> dict[str, Any] | None:
+    ) -> FileProcessingResult | None:
         """Check if file should be routed to manual review.
 
         Args:
             context: File processing context
 
         Returns:
-            Manual review result if applicable, None otherwise
+            FileProcessingResult if applicable, None otherwise
         """
         # Check if file is destined for manual review
         if context.file_hash.file_destination == FileDestinationType.MANUALREVIEW.value:
@@ -360,15 +242,16 @@ class ManualReviewHandler:
                     organization_id=context.organization_id,
                 )
 
-                return {
-                    "file": context.file_name,
-                    "file_execution_id": context.workflow_file_execution_id,
-                    "error": None,
-                    "result": None,
-                    "metadata": {"routed_to_manual_review": True},
-                    "manual_review": True,
-                    "review_result": review_result,
-                }
+                return FileProcessingResult(
+                    file_name=context.file_name,
+                    file_execution_id=context.workflow_file_execution_id,
+                    success=True,
+                    error=None,
+                    result=None,
+                    metadata={"routed_to_manual_review": True},
+                    manual_review=True,
+                    review_result=review_result,
+                )
 
             except Exception as review_error:
                 logger.error(f"Failed to route file to manual review: {review_error}")
@@ -378,16 +261,16 @@ class ManualReviewHandler:
 
     @staticmethod
     def route_with_results(
-        context: FileProcessingContext, workflow_result: dict[str, Any]
-    ) -> dict[str, Any] | None:
+        context: FileProcessingContext, workflow_result: FileProcessingResult
+    ) -> FileProcessingResult | None:
         """Route file to manual review with tool execution results via plugin.
 
         Args:
             context: File processing context
-            workflow_result: Results from tool execution
+            workflow_result: FileProcessingResult from tool execution
 
         Returns:
-            Manual review result with execution data, None if routing failed
+            FileProcessingResult with execution data, None if routing failed
         """
         try:
             logger.info(
@@ -399,7 +282,7 @@ class ManualReviewHandler:
             result = context.api_client.route_to_manual_review_with_results(
                 file_execution_id=context.workflow_file_execution_id,
                 file_data=context.file_hash.to_dict(),
-                workflow_result=workflow_result,
+                workflow_result=workflow_result.to_dict(),
                 workflow_id=context.workflow_id,
                 execution_id=context.execution_id,
                 organization_id=context.organization_id,
@@ -422,7 +305,9 @@ class WorkflowExecutionProcessor:
     """Handles the actual workflow execution processing."""
 
     @staticmethod
-    def execute_workflow_processing(context: FileProcessingContext) -> dict[str, Any]:
+    def execute_workflow_processing(
+        context: FileProcessingContext,
+    ) -> FileProcessingResult:
         """Execute the main workflow processing for the file.
 
         Args:
@@ -434,69 +319,38 @@ class WorkflowExecutionProcessor:
         try:
             logger.info(f"Starting workflow execution for {context.file_name}")
 
-            # Convert FileHashData to dict for API client
-            file_data = context.file_hash.to_dict()
-            logger.info("DEBUG: File data converted successfully")
-
-            # CRITICAL FIX: Use the working WorkerWorkflowExecutionService from service.py
-            # This service handles all the complex setup needed for tool execution
-            logger.info(
-                "DEBUG: About to create WorkerWorkflowExecutionService from service.py..."
-            )
-
             working_service = WorkerWorkflowExecutionService(
                 api_client=context.api_client
             )
-            logger.info("DEBUG: WorkingWorkflowService created successfully")
 
             # Execute the workflow using the working service implementation
             logger.info(
                 f"Starting tool execution for {context.file_name} using working service..."
             )
-            execution_result = working_service.execute_workflow_for_file(
-                organization_id=context.organization_id,
-                workflow_id=context.workflow_id,
-                file_data=file_data,
-                execution_id=context.execution_id,
-                is_api=context.is_api_workflow,
-                workflow_file_execution_id=context.workflow_file_execution_id,
-                workflow_logger=context.workflow_logger,
+            execution_result: WorkflowExecutionResult = (
+                working_service.execute_workflow_for_file(
+                    file_processing_context=context,
+                    organization_id=context.organization_id,
+                    workflow_id=context.workflow_id,
+                    execution_id=context.execution_id,
+                    is_api=context.is_api_workflow,
+                    use_file_history=context.use_file_history,
+                    workflow_file_execution_id=context.workflow_file_execution_id,
+                    workflow_logger=context.workflow_logger,
+                )
             )
             logger.info(
-                f"Tool execution completed for {context.file_name}. Result success: {execution_result.get('success')}"
+                f"Tool execution completed for {context.file_name}. Result success: {execution_result.success}"
             )
 
-            # DEBUG: Log the full execution result to debug error propagation
-            logger.info(
-                f"DEBUG: execution_result keys: {list(execution_result.keys()) if execution_result else []}"
-            )
-            logger.info(
-                f"DEBUG: execution_result.success: {execution_result.get('success')}"
-            )
-            logger.info(f"DEBUG: execution_result.error: {execution_result.get('error')}")
-
-            # CRITICAL FIX: Check if workflow execution actually succeeded
-            # WorkflowService returns {"success": False, "error": "..."} for failures
-            execution_success = execution_result.get(
-                "success", True
-            )  # Default True for backward compatibility
-            execution_error = execution_result.get("error")
-
-            if not execution_success or execution_error:
+            if not execution_result.success or execution_result.error:
                 # Workflow execution failed - update file status and return error
-                error_message = execution_error or "Workflow execution failed"
+                error_message = execution_result.error or "Workflow execution failed"
                 logger.error(
-                    f"Workflow execution failed for {context.file_name}: {error_message}"
+                    f"Tool processing failed for {context.file_name}: {error_message}"
                 )
 
                 # Update file execution status to ERROR
-                # DEBUG: Log what we're about to send to database
-                logger.info(
-                    f"DEBUG: About to update database with error_message: '{error_message}'"
-                )
-                logger.info(
-                    f"DEBUG: file_execution_id: {context.workflow_file_execution_id}"
-                )
                 try:
                     context.api_client.update_file_execution_status(
                         file_execution_id=context.workflow_file_execution_id,
@@ -511,34 +365,45 @@ class WorkflowExecutionProcessor:
                         f"Failed to update file execution status: {status_error}"
                     )
 
-                return {
-                    "file": context.file_name,
-                    "file_execution_id": context.workflow_file_execution_id,
-                    "error": error_message,
-                    "result": None,
-                    "metadata": {
+                return FileProcessingResult(
+                    file_name=context.file_name,
+                    file_execution_id=context.workflow_file_execution_id,
+                    success=False,
+                    error=error_message,
+                    result=None,
+                    metadata={
                         "error_occurred": True,
                         "workflow_execution_failed": True,
                     },
-                    "execution_time": context.get_processing_duration(),
-                }
+                    execution_time=context.get_processing_duration(),
+                )
 
             logger.info(
                 f"✓ Workflow execution completed successfully for {context.file_name}"
             )
 
-            return {
-                "file": context.file_name,
-                "file_execution_id": context.workflow_file_execution_id,
-                "error": None,
-                "result": execution_result.get("result"),
-                "metadata": execution_result.get("metadata", {}),
-                "execution_time": context.get_processing_duration(),
-            }
+            return FileProcessingResult(
+                file_name=context.file_name,
+                file_execution_id=context.workflow_file_execution_id,
+                success=True,
+                error=None,
+                result=execution_result.result,
+                metadata=execution_result.metadata.to_dict()
+                if execution_result.metadata
+                else {},
+                execution_time=context.get_processing_duration(),
+                destination_processed=execution_result.metadata.destination_processed
+                if execution_result.metadata
+                else True,
+                destination_error=execution_result.metadata.destination_error
+                if execution_result.metadata
+                else None,
+            )
 
         except Exception as execution_error:
             logger.error(
-                f"Workflow execution failed for {context.file_name}: {execution_error}"
+                f"File processing failed for {context.file_name}: {execution_error}",
+                exc_info=True,
             )
 
             # Update file execution status to ERROR
@@ -549,16 +414,20 @@ class WorkflowExecutionProcessor:
                     error_message=str(execution_error),
                 )
             except Exception as status_error:
-                logger.error(f"Failed to update file execution status: {status_error}")
+                logger.error(
+                    f"Failed to update file execution status: {status_error}",
+                    exc_info=True,
+                )
 
-            return {
-                "file": context.file_name,
-                "file_execution_id": context.workflow_file_execution_id,
-                "error": str(execution_error),
-                "result": None,
-                "metadata": {"error_occurred": True},
-                "execution_time": context.get_processing_duration(),
-            }
+            return FileProcessingResult(
+                file_name=context.file_name,
+                file_execution_id=context.workflow_file_execution_id,
+                success=False,
+                error=str(execution_error),
+                result=None,
+                metadata={"error_occurred": True},
+                execution_time=context.get_processing_duration(),
+            )
 
 
 class FileProcessor:
@@ -568,14 +437,14 @@ class FileProcessor:
     def process_file(
         current_file_idx: int,
         total_files: int,
-        file_data: dict[str, Any],
+        file_data: WorkerFileData,
         file_hash: FileHashData,
         api_client: InternalAPIClient,
         workflow_execution: dict[str, Any],
         workflow_file_execution_id: str = None,
         workflow_file_execution_object: Any = None,
         workflow_logger: WorkerWorkflowLogger = None,
-    ) -> dict[str, Any]:
+    ) -> FileProcessingResult:
         """Main orchestrator method that replaces the complex _process_file method.
 
         This method coordinates the file processing workflow by:
@@ -597,7 +466,7 @@ class FileProcessor:
             workflow_file_execution_object: Pre-created workflow file execution object
 
         Returns:
-            File execution result dictionary
+            FileProcessingResult dataclass
         """
         # Create processing context
         context = FileProcessingContext(
@@ -631,7 +500,6 @@ class FileProcessor:
 
         try:
             # Step 1: Check if file is already executed (cached)
-            logger.info(f"DEBUG: Step 1 - Checking cached file for {context.file_name}")
             log_file_info(
                 workflow_logger,
                 workflow_file_execution_id,
@@ -639,19 +507,45 @@ class FileProcessor:
             )
 
             cached_result = CachedFileHandler.handle_cached_file(context)
-            if cached_result:
+            if cached_result and not context.is_api_workflow:
+                logger.info(f"Returning cached result for {context.file_name}")
+                log_file_info(
+                    workflow_logger,
+                    workflow_file_execution_id,
+                    f"⚡ File '{context.file_name}' already processed - Skipping processing",
+                )
+                return cached_result
+
+            if cached_result and context.is_api_workflow and context.use_file_history:
                 logger.info(f"Returning cached result for {context.file_name}")
                 log_file_info(
                     workflow_logger,
                     workflow_file_execution_id,
                     f"⚡ File '{context.file_name}' already processed - using cached results",
                 )
+
+                # Cache the file history result as API result with clean metadata format
+                try:
+                    api_cache_manager = get_api_cache_manager()
+                    api_cache_manager.cache_file_history_result_for_api(
+                        file_processing_result=cached_result,
+                        workflow_id=context.workflow_id,
+                        execution_id=context.execution_id,
+                        organization_id=context.organization_id,
+                        file_hash=context.file_hash,
+                    )
+                    logger.info(
+                        f"Successfully cached API result for file history file {context.file_name}"
+                    )
+                except Exception as cache_error:
+                    logger.warning(
+                        f"Failed to cache API result for file history file {context.file_name}: {cache_error}"
+                    )
+                    # Continue execution - caching failure shouldn't stop processing
+
                 return cached_result
 
             # Step 2: Validate workflow file execution
-            logger.info(
-                f"DEBUG: Step 2 - Validating workflow file execution for {context.file_name}"
-            )
             log_file_info(
                 workflow_logger,
                 workflow_file_execution_id,
@@ -669,57 +563,42 @@ class FileProcessor:
                 return completed_result
 
             # Step 3: Check file history (if enabled)
-            logger.info(f"DEBUG: Step 3 - Checking file history for {context.file_name}")
             log_file_info(
                 workflow_logger,
                 workflow_file_execution_id,
                 f"📜 Checking processing history for '{context.file_name}'",
             )
 
-            history_result = FileHistoryHandler.check_file_history(context)
-            if history_result:
-                logger.info(f"Returning historical result for {context.file_name}")
-                log_file_info(
-                    workflow_logger,
-                    workflow_file_execution_id,
-                    f"⚡ File '{context.file_name}' found in history cache - using cached results",
-                )
-                log_file_processing_success(
-                    workflow_logger, workflow_file_execution_id, context.file_name
-                )
-                return history_result
-
             # Step 4: Execute workflow processing (always run tools first)
-            logger.info(
-                f"DEBUG: Step 4 - Executing workflow processing for {context.file_name}"
-            )
             log_file_info(
                 workflow_logger,
                 workflow_file_execution_id,
-                f"🚀 Starting AI tool execution for '{context.file_name}'",
+                f"🚀 Starting tool execution for '{context.file_name}'",
             )
 
             workflow_result = WorkflowExecutionProcessor.execute_workflow_processing(
                 context
             )
 
-            # Step 5: Tool execution completed - destination processing will handle routing
-            logger.info(
-                f"DEBUG: Step 5 - Tool execution completed for {context.file_name}, destination will handle routing"
+            log_file_info(
+                workflow_logger,
+                workflow_file_execution_id,
+                f"✅ Tool execution completed for '{context.file_name}'",
             )
 
+            # Step 5: Tool execution completed - destination processing will handle routing
             # Send appropriate completion log based on workflow result
-            if workflow_result.get("error"):
+            if workflow_result.error:
                 log_file_processing_error(
                     workflow_logger,
                     workflow_file_execution_id,
                     context.file_name,
-                    workflow_result["error"],
+                    workflow_result.error,
                 )
             else:
                 # Check if destination processing failed
-                destination_error = workflow_result.get("destination_error")
-                destination_processed = workflow_result.get("destination_processed", True)
+                destination_error = workflow_result.destination_error
+                destination_processed = workflow_result.destination_processed
 
                 if destination_error or not destination_processed:
                     # Log destination failure
@@ -748,9 +627,9 @@ class FileProcessor:
                             f"Failed to update file execution status: {status_error}"
                         )
 
-                    # Mark workflow result as failed since destination failed
-                    workflow_result["success"] = False
-                    workflow_result["error"] = error_msg
+                    # Update workflow result since destination failed
+                    workflow_result.success = False
+                    workflow_result.error = error_msg
                 else:
                     log_file_info(
                         workflow_logger,
@@ -758,7 +637,7 @@ class FileProcessor:
                         f"✅ File '{context.file_name}' processing completed, preparing for destination routing",
                     )
 
-            # Return workflow results - destination processing will handle manual review routing
+            # Return workflow results - destination processing will handle API caching and manual review routing
             return workflow_result
 
         except Exception as e:
@@ -770,11 +649,34 @@ class FileProcessor:
             )
 
             # Return error result
-            return {
-                "file": context.file_name,
-                "file_execution_id": context.workflow_file_execution_id,
-                "error": str(e),
-                "result": None,
-                "metadata": {"processing_failed": True},
-                "execution_time": context.get_processing_duration(),
-            }
+            error_result = FileProcessingResult(
+                file_name=context.file_name,
+                file_execution_id=context.workflow_file_execution_id,
+                success=False,
+                error=str(e),
+                result=None,
+                metadata={"processing_failed": True},
+                execution_time=context.get_processing_duration(),
+            )
+
+            # Cache API error result for API workflows with clean metadata format
+            if context.is_api_workflow:
+                try:
+                    api_cache_manager = get_api_cache_manager()
+                    api_cache_manager.cache_error_result_for_api(
+                        file_processing_result=error_result,
+                        workflow_id=context.workflow_id,
+                        execution_id=context.execution_id,
+                        organization_id=context.organization_id,
+                        file_hash=context.file_hash,
+                    )
+                    logger.info(
+                        f"Successfully cached API error result for file {context.file_name}"
+                    )
+                except Exception as cache_error:
+                    logger.warning(
+                        f"Failed to cache API error result for file {context.file_name}: {cache_error}"
+                    )
+                    # Continue execution - caching failure shouldn't stop processing
+
+            return error_result

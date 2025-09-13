@@ -191,74 +191,6 @@ class OrganizationContext:
 
 
 # File Operation Data Models
-@dataclass
-class FileHash:
-    """Represents a file with its metadata and hash information.
-
-    This is the canonical representation of a file in the Unstract platform,
-    used by both backend Django services and worker processes.
-    """
-
-    file_path: str
-    file_name: str
-    source_connection_type: str
-    file_hash: str | None = None
-    file_size: int | None = None
-    provider_file_uuid: str | None = None
-    mime_type: str | None = None
-    fs_metadata: dict[str, Any] | None = None
-    file_destination: tuple[str, str] | None = None  # Destination for MRQ routing
-    is_executed: bool = False
-    file_number: int | None = None
-    is_manualreview_required: bool = False  # Whether this file requires manual review
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary representation."""
-        return {
-            "file_path": self.file_path,
-            "file_hash": self.file_hash,
-            "file_name": self.file_name,
-            "source_connection_type": self.source_connection_type,
-            "file_destination": self.file_destination,
-            "is_executed": self.is_executed,
-            "file_size": self.file_size,
-            "mime_type": self.mime_type,
-            "provider_file_uuid": self.provider_file_uuid,
-            "fs_metadata": self.fs_metadata,
-            "file_number": self.file_number,
-            "is_manualreview_required": self.is_manualreview_required,
-        }
-
-    def to_json(self) -> dict[str, Any]:
-        """Alias for to_dict() for backward compatibility."""
-        return self.to_dict()
-
-    def to_serialized_json(self) -> str:
-        """Serialize the FileHash instance to a JSON string."""
-        import json
-
-        return json.dumps(serialize_dataclass_to_dict(self))
-
-    @staticmethod
-    def from_json(json_str_or_dict: Any) -> "FileHash":
-        """Deserialize a JSON string or dictionary to a FileHash instance."""
-        import json
-
-        if isinstance(json_str_or_dict, dict):
-            data = json_str_or_dict
-        elif isinstance(json_str_or_dict, str):
-            data = json.loads(json_str_or_dict)
-        else:
-            raise ValueError(f"Expected dict or str, got {type(json_str_or_dict)}")
-
-        # Handle file_destination as tuple if it's a list
-        if (
-            isinstance(data.get("file_destination"), list)
-            and len(data["file_destination"]) == 2
-        ):
-            data["file_destination"] = tuple(data["file_destination"])
-
-        return FileHash(**data)
 
 
 class SourceConnectionType(str, Enum):
@@ -273,7 +205,7 @@ class FileListingResult:
 
     def __init__(
         self,
-        files: dict[str, FileHash],
+        files: dict[str, "FileHashData"],
         total_count: int,
         connection_type: str,
         is_api: bool = False,
@@ -507,6 +439,7 @@ class WorkflowType(Enum):
     TASK = "TASK"
     API = "API"
     APP = "APP"
+    DEFAULT = "DEFAULT"
 
 
 class NotificationType(Enum):
@@ -734,6 +667,7 @@ class FileHashData:
     connector_id: str | None = None  # Full connector ID from registry
     use_file_history: bool = False  # Whether to create file history entries for this file
     is_manualreview_required: bool = False  # Whether this file requires manual review
+    hitl_queue_name: str | None = None  # HITL queue name for API deployments
 
     def __post_init__(self):
         """Validate required fields."""
@@ -873,6 +807,7 @@ class FileHashData:
             connector_metadata=data.get("connector_metadata", {}),
             connector_id=data.get("connector_id"),
             use_file_history=data.get("use_file_history", False),
+            hitl_queue_name=data.get("hitl_queue_name"),
             is_manualreview_required=data.get("is_manualreview_required", False),
         )
 
@@ -884,6 +819,29 @@ class FileHashData:
             )
 
         return instance
+
+    def to_json(self) -> dict[str, Any]:
+        """Convert to JSON-compatible dictionary for compatibility with FileHash interface."""
+        return self.to_dict()
+
+    def to_serialized_json(self) -> str:
+        """Serialize the FileHashData instance to a JSON string for compatibility with FileHash interface."""
+        import json
+
+        return json.dumps(self.to_dict())
+
+    @staticmethod
+    def from_json(json_str_or_dict: Any) -> "FileHashData":
+        """Deserialize a JSON string or dictionary to a FileHashData instance for compatibility with FileHash interface."""
+        import json
+
+        if isinstance(json_str_or_dict, dict):
+            # If already a dictionary, assume it's in the right format
+            data = json_str_or_dict
+        else:
+            # Otherwise, assume it's a JSON string
+            data = json.loads(json_str_or_dict)
+        return FileHashData.from_dict(data)
 
 
 @dataclass
@@ -1329,6 +1287,13 @@ class DestinationConfig:
 
 
 @dataclass
+class PreCreatedFileData:
+    id: str
+    object: WorkflowFileExecutionData
+    file_hash: FileHashData
+
+
+@dataclass
 class WorkerFileData:
     """Shared data structure for worker file processing context."""
 
@@ -1343,6 +1308,7 @@ class WorkerFileData:
     q_file_no_list: list[int]
     source_config: dict[str, Any] = field(default_factory=dict)
     destination_config: dict[str, Any] = field(default_factory=dict)
+    hitl_queue_name: str | None = field(default=None)
     manual_review_config: dict[str, Any] = field(
         default_factory=lambda: {
             "review_required": False,
@@ -1568,7 +1534,6 @@ class ConnectorInstanceData:
     connector_id: str
     connector_name: str = ""
     connector_metadata: dict[str, Any] = field(default_factory=dict)
-    is_active: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API serialization."""
@@ -1581,7 +1546,6 @@ class ConnectorInstanceData:
             connector_id=data.get("connector_id", ""),
             connector_name=data.get("connector_name", ""),
             connector_metadata=data.get("connector_metadata", {}),
-            is_active=data.get("is_active", True),
         )
 
 
@@ -1594,7 +1558,6 @@ class WorkflowEndpointConfigData:
     connection_type: str  # FILESYSTEM, DATABASE, API, etc.
     configuration: dict[str, Any] = field(default_factory=dict)
     connector_instance: ConnectorInstanceData | None = None
-    is_active: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API serialization."""
@@ -1603,7 +1566,6 @@ class WorkflowEndpointConfigData:
             "endpoint_type": self.endpoint_type,
             "connection_type": self.connection_type,
             "configuration": self.configuration,
-            "is_active": self.is_active,
         }
         if self.connector_instance:
             data["connector_instance"] = self.connector_instance.to_dict()
@@ -1624,7 +1586,6 @@ class WorkflowEndpointConfigData:
             connection_type=data.get("connection_type", ""),
             configuration=data.get("configuration", {}),
             connector_instance=connector_instance,
-            is_active=data.get("is_active", True),
         )
 
 
@@ -1657,6 +1618,43 @@ class WorkflowTypeDetectionData:
 
 
 @dataclass
+class WorkflowEndpointConfigResponseData:
+    """Shared data structure for workflow endpoint configuration API responses."""
+
+    workflow_id: str
+    source_endpoint: WorkflowEndpointConfigData | None = None
+    destination_endpoint: WorkflowEndpointConfigData | None = None
+    has_api_endpoints: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "workflow_id": self.workflow_id,
+            "source_endpoint": self.source_endpoint.to_dict()
+            if self.source_endpoint
+            else None,
+            "destination_endpoint": self.destination_endpoint.to_dict()
+            if self.destination_endpoint
+            else None,
+            "has_api_endpoints": self.has_api_endpoints,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "WorkflowEndpointConfigResponseData":
+        return cls(
+            workflow_id=data["workflow_id"],
+            source_endpoint=WorkflowEndpointConfigData.from_dict(data["source_endpoint"])
+            if data["source_endpoint"]
+            else None,
+            destination_endpoint=WorkflowEndpointConfigData.from_dict(
+                data["destination_endpoint"]
+            )
+            if data["destination_endpoint"]
+            else None,
+            has_api_endpoints=data["has_api_endpoints"],
+        )
+
+
+@dataclass
 class WorkflowDefinitionResponseData:
     """Shared data structure for complete workflow definition API responses.
 
@@ -1665,13 +1663,37 @@ class WorkflowDefinitionResponseData:
 
     workflow_id: str
     workflow_name: str
-    workflow_type_detection: WorkflowTypeDetectionData
     source_config: WorkflowEndpointConfigData
     destination_config: WorkflowEndpointConfigData
     organization_id: str
+    workflow_type: WorkflowType = WorkflowType.DEFAULT
     created_at: str | None = None
     modified_at: str | None = None
     is_active: bool = True
+
+    def __post_init__(self):
+        source_connection_type = self.source_config.connection_type
+        destination_connection_type = self.destination_config.connection_type
+        if (
+            source_connection_type == ConnectionType.FILESYSTEM.value
+            and destination_connection_type == ConnectionType.FILESYSTEM.value
+        ):
+            self.workflow_type = WorkflowType.TASK
+        elif (
+            source_connection_type == ConnectionType.FILESYSTEM.value
+            and destination_connection_type == ConnectionType.DATABASE.value
+        ):
+            self.workflow_type = WorkflowType.ETL
+        elif (
+            source_connection_type == ConnectionType.API.value
+            and destination_connection_type == ConnectionType.API.value
+        ):
+            self.workflow_type = WorkflowType.API
+        elif (
+            source_connection_type == ConnectionType.FILESYSTEM.value
+            and destination_connection_type == ConnectionType.MANUALREVIEW.value
+        ):
+            self.workflow_type = WorkflowType.DEFAULT
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API serialization."""
@@ -1679,8 +1701,8 @@ class WorkflowDefinitionResponseData:
             "id": self.workflow_id,  # Match worker expectations for 'id' field
             "workflow_id": self.workflow_id,
             "workflow_name": self.workflow_name,
-            "workflow_type": self.workflow_type_detection.workflow_type,  # For backward compatibility
-            "workflow_type_detection": self.workflow_type_detection.to_dict(),
+            "workflow_type": self.workflow_type.value,  # For backward compatibility
+            # "workflow_type_detection": self.workflow_type_detection.to_dict(),
             "source_config": self.source_config.to_dict(),
             "destination_config": self.destination_config.to_dict(),
             "organization_id": self.organization_id,
@@ -1692,19 +1714,6 @@ class WorkflowDefinitionResponseData:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "WorkflowDefinitionResponseData":
         """Create from dictionary (e.g., API response)."""
-        # Handle workflow_type_detection field
-        type_detection_data = data.get("workflow_type_detection")
-        if isinstance(type_detection_data, dict):
-            workflow_type_detection = WorkflowTypeDetectionData.from_dict(
-                type_detection_data
-            )
-        else:
-            # Fallback: create from basic workflow_type field
-            workflow_type_detection = WorkflowTypeDetectionData(
-                workflow_type=data.get("workflow_type", "DEFAULT"),
-                source_model="workflow_fallback",
-            )
-
         # Handle source_config field
         source_config_data = data.get("source_config", {})
         if isinstance(source_config_data, dict) and source_config_data:
@@ -1730,7 +1739,7 @@ class WorkflowDefinitionResponseData:
         return cls(
             workflow_id=data.get("workflow_id") or data.get("id", ""),
             workflow_name=data.get("workflow_name", ""),
-            workflow_type_detection=workflow_type_detection,
+            workflow_type=data.get("workflow_type", "DEFAULT"),
             source_config=source_config,
             destination_config=destination_config,
             organization_id=data.get("organization_id", ""),
@@ -2161,4 +2170,35 @@ class WebhookTestResult(ModelAdapterMixin):
             status_code=status_code,
             response_time=response_time,
             error_message=error_message,
+        )
+
+
+@dataclass
+class UsageResponseData(ModelAdapterMixin):
+    """Shared data structure for usage aggregation API responses.
+
+    This ensures consistent serialization between backend and workers for usage data.
+    """
+
+    file_execution_id: str
+    embedding_tokens: int | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_tokens: int | None = None
+    cost_in_dollars: float | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for API serialization."""
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "UsageResponseData":
+        """Create from dictionary (e.g., API response)."""
+        return cls(
+            file_execution_id=data.get("file_execution_id", ""),
+            embedding_tokens=data.get("embedding_tokens"),
+            prompt_tokens=data.get("prompt_tokens"),
+            completion_tokens=data.get("completion_tokens"),
+            total_tokens=data.get("total_tokens"),
+            cost_in_dollars=data.get("cost_in_dollars"),
         )

@@ -95,6 +95,7 @@ class QueueResult:
     file_content: str
     whisper_hash: str | None = None
     file_execution_id: str | None = None
+    enqueued_at: float | None = None
     ttl_seconds: int | None = None
     extracted_text: str | None = None
 

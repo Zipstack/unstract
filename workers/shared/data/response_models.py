@@ -138,6 +138,48 @@ class BatchOperationResponse(BaseResponse):
 
 
 @dataclass
+class WorkflowResponse(APIResponse):
+    """Response for workflow operations."""
+
+    workflow_id: str | None = None
+    status: str | None = None
+
+    @classmethod
+    def success_response(
+        cls,
+        workflow_id: str | None = None,
+        status: str = ResponseStatus.SUCCESS,
+        data: dict[str, Any] | None = None,
+        message: str | None = None,
+    ) -> "WorkflowResponse":
+        """Create a successful workflow response."""
+        return cls(
+            success=True,
+            workflow_id=workflow_id,
+            status=status,
+            data=data,
+            message=message,
+        )
+
+    @classmethod
+    def error_response(
+        cls,
+        error: str,
+        workflow_id: str | None = None,
+        status: str = ResponseStatus.ERROR,
+        message: str | None = None,
+    ) -> "WorkflowResponse":
+        """Create an error workflow response."""
+        return cls(
+            success=False,
+            workflow_id=workflow_id,
+            status=status,
+            error=error,
+            message=message,
+        )
+
+
+@dataclass
 class ExecutionResponse(APIResponse):
     """Response for workflow/task execution operations."""
 

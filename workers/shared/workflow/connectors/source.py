@@ -9,14 +9,17 @@ from typing import Any
 
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 from unstract.core.data_models import (
-    FileHash,
+    ConnectorInstanceData,
+    FileHashData,
     FileOperationConstants,
     SourceConnectionType,
     SourceKey,
+    WorkflowEndpointConfigData,
+    WorkflowEndpointConfigResponseData,
 )
 from unstract.core.file_operations import FileOperations
 
-from ...api.facades.legacy_client import InternalAPIClient
+from ...api.internal_client import InternalAPIClient
 from .utils import get_connector_instance
 
 logger = logging.getLogger(__name__)
@@ -57,29 +60,34 @@ class WorkerSourceConnector:
         self.logger = logger
 
         # Get workflow endpoint configuration via API
-        self.endpoint_config = self._get_endpoint_configuration()
+        self.endpoint_config: WorkflowEndpointConfigData | None = (
+            self._get_endpoint_configuration()
+        )
+        self.is_api: bool = self._is_api()
 
-    def _get_endpoint_configuration(self) -> dict[str, Any]:
+    def _is_api(self) -> bool:
+        """Check if the source connector is an API connector."""
+        if self.endpoint_config:
+            return self.endpoint_config.connection_type == SourceConnectionType.API
+        return False
+
+    def _get_endpoint_configuration(self) -> WorkflowEndpointConfigData | None:
         """Get workflow endpoint configuration from backend."""
         try:
-            response = self.api_client.get_workflow_endpoints(
-                workflow_id=self.workflow_id,
-                organization_id=self.organization_id,
+            workflow_endpoint_config: WorkflowEndpointConfigResponseData = (
+                self.api_client.get_workflow_endpoints(
+                    workflow_id=self.workflow_id,
+                    organization_id=self.organization_id,
+                )
             )
-            # The API returns endpoints list, we need the first source endpoint
-            endpoints = response.endpoints
-            for endpoint in endpoints:
-                if endpoint.get("endpoint_type") == "SOURCE":
-                    return endpoint
-            # If no source endpoint found, return empty dict
-            return {}
+            return workflow_endpoint_config.source_endpoint
         except Exception as e:
             logger.error(f"Failed to get endpoint configuration: {e}")
             raise
 
     def list_files_from_source(
-        self, file_hashes: dict[str, FileHash] | None = None
-    ) -> tuple[dict[str, FileHash], int]:
+        self, file_hashes: dict[str, FileHashData] | None = None
+    ) -> tuple[dict[str, FileHashData], int]:
         """List files from source connector matching backend source.py:721.
 
         Args:
@@ -88,7 +96,7 @@ class WorkerSourceConnector:
         Returns:
             tuple: (matched_files, total_count)
         """
-        connection_type = self.endpoint_config.get("connection_type")
+        connection_type = self.endpoint_config.connection_type
 
         if connection_type == SourceConnectionType.FILESYSTEM:
             files, count = self.list_files_from_file_connector()
@@ -103,19 +111,23 @@ class WorkerSourceConnector:
 
         return files, count
 
-    def list_files_from_file_connector(self) -> tuple[dict[str, FileHash], int]:
+    def list_files_from_file_connector(self) -> tuple[dict[str, FileHashData], int]:
         """List files from filesystem connector matching backend source.py:153.
 
         Returns:
             tuple: (matched_files, total_count)
         """
         # Get connector configuration
-        connector_config = self.endpoint_config.get("connector_instance", {})
-        connector_id = connector_config.get("connector_id")
-        connector_settings = connector_config.get("connector_metadata", {})
+        connector_config: ConnectorInstanceData | None = (
+            self.endpoint_config.connector_instance
+        )
+        connector_id = connector_config.connector_id if connector_config else None
+        connector_settings = (
+            connector_config.connector_metadata if connector_config else None
+        )
 
         # Get source configuration using unified SourceKey helper methods
-        source_config = self.endpoint_config.get("configuration", {})
+        source_config = self.endpoint_config.configuration if self.endpoint_config else {}
         required_patterns = SourceKey.get_file_extensions(source_config)
         recursive = SourceKey.get_process_sub_directories(source_config)
         limit = SourceKey.get_max_files(
@@ -224,7 +236,7 @@ class WorkerSourceConnector:
         recursive: bool,
         limit: int,
         unique_file_paths: set[str],
-    ) -> tuple[dict[str, FileHash], int]:
+    ) -> tuple[dict[str, FileHashData], int]:
         """Get matched files from directory with proper batch filtering and limit application.
 
         This method follows the correct order:
@@ -244,7 +256,7 @@ class WorkerSourceConnector:
         Returns:
             tuple: (matched_files, count)
         """
-        matched_files: dict[str, FileHash] = {}
+        matched_files: dict[str, FileHashData] = {}
         count = 0
         max_depth = int(FileOperationConstants.MAX_RECURSIVE_DEPTH) if recursive else 1
         fs_fsspec = source_fs.get_fsspec_fs()
@@ -253,6 +265,9 @@ class WorkerSourceConnector:
             f"[exec:{self.execution_id}] Starting file discovery - will apply limit after filtering (limit: {limit})"
         )
 
+        connector_instance = self.endpoint_config.connector_instance
+        if not connector_instance:
+            raise ValueError("Connector instance not found for endpoint config")
         # Step 1: Discover ALL matching files first (no limit applied)
         for root, dirs, _ in fs_fsspec.walk(input_directory, maxdepth=max_depth):
             try:
@@ -261,7 +276,6 @@ class WorkerSourceConnector:
             except Exception as e:
                 logger.warning(f"Failed to list directory from path: {root}, error: {e}")
                 continue
-
             # Process directory items WITHOUT limit - discover all files first
             count = FileOperations.process_file_fs_directory(
                 fs_metadata_list=fs_metadata_list,
@@ -273,10 +287,8 @@ class WorkerSourceConnector:
                 source_fs=source_fs,
                 source_connection_type=SourceConnectionType.FILESYSTEM,
                 dirs=dirs,
-                # Pass connector_id so FileHash objects have it in fs_metadata
-                connector_id=self.endpoint_config.get("connector_instance", {}).get(
-                    "connector_id"
-                ),
+                # Pass connector_id so FileHashData objects have it in fs_metadata
+                connector_id=connector_instance.connector_id,
             )
 
         logger.info(
@@ -306,14 +318,14 @@ class WorkerSourceConnector:
         Returns:
             Maximum number of files to process
         """
-        source_config = self.endpoint_config.get("configuration", {})
+        source_config = self.endpoint_config.configuration if self.endpoint_config else {}
         return SourceKey.get_max_files(
             source_config, FileOperationConstants.DEFAULT_MAX_FILES
         )
 
     def list_files_from_api_storage(
-        self, existing_file_hashes: dict[str, FileHash]
-    ) -> tuple[dict[str, FileHash], int]:
+        self, existing_file_hashes: dict[str, FileHashData]
+    ) -> tuple[dict[str, FileHashData], int]:
         """List files from API storage.
 
         For API workflows, files are already uploaded and we just process them.
@@ -364,15 +376,8 @@ class WorkerSourceConnector:
         if not provider_file_uuids:
             return {}
 
-        logger.info(
-            f"DEBUG: OPTIMIZED check - {len(provider_file_uuids)} files against active executions (excluding current execution: {self.execution_id})"
-        )
-
         try:
             if not self.workflow_id:
-                logger.info(
-                    "DEBUG: No workflow_id available, skipping file execution check"
-                )
                 return {}
 
             # Single optimized API call
@@ -392,18 +397,12 @@ class WorkerSourceConnector:
             active_uuids = active_data.get("active_uuids", [])
 
             if not active_uuids:
-                logger.info("DEBUG: OPTIMIZED - No files are actively being processed")
                 return {}
-
-            logger.info(
-                f"DEBUG: OPTIMIZED - Found {len(active_uuids)} files being actively processed"
-            )
 
             # Convert to expected format
             result = {}
             for uuid in active_uuids:
                 result[uuid] = "PENDING_OR_EXECUTING"  # Status for filtering
-                logger.info(f"DEBUG: OPTIMIZED - File {uuid[:16]}... is being processed")
 
             return result
 
@@ -427,9 +426,6 @@ class WorkerSourceConnector:
         """
         try:
             if not self.workflow_id:
-                logger.info(
-                    "DEBUG: No workflow_id available, skipping file execution check"
-                )
                 return {}
 
             from unstract.core.data_models import ExecutionStatus
@@ -455,12 +451,12 @@ class WorkerSourceConnector:
 
                 if not active_executions:
                     logger.info(
-                        f"DEBUG: No active executions found for workflow {self.workflow_id}"
+                        f"No active executions found for workflow {self.workflow_id}"
                     )
                     return {}
 
                 logger.info(
-                    f"DEBUG: Found {len(active_executions)} active executions for workflow {self.workflow_id}"
+                    f"Found {len(active_executions)} active executions for workflow {self.workflow_id}"
                 )
 
             except Exception as workflow_error:
@@ -480,7 +476,7 @@ class WorkerSourceConnector:
                     continue
 
                 logger.info(
-                    f"DEBUG: Checking file executions for execution {execution_id} (status: {execution_status})"
+                    f"Checking file executions for execution {execution_id} (status: {execution_status})"
                 )
 
                 try:
@@ -523,14 +519,6 @@ class WorkerSourceConnector:
                                 "file_name": file_name,
                                 "file_path": file_path,
                             }
-                            logger.info(
-                                f"DEBUG: Found blocking file execution - "
-                                f"File: {file_name}, "
-                                f"UUID: {provider_uuid[:16]}..., "
-                                f"Status: {status}, "
-                                f"Execution: {execution_id}, "
-                                f"Path: {file_path[:50]}..."
-                            )
 
             # Convert to the expected format (provider_uuid -> status)
             file_executions = {
@@ -539,14 +527,14 @@ class WorkerSourceConnector:
 
             if file_executions:
                 logger.info(
-                    f"DEBUG: Found {len(file_executions)} existing file executions to skip across {len(active_executions)} active executions "
+                    f"Found {len(file_executions)} existing file executions to skip across {len(active_executions)} active executions "
                     f"(PENDING: {sum(1 for s in file_executions.values() if s == ExecutionStatus.PENDING.value)}, "
                     f"EXECUTING: {sum(1 for s in file_executions.values() if s == ExecutionStatus.EXECUTING.value)}, "
                     f"COMPLETED: {sum(1 for s in file_executions.values() if s == ExecutionStatus.COMPLETED.value)})"
                 )
             else:
                 logger.info(
-                    f"DEBUG: No blocking file executions found across {len(active_executions)} active workflow executions. "
+                    f"No blocking file executions found across {len(active_executions)} active workflow executions. "
                     f"This is normal when no files are currently being processed."
                 )
 
@@ -558,8 +546,8 @@ class WorkerSourceConnector:
             return {}
 
     def _apply_file_history_filtering(
-        self, files: dict[str, FileHash]
-    ) -> dict[str, FileHash]:
+        self, files: dict[str, FileHashData]
+    ) -> dict[str, FileHashData]:
         """Apply file history filtering to remove already processed files.
 
         This method filters out files that are:
@@ -575,9 +563,8 @@ class WorkerSourceConnector:
         if not self.use_file_history:
             return files
 
-        logger.info(f"DEBUG: Starting file history filtering for {len(files)} files")
         logger.info(
-            f"DEBUG: use_file_history={self.use_file_history}, workflow_id={self.workflow_id}, execution_id={self.execution_id}"
+            f"Starting file history filtering for {len(files)} files for workflow {self.workflow_id} and execution {self.execution_id}"
         )
 
         filtered_files = {}
@@ -587,10 +574,6 @@ class WorkerSourceConnector:
         for file_data in files.values():
             if hasattr(file_data, "provider_file_uuid") and file_data.provider_file_uuid:
                 provider_file_uuids.append(file_data.provider_file_uuid)
-
-        logger.info(
-            f"DEBUG: Extracted {len(provider_file_uuids)} provider_file_uuids for optimized checking"
-        )
 
         # OPTIMIZED: Single API call to check all files against active executions
         existing_file_executions = self._get_existing_file_executions_optimized(
@@ -604,10 +587,7 @@ class WorkerSourceConnector:
             # Process each file individually to check history by provider_file_uuid
             for file_path, file_data in files.items():
                 logger.info(
-                    f"DEBUG: Processing file {file_data.file_name} (path: {file_path})"
-                )
-                logger.info(
-                    f"DEBUG: File data - provider_file_uuid: '{file_data.provider_file_uuid}', source_connection_type: '{file_data.source_connection_type}'"
+                    f"File data  (file {file_data.file_name} path: {file_path})) - provider_file_uuid: '{file_data.provider_file_uuid}', source_connection_type: '{file_data.source_connection_type}'"
                 )
 
                 # Check if file is already being processed in current execution (PENDING/EXECUTING)
@@ -620,7 +600,7 @@ class WorkerSourceConnector:
                     ]
                     if file_exec_status in ["PENDING", "EXECUTING"]:
                         logger.info(
-                            f"DEBUG: *** SKIPPING FILE *** {file_data.file_name} - "
+                            f"Skipping {file_data.file_name} - "
                             f"Already in {file_exec_status} status in current execution"
                         )
                         continue  # Skip this file
@@ -628,51 +608,27 @@ class WorkerSourceConnector:
                 # Skip files without provider_file_uuid (shouldn't happen for ETL/TASK)
                 if not file_data.provider_file_uuid:
                     logger.warning(
-                        f"DEBUG: File {file_data.file_name} missing provider_file_uuid - including anyway"
+                        f"File {file_data.file_name} missing provider_file_uuid - including anyway"
                     )
                     filtered_files[file_path] = file_data
                     continue
 
                 try:
-                    # Check individual file history using provider_file_uuid (matches backend logic)
-                    logger.info(
-                        f"DEBUG: Making file history API call for {file_data.file_name}"
-                    )
-                    logger.info(
-                        f"DEBUG: API params - workflow_id='{self.workflow_id}', provider_file_uuid='{file_data.provider_file_uuid}', file_path='{file_path}', organization_id='{self.organization_id}'"
-                    )
-
                     history_response = self.api_client.get_file_history(
                         workflow_id=self.workflow_id,
                         provider_file_uuid=file_data.provider_file_uuid,
                         file_path=file_path,
                         organization_id=self.organization_id,
                     )
-
-                    logger.info(
-                        f"DEBUG: File history API response for {file_data.file_name}: {history_response}"
-                    )
-
-                    # If no history or incomplete history, file is new (matches backend source.py:628-630)
-                    # Fix: history_response is a FileHistoryResponse object, not a dict
                     if (
                         not history_response
                         or not history_response.success
                         or not history_response.found
                     ):
-                        logger.info(
-                            f"DEBUG: No file history found for {file_data.file_name} - including in batch"
-                        )
-                        logger.info(
-                            f"DEBUG: Reason - response is empty: {not history_response}, not successful: {not history_response.success if history_response else 'N/A'}, not found: {not history_response.found if history_response else 'N/A'}"
-                        )
                         filtered_files[file_path] = file_data
                         continue
 
                     file_history = history_response.file_history
-                    logger.info(
-                        f"DEBUG: File history data for {file_data.file_name}: {file_history}"
-                    )
 
                     if not file_history or not file_history.get("is_completed", False):
                         is_completed_val = (
@@ -684,54 +640,26 @@ class WorkerSourceConnector:
                             file_history.get("status", "N/A") if file_history else "N/A"
                         )
                         logger.info(
-                            f"DEBUG: File history incomplete for {file_data.file_name} - including in batch"
-                        )
-                        logger.info(
-                            f"DEBUG: Details - file_history exists: {bool(file_history)}, is_completed: {is_completed_val}, status: {status_val}"
+                            f"Details - file_history exists for {file_data.file_name}: {bool(file_history)}, is_completed: {is_completed_val}, status: {status_val}"
                         )
                         filtered_files[file_path] = file_data
                         continue
 
                     # Compare file paths (matches backend source.py:635-637)
                     history_file_path = file_history.get("file_path")
-                    logger.info(
-                        f"DEBUG: Path comparison for {file_data.file_name}: current='{file_path}', history='{history_file_path}'"
-                    )
                     if history_file_path and history_file_path != file_path:
                         # Same provider_file_uuid but different path - treat as new file
                         logger.info(
-                            f"DEBUG: Different paths detected for {file_data.file_name} - including in batch"
-                        )
-                        logger.info(
-                            f"DEBUG: Path mismatch details - paths are different: {history_file_path != file_path}"
+                            f"Different paths detected for {file_data.file_name} - including in batch"
                         )
                         filtered_files[file_path] = file_data
                         continue
 
-                    # File has been processed with same provider_file_uuid and path - skip
-                    logger.info(
-                        f"DEBUG: *** FILTERING OUT PROCESSED FILE *** {file_data.file_name} "
-                        f"(provider_file_uuid: {file_data.provider_file_uuid[:16]}..., status: {file_history.get('status', 'unknown')})"
-                    )
-                    logger.info(
-                        f"DEBUG: File {file_data.file_name} will NOT be included in batch - already processed"
-                    )
-                    # NOTE: Do not add to filtered_files - this excludes the file from processing
-
-                except Exception as history_error:
-                    logger.warning(
-                        f"DEBUG: File history check failed for {file_data.file_name}: {history_error} - including file anyway"
-                    )
+                except Exception:
                     filtered_files[file_path] = file_data
 
             logger.info(
-                f"DEBUG: File history filtering complete - {len(filtered_files)}/{len(files)} files remain after filtering"
-            )
-            logger.info(
-                f"DEBUG: Files remaining: {[f.file_name for f in filtered_files.values()]}"
-            )
-            logger.info(
-                f"DEBUG: Files filtered out: {[f.file_name for f in files.values() if f not in filtered_files.values()]}"
+                f"File history filtering complete - {len(filtered_files)}/{len(files)} files remain after filtering"
             )
 
             return filtered_files

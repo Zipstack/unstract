@@ -16,82 +16,57 @@ from uuid import UUID
 
 # Manual review functionality loaded via plugin registry
 from client_plugin_registry import get_client_plugin
-
-from ...cache import CachedAPIClientMixin, with_cache
-from ...cache.cache_types import CacheType
-from ...clients import (
+from shared.cache import CachedAPIClientMixin, with_cache
+from shared.cache.cache_types import CacheType
+from shared.clients import (
     BaseAPIClient,
     ExecutionAPIClient,
     FileAPIClient,
     OrganizationAPIClient,
     ToolAPIClient,
+    UsageAPIClient,
     WebhookAPIClient,
+    WorkflowAPIClient,
 )
 
 # Import exceptions from base client
 # Re-export exceptions for backward compatibility
-from ...clients.base_client import (
+from shared.clients.base_client import (
     APIRequestError,
     AuthenticationError,
     InternalAPIClientError,
 )
-from ...clients.manual_review_stub import ManualReviewNullClient
-from ...data.response_models import APIResponse
-from ...enums import HTTPMethod
-from ...infrastructure.config.worker_config import WorkerConfig
+from shared.clients.manual_review_stub import ManualReviewNullClient
+from shared.data.response_models import APIResponse
+from shared.enums import HTTPMethod
+from shared.infrastructure.config.worker_config import WorkerConfig
 
 # Import new API response dataclasses for type safety
-from ...models.api_responses import (
+from shared.models.api_responses import (
     FileBatchResponse,
     FileHistoryResponse,
     ToolInstancesResponse,
     WorkflowDefinitionResponse,
-    WorkflowEndpointsResponse,
     WorkflowExecutionResponse,
 )
 
 # Import execution models for type-safe execution contexts
 # Import notification models for type-safe notifications
-from ...models.notification_models import (
+from shared.models.notification_models import (
     WebhookNotificationRequest,
 )
-from ...models.scheduler_models import SchedulerExecutionResult
+from shared.models.scheduler_models import SchedulerExecutionResult
 
-# Re-export shared dataclasses for backward compatibility
-# Note: These would be imported from unstract.core.data_models in production
-try:
-    from unstract.core.data_models import (
-        FileExecutionCreateRequest,
-        FileExecutionStatusUpdateRequest,
-        FileHashData,
-        WorkflowFileExecutionData,
-    )
-except ImportError:
-    # Mock classes for testing when unstract.core is not available
-    class MockDataClass:
-        def __init__(self, **kwargs):
-            for key, value in kwargs.items():
-                setattr(self, key, value)
-
-        def to_dict(self):
-            return dict(self.__dict__.items())
-
-        @classmethod
-        def from_dict(cls, data):
-            return cls(**data)
-
-        def ensure_hash(self):
-            # Mock implementation - no hash computation needed for testing
-            pass
-
-        def validate_for_api(self):
-            # Mock implementation - no validation needed for testing
-            pass
-
-    WorkflowFileExecutionData = MockDataClass
-    FileHashData = MockDataClass
-    FileExecutionCreateRequest = MockDataClass
-    FileExecutionStatusUpdateRequest = MockDataClass
+from unstract.core.data_models import (
+    ExecutionStatus,
+    FileExecutionCreateRequest,
+    FileExecutionStatusUpdateRequest,
+    FileHashData,
+    UsageResponseData,
+    WorkflowDefinitionResponseData,
+    WorkflowEndpointConfigResponseData,
+    WorkflowFileExecutionData,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -171,6 +146,10 @@ class InternalAPIClient(CachedAPIClientMixin):
         self.execution_client.session.close()
         self.execution_client.session = InternalAPIClient._shared_session
 
+        self.workflow_client = WorkflowAPIClient()
+        self.workflow_client.session.close()
+        self.workflow_client.session = InternalAPIClient._shared_session
+
         self.file_client = FileAPIClient(self.config)
         self.file_client.session.close()
         self.file_client.session = InternalAPIClient._shared_session
@@ -187,6 +166,10 @@ class InternalAPIClient(CachedAPIClientMixin):
         self.tool_client.session.close()
         self.tool_client.session = InternalAPIClient._shared_session
 
+        self.usage_client = UsageAPIClient(self.config)
+        self.usage_client.session.close()
+        self.usage_client.session = InternalAPIClient._shared_session
+
     def _initialize_core_clients_traditional(self) -> None:
         """Initialize clients the traditional way (for backward compatibility)."""
         if self.config.debug_api_client_init:
@@ -199,6 +182,7 @@ class InternalAPIClient(CachedAPIClientMixin):
         self.webhook_client = WebhookAPIClient(self.config)
         self.organization_client = OrganizationAPIClient(self.config)
         self.tool_client = ToolAPIClient(self.config)
+        self.usage_client = UsageAPIClient(self.config)
 
     def _initialize_plugin_clients(self) -> None:
         """Initialize plugin-based clients with error handling."""
@@ -245,6 +229,8 @@ class InternalAPIClient(CachedAPIClientMixin):
         self.webhook_client.close()
         self.organization_client.close()
         self.tool_client.close()
+        self.workflow_client.close()
+        self.usage_client.close()
 
         # Close manual review client (plugin or null client)
         if hasattr(self.manual_review_client, "close"):
@@ -289,16 +275,6 @@ class InternalAPIClient(CachedAPIClientMixin):
                 },
                 organization_id=organization_id,
             )
-
-            # Backend now properly filters by workflow_id and status parameters
-            if isinstance(response_data, list):
-                logger.info(
-                    f"DEBUG: Backend returned {len(response_data)} executions for workflow {workflow_id} with statuses {statuses}"
-                )
-            else:
-                logger.warning(
-                    f"DEBUG: Expected list response but got {type(response_data)}"
-                )
 
             # Wrap filtered response data in APIResponse
             return APIResponse(
@@ -407,6 +383,39 @@ class InternalAPIClient(CachedAPIClientMixin):
         else:
             response_dict = response
         return WorkflowExecutionResponse.from_api_response(response_dict)
+
+    def get_workflow(
+        self, workflow_id: str | uuid.UUID, organization_id: str | None = None
+    ) -> WorkflowDefinitionResponseData:
+        """Get workflow definition including workflow_type."""
+        response = self.workflow_client.get_workflow_definition(
+            workflow_id, organization_id
+        )
+        if not response.success_response:
+            raise APIRequestError(response.error_response)
+        return response.data
+
+    @with_cache(
+        CacheType.WORKFLOW_ENDPOINTS,
+        lambda self, workflow_id, organization_id=None: str(workflow_id),
+    )
+    def get_workflow_endpoints(
+        self, workflow_id: str | UUID, organization_id: str | None = None
+    ) -> WorkflowEndpointConfigResponseData:
+        """Get workflow endpoints for a specific workflow.
+
+        Caching is handled automatically through the @with_cache decorator.
+        """
+        # Direct API call - caching is handled by decorator
+        response = self.workflow_client.get_workflow_endpoints(
+            workflow_id, organization_id
+        )
+        logger.info(
+            f"DEBUG   get_workflow_endpoints  response WorkflowEndpointConfigResponse: {response}"
+        )
+        if not response.success_response:
+            raise APIRequestError(response.error_response)
+        return response.data
 
     @with_cache(
         CacheType.WORKFLOW,
@@ -658,24 +667,6 @@ class InternalAPIClient(CachedAPIClientMixin):
         # Convert to FileBatchResponse for type safety
         return FileBatchResponse.from_api_response(response)
 
-    @with_cache(
-        CacheType.WORKFLOW_ENDPOINTS,
-        lambda self, workflow_id, organization_id=None: str(workflow_id),
-    )
-    def get_workflow_endpoints(
-        self, workflow_id: str | UUID, organization_id: str | None = None
-    ) -> WorkflowEndpointsResponse:
-        """Get workflow endpoints for a specific workflow.
-
-        Caching is handled automatically through the @with_cache decorator.
-        """
-        # Direct API call - caching is handled by decorator
-        response = self.execution_client.get_workflow_endpoints(
-            workflow_id, organization_id
-        )
-        # Convert to WorkflowEndpointsResponse for type safety
-        return WorkflowEndpointsResponse.from_api_response(response)
-
     def update_pipeline_status(
         self,
         pipeline_id: str | UUID,
@@ -854,24 +845,16 @@ class InternalAPIClient(CachedAPIClientMixin):
             bool: True if update successful, False otherwise
         """
         if not file_execution_id:
-            logger.warning(
-                f"DEBUG: No file_execution_id for file {file_name}, cannot update status to EXECUTING"
-            )
             return False
 
         try:
-            from unstract.core.data_models import ExecutionStatus
-
-            logger.info(
-                f"DEBUG: About to update file {file_name} (ID: {file_execution_id}) status to EXECUTING"
-            )
             result = self.update_file_execution_status(
                 file_execution_id=file_execution_id,
                 status=ExecutionStatus.EXECUTING.value,
                 organization_id=organization_id,
             )
             logger.info(
-                f"DEBUG: Updated file {file_name} status to EXECUTING - API result: {result}"
+                f"Updated file {file_name} (ID: {file_execution_id}) status to EXECUTING :{result}"
             )
             return True
 
@@ -959,11 +942,12 @@ class InternalAPIClient(CachedAPIClientMixin):
 
     def create_file_history(
         self,
-        workflow_id: str | uuid.UUID,
-        file_name: str,
         file_path: str,
+        file_name: str,
+        source_connection_type: str,
+        workflow_id: str | uuid.UUID,
         result: str | None = None,
-        metadata: str | None = None,
+        metadata: dict[str, Any] | None = None,
         status: str = "COMPLETED",
         error: str | None = None,
         provider_file_uuid: str | None = None,
@@ -974,18 +958,19 @@ class InternalAPIClient(CachedAPIClientMixin):
     ) -> dict[str, Any]:
         """Create file history record matching backend expected format."""
         return self.file_client.create_file_history(
-            workflow_id,
-            file_name,
-            file_path,
-            result,
-            metadata,
-            status,
-            error,
-            provider_file_uuid,
-            is_api,
-            file_size,
-            file_hash,
-            mime_type,
+            file_path=file_path,
+            file_name=file_name,
+            source_connection_type=source_connection_type,
+            workflow_id=workflow_id,
+            result=result,
+            metadata=metadata,
+            status=status,
+            error=error,
+            provider_file_uuid=provider_file_uuid,
+            is_api=is_api,
+            file_size=file_size,
+            file_hash=file_hash,
+            mime_type=mime_type,
         )
 
     def get_file_history_status(self, file_history_id: str | uuid.UUID) -> dict[str, Any]:
@@ -1207,6 +1192,8 @@ class InternalAPIClient(CachedAPIClientMixin):
         self.webhook_client.set_organization_context(org_id)
         self.organization_client.set_organization_context(org_id)
         self.tool_client.set_organization_context(org_id)
+        self.workflow_client.set_organization_context(org_id)
+        self.usage_client.set_organization_context(org_id)
 
         # Note: Manual review org context handled by plugins
 
@@ -1224,6 +1211,8 @@ class InternalAPIClient(CachedAPIClientMixin):
         self.webhook_client.clear_organization_context()
         self.organization_client.clear_organization_context()
         self.tool_client.clear_organization_context()
+        self.workflow_client.clear_organization_context()
+        self.usage_client.clear_organization_context()
 
         # Note: Manual review org context clearing handled by plugins
 
@@ -1422,6 +1411,32 @@ class InternalAPIClient(CachedAPIClientMixin):
                 success=False,
                 error=str(e),
             )
+
+    # Usage client methods (delegate to UsageAPIClient)
+    def get_aggregated_token_count(
+        self, file_execution_id: str, organization_id: str | None = None
+    ) -> UsageResponseData | None:
+        """Get aggregated token usage data for a file execution (backward compatibility wrapper).
+
+        Args:
+            file_execution_id: File execution ID to get usage data for
+            organization_id: Optional organization ID override
+
+        Returns:
+            Dictionary with aggregated usage data for backward compatibility
+        """
+        response = self.usage_client.get_aggregated_token_count(
+            file_execution_id, organization_id
+        )
+
+        if response.success and response.data:
+            # Return dict format for backward compatibility with existing code
+            return response.data
+        else:
+            logger.warning(
+                f"No usage data found for file_execution_id {file_execution_id}"
+            )
+            return None
 
     # Export all classes and exceptions for backward compatibility
     # =============================

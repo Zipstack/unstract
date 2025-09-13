@@ -7,10 +7,7 @@ Uses the same patterns as workflow_helper.py and file_execution_tasks.py
 import time
 from typing import Any
 
-# Import shared worker infrastructure using new structure
 from shared.api import InternalAPIClient
-
-# Import from shared worker modules
 from shared.enums.task_enums import TaskName
 from shared.infrastructure.config import WorkerConfig
 from shared.infrastructure.logging import (
@@ -22,17 +19,10 @@ from shared.infrastructure.logging.helpers import log_file_info
 from shared.infrastructure.logging.workflow_logger import WorkerWorkflowLogger
 from shared.patterns.retry.utils import retry
 from shared.processing.files import FileProcessingUtils
-
-# Import new shared utilities
 from shared.workflow.execution import WorkerExecutionContext, WorkflowOrchestrationUtils
-
-# Import from local worker module (avoid circular import)
 from worker import app
 
-# Import shared data models for type safety
 from unstract.core.data_models import ExecutionStatus, FileHashData
-
-# Note: FileExecutionResult removed - file worker now handles all result caching
 
 logger = WorkerLogger.get_logger(__name__)
 
@@ -150,6 +140,7 @@ def _unified_api_execution(
     pipeline_id: str | None = None,
     log_events_id: str | None = None,
     use_file_history: bool = False,
+    hitl_queue_name: str | None = None,
     task_type: str = "api",
     **kwargs: dict[str, Any],
 ) -> dict[str, Any]:
@@ -169,6 +160,7 @@ def _unified_api_execution(
         pipeline_id: Pipeline ID (for API deployments)
         log_events_id: Log events ID
         use_file_history: Whether to use file history
+        hitl_queue_name: Optional HITL queue name for manual review routing
         task_type: Type of task (api/legacy) for differentiation
         **kwargs: Additional keyword arguments
 
@@ -192,6 +184,7 @@ def _unified_api_execution(
                 "scheduled": scheduled,
                 "use_file_history": use_file_history,
                 "files_count": len(hash_values_of_files) if hash_values_of_files else 0,
+                "hitl_queue_name": hitl_queue_name,  # Add HITL parameter to logs
             },
         )
 
@@ -237,6 +230,7 @@ def _unified_api_execution(
             pipeline_id=pipeline_id,
             use_file_history=use_file_history,
             task_id=task_instance.request.id,  # Add required task_id
+            hitl_queue_name=hitl_queue_name,
         )
 
         # Log completion with standardized format
@@ -319,6 +313,7 @@ def async_execute_bin_api(
     pipeline_id: str | None = None,
     log_events_id: str | None = None,
     use_file_history: bool = False,
+    hitl_queue_name: str | None = None,
     **kwargs: dict[str, Any],
 ) -> dict[str, Any]:
     """API deployment workflow execution task.
@@ -336,6 +331,7 @@ def async_execute_bin_api(
         pipeline_id: Pipeline ID (for API deployments)
         log_events_id: Log events ID
         use_file_history: Whether to use file history
+        hitl_queue_name: Optional HITL queue name for manual review routing
 
     Returns:
         Execution result dictionary
@@ -351,6 +347,7 @@ def async_execute_bin_api(
         pipeline_id=pipeline_id,
         log_events_id=log_events_id,
         use_file_history=use_file_history,
+        hitl_queue_name=hitl_queue_name,
         task_type="api",
         **kwargs,
     )
@@ -379,6 +376,7 @@ def async_execute_bin(
     pipeline_id: str | None = None,
     log_events_id: str | None = None,
     use_file_history: bool = False,
+    hitl_queue_name: str | None = None,
     **kwargs: dict[str, Any],
 ) -> dict[str, Any]:
     """API deployment workflow execution task (alias for backend compatibility).
@@ -397,6 +395,7 @@ def async_execute_bin(
         pipeline_id=pipeline_id,
         log_events_id=log_events_id,
         use_file_history=use_file_history,
+        hitl_queue_name=hitl_queue_name,
         task_type="api",
         **kwargs,
     )
@@ -413,6 +412,7 @@ def _run_workflow_api(
     pipeline_id: str | None,
     use_file_history: bool,
     task_id: str,
+    hitl_queue_name: str | None = None,
 ) -> dict[str, Any]:
     """Run workflow matching the exact pattern from Django backend.
 
@@ -468,9 +468,6 @@ def _run_workflow_api(
         if cached_results:
             logger.info(
                 f"Marking {len(cached_results)} files as already executed (cached)"
-            )
-            logger.info(
-                f"DEBUG: cached_results type: {type(cached_results)}, keys: {list(cached_results.keys()) if isinstance(cached_results, dict) else 'not a dict'}"
             )
 
             # CRITICAL FIX: Add cached file history results to API results cache
@@ -612,6 +609,7 @@ def _run_workflow_api(
             use_file_history=use_file_history,
             api_client=api_client,
             total_files=total_files,
+            hitl_queue_name=hitl_queue_name,
         )
 
         # Calculate manual review decisions for this specific batch
@@ -809,6 +807,7 @@ def _create_file_data(
     use_file_history: bool,
     api_client: InternalAPIClient,
     total_files: int = 0,
+    hitl_queue_name: str | None = None,
 ) -> dict[str, Any]:
     """Create file data matching Django FileData structure exactly.
 
@@ -821,6 +820,7 @@ def _create_file_data(
         execution_mode: Execution mode string
         use_file_history: Whether to use file history
         api_client: API client for fetching manual review rules
+        hitl_queue_name: Optional HITL queue name for manual review routing
 
     Returns:
         File data dictionary matching Django FileData with manual review config
@@ -848,7 +848,7 @@ def _create_file_data(
 
     # Keep the default manual_review_config (review_required=False, percentage=0)
 
-    return {
+    file_data = {
         "workflow_id": str(workflow_id),
         "execution_id": str(execution_id),
         "organization_id": str(organization_id),
@@ -861,7 +861,12 @@ def _create_file_data(
             manual_review_config, total_files
         ),
         "manual_review_config": manual_review_config,  # Add manual review configuration
+        "hitl_queue_name": hitl_queue_name,  # Add HITL queue name for API deployments
+        "is_manualreview_required": bool(
+            hitl_queue_name
+        ),  # Set manual review required when HITL queue name is present
     }
+    return file_data
 
 
 def _create_batch_data(files: list, file_data: dict[str, Any]) -> dict[str, Any]:

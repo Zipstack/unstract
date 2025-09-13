@@ -8,7 +8,11 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 # Import shared domain models from core
-from unstract.core.data_models import ExecutionStatus, serialize_dataclass_to_dict
+from unstract.core.data_models import (
+    ExecutionStatus,
+    PreCreatedFileData,
+    serialize_dataclass_to_dict,
+)
 
 # Avoid circular imports by using TYPE_CHECKING
 if TYPE_CHECKING:
@@ -381,6 +385,9 @@ class WorkflowContextData:
     settings: dict[str, Any] | None = None
     metadata: dict[str, Any] | None = None
     is_scheduled: bool = False
+    pre_created_file_executions: dict[str, PreCreatedFileData] = field(
+        default_factory=dict
+    )
 
     def __post_init__(self):
         """Validate workflow context after initialization."""

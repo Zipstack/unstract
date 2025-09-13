@@ -30,7 +30,7 @@ from .workflow.execution.context import WorkerExecutionContext
 
 # Import API client with fallback
 try:
-    from .api.facades.legacy_client import InternalAPIClient
+    from .api.internal_client import InternalAPIClient
 except ImportError:
     # Fallback for workers that don't need the full API client
     InternalAPIClient = None

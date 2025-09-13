@@ -12,7 +12,6 @@ from shared.enums.status_enums import PipelineStatus
 from shared.enums.task_enums import QueueName
 from shared.infrastructure.config import WorkerConfig
 from shared.infrastructure.logging import WorkerLogger
-from shared.legacy.api_client_singleton import get_singleton_api_client
 from shared.models.pipeline_models import PipelineApiResponse
 from shared.models.scheduler_models import (
     ExecutionMode,
@@ -20,6 +19,7 @@ from shared.models.scheduler_models import (
     SchedulerExecutionResult,
     WorkflowExecutionRequest,
 )
+from shared.utils.api_client_singleton import get_singleton_api_client
 
 # Import the exact backend logic to ensure consistency
 

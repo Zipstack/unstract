@@ -129,3 +129,8 @@ class ToolOutputType(str, Enum):
 
     def __str__(self):
         return self.value
+
+
+class QueueResultStatus(Enum):
+    SUCCESS = "success"
+    FAILURE = "failure"

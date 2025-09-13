@@ -8,7 +8,7 @@ from typing import Any
 # Import shared operations
 from unstract.connectors.operations import ConnectorOperations
 
-from ...api.facades.legacy_client import InternalAPIClient
+from ...api.internal_client import InternalAPIClient
 from ...infrastructure.logging import WorkerLogger
 
 logger = WorkerLogger.get_logger(__name__)

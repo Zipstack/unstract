@@ -13,20 +13,25 @@ Handles:
 
 import ast
 import base64
-import hashlib
 import json
 import os
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional
 
+from shared.enums import QueueResultStatus
+
 # Import database utils (stable path)
 from shared.infrastructure.database.utils import WorkerDatabaseUtils
+from shared.models.result_models import QueueResult
+from shared.utils.manual_review_factory import get_manual_review_service
 
 from unstract.connectors.connectorkit import Connectorkit
 from unstract.core.data_models import ConnectionType as CoreConnectionType
-from unstract.core.data_models import FileHashData, WorkflowType
+from unstract.core.data_models import FileHashData
 from unstract.filesystem import FileStorageType, FileSystem
 from unstract.sdk.constants import ToolExecKey
+from unstract.sdk.tool.mime_types import EXT_MIME_MAP
 from unstract.workflow_execution.constants import (
     MetaDataKey,
     ToolMetadataKey,
@@ -36,11 +41,11 @@ from unstract.workflow_execution.execution_file_handler import (
     ExecutionFileHandler,
 )
 
-from ..enums import DestinationConfigKey, FileDestinationType
+from ..enums import DestinationConfigKey
 from ..infrastructure.logging import WorkerLogger
-from ..infrastructure.logging.helpers import log_file_info
+from ..infrastructure.logging.helpers import log_file_error, log_file_info
+from ..utils.api_result_cache import get_api_cache_manager
 from .connectors.service import WorkerConnectorService
-from .workflow_utils import detect_comprehensive_workflow_type
 
 if TYPE_CHECKING:
     from ..api_client import InternalAPIClient
@@ -49,10 +54,52 @@ logger = WorkerLogger.get_logger(__name__)
 
 
 @dataclass
+class HandleOutputResult:
+    """Result of handle_output method."""
+
+    output: dict[str, Any] | str | None
+    metadata: dict[str, Any] | None
+    connection_type: str
+
+
+@dataclass
+class ExecutionContext:
+    """Execution context for destination processing."""
+
+    workflow_id: str
+    execution_id: str
+    organization_id: str
+    file_execution_id: str
+    api_client: Optional["InternalAPIClient"] = None
+    workflow_log: Any = None
+
+
+@dataclass
+class FileContext:
+    """File-specific context for processing."""
+
+    file_hash: FileHashData
+    file_name: str
+    input_file_path: str
+    workflow: dict[str, Any]
+    execution_error: str | None = None
+
+
+@dataclass
+class ProcessingResult:
+    """Result of destination processing."""
+
+    tool_execution_result: dict | str | None = None
+    metadata: dict[str, Any] | None = None
+    has_hitl: bool = False
+
+
+@dataclass
 class DestinationConfig:
     """Worker-compatible DestinationConfig implementation."""
 
     connection_type: str
+    source_connection_type: str
     settings: dict[str, Any] = None
     is_api: bool = False
     use_file_history: bool = True
@@ -65,6 +112,7 @@ class DestinationConfig:
     # Source connector configuration for reading files
     source_connector_id: str | None = None
     source_connector_settings: dict[str, Any] = None
+    file_execution_id: str | None = None
 
     def __post_init__(self):
         if self.settings is None:
@@ -103,17 +151,19 @@ class DestinationConfig:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "DestinationConfig":
         """Create DestinationConfig from dictionary data."""
+        connector_instance = data.get("connector_instance", {})
         return cls(
             connection_type=data.get("connection_type", ""),
-            settings=data.get("settings", {}),
-            is_api=data.get("is_api", False),
+            source_connection_type=data.get("source_connection_type"),
+            settings=data.get("configuration", {}),
             use_file_history=data.get("use_file_history", True),
-            connector_id=data.get("connector_id"),
-            connector_settings=data.get("connector_settings", {}),
-            connector_name=data.get("connector_name"),
+            connector_id=connector_instance.get("connector_id"),
+            connector_settings=connector_instance.get("connector_metadata", {}),
+            connector_name=connector_instance.get("connector_name"),
             hitl_queue_name=data.get("hitl_queue_name"),
             source_connector_id=data.get("source_connector_id"),
             source_connector_settings=data.get("source_connector_settings", {}),
+            file_execution_id=data.get("file_execution_id"),
         )
 
 
@@ -147,14 +197,30 @@ class WorkerDestinationConnector:
         self.hitl_queue_name = config.hitl_queue_name
 
         # Workflow and execution context (will be set when handling output)
+        self.organization_id = None
         self.workflow_id = None
         self.execution_id = None
-        self.organization_id = None
+        self.file_execution_id = None
+
+        # Manual review service and API client (will be set when first needed)
+        self.manual_review_service = None
+        self._api_client = None
 
     @classmethod
     def from_config(cls, workflow_log, config: DestinationConfig):
         """Create destination connector from config (matching Django backend interface)."""
         return cls(config, workflow_log)
+
+    def _ensure_manual_review_service(
+        self, api_client: Optional["InternalAPIClient"] = None
+    ):
+        """Ensure manual review service is initialized (lazy loading)."""
+        if self.manual_review_service is None and api_client is not None:
+            self._api_client = api_client
+            self.manual_review_service = get_manual_review_service(
+                api_client, api_client.organization_id
+            )
+        return self.manual_review_service
 
     def _get_destination_display_name(self) -> str:
         """Get human-readable destination name for logging."""
@@ -178,400 +244,343 @@ class WorkerDestinationConnector:
         else:
             return f"{self.connection_type} destination"
 
-    def handle_output_for_files(
+    # ========== REFACTORED HANDLE_OUTPUT HELPER METHODS ==========
+
+    def _setup_execution_context(
         self,
-        files_data: list[
-            tuple[str, FileHashData, Any, dict[str, Any], str, str]
-        ],  # (file_name, file_hash, file_history, workflow, input_file_path, file_execution_id)
-        api_client: Optional["InternalAPIClient"] = None,
-        tool_execution_results: list[str] | None = None,
-    ) -> list[bool]:
-        """Handle output for batch of files with manual review evaluation.
-
-        This method processes a batch of files and applies manual review logic
-        using the plugin-based percentage evaluator.
-
-        Args:
-            files_data: List of file data tuples
-            api_client: API client for backend communication
-            tool_execution_results: Optional list of tool execution results
-
-        Returns:
-            List of booleans indicating successful processing
-        """
-        if not files_data:
-            return []
-
-        logger.info(f"Starting batch processing for {len(files_data)} files")
-
-        # Extract data for manual review evaluation
-        manual_review_data = [
-            (file_name, file_hash, input_file_path, file_execution_id)
-            for file_name, file_hash, _, _, input_file_path, file_execution_id in files_data
-        ]
-
-        # Get workflow from first file (should be same for all files in batch)
-        workflow = files_data[0][3] if files_data else {}
-
-        # Evaluate batch for manual review
-        manual_review_decisions = self._evaluate_manual_review_batch(
-            files_data=manual_review_data,
-            workflow=workflow,
-            api_client=api_client,
-        )
-
-        # Process each file based on manual review decision
-        results = []
-        for i, file_data in enumerate(files_data):
-            try:
-                success = self._process_single_file(
-                    file_data=file_data,
-                    file_index=i,
-                    manual_review_decisions=manual_review_decisions,
-                    tool_execution_results=tool_execution_results,
-                    api_client=api_client,
-                )
-                results.append(success)
-            except Exception as e:
-                file_name = file_data[0]
-                logger.error(f"Error processing file {file_name}: {e}")
-                results.append(False)
-
-        logger.info(
-            f"Batch processing completed: {sum(results)}/{len(results)} files processed successfully"
-        )
-        return results
-
-    def _process_single_file(
-        self,
-        file_data: tuple[str, FileHashData, Any, dict[str, Any], str, str],
-        file_index: int,
-        manual_review_decisions: list[bool],
-        tool_execution_results: list[str] | None,
-        api_client: Optional["InternalAPIClient"] = None,
-    ) -> bool:
-        """Process a single file based on manual review decision."""
-        (
-            file_name,
-            file_hash,
-            file_history,
-            workflow,
-            input_file_path,
-            file_execution_id,
-        ) = file_data
-
-        should_review = (
-            manual_review_decisions[file_index]
-            if file_index < len(manual_review_decisions)
-            else False
-        )
-        tool_execution_result = (
-            tool_execution_results[file_index]
-            if tool_execution_results and file_index < len(tool_execution_results)
-            else None
-        )
-
-        if should_review:
-            return self._handle_manual_review_file(
-                file_name=file_name,
-                workflow=workflow,
-                input_file_path=input_file_path,
-                file_execution_id=file_execution_id,
-                tool_execution_result=tool_execution_result,
-                api_client=api_client,
-            )
-        else:
-            return self._handle_regular_processing(
-                file_name=file_name,
-                file_hash=file_hash,
-                file_history=file_history,
-                workflow=workflow,
-                input_file_path=input_file_path,
-                file_execution_id=file_execution_id,
-                tool_execution_result=tool_execution_result,
-                api_client=api_client,
-            )
-
-    def _handle_manual_review_file(
-        self,
-        file_name: str,
-        workflow: dict[str, Any],
-        input_file_path: str,
+        workflow_id: str,
+        execution_id: str,
+        organization_id: str,
         file_execution_id: str,
-        tool_execution_result: str | None,
-        api_client: Optional["InternalAPIClient"] = None,
-    ) -> bool:
-        """Handle file that needs manual review."""
-        logger.info(f"Sending {file_name} to manual review queue (batch decision)")
-        # Log to UI via workflow_log with file_execution_id for better correlation
-        log_file_info(
-            self.workflow_log,
-            file_execution_id,
-            f"🔄 File '{file_name}' marked for MANUAL REVIEW - sending to review queue",
-        )
-        self._push_data_to_queue(
-            file_name=file_name,
-            workflow=workflow,
-            input_file_path=input_file_path,
-            file_execution_id=file_execution_id,
-            tool_execution_result=tool_execution_result,
-            api_client=api_client,
-        )
-        return True
-
-    def _handle_regular_processing(
-        self,
-        file_name: str,
-        file_hash: FileHashData,
-        file_history,
-        workflow: dict[str, Any],
-        input_file_path: str,
-        file_execution_id: str,
-        tool_execution_result: str | None,
-        api_client: Optional["InternalAPIClient"] = None,
-    ) -> bool:
-        """Handle file through regular destination processing."""
-        logger.info(
-            f"Processing {file_name} through destination (skipping manual review)"
-        )
-        # Log destination routing to UI
-        log_file_info(
-            self.workflow_log,
-            file_execution_id,
-            f"📤 File '{file_name}' marked for DESTINATION processing - sending to {self.connection_type}",
-        )
-        # Process through normal destination
-        return self._handle_individual_output(
-            file_name=file_name,
-            file_hash=file_hash,
-            file_history=file_history,
-            workflow=workflow,
-            input_file_path=input_file_path,
-            file_execution_id=file_execution_id,
-            api_client=api_client,
-            tool_execution_result=tool_execution_result,
-        )
-
-    def _handle_individual_output(
-        self,
-        file_name: str,
-        _file_hash: FileHashData,
-        _file_history,
-        _workflow: dict[str, Any],
-        input_file_path: str,
-        _file_execution_id: str = None,
-        _api_client: Optional["InternalAPIClient"] = None,
-        tool_execution_result: str | None = None,
-    ) -> bool:
-        """Handle output for individual file (original handle_output logic without manual review)."""
-        try:
-            # Process through destination based on connection type
-            if self.connection_type == CoreConnectionType.DATABASE.value:
-                self.insert_into_db(
-                    input_file_path=input_file_path,
-                    tool_execution_result=tool_execution_result,
-                )
-            elif self.connection_type == CoreConnectionType.FILESYSTEM.value:
-                self.copy_output_to_output_directory(
-                    input_file_path, api_client=_api_client
-                )
-            else:
-                logger.warning(f"Unsupported connection type: {self.connection_type}")
-                return False
-
-            return True
-
-        except Exception as e:
-            logger.error(f"Error processing individual file output for {file_name}: {e}")
-            return False
-
-    def handle_output(
-        self,
-        file_name: str,
-        file_hash: FileHashData,
-        file_history,
-        workflow: dict[str, Any],
-        input_file_path: str,
-        file_execution_id: str = None,
-        api_client: Optional["InternalAPIClient"] = None,
-        tool_execution_result: str | None = None,
-        workflow_id: str = None,
-        execution_id: str = None,
-        organization_id: str = None,
-    ) -> str | None:
-        """Handle the output based on the connection type (following production pattern)."""
-        connection_type = self.connection_type
-
-        # Store context for manual review methods
+        api_client: Optional["InternalAPIClient"],
+    ) -> ExecutionContext:
+        """Setup and store execution context."""
+        # Store in instance for backward compatibility with other methods
         self.workflow_id = workflow_id
         self.execution_id = execution_id
         self.organization_id = organization_id
+        self.file_execution_id = file_execution_id
 
-        # Check if file is marked for manual review via file_destination field
-        if (
-            hasattr(file_hash, "file_destination")
-            and file_hash.file_destination == FileDestinationType.MANUALREVIEW.value
-        ):
-            logger.info(
-                f"File {file_name} marked for manual review via file_destination field"
-            )
-            # Get real tool execution result if not provided
-            if not tool_execution_result:
-                tool_execution_result = (
-                    self.get_tool_execution_result_from_execution_context(
-                        workflow_id=workflow_id,
-                        execution_id=execution_id,
-                        file_execution_id=file_execution_id,
-                        organization_id=organization_id,
-                    )
-                )
-
-            self._push_data_to_queue(
-                file_name,
-                workflow,
-                input_file_path,
-                file_execution_id,
-                tool_execution_result,
-                api_client=api_client,
-            )
-
-            # Log successful processing with file_execution_id for better correlation
-            log_file_info(
-                self.workflow_log,
-                file_execution_id,
-                f"✅ File '{file_name}' successfully sent to manual review queue",
-            )
-
-            return tool_execution_result
-
-        try:
-            if connection_type == CoreConnectionType.FILESYSTEM.value:
-                log_file_info(
-                    self.workflow_log,
-                    file_execution_id,
-                    f"📤 File '{file_name}' marked for FILESYSTEM processing - copying to destination",
-                )
-                self.copy_output_to_output_directory(
-                    input_file_path, file_execution_id, api_client
-                )
-            elif connection_type == CoreConnectionType.DATABASE.value:
-                # Check for manual review first (like backend)
-                if not self._should_handle_hitl(
-                    file_name=file_name,
-                    file_hash=file_hash,
-                    workflow=workflow,
-                    input_file_path=input_file_path,
-                    file_execution_id=file_execution_id,
-                    api_client=api_client,
-                ):
-                    # Log database processing start
-                    log_file_info(
-                        self.workflow_log,
-                        file_execution_id,
-                        f"📤 File '{file_name}' marked for DATABASE processing - preparing to insert data",
-                    )
-                    # Get real tool execution result if not provided
-                    if not tool_execution_result:
-                        tool_execution_result = (
-                            self.get_tool_execution_result_from_execution_context(
-                                workflow_id=workflow_id,
-                                execution_id=execution_id,
-                                file_execution_id=file_execution_id,
-                                organization_id=organization_id,
-                            )
-                        )
-                    # Handle database insertion following production pattern
-                    self.insert_into_db(
-                        input_file_path, tool_execution_result, file_execution_id
-                    )
-            elif connection_type == CoreConnectionType.API.value:
-                logger.info(f"API connection type detected for file {file_name}")
-                # Check for HITL (Manual Review Queue) override for API deployments (like backend)
-                if not self._should_handle_hitl(
-                    file_name=file_name,
-                    file_hash=file_hash,
-                    workflow=workflow,
-                    input_file_path=input_file_path,
-                    file_execution_id=file_execution_id,
-                    api_client=api_client,
-                ):
-                    # Log API processing
-                    log_file_info(
-                        self.workflow_log,
-                        file_execution_id,
-                        f"🔌 File '{file_name}' marked for API processing - preparing response",
-                    )
-                    logger.info(
-                        f"No HITL override, getting tool execution result for {file_name}"
-                    )
-                    # Get real tool execution result if not provided
-                    if not tool_execution_result:
-                        tool_execution_result = (
-                            self.get_tool_execution_result_from_execution_context(
-                                workflow_id=workflow_id,
-                                execution_id=execution_id,
-                                file_execution_id=file_execution_id,
-                                organization_id=organization_id,
-                            )
-                        )
-                    else:
-                        tool_execution_result = self.get_tool_execution_result(
-                            file_history, tool_execution_result
-                        )
-            elif connection_type == CoreConnectionType.MANUALREVIEW.value:
-                # Log manual review routing
-                log_file_info(
-                    self.workflow_log,
-                    file_execution_id,
-                    f"🔄 File '{file_name}' explicitly configured for MANUAL REVIEW - sending to queue",
-                )
-                # Get real tool execution result if not provided
-                if not tool_execution_result:
-                    tool_execution_result = (
-                        self.get_tool_execution_result_from_execution_context(
-                            workflow_id=workflow_id,
-                            execution_id=execution_id,
-                            file_execution_id=file_execution_id,
-                            organization_id=organization_id,
-                        )
-                    )
-
-                self._push_data_to_queue(
-                    file_name,
-                    workflow,
-                    input_file_path,
-                    file_execution_id,
-                    tool_execution_result,
-                    api_client=api_client,
-                )
-            else:
-                logger.warning(f"Unknown destination connection type: {connection_type}")
-
-        except Exception as destination_error:
-            logger.error(f"Destination handle_output failed: {str(destination_error)}")
-            # Don't re-raise for API destinations to allow workflow completion
-            if connection_type != CoreConnectionType.API.value:
-                raise
-            else:
-                logger.warning(
-                    f"API destination error ignored to allow workflow completion: {str(destination_error)}"
-                )
-
-        # Log successful processing with file_execution_id for better correlation
-        destination_name = self._get_destination_display_name()
-        log_file_info(
-            self.workflow_log,
-            file_execution_id,
-            f"✅ File '{file_name}' successfully sent to {destination_name}",
+        return ExecutionContext(
+            workflow_id=workflow_id,
+            execution_id=execution_id,
+            organization_id=organization_id,
+            file_execution_id=file_execution_id,
+            api_client=api_client,
+            workflow_log=self.workflow_log,
         )
 
-        return tool_execution_result
+    def _setup_file_context(
+        self,
+        file_hash: FileHashData,
+        workflow: dict[str, Any],
+        execution_error: str | None,
+    ) -> FileContext:
+        """Setup file processing context."""
+        return FileContext(
+            file_hash=file_hash,
+            file_name=file_hash.file_name,
+            input_file_path=file_hash.file_path,
+            workflow=workflow,
+            execution_error=execution_error,
+        )
+
+    def _extract_processing_data(
+        self, exec_ctx: ExecutionContext, file_ctx: FileContext
+    ) -> ProcessingResult:
+        """Extract tool results and metadata for processing."""
+        tool_result = None
+        if not file_ctx.execution_error:
+            tool_result = self.get_tool_execution_result_from_execution_context(
+                workflow_id=exec_ctx.workflow_id,
+                execution_id=exec_ctx.execution_id,
+                file_execution_id=exec_ctx.file_execution_id,
+                organization_id=exec_ctx.organization_id,
+            )
+
+        metadata = self.get_metadata()
+
+        return ProcessingResult(tool_execution_result=tool_result, metadata=metadata)
+
+    def _check_and_handle_hitl(
+        self, exec_ctx: ExecutionContext, file_ctx: FileContext, result: ProcessingResult
+    ) -> bool:
+        """Check HITL requirements and push to queue if needed."""
+        has_hitl = self._should_handle_hitl(
+            file_name=file_ctx.file_name,
+            file_hash=file_ctx.file_hash,
+            workflow=file_ctx.workflow,
+            api_client=exec_ctx.api_client,
+            error=file_ctx.execution_error,
+        )
+
+        if has_hitl:
+            self._push_data_to_queue(
+                file_name=file_ctx.file_name,
+                workflow=file_ctx.workflow,
+                input_file_path=file_ctx.input_file_path,
+                file_execution_id=exec_ctx.file_execution_id,
+                tool_execution_result=result.tool_execution_result,
+                api_client=exec_ctx.api_client,
+            )
+
+        return has_hitl
+
+    def _process_destination(
+        self, exec_ctx: ExecutionContext, file_ctx: FileContext, result: ProcessingResult
+    ):
+        """Route to appropriate destination handler."""
+        handlers = {
+            CoreConnectionType.API.value: self._handle_api_destination,
+            CoreConnectionType.FILESYSTEM.value: self._handle_filesystem_destination,
+            CoreConnectionType.DATABASE.value: self._handle_database_destination,
+            CoreConnectionType.MANUALREVIEW.value: self._handle_manual_review_destination,
+        }
+
+        handler = handlers.get(self.connection_type)
+        if handler:
+            handler(exec_ctx, file_ctx, result)
+        else:
+            logger.warning(f"Unknown destination connection type: {self.connection_type}")
+
+    def _handle_api_destination(
+        self, exec_ctx: ExecutionContext, file_ctx: FileContext, result: ProcessingResult
+    ):
+        """Handle API destination processing."""
+        log_file_info(
+            exec_ctx.workflow_log,
+            exec_ctx.file_execution_id,
+            f"🔌 File '{file_ctx.file_name}' marked for API processing - preparing response",
+        )
+
+        self.cache_api_result(
+            api_client=exec_ctx.api_client,
+            file_hash=file_ctx.file_hash,
+            workflow_id=exec_ctx.workflow_id,
+            execution_id=exec_ctx.execution_id,
+            result=result.tool_execution_result,
+            file_execution_id=exec_ctx.file_execution_id,
+            organization_id=exec_ctx.organization_id,
+            error=file_ctx.execution_error,
+            metadata=result.metadata,
+        )
+
+    def _handle_filesystem_destination(
+        self, exec_ctx: ExecutionContext, file_ctx: FileContext, result: ProcessingResult
+    ):
+        """Handle filesystem destination processing."""
+        if not result.has_hitl:
+            log_file_info(
+                exec_ctx.workflow_log,
+                exec_ctx.file_execution_id,
+                f"📤 File '{file_ctx.file_name}' marked for FILESYSTEM processing - copying to destination",
+            )
+            self.copy_output_to_output_directory(
+                file_ctx.input_file_path, exec_ctx.file_execution_id, exec_ctx.api_client
+            )
+        else:
+            logger.info(
+                f"File '{file_ctx.file_name}' sent to HITL queue - FILESYSTEM processing will be handled after review"
+            )
+
+    def _handle_database_destination(
+        self, exec_ctx: ExecutionContext, file_ctx: FileContext, result: ProcessingResult
+    ):
+        """Handle database destination processing."""
+        if not result.has_hitl:
+            log_file_info(
+                exec_ctx.workflow_log,
+                exec_ctx.file_execution_id,
+                f"📤 File '{file_ctx.file_name}' marked for DATABASE processing - preparing to insert data",
+            )
+            if result.tool_execution_result:
+                self.insert_into_db(
+                    file_ctx.input_file_path,
+                    result.tool_execution_result,
+                    result.metadata,
+                    exec_ctx.file_execution_id,
+                    error_message=file_ctx.execution_error,
+                    api_client=exec_ctx.api_client,
+                )
+            else:
+                logger.warning(
+                    f"No tool execution result found for file {file_ctx.file_name}, skipping database insertion"
+                )
+        else:
+            logger.info(
+                f"File '{file_ctx.file_name}' sent to HITL queue - DATABASE processing will be handled after review"
+            )
+
+    def _handle_manual_review_destination(
+        self, exec_ctx: ExecutionContext, file_ctx: FileContext, result: ProcessingResult
+    ):
+        """Handle manual review destination processing."""
+        log_file_info(
+            exec_ctx.workflow_log,
+            exec_ctx.file_execution_id,
+            f"🔄 File '{file_ctx.file_name}' explicitly configured for MANUAL REVIEW - sending to queue",
+        )
+
+        if not result.has_hitl:
+            self._push_data_to_queue(
+                file_name=file_ctx.file_name,
+                workflow=file_ctx.workflow,
+                input_file_path=file_ctx.input_file_path,
+                file_execution_id=exec_ctx.file_execution_id,
+                tool_execution_result=result.tool_execution_result,
+                api_client=exec_ctx.api_client,
+            )
+
+    def _handle_destination_error(
+        self, exec_ctx: ExecutionContext, file_ctx: FileContext, error: Exception
+    ):
+        """Handle destination processing errors."""
+        logger.error(f"Destination handle_output failed: {str(error)}")
+        log_file_error(
+            exec_ctx.workflow_log,
+            exec_ctx.file_execution_id,
+            f"❌ File '{file_ctx.file_name}' failed to send to destination: {str(error)}",
+        )
+
+    def _log_processing_success(self, exec_ctx: ExecutionContext, file_ctx: FileContext):
+        """Log successful processing."""
+        destination_name = self._get_destination_display_name()
+        log_file_info(
+            exec_ctx.workflow_log,
+            exec_ctx.file_execution_id,
+            f"✅ File '{file_ctx.file_name}' successfully sent to {destination_name}",
+        )
+
+    def cache_api_result(
+        self,
+        file_hash: FileHashData,
+        workflow_id: str,
+        execution_id: str,
+        file_execution_id: str,
+        organization_id: str,
+        api_client: Any | None,
+        # file_history: dict[str, Any] | None,
+        result: dict[str, Any] | None,
+        error: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> bool:
+        """Cache API result using APIResultCacheManager."""
+        try:
+            # Calculate accurate elapsed time from workflow start time
+            if metadata and MetaDataKey.WORKFLOW_START_TIME in metadata:
+                workflow_start_time = metadata[MetaDataKey.WORKFLOW_START_TIME]
+                current_time = time.time()
+                actual_elapsed_time = current_time - workflow_start_time
+
+                # Update total_elapsed_time with accurate measurement
+                metadata[MetaDataKey.TOTAL_ELAPSED_TIME] = actual_elapsed_time
+
+                logger.info(
+                    f"TIMING: Calculated accurate elapsed time for API caching: {actual_elapsed_time:.3f}s "
+                    f"(from workflow start: {workflow_start_time:.6f} to now: {current_time:.6f})"
+                )
+
+            # Use APIResultCacheManager for consistent caching behavior
+            api_cache_manager = get_api_cache_manager()
+            success = api_cache_manager.cache_api_result_direct(
+                file_name=file_hash.file_name,
+                file_execution_id=file_execution_id,
+                workflow_id=workflow_id,
+                execution_id=execution_id,
+                result=result,
+                error=error,
+                metadata=metadata,
+            )
+
+            if success:
+                logger.info(
+                    f"Successfully cached API result for execution {execution_id}"
+                )
+            else:
+                logger.warning(f"Failed to cache API result for execution {execution_id}")
+
+            return success
+
+        except Exception as e:
+            logger.error(
+                f"Failed to cache API result for execution {execution_id}: {str(e)}"
+            )
+            # Return False but don't re-raise - caching failures shouldn't stop execution
+            raise
+
+    def handle_output(
+        self,
+        is_success: bool,
+        file_hash: FileHashData,
+        # file_history: dict[str, Any] | None,
+        workflow: dict[str, Any],
+        file_execution_id: str = None,
+        api_client: Optional["InternalAPIClient"] = None,
+        workflow_id: str = None,
+        execution_id: str = None,
+        organization_id: str = None,
+        execution_error: str = None,
+    ) -> HandleOutputResult:
+        """Handle the output based on the connection type.
+
+        This refactored version uses clean architecture with context objects
+        and single-responsibility methods for better maintainability.
+        """
+        # Setup contexts
+        exec_ctx = self._setup_execution_context(
+            workflow_id, execution_id, organization_id, file_execution_id, api_client
+        )
+        file_ctx = self._setup_file_context(file_hash, workflow, execution_error)
+
+        # Log if HITL queue is configured (reduced debug logging)
+        if self.hitl_queue_name:
+            logger.debug(f"HITL queue configured: {self.hitl_queue_name}")
+
+        # Extract processing data
+        result = self._extract_processing_data(exec_ctx, file_ctx)
+
+        # Check and handle HITL if needed
+        result.has_hitl = self._check_and_handle_hitl(exec_ctx, file_ctx, result)
+
+        # Process through appropriate destination
+        try:
+            self._process_destination(exec_ctx, file_ctx, result)
+        except Exception as e:
+            self._handle_destination_error(exec_ctx, file_ctx, e)
+            raise
+
+        # Log success
+        self._log_processing_success(exec_ctx, file_ctx)
+
+        return HandleOutputResult(
+            output=result.tool_execution_result,
+            metadata=result.metadata,
+            connection_type=self.connection_type,
+        )
+
+    def get_combined_metadata(
+        self, api_client: "InternalAPIClient", metadata: dict[str, Any] = None
+    ) -> dict[str, Any]:
+        """Get combined workflow and usage metadata.
+
+        Returns:
+            dict[str, Any]: Combined metadata including workflow and usage data.
+        """
+        file_execution_id = self.file_execution_id
+        usage_metadata = api_client.get_aggregated_token_count(file_execution_id)
+
+        if metadata and usage_metadata:
+            metadata["usage"] = usage_metadata.to_dict()
+        return metadata
 
     def insert_into_db(
         self,
         input_file_path: str,
         tool_execution_result: str = None,
+        metadata: dict[str, Any] = None,
         file_execution_id: str = None,
+        error_message: str = None,
+        api_client: "InternalAPIClient" = None,
     ) -> None:
         """Insert data into the database (following production pattern)."""
         # Store file_execution_id for logging
@@ -598,6 +607,19 @@ class WorkerDestinationConnector:
                 "No connector_settings provided in destination configuration"
             )
 
+        # If no data and no error, don't execute CREATE or INSERT query
+        if not (tool_execution_result or error_message):
+            raise ValueError("No tool_execution_result or error_message provided")
+
+        db_class = WorkerDatabaseUtils.get_db_class(
+            connector_id=connector_id,
+            connector_settings=connector_settings,
+        )
+
+        # Get combined metadata including usage data
+        metadata = self.get_combined_metadata(api_client, metadata)
+        logger.info(f"Database destination - Metadata: {metadata}")
+
         # Get table configuration from destination settings (table-specific config)
         table_name = str(self.settings.get("table", "unstract_results"))
         include_agent = bool(self.settings.get("includeAgent", False))
@@ -612,11 +634,6 @@ class WorkerDestinationConnector:
 
         # Get tool execution result (use provided result only)
         data = tool_execution_result
-
-        # If data is None, don't execute CREATE or INSERT query
-        if not data:
-            logger.info("No data obtained from tool to insert into destination DB.")
-            return
 
         # Remove metadata from result
         # Tool text-extractor returns data in the form of string.
@@ -642,6 +659,8 @@ class WorkerDestinationConnector:
             execution_id_name=execution_id_name,
             file_path=input_file_path,
             execution_id=execution_id,
+            metadata=metadata,
+            error=error_message,
         )
 
         engine = None
@@ -726,12 +745,9 @@ class WorkerDestinationConnector:
 
         # ARCHITECTURE VALIDATION: Ensure this is only called for TASK workflows
         if api_client and self.workflow_id:
-            workflow_type, is_api = detect_comprehensive_workflow_type(
-                api_client, self.workflow_id
-            )
-            if workflow_type != WorkflowType.TASK:
+            if self.connection_type != CoreConnectionType.FILESYSTEM.value:
                 logger.warning(
-                    f"copy_output_to_output_directory called for {workflow_type} workflow {self.workflow_id} - this should only be used for {WorkflowType.TASK} workflows"
+                    f"copy_output_to_output_directory called for destination connection_type {self.connection_type} with workflow {self.workflow_id} - this should only be used for {CoreConnectionType.FILESYSTEM.value} workflows"
                 )
                 return
 
@@ -998,76 +1014,70 @@ class WorkerDestinationConnector:
         execution_id: str,
         file_execution_id: str,
         organization_id: str,
-    ) -> Any:
+    ) -> dict | str:
         """Get tool execution result using proper execution context (preferred method)."""
         try:
-            logger.debug(
-                f"Getting tool execution result for execution context: {workflow_id}/{execution_id}/{file_execution_id}"
-            )
-
-            # Use ExecutionFileHandler to get proper paths
+            # Use ExecutionFileHandler to get proper paths (matching backend)
             file_handler = ExecutionFileHandler(
                 workflow_id=workflow_id,
                 execution_id=execution_id,
                 organization_id=organization_id,
                 file_execution_id=file_execution_id,
             )
-
             metadata_file_path = file_handler.metadata_file
-
-            # Get workflow metadata
+            # Get workflow metadata (following backend pattern)
             file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
             file_storage = file_system.get_file_storage()
 
             if not metadata_file_path:
-                logger.warning("Metadata file path is None")
                 return None
 
             if not file_storage.exists(metadata_file_path):
-                logger.warning(f"Metadata file does not exist: {metadata_file_path}")
                 return None
 
             metadata_content = file_storage.read(path=metadata_file_path, mode="r")
             metadata = json.loads(metadata_content)
 
-            # Get output type from metadata
-            output_type = self.get_output_type_from_metadata(metadata)
+            # Get output type from metadata (following backend pattern)
+            output_type = self._get_output_type_from_metadata(metadata)
 
-            # Get the output file path using the file handler
+            # Get the output file path using the file handler (matching backend pattern)
             output_file_path = file_handler.infile
 
             if not output_file_path:
-                logger.warning("Output file path is None")
                 return None
 
             if not file_storage.exists(output_file_path):
-                logger.warning(f"Output file does not exist: {output_file_path}")
                 return None
 
-            # Parse based on output type (following backend pattern)
+            file_type = file_storage.mime_type(path=output_file_path)
             if output_type == ToolOutputType.JSON:
+                if file_type != EXT_MIME_MAP[ToolOutputType.JSON.lower()]:
+                    msg = f"Expected tool output type: JSON, got: '{file_type}'"
+                    logger.error(msg)
+                    raise Exception(msg)
                 file_content = file_storage.read(output_file_path, mode="r")
                 result = json.loads(file_content)
-                logger.info(
-                    f"Successfully parsed JSON tool result from {output_file_path}"
-                )
                 return result
             elif output_type == ToolOutputType.TXT:
+                if file_type != EXT_MIME_MAP[ToolOutputType.TXT.lower()]:
+                    msg = f"Expected tool output type: TXT, got: '{file_type}'"
+                    logger.error(msg)
+                    raise Exception(msg)
                 file_content = file_storage.read(output_file_path, mode="r")
                 result = file_content.encode("utf-8").decode("unicode-escape")
-                logger.info(f"Successfully read TXT tool result from {output_file_path}")
                 return result
             else:
-                logger.warning(f"Unknown output type: {output_type}")
-                return None
+                raise Exception(f"Unsupported output type: {output_type}")
 
         except Exception as e:
             logger.error(
-                f"Failed to get tool execution result from execution context: {str(e)}"
+                f"Exception while getting tool execution result from execution context: {str(e)}",
+                exc_info=True,
             )
-            return None
+            raise
 
-    def get_output_type_from_metadata(self, metadata: dict[str, Any]) -> str:
+    def _get_output_type_from_metadata(self, metadata: dict[str, Any]) -> str:
         """Get output type from metadata (following backend pattern)."""
         try:
             # Get tool metadata list
@@ -1087,7 +1097,7 @@ class WorkerDestinationConnector:
 
         except Exception as e:
             logger.error(f"Failed to get output type from metadata: {str(e)}")
-            return "TXT"  # Safe default
+            return ToolOutputType.TXT
 
     def parse_string(self, original_string: str) -> Any:
         """Parse the given string, attempting to evaluate it as a Python literal."""
@@ -1110,12 +1120,19 @@ class WorkerDestinationConnector:
                 return self.parse_string(file_history.metadata)
             else:
                 return None
+        metadata: dict[str, Any] = self._get_workflow_metadata()
+        return metadata
 
-        # For workers, we don't have workflow metadata files readily available
-        # This would need to be implemented via API if needed
-        # metadata = self.get_workflow_metadata()
-        # return metadata
-        return None
+    def _get_workflow_metadata(self) -> dict[str, Any]:
+        """Get metadata from the workflow (matching backend pattern)."""
+        file_handler = ExecutionFileHandler(
+            workflow_id=self.workflow_id,
+            execution_id=self.execution_id,
+            organization_id=self.organization_id,
+            file_execution_id=self.file_execution_id,
+        )
+        metadata: dict[str, Any] = file_handler.get_workflow_metadata()
+        return metadata
 
     def has_valid_metadata(self, metadata: Any) -> bool:
         """Check if metadata is valid (matching backend pattern)."""
@@ -1133,48 +1150,57 @@ class WorkerDestinationConnector:
         file_name: str,
         file_hash: FileHashData,
         workflow: dict[str, Any],
-        input_file_path: str,
-        file_execution_id: str,
         api_client: Optional["InternalAPIClient"] = None,
+        tool_execution_result: dict | str | None = None,
+        error: str | None = None,
     ) -> bool:
         """Determines if HITL processing should be performed, returning True if data was pushed to the queue.
 
         This method replicates the backend DestinationConnector._should_handle_hitl logic.
         """
+        logger.info(f"{file_name}: checking if file is eligible for HITL")
+        if error:
+            logger.error(
+                f"{file_name}: file is not eligible for HITL due to error: {error}"
+            )
+            return False
+
         # Check if API deployment requested HITL override
         if self.hitl_queue_name:
-            logger.info(f"API HITL override: pushing to queue for file {file_name}")
-            self._push_data_to_queue(
-                file_name=file_name,
-                workflow=workflow,
-                input_file_path=input_file_path,
-                file_execution_id=file_execution_id,
-                api_client=api_client,
-            )
-            logger.info(f"Successfully pushed {file_name} to HITL queue")
+            logger.info(f"{file_name}: Pushing to HITL queue")
             return True
 
         # Skip HITL validation if we're using file_history and no execution result is available
-        if self.is_api and self.use_file_history:
+        if self.is_api:
+            logger.info(
+                f"{file_name}: Skipping HITL validation as it's an API deployment"
+            )
+            return False
+        if not self.use_file_history:
+            logger.info(
+                f"{file_name}: Skipping HITL validation as we're not using file_history"
+            )
+            return False
+        if not file_hash.is_manualreview_required:
+            logger.info(f"{file_name}: File is not marked for manual review")
             return False
 
-        # Otherwise use workflow-based HITL logic via API
-        try:
-            if api_client:
-                # Note: Individual file validation is deprecated
-                # Batch evaluation is handled in handle_output_for_files method
-                # This fallback returns False to disable individual evaluation
-                logger.info(
-                    f"Individual manual review validation disabled for {file_name} - using batch evaluation"
-                )
-                return False
-            else:
-                logger.warning("No API client provided for manual review validation")
+        # Use class-level manual review service
+        manual_review_service = self._ensure_manual_review_service(api_client)
+        if not manual_review_service:
+            logger.info(f"No manual review service available for {file_name}")
+            return False
 
-        except Exception as e:
-            logger.error(f"Error validating manual review DB rule: {e}")
-            # If validation fails, don't queue (safer to proceed to destination)
-
+        workflow_util = manual_review_service.get_workflow_util()
+        is_to_hitl = workflow_util.validate_db_rule(
+            tool_execution_result,
+            workflow,
+            file_hash.file_destination,
+            file_hash.is_manualreview_required,
+        )
+        logger.info(f"File {file_name} checked for manual review: {is_to_hitl}")
+        if is_to_hitl:
+            return True
         return False
 
     def _push_data_to_queue(
@@ -1191,8 +1217,21 @@ class WorkerDestinationConnector:
         This method replicates the backend DestinationConnector._push_to_queue logic.
         """
         logger.info(f"Pushing {file_name} to manual review queue")
+        log_file_info(
+            self.workflow_log,
+            file_execution_id,
+            f"🔄 File '{file_name}' sending to manual review queue",
+        )
 
         try:
+            # Ensure manual review service is available and use it
+            manual_review_service = self._ensure_manual_review_service(api_client)
+            if not manual_review_service:
+                logger.warning(
+                    f"No manual review service available to enqueue {file_name}"
+                )
+                return
+
             # Get tool execution result if not provided
             if not tool_execution_result:
                 tool_execution_result = (
@@ -1212,6 +1251,8 @@ class WorkerDestinationConnector:
 
             # Get queue name using backend pattern
             queue_name = self._get_review_queue_name()
+            # Use workflow util via plugin architecture (handles OSS/Enterprise automatically)
+            workflow_util = manual_review_service.get_workflow_util()
 
             # Read file content based on deployment type (matching backend logic)
             if self.is_api:
@@ -1219,238 +1260,55 @@ class WorkerDestinationConnector:
                 file_content_base64 = self._read_file_content_for_queue(
                     input_file_path, file_name
                 )
+                ttl_seconds = None
             else:
                 # For ETL/TASK workflows, read from source connector (like backend)
                 file_content_base64 = self._read_file_from_source_connector(
                     input_file_path, file_name, workflow
                 )
+                ttl_seconds = workflow_util.get_hitl_ttl_seconds(str(self.workflow_id))
 
             # Get metadata (whisper-hash, etc.)
             metadata = self.get_metadata()
             whisper_hash = metadata.get("whisper-hash") if metadata else None
+            extracted_text = metadata.get("extracted_text") if metadata else None
 
             # Create queue result matching backend QueueResult structure
-            queue_result = {
-                "file": file_name,
-                "status": "SUCCESS",
-                "result": tool_execution_result,
-                "workflow_id": str(self.workflow_id),
-                "whisper_hash": whisper_hash,
-                "file_execution_id": file_execution_id,
-            }
+            queue_result = QueueResult(
+                file=file_name,
+                status=QueueResultStatus.SUCCESS,
+                result=tool_execution_result,
+                workflow_id=str(self.workflow_id),
+                whisper_hash=whisper_hash,
+                file_execution_id=file_execution_id,
+                extracted_text=extracted_text,
+                ttl_seconds=ttl_seconds,
+            )
 
             # Only include file_content if provided (backend API will handle it)
             if file_content_base64 is not None:
-                queue_result["file_content"] = file_content_base64
+                queue_result.file_content = file_content_base64
 
-            # Use API client to enqueue (this calls backend queue infrastructure)
-            if api_client:
-                api_client.enqueue_manual_review(
-                    queue_name=queue_name,
-                    message=queue_result,
-                    organization_id=self.organization_id,
-                )
-                # Log to UI via workflow_log with file_execution_id for better correlation
-                log_file_info(
-                    self.workflow_log,
-                    file_execution_id,
-                    f"✅ File '{file_name}' sent to manual review queue '{queue_name}'",
-                )
+            workflow_util.enqueue_manual_review(
+                queue_name=queue_name,
+                message=queue_result.to_dict(),
+                organization_id=self.organization_id,
+            )
 
-                logger.info(
-                    f"✅ MANUAL REVIEW: File '{file_name}' sent to manual review queue '{queue_name}' successfully"
-                )
-            else:
-                logger.error(f"No API client available to enqueue {file_name}")
+            # Log successful enqueue (common for both paths)
+            log_file_info(
+                self.workflow_log,
+                file_execution_id,
+                f"✅ File '{file_name}' sent to manual review queue '{queue_name}'",
+            )
+
+            logger.info(
+                f"✅ MANUAL REVIEW: File '{file_name}' sent to manual review queue '{queue_name}' successfully"
+            )
 
         except Exception as e:
             logger.error(f"Failed to push {file_name} to manual review queue: {e}")
             raise
-
-    def handle_output_for_files_simple(
-        self,
-        files: list[FileHashData],
-        workflow: dict[str, Any],
-        api_client: Optional["InternalAPIClient"] = None,
-        workflow_id: str = None,
-        execution_id: str = None,
-        organization_id: str = None,
-    ) -> list[bool]:
-        """Handle output for a simple list of FileHashData objects with manual review evaluation.
-
-        This is a convenience method for batch processing that accepts a simple list of files.
-        """
-        if not files:
-            return []
-
-        logger.info(f"Starting simple batch processing for {len(files)} files")
-
-        # Convert to the format expected by handle_output_for_files
-        files_data = []
-        for i, file_hash in enumerate(files):
-            file_name = file_hash.file_name
-            file_history = None  # Will be checked internally if needed
-            input_file_path = file_hash.file_path
-            file_execution_id = f"batch-{i}"  # Simple execution ID for batch processing
-
-            files_data.append(
-                (
-                    file_name,  # file_name
-                    file_hash,  # file_hash
-                    file_history,  # file_history
-                    workflow,  # workflow
-                    input_file_path,  # input_file_path
-                    file_execution_id,  # file_execution_id
-                )
-            )
-
-        # Set context for manual review
-        self.workflow_id = workflow_id
-        self.execution_id = execution_id
-        self.organization_id = organization_id
-
-        # Call the main batch processing method
-        return self.handle_output_for_files(files_data, api_client)
-
-    def _evaluate_manual_review_batch(
-        self,
-        files_data: list[
-            tuple[str, FileHashData, str, str]
-        ],  # (file_name, file_hash, input_file_path, file_execution_id)
-        workflow: dict[str, Any],
-        api_client: Optional["InternalAPIClient"] = None,
-    ) -> list[bool]:
-        """Evaluate batch of files for manual review using plugin-based logic.
-
-        Args:
-            files_data: List of file data tuples
-            workflow: Workflow configuration
-            api_client: API client for backend communication
-
-        Returns:
-            List of boolean decisions (True = send to manual review)
-        """
-        if not files_data or not api_client:
-            return [False] * len(files_data)
-
-        try:
-            # Import the manual review evaluator - create inline class to avoid import issues for now
-            # TODO: Fix plugin import system properly later
-
-            class PercentageEvaluator:
-                """Temporary inline evaluator to avoid import issues."""
-
-                def evaluate_batch(
-                    self,
-                    files: list[FileHashData],
-                    percentage: int,
-                    rule_logic: str = "OR",
-                    rule_json: dict = None,
-                ) -> list[bool]:
-                    """Evaluate batch of files for manual review based on percentage."""
-                    if not files or percentage <= 0:
-                        return [False] * len(files)
-
-                    # Calculate target count (at least 1)
-                    num_files = len(files)
-                    target_count = max(1, (num_files * percentage) // 100)
-
-                    if target_count >= num_files:
-                        return [True] * num_files
-
-                    # Create deterministic selection based on file hashes
-                    file_scores = []
-                    for file_hash in files:
-                        # Use file name + path for consistent hashing
-                        hash_input = f"{file_hash.file_name}:{file_hash.file_path}"
-                        score = int(
-                            hashlib.sha256(hash_input.encode()).hexdigest()[:8], 16
-                        )
-                        file_scores.append((score, file_hash))
-
-                    # Sort by score and select top N files
-                    file_scores.sort(key=lambda x: x[0])
-                    selected_files = {item[1] for item in file_scores[:target_count]}
-
-                    return [file_hash in selected_files for file_hash in files]
-
-                def get_evaluation_metadata(
-                    self, decisions: list[bool], percentage: int, files: list
-                ) -> dict:
-                    """Get evaluation metadata."""
-                    selected_count = sum(decisions)
-                    total_files = len(files)
-                    actual_percentage = (
-                        (selected_count / total_files * 100) if total_files > 0 else 0
-                    )
-
-                    return {
-                        "total_files": total_files,
-                        "target_percentage": percentage,
-                        "selected_count": selected_count,
-                        "actual_percentage": round(actual_percentage, 2),
-                        "selection_method": "deterministic_hash_based",
-                    }
-
-            # OPTIMIZATION: Skip manual review DB rules for API workflows to avoid 404 errors
-            # API workflows don't use manual review DB rules configured in the UI
-            if self.is_api:
-                logger.info(
-                    f"OPTIMIZATION: Skipping manual review DB rules for API workflow {self.workflow_id} (not applicable to API workflows)"
-                )
-                return [False] * len(files_data)
-
-            # Get DB rules data from backend (ORM only)
-            response = api_client.manual_review_client.get_db_rules_data(
-                workflow_id=self.workflow_id,
-                organization_id=self.organization_id,
-            )
-
-            if not response.success:
-                logger.warning(f"Failed to get DB rules data: {response.error}")
-                return [False] * len(files_data)
-
-            # Extract rules data
-            rules_data = response.data
-            percentage = rules_data.get("percentage", 0)
-            rule_logic = rules_data.get("rule_logic", "OR")
-            rule_json = rules_data.get("rule_json")
-
-            logger.info(
-                f"Manual review batch evaluation: {len(files_data)} files, {percentage}% target"
-            )
-
-            if percentage <= 0:
-                logger.info("No manual review required (percentage = 0)")
-                return [False] * len(files_data)
-
-            # Create evaluator and evaluate batch
-            evaluator = PercentageEvaluator()
-            file_hash_list = [file_hash for _, file_hash, _, _ in files_data]
-
-            decisions = evaluator.evaluate_batch(
-                files=file_hash_list,
-                percentage=percentage,
-                rule_logic=rule_logic,
-                rule_json=rule_json,
-            )
-
-            # Log evaluation metadata
-            metadata = evaluator.get_evaluation_metadata(
-                decisions, percentage, file_hash_list
-            )
-            logger.info(f"Batch evaluation results: {metadata}")
-
-            return decisions
-
-        except ImportError:
-            logger.warning(
-                "Manual review plugin not available, skipping batch evaluation"
-            )
-            return [False] * len(files_data)
-        except Exception as e:
-            logger.error(f"Error in batch manual review evaluation: {e}")
-            return [False] * len(files_data)
 
     def _get_review_queue_name(self) -> str:
         """Generate review queue name with optional HITL override for manual review processing.

@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from .constants import FilePatternConstants
-from .data_models import FileHash, FileHashData, FileOperationConstants
+from .data_models import FileHashData, FileOperationConstants
 
 logger = logging.getLogger(__name__)
 
@@ -111,8 +111,8 @@ class FileOperations:
         file_size: int,
         fs_metadata: dict[str, Any],
         compute_content_hash: bool = False,
-    ) -> FileHash:
-        """Create FileHash object matching backend source.py:352 _create_file_hash.
+    ) -> FileHashData:
+        """Create FileHashData object matching backend source.py:352 _create_file_hash.
 
         Args:
             file_path: Path to the file
@@ -123,7 +123,7 @@ class FileOperations:
             compute_content_hash: Whether to compute file content hash (only for API deployments)
 
         Returns:
-            FileHash: Populated FileHash object
+            FileHashData: Populated FileHashData object
         """
         # Only compute content hash for API deployments or when explicitly requested
         file_hash = None
@@ -153,7 +153,7 @@ class FileOperations:
             fs_metadata
         )
 
-        return FileHash(
+        return FileHashData(
             file_path=file_path,
             file_name=file_name,
             source_connection_type=source_connection_type,
@@ -252,7 +252,7 @@ class FileOperations:
         count: int,
         limit: int,
         unique_file_paths: set[str],
-        matched_files: dict[str, FileHash],
+        matched_files: dict[str, FileHashData],
         patterns: list[str],
         source_fs,
         source_connection_type: str,
@@ -363,7 +363,7 @@ class FileOperations:
 
     @staticmethod
     def _should_skip_file_backend_compatible(
-        file_hash: FileHash, patterns: list[str]
+        file_hash: FileHashData, patterns: list[str]
     ) -> bool:
         """Check if file should be skipped based on patterns with case-insensitive matching."""
         if not patterns or patterns == ["*"]:
@@ -382,14 +382,14 @@ class FileOperations:
 
     @staticmethod
     def _is_duplicate_backend_compatible(
-        file_hash: FileHash, unique_file_paths: set[str]
+        file_hash: FileHashData, unique_file_paths: set[str]
     ) -> bool:
         """Check if file is duplicate."""
         return file_hash.file_path in unique_file_paths
 
     @staticmethod
     def _update_unique_file_paths_backend_compatible(
-        file_hash: FileHash, unique_file_paths: set
+        file_hash: FileHashData, unique_file_paths: set
     ) -> None:
         """Update unique file paths."""
         unique_file_paths.add(file_hash.file_path)
@@ -449,7 +449,7 @@ class FileOperations:
 
     @staticmethod
     def validate_file_compatibility(
-        file_data: FileHash, workflow_config: dict[str, Any]
+        file_data: FileHashData, workflow_config: dict[str, Any]
     ) -> dict[str, Any]:
         """Validate file against workflow requirements.
 

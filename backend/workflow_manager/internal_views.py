@@ -19,11 +19,11 @@ from utils.organization_utils import filter_queryset_by_organization
 
 # Import new dataclasses for WorkflowDefinitionAPIView
 from unstract.core.data_models import (
+    ConnectionType,
     ConnectorInstanceData,
     WorkflowDefinitionResponseData,
     WorkflowEndpointConfigData,
-    WorkflowTypeDetectionData,
-    workflow_definition_to_legacy_format,
+    WorkflowEndpointConfigResponseData,
 )
 from workflow_manager.endpoint_v2.endpoint_utils import WorkflowEndpointUtils
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
@@ -453,6 +453,7 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
     def update_status(self, request, id=None):
         """Update workflow execution status."""
         try:
+            logger.info(f"Updating status for execution {id}")
             execution = self.get_object()
             serializer = WorkflowExecutionStatusUpdateSerializer(data=request.data)
 
@@ -494,14 +495,6 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                 if validated_data.get("total_files") is not None:
                     execution.total_files = validated_data["total_files"]
                     execution.save()
-
-                # Log ignored execution_time from workers
-                if validated_data.get("execution_time") is not None:
-                    worker_time = validated_data["execution_time"]
-                    actual_time = execution.execution_time
-                    logger.info(
-                        f"DEBUG: Ignored worker execution_time {worker_time:.2f}s - using wall-clock time {actual_time:.2f}s instead"
-                    )
 
                 logger.info(
                     f"Updated workflow execution {id} status to {validated_data['status']}"
@@ -698,7 +691,6 @@ class ExecutionFinalizationAPIView(APIView):
             request_data = request.data
             final_status = request_data.get("final_status", "COMPLETED")
             total_files_processed = request_data.get("total_files_processed", 0)
-            total_execution_time = request_data.get("total_execution_time", 0)
             error_summary = request_data.get("error_summary", {})
 
             with transaction.atomic():
@@ -719,17 +711,6 @@ class ExecutionFinalizationAPIView(APIView):
                 # Update total_files separately (not handled by update_execution)
                 execution.total_files = total_files_processed
                 execution.save()
-
-                # Log ignored execution_time from workers
-                logger.info(
-                    f"DEBUG: Finalization ignored worker total_execution_time {total_execution_time:.2f}s - using wall-clock time {execution.execution_time:.2f}s instead"
-                )
-
-                # Additional finalization logic could go here:
-                # - Cache cleanup
-                # - Resource cleanup
-                # - Notifications
-                # - Metrics updates
 
             logger.info(f"Finalized execution {execution_id} with status {final_status}")
 
@@ -1118,83 +1099,58 @@ class WorkflowEndpointAPIView(APIView):
                 "connector_instance"
             ).filter(workflow=workflow)
 
-            endpoints_data = []
+            source_endpoint = None
+            destination_endpoint = None
+
             has_api_endpoints = False
 
             for endpoint in workflow_endpoints:
-                endpoint_data = {
-                    "id": str(endpoint.id),
-                    "endpoint_type": endpoint.endpoint_type,
-                    "connection_type": getattr(endpoint, "connection_type", "FILESYSTEM"),
-                    "configuration": getattr(endpoint, "configuration", {}),
-                    "is_active": getattr(endpoint, "is_active", True),
-                }
+                endpoint_data = WorkflowEndpointConfigData(
+                    endpoint_id=endpoint.id,
+                    endpoint_type=endpoint.endpoint_type,
+                    connection_type=endpoint.connection_type,
+                    configuration=endpoint.configuration,
+                )
 
                 # Include connector instance information if available
                 if endpoint.connector_instance:
-                    connector_instance_data = {
-                        "connector_id": endpoint.connector_instance.connector_id,
-                        "connector_metadata": endpoint.connector_instance.metadata or {},
-                        "connector_name": getattr(
-                            endpoint.connector_instance, "connector_name", ""
-                        ),
-                    }
-                    endpoint_data["connector_instance"] = connector_instance_data
+                    connector_instance_data = ConnectorInstanceData(
+                        connector_id=endpoint.connector_instance.connector_id,
+                        connector_name=endpoint.connector_instance.connector_name,
+                        connector_metadata=endpoint.connector_instance.metadata or {},
+                    )
+                    endpoint_data.connector_instance = connector_instance_data
+                    # endpoint_data["connector_instance"] = connector_instance_data
                     logger.debug(
                         f"Added connector instance data for endpoint {endpoint.id}: {endpoint.connector_instance.connector_id}"
                     )
                 else:
-                    endpoint_data["connector_instance"] = None
+                    endpoint_data.connector_instance = None
+                    # endpoint_data["connector_instance"] = None
                     logger.debug(
                         f"No connector instance found for endpoint {endpoint.id}"
                     )
 
-                endpoints_data.append(endpoint_data)
+                if endpoint.endpoint_type == WorkflowEndpoint.EndpointType.SOURCE:
+                    source_endpoint = endpoint_data
+                elif endpoint.endpoint_type == WorkflowEndpoint.EndpointType.DESTINATION:
+                    destination_endpoint = endpoint_data
+                    if endpoint.connection_type == ConnectionType.API.value:
+                        has_api_endpoints = True
 
-                # Check if this is an API endpoint
-                if (
-                    endpoint.endpoint_type == "DESTINATION"
-                    and getattr(endpoint, "connection_type", "") == "API"
-                ):
-                    has_api_endpoints = True
+            endpoint_config = WorkflowEndpointConfigResponseData(
+                workflow_id=str(workflow_id),
+                has_api_endpoints=has_api_endpoints,
+                source_endpoint=source_endpoint,
+                destination_endpoint=destination_endpoint,
+            )
 
-            # Also check if workflow has API deployments (alternative way to detect API workflows)
-            if hasattr(workflow, "api_deployments"):
-                api_deployments = workflow.api_deployments.filter(is_active=True)
-                if api_deployments.exists():
-                    has_api_endpoints = True
-                    # Add API deployment info to endpoints
-                    for api_deployment in api_deployments:
-                        endpoints_data.append(
-                            {
-                                "id": str(api_deployment.id),
-                                "endpoint_type": "API_DEPLOYMENT",
-                                "connection_type": "API",
-                                "configuration": {
-                                    "deployment_id": str(api_deployment.id),
-                                    "deployment_name": getattr(
-                                        api_deployment, "name", ""
-                                    ),
-                                    "is_active": api_deployment.is_active,
-                                },
-                                "is_active": api_deployment.is_active,
-                            }
-                        )
-
-            response_data = {
-                "workflow_id": str(workflow_id),
-                "endpoints": endpoints_data,
-                "has_api_endpoints": has_api_endpoints,
-                "total_endpoints": len(endpoints_data),
-                "workflow_type": workflow.deployment_type
-                if hasattr(workflow, "deployment_type")
-                else "UNKNOWN",
-            }
+            response_data = endpoint_config.to_dict()
 
             logger.info(
-                f"Retrieved {len(endpoints_data)} endpoints for workflow {workflow_id}, API endpoints: {has_api_endpoints}"
+                f"Retrieved endpoints for workflow {workflow_id}, API endpoints: {has_api_endpoints}"
             )
-            return Response(response_data)
+            return Response(response_data, status=status.HTTP_200_OK)
 
         except Exception as e:
             logger.error(f"Failed to get workflow endpoints for {workflow_id}: {str(e)}")
@@ -1524,43 +1480,32 @@ class WorkflowDefinitionAPIView(APIView):
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
-            # Step 1: Correct workflow type detection using Pipeline/APIDeployment models
-            workflow_type_detection = self._detect_workflow_type(
-                workflow_id, getattr(request, "organization_id", None)
-            )
-
-            # Step 2: Get source configuration with graceful error handling
+            # Step 1: Get source configuration with graceful error handling
             source_config = self._get_source_endpoint_config(workflow_id, workflow)
 
-            # Step 3: Get destination configuration with graceful error handling
+            # Step 2: Get destination configuration with graceful error handling
             destination_config = self._get_destination_endpoint_config(
                 workflow_id, workflow
             )
 
-            # Step 4: Build comprehensive workflow definition using dataclasses
+            # Step 3: Build comprehensive workflow definition using dataclasses
             workflow_definition = WorkflowDefinitionResponseData(
                 workflow_id=str(workflow.id),
                 workflow_name=workflow.workflow_name,
-                workflow_type_detection=workflow_type_detection,
                 source_config=source_config,
                 destination_config=destination_config,
-                organization_id=str(workflow.organization_id)
-                if workflow.organization_id
-                else "",
-                created_at=workflow.created_at.isoformat()
-                if workflow.created_at
-                else None,
-                modified_at=workflow.modified_at.isoformat()
-                if workflow.modified_at
-                else None,
-                is_active=getattr(workflow, "is_active", True),
+                organization_id=str(workflow.organization.organization_id),
+                created_at=workflow.created_at.isoformat(),
+                modified_at=workflow.modified_at.isoformat(),
+                is_active=workflow.is_active,
             )
 
             # Convert to legacy format for backward compatibility with existing workers
-            response_data = workflow_definition_to_legacy_format(workflow_definition)
+            # response_data = workflow_definition_to_legacy_format(workflow_definition)
+            response_data = workflow_definition.to_dict()
 
             logger.info(
-                f"Retrieved workflow definition for {workflow_id}: {workflow_type_detection.workflow_type} (source: {workflow_type_detection.source_model})"
+                f"Retrieved workflow definition for {workflow_id}: {workflow_definition.workflow_type} (source: {workflow_definition.source_config.connection_type})"
             )
             return Response(response_data, status=status.HTTP_200_OK)
 
@@ -1572,101 +1517,6 @@ class WorkflowDefinitionAPIView(APIView):
             return Response(
                 {"error": "Failed to get workflow definition", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
-    def _detect_workflow_type(
-        self, workflow_id: str, organization_id: str
-    ) -> WorkflowTypeDetectionData:
-        """Detect workflow type using Pipeline/APIDeployment models (not Workflow.deployment_type).
-
-        This replicates the logic from PipelineTypeAPIView but for workflow detection.
-        """
-        try:
-            from api_v2.models import APIDeployment
-            from pipeline_v2.models import Pipeline
-
-            # First check if any pipelines reference this workflow
-            try:
-                pipeline = Pipeline.objects.filter(workflow_id=workflow_id).first()
-                if pipeline:
-                    # Verify organization access if provided
-                    if (
-                        organization_id
-                        and str(pipeline.organization.organization_id) != organization_id
-                    ):
-                        logger.warning(
-                            f"Pipeline {pipeline.id} found for workflow {workflow_id} but wrong organization"
-                        )
-                    else:
-                        # Map Pipeline.PipelineType to workflow type
-                        pipeline_type_mapping = {
-                            Pipeline.PipelineType.ETL: "ETL",
-                            Pipeline.PipelineType.TASK: "TASK",
-                            Pipeline.PipelineType.APP: "APP",
-                            Pipeline.PipelineType.DEFAULT: "DEFAULT",
-                        }
-
-                        workflow_type = pipeline_type_mapping.get(
-                            pipeline.pipeline_type, "ETL"
-                        )
-
-                        logger.info(
-                            f"Workflow {workflow_id} detected as {workflow_type} pipeline (pipeline_id: {pipeline.id})"
-                        )
-                        return WorkflowTypeDetectionData(
-                            workflow_type=workflow_type,
-                            source_model="pipeline",
-                            pipeline_id=str(pipeline.id),
-                            is_pipeline_workflow=True,
-                        )
-            except Exception as pipeline_error:
-                logger.warning(
-                    f"Error checking pipeline for workflow {workflow_id}: {pipeline_error}"
-                )
-
-            # Check if any API deployments reference this workflow
-            try:
-                api_deployment = APIDeployment.objects.filter(
-                    workflow_id=workflow_id
-                ).first()
-                if api_deployment:
-                    # Verify organization access if provided
-                    if (
-                        organization_id
-                        and str(api_deployment.organization.organization_id)
-                        != organization_id
-                    ):
-                        logger.warning(
-                            f"API deployment {api_deployment.id} found for workflow {workflow_id} but wrong organization"
-                        )
-                    else:
-                        logger.info(
-                            f"Workflow {workflow_id} detected as API deployment (api_deployment_id: {api_deployment.id})"
-                        )
-                        return WorkflowTypeDetectionData(
-                            workflow_type="API",
-                            source_model="api_deployment",
-                            api_deployment_id=str(api_deployment.id),
-                            is_api_workflow=True,
-                        )
-            except Exception as api_error:
-                logger.warning(
-                    f"Error checking API deployment for workflow {workflow_id}: {api_error}"
-                )
-
-            # Fallback: No pipeline or API deployment found
-            logger.info(
-                f"Workflow {workflow_id} not found in Pipeline or APIDeployment models, using DEFAULT type"
-            )
-            return WorkflowTypeDetectionData(
-                workflow_type="DEFAULT", source_model="workflow_fallback"
-            )
-
-        except Exception as e:
-            logger.error(f"Error detecting workflow type for {workflow_id}: {str(e)}")
-            # Fallback to DEFAULT type
-            return WorkflowTypeDetectionData(
-                workflow_type="DEFAULT", source_model="workflow_fallback"
             )
 
     def _get_source_endpoint_config(
@@ -1728,7 +1578,6 @@ class WorkflowDefinitionAPIView(APIView):
                     connector_id=connector_instance.connector_id,
                     connector_name=getattr(connector_instance, "connector_name", ""),
                     connector_metadata=connector_instance.metadata or {},
-                    is_active=getattr(connector_instance, "is_active", True),
                 )
 
             logger.debug(
@@ -1736,11 +1585,10 @@ class WorkflowDefinitionAPIView(APIView):
             )
             return WorkflowEndpointConfigData(
                 endpoint_id=str(source_endpoint.id),
-                endpoint_type="SOURCE",
-                connection_type=source_endpoint.connection_type or "FILESYSTEM",
+                endpoint_type=source_endpoint.endpoint_type,
+                connection_type=source_endpoint.connection_type,
                 configuration=merged_configuration,
                 connector_instance=connector_instance_data,
-                is_active=True,
             )
 
         except WorkflowEndpoint.DoesNotExist:
@@ -1748,14 +1596,18 @@ class WorkflowDefinitionAPIView(APIView):
                 f"No source endpoint found for workflow {workflow_id}, returning empty config"
             )
             return WorkflowEndpointConfigData(
-                endpoint_id="", endpoint_type="SOURCE", connection_type="NONE"
+                endpoint_id="",
+                endpoint_type=WorkflowEndpoint.EndpointType.SOURCE,
+                connection_type="NONE",
             )
         except Exception as e:
             logger.warning(
                 f"Error getting source endpoint for workflow {workflow_id}: {str(e)}"
             )
             return WorkflowEndpointConfigData(
-                endpoint_id="", endpoint_type="SOURCE", connection_type="NONE"
+                endpoint_id="",
+                endpoint_type=WorkflowEndpoint.EndpointType.SOURCE,
+                connection_type="NONE",
             )
 
     def _get_destination_endpoint_config(
@@ -1817,9 +1669,8 @@ class WorkflowDefinitionAPIView(APIView):
 
                 connector_instance_data = ConnectorInstanceData(
                     connector_id=connector_instance.connector_id,
-                    connector_name=getattr(connector_instance, "connector_name", ""),
+                    connector_name=connector_instance.connector_name,
                     connector_metadata=connector_instance.metadata or {},
-                    is_active=getattr(connector_instance, "is_active", True),
                 )
 
             logger.debug(
@@ -1827,11 +1678,10 @@ class WorkflowDefinitionAPIView(APIView):
             )
             return WorkflowEndpointConfigData(
                 endpoint_id=str(destination_endpoint.id),
-                endpoint_type="DESTINATION",
-                connection_type=destination_endpoint.connection_type or "FILESYSTEM",
+                endpoint_type=destination_endpoint.endpoint_type,
+                connection_type=destination_endpoint.connection_type,
                 configuration=merged_configuration,
                 connector_instance=connector_instance_data,
-                is_active=True,
             )
 
         except WorkflowEndpoint.DoesNotExist:
@@ -1839,14 +1689,18 @@ class WorkflowDefinitionAPIView(APIView):
                 f"No destination endpoint found for workflow {workflow_id}, returning empty config"
             )
             return WorkflowEndpointConfigData(
-                endpoint_id="", endpoint_type="DESTINATION", connection_type="NONE"
+                endpoint_id="",
+                endpoint_type=WorkflowEndpoint.EndpointType.DESTINATION,
+                connection_type="NONE",
             )
         except Exception as e:
             logger.warning(
                 f"Error getting destination endpoint for workflow {workflow_id}: {str(e)}"
             )
             return WorkflowEndpointConfigData(
-                endpoint_id="", endpoint_type="DESTINATION", connection_type="NONE"
+                endpoint_id="",
+                endpoint_type=WorkflowEndpoint.EndpointType.DESTINATION,
+                connection_type="NONE",
             )
 
 
@@ -2395,6 +2249,21 @@ class FileHistoryCreateView(APIView):
             workflow_id = request.data.get("workflow_id")
             cache_key = request.data.get("cache_key")
             organization_id = request.data.get("organization_id")
+            provider_file_uuid = request.data.get("provider_file_uuid")
+            file_path = request.data.get("file_path")
+            file_name = request.data.get("file_name")
+            file_size = request.data.get("file_size")
+            file_hash = request.data.get("file_hash")
+            mime_type = request.data.get("mime_type")
+            is_api = request.data.get("is_api")
+            status = request.data.get("status")
+            result = request.data.get("result")
+            error = request.data.get("error")
+            metadata = request.data.get("metadata")
+
+            logger.info(
+                f"File history create: workflow_id={workflow_id}, cache_key={cache_key}, organization_id={organization_id}"
+            )
 
             if not workflow_id or not cache_key:
                 return Response(
@@ -2424,28 +2293,28 @@ class FileHistoryCreateView(APIView):
 
             # Create FileHashData object from request data using shared class
             file_hash = FileHashData(
-                file_name=request.data.get("file_name", ""),
-                file_path=request.data.get("file_path", ""),
+                file_name=file_name,
+                file_path=file_path,
                 file_hash=cache_key,
-                file_size=request.data.get("file_size", 0),
-                mime_type=request.data.get("mime_type", ""),
-                provider_file_uuid=request.data.get("provider_file_uuid"),
-                fs_metadata=request.data.get("fs_metadata", {}),
-                source_connection_type=request.data.get("source_connection_type", ""),
-                file_destination=request.data.get("file_destination"),
-                is_executed=request.data.get("is_executed", False),
-                file_number=request.data.get("file_number"),
-                connector_metadata=request.data.get("connector_metadata", {}),
-                connector_id=request.data.get("connector_id"),
-                use_file_history=request.data.get("use_file_history", True),
+                file_size=file_size,
+                mime_type=mime_type,
+                provider_file_uuid=provider_file_uuid,
+                fs_metadata={},
+                source_connection_type="",
+                file_destination="",
+                is_executed=False,
+                file_number=None,
+                connector_metadata={},
+                connector_id=None,
+                use_file_history=True,
             )
 
             # Check if file history should be created based on use_file_history flag
-            if not file_hash.use_file_history:
-                logger.info(
-                    f"Skipping file history creation for {file_hash.file_name} - use_file_history=False"
-                )
-                return Response({"created": False, "reason": "use_file_history=False"})
+            # if not file_hash.use_file_history:
+            #     logger.info(
+            #         f"Skipping file history creation for {file_hash.file_name} - use_file_history=False"
+            #     )
+            #     return Response({"created": False, "reason": "use_file_history=False"})
 
             # Map string status to ExecutionStatus enum
             status_str = request.data.get("status", "COMPLETED")
@@ -2459,14 +2328,14 @@ class FileHistoryCreateView(APIView):
                 file_hash=file_hash,
                 workflow=workflow,
                 status=execution_status,
-                result=request.data.get("result", ""),
-                metadata=request.data.get("metadata", ""),
-                error=request.data.get("error", ""),
-                is_api=False,  # This is for FILESYSTEM workflows
+                result=result,
+                metadata=metadata,
+                error=error,
+                is_api=is_api,
             )
 
             logger.info(
-                f"Created file history entry {file_history.id} for file {file_hash.file_name}"
+                f"Created file history entry {file_history.id} for file {file_name}"
             )
 
             return Response({"created": True, "file_history_id": str(file_history.id)})
@@ -2497,15 +2366,12 @@ class PipelineNameAPIView(APIView):
             organization_id = getattr(request, "organization_id", None)
             if organization_id:
                 StateStore.set(Account.ORGANIZATION_ID, organization_id)
-            logger.info(
-                f"DEBUG: Fetching pipeline name for {pipeline_id}, org: {organization_id}"
-            )
 
             # First check if this is an API deployment
             try:
                 api_deployment = APIDeployment.objects.get(id=pipeline_id)
                 logger.info(
-                    f"DEBUG: Found API deployment {pipeline_id}: name='{api_deployment.api_name}'"
+                    f"Found API deployment {pipeline_id}: name='{api_deployment.api_name}'"
                 )
                 # Verify organization access
                 if (
@@ -2535,9 +2401,6 @@ class PipelineNameAPIView(APIView):
                 )
 
             except APIDeployment.DoesNotExist:
-                logger.info(
-                    f"DEBUG: Pipeline {pipeline_id} not found in APIDeployment model, checking Pipeline model"
-                )
                 pass
 
             # Check Pipeline model

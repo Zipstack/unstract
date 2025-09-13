@@ -16,4 +16,5 @@ __all__ = [
     # Type processing
     "TypeConverter",
     "FileDataValidator",
+    "FileProcessingContext",
 ]

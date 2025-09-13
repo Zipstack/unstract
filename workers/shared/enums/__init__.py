@@ -20,6 +20,7 @@ from .method_enums import (
 from .status_enums import (
     PipelineStatus,
     PipelineType,
+    QueueResultStatus,
     TaskStatus,
     ToolOutputType,
     WebhookStatus,
@@ -48,4 +49,5 @@ __all__ = [
     "HTTPMethod",
     "LogLevel",
     "NotificationPlatform",
+    QueueResultStatus,
 ]

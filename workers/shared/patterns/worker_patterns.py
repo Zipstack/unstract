@@ -18,6 +18,7 @@ from typing import Any
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../unstract/core/src"))
 
 from unstract.core import ExecutionStatus, serialize_dataclass_to_dict
+from unstract.core.worker_models import FileExecutionResult
 
 logger = logging.getLogger(__name__)
 
@@ -92,25 +93,6 @@ class WebhookResult:
 
     def to_dict(self) -> dict[str, Any]:
         return serialize_dataclass_to_dict(self)
-
-
-@dataclass
-class FileExecutionResult:
-    """Worker file execution result - worker implementation detail."""
-
-    file: str
-    file_execution_id: str | None
-    status: ExecutionStatus  # Uses shared enum from core
-    error: str | None = None
-    result: Any | None = None
-    metadata: dict[str, Any] | None = None
-    processing_time: float = 0.0
-
-    def to_dict(self) -> dict[str, Any]:
-        return serialize_dataclass_to_dict(self)
-
-    def is_successful(self) -> bool:
-        return self.status == ExecutionStatus.COMPLETED
 
 
 @dataclass

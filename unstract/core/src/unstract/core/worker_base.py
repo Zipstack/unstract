@@ -157,16 +157,6 @@ class FileProcessingTaskBase(WorkerTaskBase):
     def __init__(self, config=None):
         """Initialize file processing task base."""
         super().__init__(config)
-        self._file_history_manager = None
-
-    @property
-    def file_history_manager(self):
-        """Get file history manager instance (lazy initialization)."""
-        if self._file_history_manager is None and self.api_client:
-            from shared.file_history_manager import WorkerFileHistoryManager
-
-            self._file_history_manager = WorkerFileHistoryManager(self.api_client)
-        return self._file_history_manager
 
     def update_file_execution_status(
         self,

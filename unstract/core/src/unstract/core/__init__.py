@@ -10,7 +10,6 @@ from .constants import LogEventArgument, LogFieldName, LogProcessingTask
 from .data_models import (
     ConnectionType,
     ExecutionStatus,
-    FileHash,
     FileHashData,
     SourceConnectionType,
     WorkflowExecutionData,
@@ -61,7 +60,6 @@ __all__ = [
     "ExecutionStatus",
     "WorkflowType",
     "ConnectionType",
-    "FileHash",
     "FileHashData",
     "WorkflowFileExecutionData",
     "WorkflowExecutionData",

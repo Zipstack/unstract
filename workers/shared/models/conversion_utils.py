@@ -29,9 +29,6 @@ from .notification_models import (
     NotificationRequest,
     WebhookNotificationRequest,
 )
-from .result_models import (
-    WorkflowExecutionResult,
-)
 
 T = TypeVar("T")
 
@@ -163,20 +160,6 @@ def convert_notification_request(
     raise ConversionError(
         f"Cannot convert {type(request)} to notification request dataclass"
     )
-
-
-def convert_execution_result(
-    result: dict[str, Any] | WorkflowExecutionResult,
-) -> WorkflowExecutionResult:
-    """Convert execution result to WorkflowExecutionResult dataclass.
-
-    Args:
-        result: Dictionary or WorkflowExecutionResult instance
-
-    Returns:
-        WorkflowExecutionResult dataclass instance
-    """
-    return ensure_dataclass(result, WorkflowExecutionResult)
 
 
 def batch_convert_to_dataclass(
@@ -350,11 +333,6 @@ def _notification_request_converter(x):
     return convert_notification_request(x)
 
 
-def _execution_result_converter(x):
-    return convert_execution_result(x)
-
-
 WORKFLOW_CONFIG_CONVERTER = _workflow_config_converter
 EXECUTION_CONTEXT_CONVERTER = _execution_context_converter
 NOTIFICATION_REQUEST_CONVERTER = _notification_request_converter
-EXECUTION_RESULT_CONVERTER = _execution_result_converter

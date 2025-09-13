@@ -383,46 +383,6 @@ def update_workflow_execution_status(request):
         logger.info(
             f"Successfully saved execution {execution_id} with status: {execution.status}"
         )
-
-        # Emit WebSocket event for real-time UI updates
-        try:
-            from utils.log_events import _emit_websocket_event
-
-            # Create status update event data
-            status_data = {
-                "execution_id": str(execution.id),
-                "status": execution.status,
-                "total_files": execution.total_files,
-                "completed_files": execution.completed_files,
-                "failed_files": execution.failed_files,
-                "workflow_id": str(execution.workflow.id),
-                "pipeline_id": execution.pipeline_id,
-            }
-
-            # Emit to execution-specific room and general workflow room
-            _emit_websocket_event(
-                room=f"execution:{execution.id}",
-                event="execution_status_update",
-                data=status_data,
-            )
-
-            # Also emit to workflow room for general workflow listeners
-            _emit_websocket_event(
-                room=f"workflow:{execution.workflow.id}",
-                event="execution_status_update",
-                data=status_data,
-            )
-
-            logger.debug(
-                f"WebSocket events emitted for execution status update: {execution.id} -> {execution.status}"
-            )
-
-        except Exception as e:
-            # Don't fail the request if WebSocket emission fails
-            logger.warning(
-                f"Failed to emit WebSocket event for execution status update: {e}"
-            )
-
         return Response(
             {
                 "success": True,
@@ -548,14 +508,3 @@ def submit_file_batch_for_processing(request):
             {"error": "Internal server error"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
-
-
-# NOTE: The following endpoints are now implemented as sophisticated class-based views in internal_views.py:
-# - get_workflow_definition -> WorkflowDefinitionAPIView
-# - get_pipeline_type -> PipelineTypeAPIView
-# - get_workflow_endpoints -> WorkflowEndpointAPIView
-# - batch_update_execution_status -> BatchStatusUpdateAPIView
-# - create_file_batch -> FileBatchCreateAPIView
-# - increment_files -> FileCountIncrementAPIView
-# - create_file_history_entry -> FileHistoryCreateView
-# - check_file_history_batch -> FileHistoryBatchCheckView

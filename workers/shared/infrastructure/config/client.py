@@ -7,32 +7,14 @@ This integrates the unstract.core.configuration module with the worker's API cli
 to provide seamless access to organization-level configuration overrides.
 """
 
-import logging
 from typing import Any
 
-# Import from unstract.core for the base configuration client
-try:
-    from unstract.core.configuration import (
-        ConfigurationClient as CoreConfigurationClient,
-    )
-except ImportError as e:
-    logging.warning(f"Failed to import unstract.core.configuration: {e}")
+from shared.api import InternalAPIClient
 
-    # Fallback definitions if core not available
-    class ConfigKey:
-        MAX_PARALLEL_FILE_BATCHES = "MAX_PARALLEL_FILE_BATCHES"
+from unstract.core.configuration import (
+    ConfigurationClient as CoreConfigurationClient,
+)
 
-    class CoreConfigurationClient:
-        def __init__(self, api_client=None):
-            self.api_client = api_client
-
-        def get_max_parallel_file_batches(self, organization_id=None):
-            import os
-
-            return int(os.getenv("MAX_PARALLEL_FILE_BATCHES", "5"))
-
-
-from ...legacy.api_client import InternalAPIClient
 from ..logging import WorkerLogger
 
 logger = WorkerLogger.get_logger(__name__)

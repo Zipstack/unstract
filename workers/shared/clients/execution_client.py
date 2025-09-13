@@ -400,46 +400,6 @@ class ExecutionAPIClient(BaseAPIClient):
             "v1/workflow-manager/file-batch/", data, organization_id=organization_id
         )
 
-    def get_workflow_endpoints(
-        self, workflow_id: str | UUID, organization_id: str | None = None
-    ) -> dict[str, Any]:
-        """Get workflow endpoints for a specific workflow.
-
-        Args:
-            workflow_id: Workflow ID to get endpoints for
-            organization_id: Optional organization ID override
-
-        Returns:
-            Dictionary with endpoint data including 'endpoints' list and 'has_api_endpoints' flag
-        """
-        # Use the workflow-manager endpoint pattern
-        endpoint = f"v1/workflow-manager/{workflow_id}/endpoint/"
-
-        try:
-            response = self._make_request(
-                method="GET",
-                endpoint=endpoint,
-                timeout=self.config.api_timeout,
-                organization_id=organization_id,
-            )
-
-            # The API returns a dict with 'endpoints', 'has_api_endpoints', etc.
-            if isinstance(response, dict):
-                endpoint_count = len(response.get("endpoints", []))
-                logger.debug(
-                    f"Retrieved {endpoint_count} endpoints for workflow {workflow_id}"
-                )
-                return response
-            else:
-                logger.warning(
-                    f"Unexpected response format for workflow endpoints: {type(response)}"
-                )
-                return {"endpoints": [], "has_api_endpoints": False, "total_endpoints": 0}
-
-        except Exception as e:
-            logger.error(f"Failed to get workflow endpoints for {workflow_id}: {str(e)}")
-            return {"endpoints": [], "has_api_endpoints": False, "total_endpoints": 0}
-
     @circuit_breaker(failure_threshold=3, recovery_timeout=60.0)
     def update_pipeline_status(
         self,

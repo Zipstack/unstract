@@ -183,12 +183,8 @@ class FileAPIClient(BaseAPIClient):
         # Match backend manager logic: use file_hash OR provider_file_uuid (not both)
         if file_hash_data.file_hash:
             params["file_hash"] = file_hash_data.file_hash
-            logger.info(f"DEBUG: Using file_hash for lookup: {file_hash_data.file_hash}")
         elif file_hash_data.provider_file_uuid:
             params["provider_file_uuid"] = file_hash_data.provider_file_uuid
-            logger.info(
-                f"DEBUG: Using provider_file_uuid for lookup: {file_hash_data.provider_file_uuid}"
-            )
         else:
             logger.warning(
                 "No file_hash or provider_file_uuid available for lookup - this may cause issues"
@@ -360,9 +356,6 @@ class FileAPIClient(BaseAPIClient):
             data["execution_time"] = execution_time
         if error_message is not None:
             data["error_message"] = error_message
-
-        # DEBUG: Log what we're sending to the backend
-        logger.info(f"DEBUG: FileClient sending data to backend: {data}")
 
         logger.info(
             f"Updating file execution {file_execution_id} status to {status_str}"
@@ -680,9 +673,10 @@ class FileAPIClient(BaseAPIClient):
         self,
         workflow_id: str | uuid.UUID,
         file_name: str,
+        source_connection_type: str,
         file_path: str,
         result: str | None = None,
-        metadata: str | None = None,
+        metadata: dict[str, Any] | None = None,
         status: str | TaskStatus = TaskStatus.SUCCESS,
         error: str | None = None,
         provider_file_uuid: str | None = None,
@@ -696,9 +690,10 @@ class FileAPIClient(BaseAPIClient):
         Args:
             workflow_id: Workflow ID
             file_name: File name
+            source_connection_type: Source connection type
             file_path: File path
             result: Execution result
-            metadata: File metadata
+            metadata: result metadata
             status: Execution status
             error: Error message if any
             provider_file_uuid: Provider-specific file UUID
@@ -713,43 +708,31 @@ class FileAPIClient(BaseAPIClient):
         # Convert status to string if it's an enum
         status_str = status.value if isinstance(status, TaskStatus) else status
 
-        # Build file_hash object as expected by backend
-        file_hash_data = {
-            "file_name": file_name,
-            "file_path": file_path,
-            "file_size": file_size,
-            "file_hash": file_hash,
+        data = {
+            "organization_id": self.organization_id,
+            "workflow_id": str(workflow_id),
             "provider_file_uuid": provider_file_uuid,
             "mime_type": mime_type,
-            "fs_metadata": {},
-        }
-
-        # Remove None values
-        file_hash_data = {k: v for k, v in file_hash_data.items() if v is not None}
-
-        data = {
-            "workflow_id": str(workflow_id),
-            "file_hash": file_hash_data,
+            "file_path": file_path,
+            "file_name": file_name,
+            "source_connection_type": source_connection_type,
+            "file_size": file_size,
+            "file_hash": file_hash,
             "is_api": is_api,
             "status": status_str,
+            "metadata": metadata or {},
         }
+        data = {k: v for k, v in data.items() if v is not None}
 
         # Add optional fields if provided
         if result is not None:
             data["result"] = result
-        if metadata is not None:
-            data["metadata"] = metadata
         if error is not None:
             data["error"] = error
 
         logger.info(
             f"Creating file history record for {file_name} with status: {status_str}"
         )
-        # DEBUG: Log file_hash parameter being sent
-        logger.info(f"DEBUG: Sending file_hash='{file_hash}' in request data")
-        logger.info(f"DEBUG: file_hash_data contains: {file_hash_data}")
-        logger.debug(f"File history data: {data}")
-
         try:
             response = self.post(self._build_url("file_history", "create/"), data)
             logger.info(

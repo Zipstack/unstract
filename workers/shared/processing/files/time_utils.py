@@ -54,11 +54,6 @@ class WallClockTimeCalculator:
         if not (execution_response.success and execution_response.data):
             raise ValueError("Failed to get execution data from API")
 
-        # DEBUG: Log the full API response to understand the issue
-        logger.info(
-            f"DEBUG: API response keys: {list(execution_response.data.keys()) if execution_response.data else 'None'}"
-        )
-
         # Extract execution data from the nested structure
         execution_data = execution_response.data.get("execution", {})
         if not execution_data:
@@ -69,11 +64,6 @@ class WallClockTimeCalculator:
 
         # Get created_at from the execution data
         created_at_str = execution_data.get("created_at")
-
-        logger.info(
-            f"DEBUG: Execution data keys: {list(execution_data.keys()) if execution_data else 'None'}"
-        )
-        logger.info(f"DEBUG: created_at value: {created_at_str}")
 
         if not created_at_str:
             logger.error(

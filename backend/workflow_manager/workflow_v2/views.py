@@ -627,8 +627,14 @@ def create_file_history_internal(request):
         # Extract parameters from request data
         data = request.data
         workflow_id = data.get("workflow_id")
-        file_hash_data = data.get("file_hash", {})
+        file_hash = data.get("file_hash")
         is_api = data.get("is_api", False)
+        provider_file_uuid = data.get("provider_file_uuid")
+        file_path = data.get("file_path")
+        file_name = data.get("file_name")
+        file_size = data.get("file_size")
+        mime_type = data.get("mime_type")
+        source_connection_type = data.get("source_connection_type")
 
         # Extract required parameters for FileHistoryHelper.create_file_history
         execution_status = data.get("status", "COMPLETED")
@@ -636,9 +642,10 @@ def create_file_history_internal(request):
         metadata = data.get("metadata", "")
         error = data.get("error")
 
-        if not workflow_id:
+        if not workflow_id or not file_hash:
             return Response(
-                {"error": "workflow_id is required"}, status=status.HTTP_400_BAD_REQUEST
+                {"error": "workflow_id and file_hash are required"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Get workflow
@@ -659,17 +666,17 @@ def create_file_history_internal(request):
 
         # Create FileHash object from data
         file_hash = FileHash(
-            file_path=file_hash_data.get("file_path"),
-            file_name=file_hash_data.get("file_name"),
-            source_connection_type=file_hash_data.get("source_connection_type"),
-            file_hash=file_hash_data.get("file_hash"),
-            file_size=file_hash_data.get("file_size"),
-            provider_file_uuid=file_hash_data.get("provider_file_uuid"),
-            mime_type=file_hash_data.get("mime_type"),
-            fs_metadata=file_hash_data.get("fs_metadata"),
-            file_destination=file_hash_data.get("file_destination"),
-            is_executed=file_hash_data.get("is_executed"),
-            file_number=file_hash_data.get("file_number"),
+            file_path=file_path,
+            file_name=file_name,
+            source_connection_type=source_connection_type,
+            file_hash=file_hash,
+            file_size=file_size,
+            provider_file_uuid=provider_file_uuid,
+            mime_type=mime_type,
+            fs_metadata={},
+            file_destination="",
+            is_executed=False,
+            file_number=0,
         )
 
         # Import ExecutionStatus enum

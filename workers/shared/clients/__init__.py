@@ -24,14 +24,18 @@ from .file_client import FileAPIClient
 from .manual_review_stub import ManualReviewNullClient as ManualReviewAPIClient
 from .organization_client import OrganizationAPIClient
 from .tool_client import ToolAPIClient
+from .usage_client import UsageAPIClient
 from .webhook_client import WebhookAPIClient
+from .workflow_client import WorkflowAPIClient
 
 __all__ = [
     "BaseAPIClient",
     "ExecutionAPIClient",
     "FileAPIClient",
+    "UsageAPIClient",
     "ManualReviewAPIClient",
     "WebhookAPIClient",
     "OrganizationAPIClient",
     "ToolAPIClient",
+    "WorkflowAPIClient",
 ]

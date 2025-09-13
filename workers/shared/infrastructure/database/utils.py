@@ -165,6 +165,8 @@ class WorkerDatabaseUtils:
         include_agent: bool = False,
         agent_name: str | None = AgentName.UNSTRACT_DBWRITER,
         single_column_name: str = "data",
+        metadata: dict[str, Any] | None = None,
+        error: str | None = None,
     ) -> dict[str, Any]:
         """Generate a dictionary of columns and values based on specified parameters.
 

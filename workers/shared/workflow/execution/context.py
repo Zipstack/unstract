@@ -10,12 +10,12 @@ from typing import Any
 
 from unstract.core.data_models import ExecutionStatus
 
-from ...api.facades.legacy_client import InternalAPIClient
+from ...api.internal_client import InternalAPIClient
 from ...constants.account import Account
 from ...core.exceptions import WorkflowExecutionError as WorkerExecutionError
 from ...infrastructure.config import WorkerConfig
 from ...infrastructure.logging import WorkerLogger
-from ...legacy.local_context import StateStore
+from ...utils.local_context import StateStore
 
 logger = WorkerLogger.get_logger(__name__)
 

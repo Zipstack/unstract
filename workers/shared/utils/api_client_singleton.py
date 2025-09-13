@@ -6,7 +6,7 @@ and eliminate excessive logging noise from health checks.
 
 import threading
 
-from ..api.facades.legacy_client import InternalAPIClient
+from ..api.internal_client import InternalAPIClient
 from ..infrastructure.config import WorkerConfig
 from ..infrastructure.logging import WorkerLogger
 

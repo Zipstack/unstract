@@ -375,31 +375,3 @@ class FileManagementUtils:
         )
 
         return limit_result.limited_files, limit_result.final_count
-
-
-# Example usage for different worker types:
-#
-# # ✅ ETL/TASK workflows (@workers/general/):
-# final_files, count = FileManagementUtils.process_files_with_active_filtering(
-#     source_files=files, workflow_id=wf_id, execution_id=exec_id,
-#     max_limit=10, api_client=client
-# )
-#
-# # ✅ API deployments (@workers/api-deployment/):
-# final_files, count = FileManagementUtils.process_files_without_active_filtering(
-#     source_files=files, max_limit=10
-# )
-#
-# # ✅ Cleanup (ONLY for ETL/TASK workflows - API deployments don't use cache):
-# uuids = FileManagementUtils.extract_provider_uuids(hash_values_of_files)
-# cleaned = FileManagementUtils.cleanup_active_file_cache(uuids, workflow_id)
-#
-# # Custom filtering only:
-# filter_result = FileManagementUtils.apply_active_file_filtering(
-#     source_files=files, workflow_id=wf_id, execution_id=exec_id, api_client=client
-# )
-# if not filter_result.has_files():
-#     # Handle case where all files are active
-#
-# limit_result = FileManagementUtils.apply_file_limit(filter_result.filtered_files, 5)
-# final_files = limit_result.limited_files

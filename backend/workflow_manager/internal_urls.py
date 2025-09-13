@@ -22,6 +22,11 @@ urlpatterns = [
         internal_api_views.get_workflow_execution_data,
         name="get_workflow_execution_data",
     ),
+    # path(
+    #     "<str:execution_id>/update_status/",
+    #     internal_api_views.update_workflow_execution_status,
+    #     name="update_workflow_execution_status",
+    # ),
     path(
         "execution/status/",
         internal_api_views.update_workflow_execution_status,

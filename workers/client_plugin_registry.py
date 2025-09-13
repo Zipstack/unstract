@@ -44,34 +44,12 @@ class ClientPluginRegistry:
             return
 
         try:
-            from django.conf import settings
-
-            client_plugins = getattr(settings, "WORKERS_CLIENT_PLUGINS", {})
-
-            for plugin_name, plugin_config in client_plugins.items():
-                if not plugin_config.get("enabled", False):
-                    continue
-
-                try:
-                    self._load_plugin_from_config(plugin_name, plugin_config)
-                except Exception as e:
-                    logger.warning(f"Failed to load client plugin {plugin_name}: {e}")
-
-        except ImportError as ie:
-            # Django not available - try worker-specific initialization
-            logger.info(
-                f"DEBUG: Django not available (ImportError: {ie}), trying worker-specific plugin initialization"
-            )
             self._initialize_worker_plugins()
         except Exception as e:
-            logger.warning(f"Failed to initialize client plugins from settings: {e}")
-            import traceback
+            logger.error(
+                f"Failed to initialize client plugins from settings: {e}", exc_info=True
+            )
 
-            logger.warning(f"Full traceback: {traceback.format_exc()}")
-
-        logger.info(
-            f"DEBUG: Plugin registry initialization complete. Final plugins: {list(self._plugins.keys())}"
-        )
         self._initialized = True
 
     def _initialize_worker_plugins(self):

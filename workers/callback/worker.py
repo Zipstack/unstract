@@ -8,7 +8,7 @@ from shared.infrastructure.config.builder import WorkerBuilder
 from shared.infrastructure.config.registry import WorkerRegistry
 from shared.infrastructure.logging import WorkerLogger
 
-# Setup worker
+# Setup worker - this executes when module is imported by Celery
 logger = WorkerLogger.setup(WorkerType.CALLBACK)
 app, config = WorkerBuilder.build_celery_app(WorkerType.CALLBACK)
 
@@ -18,7 +18,7 @@ def check_callback_health():
     from shared.infrastructure.monitoring.health import HealthCheckResult, HealthStatus
 
     try:
-        from shared.legacy.api_client_singleton import get_singleton_api_client
+        from shared.utils.api_client_singleton import get_singleton_api_client
 
         client = get_singleton_api_client(config)
         api_healthy = client is not None

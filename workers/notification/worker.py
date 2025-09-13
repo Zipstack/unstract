@@ -18,7 +18,7 @@ def check_notification_health():
     from shared.infrastructure.monitoring.health import HealthCheckResult, HealthStatus
 
     try:
-        from shared.legacy.api_client_singleton import get_singleton_api_client
+        from shared.utils.api_client_singleton import get_singleton_api_client
 
         client = get_singleton_api_client(config)
         api_healthy = client is not None

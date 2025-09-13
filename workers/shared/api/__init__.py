@@ -1,13 +1,13 @@
 """API communication layer for workers.
 
 This package provides all API-related functionality including clients,
-authentication, and backward compatibility facades.
+authentication, and communication with the backend.
 """
 
-# Import facades for backward compatibility
-from .facades.legacy_client import InternalAPIClient
+# Import the main internal API client
+from .internal_client import InternalAPIClient
 
 __all__ = [
-    # Main client facade for backward compatibility
+    # Main internal API client for backend communication
     "InternalAPIClient",
 ]

@@ -650,6 +650,12 @@ INTERNAL_URL_MODULES = {
         "enabled": True,
         "description": "Organization configuration management APIs",
     },
+    "usage": {
+        "url_path": "v1/usage/",
+        "module_path": "usage_v2.internal_urls",
+        "enabled": True,
+        "description": "Usage data and token count APIs",
+    },
     # Note: Cloud-specific modules (manual-review, analytics, etc.)
     # are added by cloud.py settings when active
 }

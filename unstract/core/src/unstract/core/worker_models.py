@@ -107,6 +107,13 @@ class WebhookStatus(str, Enum):
         return self.value
 
 
+class ApiDeploymentResultStatus(str, Enum):
+    """API deployment result status."""
+
+    SUCCESS = "Success"
+    FAILED = "Failed"
+
+
 class NotificationMethod(str, Enum):
     """Notification delivery methods."""
 
@@ -204,29 +211,88 @@ class WebhookResult:
 
 
 @dataclass
+class FinalOutputResult:
+    """Structured result for final output tasks."""
+
+    output: Any | None
+    metadata: dict[str, Any] | None
+    error: str | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "output": self.output,
+            "metadata": self.metadata,
+            "error": self.error,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "FinalOutputResult":
+        return cls(
+            output=data.get("output"),
+            metadata=data.get("metadata"),
+            error=data.get("error"),
+        )
+
+
+@dataclass
 class FileExecutionResult:
     """Structured result for file execution tasks."""
 
     file: str
     file_execution_id: str | None
-    status: ExecutionStatus
+    status: ApiDeploymentResultStatus
     error: str | None = None
     result: Any | None = None
     metadata: dict[str, Any] | None = None
     processing_time: float = 0.0
     file_size: int = 0
 
+    def __post_init__(self) -> None:
+        if self.error:
+            self.status = ApiDeploymentResultStatus.FAILED
+        else:
+            self.status = ApiDeploymentResultStatus.SUCCESS
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API response."""
         return serialize_dataclass_to_dict(self)
 
+    def to_api_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for API deployment response with correct status format."""
+        return {
+            "file": self.file,
+            "file_execution_id": self.file_execution_id,
+            "status": self.status.value,  # Use API deployment status format
+            "result": self.result,
+            "error": self.error,
+            "metadata": self.metadata,
+        }
+
+    def to_json(self) -> dict[str, Any]:
+        """Convert to JSON-serializable dict for backward compatibility."""
+        return self.to_api_dict()
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "FileExecutionResult":
         """Create from dictionary (e.g., task result)."""
-        status_str = data.get("status", ExecutionStatus.ERROR.value)
-        status = (
-            ExecutionStatus(status_str) if isinstance(status_str, str) else status_str
-        )
+        status_str = data.get("status", ApiDeploymentResultStatus.FAILED.value)
+
+        # Handle both string status values and enum instances
+        if isinstance(status_str, str):
+            # Try API deployment status first, then execution status for backward compatibility
+            try:
+                status = ApiDeploymentResultStatus(status_str)
+            except ValueError:
+                # Fallback: map ExecutionStatus to ApiDeploymentResultStatus
+                if status_str in [
+                    ExecutionStatus.COMPLETED.value,
+                    ExecutionStatus.SUCCESS.value,
+                ]:
+                    status = ApiDeploymentResultStatus.SUCCESS
+                else:
+                    status = ApiDeploymentResultStatus.FAILED
+        else:
+            status = status_str
 
         return cls(
             file=data.get("file", ""),
@@ -241,11 +307,11 @@ class FileExecutionResult:
 
     def is_successful(self) -> bool:
         """Check if file execution was successful."""
-        return self.status in [ExecutionStatus.COMPLETED, ExecutionStatus.SUCCESS]
+        return self.status == ApiDeploymentResultStatus.SUCCESS
 
     def has_error(self) -> bool:
         """Check if file execution had errors."""
-        return self.error is not None or self.status == ExecutionStatus.ERROR
+        return self.error is not None or self.status == ApiDeploymentResultStatus.FAILED
 
 
 @dataclass
@@ -606,3 +672,169 @@ class TaskError:
             traceback=tb.format_exc(),
             retry_count=retry_count,
         )
+
+
+# Workflow Execution Data Models
+@dataclass
+class WorkflowExecutionMetadata:
+    """Structured metadata for workflow execution."""
+
+    workflow_id: str
+    execution_id: str
+    execution_time: float
+    tool_count: int
+    workflow_executed: bool
+    destination_processed: bool
+    destination_error: str | None = None
+    workflow_type: str | None = None
+    cached: bool = False
+    cache_key: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for backward compatibility."""
+        return serialize_dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "WorkflowExecutionMetadata":
+        """Create from dictionary (e.g., task result)."""
+        return cls(
+            workflow_id=data.get("workflow_id", ""),
+            execution_id=data.get("execution_id", ""),
+            execution_time=data.get("execution_time", 0.0),
+            tool_count=data.get("tool_count", 0),
+            workflow_executed=data.get("workflow_executed", False),
+            destination_processed=data.get("destination_processed", False),
+            destination_error=data.get("destination_error"),
+            workflow_type=data.get("workflow_type"),
+            cached=data.get("cached", False),
+            cache_key=data.get("cache_key"),
+        )
+
+
+@dataclass
+class WorkflowExecutionResult:
+    """Structured result for workflow execution operations."""
+
+    file_execution_id: str
+    file_name: str
+    success: bool
+    error: str | None = None
+    result: Any | None = None
+    source_hash: str | None = None
+    execution_time: float | None = None
+    metadata: WorkflowExecutionMetadata | None = None
+    destination_output: Any | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for backward compatibility."""
+        base_dict = {
+            "file_execution_id": self.file_execution_id,
+            "file": self.file_name,
+            "success": self.success,
+            "error": self.error,
+            "result": self.result,
+            "source_hash": self.source_hash,
+        }
+
+        if self.metadata:
+            base_dict["metadata"] = self.metadata.to_dict()
+
+        if self.destination_output is not None:
+            base_dict["destination_output"] = self.destination_output
+
+        return base_dict
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "WorkflowExecutionResult":
+        """Create from dictionary (e.g., task result)."""
+        metadata = None
+        if "metadata" in data and data["metadata"]:
+            metadata = WorkflowExecutionMetadata.from_dict(data["metadata"])
+
+        return cls(
+            file_execution_id=data.get("file_execution_id", ""),
+            file_name=data.get("file", ""),
+            success=data.get("success", False),
+            error=data.get("error"),
+            result=data.get("result"),
+            source_hash=data.get("source_hash"),
+            execution_time=data.get("execution_time"),
+            metadata=metadata,
+            destination_output=data.get("destination_output"),
+        )
+
+    def is_successful(self) -> bool:
+        """Check if workflow execution was successful."""
+        return self.success and self.error is None
+
+    def has_error(self) -> bool:
+        """Check if workflow execution had errors."""
+        return not self.success or self.error is not None
+
+
+@dataclass
+class FileProcessingResult:
+    """Structured result for file processing operations."""
+
+    file_name: str
+    file_execution_id: str
+    success: bool
+    error: str | None = None
+    result: dict[str, Any] | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    execution_time: float = 0.0
+
+    # Source indicators (mutually exclusive)
+    from_cache: bool = False
+    from_file_history: bool = False
+
+    # Manual review routing
+    manual_review: bool = False
+    review_result: dict[str, Any] | None = None
+
+    # Destination processing indicators
+    destination_processed: bool = True
+    destination_error: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for backward compatibility."""
+        return serialize_dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "FileProcessingResult":
+        """Create from dictionary data."""
+        return cls(
+            file_name=data.get("file", ""),
+            file_execution_id=data.get("file_execution_id", ""),
+            success=not bool(data.get("error")),
+            error=data.get("error"),
+            result=data.get("result"),
+            metadata=data.get("metadata", {}),
+            execution_time=data.get("execution_time", 0.0),
+            from_cache=data.get("from_cache", False),
+            from_file_history=data.get("from_file_history", False),
+            manual_review=data.get("manual_review", False),
+            review_result=data.get("review_result"),
+            destination_processed=data.get("destination_processed", True),
+            destination_error=data.get("destination_error"),
+        )
+
+    def is_successful(self) -> bool:
+        """Check if file processing was successful."""
+        return self.success and self.error is None
+
+    def has_error(self) -> bool:
+        """Check if file processing had errors."""
+        return not self.success or self.error is not None
+
+    def is_from_cache(self) -> bool:
+        """Check if result came from cache."""
+        return self.from_cache
+
+    def is_from_history(self) -> bool:
+        """Check if result came from file history."""
+        return self.from_file_history
+
+    def requires_manual_review(self) -> bool:
+        """Check if file requires manual review."""
+        return self.manual_review

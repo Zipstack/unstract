@@ -42,7 +42,6 @@ from shared.infrastructure.logging import (
     monitor_performance,
     with_execution_context,
 )
-from shared.legacy.local_context import StateStore
 from shared.patterns.notification.helper import handle_status_notifications
 from shared.patterns.retry.backoff import (
     get_retry_manager,
@@ -60,6 +59,7 @@ from shared.processing.files.time_utils import (
     WallClockTimeCalculator,
     aggregate_file_batch_results,
 )
+from shared.utils.local_context import StateStore
 from shared.workflow.execution.context import WorkerExecutionContext
 
 # Import shared data models for type safety
@@ -196,10 +196,6 @@ def _fetch_pipeline_data(
         # Call the pipeline data endpoint (from execution_client.py)
         response = api_client.get_pipeline_data(pipeline_id, organization_id)
 
-        logger.debug(
-            f"DEBUG: Pipeline API response for {pipeline_id}: success={response.success}, data_type={type(response.data)}, data_keys={response.data.keys() if isinstance(response.data, dict) else 'not_dict'}, error={response.error}"
-        )
-
         if response.success and response.data:
             # The response.data might be the pipeline data directly, or nested under "pipeline"
             if "pipeline" in response.data:
@@ -276,28 +272,12 @@ def _fetch_api_deployment_data(
         response = api_client.get_api_deployment_data(api_id, organization_id)
 
         if response.success and response.data:
-            # DEBUG: Log the full API response to understand the issue
-            logger.info(
-                f"DEBUG: API deployment response for {api_id}: success={response.success}, data_keys={response.data.keys() if isinstance(response.data, dict) else 'not_dict'}"
-            )
-            logger.info(f"DEBUG: Full API deployment response data: {response.data}")
-
             # Response format: {"status": "success", "pipeline": {...}}
             pipeline_data = response.data.get("pipeline", {})
-
-            # DEBUG: Log pipeline data specifically
-            logger.info(
-                f"DEBUG: Pipeline data from API deployment endpoint: {pipeline_data}"
-            )
 
             # API deployment data structure from serializer:
             pipeline_name = pipeline_data.get("api_name")
             pipeline_type = PipelineType.API.value
-
-            # DEBUG: Log what we extracted
-            logger.info(
-                f"DEBUG: Extracted from API deployment - name='{pipeline_name}', type='{pipeline_type}' (hardcoded to API)"
-            )
 
             logger.info(
                 f"Found APIDeployment {api_id}: name='{pipeline_name}', type='{pipeline_type}', display_name='{pipeline_data.get('display_name')}'"
@@ -440,17 +420,14 @@ def _update_pipeline_with_batching(
         if cache_manager:
             cache_manager.invalidate_pipeline_status(pipeline_id, organization_id)
 
-        logger.info(f"DEBUG: Direct pipeline update SUCCESS for {pipeline_id}: {status}")
-
         # NOTE: Notifications are triggered by main batch completion logic, not here
         # This avoids duplicate notifications for the same execution
 
         return True
 
     except Exception as e:
-        logger.error(f"DEBUG: Failed to update pipeline status for {pipeline_id}: {e}")
         logger.error(
-            f"DEBUG: Pipeline update parameters: pipeline_id={pipeline_id}, status={status}, organization_id={organization_id}"
+            f"Failed to update pipeline status for {pipeline_id}: {e}", exc_info=True
         )
         return False
 
@@ -546,41 +523,33 @@ def _setup_organization_context(
     # 1. First try kwargs (highest priority - passed from API/general worker)
     organization_id = kwargs.get("organization_id")
     if organization_id:
-        logger.info(f"DEBUG: Using organization_id from kwargs: {organization_id}")
+        logger.info(f"Setting up the organization context for: {organization_id}")
 
     # 2. Fall back to worker configuration (properly formatted)
     if not organization_id:
         config_temp = WorkerConfig()
         if config_temp.organization_id:
             organization_id = config_temp.organization_id
-            logger.info(
-                f"DEBUG: Using organization_id from worker config: {organization_id}"
-            )
+            logger.info(f"Setting up the organization context for: {organization_id}")
 
     # 3. Last resort: extract from batch results (may be raw database ID)
     if not organization_id:
-        logger.info(
-            f"DEBUG: No organization_id from kwargs/config, checking {len(results)} batch results..."
-        )
         for i, result in enumerate(results):
-            logger.info(
-                f"DEBUG: Result {i} type: {type(result)}, keys: {list(result.keys()) if isinstance(result, dict) else 'N/A'}"
-            )
             if isinstance(result, dict) and "organization_id" in result:
                 extracted_org_id = result["organization_id"]
                 # Validate and format if needed
                 if extracted_org_id and not extracted_org_id.startswith("org_"):
                     logger.warning(
-                        f"DEBUG: Batch result has raw database ID '{extracted_org_id}', may need proper formatting"
+                        f"Batch result has raw database ID '{extracted_org_id}', may need proper formatting"
                     )
                 organization_id = extracted_org_id
                 logger.info(
-                    f"DEBUG: ✅ Extracted organization_id from batch result {i}: {organization_id}"
+                    f"✅ Extracted organization_id from batch result {i}: {organization_id}"
                 )
                 break
         else:
             logger.warning(
-                f"DEBUG: ❌ No organization_id found in any of the {len(results)} batch results"
+                f"❌ No organization_id found in any of the {len(results)} batch results"
             )
 
     if not organization_id:
@@ -619,9 +588,6 @@ def _setup_api_client_and_execution_context(
     # Final fallback: use API client's default organization_id if available
     if not context.organization_id and api_client.organization_id:
         context.organization_id = api_client.organization_id
-        logger.info(
-            f"DEBUG: Using API client's default organization_id: {context.organization_id}"
-        )
 
     # Set organization context BEFORE making API calls (CRITICAL for getting correct pipeline_id)
     if context.organization_id:
@@ -641,9 +607,6 @@ def _setup_api_client_and_execution_context(
     execution_context = execution_response.data
     workflow_execution = execution_context.get("execution", {})
     workflow = execution_context.get("workflow", {})
-    logger.info(f"DEBUG: ! execution_context: {execution_context}")
-    logger.info(f"DEBUG: ! workflow_execution: {workflow_execution}")
-    logger.info(f"DEBUG: ! workflow: {workflow}")
 
     # Organization_id already extracted before API call - use as fallback if needed
     if not context.organization_id:
@@ -843,14 +806,6 @@ def _process_results_and_update_status(
         if aggregated_results["failed_files"] != aggregated_results["total_files"]
         else ExecutionStatus.ERROR.value
     )
-    logger.info(
-        f"DEBUG: Calculated final_status='{final_status}' (failed_files={aggregated_results['failed_files']})"
-    )
-
-    # Log aggregated results for debugging
-    logger.info(
-        f"DEBUG: Aggregated results: successful_files={aggregated_results.get('successful_files', 0)}, failed_files={aggregated_results.get('failed_files', 0)}, total_files={aggregated_results.get('total_files', 0)}"
-    )
 
     # Use batched status update for better performance
     _update_status_with_batching(
@@ -981,9 +936,6 @@ def _update_pipeline_status(context: CallbackContext, final_status: str) -> bool
 
                 # Map execution status to pipeline status
                 pipeline_status = _map_execution_status_to_pipeline_status(final_status)
-                logger.info(
-                    f"DEBUG: Mapped final_status='{final_status}' to pipeline_status='{pipeline_status}'"
-                )
 
                 # Use batched pipeline update for better performance
                 pipeline_updated = _update_pipeline_with_batching(
@@ -999,11 +951,11 @@ def _update_pipeline_status(context: CallbackContext, final_status: str) -> bool
 
                 if pipeline_updated:
                     logger.info(
-                        f"DEBUG: Successfully queued pipeline update {context.pipeline_id} last_run_status to {pipeline_status}"
+                        f"Successfully queued pipeline update {context.pipeline_id} last_run_status to {pipeline_status}"
                     )
                 else:
                     logger.warning(
-                        f"DEBUG: Failed to queue pipeline update for {context.pipeline_id} - pipeline_status={pipeline_status}, pipeline_name={context.pipeline_name}"
+                        f"Failed to queue pipeline update for {context.pipeline_id} - pipeline_status={pipeline_status}, pipeline_name={context.pipeline_name}"
                     )
             except CircuitBreakerOpenError:
                 # TODO: Implement retry queue to prevent lost DB updates
@@ -1689,12 +1641,9 @@ def process_batch_callback_api(
                 )
 
                 # Debug logging for execution time calculation
-                logger.info(
-                    f"DEBUG: API callback calculated execution_time: {execution_time:.2f}s from {len(all_file_results)} file results"
-                )
                 if execution_time == 0:
                     logger.warning(
-                        f"DEBUG: Execution time is 0! File results: {[r.get('processing_time', 'missing') for r in all_file_results[:3]]}"
+                        f"Execution time is 0! File results for execution {execution_id}"
                     )
 
                 # Determine execution status based on file results (ERROR only if ALL files failed)
@@ -1732,11 +1681,6 @@ def process_batch_callback_api(
                     # NOTE: Both callback worker and Django backend may send notifications for backward compatibility
                     # Multiple notifications are allowed for now and will be handled by deduplication later
                     try:
-                        # DEBUG: Log notification parameters before calling handle_status_notifications
-                        logger.info(
-                            f"DEBUG: About to trigger notifications with - pipeline_id='{pipeline_id}', pipeline_name='{pipeline_name}', pipeline_type='{pipeline_type}', status='{ExecutionStatus.COMPLETED.value}', execution_id='{execution_id}'"
-                        )
-
                         config = WorkerConfig.from_env("CALLBACK")
                         handle_status_notifications(
                             api_client=api_client,
