@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from datetime import UTC, datetime
 from json import JSONDecodeError
 from typing import Any
 
@@ -131,7 +132,48 @@ class BoxFS(UnstractFileSystem):
         Returns:
             bool: True if the path is a directory, False otherwise.
         """
-        raise NotImplementedError
+        return metadata.get("type") == "directory"
+
+    def extract_modified_date(self, metadata: dict[str, Any]) -> datetime | None:
+        """Extract the last modified date from metadata.
+
+        Args:
+            metadata: File metadata dictionary from Box/fsspec.
+
+        Returns:
+            A timezone-aware datetime (UTC) or None if not available.
+        """
+        # Common Box/fsspec keys in order of specificity
+        value = (
+            metadata.get("modified_at")
+            or metadata.get("content_modified_at")
+            or metadata.get("modified")
+            or metadata.get("last_modified")
+            or metadata.get("updated_at")
+            or metadata.get("updated")
+            or metadata.get("client_modified")
+            or metadata.get("server_modified")
+            or metadata.get("mtime")
+        )
+        if value is None:
+            return None
+        try:
+            if isinstance(value, datetime):
+                return value if value.tzinfo else value.replace(tzinfo=UTC)
+            if isinstance(value, (int, float)):
+                return datetime.fromtimestamp(value, tz=UTC)
+            if isinstance(value, str):
+                # Normalize 'Z' suffix to '+00:00' for fromisoformat compatibility
+                v = value.strip().replace("Z", "+00:00")
+                dt = datetime.fromisoformat(v)
+                return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+        except Exception as e:
+            logger.debug(
+                "[Box] Failed to parse modified date (keys=%s): %s",
+                list(metadata.keys()),
+                e,
+            )
+        return None
 
     def test_credentials(self) -> bool:
         """To test credentials for the Box connector."""

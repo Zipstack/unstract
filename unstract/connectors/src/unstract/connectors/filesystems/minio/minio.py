@@ -1,5 +1,7 @@
 import logging
 import os
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 from s3fs.core import S3FileSystem
@@ -103,6 +105,73 @@ class MinioFS(UnstractFileSystem):
             bool: True if the path is a directory, False otherwise.
         """
         return metadata.get("type") == "directory"
+
+    def extract_modified_date(self, metadata: dict[str, Any]) -> datetime | None:
+        """Extract the last modified date from S3/MinIO metadata.
+
+        Accepts multiple date formats and ensures timezone-aware UTC datetime.
+
+        Args:
+            metadata: File metadata dictionary from fsspec
+
+        Returns:
+            timezone-aware UTC datetime object or None if not available
+        """
+        # Check common alternative keys for modified date
+        for key in ["LastModified", "last_modified", "modified", "mtime"]:
+            last_modified = metadata.get(key)
+            if last_modified is not None:
+                break
+        else:
+            logger.debug(
+                f"[S3/MinIO] No modified date found in metadata keys: {list(metadata.keys())}"
+            )
+            return None
+
+        if isinstance(last_modified, datetime):
+            # Ensure datetime has timezone info
+            if last_modified.tzinfo is None:
+                # Naive datetime - assume UTC
+                return last_modified.replace(tzinfo=UTC)
+            else:
+                # Convert to UTC
+                return last_modified.astimezone(UTC)
+
+        elif isinstance(last_modified, str):
+            # Try ISO-8601 format first
+            try:
+                dt = datetime.fromisoformat(last_modified.replace("Z", "+00:00"))
+                # Ensure timezone awareness and convert to UTC
+                if dt.tzinfo is None:
+                    return dt.replace(tzinfo=UTC)
+                else:
+                    return dt.astimezone(UTC)
+            except ValueError:
+                pass
+
+            # Fall back to RFC 1123 format
+            try:
+                dt = parsedate_to_datetime(last_modified)
+                # parsedate_to_datetime returns timezone-aware datetime in UTC
+                return dt.astimezone(UTC)
+            except (ValueError, TypeError):
+                logger.warning(
+                    f"[S3/MinIO] Failed to parse datetime '{last_modified}' from metadata keys: {list(metadata.keys())}"
+                )
+                return None
+
+        elif isinstance(last_modified, (int, float)):
+            # Numeric epoch timestamp
+            try:
+                return datetime.fromtimestamp(last_modified, tz=UTC)
+            except (ValueError, OSError):
+                logger.warning(f"[S3/MinIO] Invalid epoch timestamp: {last_modified}")
+                return None
+
+        logger.debug(
+            f"[S3/MinIO] Unsupported datetime type '{type(last_modified)}' in metadata keys: {list(metadata.keys())}"
+        )
+        return None
 
     def get_fsspec_fs(self) -> S3FileSystem:
         return self.s3

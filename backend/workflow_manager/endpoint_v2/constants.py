@@ -1,4 +1,5 @@
 import os
+from enum import Enum
 from fnmatch import fnmatch
 
 
@@ -63,6 +64,25 @@ class SourceKey:
     PROCESS_SUB_DIRECTORIES = "processSubDirectories"
     MAX_FILES = "maxFiles"
     FOLDERS = "folders"
+    FILE_PROCESSING_ORDER = "fileProcessingOrder"
+
+
+class FileProcessingOrder(str, Enum):
+    """File processing order for SourceKey.FILE_PROCESSING_ORDER.
+
+    Semantics:
+    - oldest_first: ascending last-modified time (mtime).
+    - newest_first: descending mtime.
+    - unordered: no explicit ordering (OS enumeration order; may be nondeterministic).
+    """
+
+    UNORDERED = "unordered"
+    OLDEST_FIRST = "oldest_first"  # FIFO
+    NEWEST_FIRST = "newest_first"  # LIFO
+
+    @classmethod
+    def values(cls) -> list[str]:
+        return [v.value for v in cls]
 
 
 class DestinationKey:

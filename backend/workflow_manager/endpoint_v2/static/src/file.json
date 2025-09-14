@@ -46,6 +46,14 @@
             "default": "skip_duplicates",
             "enum": ["skip_duplicates", "reprocess_after_interval"],
             "enumNames": ["Never delete", "Delete after"]
+        },
+        "fileProcessingOrder": {
+            "type": "string",
+            "title": "File processing order",
+            "description": "Order in which files will be processed",
+            "default": "unordered",
+            "enum": ["unordered", "oldest_first", "newest_first"],
+            "enumNames": ["No specific order", "Oldest first (FIFO)", "Newest first (LIFO)"]
         }
     },
     "dependencies": {
