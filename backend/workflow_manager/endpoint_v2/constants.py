@@ -1,6 +1,10 @@
+import logging
 import os
 from enum import Enum
 from fnmatch import fnmatch
+from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class TableColumns:
@@ -83,6 +87,41 @@ class FileProcessingOrder(str, Enum):
     @classmethod
     def values(cls) -> list[str]:
         return [v.value for v in cls]
+
+    @classmethod
+    def from_value(
+        cls, value: Any, default: "FileProcessingOrder" = None
+    ) -> "FileProcessingOrder":
+        """Convert a value to FileProcessingOrder enum, with fallback to default.
+
+        Args:
+            value: The value to convert (can be string, enum, or None)
+            default: Default value if conversion fails (defaults to UNORDERED)
+
+        Returns:
+            FileProcessingOrder enum value
+        """
+        if default is None:
+            default = cls.UNORDERED
+
+        if value is None:
+            return default
+
+        # Already an enum instance
+        if isinstance(value, cls):
+            return value
+
+        # Try to convert string to enum
+        if isinstance(value, str):
+            try:
+                return cls(value)
+            except ValueError:
+                logger.warning(
+                    f"Invalid file processing order '{value}', using {default.value}"
+                )
+                return default
+
+        return default
 
 
 class DestinationKey:

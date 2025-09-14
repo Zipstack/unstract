@@ -172,18 +172,9 @@ class SourceConnector(BaseConnector):
         limit = int(
             source_configuration.get(SourceKey.MAX_FILES, FileSystemConnector.MAX_FILES)
         )
-        file_processing_order = source_configuration.get(
-            SourceKey.FILE_PROCESSING_ORDER, FileProcessingOrder.UNORDERED
+        file_processing_order = FileProcessingOrder.from_value(
+            source_configuration.get(SourceKey.FILE_PROCESSING_ORDER)
         )
-        # Normalize to FileProcessingOrder enum if it's a string
-        if isinstance(file_processing_order, str):
-            try:
-                file_processing_order = FileProcessingOrder(file_processing_order)
-            except ValueError:
-                logger.warning(
-                    f"Invalid file processing order '{file_processing_order}', using UNORDERED"
-                )
-                file_processing_order = FileProcessingOrder.UNORDERED
         root_dir_path = connector_settings.get(ConnectorKeys.PATH, "")
         folders_to_process = list(source_configuration.get(SourceKey.FOLDERS, ["/"]))
         # Process from root in case its user provided list is empty
@@ -192,21 +183,11 @@ class SourceConnector(BaseConnector):
         patterns = self.valid_file_patterns(required_patterns=required_patterns)
         self.workflow_log.publish_log(
             f"Matching for patterns '{', '.join(patterns)}' from "
-            f"'{', '.join(folders_to_process)}' to process {limit} files "
+            f"'{', '.join(folders_to_process)}' to process upto {limit} files "
             "recursively"
             if recursive
             else ""
         )
-
-        if file_processing_order != FileProcessingOrder.UNORDERED:
-            order_desc = (
-                "FIFO (oldest first)"
-                if file_processing_order == FileProcessingOrder.OLDEST_FIRST
-                else "LIFO (newest first)"
-            )
-            self.workflow_log.publish_log(
-                f"Files will be processed in '{order_desc}' order"
-            )
 
         source_fs = self.get_fs_connector(
             settings=connector_settings, connector_id=connector.connector_id
