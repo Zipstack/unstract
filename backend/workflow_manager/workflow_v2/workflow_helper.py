@@ -1,6 +1,5 @@
 import json
 import logging
-import math
 import os
 import time
 import traceback
@@ -89,7 +88,8 @@ class WorkflowHelper:
     def get_file_batches(
         cls, input_files: dict[str, FileHash]
     ) -> list[list[tuple[str, FileHash]]]:
-        """_summary_
+        """Split input files into batches for parallel processing.
+        Distributes files as evenly as possible across the target number of batches.
 
         Args:
             input_files (dict[str, FileHash]): input files
@@ -106,20 +106,31 @@ class WorkflowHelper:
         BATCH_SIZE = Configuration.get_value_by_organization(
             config_key=ConfigKey.MAX_PARALLEL_FILE_BATCHES, organization=organization
         )  # Max number of batches
-
         file_items = list(json_serializable_files.items())
 
-        # Calculate how many items per batch
+        # Calculate distribution
         num_files = len(file_items)
+        # Target number of batches (can't exceed number of files)
         num_batches = min(BATCH_SIZE, num_files)
-        items_per_batch = math.ceil(num_files / num_batches)
 
-        # Split into batches
+        # Distribute files as evenly as possible
+        base_items_per_batch = num_files // num_batches
+        remainder = num_files % num_batches
+
+        # Create batches
         batches = []
-        for start_index in range(0, len(file_items), items_per_batch):
-            end_index = start_index + items_per_batch
-            batch = file_items[start_index:end_index]
-            batches.append(batch)
+        start_index = 0
+
+        for i in range(num_batches):
+            # First 'remainder' batches get one extra item
+            batch_size = base_items_per_batch + (1 if i < remainder else 0)
+
+            if start_index < len(file_items):
+                end_index = min(start_index + batch_size, len(file_items))
+                batch = file_items[start_index:end_index]
+                if batch:  # Only add non-empty batches
+                    batches.append(batch)
+                start_index = end_index
 
         return batches
 
