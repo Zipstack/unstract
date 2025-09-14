@@ -14,13 +14,13 @@ dependencies = [
     # HTTP clients and utilities (merged from shared package)
     "requests>=2.31.0,<3.0.0", # HTTP client for internal API calls
     "urllib3>=1.26.0", # HTTP utilities and retry strategies
-    "httpx>=0.27.0,<0.28.0", # Async HTTP client
+    "httpx>=0.27.0", # Async HTTP client
     "python-dotenv>=1.0.0,<2.0.0", # Environment variable loading
     # Monitoring and system utilities
     "prometheus-client>=0.17.0,<1.0.0", # Metrics collection
     "psutil>=5.9.0,<6.0.0", # System resource monitoring
     # Essential Unstract packages - with Azure support for connectors
-    "unstract-sdk[azure]~=0.76.1", # Core SDK with Azure connector support
+    "unstract-sdk[azure]~=0.77.1", # Core SDK with Azure connector support
     "unstract-connectors",
     "unstract-core",
     "unstract-flags",

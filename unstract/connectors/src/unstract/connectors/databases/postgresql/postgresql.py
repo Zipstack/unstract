@@ -1,3 +1,4 @@
+import datetime
 import os
 from typing import Any
 
@@ -66,6 +67,28 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
     def can_read() -> bool:
         return True
 
+    def sql_to_db_mapping(self, value: str) -> str:
+        """Gets the python datatype of value and converts python datatype to
+        corresponding DB datatype.
+
+        Args:
+            value (str): python datatype
+
+        Returns:
+            str: database columntype
+        """
+        python_type = type(value)
+
+        mapping = {
+            str: "TEXT",
+            int: "INTEGER",
+            float: "DOUBLE PRECISION",
+            datetime.datetime: "TIMESTAMP",
+            dict: "JSONB",
+            list: "JSONB",
+        }
+        return mapping.get(python_type, "TEXT")
+
     def get_engine(self) -> connection:
         """Returns a connection to the PostgreSQL database.
 
@@ -106,6 +129,43 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
 
         return con
 
+    def get_create_table_base_query(self, table: str) -> str:
+        """Function to create a base create table sql query with PostgreSQL specific types.
+
+        Args:
+            table (str): db-connector table name
+
+        Returns:
+            str: generates a create sql base query with the constant columns
+        """
+        quoted_table = self._quote_identifier(table)
+        sql_query = (
+            f"CREATE TABLE IF NOT EXISTS {quoted_table} "
+            f"(id TEXT, "
+            f"created_by TEXT, created_at TIMESTAMP, "
+            f"metadata JSONB, "
+            f"user_field_1 BOOLEAN DEFAULT FALSE, "
+            f"user_field_2 INTEGER DEFAULT 0, "
+            f"user_field_3 TEXT DEFAULT NULL, "
+            f"status TEXT CHECK (status IN ('ERROR', 'SUCCESS')), "
+            f"error_message TEXT, "
+        )
+        return sql_query
+
+    def prepare_multi_column_migration(self, table_name: str, column_name: str) -> str:
+        quoted_table = self._quote_identifier(table_name)
+        sql_query = (
+            f"ALTER TABLE {quoted_table} "
+            f"ADD COLUMN {column_name}_v2 JSONB, "
+            f"ADD COLUMN metadata JSONB, "
+            f"ADD COLUMN user_field_1 BOOLEAN DEFAULT FALSE, "
+            f"ADD COLUMN user_field_2 INTEGER DEFAULT 0, "
+            f"ADD COLUMN user_field_3 TEXT DEFAULT NULL, "
+            f"ADD COLUMN status TEXT CHECK (status IN ('ERROR', 'SUCCESS')), "
+            f"ADD COLUMN error_message TEXT"
+        )
+        return sql_query
+
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
     ) -> None:
@@ -136,26 +196,6 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
         # Always quote the identifier to handle special characters like hyphens
         # This is safe even for valid identifiers and prevents SQL injection
         return f'"{identifier}"'
-
-    def get_create_table_base_query(self, table: str) -> str:
-        """Override base method to add PostgreSQL-specific table name quoting.
-
-        PostgreSQL requires identifiers with special characters (like hyphens)
-        to be quoted with double quotes.
-
-        Args:
-            table (str): Table name
-
-        Returns:
-            str: CREATE TABLE query with properly quoted table name
-        """
-        quoted_table = self._quote_identifier(table)
-        sql_query = (
-            f"CREATE TABLE IF NOT EXISTS {quoted_table} "
-            f"(id TEXT , "
-            f"created_by TEXT, created_at TIMESTAMP, "
-        )
-        return sql_query
 
     def get_sql_insert_query(self, table_name: str, sql_keys: list[str]) -> str:
         """Override base method to add PostgreSQL-specific table name quoting.
