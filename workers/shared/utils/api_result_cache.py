@@ -8,6 +8,8 @@ across worker components.
 import logging
 from typing import Any
 
+from shared.utils.api_hub_factory import APIHubUsageUtil
+
 from unstract.core.data_models import FileHashData
 from unstract.core.worker_models import (
     ApiDeploymentResultStatus,
@@ -38,6 +40,22 @@ class APIResultCacheManager:
         if self._cache_utils is None:
             self._cache_utils = WorkerResultCacheUtils()
         return self._cache_utils
+
+    def _track_api_hub_usage(
+        self, organization_id: str, execution_id: str, file_execution_id: str
+    ):
+        """Track API Hub usage."""
+        # Track usage for API Hub deployments (graceful fallback for OSS)
+        try:
+            logger.info("_track_api_hub_usage: Tracking API Hub usage")
+            APIHubUsageUtil.track_api_hub_usage(
+                workflow_execution_id=execution_id,
+                workflow_file_execution_id=file_execution_id,
+                organization_id=organization_id,
+            )
+        except Exception as e:
+            # Log but don't fail the main execution for usage tracking issues
+            logger.warning(f"Could not track API hub usage: {e}")
 
     def cache_file_processing_result(
         self,
@@ -177,6 +195,7 @@ class APIResultCacheManager:
                 execution_id=execution_id,
                 result=file_processing_result.result,
                 error=file_processing_result.error,
+                organization_id=organization_id,
                 metadata=clean_metadata,
             )
 
@@ -226,6 +245,7 @@ class APIResultCacheManager:
                 execution_id=execution_id,
                 result=file_processing_result.result,
                 error=file_processing_result.error,
+                organization_id=organization_id,
                 metadata=clean_metadata,
             )
 
@@ -243,6 +263,7 @@ class APIResultCacheManager:
         execution_id: str,
         result: dict[str, Any] | None,
         error: str | None = None,
+        organization_id: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Cache API result directly without FileProcessingResult conversion.
@@ -255,6 +276,7 @@ class APIResultCacheManager:
             file_execution_id: File execution ID
             workflow_id: Workflow ID for caching key
             execution_id: Execution ID for caching key
+            organization_id: Organization ID for context
             result: Result data to cache
             error: Optional error message
             metadata: Optional metadata
@@ -287,8 +309,15 @@ class APIResultCacheManager:
 
             logger.info(
                 f"Successfully cached direct API result for file {file_name} "
-                f"in execution {execution_id}"
+                f"in execution {execution_id} for organization {organization_id}"
             )
+
+            if organization_id:
+                self._track_api_hub_usage(
+                    organization_id=organization_id,
+                    execution_id=execution_id,
+                    file_execution_id=file_execution_id,
+                )
 
             return True
 

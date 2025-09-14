@@ -492,6 +492,7 @@ class WorkerDestinationConnector:
                 execution_id=execution_id,
                 result=result,
                 error=error,
+                organization_id=organization_id,
                 metadata=metadata,
             )
 
