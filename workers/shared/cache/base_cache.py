@@ -265,9 +265,20 @@ class APIClientCache:
                 logger.debug(
                     f"Cache HIT for {key} (type: {operation_type}) in {response_time:.1f}ms"
                 )
-                # Reconstruct objects from cached data
+                # Reconstruct objects from cached data with fallback handling
                 raw_data = cached_data.get("data")
-                return reconstruct_from_cache(raw_data)
+                try:
+                    return reconstruct_from_cache(raw_data)
+                except Exception as e:
+                    # Cache reconstruction failed - invalidate corrupted entry and fallback to API
+                    logger.warning(
+                        f"Cache reconstruction failed for {key}: {e}. Invalidating cache entry."
+                    )
+                    self.stats["errors"] += 1
+                    # Delete the corrupted cache entry
+                    self.backend.delete(key)
+                    # Return None to trigger cache miss behavior (fallback to API call)
+                    return None
             else:
                 self.stats["misses"] += 1
                 response_time = (time.time() - start_time) * 1000

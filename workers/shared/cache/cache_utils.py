@@ -117,7 +117,15 @@ def reconstruct_typed_object(type_name: str, data: Any) -> Any:
         # Find matching class in registry
         if class_name in type_registry:
             cls = type_registry[class_name]
-            return cls(**data)
+
+            # Prefer from_dict method if available (handles nested objects properly)
+            if hasattr(cls, "from_dict") and callable(cls.from_dict):
+                logger.debug(f"Using from_dict method for {class_name}")
+                return cls.from_dict(data)
+            else:
+                # Fall back to direct constructor
+                logger.debug(f"Using direct constructor for {class_name}")
+                return cls(**data)
         else:
             logger.debug(f"Unknown type for reconstruction: {type_name}")
             return data
@@ -134,6 +142,14 @@ def _get_type_registry() -> dict[str, type]:
         Dictionary mapping class names to classes
     """
     try:
+        # Import core data models that are being cached
+        from unstract.core.data_models import (
+            ConnectorInstanceData,
+            WorkflowDefinitionResponseData,
+            WorkflowEndpointConfigData,
+            WorkflowEndpointConfigResponseData,
+        )
+
         from ..models.api_responses import (
             FileBatchResponse,
             FileExecutionResponse,
@@ -156,6 +172,11 @@ def _get_type_registry() -> dict[str, type]:
             "FileBatchResponse": FileBatchResponse,
             "ToolExecutionResponse": ToolExecutionResponse,
             "FileHistoryResponse": FileHistoryResponse,
+            # Core data models that are cached
+            "WorkflowEndpointConfigResponseData": WorkflowEndpointConfigResponseData,
+            "WorkflowEndpointConfigData": WorkflowEndpointConfigData,
+            "ConnectorInstanceData": ConnectorInstanceData,
+            "WorkflowDefinitionResponseData": WorkflowDefinitionResponseData,
         }
     except ImportError as e:
         logger.warning(f"Failed to import response types for cache reconstruction: {e}")
