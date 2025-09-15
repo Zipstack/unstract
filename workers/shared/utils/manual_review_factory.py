@@ -9,6 +9,8 @@ from typing import Any, Protocol
 
 from client_plugin_registry import get_client_plugin, has_client_plugin
 
+from unstract.core.data_models import WorkerFileData
+
 from ..infrastructure.logging import WorkerLogger
 
 logger = WorkerLogger.get_logger(__name__)
@@ -42,12 +44,7 @@ class ManualReviewServiceProtocol(Protocol):
 
     def create_workflow_file_data_with_manual_review(
         self,
-        workflow_id: str,
-        execution_id: str,
-        organization_id: str,
-        pipeline_id: str | None,
-        scheduled: bool,
-        execution_mode: str | None,
+        worker_file_data: WorkerFileData,
         use_file_history: bool,
         total_files: int = 0,
     ) -> Any:
@@ -98,30 +95,17 @@ class ManualReviewNullService:
 
     def create_workflow_file_data_with_manual_review(
         self,
-        workflow_id: str,
-        execution_id: str,
-        organization_id: str,
-        pipeline_id: str | None,
-        scheduled: bool,
-        execution_mode: str | None,
+        worker_file_data: WorkerFileData,
         use_file_history: bool,
         total_files: int = 0,
-    ) -> Any:
+    ) -> WorkerFileData:
         """Create WorkerFileData without manual review for OSS."""
-        from unstract.core.data_models import WorkerFileData
-
-        return WorkerFileData(
-            workflow_id=str(workflow_id),
-            execution_id=str(execution_id),
-            organization_id=str(organization_id),
-            pipeline_id=str(pipeline_id) if pipeline_id else "",
-            scheduled=scheduled,
-            execution_mode=execution_mode or "SYNC",
-            use_file_history=use_file_history,
-            single_step=False,
-            q_file_no_list=[],  # No files for manual review in OSS
-            manual_review_config=self.get_manual_review_config(workflow_id, total_files),
+        worker_file_data.manual_review_config = self.get_manual_review_config(
+            worker_file_data.workflow_id, total_files
         )
+        worker_file_data.use_file_history = False
+        worker_file_data.q_file_no_list = []
+        return worker_file_data
 
     def get_workflow_util(self) -> Any:
         """Get WorkflowUtil instance (returns null implementation for OSS)."""
@@ -251,42 +235,23 @@ class ManualReviewEnhancedService:
 
     def create_workflow_file_data_with_manual_review(
         self,
-        workflow_id: str,
-        execution_id: str,
-        organization_id: str,
-        pipeline_id: str | None,
-        scheduled: bool,
-        execution_mode: str | None,
+        worker_file_data: WorkerFileData,
         use_file_history: bool,
         total_files: int = 0,
-    ) -> Any:
+    ) -> WorkerFileData:
         """Delegate to plugin service."""
         if hasattr(self.service_plugin, "create_workflow_file_data_with_manual_review"):
             return self.service_plugin.create_workflow_file_data_with_manual_review(
-                workflow_id,
-                execution_id,
-                organization_id,
-                pipeline_id,
-                scheduled,
-                execution_mode,
+                worker_file_data,
                 use_file_history,
                 total_files,
             )
-        # Fallback
-        from unstract.core.data_models import WorkerFileData
-
-        return WorkerFileData(
-            workflow_id=str(workflow_id),
-            execution_id=str(execution_id),
-            organization_id=str(organization_id),
-            pipeline_id=str(pipeline_id) if pipeline_id else "",
-            scheduled=scheduled,
-            execution_mode=execution_mode or "SYNC",
-            use_file_history=use_file_history,
-            single_step=False,
-            q_file_no_list=[],
-            manual_review_config={},
+        worker_file_data.manual_review_config = self.get_manual_review_config(
+            worker_file_data.workflow_id, total_files
         )
+        worker_file_data.use_file_history = False
+        worker_file_data.q_file_no_list = []
+        return worker_file_data
 
     def get_workflow_util(self) -> Any:
         """Get WorkflowUtil instance from plugin."""
@@ -403,29 +368,17 @@ def _create_null_workflow_util():
 
         def create_workflow_file_data_with_manual_review(
             self,
-            workflow_id,
-            execution_id,
-            organization_id,
-            pipeline_id,
-            scheduled,
-            execution_mode,
+            worker_file_data: WorkerFileData,
             use_file_history,
             total_files=0,
         ):
-            from unstract.core.data_models import WorkerFileData
-
-            return WorkerFileData(
-                workflow_id=str(workflow_id),
-                execution_id=str(execution_id),
-                organization_id=str(organization_id),
-                pipeline_id=str(pipeline_id) if pipeline_id else "",
-                scheduled=scheduled,
-                execution_mode=execution_mode or "SYNC",
-                use_file_history=use_file_history,
-                single_step=False,
-                q_file_no_list=[],
-                manual_review_config={},
+            """Create workflow file data with manual review."""
+            worker_file_data.manual_review_config = self.get_manual_review_config(
+                worker_file_data.workflow_id, total_files
             )
+            worker_file_data.use_file_history = False
+            worker_file_data.q_file_no_list = []
+            return worker_file_data
 
         def calculate_batch_decisions(self, batch, source_files, config):
             return [False] * len(batch)
@@ -435,6 +388,9 @@ def _create_null_workflow_util():
 
         def get_hitl_ttl_seconds(self, *args, **kwargs):
             return None
+
+        def get_manual_review_config(self, workflow_id, total_files):
+            return {}
 
     return WorkflowUtilNull()
 

@@ -52,7 +52,9 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         """Get workflow executions filtered by organization context."""
-        queryset = WorkflowExecution.objects.all()
+        queryset = WorkflowExecution.objects.select_related("workflow").prefetch_related(
+            "tags"
+        )
         return filter_queryset_by_organization(
             queryset, self.request, "workflow__organization"
         )

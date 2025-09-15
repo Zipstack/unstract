@@ -410,9 +410,6 @@ class InternalAPIClient(CachedAPIClientMixin):
         response = self.workflow_client.get_workflow_endpoints(
             workflow_id, organization_id
         )
-        logger.info(
-            f"DEBUG   get_workflow_endpoints  response WorkflowEndpointConfigResponse: {response}"
-        )
         if not response.success_response:
             raise APIRequestError(response.error_response)
         return response.data

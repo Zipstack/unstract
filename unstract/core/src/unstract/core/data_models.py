@@ -919,6 +919,57 @@ class WorkflowFileExecutionData:
 
 
 @dataclass
+class TagData:
+    """Shared data structure for tag information.
+
+    This matches the Tag model in the backend and provides
+    type safety for tag operations across services.
+    """
+
+    id: str | uuid.UUID
+    name: str
+    description: str | None = None
+
+    def __post_init__(self):
+        """Validate and normalize fields."""
+        # Convert UUID to string for serialization
+        if isinstance(self.id, uuid.UUID):
+            self.id = str(self.id)
+
+        # Validate tag name
+        if not self.name:
+            raise ValueError("Tag name is required")
+        if len(self.name) > 50:  # Match backend TAG_NAME_LENGTH
+            raise ValueError("Tag name cannot exceed 50 characters")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for API serialization."""
+        return {
+            "id": str(self.id),
+            "name": self.name,
+            "description": self.description,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "TagData":
+        """Create from dictionary (e.g., API response)."""
+        return cls(
+            id=data.get("id", str(uuid.uuid4())),  # Generate ID if not provided
+            name=data.get("name", ""),
+            description=data.get("description"),
+        )
+
+    @classmethod
+    def from_name(cls, name: str) -> "TagData":
+        """Create tag from just a name (for backward compatibility)."""
+        return cls(
+            id=str(uuid.uuid4()),
+            name=name,
+            description=None,
+        )
+
+
+@dataclass
 class WorkflowExecutionData:
     """Shared data structure for workflow execution.
 
@@ -942,6 +993,7 @@ class WorkflowExecutionData:
     execution_time: float | None = None
     created_at: datetime | None = None
     modified_at: datetime | None = None
+    tags: list[TagData] = field(default_factory=list)
 
     def __post_init__(self):
         """Validate and normalize fields."""
@@ -961,11 +1013,24 @@ class WorkflowExecutionData:
             data["created_at"] = self.created_at.isoformat()
         if self.modified_at:
             data["modified_at"] = self.modified_at.isoformat()
+        # Convert tags to dictionaries
+        if self.tags:
+            data["tags"] = [tag.to_dict() for tag in self.tags]
         return {k: v for k, v in data.items() if v is not None}
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "WorkflowExecutionData":
         """Create from dictionary (e.g., API response)."""
+        # Handle tags - support both dict format and string format for backward compatibility
+        tags_data = data.get("tags", [])
+        tags = []
+        for tag in tags_data:
+            if isinstance(tag, dict):
+                tags.append(TagData.from_dict(tag))
+            elif isinstance(tag, str):
+                # Support simple tag names for backward compatibility
+                tags.append(TagData.from_name(tag))
+
         return cls(
             id=data["id"],
             workflow_id=data["workflow_id"],
@@ -984,6 +1049,7 @@ class WorkflowExecutionData:
             execution_time=data.get("execution_time"),
             created_at=data.get("created_at"),
             modified_at=data.get("modified_at"),
+            tags=tags,
         )
 
 
@@ -1318,6 +1384,9 @@ class WorkerFileData:
             "file_decisions": [],  # Pre-calculated boolean decisions for each file
         }
     )
+    is_manualreview_required: bool = field(default=False)
+    llm_profile_id: str | None = field(default=None)
+    tags: list[TagData] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "WorkerFileData":
@@ -1378,6 +1447,17 @@ class WorkerFileData:
                 f"q_file_no_list must be list, got {type(filtered_data.get('q_file_no_list')).__name__}"
             )
 
+        # Handle tags field - support both dict format and string format
+        tags_data = filtered_data.get("tags", [])
+        tags = []
+        for tag in tags_data:
+            if isinstance(tag, dict):
+                tags.append(TagData.from_dict(tag))
+            elif isinstance(tag, str):
+                # Support simple tag names for backward compatibility
+                tags.append(TagData.from_name(tag))
+        filtered_data["tags"] = tags
+
         try:
             return cls(**filtered_data)
         except TypeError as e:
@@ -1387,7 +1467,11 @@ class WorkerFileData:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API serialization."""
-        return asdict(self)
+        data = asdict(self)
+        # Convert tags to dictionaries
+        if self.tags:
+            data["tags"] = [tag.to_dict() for tag in self.tags]
+        return data
 
 
 @dataclass

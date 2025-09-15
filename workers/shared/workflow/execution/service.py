@@ -593,7 +593,7 @@ class WorkerWorkflowExecutionService:
                 file_processing_context.file_hash.source_connection_type
             )
             connector_metadata = file_processing_context.file_hash.connector_metadata
-
+            file_data = file_processing_context.file_data
             # Get source configuration
             source_config = self._get_source_config(workflow_id, execution_id)
             source_connector_id, source_config_connector_settings = (
@@ -635,12 +635,18 @@ class WorkerWorkflowExecutionService:
                 )
 
             # Create initial METADATA.json file
+            # Extract tag names from workflow execution context
+            tag_names = []
+            workflow_execution = file_processing_context.workflow_execution
+            if workflow_execution and workflow_execution.get("tags"):
+                tag_names = [tag["name"] for tag in workflow_execution["tags"]]
+
             file_handler.add_metadata_to_volume(
                 input_file_path=file_path,
                 file_execution_id=workflow_file_execution_id,
                 source_hash=computed_hash,
-                tags=[],  # Workers don't have tags by default
-                llm_profile_id=None,  # Workers don't have LLM profile override
+                tags=tag_names,  # Pass actual tag names from execution
+                llm_profile_id=file_data.llm_profile_id,
             )
             logger.info(f"Initial metadata file created for {file_path}")
 

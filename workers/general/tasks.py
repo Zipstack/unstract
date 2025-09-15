@@ -199,8 +199,7 @@ def async_execute_bin_general(
     pipeline_id: str | None = None,
     log_events_id: str | None = None,
     use_file_history: bool = False,
-    llm_profile_id: str | None = None,
-    hitl_queue_name: str | None = None,
+    **kwargs: dict[str, Any],
 ) -> dict[str, Any]:
     """Lightweight general workflow execution task.
 
@@ -300,6 +299,7 @@ def async_execute_bin_general(
                 use_file_history,
                 scheduled,
                 schema_name,
+                **kwargs,
             )
 
             # Calculate execution time
@@ -569,6 +569,7 @@ def _execute_general_workflow(
     use_file_history: bool,
     scheduled: bool,
     schema_name: str,
+    **kwargs: dict[str, Any],
 ) -> dict[str, Any]:
     """Execute general workflow specific logic for ETL/TASK workflows.
 
@@ -634,15 +635,6 @@ def _execute_general_workflow(
             f"Starting real workflow execution for workflow {workflow_context.workflow_id}, execution {workflow_context.execution_id}, organization_id={workflow_context.organization_context.organization_id}"
         )
 
-        # workflow_endpoints: WorkflowEndpointConfigResponseData = api_client.get_workflow_endpoints(
-        #     workflow_context.workflow_id
-        # )
-        # has_api_endpoints = workflow_endpoints.has_api_endpoints
-        # if has_api_endpoints:
-        #     logger.warning(
-        #         f"Workflow {workflow_context.workflow_id} has API endpoints but routed to general worker - this should use API worker"
-        #     )
-
         # For ETL/TASK workflows, we need to:
         # 1. Get source files from the source connector
         # 2. Create file batches for processing
@@ -664,9 +656,6 @@ def _execute_general_workflow(
             )
         except Exception as status_error:
             logger.warning(f"Failed to update execution status: {status_error}")
-
-        # Execute workflow - retrieve source files from configured source connector
-        # Import the source connector
 
         # Create source connector instance
         source_connector = WorkerSourceConnector(
@@ -727,7 +716,6 @@ def _execute_general_workflow(
 
         original_file_count = len(source_files) if source_files else 0
 
-        # if not is_api and source_files:
         if source_files:
             # Log file filtering start to UI
             workflow_logger.log_info(
@@ -758,15 +746,6 @@ def _execute_general_workflow(
                 workflow_logger.log_info(
                     logger, f"✅ File filtering: All {total_files} files are new"
                 )
-        # else:
-        #     # API workflows: Process without active file filtering (they have their own logic)
-        #     source_files, total_files = (
-        #         FileManagementUtils.process_files_without_active_filtering(
-        #             source_files=source_files,
-        #             max_limit=max_files_limit,
-        #             logger_instance=logger,
-        #         )
-        #     )
 
         # Log filtering statistics to UI
         final_file_count = len(source_files) if source_files else 0
@@ -866,7 +845,8 @@ def _execute_general_workflow(
                 scheduled=scheduled,
                 execution_mode=execution_mode,
                 use_file_history=use_file_history,
-                organization_id=api_client.organization_id,  # Use api_client's organization_id (already formatted)
+                organization_id=api_client.organization_id,
+                **kwargs,
             )
 
             # The orchestration result contains the chord_id and batch information
@@ -920,6 +900,7 @@ def _orchestrate_file_processing_general(
     execution_mode: tuple | None,
     use_file_history: bool,
     organization_id: str,
+    **kwargs: dict[str, Any],
 ) -> dict[str, Any]:
     """Orchestrate file processing for general workflows using the same pattern as API worker.
 
@@ -976,6 +957,24 @@ def _orchestrate_file_processing_general(
             f"Execution parameters: mode={execution_mode_str}, pipeline={pipeline_id}, scheduled={scheduled}, file_history={use_file_history}"
         )
 
+        hitl_queue_name = kwargs.get("hitl_queue_name")
+        llm_profile_id = kwargs.get("llm_profile_id")
+
+        worker_file_data = WorkerFileData(
+            workflow_id=str(workflow_id),
+            execution_id=str(execution_id),
+            organization_id=str(organization_id),
+            pipeline_id=str(pipeline_id) if pipeline_id else "",
+            scheduled=scheduled,
+            execution_mode=execution_mode or "SYNC",
+            use_file_history=use_file_history,
+            single_step=False,
+            q_file_no_list=[],
+            manual_review_config={},
+            hitl_queue_name=hitl_queue_name,
+            llm_profile_id=llm_profile_id,
+        )
+
         # Calculate manual review configuration ONCE for all files before batching
         manual_review_service = get_manual_review_service(
             api_client=api_client, organization_id=api_client.organization_id
@@ -983,12 +982,7 @@ def _orchestrate_file_processing_general(
         # Use consistent WorkflowUtil pattern like other workers
         workflow_util = manual_review_service.get_workflow_util()
         global_file_data = workflow_util.create_workflow_file_data_with_manual_review(
-            workflow_id=workflow_id,
-            execution_id=execution_id,
-            organization_id=api_client.organization_id,
-            pipeline_id=pipeline_id,
-            scheduled=scheduled,
-            execution_mode=execution_mode_str,
+            worker_file_data=worker_file_data,
             use_file_history=use_file_history,
             total_files=len(source_files),
         )
@@ -1377,29 +1371,10 @@ def _create_batch_data_general(
 
             # Set manual review fields in file hash
             enhanced_file_hash["is_manualreview_required"] = is_manual_review_required
-            # enhanced_file_hash["file_destination"] = (
-            #     FileDestinationType.MANUALREVIEW.value
-            #     if is_manual_review_required
-            #     else FileDestinationType.DESTINATION.value
-            # )
-
             logger.info(
                 f"  MANUAL REVIEW: File #{original_file_number} '{file_name}' (batch_index={file_index}) -> is_manualreview_required={is_manual_review_required}, global_q_file_no_list={global_q_file_no_list}"
             )
 
-            # DEBUG: Show final file_hash state
-            logger.info(f"  Final file_hash for '{file_name}':")
-            logger.info(
-                f"    provider_file_uuid: '{enhanced_file_hash.get('provider_file_uuid')}' (type: {type(enhanced_file_hash.get('provider_file_uuid'))})"
-            )
-            logger.info(f"    file_path: '{enhanced_file_hash.get('file_path')}'")
-            logger.info(f"    file_name: '{enhanced_file_hash.get('file_name')}'")
-            logger.info(
-                f"    is_manualreview_required: '{enhanced_file_hash.get('is_manualreview_required')}'"
-            )
-            # logger.info(
-            #     f"    file_destination: '{enhanced_file_hash.get('file_destination')}'"
-            # )
             if enhanced_file_hash.get("connector_id"):
                 logger.info(
                     f"    connector_id: '{enhanced_file_hash.get('connector_id')}'"
@@ -1428,12 +1403,6 @@ def _create_batch_data_general(
 
             # Set manual review fields in file hash
             enhanced_file_hash["is_manualreview_required"] = is_manual_review_required
-            # enhanced_file_hash["file_destination"] = (
-            #     FileDestinationType.MANUALREVIEW.value
-            #     if is_manual_review_required
-            #     else FileDestinationType.DESTINATION.value
-            # )
-
             logger.info(
                 f"  MANUAL REVIEW (no source): File #{original_file_number} '{file_name}' (batch_index={file_index}) -> is_manualreview_required={is_manual_review_required}, global_q_file_no_list={global_q_file_no_list}"
             )
@@ -1666,28 +1635,6 @@ def async_execute_bin(
             with InternalAPIClient(config) as api_client:
                 api_client.set_organization_context(schema_name)
 
-                # # Use common resolver to determine routing
-                # resolver = PipelineTypeResolver(api_client)
-                # should_use_api, routing_info = resolver.should_route_to_api_worker(
-                #     pipeline_id, workflow_id
-                # )
-
-                # logger.info(
-                #     f"Routing decision: {routing_info['routing_reason']} "
-                #     f"(use_api: {should_use_api})"
-                # )
-
-                # if should_use_api:
-                #     # API workflows should be handled by the dedicated API deployment worker
-                #     logger.warning(
-                #         f"API workflow {workflow_id} routed to general worker - should use API deployment worker"
-                #     )
-                #     # For now, reject API tasks from general worker to prevent conflicts
-                #     raise Exception(
-                #         f"API workflow {workflow_id} should be handled by API deployment worker, not general worker"
-                #     )
-                # else:
-                # Route to general workflow handler
                 return async_execute_bin_general(
                     schema_name=schema_name,
                     workflow_id=workflow_id,

@@ -145,9 +145,11 @@ def _get_type_registry() -> dict[str, type]:
         # Import core data models that are being cached
         from unstract.core.data_models import (
             ConnectorInstanceData,
+            TagData,
             WorkflowDefinitionResponseData,
             WorkflowEndpointConfigData,
             WorkflowEndpointConfigResponseData,
+            WorkflowExecutionData,
         )
 
         from ..models.api_responses import (
@@ -177,6 +179,8 @@ def _get_type_registry() -> dict[str, type]:
             "WorkflowEndpointConfigData": WorkflowEndpointConfigData,
             "ConnectorInstanceData": ConnectorInstanceData,
             "WorkflowDefinitionResponseData": WorkflowDefinitionResponseData,
+            "TagData": TagData,
+            "WorkflowExecutionData": WorkflowExecutionData,
         }
     except ImportError as e:
         logger.warning(f"Failed to import response types for cache reconstruction: {e}")

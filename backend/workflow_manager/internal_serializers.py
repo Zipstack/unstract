@@ -25,6 +25,7 @@ class WorkflowExecutionSerializer(serializers.ModelSerializer):
     workflow_id = serializers.CharField(source="workflow.id", read_only=True)
     workflow_name = serializers.CharField(source="workflow.workflow_name", read_only=True)
     pipeline_id = serializers.SerializerMethodField()
+    tags = serializers.SerializerMethodField()
 
     def get_pipeline_id(self, obj):
         """ROOT CAUSE FIX: Return None for pipeline_id if the referenced pipeline doesn't exist.
@@ -60,6 +61,26 @@ class WorkflowExecutionSerializer(serializers.ModelSerializer):
                 setattr(self, cache_key, None)
                 return None
 
+    def get_tags(self, obj):
+        """Serialize tags as full objects with id, name, and description.
+
+        This method ensures tags are serialized as:
+        [{"id": "uuid", "name": "tag_name", "description": "..."}, ...]
+        instead of just ["uuid1", "uuid2", ...]
+        """
+        try:
+            return [
+                {
+                    "id": str(tag.id),
+                    "name": tag.name,
+                    "description": tag.description or "",
+                }
+                for tag in obj.tags.all()
+            ]
+        except Exception as e:
+            logger.warning(f"Failed to serialize tags for execution {obj.id}: {str(e)}")
+            return []
+
     class Meta:
         model = WorkflowExecution
         fields = [
@@ -80,6 +101,7 @@ class WorkflowExecutionSerializer(serializers.ModelSerializer):
             "execution_time",
             "created_at",
             "modified_at",
+            "tags",
         ]
         read_only_fields = ["id", "created_at", "modified_at"]
 

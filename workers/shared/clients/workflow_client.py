@@ -180,7 +180,6 @@ class WorkflowAPIClient(BaseAPIClient, WorkflowOperationMixin):
             logger.info(
                 f"Retrieved workflow endpoints for {validated_workflow_id}: {response.get('workflow_type', 'unknown')}"
             )
-            logger.info(f"DEBUG   get_workflow_endpoints  response: {response}")
             return WorkflowEndpointConfigResponse.success_response(
                 workflow_id=validated_workflow_id,
                 data=WorkflowEndpointConfigResponseData.from_dict(response),
