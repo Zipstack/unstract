@@ -151,6 +151,7 @@ class GoogleCloudStorageFS(UnstractFileSystem):
                 return None
         logger.debug(f"[GCS] No modified date found in metadata: {metadata}")
         return None
+
     def test_credentials(self) -> bool:
         """Test Google Cloud Storage credentials by accessing the root path info.
 

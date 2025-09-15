@@ -177,6 +177,7 @@ class BoxFS(UnstractFileSystem):
                 e,
             )
         return None
+
     def test_credentials(self) -> bool:
         """To test credentials for the Box connector."""
         is_dir = False
