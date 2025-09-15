@@ -219,7 +219,6 @@ class SourceConnector(BaseConnector):
                 patterns,
                 recursive,
                 limit,
-                file_processing_order,
             )
         else:
             total_matched_files = self._process_with_sorting(
@@ -384,7 +383,6 @@ class SourceConnector(BaseConnector):
         patterns: list[str],
         recursive: bool,
         limit: int,
-        file_processing_order: str,
     ) -> dict[str, FileHash]:
         """Process files directory by directory while checking for limit."""
         total_matched_files = {}

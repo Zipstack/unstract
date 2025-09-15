@@ -111,12 +111,20 @@ class WorkflowHelper:
         BATCH_SIZE = Configuration.get_value_by_organization(
             config_key=ConfigKey.MAX_PARALLEL_FILE_BATCHES, organization=organization
         )  # Max number of batches
+        BATCH_SIZE = (
+            int(BATCH_SIZE)
+            if isinstance(BATCH_SIZE, int) or str(BATCH_SIZE).isdigit()
+            else 1
+        )
         file_items = list(json_serializable_files.items())
 
         # Calculate distribution
         num_files = len(file_items)
         # Target number of batches (can't exceed number of files)
         num_batches = min(BATCH_SIZE, num_files)
+        # Guard against invalid batch sizes
+        if num_batches <= 0:
+            num_batches = 1
 
         if use_round_robin:
             # Round-robin distribution for maintaining order
@@ -124,6 +132,8 @@ class WorkflowHelper:
             for i, file_item in enumerate(file_items):
                 batch_index = i % num_batches
                 batches[batch_index].append(file_item)
+            # Remove empties when num_files < num_batches
+            batches = [b for b in batches if b]
         else:
             # Original consecutive distribution
             base_items_per_batch = num_files // num_batches
