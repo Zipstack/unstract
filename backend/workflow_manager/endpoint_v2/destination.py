@@ -345,7 +345,6 @@ class DestinationConnector(BaseConnector):
             destination_configurations.get(DestinationKey.EXECUTION_ID, "execution_id")
         )
 
-
         data = self.get_tool_execution_result() if not error else None
         metadata = self.get_combined_metadata()
 
