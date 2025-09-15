@@ -354,7 +354,9 @@ class DestinationConnector(BaseConnector):
 
         # Log when we're proceeding with error insertion
         if error and not data:
-            logger.info(f"Proceeding with error record insertion for {input_file_path}: {error}")
+            logger.info(
+                f"Proceeding with error record insertion for {input_file_path}: {error}"
+            )
 
         if isinstance(data, dict):
             data.pop("metadata", None)
