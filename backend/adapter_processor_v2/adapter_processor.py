@@ -166,12 +166,15 @@ class AdapterProcessor:
             adapterkit = Adapterkit()
             adapter_class = adapterkit.get_adapter_class_by_adapter_id(adapter_id)
 
-            # Create a temporary instance just to get configured URLs
-            # This will trigger URL validation in __init__ but not full connection test
-            return adapter_class(adapter_metadata)
+            # Create a temporary instance just to validate URLs
+            # Pass validate_urls=True to trigger URL validation
+            return adapter_class(adapter_metadata, validate_urls=True)
 
         except Exception as e:
-            logger.error(f"URL validation failed for adapter {adapter_id}: {str(e)}")
+            logger.error(
+                f"URL validation failed for adapter {adapter_id}: {str(e)}",
+                exc_info=True,
+            )
             raise
 
     @staticmethod
