@@ -56,6 +56,7 @@ class MariaDB(UnstractDB, MysqlHandler):
             database=self.database,
             user=self.user,
             password=self.password,
+            ssl={"ssl_disabled": False},
         )
         return con
 
