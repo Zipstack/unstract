@@ -58,9 +58,6 @@ class MSSQL(UnstractDB):
     def can_read() -> bool:
         return True
 
-    def get_string_type(self) -> str:
-        return "text"
-
     def sql_to_db_mapping(self, value: str) -> str:
         """Gets the python datatype of value and converts python datatype to
         corresponding DB datatype.
@@ -131,22 +128,28 @@ class MSSQL(UnstractDB):
             f"user_field_2 INT DEFAULT 0, "
             f"user_field_3 NVARCHAR(MAX) DEFAULT NULL, "
             f"status NVARCHAR(10) CHECK (status IN ('ERROR', 'SUCCESS')), "
-            f"error_message NVARCHAR(MAX))"
+            f"error_message NVARCHAR(MAX), "
         )
         return sql_query
 
-    def prepare_multi_column_migration(self, table_name: str, column_name: str) -> str:
-        sql_query = (
-            f"ALTER TABLE {table_name} "
-            f"ADD {column_name}_v2 NVARCHAR(MAX), "
-            + "metadata NVARCHAR(MAX), "
-            + "user_field_1 BIT DEFAULT 0, "
-            + "user_field_2 INT DEFAULT 0, "
-            + "user_field_3 NVARCHAR(MAX) DEFAULT NULL, "
-            + "status NVARCHAR(10) CHECK (status IN ('ERROR', 'SUCCESS')), "
-            + "error_message NVARCHAR(MAX)"
-        )
-        return sql_query
+    def prepare_multi_column_migration(
+        self, table_name: str, column_name: str
+    ) -> list[str]:
+        """Returns a list of ALTER TABLE statements for MSSQL column migration.
+
+        MSSQL doesn't support adding multiple columns in a single ALTER TABLE statement,
+        so we return a list of individual statements like Snowflake.
+        """
+        sql_statements = [
+            f"ALTER TABLE {table_name} ADD {column_name}_v2 NVARCHAR(MAX)",
+            f"ALTER TABLE {table_name} ADD metadata NVARCHAR(MAX)",
+            f"ALTER TABLE {table_name} ADD user_field_1 BIT DEFAULT 0",
+            f"ALTER TABLE {table_name} ADD user_field_2 INT DEFAULT 0",
+            f"ALTER TABLE {table_name} ADD user_field_3 NVARCHAR(MAX) DEFAULT NULL",
+            f"ALTER TABLE {table_name} ADD status NVARCHAR(10)",
+            f"ALTER TABLE {table_name} ADD error_message NVARCHAR(MAX)",
+        ]
+        return sql_statements
 
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any

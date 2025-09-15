@@ -52,6 +52,20 @@ class MySQL(UnstractDB, MysqlHandler):
     def get_string_type(self) -> str:
         return "longtext"
 
+    def get_information_schema(self, table_name: str) -> dict[str, str]:
+        """Get information schema for MySQL database."""
+        # Try case-insensitive search since MySQL table names can be case-sensitive
+        query = (
+            "SELECT column_name, data_type FROM "
+            "information_schema.columns WHERE "
+            f"UPPER(table_name) = UPPER('{table_name}') AND table_schema = '{self.database}'"
+        )
+        results = self.execute(query=query)
+        column_types: dict[str, str] = self.get_db_column_types(
+            columns_with_types=results
+        )
+        return column_types
+
     def get_engine(self) -> Connection:  # type: ignore[type-arg]
         con = pymysql.connect(
             host=self.host,
@@ -62,7 +76,8 @@ class MySQL(UnstractDB, MysqlHandler):
         )
         return con
 
-    def sql_to_db_mapping(self, value: str) -> str:
+    def sql_to_db_mapping(self, value: Any) -> str:
+        """Override to handle JSON columns correctly for MySQL."""
         return str(MysqlHandler.sql_to_db_mapping(value=value))
 
     def get_create_table_base_query(self, table: str) -> str:
