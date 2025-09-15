@@ -5,7 +5,6 @@ from typing import Any
 
 import oracledb
 from oracledb.connection import Connection
-
 from unstract.connectors.databases.unstract_db import UnstractDB
 
 logger = logging.getLogger(__name__)

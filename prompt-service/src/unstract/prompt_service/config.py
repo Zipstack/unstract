@@ -3,7 +3,6 @@ from os import environ as env
 
 from dotenv import load_dotenv
 from flask import Flask
-
 from unstract.core.flask import register_error_handlers, register_request_id_middleware
 from unstract.core.flask.logging import setup_logging
 from unstract.prompt_service.controllers import api

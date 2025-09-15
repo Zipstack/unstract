@@ -4,7 +4,6 @@ from typing import Any
 
 import psycopg2
 from psycopg2.extensions import connection
-
 from unstract.connectors.databases.psycopg_handler import PsycoPgHandler
 from unstract.connectors.databases.unstract_db import UnstractDB
 

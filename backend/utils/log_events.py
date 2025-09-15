@@ -8,9 +8,9 @@ import redis
 import socketio
 from django.conf import settings
 from django.core.wsgi import WSGIHandler
-
 from unstract.core.constants import LogFieldName
 from unstract.workflow_execution.enums import LogType
+
 from utils.constants import ExecutionLogConstants
 from utils.dto import LogDataDTO
 

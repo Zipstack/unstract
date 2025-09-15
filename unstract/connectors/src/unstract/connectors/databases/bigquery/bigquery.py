@@ -9,7 +9,6 @@ from typing import Any
 import google.api_core.exceptions
 from google.cloud import bigquery
 from google.cloud.bigquery import Client
-
 from unstract.connectors.databases.exceptions import (
     BigQueryForbiddenException,
     BigQueryNotFoundException,

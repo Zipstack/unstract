@@ -2,14 +2,14 @@ import logging
 from typing import Any
 
 from singleton_decorator import singleton
-
-from unstract.connectors import ConnectorDict  # type: ignore
 from unstract.connectors.base import UnstractConnector
 from unstract.connectors.constants import Common
 from unstract.connectors.databases import connectors as db_connectors
 from unstract.connectors.enums import ConnectorMode
 from unstract.connectors.filesystems import connectors as fs_connectors
 from unstract.connectors.queues import connectors as q_connectors
+
+from unstract.connectors import ConnectorDict  # type: ignore
 
 logger = logging.getLogger(__name__)
 

@@ -2,7 +2,6 @@ import os
 import warnings
 
 from flask import current_app
-
 from unstract.prompt_service.constants import PromptServiceConstants
 from unstract.sdk.constants import LogLevel
 from unstract.sdk.tool.stream import StreamMixin

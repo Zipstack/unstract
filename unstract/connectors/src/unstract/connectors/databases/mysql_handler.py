@@ -3,7 +3,6 @@ import logging
 from typing import Any
 
 import pymysql.err as MysqlError
-
 from unstract.connectors.databases.exceptions import (
     ColumnMissingException,
     InvalidSyntaxException,
