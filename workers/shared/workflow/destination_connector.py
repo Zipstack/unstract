@@ -445,9 +445,14 @@ class WorkerDestinationConnector:
             f"❌ File '{file_ctx.file_name}' failed to send to destination: {str(error)}",
         )
 
-    def _log_processing_success(self, exec_ctx: ExecutionContext, file_ctx: FileContext):
+    def _log_processing_success(
+        self, exec_ctx: ExecutionContext, file_ctx: FileContext, has_hitl: bool
+    ):
         """Log successful processing."""
-        destination_name = self._get_destination_display_name()
+        if has_hitl:
+            destination_name = "HITL/MANUAL REVIEW"
+        else:
+            destination_name = self._get_destination_display_name()
         log_file_info(
             exec_ctx.workflow_log,
             exec_ctx.file_execution_id,
@@ -554,7 +559,7 @@ class WorkerDestinationConnector:
             raise
 
         # Log success
-        self._log_processing_success(exec_ctx, file_ctx)
+        self._log_processing_success(exec_ctx, file_ctx, result.has_hitl)
 
         return HandleOutputResult(
             output=result.tool_execution_result,
