@@ -338,7 +338,7 @@ class FileHistoryHelper:
         pattern = f"file_active:{workflow.id}:*"
 
         try:
-            CacheService.clear_cache(pattern)
+            CacheService.clear_cache_optimized(pattern)
             logger.info(
                 f"Cleared Redis cache entries for workflow {workflow.id} with pattern: {pattern}"
             )
