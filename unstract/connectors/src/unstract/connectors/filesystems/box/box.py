@@ -159,22 +159,24 @@ class BoxFS(UnstractFileSystem):
             return None
         try:
             if isinstance(value, datetime):
-                return value if value.tzinfo else value.replace(tzinfo=UTC)
+                dt = value if value.tzinfo else value.replace(tzinfo=UTC)
+                return dt.astimezone(UTC)
             if isinstance(value, (int, float)):
                 return datetime.fromtimestamp(value, tz=UTC)
             if isinstance(value, str):
                 # Normalize 'Z' suffix to '+00:00' for fromisoformat compatibility
                 v = value.strip().replace("Z", "+00:00")
                 dt = datetime.fromisoformat(v)
-                return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
-        except Exception as e:
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=UTC)
+                return dt.astimezone(UTC)
+        except (ValueError, TypeError) as e:
             logger.debug(
                 "[Box] Failed to parse modified date (keys=%s): %s",
                 list(metadata.keys()),
                 e,
             )
         return None
-
     def test_credentials(self) -> bool:
         """To test credentials for the Box connector."""
         is_dir = False

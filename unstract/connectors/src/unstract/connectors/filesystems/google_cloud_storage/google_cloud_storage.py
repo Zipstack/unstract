@@ -130,7 +130,7 @@ class GoogleCloudStorageFS(UnstractFileSystem):
             if updated.tzinfo is None:
                 logger.debug("[GCS] Naive datetime encountered; assuming UTC.")
                 return updated.replace(tzinfo=UTC)
-            return updated
+            return updated.astimezone(UTC)
         elif isinstance(updated, (int, float)):
             # Epoch in seconds, milliseconds, or microseconds -> normalize to seconds.
             ts = float(updated)
@@ -142,13 +142,15 @@ class GoogleCloudStorageFS(UnstractFileSystem):
         elif isinstance(updated, str):
             # ISO8601 string (e.g., 2023-01-01T00:00:00Z)
             try:
-                return datetime.fromisoformat(updated.strip().replace("Z", "+00:00"))
+                dt = datetime.fromisoformat(updated.strip().replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    return dt.replace(tzinfo=UTC)
+                return dt.astimezone(UTC)
             except ValueError:
                 logger.warning(f"[GCS] Invalid datetime format: {updated}")
                 return None
         logger.debug(f"[GCS] No modified date found in metadata: {metadata}")
         return None
-
     def test_credentials(self) -> bool:
         """Test Google Cloud Storage credentials by accessing the root path info.
 
