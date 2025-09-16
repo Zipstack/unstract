@@ -63,15 +63,30 @@ class Redshift(UnstractDB, PsycoPgHandler):
             options=f"-c search_path={self.schema}",
         )
 
-    def sql_to_db_mapping(self, value: str) -> str:
+    def sql_to_db_mapping(self, value: Any, column_name: str | None = None) -> str:
+        """Gets the python datatype of value and converts python datatype to
+        corresponding DB datatype.
+
+        Args:
+            value (Any): python value of any datatype
+            column_name (str | None): name of the column being mapped
+
+        Returns:
+            str: database columntype
+        """
         python_type = type(value)
+
+        if python_type in (dict, list):
+            if column_name and column_name.endswith("_v2"):
+                return "SUPER"
+            else:
+                return "VARCHAR(65535)"
+
         mapping = {
             str: "VARCHAR(65535)",
             int: "BIGINT",
             float: "DOUBLE PRECISION",
             datetime.datetime: "TIMESTAMP",
-            dict: "SUPER",
-            list: "SUPER",
         }
         return mapping.get(python_type, "VARCHAR(65535)")
 

@@ -73,27 +73,32 @@ class BigQuery(UnstractDB):
         except Exception as e:
             raise ConnectorError(str(e))
 
-    def sql_to_db_mapping(self, value: str) -> str:
+    def sql_to_db_mapping(self, value: Any, column_name: str | None = None) -> str:
         """Gets the python datatype of value and converts python datatype to
         corresponding DB datatype.
 
         Args:
             value (str): python datatype
+            column_name (str | None): name of the column being mapped
 
         Returns:
             str: database columntype
         """
         python_type = type(value)
 
+        if python_type in (dict, list):
+            if column_name and column_name.endswith("_v2"):
+                return "JSON"
+            else:
+                return "STRING"
+
         mapping = {
-            str: "string",
+            str: "STRING",
             int: "INT64",
             float: "FLOAT64",
             datetime.datetime: "TIMESTAMP",
-            dict: "JSON",
-            list: "JSON",
         }
-        return mapping.get(python_type, "string")
+        return mapping.get(python_type, "STRING")
 
     def get_create_table_base_query(self, table: str) -> str:
         """Function to create a base create table sql query.

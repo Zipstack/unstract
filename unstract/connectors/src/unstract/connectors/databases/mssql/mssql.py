@@ -58,25 +58,27 @@ class MSSQL(UnstractDB):
     def can_read() -> bool:
         return True
 
-    def sql_to_db_mapping(self, value: str) -> str:
+    def sql_to_db_mapping(self, value: Any, column_name: str | None = None) -> str:
         """Gets the python datatype of value and converts python datatype to
         corresponding DB datatype.
 
         Args:
             value (str): python datatype
+            column_name (str | None): name of the column being mapped
 
         Returns:
             str: database columntype
         """
         python_type = type(value)
 
+        if python_type in (dict, list):
+            return "NVARCHAR(MAX)"
+
         mapping = {
             str: "NVARCHAR(MAX)",
             int: "INT",
             float: "FLOAT",
             datetime.datetime: "DATETIMEOFFSET",
-            dict: "NVARCHAR(MAX)",
-            list: "NVARCHAR(MAX)",
         }
         return mapping.get(python_type, "NVARCHAR(MAX)")
 

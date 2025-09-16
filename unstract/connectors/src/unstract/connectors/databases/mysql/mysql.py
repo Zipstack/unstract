@@ -76,9 +76,9 @@ class MySQL(UnstractDB, MysqlHandler):
         )
         return con
 
-    def sql_to_db_mapping(self, value: Any) -> str:
+    def sql_to_db_mapping(self, value: Any, column_name: str | None = None) -> str:
         """Override to handle JSON columns correctly for MySQL."""
-        return str(MysqlHandler.sql_to_db_mapping(value=value))
+        return str(MysqlHandler.sql_to_db_mapping(value=value, column_name=column_name))
 
     def get_create_table_base_query(self, table: str) -> str:
         """Function to create a base create table sql query with MySQL specific types.

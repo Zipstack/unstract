@@ -73,24 +73,28 @@ class OracleDB(UnstractDB):
         )
         return con
 
-    def sql_to_db_mapping(self, value: str) -> str:
+    def sql_to_db_mapping(self, value: Any, column_name: str | None = None) -> str:
         """Function to generate information schema of the corresponding table.
 
         Args:
-            table_name (str): db-connector table name
+            value (Any): python value of any datatype
+            column_name (str | None): name of the column being mapped
 
         Returns:
-            dict[str, str]: a dictionary contains db column name and
-            db column types of corresponding table
+            str: database columntype
         """
         python_type = type(value)
+        if python_type in (dict, list):
+            if column_name and column_name.endswith("_v2"):
+                return "CLOB"
+            else:
+                return "VARCHAR2(32767)"
+
         mapping = {
             str: "VARCHAR2(32767)",
             int: "NUMBER",
             float: "LONG",
             datetime.datetime: "TIMESTAMP",
-            dict: "CLOB",
-            list: "CLOB",
         }
         return mapping.get(python_type, "VARCHAR2(32767)")
 
