@@ -52,7 +52,7 @@ class TestDestinationConnectorSnowflake(TestCase):
         self.input_file_path = "/path/to/test/file.pdf"
 
         # Snowflake table naming (use schema.table format)
-        self.test_table_name = f"{self.snowflake_config['schema']}.MIGRATION"
+        self.test_table_name = f"{self.snowflake_config['schema']}.migration"
 
         # Create real Snowflake connector instance
         self.snowflake_connector = SnowflakeDB(settings=self.snowflake_config)

@@ -414,7 +414,7 @@ class DestinationConnector(BaseConnector):
                 table_name=table_name,
                 values=values,
             )
-            logger.debug("destination.py sql_columns_and_values", sql_columns_and_values)
+            logger.info("destination.py sql_columns_and_values", sql_columns_and_values)
             DatabaseUtils.execute_write_query(
                 db_class=db_class,
                 engine=engine,
