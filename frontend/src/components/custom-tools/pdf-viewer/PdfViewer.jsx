@@ -20,6 +20,7 @@ function PdfViewer({ fileUrl, highlightData, currentHighlightIndex }) {
   const pageNavigationPluginInstance = pageNavigationPlugin();
   const { jumpToPage } = pageNavigationPluginInstance;
   const parentRef = useRef(null);
+
   function removeZerosAndDeleteIfAllZero(highlightData) {
     if (Array.isArray(highlightData))
       return highlightData?.filter((innerArray) => {
@@ -36,27 +37,36 @@ function PdfViewer({ fileUrl, highlightData, currentHighlightIndex }) {
   const processedHighlightData =
     processHighlightData?.length > 0 ? processHighlightData : [[0, 0, 0, 0]];
 
-  const highlightPluginInstance = useMemo(() => {
+  // Determine current highlight data
+  const currentHighlightData = useMemo(() => {
     if (
       RenderHighlights &&
       Array.isArray(processedHighlightData) &&
       processedHighlightData?.length > 0
     ) {
-      // Only pass the current highlight to render
-      const currentHighlight =
-        currentHighlightIndex !== null &&
+      return currentHighlightIndex !== null &&
         currentHighlightIndex < processedHighlightData.length
-          ? [processedHighlightData[currentHighlightIndex]]
-          : processedHighlightData;
-
-      return highlightPlugin({
-        renderHighlights: (props) => (
-          <RenderHighlights {...props} highlightData={currentHighlight} />
-        ),
-      });
+        ? [processedHighlightData[currentHighlightIndex]]
+        : processedHighlightData;
     }
-    return "";
-  }, [RenderHighlights, processedHighlightData, currentHighlightIndex]);
+    return null;
+  }, [processedHighlightData, currentHighlightIndex]);
+
+  // Always create both plugins at top level to maintain hook order
+  const baseHighlightPlugin = highlightPlugin();
+  const customHighlightPlugin = highlightPlugin({
+    renderHighlights:
+      currentHighlightData && RenderHighlights
+        ? (props) => (
+            <RenderHighlights {...props} highlightData={currentHighlightData} />
+          )
+        : undefined,
+  });
+
+  // Choose which plugin to use
+  const highlightPluginInstance = currentHighlightData
+    ? customHighlightPlugin
+    : baseHighlightPlugin;
 
   // Jump to page when highlightData changes or when navigating through highlights
   useEffect(() => {

@@ -55,6 +55,11 @@ class FileHistory(BaseModel):
         verbose_name = "File History"
         verbose_name_plural = "File Histories"
         db_table = "file_history"
+        indexes = [
+            models.Index(
+                fields=["workflow", "created_at"], name="idx_fh_workflow_created"
+            ),
+        ]
         constraints = [
             # Legacy behavior: file_path is not present or is null
             models.UniqueConstraint(

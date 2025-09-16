@@ -1,11 +1,10 @@
 import logging
+from typing import Any
 
 from connector_v2.models import ConnectorInstance
 from connector_v2.serializers import ConnectorInstanceSerializer
 from rest_framework import serializers
-from rest_framework.serializers import (
-    ModelSerializer,
-)
+from rest_framework.serializers import ModelSerializer
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 
 logger = logging.getLogger(__name__)
@@ -25,7 +24,7 @@ class WorkflowEndpointSerializer(ModelSerializer):
         model = WorkflowEndpoint
         fields = "__all__"
 
-    def get_fields(self):
+    def get_fields(self) -> Any:
         """Override get_fields to dynamically set the connector_instance_id queryset.
 
         This is needed to ensure that the queryset is set after the organization
