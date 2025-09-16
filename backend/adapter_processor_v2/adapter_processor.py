@@ -99,6 +99,8 @@ class AdapterProcessor:
     def test_adapter(adapter_id: str, adapter_metadata: dict[str, Any]) -> bool:
         logger.info(f"Testing adapter: {adapter_id}")
         try:
+            # Defensive copy; don't mutate caller dict
+            adapter_metadata = dict(adapter_metadata)
             if adapter_metadata.pop(AdapterKeys.ADAPTER_TYPE) == AdapterKeys.X2TEXT:
                 if (
                     adapter_metadata.get(AdapterKeys.PLATFORM_PROVIDED_UNSTRACT_KEY)
@@ -126,7 +128,8 @@ class AdapterProcessor:
             return test_result
         except SdkError as e:
             raise TestAdapterError(
-                e, adapter_name=adapter_metadata[AdapterKeys.ADAPTER_NAME]
+                e,
+                adapter_name=adapter_metadata.get(AdapterKeys.ADAPTER_NAME, "adapter"),
             )
 
     @staticmethod

@@ -291,13 +291,9 @@ class AdapterInstanceViewSet(ModelViewSet):
 
             # Update metadata if using platform key
             if use_platform_unstract_key:
-                updated_b = self._update_metadata_for_platform_key(
+                self._update_metadata_for_platform_key(
                     serializer.validated_data, adapter_type
                 )
-                if updated_b is not None:
-                    # Re-validate post-mutation metadata before save
-                    final_md = self._decrypt_and_validate_metadata(updated_b)
-                    self._validate_adapter_urls(adapter_id, final_md)
 
             # Save the adapter instance
             instance = serializer.save()
@@ -305,10 +301,6 @@ class AdapterInstanceViewSet(ModelViewSet):
             # Set as default adapter if needed
             self._set_default_adapter_if_needed(instance, adapter_type, request.user.id)
 
-        except IntegrityError as e:
-            raise DuplicateAdapterNameError(
-                name=serializer.validated_data.get(AdapterKeys.ADAPTER_NAME)
-            ) from e
         except IntegrityError:
             raise DuplicateAdapterNameError(
                 name=serializer.validated_data.get(AdapterKeys.ADAPTER_NAME)
