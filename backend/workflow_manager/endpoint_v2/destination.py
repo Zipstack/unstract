@@ -370,9 +370,8 @@ class DestinationConnector(BaseConnector):
 
         table_info = db_class.get_information_schema(table_name=table_name)
 
-        logger.info(
-            f"destination connector engine: {engine} with table_info: {table_info}"
-        )
+        logger.info(f"destination connector table_name: {table_name}")
+        logger.info(f"destination connector table_info: {table_info}")
 
         if table_info:
             if db_class.has_no_metadata(table_info=table_info):
@@ -415,8 +414,9 @@ class DestinationConnector(BaseConnector):
                 table_name=table_name,
                 values=values,
             )
-            logger.info(
-                f"destination.py sql_columns_and_values: {sql_columns_and_values}"
+            print(
+                "**** destination.py sql_columns_and_values : **** ",
+                sql_columns_and_values,
             )
             DatabaseUtils.execute_write_query(
                 db_class=db_class,

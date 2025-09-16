@@ -105,8 +105,8 @@ class BigQuery(UnstractDB):
         Returns:
             str: generates a create sql base query with the constant columns
         """
-        bigquery_table_name = str.lower(table).split(".")
-        if len(bigquery_table_name) != self.big_query_table_size:
+        bigquery_table_parts = table.split(".")
+        if len(bigquery_table_parts) != self.big_query_table_size:
             raise ValueError(
                 f"Invalid table name format: '{table}'. "
                 "Please ensure the BigQuery table is in the form of "
@@ -140,7 +140,7 @@ class BigQuery(UnstractDB):
 
     @staticmethod
     def get_sql_insert_query(
-        table_name: str, sql_keys: list[str], sql_values: list[str] = None
+        table_name: str, sql_keys: list[str], sql_values: list[str] | None = None
     ) -> str:
         """Function to generate parameterised insert sql query.
 
@@ -153,8 +153,13 @@ class BigQuery(UnstractDB):
             str: returns a string with parameterised insert sql query
         """
         # BigQuery uses @ parameterization, ignore sql_values for now
-        keys_str = ",".join(sql_keys)
-        values_placeholder = ",".join(["@" + key for key in sql_keys])
+        # Escape column names with backticks to handle special characters like underscores
+        escaped_keys = [f"`{key}`" for key in sql_keys]
+        keys_str = ",".join(escaped_keys)
+
+        # Also escape parameter names with backticks to handle underscores in parameter names
+        escaped_params = [f"@`{key}`" for key in sql_keys]
+        values_placeholder = ",".join(escaped_params)
         return f"INSERT INTO {table_name} ({keys_str}) VALUES ({values_placeholder})"
 
     def execute_query(
@@ -192,9 +197,9 @@ class BigQuery(UnstractDB):
                         # For JSON objects in JSON columns, convert to string and use PARSE_JSON
                         json_str = json.dumps(value) if value else None
                         if json_str:
-                            # Replace @key with PARSE_JSON(@key) in the SQL query
+                            # Replace @`key` with PARSE_JSON(@`key`) in the SQL query
                             modified_sql = modified_sql.replace(
-                                f"@{key}", f"PARSE_JSON(@{key})"
+                                f"@`{key}`", f"PARSE_JSON(@`{key}`)"
                             )
                         query_parameters.append(
                             bigquery.ScalarQueryParameter(key, "STRING", json_str)
@@ -248,16 +253,18 @@ class BigQuery(UnstractDB):
             dict[str, str]: a dictionary contains db column name and
             db column types of corresponding table
         """
-        bigquery_table_name = str.lower(table_name).split(".")
-        if len(bigquery_table_name) != self.big_query_table_size:
+        # Split table name but preserve case for table name part
+        bigquery_table_parts = table_name.split(".")
+        if len(bigquery_table_parts) != self.big_query_table_size:
             raise ValueError(
                 f"Invalid table name format: '{table_name}'. "
                 "Please ensure the BigQuery table is in the form of "
                 "{database}.{schema}.{table}."
             )
-        database = bigquery_table_name[0]
-        schema = bigquery_table_name[1]
-        table = bigquery_table_name[2]
+        # Convert database and schema to lowercase, but preserve table name case
+        database = bigquery_table_parts[0].lower()
+        schema = bigquery_table_parts[1].lower()
+        table = bigquery_table_parts[2]  # Preserve original case
         query = (
             "SELECT column_name, data_type FROM "
             f"{database}.{schema}.INFORMATION_SCHEMA.COLUMNS WHERE "
