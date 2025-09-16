@@ -167,16 +167,10 @@ class DatabaseUtils:
             if isinstance(data, str):
                 wrapped_dict = {"result": data}
                 values[single_column_name] = wrapped_dict
-                if table_info and any(
-                    k.lower() == f"{single_column_name}_v2".lower() for k in table_info
-                ):
-                    values[f"{single_column_name}_v2"] = wrapped_dict
+                values[f"{single_column_name}_v2"] = wrapped_dict
             else:
                 values[single_column_name] = data
-                if table_info and any(
-                    k.lower() == f"{single_column_name}_v2".lower() for k in table_info
-                ):
-                    values[f"{single_column_name}_v2"] = data
+                values[f"{single_column_name}_v2"] = data
         values[file_path_name] = file_path
         values[execution_id_name] = execution_id
         logger.debug(f"database_utils.py get_columns_and_values  values: {values}")
