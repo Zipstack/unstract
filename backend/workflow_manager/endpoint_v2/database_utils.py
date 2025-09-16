@@ -164,13 +164,22 @@ class DatabaseUtils:
                 FileProcessingStatus.ERROR if error else FileProcessingStatus.SUCCESS
             )
         if column_mode == ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN:
+            v2_col_name = f"{single_column_name}_v2"
+            has_v2_col = (
+                (table_info is None)
+                or any(k.lower() == v2_col_name.lower() for k in table_info)
+                if table_info
+                else True
+            )
             if isinstance(data, str):
                 wrapped_dict = {"result": data}
                 values[single_column_name] = wrapped_dict
-                values[f"{single_column_name}_v2"] = wrapped_dict
+                if has_v2_col:
+                    values[v2_col_name] = wrapped_dict
             else:
                 values[single_column_name] = data
-                values[f"{single_column_name}_v2"] = data
+                if has_v2_col:
+                    values[v2_col_name] = data
         values[file_path_name] = file_path
         values[execution_id_name] = execution_id
         logger.debug(f"database_utils.py get_columns_and_values  values: {values}")
