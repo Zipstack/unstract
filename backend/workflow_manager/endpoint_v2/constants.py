@@ -104,7 +104,7 @@ class FileProcessingOrder(str, Enum):
         if default is None:
             default = cls.UNORDERED
 
-        if value is None:
+        if not value:
             return default
 
         # Already an enum instance

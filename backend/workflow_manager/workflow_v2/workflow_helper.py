@@ -26,10 +26,6 @@ from utils.user_context import UserContext
 
 from backend.celery_service import app as celery_app
 from unstract.workflow_execution.enums import LogStage
-from workflow_manager.endpoint_v2.constants import (
-    FileProcessingOrder,
-    SourceKey,
-)
 from workflow_manager.endpoint_v2.destination import DestinationConnector
 from workflow_manager.endpoint_v2.dto import FileHash
 from workflow_manager.endpoint_v2.result_cache_utils import ResultCacheUtils
@@ -90,14 +86,13 @@ class WorkflowHelper:
 
     @classmethod
     def get_file_batches(
-        cls, input_files: dict[str, FileHash], use_round_robin: bool = False
+        cls, input_files: dict[str, FileHash]
     ) -> list[list[tuple[str, FileHash]]]:
         """Split input files into batches for parallel processing.
         Distributes files as evenly as possible across the target number of batches.
 
         Args:
             input_files (dict[str, FileHash]): input files
-            use_round_robin (bool): If True, distribute files round-robin style for order preservation
 
         Returns:
             batches: batches of input files
@@ -126,32 +121,13 @@ class WorkflowHelper:
         if num_batches <= 0:
             num_batches = 1
 
-        if use_round_robin:
-            # Round-robin distribution for maintaining order
-            batches = [[] for _ in range(num_batches)]
-            for i, file_item in enumerate(file_items):
-                batch_index = i % num_batches
-                batches[batch_index].append(file_item)
-            # Remove empties when num_files < num_batches
-            batches = [b for b in batches if b]
-        else:
-            # Original consecutive distribution
-            base_items_per_batch = num_files // num_batches
-            remainder = num_files % num_batches
-
-            batches = []
-            start_index = 0
-
-            for i in range(num_batches):
-                # First 'remainder' batches get one extra item
-                batch_size = base_items_per_batch + (1 if i < remainder else 0)
-
-                if start_index < len(file_items):
-                    end_index = min(start_index + batch_size, len(file_items))
-                    batch = file_items[start_index:end_index]
-                    if batch:  # Only add non-empty batches
-                        batches.append(batch)
-                    start_index = end_index
+        # Round-robin distribution for maintaining order in case its sorted
+        batches = [[] for _ in range(num_batches)]
+        for i, file_item in enumerate(file_items):
+            batch_index = i % num_batches
+            batches[batch_index].append(file_item)
+        # Remove empties when num_files < num_batches
+        batches = [b for b in batches if b]
 
         return batches
 
@@ -196,18 +172,7 @@ class WorkflowHelper:
             )
             return
 
-        # Check if file processing order is configured
-        source_config = source.endpoint.configuration
-        file_processing_order = FileProcessingOrder.from_value(
-            source_config.get(SourceKey.FILE_PROCESSING_ORDER)
-        )
-
-        # Use round-robin batching if ordering is required
-        use_round_robin = file_processing_order != FileProcessingOrder.UNORDERED
-
-        batches = cls.get_file_batches(
-            input_files=input_files, use_round_robin=use_round_robin
-        )
+        batches = cls.get_file_batches(input_files=input_files)
         batch_tasks = []
         mode = (
             execution_mode[1]
@@ -216,17 +181,9 @@ class WorkflowHelper:
         )
         result = None
 
-        # Log batching strategy
-        if use_round_robin:
-            logger.info(
-                f"Execution {workflow_execution.id} processing {total_files} files in {len(batches)} batches "
-                f"using round-robin distribution for {file_processing_order.value} ordering"
-            )
-        else:
-            logger.info(
-                f"Execution {workflow_execution.id} processing {total_files} files in {len(batches)} batches "
-                f"using consecutive distribution"
-            )
+        logger.info(
+            f"Execution {workflow_execution.id} processing {total_files} files in {len(batches)} batches"
+        )
         for batch in batches:
             # Convert all UUIDs to strings in batch_data
             file_data = FileData(
