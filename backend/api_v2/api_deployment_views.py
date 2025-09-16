@@ -31,6 +31,16 @@ from api_v2.serializers import (
     SharedUserListSerializer,
 )
 
+try:
+    from plugins.notification.constants import ResourceType
+    from plugins.notification.sharing_notification import SharingNotificationService
+
+    NOTIFICATION_PLUGIN_AVAILABLE = True
+    sharing_notification_service = SharingNotificationService()
+except ImportError:
+    NOTIFICATION_PLUGIN_AVAILABLE = False
+    sharing_notification_service = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -272,18 +282,17 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
         response = super().partial_update(request, *args, **kwargs)
 
         # If successful and shared_users changed, send notifications
-        if response.status_code == 200 and "shared_users" in request.data:
+        if (
+            response.status_code == 200
+            and "shared_users" in request.data
+            and NOTIFICATION_PLUGIN_AVAILABLE
+        ):
             try:
                 instance.refresh_from_db()
                 new_shared_users = set(instance.shared_users.all())
                 newly_shared_users = new_shared_users - current_shared_users
 
                 if newly_shared_users:
-                    from plugins.notification.constants import ResourceType
-                    from plugins.notification.sharing_notification import (
-                        SharingNotificationService,
-                    )
-
                     notification_service = SharingNotificationService()
                     notification_service.send_sharing_notification(
                         resource_type=ResourceType.API_DEPLOYMENT.value,
