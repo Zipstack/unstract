@@ -166,15 +166,15 @@ class UnstractFileSystem(UnstractConnector, ABC):
         directory: str,
         max_depth: int = 1,
         include_dirs: bool = False,
+        limit: int | None = None,
     ) -> list[dict[str, Any]]:
         """List files in a directory with optional sorting.
 
         Args:
             directory: Directory path to list
-            recursive: Whether to traverse subdirectories
             max_depth: Maximum depth for recursive traversal
-            sort_by: Sorting option for results
             include_dirs: Whether to include directories in results
+            limit: Maximum number of files to collect (for performance)
 
         Returns:
             List of file metadata dictionaries
@@ -188,10 +188,10 @@ class UnstractFileSystem(UnstractConnector, ABC):
                 for metadata in fs_metadata_list:
                     if not include_dirs and self.is_dir_by_metadata(metadata):
                         continue
-                    # Add context for later processing if required
-                    metadata["_root_dir"] = root
-                    metadata["_dirs"] = dirs
                     all_files.append(metadata)
+
+                    if limit is not None and len(all_files) >= limit:
+                        return all_files
             except Exception as e:
                 logger.warning(f"Failed to list directory {root}: {e}")
                 self._store_user_error(f"Could not access directory: {root}")

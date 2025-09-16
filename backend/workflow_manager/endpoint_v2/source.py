@@ -292,17 +292,27 @@ class SourceConnector(BaseConnector):
         """
         all_files_metadata = []
         max_depth = int(SourceConstant.MAX_RECURSIVE_DEPTH) if recursive else 1
+        max_files_for_sorting = SourceConstant.MAX_FILES_FOR_SORTING
+        total_collected = 0
 
         # Collect files from all directories
         for input_directory in valid_directories:
             logger.debug(f"Collecting files from: {input_directory}")
+
+            # Calculate remaining limit for this directory
+            remaining_limit = max_files_for_sorting - total_collected
+            if remaining_limit <= 0:
+                break
+
             try:
                 files_metadata = source_fs.list_files(
                     directory=input_directory,
                     max_depth=max_depth,
                     include_dirs=False,
+                    limit=remaining_limit,
                 )
                 all_files_metadata.extend(files_metadata)
+                total_collected += len(files_metadata)
 
                 # Report errors
                 user_errors = source_fs.report_errors_to_user()
@@ -313,10 +323,24 @@ class SourceConnector(BaseConnector):
                         f"... and {len(user_errors) - 5} more errors",
                         level=LogLevel.ERROR,
                     )
+
+                # Check if we've hit the limit
+                if total_collected >= max_files_for_sorting:
+                    break
+
             except Exception as e:
                 error_msg = f"Failed to collect files from {input_directory}"
                 logger.error(f"{error_msg}: {e}")
                 self.workflow_log.publish_log(error_msg, level=LogLevel.ERROR)
+
+        # Log warning if collection limit was reached
+        if total_collected >= max_files_for_sorting:
+            warning_msg = (
+                f"File collection limit of '{max_files_for_sorting}' files reached. "
+                "Ordering may not reflect all available files from source file system"
+            )
+            logger.warning(warning_msg)
+            self.workflow_log.publish_log(warning_msg, level=LogLevel.WARN)
 
         # Apply sorting
         if file_processing_order == FileProcessingOrder.OLDEST_FIRST:

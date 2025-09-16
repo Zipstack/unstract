@@ -195,6 +195,7 @@ class FilePattern:
 
 class SourceConstant:
     MAX_RECURSIVE_DEPTH = 10
+    MAX_FILES_FOR_SORTING = 40000
 
 
 class ApiDeploymentResultStatus:
