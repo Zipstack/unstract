@@ -1,4 +1,5 @@
 import datetime
+import logging
 import os
 from typing import Any
 
@@ -6,6 +7,8 @@ import oracledb
 from oracledb.connection import Connection
 
 from unstract.connectors.databases.unstract_db import UnstractDB
+
+logger = logging.getLogger(__name__)
 
 
 class OracleDB(UnstractDB):
@@ -82,12 +85,14 @@ class OracleDB(UnstractDB):
         """
         python_type = type(value)
         mapping = {
-            str: "CLOB",
+            str: "VARCHAR2(32767)",
             int: "NUMBER",
             float: "LONG",
             datetime.datetime: "TIMESTAMP",
+            dict: "CLOB",
+            list: "CLOB",
         }
-        return mapping.get(python_type, "CLOB")
+        return mapping.get(python_type, "VARCHAR2(32767)")
 
     def get_create_table_base_query(self, table: str) -> str:
         """Function to create a base create table sql query.
@@ -99,19 +104,53 @@ class OracleDB(UnstractDB):
             str: generates a create sql base query with the constant columns
         """
         sql_query = (
-            f"CREATE TABLE IF NOT EXISTS {table} "
+            f"CREATE TABLE {table} "
             f"(id VARCHAR2(32767) , "
             f"created_by VARCHAR2(32767), created_at TIMESTAMP, "
+            f"metadata CLOB, "
+            f"user_field_1 NUMBER(1) DEFAULT 0, "
+            f"user_field_2 NUMBER DEFAULT 0, "
+            f"user_field_3 VARCHAR2(32767) DEFAULT NULL, "
+            f"status VARCHAR2(10), "
+            f"error_message VARCHAR2(32767), "
         )
         return sql_query
 
+    def prepare_multi_column_migration(self, table_name: str, column_name: str) -> list:
+        """Prepare ALTER TABLE statements for adding new columns to an existing table.
+
+        Args:
+            table_name (str): The name of the table to alter
+            column_name (str): The base name of the column to add a _v2 version for
+
+        Returns:
+            list: List of ALTER TABLE statements, one per column addition
+
+        Note:
+            Oracle does not support multiple ADD clauses in a single ALTER TABLE statement.
+            Each column addition requires a separate ALTER TABLE statement.
+        """
+        # Return one ALTER statement per column for Oracle compatibility
+        return [
+            f"ALTER TABLE {table_name} ADD {column_name}_v2 CLOB",
+            f"ALTER TABLE {table_name} ADD metadata CLOB",
+            f"ALTER TABLE {table_name} ADD user_field_1 NUMBER(1) DEFAULT 0",
+            f"ALTER TABLE {table_name} ADD user_field_2 NUMBER DEFAULT 0",
+            f"ALTER TABLE {table_name} ADD user_field_3 VARCHAR2(32767) DEFAULT NULL",
+            f"ALTER TABLE {table_name} ADD status VARCHAR2(10)",
+            f"ALTER TABLE {table_name} ADD error_message VARCHAR2(32767)",
+        ]
+
     @staticmethod
-    def get_sql_insert_query(table_name: str, sql_keys: list[str]) -> str:
+    def get_sql_insert_query(
+        table_name: str, sql_keys: list[str], sql_values: list[str] | None = None
+    ) -> str:
         """Function to generate parameterised insert sql query.
 
         Args:
             table_name (str): db-connector table name
             sql_keys (list[str]): column names
+            sql_values (list[str], optional): SQL values for database-specific handling (ignored for Oracle)
 
         Returns:
             str: returns a string with parameterised insert sql query
@@ -128,7 +167,7 @@ class OracleDB(UnstractDB):
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
     ) -> None:
-        """Executes create/insert query.
+        """Executes create/insert query with Oracle-specific error handling.
 
         Args:
             engine (Any): oracle db client engine
@@ -137,12 +176,19 @@ class OracleDB(UnstractDB):
         """
         sql_keys = list(kwargs.get("sql_keys", []))
         with engine.cursor() as cursor:
-            if sql_values:
-                params = dict(zip(sql_keys, sql_values, strict=False))
-                cursor.execute(sql_query, params)
-            else:
-                cursor.execute(sql_query)
-            engine.commit()
+            try:
+                if sql_values:
+                    params = dict(zip(sql_keys, sql_values, strict=False))
+                    cursor.execute(sql_query, params)
+                else:
+                    cursor.execute(sql_query)
+                engine.commit()
+            except oracledb.DatabaseError as e:
+                logger.debug(f"Oracle database error occurred: {str(e)}")
+                if "ORA-00955" in str(e):
+                    logger.info("Table already exists (ORA-00955) for oracle-db")
+                else:
+                    raise
 
     def get_information_schema(self, table_name: str) -> dict[str, str]:
         """Function to generate information schema of the big query table.

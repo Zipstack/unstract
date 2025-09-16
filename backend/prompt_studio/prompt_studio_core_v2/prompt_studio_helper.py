@@ -1551,6 +1551,8 @@ class PromptStudioHelper:
             "eval_security_pii": prompt.eval_security_pii,
             "eval_guidance_toxicity": prompt.eval_guidance_toxicity,
             "eval_guidance_completeness": prompt.eval_guidance_completeness,
+            "enable_postprocessing_webhook": prompt.enable_postprocessing_webhook,
+            "postprocessing_webhook_url": prompt.postprocessing_webhook_url,
         }
 
     @staticmethod
