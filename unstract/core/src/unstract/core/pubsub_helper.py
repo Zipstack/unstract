@@ -9,7 +9,6 @@ from typing import Any
 import httpx
 import redis
 from kombu import Connection
-
 from unstract.core.constants import LogEventArgument, LogProcessingTask
 
 

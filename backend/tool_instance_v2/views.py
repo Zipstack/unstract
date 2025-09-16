@@ -3,6 +3,7 @@ import uuid
 from typing import Any
 
 from account_v2.custom_exceptions import DuplicateData
+from backend.constants import RequestKey
 from django.db import IntegrityError
 from django.db.models.query import QuerySet
 from rest_framework import serializers, status, viewsets
@@ -14,7 +15,6 @@ from utils.filtering import FilterHelper
 from utils.user_session import UserSessionUtils
 from workflow_manager.workflow_v2.constants import WorkflowKey
 
-from backend.constants import RequestKey
 from tool_instance_v2.constants import ToolInstanceErrors, ToolKey
 from tool_instance_v2.constants import ToolInstanceKey as TIKey
 from tool_instance_v2.exceptions import FetchToolListFailed, ToolFunctionIsMandatory
@@ -119,8 +119,7 @@ class ToolInstanceViewSet(viewsets.ModelViewSet):
             self.perform_create(serializer)
         except IntegrityError:
             raise DuplicateData(
-                f"{ToolInstanceErrors.TOOL_EXISTS}, "
-                f"{ToolInstanceErrors.DUPLICATE_API}"
+                f"{ToolInstanceErrors.TOOL_EXISTS}, {ToolInstanceErrors.DUPLICATE_API}"
             )
         instance: ToolInstance = serializer.instance
         ToolInstanceHelper.update_metadata_with_default_values(

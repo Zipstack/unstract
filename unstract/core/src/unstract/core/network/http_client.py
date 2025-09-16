@@ -1,7 +1,6 @@
 import logging
 
 import requests
-
 from unstract.core.network.enums import HTTPMethod
 
 logger = logging.getLogger(__name__)

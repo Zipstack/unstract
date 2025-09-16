@@ -4,7 +4,6 @@ from typing import Any
 
 import aiohttp
 from fsspec.implementations.http import HTTPFileSystem
-
 from unstract.connectors.exceptions import ConnectorError
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
@@ -103,7 +102,6 @@ class HttpFS(UnstractFileSystem):
             ) from e
         if not is_dir:
             raise ConnectorError(
-                "Unable to connect to HTTP server, "
-                "please check the connection settings."
+                "Unable to connect to HTTP server, please check the connection settings."
             )
         return True

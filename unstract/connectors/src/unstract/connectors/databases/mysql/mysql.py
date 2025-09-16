@@ -3,7 +3,6 @@ from typing import Any
 
 import pymysql
 from pymysql.connections import Connection
-
 from unstract.connectors.databases.mysql_handler import MysqlHandler
 from unstract.connectors.databases.unstract_db import UnstractDB
 

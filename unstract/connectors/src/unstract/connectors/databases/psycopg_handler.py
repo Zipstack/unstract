@@ -2,7 +2,6 @@ import logging
 from typing import Any
 
 from psycopg2 import errors as PsycopgError
-
 from unstract.connectors.databases.exceptions import (
     ColumnMissingException,
     FeatureNotSupportedException,

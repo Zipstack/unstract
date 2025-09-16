@@ -1,6 +1,5 @@
-from rest_framework import serializers
-
 from backend.serializers import AuditSerializer
+from rest_framework import serializers
 
 from .models import ToolStudioPrompt
 

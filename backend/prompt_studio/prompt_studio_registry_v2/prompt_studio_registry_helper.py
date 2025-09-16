@@ -5,6 +5,7 @@ from account_v2.models import User
 from adapter_processor_v2.models import AdapterInstance
 from django.conf import settings
 from django.db import IntegrityError
+from unstract.tool_registry.dto import Properties, Spec, Tool
 
 from prompt_studio.modifier_loader import ModifierConfig
 from prompt_studio.modifier_loader import load_plugins as load_modifier_plugins
@@ -15,7 +16,6 @@ from prompt_studio.prompt_studio_output_manager_v2.models import (
     PromptStudioOutputManager,
 )
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
-from unstract.tool_registry.dto import Properties, Spec, Tool
 
 from .constants import JsonSchemaKey, PromptStudioRegistryKeys
 from .exceptions import (
@@ -125,8 +125,7 @@ class PromptStudioRegistryHelper:
         # Suppress all exceptions to allow processing
         except Exception as e:
             logger.warning(
-                "Error while fetching for prompt registry "
-                f"ID {prompt_registry_id}: {e} "
+                f"Error while fetching for prompt registry ID {prompt_registry_id}: {e} "
             )
             return None
         return Tool(
@@ -215,8 +214,7 @@ class PromptStudioRegistryHelper:
             return obj
         except IntegrityError as error:
             logger.error(
-                "Integrity Error - Error occurred while "
-                f"exporting custom tool : {error}"
+                f"Integrity Error - Error occurred while exporting custom tool : {error}"
             )
             raise ToolSaveError
 
