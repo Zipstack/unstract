@@ -1,12 +1,10 @@
 import datetime
 import json
 import logging
-import uuid
-from enum import Enum
 from typing import Any
 
 from utils.constants import Common
-from workflow_manager.endpoint_v2.constants import DBConnectionClass, TableColumns
+from workflow_manager.endpoint_v2.constants import TableColumns
 from workflow_manager.endpoint_v2.enums import FileProcessingStatus
 from workflow_manager.endpoint_v2.exceptions import UnstractDBException
 from workflow_manager.workflow_v2.enums import AgentName, ColumnModes
@@ -41,89 +39,6 @@ class DatabaseUtils:
         }
 
     @staticmethod
-    def get_sql_values_for_query(
-        values: dict[str, Any], column_types: dict[str, str], cls_name: str
-    ) -> dict[str, str]:
-        """Making Sql Columns and Values for Query.
-
-        Args:
-            values (dict[str, Any]): dictionary of columns and values
-            column_types (dict[str,str]): types of columns
-            cls (Any, optional): The database connection class (e.g.,
-                DBConnectionClass.SNOWFLAKE) for handling database-specific
-                queries.
-                Defaults to None.
-
-        Returns:
-            list[str]: _description_
-
-        Note:
-            - If `cls` is not provided or is None, the function assumes a
-                Default SQL database and makes values accordingly.
-            - If `cls` is provided and matches DBConnectionClass.SNOWFLAKE,
-                the function makes values using Snowflake-specific syntax.
-
-            - Unstract creates id by default if table not exists.
-                If there is column 'id' in db table, it will insert
-                    'id' as uuid into the db table.
-                Else it will GET table details from INFORMATION SCHEMA and
-                    insert into the table accordingly
-        """
-        sql_values: dict[str, Any] = {}
-        for column in values:
-            if cls_name == DBConnectionClass.SNOWFLAKE:
-                col = column.lower()
-                type_x = column_types.get(col, "")
-                if type_x == "VARIANT":
-                    payload = values[column]
-                    if isinstance(payload, Enum):
-                        payload = payload.value
-                    # Ensure valid JSON for VARIANT
-                    try:
-                        payload_json = json.dumps(payload, default=str)
-                        sql_values[column] = f"parse_json($${payload_json}$$)"
-                    except (TypeError, ValueError) as e:
-                        logger.error(
-                            f"Failed to serialize payload to JSON for column {column}: {e}"
-                        )
-                        # Create a safe fallback error object
-                        fallback_payload = DatabaseUtils._create_safe_error_json(
-                            f"column_{column}", e
-                        )
-                        payload_json = json.dumps(fallback_payload)
-                        sql_values[column] = f"parse_json($${payload_json}$$)"
-                else:
-                    # Non-VARIANT Snowflake types remain unchanged
-                    sql_values[column] = f"{values[column]}"
-            else:
-                # Handle JSON and Enum types for each database
-                value = values[column]
-                if isinstance(value, (dict, list)):
-                    try:
-                        sql_values[column] = json.dumps(value)
-                    except (TypeError, ValueError) as e:
-                        logger.error(
-                            f"Failed to serialize value to JSON for column {column}: {e}"
-                        )
-                        # Create a safe fallback error object - consistent with Snowflake approach
-                        fallback_value = DatabaseUtils._create_safe_error_json(
-                            f"column_{column}", e
-                        )
-                        sql_values[column] = json.dumps(fallback_value)
-                elif isinstance(value, Enum):
-                    sql_values[column] = value.value
-                else:
-                    sql_values[column] = (
-                        f"{value}"  # Non-JSON/Enum types handled as before
-                    )
-        # If table has a column 'id', unstract inserts a unique value to it
-        # Oracle db has column 'ID' instead of 'id'
-        if any(key in column_types for key in ["id", "ID"]):
-            uuid_id = str(uuid.uuid4())
-            sql_values["id"] = f"{uuid_id}"
-        return sql_values
-
-    @staticmethod
     def get_column_types(
         conn_cls: Any,
         table_name: str,
@@ -145,12 +60,24 @@ class DatabaseUtils:
             return conn_cls.get_information_schema(table_name=table_name)
         except ConnectorError as e:
             raise UnstractDBException(detail=e.message) from e
-        except Exception as e:
-            logger.error(
-                f"Error getting db-column-name and db-column-type "
-                f"for {table_name}: {str(e)}"
-            )
-            raise
+
+    @staticmethod
+    def get_sql_values_for_query(
+        conn_cls: Any,
+        values: dict[str, Any],
+        column_types: dict[str, str],
+    ) -> dict[str, Any]:
+        """Function to prepare SQL values by calling connector method.
+
+        Args:
+            conn_cls (Any): DB Connection class
+            values (dict[str, Any]): dictionary of columns and values
+            column_types (dict[str, str]): types of columns from database schema
+
+        Returns:
+            dict[str, Any]: Dictionary of column names to SQL values
+        """
+        return conn_cls.get_sql_values_for_query(values=values, column_types=column_types)
 
     @staticmethod
     def get_columns_and_values(
@@ -236,67 +163,26 @@ class DatabaseUtils:
             values[TableColumns.STATUS] = (
                 FileProcessingStatus.ERROR if error else FileProcessingStatus.SUCCESS
             )
-
         if column_mode == ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN:
+            v2_col_name = f"{single_column_name}_v2"
+            has_v2_col = (
+                (table_info is None)
+                or any(k.lower() == v2_col_name.lower() for k in table_info)
+                if table_info
+                else True
+            )
             if isinstance(data, str):
                 wrapped_dict = {"result": data}
                 values[single_column_name] = wrapped_dict
-                if table_info and any(
-                    k.lower() == f"{single_column_name}_v2".lower() for k in table_info
-                ):
-                    values[f"{single_column_name}_v2"] = wrapped_dict
+                if has_v2_col:
+                    values[v2_col_name] = wrapped_dict
             else:
                 values[single_column_name] = data
-                if table_info and any(
-                    k.lower() == f"{single_column_name}_v2".lower() for k in table_info
-                ):
-                    values[f"{single_column_name}_v2"] = data
-        if column_mode == ColumnModes.SPLIT_JSON_INTO_COLUMNS:
-            if isinstance(data, dict):
-                values[single_column_name] = data
-            elif isinstance(data, str):
-                values[single_column_name] = data
-                # Only write to v2 if it exists
-                if table_info and any(
-                    k.lower() == f"{single_column_name}_v2".lower() for k in table_info
-                ):
-                    values[f"{single_column_name}_v2"] = data
-            else:
-                try:
-                    values[single_column_name] = json.dumps(
-                        data
-                    )  # Legacy column gets JSON string
-                except (TypeError, ValueError) as e:
-                    logger.error(
-                        f"Failed to serialize data to JSON for column {single_column_name}: {e}"
-                    )
-                    # Create a safe fallback error object
-                    fallback_data = DatabaseUtils._create_safe_error_json(
-                        single_column_name, e
-                    )
-                    values[single_column_name] = json.dumps(fallback_data)
-
-                # Only write to v2 if it exists
-                if table_info and any(
-                    k.lower() == f"{single_column_name}_v2".lower() for k in table_info
-                ):
-                    # Make sure v2 gets a serializable value too if needed
-                    if isinstance(data, (dict, list)):
-                        values[f"{single_column_name}_v2"] = data
-                    else:
-                        try:
-                            # Test if it's JSON serializable before assigning
-                            json.dumps(data)
-                            values[f"{single_column_name}_v2"] = data
-                        except (TypeError, ValueError) as e:
-                            # Create a safe fallback error object
-                            fallback_data = DatabaseUtils._create_safe_error_json(
-                                f"{single_column_name}_v2", e
-                            )
-                            values[f"{single_column_name}_v2"] = fallback_data
-
+                if has_v2_col:
+                    values[v2_col_name] = data
         values[file_path_name] = file_path
         values[execution_id_name] = execution_id
+        logger.debug(f"database_utils.py get_columns_and_values  values: {values}")
         return values
 
     @staticmethod
@@ -325,15 +211,20 @@ class DatabaseUtils:
             - For other SQL databases, it uses default SQL generation
                 based on column types.
         """
-        cls_name = conn_cls.__class__.__name__
         column_types: dict[str, str] = DatabaseUtils.get_column_types(
             conn_cls=conn_cls, table_name=table_name
         )
+        logger.debug(f"database_utils.py get_sql_query_data column_types: {column_types}")
+
         sql_columns_and_values = DatabaseUtils.get_sql_values_for_query(
+            conn_cls=conn_cls,
             values=values,
             column_types=column_types,
-            cls_name=cls_name,
         )
+        logger.debug(
+            f"database_utils.py get_sql_query_data sql_columns_and_values: {sql_columns_and_values}"
+        )
+
         return sql_columns_and_values
 
     @staticmethod
@@ -357,7 +248,9 @@ class DatabaseUtils:
           So we need to use INSERT INTO ... SELECT ... syntax
         - sql values can contain data with single quote. It needs to
         """
-        sql = db_class.get_sql_insert_query(table_name=table_name, sql_keys=sql_keys)
+        sql = db_class.get_sql_insert_query(
+            table_name=table_name, sql_keys=sql_keys, sql_values=sql_values
+        )
 
         logger.debug(f"inserting into table {table_name} with: {sql} query")
         logger.debug(f"sql_values: {sql_values}")
@@ -399,6 +292,7 @@ class DatabaseUtils:
         """
         sql = db_class.create_table_query(table=table_name, database_entry=database_entry)
         logger.debug(f"creating table {table_name} with: {sql} query")
+
         try:
             db_class.execute_query(
                 engine=engine, sql_query=sql, sql_values=None, table_name=table_name
