@@ -5,6 +5,7 @@ from typing import Any
 import psycopg2
 from psycopg2.extensions import connection
 
+from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.psycopg_handler import PsycoPgHandler
 from unstract.connectors.databases.unstract_db import UnstractDB
 
@@ -63,17 +64,32 @@ class Redshift(UnstractDB, PsycoPgHandler):
             options=f"-c search_path={self.schema}",
         )
 
-    def sql_to_db_mapping(self, value: str) -> str:
-        python_type = type(value)
+    def sql_to_db_mapping(self, value: Any, column_name: str | None = None) -> str:
+        """Gets the python datatype of value and converts python datatype to
+        corresponding DB datatype.
+
+        Args:
+            value (Any): python value of any datatype
+            column_name (str | None): name of the column being mapped
+
+        Returns:
+            str: database columntype
+        """
+        data_type = type(value)
+
+        if data_type in (dict, list):
+            if column_name and column_name.endswith("_v2"):
+                return str(DatabaseTypeConstants.REDSHIFT_SUPER)
+            else:
+                return str(DatabaseTypeConstants.REDSHIFT_VARCHAR)
+
         mapping = {
-            str: "VARCHAR(65535)",
-            int: "BIGINT",
-            float: "DOUBLE PRECISION",
-            datetime.datetime: "TIMESTAMP",
-            dict: "SUPER",
-            list: "SUPER",
+            str: DatabaseTypeConstants.REDSHIFT_VARCHAR,
+            int: DatabaseTypeConstants.REDSHIFT_BIGINT,
+            float: DatabaseTypeConstants.REDSHIFT_DOUBLE_PRECISION,
+            datetime.datetime: DatabaseTypeConstants.REDSHIFT_TIMESTAMP,
         }
-        return mapping.get(python_type, "VARCHAR(65535)")
+        return str(mapping.get(data_type, DatabaseTypeConstants.REDSHIFT_VARCHAR))
 
     def get_create_table_base_query(self, table: str) -> str:
         sql_query = (
