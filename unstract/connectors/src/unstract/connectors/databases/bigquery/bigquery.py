@@ -10,6 +10,7 @@ import google.api_core.exceptions
 from google.cloud import bigquery
 from google.cloud.bigquery import Client
 
+from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.exceptions import (
     BigQueryForbiddenException,
     BigQueryNotFoundException,
@@ -84,28 +85,28 @@ class BigQuery(UnstractDB):
         Returns:
             str: database columntype
         """
-        python_type = type(value)
+        data_type = type(value)
 
-        if python_type in (dict, list):
+        if data_type in (dict, list):
             if column_name and column_name.endswith("_v2"):
-                return "JSON"
+                return str(DatabaseTypeConstants.BIGQUERY_JSON)
             else:
-                return "STRING"
+                return str(DatabaseTypeConstants.BIGQUERY_STRING)
 
         mapping = {
-            str: "STRING",
-            int: "INT64",
-            float: "FLOAT64",
-            datetime.datetime: "TIMESTAMP",
+            str: DatabaseTypeConstants.BIGQUERY_STRING,
+            int: DatabaseTypeConstants.BIGQUERY_INT64,
+            float: DatabaseTypeConstants.BIGQUERY_FLOAT64,
+            datetime.datetime: DatabaseTypeConstants.BIGQUERY_TIMESTAMP,
         }
-        return mapping.get(python_type, "STRING")
+        return str(mapping.get(data_type, DatabaseTypeConstants.BIGQUERY_STRING))
 
     def get_create_table_base_query(self, table: str) -> str:
         """Function to create a base create table sql query.
 
         Args:
             table (str): db-connector table name
-            Format  {database}.{schema}.{table}
+            Format  {project}.{dataset}.{table}
 
         Returns:
             str: generates a create sql base query with the constant columns
@@ -115,7 +116,7 @@ class BigQuery(UnstractDB):
             raise ValueError(
                 f"Invalid table name format: '{table}'. "
                 "Please ensure the BigQuery table is in the form of "
-                "{database}.{schema}.{table}."
+                "{project}.{dataset}.{table}."
             )
         sql_query = (
             f"CREATE TABLE IF NOT EXISTS {table} "
@@ -264,15 +265,15 @@ class BigQuery(UnstractDB):
             raise ValueError(
                 f"Invalid table name format: '{table_name}'. "
                 "Please ensure the BigQuery table is in the form of "
-                "{database}.{schema}.{table}."
+                "{project}.{dataset}.{table}."
             )
-        # Convert database and schema to lowercase, but preserve table name case
-        database = bigquery_table_parts[0].lower()
-        schema = bigquery_table_parts[1].lower()
-        table = bigquery_table_parts[2]  # Preserve original case
+        # Convert project to lowercase
+        project = bigquery_table_parts[0].lower()
+        dataset = bigquery_table_parts[1]
+        table = bigquery_table_parts[2]
         query = (
             "SELECT column_name, data_type FROM "
-            f"{database}.{schema}.INFORMATION_SCHEMA.COLUMNS WHERE "
+            f"{project}.{dataset}.INFORMATION_SCHEMA.COLUMNS WHERE "
             f"table_name = '{table}'"
         )
         results = self.execute(query=query)

@@ -6,6 +6,7 @@ from typing import Any
 import oracledb
 from oracledb.connection import Connection
 
+from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.unstract_db import UnstractDB
 
 logger = logging.getLogger(__name__)
@@ -83,20 +84,20 @@ class OracleDB(UnstractDB):
         Returns:
             str: database columntype
         """
-        python_type = type(value)
-        if python_type in (dict, list):
+        data_type = type(value)
+        if data_type in (dict, list):
             if column_name and column_name.endswith("_v2"):
-                return "CLOB"
+                return str(DatabaseTypeConstants.ORACLE_CLOB)
             else:
-                return "VARCHAR2(32767)"
+                return str(DatabaseTypeConstants.ORACLE_VARCHAR2)
 
         mapping = {
-            str: "VARCHAR2(32767)",
-            int: "NUMBER",
-            float: "LONG",
-            datetime.datetime: "TIMESTAMP",
+            str: DatabaseTypeConstants.ORACLE_VARCHAR2,
+            int: DatabaseTypeConstants.ORACLE_NUMBER,
+            float: DatabaseTypeConstants.ORACLE_LONG,
+            datetime.datetime: DatabaseTypeConstants.ORACLE_TIMESTAMP,
         }
-        return mapping.get(python_type, "VARCHAR2(32767)")
+        return str(mapping.get(data_type, DatabaseTypeConstants.ORACLE_VARCHAR2))
 
     def get_create_table_base_query(self, table: str) -> str:
         """Function to create a base create table sql query.

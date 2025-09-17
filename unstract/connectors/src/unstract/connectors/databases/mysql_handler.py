@@ -4,6 +4,7 @@ from typing import Any
 
 import pymysql.err as MysqlError
 
+from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.exceptions import (
     ColumnMissingException,
     InvalidSyntaxException,
@@ -25,21 +26,21 @@ class MysqlHandler:
         Returns:
             str: database columntype
         """
-        python_type = type(value)
+        data_type = type(value)
 
-        if python_type in (dict, list):
+        if data_type in (dict, list):
             if column_name and column_name.endswith("_v2"):
-                return "JSON"
+                return str(DatabaseTypeConstants.MYSQL_JSON)
             else:
-                return "LONGTEXT"
+                return str(DatabaseTypeConstants.MYSQL_LONGTEXT)
 
         mapping = {
-            str: "LONGTEXT",
-            int: "BIGINT",
-            float: "FLOAT",
-            datetime.datetime: "TIMESTAMP",
+            str: DatabaseTypeConstants.MYSQL_LONGTEXT,
+            int: DatabaseTypeConstants.MYSQL_BIGINT,
+            float: DatabaseTypeConstants.MYSQL_FLOAT,
+            datetime.datetime: DatabaseTypeConstants.MYSQL_TIMESTAMP,
         }
-        return mapping.get(python_type, "LONGTEXT")
+        return str(mapping.get(data_type, DatabaseTypeConstants.MYSQL_LONGTEXT))
 
     @staticmethod
     def execute_query(

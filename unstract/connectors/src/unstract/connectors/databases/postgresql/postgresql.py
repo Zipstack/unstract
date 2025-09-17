@@ -5,6 +5,7 @@ from typing import Any
 import psycopg2
 from psycopg2.extensions import connection
 
+from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.psycopg_handler import PsycoPgHandler
 from unstract.connectors.databases.unstract_db import UnstractDB
 
@@ -78,21 +79,21 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
         Returns:
             str: database columntype
         """
-        python_type = type(value)
+        data_type = type(value)
 
-        if python_type in (dict, list):
+        if data_type in (dict, list):
             if column_name and column_name.endswith("_v2"):
-                return "JSONB"
+                return str(DatabaseTypeConstants.POSTGRES_JSONB)
             else:
-                return "TEXT"
+                return str(DatabaseTypeConstants.POSTGRES_TEXT)
 
         mapping = {
-            str: "TEXT",
-            int: "INTEGER",
-            float: "DOUBLE PRECISION",
-            datetime.datetime: "TIMESTAMP",
+            str: DatabaseTypeConstants.POSTGRES_TEXT,
+            int: DatabaseTypeConstants.POSTGRES_INTEGER,
+            float: DatabaseTypeConstants.POSTGRES_DOUBLE_PRECISION,
+            datetime.datetime: DatabaseTypeConstants.POSTGRES_TIMESTAMP,
         }
-        return mapping.get(python_type, "TEXT")
+        return str(mapping.get(data_type, DatabaseTypeConstants.POSTGRES_TEXT))
 
     def get_engine(self) -> connection:
         """Returns a connection to the PostgreSQL database.

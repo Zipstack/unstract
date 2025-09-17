@@ -10,6 +10,7 @@ import snowflake.connector
 import snowflake.connector.errors as SnowflakeError
 from snowflake.connector.connection import SnowflakeConnection
 
+from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.exceptions import SnowflakeProgrammingException
 from unstract.connectors.databases.unstract_db import UnstractDB
 from unstract.connectors.exceptions import ConnectorError
@@ -71,21 +72,21 @@ class SnowflakeDB(UnstractDB):
         Returns:
             str: database columntype
         """
-        python_type = type(value)
+        data_type = type(value)
 
-        if python_type in (dict, list):
+        if data_type in (dict, list):
             if column_name and column_name.endswith("_v2"):
-                return "VARIANT"
+                return str(DatabaseTypeConstants.SNOWFLAKE_VARIANT)
             else:
-                return "TEXT"
+                return str(DatabaseTypeConstants.SNOWFLAKE_TEXT)
 
         mapping = {
-            str: "TEXT",
-            int: "INT",
-            float: "FLOAT",
-            datetime.datetime: "TIMESTAMP",
+            str: DatabaseTypeConstants.SNOWFLAKE_TEXT,
+            int: DatabaseTypeConstants.SNOWFLAKE_INT,
+            float: DatabaseTypeConstants.SNOWFLAKE_FLOAT,
+            datetime.datetime: DatabaseTypeConstants.SNOWFLAKE_TIMESTAMP,
         }
-        return mapping.get(python_type, "TEXT")
+        return str(mapping.get(data_type, DatabaseTypeConstants.SNOWFLAKE_TEXT))
 
     def get_engine(self) -> SnowflakeConnection:
         con = snowflake.connector.connect(

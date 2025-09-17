@@ -5,6 +5,7 @@ from typing import Any
 import psycopg2
 from psycopg2.extensions import connection
 
+from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.psycopg_handler import PsycoPgHandler
 from unstract.connectors.databases.unstract_db import UnstractDB
 
@@ -74,21 +75,21 @@ class Redshift(UnstractDB, PsycoPgHandler):
         Returns:
             str: database columntype
         """
-        python_type = type(value)
+        data_type = type(value)
 
-        if python_type in (dict, list):
+        if data_type in (dict, list):
             if column_name and column_name.endswith("_v2"):
-                return "SUPER"
+                return str(DatabaseTypeConstants.REDSHIFT_SUPER)
             else:
-                return "VARCHAR(65535)"
+                return str(DatabaseTypeConstants.REDSHIFT_VARCHAR)
 
         mapping = {
-            str: "VARCHAR(65535)",
-            int: "BIGINT",
-            float: "DOUBLE PRECISION",
-            datetime.datetime: "TIMESTAMP",
+            str: DatabaseTypeConstants.REDSHIFT_VARCHAR,
+            int: DatabaseTypeConstants.REDSHIFT_BIGINT,
+            float: DatabaseTypeConstants.REDSHIFT_DOUBLE_PRECISION,
+            datetime.datetime: DatabaseTypeConstants.REDSHIFT_TIMESTAMP,
         }
-        return mapping.get(python_type, "VARCHAR(65535)")
+        return str(mapping.get(data_type, DatabaseTypeConstants.REDSHIFT_VARCHAR))
 
     def get_create_table_base_query(self, table: str) -> str:
         sql_query = (

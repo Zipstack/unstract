@@ -7,6 +7,7 @@ import pymssql
 import pymssql._pymssql as PyMssql
 from pymssql import Connection  # type: ignore
 
+from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.exceptions import (
     ColumnMissingException,
     InvalidSyntaxException,
@@ -69,18 +70,18 @@ class MSSQL(UnstractDB):
         Returns:
             str: database columntype
         """
-        python_type = type(value)
+        data_type = type(value)
 
-        if python_type in (dict, list):
-            return "NVARCHAR(MAX)"
+        if data_type in (dict, list):
+            return str(DatabaseTypeConstants.MSSQL_NVARCHAR_MAX)
 
         mapping = {
-            str: "NVARCHAR(MAX)",
-            int: "INT",
-            float: "FLOAT",
-            datetime.datetime: "DATETIMEOFFSET",
+            str: DatabaseTypeConstants.MSSQL_NVARCHAR_MAX,
+            int: DatabaseTypeConstants.MSSQL_INT,
+            float: DatabaseTypeConstants.MSSQL_FLOAT,
+            datetime.datetime: DatabaseTypeConstants.MSSQL_DATETIMEOFFSET,
         }
-        return mapping.get(python_type, "NVARCHAR(MAX)")
+        return str(mapping.get(data_type, DatabaseTypeConstants.MSSQL_NVARCHAR_MAX))
 
     def get_engine(self) -> Connection:
         return pymssql.connect(  # type: ignore
