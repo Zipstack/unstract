@@ -162,7 +162,7 @@ class DeploymentExecution(views.APIView):
 
 class APIDeploymentViewSet(viewsets.ModelViewSet):
     def get_permissions(self) -> list[Any]:
-        if self.action in ["destroy", "partial_update"]:
+        if self.action in ["destroy", "partial_update", "update"]:
             return [IsOwner()]
         return [IsOwnerOrSharedUser()]
 
