@@ -7,6 +7,7 @@ from celery import shared_task
 from backend.celery_service import app as celery_app
 from notification_v2.enums import AuthorizationType
 from notification_v2.provider.notification_provider import NotificationProvider
+from unstract.sdk.adapters.url_validator import URLValidator
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,13 @@ class Webhook(NotificationProvider):
         """
         if not self.notification.url:
             raise ValueError("Webhook URL is required.")
+
+        # Validate webhook URL for security
+        is_valid, error_message = URLValidator.validate_url(self.notification.url)
+        logger.info(f"Notification url {self.notification_url}")
+        if not is_valid:
+            raise ValueError(f"Webhook URL validation failed: {error_message}")
+
         if not self.payload:
             raise ValueError("Payload is required.")
         return super().validate()
