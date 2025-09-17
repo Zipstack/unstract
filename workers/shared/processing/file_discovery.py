@@ -99,7 +99,8 @@ class StreamingFileDiscovery:
 
         logger.info(
             f"[StreamingDiscovery] Starting streaming discovery for {len(directories)} directories "
-            f"with limit={file_hard_limit}, batch_size={batch_size}, recursive={recursive}"
+            f"with limit={file_hard_limit}, batch_size={batch_size}, recursive={recursive}, patterns={patterns}, "
+            f"max_depth={max_depth}"
         )
 
         try:
@@ -112,7 +113,7 @@ class StreamingFileDiscovery:
                     )
                     break
 
-                logger.debug(f"[StreamingDiscovery] Processing directory: {directory}")
+                logger.info(f"[StreamingDiscovery] Processing directory: {directory}")
 
                 # Walk directory with max depth control
                 for root, dirs, _ in self.fs_fsspec.walk(directory, maxdepth=max_depth):
@@ -223,7 +224,9 @@ class StreamingFileDiscovery:
             return matched_files, final_count
 
         except Exception as e:
-            logger.error(f"[StreamingDiscovery] Error during file discovery: {e}")
+            logger.error(
+                f"[StreamingDiscovery] Error during file discovery: {e}", exc_info=True
+            )
             # Return what we've collected so far
             return matched_files, len(matched_files)
 
