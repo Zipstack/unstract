@@ -8,7 +8,7 @@ import time
 from typing import Any
 
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
-from unstract.core.data_models import FileHashData, FileOperationConstants
+from unstract.core.data_models import ConnectionType, FileHashData, FileOperationConstants
 from unstract.core.file_operations import FileOperations
 
 from ..infrastructure.logging import WorkerLogger
@@ -140,24 +140,50 @@ class StreamingFileDiscovery:
 
                         file_path = fs_metadata.get("name")
                         if not file_path:
+                            logger.info(
+                                f"DEBUG: [StreamingDiscovery] Skipping item with no name: {fs_metadata}"
+                            )
                             continue
+
+                        # Log detailed file metadata for debugging
+                        file_type = fs_metadata.get("type", "unknown")
+                        file_size = fs_metadata.get("size", "unknown")
+                        logger.info(
+                            f"DEBUG: [StreamingDiscovery] Discovered item: '{file_path}' (type: {file_type}, size: {file_size})"
+                        )
 
                         metrics["total_files_discovered"] += 1
 
-                        # Skip directories
+                        # Skip directories with detailed logging
                         is_directory = self._is_directory(file_path, fs_metadata, dirs)
                         if is_directory:
+                            logger.info(
+                                f"DEBUG: [StreamingDiscovery] Skipping directory: {file_path}"
+                            )
                             continue
+
+                        logger.info(
+                            f"DEBUG: [StreamingDiscovery] File passed directory check: {file_path}"
+                        )
 
                         # Apply pattern filter first (cheapest)
                         pattern_matches = self._matches_patterns(file_path, patterns)
                         if not pattern_matches:
+                            logger.info(
+                                f"DEBUG: [StreamingDiscovery] File failed pattern match: {file_path} (patterns: {patterns})"
+                            )
                             continue
 
+                        logger.info(
+                            f"DEBUG: [StreamingDiscovery] File passed pattern match: {file_path}"
+                        )
                         metrics["files_pattern_matched"] += 1
 
                         # Add to batch buffer
                         batch_buffer.append((file_path, fs_metadata))
+                        logger.info(
+                            f"DEBUG: [StreamingDiscovery] Added to batch buffer: {file_path} (buffer size: {len(batch_buffer)})"
+                        )
 
                         # Process batch when full
                         if len(batch_buffer) >= batch_size:
@@ -248,29 +274,76 @@ class StreamingFileDiscovery:
         if not batch_buffer:
             return
 
-        logger.debug(
-            f"[StreamingDiscovery] Processing batch of {len(batch_buffer)} files"
-        )
+        logger.info(f"[StreamingDiscovery] Processing batch of {len(batch_buffer)} files")
 
-        # Convert batch to FileHashData objects
+        # Log the files being processed in this batch for debugging
+        batch_files = [file_path for file_path, _ in batch_buffer]
+        logger.info(f"DEBUG: [StreamingDiscovery] Batch files: {batch_files}")
+
+        # Convert batch to FileHashData objects with defensive validation
         file_hash_batch: dict[str, FileHashData] = {}
         for file_path, fs_metadata in batch_buffer:
-            # Add connector_id to metadata if available
-            if self.connector_id:
-                fs_metadata = fs_metadata.copy()
-                fs_metadata["connector_id"] = self.connector_id
+            try:
+                # Validate file path and extract file name
+                if not file_path or not isinstance(file_path, str):
+                    logger.warning(
+                        f"[StreamingDiscovery] Skipping invalid file path: {file_path}"
+                    )
+                    continue
 
-            # Create FileHashData object
-            file_hash = FileOperations.create_file_hash_from_backend_logic(
-                file_path=file_path,
-                source_fs=self.source_fs,
-                source_connection_type="FILESYSTEM",
-                file_size=fs_metadata.get("size", 0),
-                fs_metadata=fs_metadata,
-                compute_content_hash=False,  # Only use provider_file_uuid
-            )
+                # Extract and validate file name
+                import os
 
-            file_hash_batch[file_path] = file_hash
+                file_name = os.path.basename(file_path.rstrip("/"))
+                if not file_name or file_name in ["", ".", ".."]:
+                    logger.warning(
+                        f"[StreamingDiscovery] Skipping file with invalid name: '{file_path}' -> '{file_name}'"
+                    )
+                    continue
+
+                # Check if this looks like a directory path
+                if file_path.endswith("/") or not file_name:
+                    logger.info(
+                        f"DEBUG: [StreamingDiscovery] Skipping directory-like path: {file_path}"
+                    )
+                    continue
+
+                logger.info(
+                    f"DEBUG: [StreamingDiscovery] Processing file: '{file_path}' (name: '{file_name}', size: {fs_metadata.get('size', 0)})"
+                )
+
+                # Add connector_id to metadata if available
+                if self.connector_id:
+                    fs_metadata = fs_metadata.copy()
+                    fs_metadata["connector_id"] = self.connector_id
+
+                # Create FileHashData object with proper error handling
+                file_hash = FileOperations.create_file_hash_from_backend_logic(
+                    file_path=file_path,
+                    source_fs=self.source_fs,
+                    source_connection_type=ConnectionType.FILESYSTEM,
+                    file_size=fs_metadata.get("size", 0),
+                    fs_metadata=fs_metadata,
+                    compute_content_hash=False,  # Only use provider_file_uuid
+                )
+
+                file_hash_batch[file_path] = file_hash
+                logger.info(
+                    f"DEBUG: [StreamingDiscovery] Successfully created FileHashData for: {file_path}"
+                )
+
+            except ValueError as ve:
+                logger.error(
+                    f"[StreamingDiscovery] FileHashData creation failed for '{file_path}': {ve}"
+                )
+                logger.info(f"DEBUG: [StreamingDiscovery] File metadata: {fs_metadata}")
+                continue
+            except Exception as e:
+                logger.error(
+                    f"[StreamingDiscovery] Unexpected error processing '{file_path}': {e}",
+                    exc_info=True,
+                )
+                continue
 
         # Apply filter pipeline to batch
         filtered_batch = filter_pipeline.apply_filters(
@@ -281,20 +354,27 @@ class StreamingFileDiscovery:
             organization_id=self.organization_id,  # Fix: Add missing organization_id
         )
 
-        logger.debug(
-            f"[StreamingDiscovery] Batch filtering: {len(file_hash_batch)} → {len(filtered_batch)} files"
+        logger.info(
+            f"[StreamingDiscovery] Batch processing complete: {len(batch_buffer)} raw → {len(file_hash_batch)} valid → {len(filtered_batch)} filtered"
         )
 
         # Add filtered files to results (respecting limit)
+        added_count = 0
         for file_path, file_hash in filtered_batch.items():
             if len(matched_files) >= file_hard_limit:
                 break
             matched_files[file_path] = file_hash
+            added_count += 1
+
+        if added_count > 0:
+            logger.info(
+                f"DEBUG: [StreamingDiscovery] Added {added_count} files to final results"
+            )
 
     def _is_directory(
         self, file_path: str, metadata: dict[str, Any], dirs: list[str]
     ) -> bool:
-        """Check if path is a directory.
+        """Check if path is a directory using multiple detection methods.
 
         Args:
             file_path: Path to check
@@ -306,23 +386,76 @@ class StreamingFileDiscovery:
         """
         import os
 
-        # Check if basename is in dirs list
-        if os.path.basename(file_path) in dirs:
+        if not file_path:
+            return False
+
+        # 1. Check if path ends with directory separator
+        if file_path.endswith("/") or file_path.endswith("\\"):
+            logger.info(
+                f"DEBUG: [StreamingDiscovery] Directory detected by path suffix: {file_path}"
+            )
             return True
 
-        # Check metadata type
+        # 2. Check if basename is in dirs list from walk
+        basename = os.path.basename(file_path)
+        if basename in dirs:
+            logger.info(
+                f"DEBUG: [StreamingDiscovery] Directory detected in dirs list: {file_path}"
+            )
+            return True
+
+        # 3. Check metadata type with broader detection
         file_type = metadata.get("type", "").lower()
-        if file_type in ["directory", "dir", "folder"]:
+        if file_type in ["directory", "dir", "folder", "d"]:
+            logger.info(
+                f"DEBUG: [StreamingDiscovery] Directory detected by metadata type '{file_type}': {file_path}"
+            )
             return True
 
-        # Try connector-specific directory check
+        # 4. Check size - directories often have size 0 or None
+        file_size = metadata.get("size")
+        if file_size is None and metadata.get("type") != "file":
+            logger.info(
+                f"DEBUG: [StreamingDiscovery] Possible directory (no size, not file type): {file_path}"
+            )
+            return True
+
+        # 5. Check for common directory characteristics
+        if not basename or basename in [".", ".."]:
+            logger.info(
+                f"DEBUG: [StreamingDiscovery] Directory detected by special name: {file_path}"
+            )
+            return True
+
+        # 6. Try connector-specific directory check
         try:
             if hasattr(self.source_fs, "is_dir_by_metadata"):
-                return self.source_fs.is_dir_by_metadata(metadata)
+                is_dir = self.source_fs.is_dir_by_metadata(metadata)
+                if is_dir:
+                    logger.info(
+                        f"DEBUG: [StreamingDiscovery] Directory detected by connector-specific check: {file_path}"
+                    )
+                return is_dir
             else:
-                return self.fs_fsspec.isdir(file_path)
-        except Exception:
-            return False
+                is_dir = self.fs_fsspec.isdir(file_path)
+                if is_dir:
+                    logger.info(
+                        f"DEBUG: [StreamingDiscovery] Directory detected by fsspec.isdir: {file_path}"
+                    )
+                return is_dir
+        except Exception as e:
+            logger.info(
+                f"DEBUG: [StreamingDiscovery] Directory check failed for {file_path}: {e}"
+            )
+
+        # 7. Final check: if no file extension and metadata suggests it might be a directory
+        if "." not in basename and file_size == 0:
+            logger.info(
+                f"DEBUG: [StreamingDiscovery] Possible directory (no extension, zero size): {file_path}"
+            )
+            # Don't return True here, just log - this is too aggressive
+
+        return False
 
     def _matches_patterns(self, file_path: str, patterns: list[str]) -> bool:
         """Check if file matches any of the patterns.
