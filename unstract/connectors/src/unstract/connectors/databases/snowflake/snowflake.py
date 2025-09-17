@@ -10,6 +10,7 @@ import snowflake.connector
 import snowflake.connector.errors as SnowflakeError
 from snowflake.connector.connection import SnowflakeConnection
 
+from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.exceptions import SnowflakeProgrammingException
 from unstract.connectors.databases.unstract_db import UnstractDB
 from unstract.connectors.exceptions import ConnectorError
@@ -60,27 +61,32 @@ class SnowflakeDB(UnstractDB):
     def can_read() -> bool:
         return True
 
-    def sql_to_db_mapping(self, value: str) -> str:
+    def sql_to_db_mapping(self, value: Any, column_name: str | None = None) -> str:
         """Gets the python datatype of value and converts python datatype to
         corresponding DB datatype.
 
         Args:
-            value (str): python datatype
+            value (Any): python value of any datatype
+            column_name (str | None): name of the column being mapped
 
         Returns:
             str: database columntype
         """
-        python_type = type(value)
+        data_type = type(value)
+
+        if data_type in (dict, list):
+            if column_name and column_name.endswith("_v2"):
+                return str(DatabaseTypeConstants.SNOWFLAKE_VARIANT)
+            else:
+                return str(DatabaseTypeConstants.SNOWFLAKE_TEXT)
 
         mapping = {
-            str: "TEXT",
-            int: "INT",
-            float: "FLOAT",
-            datetime.datetime: "TIMESTAMP",
-            dict: "VARIANT",
-            list: "VARIANT",
+            str: DatabaseTypeConstants.SNOWFLAKE_TEXT,
+            int: DatabaseTypeConstants.SNOWFLAKE_INT,
+            float: DatabaseTypeConstants.SNOWFLAKE_FLOAT,
+            datetime.datetime: DatabaseTypeConstants.SNOWFLAKE_TIMESTAMP,
         }
-        return mapping.get(python_type, "TEXT")
+        return str(mapping.get(data_type, DatabaseTypeConstants.SNOWFLAKE_TEXT))
 
     def get_engine(self) -> SnowflakeConnection:
         con = snowflake.connector.connect(

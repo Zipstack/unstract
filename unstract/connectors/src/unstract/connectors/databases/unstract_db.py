@@ -89,23 +89,18 @@ class UnstractDB(UnstractConnector, ABC):
             raise ConnectorError(str(e)) from e
 
     # TO DO: Remove if needed
-    def sql_to_db_mapping(self, value: str) -> str:
-        """Gets the python datatype of value and converts python datatype
-        to corresponding DB datatype
+    @abstractmethod
+    def sql_to_db_mapping(self, value: Any, column_name: str | None = None) -> str:
+        """Gets the python datatype of value and converts to DB datatype.
+
         Args:
-            value (str): python datatype
+            value (Any): python value of any datatype
+            column_name (str | None): name of the column being mapped
 
         Returns:
             str: database columntype
         """
-        python_type = type(value)
-        mapping = {
-            str: "TEXT",
-            int: "INT",
-            float: "FLOAT",
-            datetime.datetime: "TIMESTAMP",
-        }
-        return mapping.get(python_type, "TEXT")
+        pass
 
     @abstractmethod
     def prepare_multi_column_migration(
@@ -155,7 +150,7 @@ class UnstractDB(UnstractConnector, ABC):
 
         for key, val in database_entry.items():
             if key not in PERMANENT_COLUMNS:
-                sql_type = self.sql_to_db_mapping(val)
+                sql_type = self.sql_to_db_mapping(val, column_name=key)
                 sql_query += f"{key} {sql_type}, "
 
         return sql_query.rstrip(", ") + ")"

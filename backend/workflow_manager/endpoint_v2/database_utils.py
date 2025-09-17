@@ -251,8 +251,7 @@ class DatabaseUtils:
         sql = db_class.get_sql_insert_query(
             table_name=table_name, sql_keys=sql_keys, sql_values=sql_values
         )
-
-        logger.debug(f"inserting into table {table_name} with: {sql} query")
+        logger.debug(f"inserting into table_name: {table_name} with sql_query: {sql}")
         logger.debug(f"sql_values: {sql_values}")
 
         try:
