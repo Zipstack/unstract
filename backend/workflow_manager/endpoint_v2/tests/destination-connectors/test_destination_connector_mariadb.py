@@ -37,7 +37,10 @@ class TestDestinationConnectorMariaDB(TestCase):
             "database": os.getenv("MARIADB_DATABASE"),
             "user": os.getenv("MARIADB_USER"),
             "password": os.getenv("MARIADB_PASSWORD"),
+            "sslEnabled": os.getenv("MARIADB_SSL_ENABLED", True),
         }
+
+        print("************* mariadb_config ************* ", self.mariadb_config)
 
         # Test data that will be inserted into the database
         self.test_data = {"key": "value", "result": "test_result", "status": "success"}
@@ -47,7 +50,7 @@ class TestDestinationConnectorMariaDB(TestCase):
             "processing_time": 1.5,
         }
         self.input_file_path = "/path/to/test/file.pdf"
-        self.test_table_name = "MIGRATION"
+        self.test_table_name = "NO_MIGRATION"
 
         # Create real MariaDB connector instance
         self.mariadb_connector = MariaDB(settings=self.mariadb_config)
