@@ -41,34 +41,12 @@ class WorkflowFileExecutionManager(models.Manager):
             "file_path": execution_file_path,
         }
 
-        # For API files, file_hash should be calculated when file is uploaded to API storage
-        # This is the stable identifier for deduplication
         if file_hash.file_hash:
             lookup_fields["file_hash"] = file_hash.file_hash
         elif file_hash.provider_file_uuid:
             lookup_fields["provider_file_uuid"] = file_hash.provider_file_uuid
 
-        # Debug logging to understand what's happening
-        import logging
-
-        logger = logging.getLogger(__name__)
-        logger.info(
-            f"get_or_create_file_execution lookup for file: {file_hash.file_name}"
-        )
-        logger.info(f"Lookup fields: {lookup_fields}")
-        logger.info(
-            f"File hash data: file_hash='{file_hash.file_hash}', provider_file_uuid='{file_hash.provider_file_uuid}', file_path='{file_hash.file_path}'"
-        )
-
         execution_file, is_created = self.get_or_create(**lookup_fields)
-
-        logger.info(
-            f"get_or_create result: {'CREATED' if is_created else 'RETRIEVED'} file_execution_id: {execution_file.id}"
-        )
-        if not is_created:
-            logger.info(
-                f"Retrieved existing record: file_name='{execution_file.file_name}', provider_file_uuid='{execution_file.provider_file_uuid}'"
-            )
 
         if is_created:
             self._update_execution_file(execution_file, file_hash)

@@ -35,7 +35,6 @@ def register_connectors(connectors: dict[str, Any]) -> None:
                 logger.error(
                     f"Error while importing connectors {connector} : {exception}",
                     exc_info=True,
-                    stack_info=True,
                 )
 
     if len(connectors) == 0:

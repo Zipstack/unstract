@@ -550,9 +550,14 @@ class FileBatchCreateInternalAPIView(APIView):
 # =============================================================================
 
 
-@api_view(["GET"])
-def file_history_by_cache_key_internal(request, cache_key):
-    """Get file history by cache key for internal API calls.
+@api_view(["GET", "POST"])
+def file_history_by_cache_key_internal(request, cache_key=None):
+    """Get file history by cache key or provider_file_uuid for internal API calls.
+
+    Supports both GET (legacy) and POST (flexible) methods:
+
+    GET /file-history/cache-key/{cache_key}/?workflow_id=X&file_path=Y (legacy)
+    POST /file-history/lookup/ with JSON body (flexible)
 
     This replaces the FileHistoryHelper.get_file_history() calls in heavy workers.
     """
@@ -561,13 +566,36 @@ def file_history_by_cache_key_internal(request, cache_key):
 
         organization_id = getattr(request, "organization_id", None)
 
-        # Extract parameters from query string
-        workflow_id = request.GET.get("workflow_id")
-        file_path = request.GET.get("file_path")
+        # Handle both GET (legacy) and POST (flexible) requests
+        if request.method == "GET":
+            # Legacy GET method: extract from URL and query params
+            workflow_id = request.GET.get("workflow_id")
+            file_path = request.GET.get("file_path")
+            provider_file_uuid = None
+
+            if not cache_key:
+                return Response(
+                    {"error": "cache_key is required for GET requests"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            # New POST method: extract from JSON body
+            workflow_id = request.data.get("workflow_id")
+            cache_key = request.data.get("cache_key")
+            provider_file_uuid = request.data.get("provider_file_uuid")
+            file_path = request.data.get("file_path")
+            organization_id = request.data.get("organization_id") or organization_id
 
         if not workflow_id:
             return Response(
                 {"error": "workflow_id parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Must have either cache_key or provider_file_uuid
+        if not cache_key and not provider_file_uuid:
+            return Response(
+                {"error": "Either cache_key or provider_file_uuid is required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -587,9 +615,12 @@ def file_history_by_cache_key_internal(request, cache_key):
                 {"error": "Workflow not found"}, status=status.HTTP_404_NOT_FOUND
             )
 
-        # Get file history using existing helper
+        # Get file history using existing helper with flexible parameters
         file_history = FileHistoryHelper.get_file_history(
-            workflow=workflow, cache_key=cache_key, file_path=file_path
+            workflow=workflow,
+            cache_key=cache_key,
+            provider_file_uuid=provider_file_uuid,
+            file_path=file_path,
         )
 
         if file_history:
@@ -610,6 +641,419 @@ def file_history_by_cache_key_internal(request, cache_key):
     except Exception as e:
         logger.error(f"Failed to get file history for cache key {cache_key}: {e}")
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["POST"])
+def file_history_batch_lookup_internal(request):
+    """Get file history for multiple files in a single batch operation.
+
+    This endpoint optimizes file history checking by processing multiple files
+    in a single database query, reducing API calls from N to 1.
+
+    POST /file-history/batch-lookup/
+    {
+        "workflow_id": "uuid",
+        "organization_id": "uuid",
+        "files": [
+            {
+                "cache_key": "hash1",           // Optional
+                "provider_file_uuid": "uuid1",  // Optional
+                "file_path": "/dir1/file1.pdf", // Optional
+                "identifier": "custom_key1"     // Optional unique identifier for response mapping
+            },
+            {
+                "provider_file_uuid": "uuid2",
+                "file_path": "/dir2/file2.pdf"
+            }
+        ]
+    }
+
+    Response:
+    {
+        "file_histories": {
+            "hash1": {"found": true, "is_completed": true, "file_path": "/dir1/file1.pdf", ...},
+            "uuid2": {"found": false, "is_completed": false, ...}
+        }
+    }
+    """
+    try:
+        import operator
+        from functools import reduce
+
+        from django.db.models import Q
+
+        from workflow_manager.workflow_v2.models.file_history import FileHistory
+        from workflow_manager.workflow_v2.serializers import FileHistorySerializer
+
+        organization_id = getattr(request, "organization_id", None)
+
+        # Extract parameters from request body
+        workflow_id = request.data.get("workflow_id")
+        files_data = request.data.get("files", [])
+        organization_id = request.data.get("organization_id") or organization_id
+
+        if not workflow_id or not files_data:
+            return Response(
+                {"error": "workflow_id and files array are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Validate that each file has at least one identifier
+        for i, file_data in enumerate(files_data):
+            if not any([file_data.get("cache_key"), file_data.get("provider_file_uuid")]):
+                return Response(
+                    {
+                        "error": f"File at index {i} must have either cache_key or provider_file_uuid"
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        # Deduplicate requests to prevent duplicate SQL conditions
+        seen_identifiers = set()
+        deduplicated_files = []
+
+        for file_data in files_data:
+            # Create identifier for deduplication
+            identifier = file_data.get("identifier")
+            if not identifier:
+                logger.info(
+                    f"DEBUG: FileHistoryBatch - No identifier provided for file {file_data}, creating default"
+                )
+                # Create default identifier if not provided
+                identifier = _create_default_identifier(file_data)
+            logger.info(
+                f"DEBUG: FileHistoryBatch - Identifier for file {file_data}: {identifier}"
+            )
+            if identifier not in seen_identifiers:
+                seen_identifiers.add(identifier)
+                # Ensure the file_data has the identifier for response mapping
+                file_data["identifier"] = identifier
+                deduplicated_files.append(file_data)
+
+        logger.info(
+            f"DEBUG: FileHistoryBatch - Deduplicated {len(files_data)} → {len(deduplicated_files)} files"
+        )
+
+        # Use deduplicated files for processing
+        files_data = deduplicated_files
+
+        # Get workflow
+        try:
+            workflow = Workflow.objects.get(pk=workflow_id)
+            if (
+                organization_id
+                and workflow.organization.organization_id != organization_id
+            ):
+                return Response(
+                    {"error": "Workflow not found in organization"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+        except Workflow.DoesNotExist:
+            return Response(
+                {"error": "Workflow not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Build optimized batch query using OR conditions
+        queries = []
+        # Enhanced mapping to handle UUID collisions
+        file_identifiers = {}  # Maps provider_file_uuid -> identifier (legacy for simple cases)
+        composite_file_map = {}  # Maps composite keys -> identifier for collision resolution
+        request_files_map = {}  # Maps identifiers back to original request data
+
+        logger.info(
+            f"DEBUG: FileHistoryBatch - Building queries for {len(files_data)} files"
+        )
+
+        for i, file_data in enumerate(files_data):
+            filters = Q(workflow=workflow)
+
+            # Primary identifier for this file (for response mapping)
+            identifier = (
+                file_data.get("identifier")
+                or file_data.get("cache_key")
+                or file_data.get("provider_file_uuid")
+            )
+
+            logger.info(
+                f"DEBUG: FileHistoryBatch - File {i+1}: {file_data.get('file_path', 'NO_PATH')}"
+                f" (identifier: {identifier})"
+            )
+            logger.info(
+                f"DEBUG: FileHistoryBatch - File {i+1} data: cache_key={file_data.get('cache_key')}, "
+                f"provider_file_uuid={file_data.get('provider_file_uuid')}, "
+                f"file_path={file_data.get('file_path')}"
+            )
+
+            # Store request data for later lookup
+            request_files_map[identifier] = file_data
+
+            if file_data.get("cache_key"):
+                cache_key_filters = Q(cache_key=file_data["cache_key"])
+                # Create composite mapping for collision resolution
+                if file_data.get("file_path"):
+                    composite_key = f"cache_key:{file_data['cache_key']}:path:{file_data['file_path']}"
+                    composite_file_map[composite_key] = identifier
+                # Legacy mapping (may have collisions)
+                file_identifiers[file_data["cache_key"]] = identifier
+                logger.info(
+                    f"DEBUG: FileHistoryBatch - File {i+1}: Using cache_key={file_data['cache_key']}, "
+                    f"mapped to identifier={identifier}"
+                )
+            elif file_data.get("provider_file_uuid"):
+                cache_key_filters = Q(provider_file_uuid=file_data["provider_file_uuid"])
+                # Create composite mapping for collision resolution
+                if file_data.get("file_path"):
+                    composite_key = f"uuid:{file_data['provider_file_uuid']}:path:{file_data['file_path']}"
+                    composite_file_map[composite_key] = identifier
+                # Legacy mapping (may have collisions)
+                file_identifiers[file_data["provider_file_uuid"]] = identifier
+                logger.info(
+                    f"DEBUG: FileHistoryBatch - File {i+1}: Using provider_file_uuid={file_data['provider_file_uuid']}, "
+                    f"mapped to identifier={identifier}"
+                )
+            else:
+                logger.warning(
+                    f"DEBUG: FileHistoryBatch - File {i+1}: No cache_key or provider_file_uuid!"
+                )
+                continue
+
+            # Replicate the FileHistoryHelper.get_file_history logic:
+            # Try both exact file_path match AND file_path__isnull=True (legacy fallback)
+            if file_data.get("file_path"):
+                # Primary query: exact file_path match
+                path_filters = Q(file_path=file_data["file_path"])
+                # Fallback query: legacy records without file_path
+                fallback_filters = Q(file_path__isnull=True)
+                # Combine: match either exact path OR legacy null path
+                filters &= cache_key_filters & (path_filters | fallback_filters)
+                logger.info(
+                    f"DEBUG: FileHistoryBatch - File {i+1}: Added file_path constraint={file_data['file_path']} "
+                    f"with legacy fallback (file_path__isnull=True)"
+                )
+            else:
+                # No file_path provided, only search legacy records
+                filters &= cache_key_filters & Q(file_path__isnull=True)
+                logger.info(
+                    f"DEBUG: FileHistoryBatch - File {i+1}: No file_path provided, using legacy fallback only"
+                )
+
+            logger.info(
+                f"DEBUG: FileHistoryBatch - File {i+1}: Final query filters: {filters}"
+            )
+
+            queries.append(filters)
+
+        logger.info(
+            f"DEBUG: FileHistoryBatch - file_identifiers mapping: {file_identifiers}"
+        )
+        logger.info(f"DEBUG: FileHistoryBatch - composite_file_map: {composite_file_map}")
+        logger.info(
+            f"DEBUG: FileHistoryBatch - request_files_map keys: {list(request_files_map.keys())}"
+        )
+
+        # Execute single batch query with OR conditions
+        if queries:
+            combined_query = reduce(operator.or_, queries)
+            file_histories_queryset = FileHistory.objects.filter(
+                combined_query
+            ).select_related("workflow")
+
+            # Log the exact SQL query for debugging
+            logger.info(
+                f"DEBUG: FileHistoryBatch SQL Query: {file_histories_queryset.query}"
+            )
+
+            file_histories = list(
+                file_histories_queryset
+            )  # Convert to list to allow multiple iterations
+
+            logger.info(
+                f"DEBUG: FileHistoryBatch - Raw database results: {len(file_histories)} records found"
+            )
+            for i, fh in enumerate(file_histories):
+                logger.info(
+                    f"DEBUG: FileHistoryBatch - DB Record {i+1}: "
+                    f"provider_file_uuid={fh.provider_file_uuid}, "
+                    f"cache_key={fh.cache_key}, "
+                    f"file_path={fh.file_path}, "
+                    f"status={fh.status}"
+                )
+        else:
+            file_histories = []
+            logger.info("DEBUG: FileHistoryBatch - No queries to execute")
+
+        # Build response mapping
+        response_data = {}
+
+        # Initialize all files as not found
+        for file_data in files_data:
+            identifier = (
+                file_data.get("identifier")
+                or file_data.get("cache_key")
+                or file_data.get("provider_file_uuid")
+            )
+            response_data[identifier] = {
+                "found": False,
+                "is_completed": False,
+                "file_history": None,
+            }
+
+        # Enhanced response mapping to handle UUID collisions
+        logger.info(
+            f"DEBUG: FileHistoryBatch - Starting response mapping for {len(file_histories)} database records"
+        )
+
+        for i, fh in enumerate(file_histories):
+            logger.info(
+                f"DEBUG: FileHistoryBatch - Processing DB record {i+1}: "
+                f"cache_key={fh.cache_key}, provider_file_uuid={fh.provider_file_uuid}, file_path={fh.file_path}"
+            )
+
+            # Strategy 1: Try composite key matching (handles UUID collisions)
+            matched_identifiers = []
+
+            if fh.cache_key and fh.file_path:
+                composite_key = f"cache_key:{fh.cache_key}:path:{fh.file_path}"
+                if composite_key in composite_file_map:
+                    matched_identifiers.append(composite_file_map[composite_key])
+                    logger.info(
+                        f"DEBUG: FileHistoryBatch - DB record {i+1}: Matched by composite cache_key={composite_key} "
+                        f"-> identifier={composite_file_map[composite_key]}"
+                    )
+
+            if fh.provider_file_uuid and fh.file_path:
+                composite_key = f"uuid:{fh.provider_file_uuid}:path:{fh.file_path}"
+                if composite_key in composite_file_map:
+                    matched_identifiers.append(composite_file_map[composite_key])
+                    logger.info(
+                        f"DEBUG: FileHistoryBatch - DB record {i+1}: Matched by composite uuid={composite_key} "
+                        f"-> identifier={composite_file_map[composite_key]}"
+                    )
+
+            # Strategy 2: If no composite match, try legacy UUID-only matching
+            if not matched_identifiers:
+                if fh.cache_key and fh.cache_key in file_identifiers:
+                    matched_identifiers.append(file_identifiers[fh.cache_key])
+                    logger.info(
+                        f"DEBUG: FileHistoryBatch - DB record {i+1}: Matched by legacy cache_key={fh.cache_key} "
+                        f"-> identifier={file_identifiers[fh.cache_key]}"
+                    )
+                elif fh.provider_file_uuid and fh.provider_file_uuid in file_identifiers:
+                    matched_identifiers.append(file_identifiers[fh.provider_file_uuid])
+                    logger.info(
+                        f"DEBUG: FileHistoryBatch - DB record {i+1}: Matched by legacy provider_file_uuid={fh.provider_file_uuid} "
+                        f"-> identifier={file_identifiers[fh.provider_file_uuid]}"
+                    )
+
+            # Strategy 3: Manual collision resolution for files with same UUID but different paths
+            if not matched_identifiers and fh.provider_file_uuid:
+                # Find all request files with this UUID
+                potential_matches = []
+                for req_identifier, req_data in request_files_map.items():
+                    if req_data.get("provider_file_uuid") == fh.provider_file_uuid:
+                        potential_matches.append((req_identifier, req_data))
+
+                logger.info(
+                    f"DEBUG: FileHistoryBatch - DB record {i+1}: Found {len(potential_matches)} potential UUID matches"
+                )
+
+                # Try to match by file path
+                for req_identifier, req_data in potential_matches:
+                    req_path = req_data.get("file_path")
+                    if fh.file_path == req_path:
+                        matched_identifiers.append(req_identifier)
+                        logger.info(
+                            f"DEBUG: FileHistoryBatch - DB record {i+1}: Matched by manual path comparison "
+                            f"db_path={fh.file_path} == req_path={req_path} -> identifier={req_identifier}"
+                        )
+                        break
+
+                # If still no exact path match, but we have UUID matches, log for fallback handling
+                if not matched_identifiers and potential_matches:
+                    logger.warning(
+                        f"DEBUG: FileHistoryBatch - DB record {i+1}: UUID collision detected! "
+                        f"DB path={fh.file_path} doesn't match any request paths: "
+                        f"{[req_data.get('file_path') for _, req_data in potential_matches]}"
+                    )
+
+            # Process all matched identifiers
+            if not matched_identifiers:
+                logger.warning(
+                    f"DEBUG: FileHistoryBatch - DB record {i+1}: NO MATCH FOUND! "
+                    f"cache_key={fh.cache_key}, provider_file_uuid={fh.provider_file_uuid}, file_path={fh.file_path}"
+                )
+
+            # Update response data for all matches
+            for result_identifier in matched_identifiers:
+                is_completed_result = fh.is_completed()
+                logger.info(
+                    f"DEBUG: FileHistoryBatch - Found record for UUID: {fh.provider_file_uuid}, "
+                    f"Path: {fh.file_path}, Status: {fh.status}, is_completed(): {is_completed_result}, "
+                    f"result_identifier: {result_identifier}"
+                )
+
+                serializer = FileHistorySerializer(fh)
+                response_data[result_identifier] = {
+                    "found": True,
+                    "is_completed": is_completed_result,
+                    "file_history": serializer.data,
+                }
+
+                logger.info(
+                    f"DEBUG: FileHistoryBatch - Response updated for {result_identifier}: "
+                    f"found=True, is_completed={is_completed_result}, status={fh.status}"
+                )
+
+        logger.info(
+            f"Batch file history lookup for workflow {workflow_id}: "
+            f"requested {len(files_data)} files, found {len([r for r in response_data.values() if r['found']])} histories"
+        )
+
+        # Final response data debugging
+        logger.info("DEBUG: FileHistoryBatch - Final response data:")
+        for key, value in response_data.items():
+            logger.info(
+                f"DEBUG: FileHistoryBatch - Response[{key}]: "
+                f"found={value.get('found')}, is_completed={value.get('is_completed')}"
+            )
+
+        return Response({"file_histories": response_data}, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        logger.error(
+            f"Failed to batch lookup file history for workflow {workflow_id}: {e}"
+        )
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def _create_default_identifier(file_data: dict) -> str:
+    """Create default identifier when not provided in request.
+
+    Args:
+        file_data: File data dictionary with provider_file_uuid and file_path
+
+    Returns:
+        Composite identifier in format 'uuid:path' or fallback to uuid or path
+    """
+    uuid = file_data.get("provider_file_uuid", "")
+    path = file_data.get("file_path", "")
+    cache_key = file_data.get("cache_key", "")
+
+    # Prefer provider_file_uuid + file_path combination
+    if uuid and path:
+        return f"{uuid}:{path}"
+    # Fallback to cache_key + path if available
+    elif cache_key and path:
+        return f"{cache_key}:{path}"
+    # Final fallbacks
+    elif uuid:
+        return uuid
+    elif cache_key:
+        return cache_key
+    elif path:
+        return path
+    else:
+        return "unknown"
 
 
 @api_view(["POST"])

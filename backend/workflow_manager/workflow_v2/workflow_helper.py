@@ -480,11 +480,14 @@ class WorkflowHelper:
                 )
                 # Continue without setting task_id - execution can still complete
             else:
-                logger.info(
-                    f"[{org_schema}] Setting task_id for execution_id '{execution_id}' to '{async_execution.id}'"
+                # Use existing method to handle task_id setting with validation
+                WorkflowExecutionServiceHelper.update_execution_task(
+                    execution_id=execution_id, task_id=async_execution.id
                 )
-                workflow_execution.task_id = async_execution.id
-                workflow_execution.save()
+                logger.info(
+                    f"[{org_schema}] Job '{async_execution.id}' has been enqueued for "
+                    f"execution_id '{execution_id}', '{len(hash_values_of_files)}' files"
+                )
 
             execution_status = workflow_execution.status
             if timeout > -1:

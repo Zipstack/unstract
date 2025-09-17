@@ -204,6 +204,21 @@ class RedisCacheBackend(BaseCacheBackend):
             logger.error(f"Error deleting cache key {key}: {e}")
             return False
 
+    def keys(self, pattern: str) -> list[str]:
+        """Get keys matching pattern."""
+        if not self.available:
+            return []
+
+        try:
+            keys = self.redis_client.keys(pattern)
+            # Convert bytes to strings if needed
+            return [
+                key.decode("utf-8") if isinstance(key, bytes) else key for key in keys
+            ]
+        except Exception as e:
+            logger.error(f"Error getting keys for pattern {pattern}: {e}")
+            return []
+
     def delete_pattern(self, pattern: str) -> int:
         """Delete keys matching pattern."""
         if not self.available:

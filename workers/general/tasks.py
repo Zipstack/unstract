@@ -39,9 +39,9 @@ from shared.workflow.execution import (
     WorkerExecutionContext,
     WorkflowOrchestrationUtils,
 )
-from shared.workflow.execution.active_file_manager import ActiveFileManager
-from shared.workflow.execution.file_management_utils import FileManagementUtils
 
+# NOTE: ActiveFileManager and FileManagementUtils imports removed
+# These are now handled internally by StreamingFileDiscovery
 # Import from local worker module (avoid circular import)
 from worker import app, config
 
@@ -93,54 +93,8 @@ def _log_batch_statistics_to_ui(
         logger.debug(f"Failed to log batch statistics: {log_error}")
 
 
-def _log_file_filtering_statistics(
-    execution_id: str,
-    organization_id: str,
-    pipeline_id: str | None,
-    original_count: int,
-    final_count: int,
-    is_api: bool,
-    max_files_limit: int | None,
-) -> None:
-    """Helper method to log file filtering and limiting statistics to UI.
-
-    Args:
-        execution_id: Execution ID for workflow logger
-        organization_id: Organization ID for workflow logger
-        pipeline_id: Pipeline ID for workflow logger
-        original_count: Original number of files before filtering
-        final_count: Final number of files after filtering
-        is_api: Whether this is an API workflow
-        max_files_limit: Maximum files limit if applicable
-    """
-    # Log filtering results
-    if not is_api and original_count > 0:
-        filtered_count = original_count - final_count
-        if filtered_count > 0:
-            # More accurate message - could be file history, limits, or active conflicts
-            reason = "filtered (already processed, limits, or conflicts)"
-            _log_batch_statistics_to_ui(
-                execution_id=execution_id,
-                organization_id=organization_id,
-                pipeline_id=pipeline_id,
-                message=f"🔍 Filtered out {filtered_count} files ({reason}) - {final_count} files remaining",
-            )
-        else:
-            _log_batch_statistics_to_ui(
-                execution_id=execution_id,
-                organization_id=organization_id,
-                pipeline_id=pipeline_id,
-                message=f"✅ No files filtered - all {final_count} files are new",
-            )
-
-    # Log max files limit if applicable
-    if max_files_limit and final_count > max_files_limit:
-        _log_batch_statistics_to_ui(
-            execution_id=execution_id,
-            organization_id=organization_id,
-            pipeline_id=pipeline_id,
-            message=f"📊 Limited to {max_files_limit} files (max batch size) - {final_count - max_files_limit} files skipped",
-        )
+# NOTE: _log_file_filtering_statistics has been removed as filtering
+# is now done in the StreamingFileDiscovery with integrated logging
 
 
 def _log_batch_creation_statistics(
@@ -316,42 +270,9 @@ def async_execute_bin_general(
 
             api_client.update_workflow_execution_status(**update_request.to_dict())
 
-            # Clean up active file cache entries to prevent future conflicts
-            provider_uuids = []
-
-            # Extract provider UUIDs from hash_values_of_files (legacy file batch path)
-            if hash_values_of_files:
-                provider_uuids.extend(
-                    FileManagementUtils.extract_provider_uuids(hash_values_of_files)
-                )
-
-            # Extract provider UUIDs from processed source files (orchestrated workflows)
-            processed_source_files = execution_result.get("processed_source_files", {})
-            if processed_source_files:
-                for file_key, file_data in processed_source_files.items():
-                    provider_uuid = ActiveFileManager._extract_provider_uuid(file_data)
-                    if provider_uuid:
-                        provider_uuids.append(provider_uuid)
-                        logger.debug(
-                            f"Added source file {file_key} ({provider_uuid}) to cleanup list"
-                        )
-
-            # Remove duplicates and clean up
-            if provider_uuids:
-                unique_uuids = list(set(provider_uuids))  # Remove duplicates
-                cleaned_count = FileManagementUtils.cleanup_active_file_cache(
-                    provider_file_uuids=unique_uuids,
-                    workflow_id=workflow_id,
-                    logger_instance=logger,
-                )
-                logger.info(
-                    f"🧹 Cleaned up {cleaned_count} active file cache entries for completed execution"
-                )
-                logger.debug(
-                    f"Cleaned cache entries for: hash_files={len(FileManagementUtils.extract_provider_uuids(hash_values_of_files)) if hash_values_of_files else 0}, source_files={len(processed_source_files)}"
-                )
-            else:
-                logger.debug("No provider UUIDs found for cache cleanup")
+            # NOTE: Active file cache cleanup is now handled by the callback worker
+            # when file processing is complete. The StreamingFileDiscovery doesn't
+            # create cache entries since it filters files during discovery.
 
             logger.info(
                 f"Successfully completed general workflow execution {execution_id}"
@@ -419,37 +340,8 @@ def async_execute_bin_general(
             except Exception as update_error:
                 logger.error(f"Failed to update execution status: {update_error}")
 
-            # Clean up active file cache entries even on failure to prevent conflicts
-            try:
-                provider_uuids = []
-
-                # Extract provider UUIDs from hash_values_of_files (legacy path)
-                if hash_values_of_files:
-                    provider_uuids.extend(
-                        FileManagementUtils.extract_provider_uuids(hash_values_of_files)
-                    )
-
-                # NOTE: In failure case, we don't have access to execution_result
-                # For orchestrated workflows, source_files cleanup will need to be handled
-                # by the orchestration layer or by using a different cleanup strategy
-
-                # Remove duplicates and clean up
-                if provider_uuids:
-                    unique_uuids = list(set(provider_uuids))  # Remove duplicates
-                    cleaned_count = FileManagementUtils.cleanup_active_file_cache(
-                        provider_file_uuids=unique_uuids,
-                        workflow_id=workflow_id,
-                        logger_instance=logger,
-                    )
-                    logger.info(
-                        f"🧹 Cleaned up {cleaned_count} active file cache entries for failed execution"
-                    )
-                else:
-                    logger.debug("No provider UUIDs found for failure cleanup")
-            except Exception as cleanup_error:
-                logger.warning(
-                    f"Failed to cleanup cache entries on error: {cleanup_error}"
-                )
+            # NOTE: Active file cache cleanup not needed on error path
+            # StreamingFileDiscovery doesn't create cache entries
 
             # CRITICAL: Clean up StateStore to prevent data leaks between tasks (error path)
             try:
@@ -691,8 +583,6 @@ def _execute_general_workflow(
 
             # Get connection type from endpoint config
             connection_type = source_connector.endpoint_config.connection_type
-            is_api = source_connector.is_api
-
         except Exception as source_error:
             logger.error(f"Failed to retrieve source files: {source_error}")
 
@@ -704,60 +594,35 @@ def _execute_general_workflow(
             # Continue with empty source files but log the error
             source_files = {}
             total_files = 0
-            is_api = False
             connection_type = "unknown"
 
         logger.info(
             f"Processing {total_files} source files from {connection_type} source"
         )
 
-        # FILE PROCESSING: Choose appropriate processing method based on workflow type
+        # FILE PROCESSING: Source connector now handles ALL filtering during discovery
+        # No duplicate filtering needed - files are already filtered with:
+        # 1. Pattern matching
+        # 2. File history check
+        # 3. Active file check (cache + database)
+        # 4. Hard limit enforcement
+
         max_files_limit = source_connector.get_max_files_limit()
 
-        original_file_count = len(source_files) if source_files else 0
+        # Source files are now ALREADY filtered and limited
+        # The streaming discovery has already applied all filters
+        final_file_count = len(source_files) if source_files else 0
 
-        if source_files:
-            # Log file filtering start to UI
+        logger.info(
+            f"Source connector returned {final_file_count} files (already filtered, limit was {max_files_limit})"
+        )
+
+        # Log statistics to UI (source connector already logged detailed filtering info)
+        if total_files > 0:
             workflow_logger.log_info(
                 logger,
-                f"🔄 Checking {original_file_count} files for duplicates and active processing...",
+                f"✅ Ready to process {total_files} files (all filtering complete)",
             )
-
-            # ETL/TASK workflows: Apply active file filtering to prevent duplicate processing
-            source_files, total_files = (
-                FileManagementUtils.process_files_with_active_filtering(
-                    source_files=source_files,
-                    workflow_id=workflow_context.workflow_id,
-                    execution_id=execution_id,
-                    max_limit=max_files_limit,
-                    api_client=api_client,
-                    logger_instance=logger,
-                )
-            )
-
-            # Log filtering results to UI
-            filtered_count = original_file_count - total_files
-            if filtered_count > 0:
-                workflow_logger.log_info(
-                    logger,
-                    f"📋 File filtering: {original_file_count} → {total_files} files ({filtered_count} filtered by history/limits/conflicts)",
-                )
-            else:
-                workflow_logger.log_info(
-                    logger, f"✅ File filtering: All {total_files} files are new"
-                )
-
-        # Log filtering statistics to UI
-        final_file_count = len(source_files) if source_files else 0
-        _log_file_filtering_statistics(
-            execution_id=execution_id,
-            organization_id=api_client.organization_id,
-            pipeline_id=pipeline_id,
-            original_count=original_file_count,
-            final_count=final_file_count,
-            is_api=is_api,
-            max_files_limit=max_files_limit,
-        )
 
         # Send source logs to UI
         workflow_logger.publish_source_logs(total_files)
@@ -775,18 +640,11 @@ def _execute_general_workflow(
             logger.info(f"Execution {execution_id} no files to process")
 
             # Log detailed explanation to UI
-            if original_file_count > 0:
-                workflow_logger.log_info(
-                    logger,
-                    f"💤 All {original_file_count} files have been processed previously - no new files to process",
-                )
-            else:
-                # Since source connector already applied file history filtering, 0 files usually means
-                # files were found but filtered out, not that no files exist in source
-                workflow_logger.log_info(
-                    logger,
-                    "💤 No new files to process - all files have been processed previously or no files exist in source",
-                )
+            # The source connector has already applied all filters and logged details
+            workflow_logger.log_info(
+                logger,
+                "💤 No files to process - all files have been filtered out (already processed, active, or no matches)",
+            )
 
             # Send completion log to UI
             workflow_logger.publish_execution_complete(

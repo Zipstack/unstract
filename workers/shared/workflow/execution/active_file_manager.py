@@ -14,6 +14,7 @@ import hashlib
 import time
 from typing import Any, Protocol
 
+from ...api.internal_client import InternalAPIClient
 from ...cache.base_cache import RedisCacheBackend
 from ...infrastructure.logging import WorkerLogger
 
@@ -422,7 +423,7 @@ class ActiveFileManager:
 
     @staticmethod
     def _check_database_active_files(
-        api_client: Any,
+        api_client: InternalAPIClient,
         workflow_id: str,
         execution_id: str,
         provider_file_map: dict[str, str],
@@ -535,23 +536,23 @@ class ActiveFileManager:
 
 
 # Convenience functions for common operations
-def filter_active_files(
-    source_files: dict[str, Any],
-    workflow_id: str,
-    execution_id: str,
-    api_client: Any,
-    logger_instance: LoggerProtocol | None = None,
-    final_files_to_process: dict[str, Any] | None = None,
-) -> tuple[dict[str, Any], int, dict[str, Any]]:
-    """Convenience function that delegates to ActiveFileManager.filter_and_cache_files()."""
-    return ActiveFileManager.filter_and_cache_files(
-        source_files=source_files,
-        workflow_id=workflow_id,
-        execution_id=execution_id,
-        api_client=api_client,
-        logger_instance=logger_instance,
-        final_files_to_process=final_files_to_process,
-    )
+# def filter_active_files(
+#     source_files: dict[str, Any],
+#     workflow_id: str,
+#     execution_id: str,
+#     api_client: Any,
+#     logger_instance: LoggerProtocol | None = None,
+#     final_files_to_process: dict[str, Any] | None = None,
+# ) -> tuple[dict[str, Any], int, dict[str, Any]]:
+#     """Convenience function that delegates to ActiveFileManager.filter_and_cache_files()."""
+#     return ActiveFileManager.filter_and_cache_files(
+#         source_files=source_files,
+#         workflow_id=workflow_id,
+#         execution_id=execution_id,
+#         api_client=api_client,
+#         logger_instance=logger_instance,
+#         final_files_to_process=final_files_to_process,
+#     )
 
 
 def cleanup_active_file_cache(

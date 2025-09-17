@@ -292,7 +292,8 @@ class InternalAPIClient(CachedAPIClientMixin):
     def check_files_active_processing(
         self,
         workflow_id: str | uuid.UUID,
-        provider_file_uuids: list[str],
+        provider_file_uuids: list[str] = None,
+        files: list[dict] = None,
         current_execution_id: str | None = None,
         organization_id: str | None = None,
     ) -> APIResponse:
@@ -302,26 +303,41 @@ class InternalAPIClient(CachedAPIClientMixin):
 
         Args:
             workflow_id: Workflow ID to check
-            provider_file_uuids: List of provider file UUIDs to check
+            provider_file_uuids: [LEGACY] List of provider file UUIDs to check
+            files: [NEW] List of file objects with 'uuid' and 'path' fields: [{'uuid': str, 'path': str}]
             current_execution_id: Current execution ID to exclude from active check
             organization_id: Optional organization ID override
 
         Returns:
-            APIResponse with {provider_uuid: is_active} mapping
+            APIResponse with backend response format
         """
         try:
+            # Prepare request data with backward compatibility
+            request_data = {
+                "workflow_id": str(workflow_id),
+                "statuses": ["PENDING", "EXECUTING"],
+                "exclude_execution_id": str(current_execution_id)
+                if current_execution_id
+                else None,
+            }
+
+            # Support both legacy and new formats
+            if files:
+                # New path-aware format
+                request_data["files"] = files
+            elif provider_file_uuids:
+                # Legacy format - fallback
+                request_data["provider_file_uuids"] = provider_file_uuids
+            else:
+                raise ValueError(
+                    "Either 'files' or 'provider_file_uuids' must be provided"
+                )
+
             # Single optimized API call to check multiple files at once
             response_data = self._make_request(
                 method=HTTPMethod.POST,
                 endpoint="v1/workflow-manager/file-execution/check-active",
-                data={
-                    "workflow_id": str(workflow_id),
-                    "provider_file_uuids": provider_file_uuids,
-                    "statuses": ["PENDING", "EXECUTING"],
-                    "exclude_execution_id": str(current_execution_id)
-                    if current_execution_id
-                    else None,
-                },
+                data=request_data,
                 organization_id=organization_id,
             )
 
@@ -1043,6 +1059,36 @@ class InternalAPIClient(CachedAPIClientMixin):
     ) -> dict[str, Any]:
         """Create multiple file history records in a single batch request."""
         return self.file_client.batch_create_file_history(file_histories, organization_id)
+
+    def get_file_history_flexible(
+        self,
+        workflow_id: str | uuid.UUID,
+        cache_key: str | None = None,
+        provider_file_uuid: str | None = None,
+        file_path: str | None = None,
+        organization_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Get file history using flexible parameters (cache_key OR provider_file_uuid)."""
+        return self.file_client.get_file_history_flexible(
+            workflow_id=workflow_id,
+            cache_key=cache_key,
+            provider_file_uuid=provider_file_uuid,
+            file_path=file_path,
+            organization_id=organization_id,
+        )
+
+    def get_files_history_batch(
+        self,
+        workflow_id: str | uuid.UUID,
+        files: list[dict[str, str]],
+        organization_id: str | None = None,
+    ) -> dict[str, dict[str, Any]]:
+        """Get file history for multiple files in a single batch operation."""
+        return self.file_client.get_files_history_batch(
+            workflow_id=workflow_id,
+            files=files,
+            organization_id=organization_id,
+        )
 
     # Delegate webhook client methods
     def send_webhook(

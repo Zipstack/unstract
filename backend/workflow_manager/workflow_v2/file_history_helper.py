@@ -249,9 +249,6 @@ class FileHistoryHelper:
     ) -> FileHistory:
         """Create a new file history record or return existing one.
 
-        Uses atomic get-or-create pattern to handle race conditions gracefully.
-        If a constraint violation occurs, attempts to retrieve the existing record.
-
         Args:
             file_hash (FileHash): The file hash for the file.
             workflow (Workflow): The associated workflow.
@@ -284,7 +281,7 @@ class FileHistoryHelper:
             logger.info(
                 f"Created new FileHistory record - "
                 f"file_name='{file_hash.file_name}', file_path='{file_hash.file_path}', "
-                f"file_hash='{file_hash.file_hash[:16] if file_hash.file_hash else 'None'}...', "
+                f"file_hash='{file_hash.file_hash[:16] if file_hash.file_hash else 'None'}', "
                 f"workflow={workflow}"
             )
             return file_history
@@ -295,7 +292,7 @@ class FileHistoryHelper:
             logger.info(
                 f"FileHistory constraint violation (expected in concurrent environment) - "
                 f"file_name='{file_hash.file_name}', file_path='{file_hash.file_path}', "
-                f"file_hash='{file_hash.file_hash[:16] if file_hash.file_hash else 'None'}...', "
+                f"file_hash='{file_hash.file_hash[:16] if file_hash.file_hash else 'None'}', "
                 f"workflow={workflow}. Error: {str(e)}"
             )
 

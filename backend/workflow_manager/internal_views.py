@@ -5,6 +5,7 @@ Handles workflow execution related endpoints for internal services.
 import logging
 import uuid
 
+from django.core.cache import cache
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -741,32 +742,56 @@ class WorkflowFileExecutionCheckActiveAPIView(APIView):
     def post(self, request):
         """Check if files are in PENDING or EXECUTING state in other workflow executions."""
         try:
-            from django.core.cache import cache
-
-            from workflow_manager.file_execution.models import WorkflowFileExecution
-
             workflow_id = request.data.get("workflow_id")
-            provider_file_uuids = request.data.get("provider_file_uuids", [])
+            # Support both legacy and new formats
+            provider_file_uuids = request.data.get(
+                "provider_file_uuids", []
+            )  # Legacy format
+            files = request.data.get("files", [])  # New format: [{uuid, path}]
             current_execution_id = request.data.get("current_execution_id")
 
-            if not workflow_id or not provider_file_uuids:
+            # Convert legacy format to new format for backward compatibility
+            if provider_file_uuids and not files:
+                files = [{"uuid": uuid, "path": None} for uuid in provider_file_uuids]
+            elif files:
+                # Ensure files have required fields
+                for file_data in files:
+                    if "uuid" not in file_data:
+                        return Response(
+                            {"error": "Each file must have 'uuid' field"},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+
+            if not workflow_id or not files:
                 return Response(
-                    {"error": "workflow_id and provider_file_uuids are required"},
+                    {
+                        "error": "workflow_id and files (or provider_file_uuids) are required"
+                    },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
             logger.info(
                 f"Checking active files for workflow {workflow_id}, "
                 f"excluding execution {current_execution_id}, "
-                f"checking {len(provider_file_uuids)} files"
+                f"checking {len(files)} files"
             )
 
             # Check for files in PENDING or EXECUTING state in other workflow executions
-            active_files = {}
+            active_files = {}  # {uuid: [execution_data]} - legacy format
+            active_identifiers = set()  # Composite identifiers for new format
             cache_hits = 0
             db_queries = 0
 
-            for provider_uuid in provider_file_uuids:
+            # Step 1: Check cache for all files and separate files that need database queries
+            files_needing_db_check = []
+
+            for file_data in files:
+                provider_uuid = file_data["uuid"]
+                file_path = file_data.get("path")
+                composite_id = (
+                    f"{provider_uuid}:{file_path}" if file_path else provider_uuid
+                )
+
                 # 1. Check completion cache first (highest priority)
                 completion_key = f"file_completed:{workflow_id}:{provider_uuid}"
                 completion_data = cache.get(completion_key)
@@ -777,103 +802,83 @@ class WorkflowFileExecutionCheckActiveAPIView(APIView):
                     )
                     continue  # Skip - recently completed
 
-                # 2. Check active processing cache (support both old and new key formats)
+                # 2. Check active processing cache (path-aware)
                 cached_active = None
 
-                # Check old format first
-                old_active_key = f"file_active:{workflow_id}:{provider_uuid}"
-                cached_active = cache.get(old_active_key)
-
-                # If not found, try new file-path-aware format using pattern search
-                if not cached_active:
-                    try:
-                        # Use Redis pattern search for new file-path-aware keys
-                        import redis
-                        from django.conf import settings
-
-                        # Connect to Redis directly for pattern search
-                        redis_client = redis.Redis.from_url(
-                            settings.CACHES["default"]["LOCATION"]
-                        )
-                        pattern = f"file_active:{workflow_id}:{provider_uuid}:*"
-                        matching_keys = redis_client.keys(pattern)
-
-                        # Check each matching key
-                        for key in matching_keys:
-                            key_str = (
-                                key.decode("utf-8") if isinstance(key, bytes) else key
-                            )
-                            cache_data = cache.get(key_str)
-                            if (
-                                cache_data
-                                and cache_data.get("execution_id") != current_execution_id
-                            ):
-                                cached_active = cache_data
-                                logger.debug(
-                                    f"File {provider_uuid} found in new file-path-aware cache: {key_str}"
-                                )
-                                break
-
-                    except Exception as pattern_error:
+                if file_path is not None:
+                    # Use precise path-aware cache key
+                    active_key = f"file_active:{workflow_id}:{provider_uuid}:{file_path}"
+                    cached_active = cache.get(active_key)
+                    if cached_active:
                         logger.debug(
-                            f"Pattern search for file-path-aware cache failed: {pattern_error}"
+                            f"File {provider_uuid}:{file_path} found in path-aware cache"
                         )
+                else:
+                    # No file path available, skip cache check for files without path
+                    cached_active = None
 
                 if cached_active:
                     # Verify it's not the current execution
                     if cached_active.get("execution_id") != current_execution_id:
+                        # Track in both formats
                         active_files[provider_uuid] = [cached_active]
+                        active_identifiers.add(composite_id)
                         cache_hits += 1
-                        logger.debug(f"File {provider_uuid} found in active cache")
+                        logger.debug(f"File {composite_id} found in active cache")
                         continue
 
-                # 3. Database query only if no cache hit
-                db_queries += 1
-                query = WorkflowFileExecution.objects.filter(
-                    workflow_execution__workflow_id=workflow_id,
-                    provider_file_uuid=provider_uuid,
-                    status__in=["PENDING", "EXECUTING"],
+                # File needs database check - add to batch
+                files_needing_db_check.append(
+                    {
+                        "uuid": provider_uuid,
+                        "path": file_path,
+                        "composite_id": composite_id,
+                    }
                 )
 
-                # Exclude current execution if provided
-                if current_execution_id:
-                    query = query.exclude(workflow_execution_id=current_execution_id)
-
-                active_executions = query.values(
-                    "id", "workflow_execution_id", "file_name", "status", "created_at"
+            # Step 2: Bulk database queries for all files that need database check
+            if files_needing_db_check:
+                logger.info(
+                    f"[ActiveCheck] Performing bulk database check for {len(files_needing_db_check)} files"
                 )
-
-                if active_executions.exists():
-                    execution_list = list(active_executions)
-                    active_files[provider_uuid] = execution_list
-
-                    # NOTE: Don't create cache entries here - let the worker create them
-                    # The worker is responsible for creating cache entries when it starts processing
-                    # This prevents double cache creation between worker and backend
-
-                    logger.info(
-                        f"File {provider_uuid} is actively being processed in "
-                        f"{len(execution_list)} other executions"
-                    )
+                self._bulk_database_check(
+                    files_needing_db_check=files_needing_db_check,
+                    workflow_id=workflow_id,
+                    current_execution_id=current_execution_id,
+                    active_files=active_files,
+                    active_identifiers=active_identifiers,
+                )
+                db_queries = 2  # At most 2 bulk queries (path-aware + legacy)
 
             logger.info(
-                f"Active file check complete: {len(active_files)}/{len(provider_file_uuids)} "
-                f"files are being processed (cache_hits: {cache_hits}, db_queries: {db_queries})"
+                f"[ActiveCheck] Active check complete: {len(active_files)}/{len(files)} files active "
+                f"(cache_hits: {cache_hits}, db_queries: {db_queries})"
             )
+
+            # Log final active identifiers for debugging
+            if active_identifiers:
+                logger.debug(
+                    f"[ActiveCheck] Active identifiers: {sorted(active_identifiers)}"
+                )
+            else:
+                logger.debug("[ActiveCheck] No files are currently active")
 
             return Response(
                 {
-                    "active_files": active_files,
+                    "active_files": active_files,  # Legacy format: {uuid: [execution_data]}
                     "active_uuids": list(
                         active_files.keys()
-                    ),  # Worker expects this format
-                    "total_checked": len(provider_file_uuids),
+                    ),  # Legacy format: [uuid1, uuid2]
+                    "active_identifiers": list(
+                        active_identifiers
+                    ),  # New format: ["uuid:path", "uuid2:path2"]
+                    "total_checked": len(files),
                     "total_active": len(active_files),
                     "cache_stats": {
                         "cache_hits": cache_hits,
                         "db_queries": db_queries,
-                        "cache_hit_rate": f"{(cache_hits / len(provider_file_uuids) * 100):.1f}%"
-                        if provider_file_uuids
+                        "cache_hit_rate": f"{(cache_hits / len(files) * 100):.1f}%"
+                        if files
                         else "0.0%",
                     },
                 }
@@ -884,6 +889,219 @@ class WorkflowFileExecutionCheckActiveAPIView(APIView):
             return Response(
                 {"error": "Failed to check active files", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    def _bulk_database_check(
+        self,
+        files_needing_db_check: list[dict],
+        workflow_id: str,
+        current_execution_id: str | None,
+        active_files: dict,
+        active_identifiers: set,
+    ):
+        """Perform bulk database queries instead of individual queries for each file."""
+        if not files_needing_db_check:
+            return
+
+        # Separate files by query type
+        path_aware_files = [f for f in files_needing_db_check if f["path"] is not None]
+        legacy_files = [f for f in files_needing_db_check if f["path"] is None]
+
+        logger.debug(
+            f"[ActiveCheck] Querying {len(path_aware_files)} path-aware, "
+            f"{len(legacy_files)} UUID-only files"
+        )
+
+        # Query 1: Bulk query for path-aware files
+        if path_aware_files:
+            self._bulk_query_path_aware(
+                path_aware_files,
+                workflow_id,
+                current_execution_id,
+                active_files,
+                active_identifiers,
+            )
+
+        # Query 2: Bulk query for UUID-only files
+        if legacy_files:
+            self._bulk_query_uuid_only(
+                legacy_files,
+                workflow_id,
+                current_execution_id,
+                active_files,
+                active_identifiers,
+            )
+
+    def _bulk_query_path_aware(
+        self,
+        path_aware_files: list[dict],
+        workflow_id: str,
+        current_execution_id: str | None,
+        active_files: dict,
+        active_identifiers: set,
+    ):
+        """Bulk query for files with specific paths using two-step workflow scoping."""
+        from django.db.models import Q
+
+        # Step 1: Get ACTIVE workflow executions for this workflow
+        active_workflow_executions = WorkflowExecution.objects.filter(
+            workflow_id=workflow_id, status__in=["PENDING", "EXECUTING"]
+        )
+
+        if current_execution_id:
+            active_workflow_executions = active_workflow_executions.exclude(
+                id=current_execution_id
+            )
+
+        active_execution_ids = list(
+            active_workflow_executions.values_list("id", flat=True)
+        )
+
+        if not active_execution_ids:
+            logger.debug(
+                "[ActiveCheck] No active workflow executions found, path-aware query returns 0 results"
+            )
+            return
+
+        # Step 2: Build OR conditions for file matching: (uuid1 AND path1) OR (uuid2 AND path2) OR ...
+        path_conditions = Q()
+        for file_info in path_aware_files:
+            path_conditions |= Q(
+                provider_file_uuid=file_info["uuid"], file_path=file_info["path"]
+            )
+
+        # Step 3: Execute bulk query on workflow_file_executions from active workflow executions only
+        query = WorkflowFileExecution.objects.filter(
+            workflow_execution_id__in=active_execution_ids,  # Scoped to active workflow executions
+            status__in=["PENDING", "EXECUTING"],  # File execution must also be active
+        ).filter(path_conditions)
+
+        active_executions = query.values(
+            "id",
+            "workflow_execution_id",
+            "file_name",
+            "file_path",
+            "status",
+            "created_at",
+            "provider_file_uuid",
+        )
+
+        logger.info(
+            f"[ActiveCheck] Path-aware query found {active_executions.count()} active records"
+        )
+
+        # Map results back to files with validation
+        for record in active_executions:
+            provider_uuid = record["provider_file_uuid"]
+            file_path = record["file_path"]
+            composite_id = f"{provider_uuid}:{file_path}"
+            execution_id = record["workflow_execution_id"]
+
+            # Validation: Ensure this execution ID is in our expected active executions list
+            if execution_id not in active_execution_ids:
+                logger.error(
+                    f"[ActiveCheck] VALIDATION ERROR: Found file execution {record['id']} "
+                    f"with workflow_execution_id {execution_id} that's not in our active executions list!"
+                )
+                continue
+
+            logger.debug(
+                f"[ActiveCheck]   Active record {record['id']}: "
+                f"uuid={provider_uuid[:8]}..., status={record['status']}, "
+                f"path={file_path}, workflow_execution={execution_id} ✓"
+            )
+
+            # Track in both formats
+            if provider_uuid not in active_files:
+                active_files[provider_uuid] = []
+            active_files[provider_uuid].append(dict(record))
+            active_identifiers.add(composite_id)
+
+            logger.debug(f"[ActiveCheck] File {composite_id} is actively being processed")
+
+    def _bulk_query_uuid_only(
+        self,
+        legacy_files: list[dict],
+        workflow_id: str,
+        current_execution_id: str | None,
+        active_files: dict,
+        active_identifiers: set,
+    ):
+        """Bulk query for UUID-only files (no path available) using two-step workflow scoping."""
+        # Step 1: Get ACTIVE workflow executions for this workflow
+        active_workflow_executions = WorkflowExecution.objects.filter(
+            workflow_id=workflow_id, status__in=["PENDING", "EXECUTING"]
+        )
+
+        if current_execution_id:
+            active_workflow_executions = active_workflow_executions.exclude(
+                id=current_execution_id
+            )
+
+        active_execution_ids = list(
+            active_workflow_executions.values_list("id", flat=True)
+        )
+
+        if not active_execution_ids:
+            logger.debug(
+                "[ActiveCheck] No active workflow executions found, UUID-only query returns 0 results"
+            )
+            return
+
+        # Step 2: Extract UUIDs for IN query
+        uuid_only_uuids = [f["uuid"] for f in legacy_files]
+
+        # Step 3: Execute bulk query on workflow_file_executions from active workflow executions only
+        query = WorkflowFileExecution.objects.filter(
+            workflow_execution_id__in=active_execution_ids,  # Scoped to active workflow executions
+            provider_file_uuid__in=uuid_only_uuids,
+            status__in=["PENDING", "EXECUTING"],  # File execution must also be active
+        )
+
+        logger.debug(f"[ActiveCheck] Legacy bulk SQL: {query.query}")
+
+        active_executions = query.values(
+            "id",
+            "workflow_execution_id",
+            "file_name",
+            "file_path",
+            "status",
+            "created_at",
+            "provider_file_uuid",
+        )
+
+        logger.info(
+            f"[ActiveCheck] UUID-only query found {active_executions.count()} active records"
+        )
+
+        # Map results back to files with validation
+        for record in active_executions:
+            provider_uuid = record["provider_file_uuid"]
+            composite_id = provider_uuid  # Legacy: no path suffix
+            execution_id = record["workflow_execution_id"]
+
+            # Validation: Ensure this execution ID is in our expected active executions list
+            if execution_id not in active_execution_ids:
+                logger.error(
+                    f"[ActiveCheck] VALIDATION ERROR: Found file execution {record['id']} "
+                    f"with workflow_execution_id {execution_id} that's not in our active executions list!"
+                )
+                continue
+
+            logger.debug(
+                f"[ActiveCheck]   Active record {record['id']}: "
+                f"uuid={provider_uuid[:8]}..., status={record['status']}, "
+                f"path={record['file_path']}, workflow_execution={execution_id} ✓"
+            )
+
+            # Track in both formats
+            if provider_uuid not in active_files:
+                active_files[provider_uuid] = []
+            active_files[provider_uuid].append(dict(record))
+            active_identifiers.add(composite_id)
+
+            logger.info(
+                f"[ActiveCheck] File {composite_id} is actively being processed (legacy)"
             )
 
 
@@ -1502,8 +1720,6 @@ class WorkflowDefinitionAPIView(APIView):
                 is_active=workflow.is_active,
             )
 
-            # Convert to legacy format for backward compatibility with existing workers
-            # response_data = workflow_definition_to_legacy_format(workflow_definition)
             response_data = workflow_definition.to_dict()
 
             logger.info(

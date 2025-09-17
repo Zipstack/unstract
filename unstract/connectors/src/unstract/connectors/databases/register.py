@@ -34,9 +34,8 @@ def register_connectors(connectors: dict[str, Any]) -> None:
                         }
             except ModuleNotFoundError as exception:
                 logger.error(
-                    f"Error while importing connectors ===DB===== {connector} : {exception}",
+                    f"Error while importing connectors {connector} : {exception}",
                     exc_info=True,
-                    stack_info=True,
                 )
 
     if len(connectors) == 0:

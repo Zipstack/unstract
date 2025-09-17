@@ -336,7 +336,9 @@ class WorkerDatabaseUtils:
           So we need to use INSERT INTO ... SELECT ... syntax
         - sql values can contain data with single quote. It needs to be handled properly
         """
-        sql = db_class.get_sql_insert_query(table_name=table_name, sql_keys=sql_keys)
+        sql = db_class.get_sql_insert_query(
+            table_name=table_name, sql_keys=sql_keys, sql_values=sql_values
+        )
 
         logger.debug(f"Inserting into table {table_name} with: {sql} query")
         logger.debug(f"SQL values: {sql_values}")

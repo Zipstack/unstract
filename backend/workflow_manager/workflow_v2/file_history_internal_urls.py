@@ -4,6 +4,7 @@ from django.urls import path
 
 from .views import (
     create_file_history_internal,
+    file_history_batch_lookup_internal,
     file_history_by_cache_key_internal,
     file_history_status_internal,
     get_file_history_internal,
@@ -16,6 +17,18 @@ urlpatterns = [
         "cache-key/<str:cache_key>/",
         file_history_by_cache_key_internal,
         name="file-history-by-cache-key-internal",
+    ),
+    # Flexible lookup endpoint (supports both cache_key and provider_file_uuid)
+    path(
+        "lookup/",
+        file_history_by_cache_key_internal,
+        name="file-history-lookup-internal",
+    ),
+    # Batch lookup endpoint for multiple files
+    path(
+        "batch-lookup/",
+        file_history_batch_lookup_internal,
+        name="file-history-batch-lookup-internal",
     ),
     path("create/", create_file_history_internal, name="create-file-history-internal"),
     path(

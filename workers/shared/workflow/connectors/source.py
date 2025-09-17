@@ -112,7 +112,12 @@ class WorkerSourceConnector:
         return files, count
 
     def list_files_from_file_connector(self) -> tuple[dict[str, FileHashData], int]:
-        """List files from filesystem connector matching backend source.py:153.
+        """List files from filesystem connector using streaming discovery.
+
+        This method now uses the new StreamingFileDiscovery system that:
+        1. Applies all filters during discovery (not after)
+        2. Stops immediately when limit is reached
+        3. Uses batch processing for efficiency
 
         Returns:
             tuple: (matched_files, total_count)
@@ -210,107 +215,56 @@ class WorkerSourceConnector:
                 )
                 continue
 
-        # Process directories
-        total_files_to_process = 0
-        total_matched_files = {}
-        unique_file_paths: set[str] = set()
-
-        for input_directory in valid_directories:
-            logger.debug(f"Listing files from: {input_directory}")
-            matched_files, count = self._get_matched_files(
-                source_fs, input_directory, patterns, recursive, limit, unique_file_paths
-            )
-            logger.info(
-                f"[exec:{self.execution_id}] Matched '{count}' files from '{input_directory}'"
-            )
-            total_matched_files.update(matched_files)
-            total_files_to_process += count
-
-        return total_matched_files, total_files_to_process
-
-    def _get_matched_files(
-        self,
-        source_fs: UnstractFileSystem,
-        input_directory: str,
-        patterns: list[str],
-        recursive: bool,
-        limit: int,
-        unique_file_paths: set[str],
-    ) -> tuple[dict[str, FileHashData], int]:
-        """Get matched files from directory with proper batch filtering and limit application.
-
-        This method follows the correct order:
-        1. Discover all matching files
-        2. Apply batch file history filtering
-        3. Apply deduplication
-        4. Apply max files limit
-
-        Args:
-            source_fs: Filesystem connector
-            input_directory: Directory to search
-            patterns: File patterns to match
-            recursive: Whether to search recursively
-            limit: Maximum files to return (applied after all filtering)
-            unique_file_paths: Set of already seen file paths
-
-        Returns:
-            tuple: (matched_files, count)
-        """
-        matched_files: dict[str, FileHashData] = {}
-        count = 0
-        max_depth = int(FileOperationConstants.MAX_RECURSIVE_DEPTH) if recursive else 1
-        fs_fsspec = source_fs.get_fsspec_fs()
+        # NEW: Use StreamingFileDiscovery with FilterPipeline for efficient processing
+        if not valid_directories:
+            logger.warning("No valid directories found to process")
+            return {}, 0
 
         logger.info(
-            f"[exec:{self.execution_id}] Starting file discovery - will apply limit after filtering (limit: {limit})"
+            f"[exec:{self.execution_id}] Starting streaming file discovery for {len(valid_directories)} directories"
         )
 
-        connector_instance = self.endpoint_config.connector_instance
-        if not connector_instance:
-            raise ValueError("Connector instance not found for endpoint config")
-        # Step 1: Discover ALL matching files first (no limit applied)
-        for root, dirs, _ in fs_fsspec.walk(input_directory, maxdepth=max_depth):
-            try:
-                # Get all items in directory with metadata
-                fs_metadata_list: list[dict[str, Any]] = fs_fsspec.listdir(root)
-            except Exception as e:
-                logger.warning(f"Failed to list directory from path: {root}, error: {e}")
-                continue
-            # Process directory items WITHOUT limit - discover all files first
-            count = FileOperations.process_file_fs_directory(
-                fs_metadata_list=fs_metadata_list,
-                count=count,
-                limit=999999,  # Very large limit during initial discovery
-                unique_file_paths=unique_file_paths,
-                matched_files=matched_files,
-                patterns=patterns,
-                source_fs=source_fs,
-                source_connection_type=SourceConnectionType.FILESYSTEM,
-                dirs=dirs,
-                # Pass connector_id so FileHashData objects have it in fs_metadata
-                connector_id=connector_instance.connector_id,
-            )
+        # Import from shared processing module - no circular dependency
+        from ...processing.file_discovery import StreamingFileDiscovery
+        from ...processing.filter_pipeline import create_standard_pipeline
+
+        # Create the streaming discovery instance
+        streaming_discovery = StreamingFileDiscovery(
+            source_fs=source_fs,
+            api_client=self.api_client,
+            workflow_id=self.workflow_id,
+            execution_id=self.execution_id,
+            organization_id=self.organization_id,
+            connector_id=connector_id,
+        )
+
+        # Create filter pipeline with all filters applied during discovery
+        # File history and active file filtering are now done during discovery, not after
+        filter_pipeline = create_standard_pipeline(
+            use_file_history=self.use_file_history,
+            enable_active_filtering=True,  # Always enable for ETL/TASK workflows
+        )
+
+        # Discover files with streaming and early filtering
+        matched_files, total_count = streaming_discovery.discover_files_streaming(
+            directories=valid_directories,
+            patterns=patterns,
+            recursive=recursive,
+            file_hard_limit=limit,  # Hard limit - will stop when reached
+            filter_pipeline=filter_pipeline,
+            batch_size=100,  # Process files in batches of 100
+        )
 
         logger.info(
-            f"[exec:{self.execution_id}] Discovery completed: found {len(matched_files)} matching files before filtering"
+            f"[exec:{self.execution_id}] Streaming discovery complete: {total_count} files found "
+            f"(limit was {limit})"
         )
 
-        # Step 2: Apply batch file history filtering (remove already processed files)
-        files_before_history_filtering = len(matched_files)
-        if self.use_file_history and matched_files:
-            filtered_files = self._apply_file_history_filtering(matched_files)
-            logger.info(
-                f"[exec:{self.execution_id}] File history batch filtering: {len(filtered_files)}/{files_before_history_filtering} files after deduplication"
-            )
-        else:
-            filtered_files = matched_files
+        return matched_files, total_count
 
-        # Return all files for the general worker to handle filtering and limiting
-        # The general worker will apply active file filtering first, then apply the limit
-        logger.info(
-            f"[exec:{self.execution_id}] File discovery completed: returning all {len(filtered_files)} files (limit will be applied after active filtering)"
-        )
-        return filtered_files, len(filtered_files)
+    # NOTE: The old _get_matched_files method has been removed and replaced with
+    # StreamingFileDiscovery which applies all filters during discovery, not after.
+    # This eliminates duplicate filtering and improves performance significantly.
 
     def get_max_files_limit(self) -> int:
         """Get the max files limit from source configuration.
@@ -329,6 +283,8 @@ class WorkerSourceConnector:
         """List files from API storage.
 
         For API workflows, files are already uploaded and we just process them.
+        NOTE: File history filtering is NOT applied here for API workflows as they
+        have different processing patterns than ETL/TASK workflows.
 
         Args:
             existing_file_hashes: Pre-uploaded files
@@ -338,19 +294,8 @@ class WorkerSourceConnector:
         """
         logger.info(f"Listing {len(existing_file_hashes)} files from API storage")
 
-        # Apply file history filtering if enabled
-        if self.use_file_history:
-            filtered_files = self._apply_file_history_filtering(existing_file_hashes)
-            logger.info(
-                f"File history filtering: {len(filtered_files)}/{len(existing_file_hashes)} files after deduplication"
-            )
-
-            # If we have a logger, send filtering info to UI
-            filtered_count = len(existing_file_hashes) - len(filtered_files)
-            if filtered_count > 0:
-                logger.info(f"Filtered out {filtered_count} previously processed files")
-            return filtered_files, len(filtered_files)
-
+        # API workflows handle filtering differently - they don't use file history
+        # or active file filtering in the same way as ETL/TASK workflows
         return existing_file_hashes, len(existing_file_hashes)
 
     def _get_existing_file_executions_optimized(
@@ -385,6 +330,10 @@ class WorkerSourceConnector:
                 workflow_id=self.workflow_id,
                 provider_file_uuids=provider_file_uuids,
                 current_execution_id=self.execution_id,
+            )
+
+            print(
+                f"=====check_files_active_processing==========response: {response}================================="
             )
 
             if not response.success:
@@ -545,129 +494,9 @@ class WorkerSourceConnector:
             # Return empty dict to allow processing to continue
             return {}
 
-    def _apply_file_history_filtering(
-        self, files: dict[str, FileHashData]
-    ) -> dict[str, FileHashData]:
-        """Apply file history filtering to remove already processed files.
-
-        This method filters out files that are:
-        1. Already completed in file history (from previous executions)
-        2. Currently being processed (PENDING/EXECUTING in current execution)
-
-        Args:
-            files: Files to filter
-
-        Returns:
-            dict: Filtered files
-        """
-        if not self.use_file_history:
-            return files
-
-        logger.info(
-            f"Starting file history filtering for {len(files)} files for workflow {self.workflow_id} and execution {self.execution_id}"
-        )
-
-        filtered_files = {}
-
-        # OPTIMIZATION: Extract all provider_file_uuids first for batch check
-        provider_file_uuids = []
-        for file_data in files.values():
-            if hasattr(file_data, "provider_file_uuid") and file_data.provider_file_uuid:
-                provider_file_uuids.append(file_data.provider_file_uuid)
-
-        # OPTIMIZED: Single API call to check all files against active executions
-        existing_file_executions = self._get_existing_file_executions_optimized(
-            provider_file_uuids
-        )
-
-        try:
-            # For ETL/TASK workflows, we'll check file history individually using provider_file_uuid
-            # (matches backend behavior which uses provider_file_uuid as primary identifier)
-
-            # Process each file individually to check history by provider_file_uuid
-            for file_path, file_data in files.items():
-                logger.info(
-                    f"File data  (file {file_data.file_name} path: {file_path})) - provider_file_uuid: '{file_data.provider_file_uuid}', source_connection_type: '{file_data.source_connection_type}'"
-                )
-
-                # Check if file is already being processed in current execution (PENDING/EXECUTING)
-                if (
-                    existing_file_executions
-                    and file_data.provider_file_uuid in existing_file_executions
-                ):
-                    file_exec_status = existing_file_executions[
-                        file_data.provider_file_uuid
-                    ]
-                    if file_exec_status in ["PENDING", "EXECUTING"]:
-                        logger.info(
-                            f"Skipping {file_data.file_name} - "
-                            f"Already in {file_exec_status} status in current execution"
-                        )
-                        continue  # Skip this file
-
-                # Skip files without provider_file_uuid (shouldn't happen for ETL/TASK)
-                if not file_data.provider_file_uuid:
-                    logger.warning(
-                        f"File {file_data.file_name} missing provider_file_uuid - including anyway"
-                    )
-                    filtered_files[file_path] = file_data
-                    continue
-
-                try:
-                    history_response = self.api_client.get_file_history(
-                        workflow_id=self.workflow_id,
-                        provider_file_uuid=file_data.provider_file_uuid,
-                        file_path=file_path,
-                        organization_id=self.organization_id,
-                    )
-                    if (
-                        not history_response
-                        or not history_response.success
-                        or not history_response.found
-                    ):
-                        filtered_files[file_path] = file_data
-                        continue
-
-                    file_history = history_response.file_history
-
-                    if not file_history or not file_history.get("is_completed", False):
-                        is_completed_val = (
-                            file_history.get("is_completed", False)
-                            if file_history
-                            else "N/A"
-                        )
-                        status_val = (
-                            file_history.get("status", "N/A") if file_history else "N/A"
-                        )
-                        logger.info(
-                            f"Details - file_history exists for {file_data.file_name}: {bool(file_history)}, is_completed: {is_completed_val}, status: {status_val}"
-                        )
-                        filtered_files[file_path] = file_data
-                        continue
-
-                    # Compare file paths (matches backend source.py:635-637)
-                    history_file_path = file_history.get("file_path")
-                    if history_file_path and history_file_path != file_path:
-                        # Same provider_file_uuid but different path - treat as new file
-                        logger.info(
-                            f"Different paths detected for {file_data.file_name} - including in batch"
-                        )
-                        filtered_files[file_path] = file_data
-                        continue
-
-                except Exception:
-                    filtered_files[file_path] = file_data
-
-            logger.info(
-                f"File history filtering complete - {len(filtered_files)}/{len(files)} files remain after filtering"
-            )
-
-            return filtered_files
-
-        except Exception as e:
-            logger.error(f"Failed to apply file history filtering: {e}")
-            # On error, return all files to avoid skipping incorrectly
-            return files
+    # NOTE: The _apply_file_history_filtering method has been removed.
+    # File history filtering is now handled by the FileHistoryFilter in FilterPipeline
+    # during streaming discovery, eliminating duplicate API calls.
 
     def _get_fs_connector(
         self, settings: dict[str, Any], connector_id: str

@@ -197,7 +197,9 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
         # This is safe even for valid identifiers and prevents SQL injection
         return f'"{identifier}"'
 
-    def get_sql_insert_query(self, table_name: str, sql_keys: list[str]) -> str:
+    def get_sql_insert_query(
+        self, table_name: str, sql_keys: list[str], sql_values: list[str] | None = None
+    ) -> str:
         """Override base method to add PostgreSQL-specific table name quoting.
 
         Generates INSERT query with properly quoted table name for PostgreSQL.
@@ -205,6 +207,7 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
         Args:
             table_name (str): Name of the table
             sql_keys (list[str]): List of column names
+            sql_values (list[str], optional): SQL values for database-specific handling (ignored for PostgreSQL)
 
         Returns:
             str: INSERT query with properly quoted table name

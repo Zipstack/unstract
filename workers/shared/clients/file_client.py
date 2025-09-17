@@ -609,6 +609,96 @@ class FileAPIClient(BaseAPIClient):
             self._build_url("file_history", f"cache-key/{cache_key}/"), params=params
         )
 
+    def get_file_history_flexible(
+        self,
+        workflow_id: str | uuid.UUID,
+        cache_key: str | None = None,
+        provider_file_uuid: str | None = None,
+        file_path: str | None = None,
+        organization_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Get file history using flexible parameters (cache_key OR provider_file_uuid).
+
+        Args:
+            workflow_id: Workflow ID
+            cache_key: Optional cache key (content hash)
+            provider_file_uuid: Optional provider file UUID
+            file_path: Optional file path
+            organization_id: Optional organization ID
+
+        Returns:
+            File history data
+
+        Raises:
+            ValueError: If neither cache_key nor provider_file_uuid is provided
+        """
+        if not cache_key and not provider_file_uuid:
+            raise ValueError("Either cache_key or provider_file_uuid must be provided")
+
+        payload = {
+            "workflow_id": str(workflow_id),
+            "cache_key": cache_key,
+            "provider_file_uuid": provider_file_uuid,
+            "file_path": file_path,
+            "organization_id": organization_id,
+        }
+
+        # Remove None values to keep payload clean
+        payload = {k: v for k, v in payload.items() if v is not None}
+
+        return self.post(self._build_url("file_history", "lookup/"), data=payload)
+
+    def get_files_history_batch(
+        self,
+        workflow_id: str | uuid.UUID,
+        files: list[dict[str, str]],
+        organization_id: str | None = None,
+    ) -> dict[str, dict[str, Any]]:
+        """Get file history for multiple files in a single batch operation.
+
+        Args:
+            workflow_id: Workflow ID
+            files: List of file data dictionaries. Each dict can contain:
+                   - cache_key (optional): Content hash
+                   - provider_file_uuid (optional): Provider file UUID
+                   - file_path (optional): File path
+                   - identifier (optional): Custom identifier for response mapping
+            organization_id: Optional organization ID
+
+        Returns:
+            Dictionary mapping file identifiers to their history data:
+            {
+                "identifier1": {"found": True, "is_completed": True, "file_history": {...}},
+                "identifier2": {"found": False, "is_completed": False, "file_history": None}
+            }
+
+        Raises:
+            ValueError: If files list is empty or any file lacks required identifiers
+        """
+        if not files:
+            raise ValueError("Files list cannot be empty")
+
+        # Validate that each file has at least one identifier
+        for i, file_data in enumerate(files):
+            if not any([file_data.get("cache_key"), file_data.get("provider_file_uuid")]):
+                raise ValueError(
+                    f"File at index {i} must have either 'cache_key' or 'provider_file_uuid'"
+                )
+
+        payload = {
+            "workflow_id": str(workflow_id),
+            "files": files,
+            "organization_id": organization_id,
+        }
+
+        # Remove None values to keep payload clean
+        payload = {k: v for k, v in payload.items() if v is not None}
+
+        response = self.post(
+            self._build_url("file_history", "batch-lookup/"), data=payload
+        )
+        return response.get("file_histories", {})
+
     def reserve_file_processing(
         self,
         workflow_id: str | UUID,
