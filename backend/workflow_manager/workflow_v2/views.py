@@ -7,6 +7,7 @@ from django.db import transaction
 from django.db.models.query import QuerySet
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
 from permissions.permission import IsOwner
 from pipeline_v2.models import Pipeline
 from pipeline_v2.pipeline_processor import PipelineProcessor
@@ -550,9 +551,16 @@ class FileBatchCreateInternalAPIView(APIView):
 # =============================================================================
 
 
+@csrf_exempt  # Safe: Internal API with Bearer token auth, no session/cookies
 @api_view(["GET", "POST"])
 def file_history_by_cache_key_internal(request, cache_key=None):
     """Get file history by cache key or provider_file_uuid for internal API calls.
+
+    CSRF exempt because this is an internal API that:
+    - Requires Bearer token authentication (INTERNAL_SERVICE_API_KEY)
+    - Is used for service-to-service communication only
+    - Performs read-only operations
+    - Does not rely on cookies or session-based authentication
 
     Supports both GET (legacy) and POST (flexible) methods:
 
@@ -643,6 +651,7 @@ def file_history_by_cache_key_internal(request, cache_key=None):
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@csrf_exempt  # Safe: Internal API with Bearer token auth, no session/cookies
 @api_view(["POST"])
 def file_history_batch_lookup_internal(request):
     """Get file history for multiple files in a single batch operation.
@@ -1056,6 +1065,7 @@ def _create_default_identifier(file_data: dict) -> str:
         return "unknown"
 
 
+@csrf_exempt  # Safe: Internal API with Bearer token auth, no session/cookies
 @api_view(["POST"])
 def create_file_history_internal(request):
     """Create file history record for internal API calls.
@@ -1232,6 +1242,7 @@ def create_file_history_internal(request):
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@csrf_exempt  # Safe: Internal API with Bearer token auth, no session/cookies
 @api_view(["POST"])
 def reserve_file_processing_internal(request):
     """Atomic check-and-reserve operation for file processing deduplication.
@@ -1429,6 +1440,7 @@ def reserve_file_processing_internal(request):
         )
 
 
+@csrf_exempt  # Safe: Internal API with Bearer token auth, no session/cookies
 @api_view(["POST"])
 def get_file_history_internal(request):
     """Get file history for worker deduplication using backend FileHistoryHelper.
@@ -1540,6 +1552,7 @@ def get_file_history_internal(request):
         )
 
 
+@csrf_exempt  # Safe: Internal API with Bearer token auth, no session/cookies
 @api_view(["GET"])
 def file_history_status_internal(request, file_history_id):
     """Get file history status for internal API calls."""

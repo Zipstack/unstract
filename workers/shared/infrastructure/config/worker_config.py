@@ -182,41 +182,39 @@ class WorkerConfig:
 
     # Celery Broker Configuration (matches backend/settings/base.py exactly)
     celery_broker_base_url: str = field(
-        default_factory=lambda: os.getenv(
-            "CELERY_BROKER_BASE_URL", "amqp://unstract-rabbitmq:5672//"
-        )
+        default_factory=lambda: os.getenv("CELERY_BROKER_BASE_URL", "")
     )
     celery_broker_user: str = field(
-        default_factory=lambda: os.getenv("CELERY_BROKER_USER", "admin")
+        default_factory=lambda: os.getenv("CELERY_BROKER_USER", "")
     )
     celery_broker_pass: str = field(
-        default_factory=lambda: os.getenv("CELERY_BROKER_PASS", "password")
+        default_factory=lambda: os.getenv("CELERY_BROKER_PASS", "")
     )
 
     # Celery Backend Database Configuration (with CELERY_BACKEND_ prefix)
     celery_backend_db_host: str = field(
         default_factory=lambda: os.getenv(
-            "CELERY_BACKEND_DB_HOST", os.getenv("DB_HOST", "unstract-db")
+            "CELERY_BACKEND_DB_HOST", os.getenv("DB_HOST", "")
         )  # Fallback to main DB config
     )
     celery_backend_db_port: str = field(
         default_factory=lambda: os.getenv(
             "CELERY_BACKEND_DB_PORT", os.getenv("DB_PORT", "5432")
-        )
+        )  # Port default is OK
     )
     celery_backend_db_name: str = field(
         default_factory=lambda: os.getenv(
-            "CELERY_BACKEND_DB_NAME", os.getenv("DB_NAME", "unstract_db")
+            "CELERY_BACKEND_DB_NAME", os.getenv("DB_NAME", "")
         )
     )
     celery_backend_db_user: str = field(
         default_factory=lambda: os.getenv(
-            "CELERY_BACKEND_DB_USER", os.getenv("DB_USER", "unstract_dev")
+            "CELERY_BACKEND_DB_USER", os.getenv("DB_USER", "")
         )
     )
     celery_backend_db_password: str = field(
         default_factory=lambda: os.getenv(
-            "CELERY_BACKEND_DB_PASSWORD", os.getenv("DB_PASSWORD", "unstract_pass")
+            "CELERY_BACKEND_DB_PASSWORD", os.getenv("DB_PASSWORD", "")
         )
     )
     celery_backend_db_schema: str = field(
@@ -465,23 +463,36 @@ class WorkerConfig:
                 # Redis or broker without authentication
                 self.celery_broker_url = self.celery_broker_base_url
         else:
-            # Fallback to default Redis
-            self.celery_broker_url = "redis://localhost:6379/0"
+            # No broker URL could be built - will be caught in validation
+            self.celery_broker_url = ""
 
         # Build PostgreSQL result backend with configurable schema support
         from urllib.parse import quote_plus
 
-        self.celery_result_backend = (
-            f"db+postgresql://{self.celery_backend_db_user}:{quote_plus(self.celery_backend_db_password)}"
-            f"@{self.celery_backend_db_host}:{self.celery_backend_db_port}/"
-            f"{self.celery_backend_db_name}"
-        )
-
-        # Add schema parameter if not using default 'public' schema
-        if self.celery_backend_db_schema and self.celery_backend_db_schema != "public":
-            self.celery_result_backend += (
-                f"?options=-csearch_path%3D{self.celery_backend_db_schema}"
+        # Only build the URL if all required components are present
+        if (
+            self.celery_backend_db_host
+            and self.celery_backend_db_user
+            and self.celery_backend_db_password
+            and self.celery_backend_db_name
+        ):
+            self.celery_result_backend = (
+                f"db+postgresql://{self.celery_backend_db_user}:{quote_plus(self.celery_backend_db_password)}"
+                f"@{self.celery_backend_db_host}:{self.celery_backend_db_port}/"
+                f"{self.celery_backend_db_name}"
             )
+
+            # Add schema parameter if not using default 'public' schema
+            if (
+                self.celery_backend_db_schema
+                and self.celery_backend_db_schema != "public"
+            ):
+                self.celery_result_backend += (
+                    f"?options=-csearch_path%3D{self.celery_backend_db_schema}"
+                )
+        else:
+            # Missing required database configuration
+            self.celery_result_backend = ""
 
         # Build Redis cache URL for separate cache instance
         self._build_cache_redis_url()
@@ -534,17 +545,22 @@ class WorkerConfig:
             self.internal_api_base_url = "http://unstract-backend:8000/internal"
             logging.warning("Using Docker default for INTERNAL_API_BASE_URL")
 
+        # Validate that Celery URLs were properly built from environment variables
         if not self.celery_broker_url:
-            # Provide Docker default using RabbitMQ (matches original workers)
-            self.celery_broker_url = "amqp://admin:password@unstract-rabbitmq:5672//"
-            logging.warning("Using Docker default for CELERY_BROKER_URL (RabbitMQ)")
+            errors.append(
+                "CELERY_BROKER_URL could not be built. Please set the following environment variables: "
+                "CELERY_BROKER_BASE_URL (e.g., 'amqp://unstract-rabbitmq:5672//'), "
+                "CELERY_BROKER_USER, and CELERY_BROKER_PASS. "
+                "See workers/sample.env for examples."
+            )
 
         if not self.celery_result_backend:
-            # Provide Docker default using PostgreSQL (matches original workers)
-            self.celery_result_backend = (
-                "postgresql://unstract_dev:unstract_pass@unstract-db:5432/unstract_db"
+            errors.append(
+                "CELERY_RESULT_BACKEND could not be built. Please set the following environment variables: "
+                "DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, and DB_PORT. "
+                "These are required for Celery to store task results. "
+                "See workers/sample.env for examples."
             )
-            logging.warning("Using Docker default for CELERY_RESULT_BACKEND (PostgreSQL)")
 
         # Cache Redis validation
         if self.cache_redis_enabled:

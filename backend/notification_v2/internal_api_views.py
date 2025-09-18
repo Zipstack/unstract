@@ -27,12 +27,7 @@ logger = logging.getLogger(__name__)
 INTERNAL_SERVER_ERROR_MSG = "Internal server error"
 
 
-# CSRF exemption is safe here because:
-# 1. This is service-to-service communication (workers → backend)
-# 2. Authentication uses Bearer tokens (INTERNAL_SERVICE_API_KEY)
-# 3. No browser sessions or cookies involved
-# 4. InternalAPIAuthMiddleware provides adequate protection
-@csrf_exempt
+@csrf_exempt  # Safe: Internal API with Bearer token auth, service-to-service only
 @require_http_methods(["GET"])
 def get_pipeline_notifications(request, pipeline_id):
     """Get active notifications for a pipeline or API deployment.
@@ -128,9 +123,7 @@ def get_pipeline_notifications(request, pipeline_id):
         )
 
 
-# CSRF exemption is safe for internal service-to-service communication
-# Protected by InternalAPIAuthMiddleware Bearer token authentication
-@csrf_exempt
+@csrf_exempt  # Safe: Internal API with Bearer token auth, service-to-service only
 @require_http_methods(["GET"])
 def get_api_notifications(request, api_id):
     """Get active notifications for an API deployment.
@@ -184,9 +177,7 @@ def get_api_notifications(request, api_id):
         )
 
 
-# CSRF exemption is safe for internal service-to-service communication
-# Protected by InternalAPIAuthMiddleware Bearer token authentication
-@csrf_exempt
+@csrf_exempt  # Safe: Internal API with Bearer token auth, service-to-service only
 @require_http_methods(["GET"])
 def get_pipeline_data(request, pipeline_id):
     """Get basic pipeline data for notification purposes.
@@ -222,9 +213,7 @@ def get_pipeline_data(request, pipeline_id):
         )
 
 
-# CSRF exemption is safe for internal service-to-service communication
-# Protected by InternalAPIAuthMiddleware Bearer token authentication
-@csrf_exempt
+@csrf_exempt  # Safe: Internal API with Bearer token auth, service-to-service only
 @require_http_methods(["GET"])
 def get_api_data(request, api_id):
     """Get basic API deployment data for notification purposes.

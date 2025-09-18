@@ -12,6 +12,7 @@ for basic operations.
 import logging
 
 from account_v2.models import Organization
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -23,6 +24,7 @@ from workflow_manager.workflow_v2.models import Workflow, WorkflowExecution
 logger = logging.getLogger(__name__)
 
 
+@csrf_exempt  # Safe: Internal API with Bearer token auth, no session/cookies
 @api_view(["GET"])
 def get_workflow_execution_data(request, execution_id: str):
     """Get workflow execution data for workers.
@@ -91,6 +93,7 @@ def get_workflow_execution_data(request, execution_id: str):
         )
 
 
+@csrf_exempt  # Safe: Internal API with Bearer token auth, no session/cookies
 @api_view(["GET"])
 def get_tool_instances_by_workflow(request, workflow_id: str):
     """Get tool instances for a workflow.
@@ -185,6 +188,7 @@ def get_tool_instances_by_workflow(request, workflow_id: str):
         )
 
 
+@csrf_exempt  # Safe: Internal API with Bearer token auth, no session/cookies
 @api_view(["POST"])
 def create_file_execution_batch(request):
     """Create a batch of file executions for workers.
@@ -222,6 +226,7 @@ def create_file_execution_batch(request):
         )
 
 
+@csrf_exempt  # Safe: Internal API with Bearer token auth, no session/cookies
 @api_view(["POST"])
 def update_file_execution_batch_status(request):
     """Update file execution batch status for workers.
@@ -258,6 +263,7 @@ def update_file_execution_batch_status(request):
         )
 
 
+@csrf_exempt  # Safe: Internal API with Bearer token auth, no session/cookies
 @api_view(["POST"])
 def create_workflow_execution(request):
     """Create a new workflow execution.
@@ -332,6 +338,7 @@ def create_workflow_execution(request):
         )
 
 
+@csrf_exempt  # Safe: Internal API with Bearer token auth, no session/cookies
 @api_view(["PUT"])
 def update_workflow_execution_status(request):
     """Update workflow execution status.
@@ -403,6 +410,7 @@ def update_workflow_execution_status(request):
         )
 
 
+@csrf_exempt  # Safe: Internal API with Bearer token auth, no session/cookies
 @api_view(["POST"])
 def compile_workflow(request):
     """Compile workflow for workers.
@@ -442,6 +450,7 @@ def compile_workflow(request):
         )
 
 
+@csrf_exempt  # Safe: Internal API with Bearer token auth, no session/cookies
 @api_view(["POST"])
 def submit_file_batch_for_processing(request):
     """Submit file batch for processing by workers.

@@ -5,6 +5,7 @@ This module contains internal API endpoints used by workers for execution finali
 
 import logging
 
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 
+@csrf_exempt  # Safe: Internal API with Bearer token auth, no session/cookies
 @api_view(["POST"])
 def finalize_workflow_execution_internal(request, execution_id):
     """Finalize workflow execution for internal API calls.
@@ -94,6 +96,7 @@ def finalize_workflow_execution_internal(request, execution_id):
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@csrf_exempt  # Safe: Internal API with Bearer token auth, no session/cookies
 @api_view(["POST"])
 def cleanup_execution_resources_internal(request):
     """Cleanup execution resources for internal API calls.
@@ -183,6 +186,7 @@ def cleanup_execution_resources_internal(request):
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@csrf_exempt  # Safe: Internal API with Bearer token auth, no session/cookies
 @api_view(["GET"])
 def execution_finalization_status_internal(request, execution_id):
     """Get execution finalization status for internal API calls."""

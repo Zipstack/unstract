@@ -5,6 +5,7 @@ This module contains internal API endpoints used by workers for tool execution.
 
 import logging
 
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status, viewsets
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -76,6 +77,7 @@ class ToolExecutionInternalViewSet(viewsets.ModelViewSet):
             )
 
 
+@csrf_exempt  # Safe: Internal API with Bearer token auth, no session/cookies
 @api_view(["GET"])
 def tool_execution_status_internal(request, execution_id):
     """Get tool execution status for internal API calls."""
@@ -98,6 +100,7 @@ def tool_execution_status_internal(request, execution_id):
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@csrf_exempt  # Safe: Internal API with Bearer token auth, no session/cookies
 @api_view(["GET"])
 def tool_by_id_internal(request, tool_id):
     """Get tool information by tool ID for internal API calls."""
@@ -222,6 +225,7 @@ def tool_by_id_internal(request, tool_id):
         )
 
 
+@csrf_exempt  # Safe: Internal API with Bearer token auth, no session/cookies
 @api_view(["GET"])
 def tool_instances_by_workflow_internal(request, workflow_id):
     """Get tool instances for a workflow for internal API calls."""
