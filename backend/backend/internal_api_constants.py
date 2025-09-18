@@ -6,8 +6,11 @@ These constants can be overridden via environment variables for flexibility.
 
 import os
 
+# Default constant for SonarCloud compliance
+DEFAULT_INTERNAL_PREFIX = "/internal"
+
 # Internal API Configuration
-INTERNAL_API_PREFIX = os.getenv("INTERNAL_API_PREFIX", "/internal")
+INTERNAL_API_PREFIX = os.getenv("INTERNAL_API_PREFIX", DEFAULT_INTERNAL_PREFIX)
 INTERNAL_API_VERSION = os.getenv("INTERNAL_API_VERSION", "v1")
 
 # Computed full prefix
@@ -76,8 +79,8 @@ class InternalEndpoints:
 ENVIRONMENT_VARIABLES = {
     "INTERNAL_API_PREFIX": {
         "description": "Base prefix for internal API endpoints",
-        "default": "/internal",
-        "example": "/internal",
+        "default": DEFAULT_INTERNAL_PREFIX,
+        "example": DEFAULT_INTERNAL_PREFIX,
     },
     "INTERNAL_API_VERSION": {
         "description": "API version for internal endpoints",

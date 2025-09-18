@@ -96,13 +96,13 @@ class CacheService:
                     f"Cache clearing incomplete: deleted {deleted_count} keys before timeout"
                 )
 
-        except Exception as e:
+        except (ConnectionError, TimeoutError, OSError) as e:
             logger.error(f"Failed to clear cache pattern '{key_pattern}': {str(e)}")
             # Fallback to old method for backward compatibility
             try:
                 cache.delete_pattern(key_pattern)
                 logger.warning(f"Used fallback delete_pattern for '{key_pattern}'")
-            except Exception as fallback_error:
+            except (ConnectionError, TimeoutError, OSError) as fallback_error:
                 logger.error(
                     f"Fallback cache clearing also failed: {str(fallback_error)}"
                 )
