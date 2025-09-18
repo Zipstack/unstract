@@ -4,7 +4,6 @@ This module provides standardized file processing operations, batching,
 validation, and conversion utilities used across worker implementations.
 """
 
-import math
 import time
 from typing import Any
 
@@ -83,7 +82,7 @@ class FileProcessingUtils:
         organization_id: str | None = None,
         api_client=None,
         batch_size_env_var: str = "MAX_PARALLEL_FILE_BATCHES",
-        default_batch_size: int = 4,
+        default_batch_size: int = 1,
     ) -> list[list[tuple[str, Any]]]:
         """Standardized file batching algorithm used across workers with organization-specific config.
 
@@ -105,33 +104,71 @@ class FileProcessingUtils:
             logger.warning("No files provided for batching")
             return []
 
-        # Get batch size using configuration client with fallback
-        from ...infrastructure.config.client import get_batch_size_with_fallback
-
-        batch_size = get_batch_size_with_fallback(
+        # Get batch size using internal API client (consistent with other worker operations)
+        batch_size = FileProcessingUtils._get_batch_size_via_api(
             organization_id=organization_id,
             api_client=api_client,
             env_var_name=batch_size_env_var,
-            default_value=default_batch_size,  # This will be used only if passed explicitly
+            default_value=default_batch_size,
         )
 
         # Convert to list of items
         file_items = list(files.items())
+        # calculate number of files
         num_files = len(file_items)
-
-        # Calculate optimal number of batches
+        # Target number of batches (can't exceed number of files)
         num_batches = min(batch_size, num_files)
-        items_per_batch = math.ceil(num_files / num_batches)
 
-        # Create batches
-        batches = []
-        for i in range(0, num_files, items_per_batch):
-            batch = file_items[i : i + items_per_batch]
-            batches.append(batch)
+        logger.info(
+            f"Arranging {num_files} files into {num_batches} batches "
+            f"(max_batch_size={batch_size})"
+        )
+
+        # Arrange files in batches
+        batches = FileProcessingUtils._arrange_files_in_batches(
+            file_items=file_items, num_files=num_files, num_batches=num_batches
+        )
+
+        return batches
+
+    @staticmethod
+    def _arrange_files_in_batches(
+        file_items: list[tuple[str, Any]],
+        num_files: int,
+        num_batches: int,
+    ) -> list[list[tuple[str, Any]]]:
+        """Arrange files in batches using round-robin distribution for even workload.
+
+        Distributes files evenly across batches in round-robin fashion to ensure
+        balanced workload, especially when files vary in size or complexity.
+
+        Note:
+            There is an optimization opportunity here to use weighted round-robin distribution
+            to balance large files with small files across batches for more even workload
+            distribution based on actual processing requirements rather than just file count.
+
+        Args:
+            file_items: List of file items to batch
+            num_files: Total number of files
+            num_batches: Number of batches to create
+
+        Returns:
+            List of file batches with files distributed evenly
+        """
+        # Initialize empty batches
+        batches = [[] for _ in range(num_batches)]
+
+        # Distribute files in round-robin fashion
+        for index, file_item in enumerate(file_items):
+            batch_index = index % num_batches
+            batches[batch_index].append(file_item)
+
+        # Remove any empty batches (shouldn't happen, but safety check)
+        batches = [batch for batch in batches if batch]
 
         logger.info(
             f"Created {len(batches)} batches from {num_files} files "
-            f"(max_batch_size={batch_size}, items_per_batch={items_per_batch})"
+            f"(round-robin distribution)"
         )
 
         return batches
@@ -233,6 +270,70 @@ class FileProcessingUtils:
             metadata[file_key] = file_metadata
 
         return metadata
+
+    @staticmethod
+    def _get_batch_size_via_api(
+        organization_id: str | None = None,
+        api_client=None,
+        env_var_name: str = "MAX_PARALLEL_FILE_BATCHES",
+        default_value: int = 1,
+    ) -> int:
+        """Get batch size using internal API client (unified approach).
+
+        This replaces the complex infrastructure config client with direct API calls,
+        maintaining the same fallback behavior as the backend Configuration.get_value_by_organization().
+
+        Args:
+            organization_id: Organization ID for configuration lookup
+            api_client: Internal API client for configuration access
+            env_var_name: Environment variable for batch size config (fallback)
+            default_value: Default batch size if all else fails
+
+        Returns:
+            Batch size (guaranteed to be >= 1)
+        """
+        # Try organization-specific configuration via internal API
+        if api_client and organization_id:
+            try:
+                response = api_client.get_configuration(
+                    config_key=env_var_name,
+                    organization_id=organization_id,
+                )
+
+                if (
+                    response.get("success")
+                    and response.get("data", {}).get("value") is not None
+                ):
+                    config_value = int(response["data"]["value"])
+                    if config_value >= 1:
+                        logger.info(
+                            f"Using organization configuration for {organization_id} {env_var_name}: {config_value}"
+                        )
+                        return config_value
+
+            except Exception as e:
+                logger.warning(f"Failed to get organization config, falling back: {e}")
+
+        # Fall back to environment variable
+        import os
+
+        try:
+            env_value = int(os.getenv(env_var_name, str(default_value)))
+            if env_value >= 1:
+                logger.info(f"Using environment variable {env_var_name}: {env_value}")
+                return env_value
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid {env_var_name} environment variable")
+
+        # Final fallback to backend default (matching backend logic)
+        try:
+            final_value = int(os.getenv(env_var_name, str(default_value)))
+            final_value = max(1, final_value)
+            logger.info(f"Using final environment fallback: {final_value}")
+            return final_value
+        except (ValueError, TypeError):
+            logger.info(f"Using absolute fallback: {default_value}")
+            return 1
 
     @staticmethod
     def create_file_processing_summary(

@@ -15,7 +15,6 @@ __all__ = [
     "WorkerCacheManager",
     # Configuration
     "WorkerBuilder",
-    "ConfigurationClient",
     "WorkerRegistry",
     "WorkerConfig",
     # Logging

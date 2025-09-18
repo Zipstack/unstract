@@ -209,18 +209,7 @@ def _unified_api_execution(
             execution_id, workflow_id, organization_id, converted_files
         )
 
-        # Create file batches using standardized algorithm with organization-specific config
-        file_batches = FileProcessingUtils.create_file_batches(
-            files=converted_files,
-            organization_id=organization_id,
-            api_client=api_client,
-            batch_size_env_var="MAX_PARALLEL_FILE_BATCHES",
-            # default_batch_size not needed - will use environment default
-        )
-
-        logger.info(
-            f"Processing {len(converted_files)} files in {len(file_batches)} batches"
-        )
+        logger.info(f"Processing {len(converted_files)} files")
 
         # Execute workflow through direct API orchestration
         result = _run_workflow_api(
@@ -717,8 +706,6 @@ def _get_file_batches(
         This function expects FileHashData objects since convert_file_hash_data() is called upstream.
         The function converts them to dict format for Celery serialization.
     """
-    import math
-
     # Convert FileHashData objects to serializable format for batching
     # At this point, input_files should contain only FileHashData objects
     # (converted upstream by FileProcessingUtils.convert_file_hash_data)
@@ -741,30 +728,15 @@ def _get_file_batches(
             else:
                 continue
 
-    # Prepare batches of files for parallel processing with organization-specific config
-    from shared.infrastructure.config.client import get_batch_size_with_fallback
-
-    BATCH_SIZE = get_batch_size_with_fallback(
+    # Use standardized round-robin batching for consistent distribution
+    file_batches = FileProcessingUtils.create_file_batches(
+        files=json_serializable_files,
         organization_id=organization_id,
         api_client=api_client,
-        env_var_name="MAX_PARALLEL_FILE_BATCHES",
-        # default_value not needed - will use environment default
+        batch_size_env_var="MAX_PARALLEL_FILE_BATCHES",
+        default_batch_size=1,  # Match backend default
     )
-    file_items = list(json_serializable_files.items())
-
-    # Calculate how many items per batch (exact Django logic)
-    num_files = len(file_items)
-    num_batches = min(BATCH_SIZE, num_files)
-    items_per_batch = math.ceil(num_files / num_batches)
-
-    # Split into batches (exact Django logic)
-    batches = []
-    for start_index in range(0, len(file_items), items_per_batch):
-        end_index = start_index + items_per_batch
-        batch = file_items[start_index:end_index]
-        batches.append(batch)
-
-    return batches
+    return file_batches
 
 
 def _calculate_q_file_no_list_api(

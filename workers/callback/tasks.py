@@ -296,7 +296,9 @@ def _fetch_api_deployment_data(
             return None
 
     except Exception as e:
-        logger.error(f"Failed to fetch API deployment data for {api_id}: {e}")
+        logger.error(
+            f"Failed to fetch API deployment data for {api_id}: {e}", exc_info=True
+        )
         return None
 
 
