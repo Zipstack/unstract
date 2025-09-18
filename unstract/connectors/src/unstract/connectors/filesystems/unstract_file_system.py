@@ -184,7 +184,7 @@ class UnstractFileSystem(UnstractConnector, ABC):
 
         for root, dirs, _ in fs_fsspec.walk(directory, maxdepth=max_depth):
             try:
-                fs_metadata_list = fs_fsspec.listdir(root)
+                fs_metadata_list = fs_fsspec.listdir(root, detail=True)
                 for metadata in fs_metadata_list:
                     if not include_dirs and self.is_dir_by_metadata(metadata):
                         continue
