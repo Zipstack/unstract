@@ -763,26 +763,19 @@ class FileHashData:
         VALIDATION RULES:
         - file_name and file_path are always required
         - Either file_hash OR provider_file_uuid must be present for database uniqueness
-        - If both are missing, creates temporary fallback to allow worker processing
 
-        FALLBACK BEHAVIOR:
-        When both file_hash and provider_file_uuid are missing (e.g., metadata collection failed),
-        creates a temporary MD5 hash of file_path to satisfy database constraints.
-        The real SHA256 content hash will be computed later during file processing.
+        FAIL FAST BEHAVIOR:
+        If validation fails, raises ValueError immediately to ensure data integrity
+        and make metadata collection failures visible for debugging.
         """
         if not self.file_name:
             raise ValueError("file_name is required")
         if not self.file_path:
             raise ValueError("file_path is required")
         if not self.file_hash and not self.provider_file_uuid:
-            # GRACEFUL FALLBACK: If both identifiers are missing, create temporary file path hash
-            # This allows workers to proceed when metadata collection fails
-            # The real SHA256 content hash will be computed during file processing
-            import hashlib
-
-            self.file_hash = hashlib.md5(self.file_path.encode()).hexdigest()
-            logger.warning(
-                f"Created temporary file path hash for {self.file_name} to allow worker processing"
+            raise ValueError(
+                "Either file_hash or provider_file_uuid is required. "
+                "Check metadata collection process for failures."
             )
 
     def to_dict(self) -> dict[str, Any]:

@@ -53,7 +53,8 @@ class CacheKeyGenerator:
     def custom_key(operation: str, *args: str) -> str:
         """Generate cache key for custom operations."""
         # Create a hash of the arguments for consistent keys
-        args_hash = hashlib.md5(":".join(args).encode()).hexdigest()[:8]
+        # Using SHA-256 for SonarCloud compliance (cache key generation is not security-critical)
+        args_hash = hashlib.sha256(":".join(args).encode()).hexdigest()[:8]
         return f"worker_cache:{operation}:{args_hash}"
 
 
