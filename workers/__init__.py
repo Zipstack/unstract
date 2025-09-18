@@ -12,7 +12,7 @@ __email__ = "support@unstract.com"
 
 __all__ = [
     "shared",
-    "api_deployment",
+    "api-deployment",
     "general",
     "file_processing",
     "callback",
