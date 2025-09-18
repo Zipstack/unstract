@@ -129,27 +129,35 @@ class UnstractFileSystem(UnstractConnector, ABC):
         """
 
         def get_modified_date(metadata: dict[str, Any]) -> datetime:
-            date = self.extract_modified_date(metadata)
-            if date is None:
-                # Fallback to epoch for files without timestamp
+            try:
+                dt = self.extract_modified_date(metadata)
+                if dt is None:
+                    # Fallback to epoch for files without timestamp
+                    logger.warning(
+                        f"No modified date found for file: {metadata['name']}, "
+                        "falling back to epoch for such files with no timestamp"
+                    )
+                    return datetime.fromtimestamp(0, tz=UTC)
+                # Ensure the extracted date is normalized to UTC and timezone-aware
+                if dt.tzinfo is None:
+                    # Naive datetime - assume UTC
+                    return dt.replace(tzinfo=UTC)
+                else:
+                    # Convert to UTC
+                    return dt.astimezone(UTC)
+            except Exception as e:
+                # Log per-file warning and store error for this specific metadata entry
+                file_name = metadata.get("name", "unknown file")
+                msg = (
+                    f"Failed to extract modified date for file: {file_name}, "
+                    "falling back to epoch for such files and continuing execution"
+                )
+                logger.exception(f"{msg}: {e}")
+                self._store_user_error(msg)
+                # Return epoch as fallback so sorting never fails
                 return datetime.fromtimestamp(0, tz=UTC)
-            # Ensure the extracted date is normalized to UTC and timezone-aware
-            if date.tzinfo is None:
-                # Naive datetime - assume UTC
-                return date.replace(tzinfo=UTC)
-            else:
-                # Convert to UTC
-                return date.astimezone(UTC)
 
-        try:
-            return sorted(
-                file_metadata_list, key=get_modified_date, reverse=not ascending
-            )
-        except Exception as e:
-            msg = "Failed to sort files by modified date"
-            logger.warning(f"{msg}: {e}")
-            self._store_user_error(msg)
-            return file_metadata_list
+        return sorted(file_metadata_list, key=get_modified_date, reverse=not ascending)
 
     def _store_user_error(self, error_msg: str) -> None:
         """Store user-friendly error message for later reporting.

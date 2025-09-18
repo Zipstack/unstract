@@ -106,6 +106,53 @@ class MinioFS(UnstractFileSystem):
         """
         return metadata.get("type") == "directory"
 
+    def _find_modified_date_value(self, metadata: dict[str, Any]) -> Any | None:
+        """Find the modified date value from metadata using common keys."""
+        for key in ["LastModified", "last_modified", "modified", "mtime"]:
+            last_modified = metadata.get(key)
+            if last_modified is not None:
+                return last_modified
+
+        logger.debug(
+            f"[S3/MinIO] No modified date found in metadata keys: {list(metadata.keys())}"
+        )
+        return None
+
+    def _normalize_datetime_to_utc(self, dt: datetime) -> datetime:
+        """Normalize datetime object to timezone-aware UTC."""
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=UTC)
+        return dt.astimezone(UTC)
+
+    def _parse_string_datetime(
+        self, date_str: str, metadata_keys: list[str]
+    ) -> datetime | None:
+        """Parse string datetime using multiple formats."""
+        # Try ISO-8601 format first
+        try:
+            dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+            return self._normalize_datetime_to_utc(dt)
+        except ValueError:
+            pass
+
+        # Fall back to RFC 1123 format
+        try:
+            dt = parsedate_to_datetime(date_str)
+            return dt.astimezone(UTC)
+        except (ValueError, TypeError):
+            logger.warning(
+                f"[S3/MinIO] Failed to parse datetime '{date_str}' from metadata keys: {metadata_keys}"
+            )
+            return None
+
+    def _parse_numeric_timestamp(self, timestamp: float) -> datetime | None:
+        """Parse numeric epoch timestamp."""
+        try:
+            return datetime.fromtimestamp(timestamp, tz=UTC)
+        except (ValueError, OSError):
+            logger.warning(f"[S3/MinIO] Invalid epoch timestamp: {timestamp}")
+            return None
+
     def extract_modified_date(self, metadata: dict[str, Any]) -> datetime | None:
         """Extract the last modified date from S3/MinIO metadata.
 
@@ -117,56 +164,18 @@ class MinioFS(UnstractFileSystem):
         Returns:
             timezone-aware UTC datetime object or None if not available
         """
-        # Check common alternative keys for modified date
-        for key in ["LastModified", "last_modified", "modified", "mtime"]:
-            last_modified = metadata.get(key)
-            if last_modified is not None:
-                break
-        else:
-            logger.debug(
-                f"[S3/MinIO] No modified date found in metadata keys: {list(metadata.keys())}"
-            )
+        last_modified = self._find_modified_date_value(metadata)
+        if last_modified is None:
             return None
 
         if isinstance(last_modified, datetime):
-            # Ensure datetime has timezone info
-            if last_modified.tzinfo is None:
-                # Naive datetime - assume UTC
-                return last_modified.replace(tzinfo=UTC)
-            else:
-                # Convert to UTC
-                return last_modified.astimezone(UTC)
+            return self._normalize_datetime_to_utc(last_modified)
 
-        elif isinstance(last_modified, str):
-            # Try ISO-8601 format first
-            try:
-                dt = datetime.fromisoformat(last_modified.replace("Z", "+00:00"))
-                # Ensure timezone awareness and convert to UTC
-                if dt.tzinfo is None:
-                    return dt.replace(tzinfo=UTC)
-                else:
-                    return dt.astimezone(UTC)
-            except ValueError:
-                pass
+        if isinstance(last_modified, str):
+            return self._parse_string_datetime(last_modified, list(metadata.keys()))
 
-            # Fall back to RFC 1123 format
-            try:
-                dt = parsedate_to_datetime(last_modified)
-                # parsedate_to_datetime returns timezone-aware datetime in UTC
-                return dt.astimezone(UTC)
-            except (ValueError, TypeError):
-                logger.warning(
-                    f"[S3/MinIO] Failed to parse datetime '{last_modified}' from metadata keys: {list(metadata.keys())}"
-                )
-                return None
-
-        elif isinstance(last_modified, (int, float)):
-            # Numeric epoch timestamp
-            try:
-                return datetime.fromtimestamp(last_modified, tz=UTC)
-            except (ValueError, OSError):
-                logger.warning(f"[S3/MinIO] Invalid epoch timestamp: {last_modified}")
-                return None
+        if isinstance(last_modified, (int, float)):
+            return self._parse_numeric_timestamp(last_modified)
 
         logger.debug(
             f"[S3/MinIO] Unsupported datetime type '{type(last_modified)}' in metadata keys: {list(metadata.keys())}"
