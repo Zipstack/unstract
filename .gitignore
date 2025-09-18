@@ -629,11 +629,6 @@ backend/plugins/processor/*
 # Subscription Plugins
 backend/plugins/subscription/*
 
-# Queue Plugin Contents (keep directory structure, ignore implementation files)
-backend/plugins/queues/**
-!backend/plugins/queues/
-!backend/plugins/queues/*/
-!backend/plugins/queues/**/README.md
 
 # API Deployment Plugins
 backend/plugins/api/**
