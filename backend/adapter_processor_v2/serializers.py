@@ -76,7 +76,6 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
         rep[AdapterKeys.ADAPTER_METADATA] = adapter_metadata
         # Retrieve context window if adapter is a LLM
         # For other adapter types, context_window is not relevant.
-
         if instance.adapter_type == AdapterTypes.LLM.value:
             adapter_metadata[AdapterKeys.ADAPTER_CONTEXT_WINDOW_SIZE] = (
                 instance.get_context_window_size()
