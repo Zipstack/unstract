@@ -133,29 +133,9 @@ class WorkerRegistry:
     # Health check functions registry
     _HEALTH_CHECKS: dict[WorkerType, list[tuple[str, Callable]]] = {}
 
-    # Worker-specific Celery settings
-    _WORKER_SETTINGS: dict[WorkerType, dict] = {
-        WorkerType.FILE_PROCESSING: {
-            "pool_type": "threads",
-            "concurrency": 4,
-            "max_tasks_per_child": 100,  # Lower due to memory usage
-        },
-        WorkerType.CALLBACK: {
-            "autoscale": (4, 1),
-            "prefetch_multiplier": 2,
-            "max_tasks_per_child": 2000,
-            "task_time_limit": 3600,  # 1 hour
-            "task_soft_time_limit": 3300,  # 55 minutes
-        },
-        WorkerType.NOTIFICATION: {
-            "task_time_limit": 30,  # 30 seconds for webhooks
-            "task_max_retries": 3,
-        },
-        WorkerType.LOG_CONSUMER: {
-            "prefetch_multiplier": 1,
-            "max_tasks_per_child": 1000,
-        },
-    }
+    # Note: Worker-specific Celery settings moved to environment-based configuration
+    # See shared/models/worker_models.py:get_celery_setting() for hierarchical config
+    # Use environment variables like CALLBACK_TASK_TIME_LIMIT=3600 or CELERY_TASK_TIME_LIMIT=300
 
     # Logging configurations
     _LOGGING_CONFIGS: dict[WorkerType, dict] = {
@@ -260,9 +240,11 @@ class WorkerRegistry:
             worker_type: Type of worker
 
         Returns:
-            Dictionary of worker-specific settings
+            Empty dict (settings moved to environment-based configuration)
         """
-        return cls._WORKER_SETTINGS.get(worker_type, {})
+        # Worker settings moved to hierarchical environment-based configuration
+        # See shared/models/worker_models.py:get_celery_setting()
+        return {}
 
     @classmethod
     def get_logging_config(cls, worker_type: WorkerType) -> dict:
@@ -294,7 +276,6 @@ class WorkerRegistry:
         """
         queue_config = cls.get_queue_config(worker_type)
         task_routing = cls.get_task_routing(worker_type)
-        settings = cls.get_worker_settings(worker_type)
 
         # Build health config
         health_checks = cls.get_health_checks(worker_type)
@@ -302,18 +283,13 @@ class WorkerRegistry:
             port=worker_type.to_health_port(), custom_checks=health_checks
         )
 
-        # Create complete config with defaults and overrides
+        # Create complete config (worker settings now come from environment variables)
         config = WorkerCeleryConfig(
             worker_type=worker_type,
             queue_config=queue_config,
             task_routing=task_routing,
             health_config=health_config,
         )
-
-        # Apply worker-specific settings
-        for key, value in settings.items():
-            if hasattr(config, key):
-                setattr(config, key, value)
 
         return config
 

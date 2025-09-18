@@ -22,49 +22,8 @@ from .worker_config import WorkerConfig
 logger = logging.getLogger(__name__)
 
 
-def get_chord_config_override() -> dict[str, Any]:
-    """Get chord-specific configuration override for workers that use chords.
-
-    This provides task annotations for celery.chord_unlock to:
-    - Set custom retry intervals (default 3s instead of 1s)
-    - Set maximum retries based on duration or explicit count
-    - Support infinite retries with -1 flag
-
-    Returns:
-        Dictionary with task_annotations for chord_unlock configuration
-    """
-    import os
-
-    def calculate_chord_max_retries() -> int | None:
-        """Calculate max retries for chord unlock tasks."""
-        # Check for direct override first
-        retry_count_env = os.getenv("CELERY_RESULT_CHORD_RETRY_COUNT")
-        if retry_count_env is not None:
-            retry_count = int(retry_count_env)
-            if retry_count == -1:
-                return None  # Infinite retries
-            return retry_count
-
-        # Calculate from duration
-        retry_delay = int(os.getenv("CELERY_RESULT_CHORD_RETRY_INTERVAL", "3"))
-        target_days = int(os.getenv("CELERY_RESULT_CHORD_RETRY_DAYS", "2"))
-        return (target_days * 24 * 60 * 60) // retry_delay
-
-    chord_retry_delay = int(os.getenv("CELERY_RESULT_CHORD_RETRY_INTERVAL", "3"))
-    chord_max_retries = calculate_chord_max_retries()
-
-    logger.info(
-        f"CHORD_CONFIG: retry_delay={chord_retry_delay}, max_retries={chord_max_retries}"
-    )
-
-    return {
-        "task_annotations": {
-            "celery.chord_unlock": {
-                "default_retry_delay": chord_retry_delay,
-                "max_retries": chord_max_retries,
-            }
-        }
-    }
+# Chord configuration now handled by hierarchical environment-based configuration
+# See shared/models/worker_models.py:get_celery_setting() and _add_chord_configuration()
 
 
 class WorkerBuilder:
@@ -110,19 +69,6 @@ class WorkerBuilder:
             broker_url=config.celery_broker_url,
             result_backend=config.celery_result_backend,
         )
-
-        # Apply chord configuration for workers that use chords
-        chord_workers = {
-            WorkerType.CALLBACK,
-            WorkerType.GENERAL,
-            WorkerType.API_DEPLOYMENT,
-        }
-        if worker_type in chord_workers:
-            chord_config = get_chord_config_override()
-            celery_config.update(chord_config)
-            logger.info(
-                f"Applied chord configuration for {worker_type}: {chord_config.get('task_annotations', {}).get('celery.chord_unlock', {})}"
-            )
 
         # Apply any additional overrides
         if override_config:

@@ -62,61 +62,6 @@ class DefaultConfig:
     API_RETRY_BACKOFF_FACTOR = 1.0
 
 
-class QueueConfig:
-    """Queue routing and configuration."""
-
-    # Queue routing rules
-    TASK_ROUTES = {
-        "send_webhook_notification": {
-            "queue": "notifications"
-        },  # Route to notification worker
-        "async_execute_bin_api": {"queue": "general"},
-        "execute_workflow_with_files": {"queue": "general"},
-        "_orchestrate_file_processing_general": {"queue": "general"},
-        "process_file_batch": {"queue": "file_processing"},
-        "execute_single_file": {"queue": "file_processing"},
-        "update_file_execution_status": {"queue": "file_processing"},
-        "process_batch_callback": {"queue": "callback"},
-        "update_workflow_execution_status": {"queue": "callback"},
-        "update_pipeline_status": {"queue": "callback"},
-        "deploy_api_workflow": {"queue": "api_deployments"},
-        "undeploy_api_workflow": {"queue": "api_deployments"},
-        "check_api_deployment_status": {"queue": "api_deployments"},
-        # Scheduler tasks routing
-        "scheduler.tasks.execute_pipeline_task": {"queue": "scheduler"},
-    }
-
-    # Queue priorities (higher number = higher priority)
-    QUEUE_PRIORITIES = {
-        "callback": 9,  # Highest priority for completion callbacks
-        "webhook": 8,  # High priority for notifications
-        "scheduler": 6,  # High priority for scheduled tasks
-        "general": 5,  # Standard priority for orchestration
-        "file_processing": 3,  # Lower priority for file processing
-        "api_deployments": 2,  # Lowest priority for deployments
-    }
-
-    # Queue-specific worker settings
-    QUEUE_WORKER_SETTINGS = {
-        "general": {
-            "prefetch_multiplier": 1,
-            "max_tasks_per_child": 1000,
-        },
-        "file_processing": {
-            "prefetch_multiplier": 1,
-            "max_tasks_per_child": 100,  # Lower due to memory usage
-        },
-        "callback": {
-            "prefetch_multiplier": 2,
-            "max_tasks_per_child": 2000,
-        },
-        "api_deployments": {
-            "prefetch_multiplier": 1,
-            "max_tasks_per_child": 500,
-        },
-    }
-
-
 class FileProcessingConfig:
     """File processing specific configuration."""
 
@@ -497,7 +442,17 @@ class WorkerConfig:
         # Build Redis cache URL for separate cache instance
         self._build_cache_redis_url()
 
-        self.validate()
+        # Allow worker startup even with incomplete config for chord settings
+        try:
+            self.validate()
+        except ValueError as e:
+            # Log validation errors but don't prevent worker startup
+            logging.warning(
+                f"Worker configuration validation failed (worker will continue with defaults): {e}"
+            )
+            logging.info(
+                "To fix this, ensure all required environment variables are set. See workers/sample.env"
+            )
 
     def _build_cache_redis_url(self):
         """Build Redis cache URL from configuration components."""

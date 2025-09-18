@@ -31,8 +31,6 @@ class TaskName(str, Enum):
     UPDATE_PIPELINE_STATUS = "update_pipeline_status"
 
     # API deployment worker tasks
-    DEPLOY_API_WORKFLOW = "deploy_api_workflow"
-    UNDEPLOY_API_WORKFLOW = "undeploy_api_workflow"
     CHECK_API_DEPLOYMENT_STATUS = "check_api_deployment_status"
 
     def __str__(self):

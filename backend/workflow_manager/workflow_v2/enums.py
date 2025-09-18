@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from enum import Enum
 
-# Import shared ExecutionStatus to ensure consistency between backend and workers
+from unstract.core.data_models import ExecutionStatus as SharedExecutionStatus
+
+# Alias shared ExecutionStatus to ensure consistency between backend and workers
+ExecutionStatus = SharedExecutionStatus
 
 
 class WorkflowExecutionMethod(Enum):

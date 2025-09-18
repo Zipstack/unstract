@@ -8,11 +8,104 @@ Migration Note: Part of the worker refactoring initiative to improve
 code maintainability and reduce duplication across workers.
 """
 
+import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
 from shared.enums.worker_enums import QueueName, WorkerType
+
+
+def get_celery_setting(
+    setting_name: str, worker_type: WorkerType, default: Any, setting_type: type = str
+) -> Any:
+    """Get Celery configuration setting with 3-tier hierarchy resolution.
+
+    Resolution order (most specific wins):
+    1. {WORKER_TYPE}_{SETTING_NAME} (worker-specific override)
+    2. CELERY_{SETTING_NAME} (global override)
+    3. default (Celery standard/provided default)
+
+    Args:
+        setting_name: The setting name (e.g., "TASK_TIME_LIMIT")
+        worker_type: Worker type for worker-specific overrides
+        default: Default value if no environment variables are set
+        setting_type: Type to convert the setting value to (str, int, bool, etc.)
+
+    Returns:
+        Resolved configuration value with proper type conversion
+
+    Examples:
+        # Check CALLBACK_TASK_TIME_LIMIT, then CELERY_TASK_TIME_LIMIT, then default
+        timeout = get_celery_setting("TASK_TIME_LIMIT", WorkerType.CALLBACK, 300, int)
+
+        # Check FILE_PROCESSING_POOL_TYPE, then CELERY_POOL_TYPE, then "prefork"
+        pool = get_celery_setting("POOL_TYPE", WorkerType.FILE_PROCESSING, "prefork", str)
+    """
+    # 1. Check worker-specific setting first (highest priority)
+    worker_specific_key = f"{worker_type.name}_{setting_name}"
+    worker_value = os.getenv(worker_specific_key)
+    if worker_value is not None:
+        converted_value = _convert_setting_value(worker_value, setting_type)
+        if converted_value is not None:
+            return converted_value
+
+    # 2. Check global Celery setting (medium priority)
+    global_key = f"CELERY_{setting_name}"
+    global_value = os.getenv(global_key)
+    if global_value is not None:
+        converted_value = _convert_setting_value(global_value, setting_type)
+        if converted_value is not None:
+            return converted_value
+
+    # 3. Use provided default (lowest priority)
+    return default
+
+
+def _convert_setting_value(value: str, setting_type: type) -> Any:
+    """Convert string environment variable to appropriate type.
+
+    Args:
+        value: String value from environment variable
+        setting_type: Target type for conversion
+
+    Returns:
+        Converted value or None if empty/invalid
+
+    Raises:
+        ValueError: If conversion fails for non-empty values
+    """
+    # Handle empty or whitespace-only values
+    if not value or not value.strip():
+        return None
+
+    # Clean the value
+    value = value.strip()
+
+    if setting_type == bool:
+        return value.lower() in ("true", "1", "yes", "on")
+    elif setting_type == int:
+        try:
+            return int(value)
+        except ValueError:
+            raise ValueError(f"Cannot convert '{value}' to integer")
+    elif setting_type == float:
+        try:
+            return float(value)
+        except ValueError:
+            raise ValueError(f"Cannot convert '{value}' to float")
+    elif setting_type == tuple:
+        # For autoscale tuples like "4,1" -> (4, 1)
+        try:
+            parts = [x.strip() for x in value.split(",") if x.strip()]
+            if not parts:
+                return None
+            return tuple(int(x) for x in parts)
+        except ValueError:
+            raise ValueError(f"Cannot convert '{value}' to tuple of integers")
+    else:
+        # Default to string (already cleaned)
+        return value
 
 
 @dataclass
@@ -164,12 +257,14 @@ class WorkerCeleryConfig:
     concurrency: int | None = None  # None means auto
     autoscale: tuple[int, int] | None = None  # (max, min) workers
 
-    def to_celery_dict(self, broker_url: str, result_backend: str) -> dict[str, Any]:
-        """Generate complete Celery configuration dictionary.
+    # Task annotations (for task-specific settings like retry policies)
+    task_annotations: dict[str, dict[str, Any]] = field(default_factory=dict)
 
-        All settings check environment variables first, then use defaults.
-        Environment variables follow pattern: CELERY_<SETTING_NAME> or
-        <WORKER_TYPE>_<SETTING_NAME> for worker-specific overrides.
+    def to_celery_dict(self, broker_url: str, result_backend: str) -> dict[str, Any]:
+        """Generate complete Celery configuration dictionary with hierarchical resolution.
+
+        Uses 3-tier hierarchy: Worker-specific > Global > Default
+        Includes feature-specific logic for chord workers, pool types, etc.
 
         Args:
             broker_url: Celery broker URL
@@ -178,34 +273,6 @@ class WorkerCeleryConfig:
         Returns:
             Dictionary suitable for app.conf.update()
         """
-        import os
-
-        # Helper to get env var with fallback
-        def get_env_config(key: str, default: Any, cast_type=None) -> Any:
-            """Get config from environment with worker-specific and global fallbacks."""
-            # Try worker-specific env var first
-            worker_env_key = f"{self.worker_type.name}_{key}"
-            value = os.getenv(worker_env_key)
-
-            # Try global Celery env var
-            if value is None:
-                celery_env_key = f"CELERY_{key}"
-                value = os.getenv(celery_env_key)
-
-            # Use default if not found
-            if value is None:
-                return default
-
-            # Cast to appropriate type
-            if cast_type == bool:
-                return value.lower() in ("true", "1", "yes")
-            elif cast_type == int:
-                try:
-                    return int(value)
-                except ValueError:
-                    return default
-            return value
-
         config = {
             # Connection settings
             "broker_url": broker_url,
@@ -213,87 +280,133 @@ class WorkerCeleryConfig:
             # Task routing
             "task_routes": self.task_routing.to_celery_config(),
             # Serialization (configurable from env)
-            "task_serializer": get_env_config("TASK_SERIALIZER", "json"),
+            "task_serializer": get_celery_setting(
+                "TASK_SERIALIZER", self.worker_type, "json"
+            ),
             "accept_content": ["json"],  # Could make this configurable too
-            "result_serializer": get_env_config("RESULT_SERIALIZER", "json"),
-            "timezone": get_env_config("TIMEZONE", "UTC"),
-            "enable_utc": get_env_config("ENABLE_UTC", True, bool),
-            # Worker settings (all configurable from env)
-            "worker_prefetch_multiplier": get_env_config(
-                "WORKER_PREFETCH_MULTIPLIER", self.prefetch_multiplier, int
+            "result_serializer": get_celery_setting(
+                "RESULT_SERIALIZER", self.worker_type, "json"
             ),
-            "task_acks_late": get_env_config("TASK_ACKS_LATE", self.task_acks_late, bool),
-            "worker_max_tasks_per_child": get_env_config(
-                "WORKER_MAX_TASKS_PER_CHILD", self.max_tasks_per_child, int
+            "timezone": get_celery_setting("TIMEZONE", self.worker_type, "UTC"),
+            "enable_utc": get_celery_setting("ENABLE_UTC", self.worker_type, True, bool),
+            # Worker settings (all configurable from env with Celery defaults)
+            "worker_prefetch_multiplier": get_celery_setting(
+                "PREFETCH_MULTIPLIER",
+                self.worker_type,
+                1,
+                int,  # Celery default is 4, but 1 is safer
             ),
-            "task_reject_on_worker_lost": get_env_config(
-                "TASK_REJECT_ON_WORKER_LOST", self.task_reject_on_worker_lost, bool
+            "task_acks_late": get_celery_setting(
+                "TASK_ACKS_LATE", self.worker_type, True, bool
             ),
-            "task_acks_on_failure_or_timeout": get_env_config(
-                "TASK_ACKS_ON_FAILURE_OR_TIMEOUT", True, bool
+            "worker_max_tasks_per_child": get_celery_setting(
+                "MAX_TASKS_PER_CHILD",
+                self.worker_type,
+                1000,
+                int,  # Prevent memory leaks
             ),
-            "worker_disable_rate_limits": get_env_config(
-                "WORKER_DISABLE_RATE_LIMITS", False, bool
+            "task_reject_on_worker_lost": get_celery_setting(
+                "TASK_REJECT_ON_WORKER_LOST", self.worker_type, True, bool
             ),
-            # Timeouts (configurable from env)
-            "task_time_limit": get_env_config(
-                "TASK_TIME_LIMIT", self.task_time_limit, int
+            "task_acks_on_failure_or_timeout": get_celery_setting(
+                "TASK_ACKS_ON_FAILURE_OR_TIMEOUT", self.worker_type, True, bool
             ),
-            "task_soft_time_limit": get_env_config(
-                "TASK_SOFT_TIME_LIMIT", self.task_soft_time_limit, int
+            "worker_disable_rate_limits": get_celery_setting(
+                "DISABLE_RATE_LIMITS", self.worker_type, False, bool
+            ),
+            # Timeouts (configurable from env with conservative defaults)
+            "task_time_limit": get_celery_setting(
+                "TASK_TIME_LIMIT",
+                self.worker_type,
+                300,
+                int,  # 5 minutes default
+            ),
+            "task_soft_time_limit": get_celery_setting(
+                "TASK_SOFT_TIME_LIMIT",
+                self.worker_type,
+                270,
+                int,  # 4.5 minutes default
             ),
             # Retry configuration (configurable from env)
-            "task_default_retry_delay": get_env_config(
-                "TASK_DEFAULT_RETRY_DELAY", self.task_default_retry_delay, int
+            "task_default_retry_delay": get_celery_setting(
+                "TASK_DEFAULT_RETRY_DELAY",
+                self.worker_type,
+                60,
+                int,  # 1 minute default
             ),
-            "task_max_retries": get_env_config(
-                "TASK_MAX_RETRIES", self.task_max_retries, int
+            "task_max_retries": get_celery_setting(
+                "TASK_MAX_RETRIES", self.worker_type, 3, int
             ),
             # Stability (configurable from env)
-            "worker_pool_restarts": get_env_config("WORKER_POOL_RESTARTS", True, bool),
-            "broker_connection_retry_on_startup": get_env_config(
-                "BROKER_CONNECTION_RETRY_ON_STARTUP", True, bool
+            "worker_pool_restarts": get_celery_setting(
+                "POOL_RESTARTS", self.worker_type, True, bool
+            ),
+            "broker_connection_retry_on_startup": get_celery_setting(
+                "BROKER_CONNECTION_RETRY_ON_STARTUP", self.worker_type, True, bool
             ),
             # Monitoring (configurable from env)
-            "worker_send_task_events": get_env_config(
-                "WORKER_SEND_TASK_EVENTS", True, bool
+            "worker_send_task_events": get_celery_setting(
+                "SEND_TASK_EVENTS", self.worker_type, True, bool
             ),
-            "task_send_sent_event": get_env_config("TASK_SEND_SENT_EVENT", True, bool),
+            "task_send_sent_event": get_celery_setting(
+                "TASK_SEND_SENT_EVENT", self.worker_type, True, bool
+            ),
             # Task imports
             "imports": [self.worker_type.to_import_path()],
         }
 
-        # Add pool-specific settings if configured (also check env)
-        pool_type = os.getenv(f"{self.worker_type.name}_POOL_TYPE", self.pool_type)
-        if pool_type == "threads":
-            config["worker_pool"] = "threads"
+        # Feature-specific configurations
+        self._add_pool_configuration(config)
+        self._add_worker_scaling_configuration(config)
+        self._add_chord_configuration(config)
 
-        # Check for concurrency override from env
-        concurrency_env = os.getenv(f"{self.worker_type.name}_CONCURRENCY")
-        if concurrency_env:
-            try:
-                config["worker_concurrency"] = int(concurrency_env)
-            except ValueError:
-                pass
-        elif self.concurrency is not None:
-            config["worker_concurrency"] = self.concurrency
-
-        # Check for autoscale override from env
-        autoscale_env = os.getenv(f"{self.worker_type.name}_AUTOSCALE")
-        if autoscale_env:
-            try:
-                max_w, min_w = autoscale_env.split(",")
-                config["worker_autoscaler"] = "celery.worker.autoscale.Autoscaler"
-                config["worker_autoscale_max"] = int(max_w)
-                config["worker_autoscale_min"] = int(min_w)
-            except (ValueError, AttributeError):
-                pass
-        elif self.autoscale is not None:
-            config["worker_autoscaler"] = "celery.worker.autoscale.Autoscaler"
-            config["worker_autoscale_max"] = self.autoscale[0]
-            config["worker_autoscale_min"] = self.autoscale[1]
+        # Add task annotations if present
+        if self.task_annotations:
+            config["task_annotations"] = self.task_annotations
 
         return config
+
+    def _add_pool_configuration(self, config: dict[str, Any]) -> None:
+        """Add worker pool configuration based on worker type and environment."""
+        # FILE_PROCESSING worker uses threads by default, others use prefork
+        if self.worker_type == WorkerType.FILE_PROCESSING:
+            default_pool = "threads"
+        else:
+            default_pool = "prefork"
+
+        pool_type = get_celery_setting("POOL_TYPE", self.worker_type, default_pool)
+        if pool_type == "threads":
+            config["worker_pool"] = "threads"
+        # prefork is Celery's default, so no need to set it explicitly
+
+    def _add_worker_scaling_configuration(self, config: dict[str, Any]) -> None:
+        """Add concurrency and autoscaling configuration."""
+        # Concurrency (fixed number of workers)
+        concurrency = get_celery_setting("CONCURRENCY", self.worker_type, None, int)
+        if concurrency is not None:
+            config["worker_concurrency"] = concurrency
+
+        # Autoscaling (dynamic worker count)
+        autoscale = get_celery_setting("AUTOSCALE", self.worker_type, None, tuple)
+        if autoscale is not None:
+            config["worker_autoscaler"] = "celery.worker.autoscale.Autoscaler"
+            config["worker_autoscale_max"] = autoscale[0]
+            config["worker_autoscale_min"] = autoscale[1]
+
+    def _add_chord_configuration(self, config: dict[str, Any]) -> None:
+        """Add chord-specific configuration only for workers that use chords."""
+        # Only workers that actually use chords need chord configuration
+        chord_workers = {
+            WorkerType.CALLBACK,
+            WorkerType.GENERAL,
+            WorkerType.API_DEPLOYMENT,
+        }
+
+        if self.worker_type in chord_workers:
+            # Chord retry interval - defaults to Celery standard (1 second)
+            config["result_chord_retry_interval"] = get_celery_setting(
+                "RESULT_CHORD_RETRY_INTERVAL", self.worker_type, 1, int
+            )
 
     def to_cli_args(self) -> list[str]:
         """Generate Celery worker CLI arguments.

@@ -218,8 +218,46 @@ run_worker() {
     local celery_cmd="/app/.venv/bin/celery -A $app_module worker"
     local celery_args="--loglevel=$log_level --queues=$queues --hostname=$hostname"
 
-    # Add pool type and configure accordingly
-    local pool_type="${CELERY_POOL:-prefork}"
+    # =============================================================================
+    # Hierarchical Configuration Resolution (3-tier priority system)
+    # =============================================================================
+    # Resolve worker-specific overrides using the hierarchical configuration pattern:
+    # 1. {WORKER_TYPE}_{SETTING_NAME} (highest priority)
+    # 2. CELERY_{SETTING_NAME} (medium priority)
+    # 3. Default value (lowest priority)
+
+    # Convert worker_type to uppercase for environment variable resolution
+    local worker_type_upper=$(echo "$worker_type" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+
+    # Helper function for hierarchical configuration resolution
+    resolve_config() {
+        local setting_name=$1
+        local default_value=$2
+
+        # Check worker-specific setting first (highest priority)
+        local worker_specific_var="${worker_type_upper}_${setting_name}"
+        local worker_value=$(eval echo "\${${worker_specific_var}:-}")
+        if [[ -n "$worker_value" ]]; then
+            echo "$worker_value"
+            return
+        fi
+
+        # Check global Celery setting (medium priority)
+        local global_var="CELERY_${setting_name}"
+        local global_value=$(eval echo "\${${global_var}:-}")
+        if [[ -n "$global_value" ]]; then
+            echo "$global_value"
+            return
+        fi
+
+        # Use default value (lowest priority)
+        echo "$default_value"
+    }
+
+    # Apply hierarchical configuration for pool type
+    local pool_type=$(resolve_config "POOL_TYPE" "prefork")
+    # Override with legacy CELERY_POOL for backward compatibility
+    pool_type="${CELERY_POOL:-$pool_type}"
     celery_args="$celery_args --pool=$pool_type"
 
     # Configure concurrency based on pool type
@@ -241,22 +279,38 @@ run_worker() {
         fi
     fi
 
-    # Add optional prefetch multiplier
-    if [[ -n "$CELERY_PREFETCH_MULTIPLIER" ]]; then
-        celery_args="$celery_args --prefetch-multiplier=$CELERY_PREFETCH_MULTIPLIER"
+    # Apply hierarchical configuration for optional parameters
+
+    # Prefetch multiplier - hierarchical resolution with backward compatibility
+    local prefetch_multiplier=$(resolve_config "PREFETCH_MULTIPLIER" "")
+    prefetch_multiplier="${CELERY_PREFETCH_MULTIPLIER:-$prefetch_multiplier}"
+    if [[ -n "$prefetch_multiplier" ]]; then
+        celery_args="$celery_args --prefetch-multiplier=$prefetch_multiplier"
+        print_status $BLUE "  → Prefetch multiplier: $prefetch_multiplier"
     fi
 
-    # Add additional optional parameters
-    if [[ -n "$CELERY_MAX_TASKS_PER_CHILD" ]]; then
-        celery_args="$celery_args --max-tasks-per-child=$CELERY_MAX_TASKS_PER_CHILD"
+    # Max tasks per child - hierarchical resolution with backward compatibility
+    local max_tasks_per_child=$(resolve_config "MAX_TASKS_PER_CHILD" "")
+    max_tasks_per_child="${CELERY_MAX_TASKS_PER_CHILD:-$max_tasks_per_child}"
+    if [[ -n "$max_tasks_per_child" ]]; then
+        celery_args="$celery_args --max-tasks-per-child=$max_tasks_per_child"
+        print_status $BLUE "  → Max tasks per child: $max_tasks_per_child"
     fi
 
-    if [[ -n "$CELERY_TIME_LIMIT" ]]; then
-        celery_args="$celery_args --time-limit=$CELERY_TIME_LIMIT"
+    # Task time limit - hierarchical resolution with backward compatibility
+    local time_limit=$(resolve_config "TASK_TIME_LIMIT" "")
+    time_limit="${CELERY_TIME_LIMIT:-$time_limit}"
+    if [[ -n "$time_limit" ]]; then
+        celery_args="$celery_args --time-limit=$time_limit"
+        print_status $BLUE "  → Task time limit: $time_limit"
     fi
 
-    if [[ -n "$CELERY_SOFT_TIME_LIMIT" ]]; then
-        celery_args="$celery_args --soft-time-limit=$CELERY_SOFT_TIME_LIMIT"
+    # Task soft time limit - hierarchical resolution with backward compatibility
+    local soft_time_limit=$(resolve_config "TASK_SOFT_TIME_LIMIT" "")
+    soft_time_limit="${CELERY_SOFT_TIME_LIMIT:-$soft_time_limit}"
+    if [[ -n "$soft_time_limit" ]]; then
+        celery_args="$celery_args --soft-time-limit=$soft_time_limit"
+        print_status $BLUE "  → Task soft time limit: $soft_time_limit"
     fi
 
     # Add gossip, mingle, and heartbeat control flags based on environment variables
