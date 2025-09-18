@@ -39,6 +39,10 @@ def load_plugins() -> list[Any]:
     processor_package_path = f"{package_path}.{ProcessorConfig.PLUGIN_DIR}"
     processor_plugins: list[Any] = []
 
+    if not os.path.exists(processor_dir):
+        logger.info("No processor directory found at %s.", processor_dir)
+        return []
+
     for item in os.listdir(processor_dir):
         # Loads a plugin if it is in a directory.
         if os.path.isdir(os.path.join(processor_dir, item)):

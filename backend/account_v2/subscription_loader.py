@@ -69,10 +69,13 @@ def load_plugins() -> list[Any]:
                         SubscriptionConfig.METADATA: module.metadata,
                     }
                 )
+                name = metadata.get(
+                    SubscriptionConfig.METADATA_NAME,
+                    getattr(module, "__name__", "unknown"),
+                )
+                is_active = metadata.get(SubscriptionConfig.METADATA_IS_ACTIVE, False)
                 logger.info(
-                    "Loaded subscription plugin: %s, is_active: %s",
-                    module.metadata[SubscriptionConfig.METADATA_NAME],
-                    module.metadata[SubscriptionConfig.METADATA_IS_ACTIVE],
+                    "Loaded subscription plugin: %s, is_active: %s", name, is_active
                 )
             else:
                 logger.info(
