@@ -14,6 +14,9 @@
 # Development helper scripts
 *.sh
 # list Exceptional files with ! like !fix-and-test.sh
+!run-platform.sh
+!workers/run-worker.sh
+!workers/workers/run-worker-docker.sh
 
 ### Django ###
 *.log
