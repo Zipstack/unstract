@@ -59,8 +59,8 @@ class MariaDB(UnstractDB, MysqlHandler):
         )
         return con
 
-    def sql_to_db_mapping(self, value: Any) -> str:
-        return str(MysqlHandler.sql_to_db_mapping(value=value))
+    def sql_to_db_mapping(self, value: Any, column_name: str | None = None) -> str:
+        return str(MysqlHandler.sql_to_db_mapping(value=value, column_name=column_name))
 
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any

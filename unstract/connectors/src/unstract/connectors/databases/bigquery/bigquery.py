@@ -10,6 +10,7 @@ import google.api_core.exceptions
 from google.cloud import bigquery
 from google.cloud.bigquery import Client
 
+from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.exceptions import (
     BigQueryForbiddenException,
     BigQueryNotFoundException,
@@ -73,44 +74,49 @@ class BigQuery(UnstractDB):
         except Exception as e:
             raise ConnectorError(str(e))
 
-    def sql_to_db_mapping(self, value: str) -> str:
+    def sql_to_db_mapping(self, value: Any, column_name: str | None = None) -> str:
         """Gets the python datatype of value and converts python datatype to
         corresponding DB datatype.
 
         Args:
             value (str): python datatype
+            column_name (str | None): name of the column being mapped
 
         Returns:
             str: database columntype
         """
-        python_type = type(value)
+        data_type = type(value)
+
+        if data_type in (dict, list):
+            if column_name and column_name.endswith("_v2"):
+                return str(DatabaseTypeConstants.BIGQUERY_JSON)
+            else:
+                return str(DatabaseTypeConstants.BIGQUERY_STRING)
 
         mapping = {
-            str: "string",
-            int: "INT64",
-            float: "FLOAT64",
-            datetime.datetime: "TIMESTAMP",
-            dict: "JSON",
-            list: "JSON",
+            str: DatabaseTypeConstants.BIGQUERY_STRING,
+            int: DatabaseTypeConstants.BIGQUERY_INT64,
+            float: DatabaseTypeConstants.BIGQUERY_FLOAT64,
+            datetime.datetime: DatabaseTypeConstants.BIGQUERY_TIMESTAMP,
         }
-        return mapping.get(python_type, "string")
+        return str(mapping.get(data_type, DatabaseTypeConstants.BIGQUERY_STRING))
 
     def get_create_table_base_query(self, table: str) -> str:
         """Function to create a base create table sql query.
 
         Args:
             table (str): db-connector table name
-            Format  {database}.{schema}.{table}
+            Format  {project}.{dataset}.{table}
 
         Returns:
             str: generates a create sql base query with the constant columns
         """
-        bigquery_table_name = str.lower(table).split(".")
-        if len(bigquery_table_name) != self.big_query_table_size:
+        bigquery_table_parts = table.split(".")
+        if len(bigquery_table_parts) != self.big_query_table_size:
             raise ValueError(
                 f"Invalid table name format: '{table}'. "
                 "Please ensure the BigQuery table is in the form of "
-                "{database}.{schema}.{table}."
+                "{project}.{dataset}.{table}."
             )
         sql_query = (
             f"CREATE TABLE IF NOT EXISTS {table} "
@@ -140,7 +146,7 @@ class BigQuery(UnstractDB):
 
     @staticmethod
     def get_sql_insert_query(
-        table_name: str, sql_keys: list[str], sql_values: list[str] = None
+        table_name: str, sql_keys: list[str], sql_values: list[str] | None = None
     ) -> str:
         """Function to generate parameterised insert sql query.
 
@@ -153,8 +159,13 @@ class BigQuery(UnstractDB):
             str: returns a string with parameterised insert sql query
         """
         # BigQuery uses @ parameterization, ignore sql_values for now
-        keys_str = ",".join(sql_keys)
-        values_placeholder = ",".join(["@" + key for key in sql_keys])
+        # Escape column names with backticks to handle special characters like underscores
+        escaped_keys = [f"`{key}`" for key in sql_keys]
+        keys_str = ",".join(escaped_keys)
+
+        # Also escape parameter names with backticks to handle underscores in parameter names
+        escaped_params = [f"@`{key}`" for key in sql_keys]
+        values_placeholder = ",".join(escaped_params)
         return f"INSERT INTO {table_name} ({keys_str}) VALUES ({values_placeholder})"
 
     def execute_query(
@@ -192,9 +203,9 @@ class BigQuery(UnstractDB):
                         # For JSON objects in JSON columns, convert to string and use PARSE_JSON
                         json_str = json.dumps(value) if value else None
                         if json_str:
-                            # Replace @key with PARSE_JSON(@key) in the SQL query
+                            # Replace @`key` with PARSE_JSON(@`key`) in the SQL query
                             modified_sql = modified_sql.replace(
-                                f"@{key}", f"PARSE_JSON(@{key})"
+                                f"@`{key}`", f"PARSE_JSON(@`{key}`)"
                             )
                         query_parameters.append(
                             bigquery.ScalarQueryParameter(key, "STRING", json_str)
@@ -248,19 +259,21 @@ class BigQuery(UnstractDB):
             dict[str, str]: a dictionary contains db column name and
             db column types of corresponding table
         """
-        bigquery_table_name = str.lower(table_name).split(".")
-        if len(bigquery_table_name) != self.big_query_table_size:
+        # Split table name but preserve case for table name part
+        bigquery_table_parts = table_name.split(".")
+        if len(bigquery_table_parts) != self.big_query_table_size:
             raise ValueError(
                 f"Invalid table name format: '{table_name}'. "
                 "Please ensure the BigQuery table is in the form of "
-                "{database}.{schema}.{table}."
+                "{project}.{dataset}.{table}."
             )
-        database = bigquery_table_name[0]
-        schema = bigquery_table_name[1]
-        table = bigquery_table_name[2]
+        # Convert project to lowercase
+        project = bigquery_table_parts[0].lower()
+        dataset = bigquery_table_parts[1]
+        table = bigquery_table_parts[2]
         query = (
             "SELECT column_name, data_type FROM "
-            f"{database}.{schema}.INFORMATION_SCHEMA.COLUMNS WHERE "
+            f"{project}.{dataset}.INFORMATION_SCHEMA.COLUMNS WHERE "
             f"table_name = '{table}'"
         )
         results = self.execute(query=query)

@@ -321,7 +321,7 @@ class DestinationConnector(BaseConnector):
         except ConnectorError as e:
             raise UnstractFSException(core_err=e) from e
 
-    def insert_into_db(self, input_file_path: str, error: str | None) -> None:
+    def insert_into_db(self, input_file_path: str, error: str | None = None) -> None:
         """Insert data into the database."""
         connector_instance: ConnectorInstance = self.endpoint.connector_instance
         connector_settings: dict[str, Any] = connector_instance.connector_metadata
@@ -345,17 +345,19 @@ class DestinationConnector(BaseConnector):
             destination_configurations.get(DestinationKey.EXECUTION_ID, "execution_id")
         )
 
-        data = self.get_tool_execution_result()
+        data = self.get_tool_execution_result() if not error else None
         metadata = self.get_combined_metadata()
 
-        # If no data and no error, don't execute CREATE or INSERT query
         if not data and not error:
             logger.info("No data obtained from tool to insert into destination DB.")
             return
 
-        # Remove metadata from result
-        # Tool text-extractor returns data in the form of string.
-        # Don't pop out metadata in this case.
+        # Log when we're proceeding with error insertion
+        if error and not data:
+            logger.info(
+                f"Proceeding with error record insertion for {input_file_path}: {error}"
+            )
+
         if isinstance(data, dict):
             data.pop("metadata", None)
 
@@ -369,7 +371,7 @@ class DestinationConnector(BaseConnector):
         table_info = db_class.get_information_schema(table_name=table_name)
 
         logger.info(
-            f"destination connector engine: {engine} with table info: {table_info}"
+            f"destination connector table_name: {table_name} with table_info: {table_info}"
         )
 
         if table_info:
@@ -413,9 +415,7 @@ class DestinationConnector(BaseConnector):
                 table_name=table_name,
                 values=values,
             )
-            logger.info(
-                f"destination.py sql_columns_and_values: {sql_columns_and_values}"
-            )
+            logger.info("destination.py sql_columns_and_values", sql_columns_and_values)
             DatabaseUtils.execute_write_query(
                 db_class=db_class,
                 engine=engine,
