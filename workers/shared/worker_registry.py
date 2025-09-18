@@ -138,6 +138,7 @@ class WorkerRegistry:
         WorkerType.FILE_PROCESSING: {
             "pool_type": "threads",
             "concurrency": 4,
+            "prefetch_multiplier": 4,  # Fix task starvation: 4×4=16 task buffer
             "max_tasks_per_child": 100,  # Lower due to memory usage
         },
         WorkerType.CALLBACK: {

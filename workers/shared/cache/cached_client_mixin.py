@@ -10,7 +10,7 @@ from functools import wraps
 from typing import Any
 
 from .base_cache import APIClientCache, CacheKeyGenerator
-from .cache_utils import make_json_serializable
+from .cache_utils import make_json_serializable, reconstruct_from_cache
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,9 @@ def cached_request(
             cached_result = self._cache.get(cache_key, operation_type)
             if cached_result is not None:
                 logger.debug(f"Cache hit for {func.__name__} with key {cache_key}")
-                return cached_result
+                # Reconstruct the original object from cached data
+                reconstructed_result = reconstruct_from_cache(cached_result)
+                return reconstructed_result
 
             # Cache miss - call the actual method
             logger.debug(f"Cache miss for {func.__name__} with key {cache_key}")

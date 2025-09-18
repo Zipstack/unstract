@@ -77,6 +77,17 @@ class APIResponse(BaseResponse):
         """Create an error API response."""
         return cls(success=False, error=error, message=message, status_code=status_code)
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "APIResponse":
+        """Reconstruct APIResponse from dictionary (for cache deserialization)."""
+        return cls(
+            success=data.get("success", True),
+            data=data.get("data"),
+            error=data.get("error"),
+            message=data.get("message"),
+            status_code=data.get("status_code", 200),
+        )
+
 
 @dataclass
 class BatchOperationResponse(BaseResponse):

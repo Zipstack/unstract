@@ -238,7 +238,10 @@ class ExecutionAPIClient(BaseAPIClient):
             )
 
         except Exception as e:
-            logger.error(f"Failed to fetch APIDeployment data for {api_id}: {str(e)}")
+            logger.error(
+                f"Failed to fetch APIDeployment data for {api_id}: {str(e)}",
+                exc_info=True,
+            )
             return APIResponse.error_response(
                 error=str(e),
                 message="Failed to retrieve APIDeployment data",

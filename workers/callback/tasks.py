@@ -270,6 +270,13 @@ def _fetch_api_deployment_data(
 
         # Call the v1 API deployment data endpoint
         response = api_client.get_api_deployment_data(api_id, organization_id)
+        # DEFENSIVE: Handle both APIResponse objects and dict responses (due to caching inconsistency)
+        if isinstance(response, dict):
+            # Cache returned raw dict instead of APIResponse - convert it
+            logger.warning(f"Converting dict response to APIResponse for {api_id}")
+            from ..shared.data.response_models import APIResponse
+
+            response = APIResponse.from_dict(response)
 
         if response.success and response.data:
             # Response format: {"status": "success", "pipeline": {...}}
@@ -645,36 +652,58 @@ def _fetch_and_validate_pipeline_data(context: CallbackContext) -> None:
     context.pipeline_data = None
 
     if context.pipeline_id:
-        # CRITICAL FIX: Check if this is an API deployment first to ensure correct notification type
-        # The backend may route API deployments to the general worker queue by mistake,
-        # but we still need to send notifications with type="API" instead of type="ETL"
-        api_deployment_data = _fetch_api_deployment_data(
-            context.pipeline_id, context.organization_id, context.api_client
+        # SMART ROUTING: Check pipeline type first to avoid unnecessary 404 errors
+        # Only attempt API deployment fetch for actual API deployments
+        pipeline_type_response = context.api_client.get_pipeline_type(
+            context.pipeline_id, context.organization_id
         )
-        if api_deployment_data:
-            context.pipeline_name = api_deployment_data.get("resolved_pipeline_name")
-            context.pipeline_type = api_deployment_data.get(
-                "resolved_pipeline_type"
-            )  # Should be "API"
-            context.pipeline_data = api_deployment_data
-            logger.info(
-                f"✅ ROUTING FIX: APIDeployment routed to ETL callback - correcting type: name='{context.pipeline_name}', type='{context.pipeline_type}'"
+
+        pipeline_type = "ETL"  # Default fallback
+        if pipeline_type_response.success and pipeline_type_response.data:
+            pipeline_type = pipeline_type_response.data.get("pipeline_type", "ETL")
+            logger.debug(
+                f"Detected pipeline type for {context.pipeline_id}: {pipeline_type}"
             )
+
+        if pipeline_type == "API":
+            # This is an API deployment - use API-specific fetch
+            logger.info(
+                f"✅ ROUTING: Detected API deployment {context.pipeline_id}, using API endpoint"
+            )
+            api_deployment_data = _fetch_api_deployment_data(
+                context.pipeline_id, context.organization_id, context.api_client
+            )
+            if api_deployment_data:
+                context.pipeline_name = api_deployment_data.get("resolved_pipeline_name")
+                context.pipeline_type = api_deployment_data.get("resolved_pipeline_type")
+                context.pipeline_data = api_deployment_data
+                logger.info(
+                    f"✅ ROUTING FIX: APIDeployment routed to ETL callback - correcting type: name='{context.pipeline_name}', type='{context.pipeline_type}'"
+                )
+            else:
+                # Fallback to regular pipeline lookup if API fetch fails
+                logger.warning(
+                    f"API deployment fetch failed for {context.pipeline_id}, falling back to pipeline lookup"
+                )
+                context.pipeline_data = _fetch_pipeline_data(
+                    context.pipeline_id, context.organization_id, context.api_client
+                )
         else:
-            # Fallback to regular pipeline lookup for ETL/TASK/APP workflows
+            # This is an ETL/TASK/APP pipeline - use regular pipeline fetch directly
+            logger.info(
+                f"✅ ROUTING: Detected ETL pipeline {context.pipeline_id}, using pipeline endpoint"
+            )
             context.pipeline_data = _fetch_pipeline_data(
                 context.pipeline_id, context.organization_id, context.api_client
             )
-            if context.pipeline_data:
-                context.pipeline_name = context.pipeline_data.get(
-                    "resolved_pipeline_name"
-                )
-                context.pipeline_type = context.pipeline_data.get(
-                    "resolved_pipeline_type"
-                )
-                logger.info(
-                    f"✅ Pipeline data from models: name='{context.pipeline_name}', type='{context.pipeline_type}', is_api={context.pipeline_data.get('is_api', False)}"
-                )
+
+        # Set pipeline metadata from fetched data
+        if context.pipeline_data:
+            context.pipeline_name = context.pipeline_data.get("resolved_pipeline_name")
+            context.pipeline_type = context.pipeline_data.get("resolved_pipeline_type")
+            logger.info(
+                f"✅ Pipeline data retrieved: name='{context.pipeline_name}', type='{context.pipeline_type}', is_api={context.pipeline_data.get('is_api', False)}"
+            )
     else:
         # No pipeline_id provided - check if we can extract from execution context
         logger.warning(
@@ -725,37 +754,70 @@ def _fetch_and_validate_pipeline_data(context: CallbackContext) -> None:
                 context.pipeline_name = None
                 context.pipeline_type = None
             else:
-                # Valid UUID - proceed with pipeline data fetching
-                # CRITICAL FIX: Check if this is an API deployment first (even from execution context)
-                api_deployment_data = _fetch_api_deployment_data(
-                    context.pipeline_id, context.organization_id, context.api_client
+                # Valid UUID - proceed with pipeline data fetching using smart routing
+                # SMART ROUTING: Check pipeline type first to avoid unnecessary 404 errors (from execution context)
+                pipeline_type_response = context.api_client.get_pipeline_type(
+                    context.pipeline_id, context.organization_id
                 )
-                if api_deployment_data:
-                    context.pipeline_name = api_deployment_data.get(
-                        "resolved_pipeline_name"
+
+                pipeline_type = "ETL"  # Default fallback
+                if pipeline_type_response.success and pipeline_type_response.data:
+                    pipeline_type = pipeline_type_response.data.get(
+                        "pipeline_type", "ETL"
                     )
-                    context.pipeline_type = api_deployment_data.get(
-                        "resolved_pipeline_type"
-                    )  # Should be "API"
-                    context.pipeline_data = api_deployment_data
+                    logger.debug(
+                        f"Detected pipeline type from execution context for {context.pipeline_id}: {pipeline_type}"
+                    )
+
+                if pipeline_type == "API":
+                    # This is an API deployment - use API-specific fetch
                     logger.info(
-                        f"✅ ROUTING FIX: APIDeployment from execution context - correcting type: name='{context.pipeline_name}', type='{context.pipeline_type}'"
+                        f"✅ ROUTING: Detected API deployment from execution context {context.pipeline_id}, using API endpoint"
                     )
+                    api_deployment_data = _fetch_api_deployment_data(
+                        context.pipeline_id, context.organization_id, context.api_client
+                    )
+                    if api_deployment_data:
+                        context.pipeline_name = api_deployment_data.get(
+                            "resolved_pipeline_name"
+                        )
+                        context.pipeline_type = api_deployment_data.get(
+                            "resolved_pipeline_type"
+                        )
+                        context.pipeline_data = api_deployment_data
+                        logger.info(
+                            f"✅ ROUTING FIX: APIDeployment from execution context - correcting type: name='{context.pipeline_name}', type='{context.pipeline_type}'"
+                        )
+                    else:
+                        # Fallback to regular pipeline lookup if API fetch fails
+                        logger.warning(
+                            f"API deployment fetch failed for {context.pipeline_id} from execution context, falling back to pipeline lookup"
+                        )
+                        context.pipeline_data = _fetch_pipeline_data(
+                            context.pipeline_id,
+                            context.organization_id,
+                            context.api_client,
+                        )
                 else:
-                    # Fallback to regular pipeline lookup
+                    # This is an ETL/TASK/APP pipeline - use regular pipeline fetch directly
+                    logger.info(
+                        f"✅ ROUTING: Detected ETL pipeline from execution context {context.pipeline_id}, using pipeline endpoint"
+                    )
                     context.pipeline_data = _fetch_pipeline_data(
                         context.pipeline_id, context.organization_id, context.api_client
                     )
-                    if context.pipeline_data:
-                        context.pipeline_name = context.pipeline_data.get(
-                            "resolved_pipeline_name"
-                        )
-                        context.pipeline_type = context.pipeline_data.get(
-                            "resolved_pipeline_type"
-                        )
-                        logger.info(
-                            f"✅ Pipeline data from execution context: name='{context.pipeline_name}', type='{context.pipeline_type}', is_api={context.pipeline_data.get('is_api', False)}"
-                        )
+
+                # Set pipeline metadata from fetched data
+                if context.pipeline_data:
+                    context.pipeline_name = context.pipeline_data.get(
+                        "resolved_pipeline_name"
+                    )
+                    context.pipeline_type = context.pipeline_data.get(
+                        "resolved_pipeline_type"
+                    )
+                    logger.info(
+                        f"✅ Pipeline data from execution context: name='{context.pipeline_name}', type='{context.pipeline_type}', is_api={context.pipeline_data.get('is_api', False)}"
+                    )
         else:
             # No pipeline_id found anywhere - this is a critical error for ETL/TASK/APP callbacks
             error_msg = f"No pipeline_id found for ETL/TASK/APP callback. execution_id={context.execution_id}, workflow_id={context.workflow_id}"

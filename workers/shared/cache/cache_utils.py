@@ -152,6 +152,7 @@ def _get_type_registry() -> dict[str, type]:
             WorkflowExecutionData,
         )
 
+        from ..data.response_models import APIResponse
         from ..models.api_responses import (
             FileBatchResponse,
             FileExecutionResponse,
@@ -165,6 +166,8 @@ def _get_type_registry() -> dict[str, type]:
         )
 
         return {
+            # Standard API response models
+            "APIResponse": APIResponse,
             "WorkflowEndpointsResponse": WorkflowEndpointsResponse,
             "ToolInstancesResponse": ToolInstancesResponse,
             "WorkflowDefinitionResponse": WorkflowDefinitionResponse,
