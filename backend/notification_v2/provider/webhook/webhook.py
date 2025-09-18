@@ -55,10 +55,9 @@ class Webhook(NotificationProvider):
 
         # Validate webhook URL for security
         is_valid, error_message = URLValidator.validate_url(self.notification.url)
-        logger.info(f"Notification url {self.notification_url}")
+        logger.info("Validating webhook URL.")
         if not is_valid:
             raise ValueError(f"Webhook URL validation failed: {error_message}")
-
         if not self.payload:
             raise ValueError("Payload is required.")
         return super().validate()
