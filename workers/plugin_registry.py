@@ -1,12 +1,13 @@
 """Workers Plugin Registry System
 
-This registry system allows dynamic loading of worker plugins based on Django
-settings configuration, providing clean separation between OSS and cloud plugins.
+This registry system allows dynamic loading of worker plugins based on environment
+configuration, providing clean separation between OSS and cloud plugins.
 
 Architecture:
 - OSS: Only basic/OSS plugins are available
-- Cloud: Additional cloud plugins are registered via WORKERS_PLUGIN_MODULES setting
-- No hardcoded imports - everything is settings-driven
+- Cloud: Additional cloud plugins detected via CLOUD_DEPLOYMENT environment variable
+- Workers run independently from Django backend using environment-based configuration
+- No hardcoded imports - everything is environment-driven
 """
 
 import logging
@@ -108,29 +109,20 @@ class WorkersPluginRegistry:
         return self._plugin_configs.get(name, {})
 
     def initialize_from_settings(self) -> None:
-        """Initialize plugins from Django settings or environment.
+        """Initialize plugins from environment configuration.
 
-        This method attempts to load Django settings first, then falls back
-        to environment variables or default configuration.
+        Workers run independently from Django backend and use environment-based
+        configuration for plugin discovery and management.
         """
         if self._initialized:
             return
 
-        plugin_modules = {}
+        # Load plugin configuration from environment variables or defaults
+        plugin_modules = self._get_default_plugin_config()
 
-        # Try to load from Django settings
-        try:
-            from django.conf import settings
-
-            plugin_modules = getattr(settings, "WORKERS_PLUGIN_MODULES", {})
-            logger.info(
-                f"Loaded plugin configuration from Django settings: {len(plugin_modules)} modules"
-            )
-        except (ImportError, Exception) as e:
-            logger.debug(f"Could not load Django settings: {e}")
-
-            # Fallback to environment variables or defaults
-            plugin_modules = self._get_default_plugin_config()
+        logger.debug(
+            f"Loaded plugin configuration from environment: {len(plugin_modules)} modules"
+        )
 
         # Register all configured plugins
         for name, config in plugin_modules.items():
@@ -142,7 +134,7 @@ class WorkersPluginRegistry:
         )
 
     def _get_default_plugin_config(self) -> dict[str, Any]:
-        """Get default plugin configuration when Django settings are not available."""
+        """Get plugin configuration from environment variables and deployment type."""
         # This provides minimal fallback configuration
         default_config = {}
 

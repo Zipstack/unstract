@@ -697,9 +697,9 @@ backend/requirements.txt
 
 # Backend URLs
 backend/backend/*_urls.py
-!backend/backend/internal_urls.py
 !backend/backend/base_urls.py
 !backend/backend/public_urls.py
+!backend/backend/internal_base_urls.py
 # TODO: Remove after v2 migration is completed
 backend/backend/*_urls_v2.py
 !backend/backend/public_urls_v2.py
@@ -718,3 +718,6 @@ CONTRIBUTION_GUIDE.md
 .qodo
 .windsurfrules
 .windsurf/rules
+
+# Celery orchestrator
+celery-orchestrator/*

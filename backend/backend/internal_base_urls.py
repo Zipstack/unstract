@@ -1,57 +1,31 @@
-"""Internal API URL Configuration
-Base URL configuration for internal service-to-service APIs.
+"""Internal API URL Configuration - OSS Base.
 
-This file uses a registry system to dynamically load internal URLs based on
-Django settings. Cloud features are automatically included when cloud settings
-are active, without requiring code changes to this file.
+Base internal URL patterns for OSS deployment. This file contains
+the foundational internal APIs available in all deployments.
+
+Cloud deployments extend this via cloud_internal_urls.py following
+the same pattern as base_urls.py / cloud_base_urls.py.
 """
 
-from django.conf import settings
 from django.http import JsonResponse
-from django.urls import path
+from django.urls import include, path
 from django.views.decorators.http import require_http_methods
 from utils.websocket_views import emit_websocket
-
-from .internal_url_registry import (
-    get_base_endpoints,
-    get_cloud_url_documentation,
-    get_internal_url_documentation,
-    get_internal_url_patterns,
-    initialize_internal_urls_from_settings,
-)
 
 
 @require_http_methods(["GET"])
 def internal_api_root(request):
     """Internal API root endpoint with comprehensive documentation."""
-    # Initialize dynamic URLs from settings
-    initialize_internal_urls_from_settings()
-
-    # Get dynamic endpoint documentation
-    dynamic_endpoints = get_internal_url_documentation()
-
-    # Get cloud endpoint documentation if available
-    cloud_endpoints = get_cloud_url_documentation()
-
-    # Get base endpoints from shared configuration
-    base_endpoints = get_base_endpoints()
-
-    # Merge all endpoints (base + dynamic + cloud)
-    all_endpoints = {**base_endpoints, **dynamic_endpoints, **cloud_endpoints}
-
     return JsonResponse(
         {
             "message": "Unstract Internal API",
             "version": "1.0.0",
             "description": "Internal service-to-service API for Celery workers",
             "documentation": "https://docs.unstract.com/internal-api",
-            "features": {
-                "registered_modules": list(dynamic_endpoints.keys())
-                if dynamic_endpoints
-                else [],
-                "cloud_modules": list(cloud_endpoints.keys()) if cloud_endpoints else [],
+            "endpoints": {
+                "description": "Various v1 endpoints for workflow execution, pipeline, organization, and other services",
+                "base_path": "/internal/v1/",
             },
-            "endpoints": {"v1": all_endpoints},
             "authentication": {
                 "type": "Bearer Token",
                 "header": "Authorization: Bearer <internal_service_api_key>",
@@ -94,6 +68,8 @@ def internal_health_check(request):
             authenticated = True
         else:
             # Fallback: check API key directly if middleware didn't run
+            from django.conf import settings
+
             auth_header = request.META.get("HTTP_AUTHORIZATION", "")
             if auth_header.startswith("Bearer "):
                 api_key = auth_header[7:]  # Remove 'Bearer ' prefix
@@ -171,37 +147,99 @@ def test_middleware_debug(request):
     )
 
 
-# Base internal API URL patterns - Core endpoints only
-base_urlpatterns = [
+# Internal API URL patterns - OSS Base
+urlpatterns = [
     # Internal API root and utilities
     path("", internal_api_root, name="internal_api_root"),
     path("debug/", test_middleware_debug, name="test_middleware_debug"),
     path("v1/health/", internal_health_check, name="internal_health"),
     # WebSocket emission endpoint for workers
     path("emit-websocket/", emit_websocket, name="emit_websocket"),
-    # All other URLs loaded dynamically from INTERNAL_URL_MODULES settings
+    # ========================================
+    # CORE OSS INTERNAL API MODULES
+    # ========================================
+    # Workflow execution management APIs
+    path(
+        "v1/workflow-execution/",
+        include("workflow_manager.workflow_execution_internal_urls"),
+        name="workflow_execution_internal",
+    ),
+    # Workflow management and pipeline APIs
+    path(
+        "v1/workflow-manager/",
+        include("workflow_manager.internal_urls"),
+        name="workflow_manager_internal",
+    ),
+    # Pipeline APIs
+    path(
+        "v1/pipeline/",
+        include("pipeline_v2.internal_urls"),
+        name="pipeline_internal",
+    ),
+    # Organization context and management APIs
+    path(
+        "v1/organization/",
+        include("account_v2.organization_internal_urls"),
+        name="organization_internal",
+    ),
+    # File execution and batch processing APIs
+    path(
+        "v1/file-execution/",
+        include("workflow_manager.file_execution.internal_urls"),
+        name="file_execution_internal",
+    ),
+    # Tool instance execution APIs
+    path(
+        "v1/tool-execution/",
+        include("tool_instance_v2.internal_urls"),
+        name="tool_execution_internal",
+    ),
+    # File processing history and caching APIs
+    path(
+        "v1/file-history/",
+        include("workflow_manager.workflow_v2.file_history_internal_urls"),
+        name="file_history_internal",
+    ),
+    # Execution finalization and cleanup APIs
+    path(
+        "v1/execution/",
+        include("workflow_manager.execution.internal_urls"),
+        name="execution_internal",
+    ),
+    # Webhook notification APIs
+    path(
+        "v1/webhook/",
+        include("notification_v2.internal_urls"),
+        name="webhook_internal",
+    ),
+    # API deployment data APIs for type-aware worker optimization
+    path(
+        "v1/api-deployments/",
+        include("api_v2.internal_urls"),
+        name="api_deployments_internal",
+    ),
+    # Platform configuration and settings APIs
+    path(
+        "v1/platform-settings/",
+        include("platform_settings_v2.internal_urls"),
+        name="platform_settings_internal",
+    ),
+    # Execution log management and cache operations APIs
+    path(
+        "v1/execution-logs/",
+        include("workflow_manager.workflow_v2.execution_log_internal_urls"),
+        name="execution_logs_internal",
+    ),
+    # Organization configuration management APIs
+    path(
+        "v1/configuration/",
+        include("configuration.internal_urls"),
+        name="configuration_internal",
+    ),
+    # Usage data and token count APIs
+    path(
+        "v1/usage/",
+        include("usage_v2.internal_urls"),
+        name="usage_internal",
+    ),
 ]
-
-
-def get_urlpatterns():
-    """Get URL patterns including dynamically registered and cloud modules.
-
-    This function ensures that URLs are loaded fresh each time, allowing
-    cloud deployments to automatically include additional URLs without
-    code changes to this file.
-    """
-    # Initialize dynamic URLs from settings
-    initialize_internal_urls_from_settings()
-
-    # Get dynamic URL patterns from registry
-    dynamic_patterns = get_internal_url_patterns()
-
-    # Get cloud URL patterns if available
-    # cloud_patterns = get_cloud_url_patterns()  # COMMENTED OUT: Redundant with INTERNAL_URL_MODULES
-
-    # Combine all patterns: base + dynamic (cloud modules loaded via INTERNAL_URL_MODULES)
-    return base_urlpatterns + dynamic_patterns
-
-
-# URL patterns - will include dynamic patterns based on settings
-urlpatterns = get_urlpatterns()
