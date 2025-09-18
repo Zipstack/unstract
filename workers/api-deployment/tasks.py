@@ -173,7 +173,8 @@ def _unified_api_execution(
         config, api_client = WorkerExecutionContext.setup_execution_context(
             organization_id, execution_id, workflow_id
         )
-        hitl_queue_name = kwargs.get("hitl_queue_name")
+        # Use parameter value if provided, otherwise fall back to kwargs
+        hitl_queue_name = hitl_queue_name or kwargs.get("hitl_queue_name")
         llm_profile_id = kwargs.get("llm_profile_id")
 
         # Log task start with standardized format

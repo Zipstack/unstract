@@ -49,5 +49,5 @@ __all__ = [
     "HTTPMethod",
     "LogLevel",
     "NotificationPlatform",
-    QueueResultStatus,
+    "QueueResultStatus",
 ]

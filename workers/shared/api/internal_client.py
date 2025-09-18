@@ -372,7 +372,7 @@ class InternalAPIClient(CachedAPIClientMixin):
         try:
             response = self._make_request(
                 method=HTTPMethod.GET,
-                url=f"{self.base_url}/v1/file-execution/",
+                endpoint="v1/file-execution/",
                 params={"execution_id": str(execution_id)},
                 organization_id=organization_id,
             )

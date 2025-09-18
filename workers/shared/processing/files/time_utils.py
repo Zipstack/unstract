@@ -115,7 +115,7 @@ class WallClockTimeCalculator:
             )
             fallback_time += processing_time
 
-        if fallback_time == 0.0:
+        if fallback_time <= 0.0:
             # If still no timing data, use reasonable estimate based on file count
             estimated_time = len(file_results) * 15.0  # ~15s per file estimate
             logger.warning(

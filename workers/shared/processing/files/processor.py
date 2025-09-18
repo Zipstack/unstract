@@ -181,10 +181,8 @@ class WorkflowFileExecutionHandler:
             f"Using pre-created workflow file execution: {context.workflow_file_execution_id}"
         )
 
+        # workflow_file_execution_object is guaranteed to be truthy (validated above)
         workflow_file_execution = context.workflow_file_execution_object
-
-        if not workflow_file_execution:
-            raise Exception("Failed to create workflow file execution")
 
         # Check if file execution is already completed
         if workflow_file_execution.status == ExecutionStatus.COMPLETED.value:

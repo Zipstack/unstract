@@ -742,12 +742,8 @@ class FileHashData:
         if content:
             return self.compute_hash_from_content(content)
 
-        if file_path:
-            return self.compute_hash_from_file(file_path)
-
-        # This shouldn't be reachable due to check above, but keep for safety
-        logger.error(f"Unexpected state in ensure_hash for {self.file_name}")
-        return ""
+        # file_path is guaranteed to be truthy here (otherwise exception would have been raised)
+        return self.compute_hash_from_file(file_path)
 
     def has_hash(self) -> bool:
         """Check if file_hash is already populated without attempting to compute it.
