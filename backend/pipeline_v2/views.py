@@ -8,7 +8,7 @@ from api_v2.postman_collection.dto import PostmanCollection
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpResponse
-from permissions.permission import IsOwner
+from permissions.permission import IsOwner, IsOwnerOrSharedUser
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
@@ -29,6 +29,7 @@ from pipeline_v2.serializers.crud import PipelineSerializer
 from pipeline_v2.serializers.execute import (
     PipelineExecuteSerializer as ExecuteSerializer,
 )
+from pipeline_v2.serializers.sharing import SharedUserListSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -36,11 +37,12 @@ logger = logging.getLogger(__name__)
 class PipelineViewSet(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
     queryset = Pipeline.objects.all()
-    permission_classes = [IsOwner]
+    permission_classes = [IsOwnerOrSharedUser]
     serializer_class = PipelineSerializer
 
     def get_queryset(self) -> QuerySet:
-        queryset = Pipeline.objects.filter(created_by=self.request.user)
+        # Use for_user manager method to include shared pipelines
+        queryset = Pipeline.objects.for_user(self.request.user)
 
         # Apply type filter if specified
         pipeline_type = self.request.query_params.get(PipelineConstants.TYPE)
@@ -100,6 +102,49 @@ class PipelineViewSet(viewsets.ModelViewSet):
         pipeline_to_remove = str(instance.pk)
         super().perform_destroy(instance)
         return SchedulerHelper.remove_job(pipeline_to_remove)
+
+    @action(detail=True, methods=["get"], url_path="users", permission_classes=[IsOwner])
+    def list_of_shared_users(self, request: Request, pk: str | None = None) -> Response:
+        """Returns the list of users the pipeline is shared with."""
+        pipeline = self.get_object()
+        serializer = SharedUserListSerializer(pipeline)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def partial_update(self, request: Request, *args, **kwargs) -> Response:
+        """Override to handle sharing notifications."""
+        instance = self.get_object()
+        current_shared_users = set(instance.shared_users.all())
+
+        response = super().partial_update(request, *args, **kwargs)
+
+        if response.status_code == 200 and "shared_users" in request.data:
+            try:
+                instance.refresh_from_db()
+                new_shared_users = set(instance.shared_users.all())
+                newly_shared_users = new_shared_users - current_shared_users
+
+                if newly_shared_users:
+                    # Send notifications (if notification plugin is available)
+                    try:
+                        from plugins.notification.sharing_notification import (
+                            SharingNotificationService,
+                        )
+
+                        notification_service = SharingNotificationService()
+                        notification_service.send_sharing_notification(
+                            resource_type="Pipeline",
+                            resource_name=instance.pipeline_name,
+                            resource_id=str(instance.id),
+                            shared_by=request.user,
+                            shared_to=list(newly_shared_users),
+                            resource_instance=instance,
+                        )
+                    except ImportError:
+                        logger.info("Notification plugin not available")
+            except Exception as e:
+                logger.error(f"Failed to send sharing notification: {e}")
+
+        return response
 
     @action(detail=True, methods=["get"])
     def download_postman_collection(

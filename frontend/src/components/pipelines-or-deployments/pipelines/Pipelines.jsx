@@ -11,6 +11,7 @@ import {
   CloudDownloadOutlined,
   CopyOutlined,
   LoadingOutlined,
+  ShareAltOutlined,
 } from "@ant-design/icons";
 import {
   Button,
@@ -52,6 +53,7 @@ import {
   useInitialFetchCount,
   usePromptStudioModal,
 } from "../../../hooks/usePromptStudioFetchCount";
+import { SharePermission } from "../../widgets/share-permission/SharePermission";
 
 function Pipelines({ type }) {
   const [tableData, setTableData] = useState([]);
@@ -78,6 +80,10 @@ function Pipelines({ type }) {
   const [openNotificationModal, setOpenNotificationModal] = useState(false);
   const { count, isLoading, fetchCount } = usePromptStudioStore();
   const { getPromptStudioCount } = usePromptStudioService();
+  // Sharing state
+  const [openShareModal, setOpenShareModal] = useState(false);
+  const [allUsers, setAllUsers] = useState([]);
+  const [isLoadingShare, setIsLoadingShare] = useState(false);
 
   const initialFetchComplete = useInitialFetchCount(
     fetchCount,
@@ -284,6 +290,69 @@ function Pipelines({ type }) {
     }
   };
 
+  const handleShare = async () => {
+    setIsLoadingShare(true);
+    // Fetch all users and shared users first, then open modal
+    try {
+      const [usersResponse, sharedUsersResponse] = await Promise.all([
+        pipelineApiService.getAllUsers(),
+        pipelineApiService.getSharedUsers(selectedPorD.id),
+      ]);
+
+      // Extract members array from the response and map to the required format
+      const userList =
+        usersResponse?.data?.members?.map((member) => ({
+          id: member.id,
+          email: member.email,
+        })) || [];
+
+      const sharedUsersList = sharedUsersResponse.data?.shared_users || [];
+
+      // Set shared_users property on selectedPorD for SharePermission component
+      setSelectedPorD({
+        ...selectedPorD,
+        shared_users: Array.isArray(sharedUsersList) ? sharedUsersList : [],
+      });
+
+      setAllUsers(userList);
+
+      // Only open modal after data is loaded
+      setOpenShareModal(true);
+    } catch (error) {
+      console.error("Error fetching sharing data:", error);
+      setAlertDetails(handleException(error));
+      // Ensure allUsers is always an array even on error
+      setAllUsers([]);
+    } finally {
+      setIsLoadingShare(false);
+    }
+  };
+
+  const onShare = (sharedUsers, _, shareWithEveryone) => {
+    setIsLoadingShare(true);
+    // sharedUsers is already an array of user IDs from SharePermission component
+
+    pipelineApiService
+      .updateSharing(selectedPorD.id, sharedUsers, shareWithEveryone)
+      .then(() => {
+        setAlertDetails({
+          type: "success",
+          content: "Sharing permissions updated successfully",
+        });
+        setOpenShareModal(false);
+        // Refresh pipeline list to show updated ownership
+        getPipelineList();
+      })
+      .catch((error) => {
+        setAlertDetails(
+          handleException(error, "Failed to update sharing settings")
+        );
+      })
+      .finally(() => {
+        setIsLoadingShare(false);
+      });
+  };
+
   const actionItems = [
     // Configuration Section
     {
@@ -333,6 +402,19 @@ function Pipelines({ type }) {
         >
           <NotificationOutlined />
           <Typography.Text>Setup Notifications</Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      key: "share",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
+          onClick={handleShare}
+        >
+          <ShareAltOutlined />
+          <Typography.Text>Share</Typography.Text>
         </Space>
       ),
     },
@@ -565,6 +647,22 @@ function Pipelines({ type }) {
       ),
     },
     {
+      title: "Owner",
+      dataIndex: "created_by_email",
+      key: "created_by_email",
+      align: "center",
+      render: (email, record) => {
+        const isOwner = record.created_by === sessionDetails?.userId;
+        return (
+          <Tooltip title={email}>
+            <Typography.Text className="p-or-d-typography">
+              {isOwner ? "You" : email?.split("@")[0] || "Unknown"}
+            </Typography.Text>
+          </Tooltip>
+        );
+      },
+    },
+    {
       title: "Enabled",
       key: "active",
       dataIndex: "active",
@@ -572,7 +670,7 @@ function Pipelines({ type }) {
       render: (_, record) => (
         <Switch
           checked={record.active}
-          onChange={(e) => {
+          onChange={() => {
             handleEnablePipeline(!record.active, record.id);
           }}
         />
@@ -653,6 +751,18 @@ function Pipelines({ type }) {
         type={deploymentApiTypes.pipeline}
         id={selectedPorD?.id}
       />
+      {openShareModal && (
+        <SharePermission
+          open={openShareModal}
+          setOpen={setOpenShareModal}
+          adapter={selectedPorD}
+          permissionEdit={true}
+          loading={isLoadingShare}
+          allUsers={Array.isArray(allUsers) ? allUsers : []}
+          onApply={onShare}
+          isSharableToOrg={false}
+        />
+      )}
     </div>
   );
 }
