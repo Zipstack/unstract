@@ -60,11 +60,18 @@ class VariableReplacementHelper:
     @staticmethod
     def identify_variable_type(variable: str) -> VariableType:
         variable_type: VariableType
-        pattern = re.compile(VariableConstants.DYNAMIC_VARIABLE_URL_REGEX)
-        if re.findall(pattern, variable):
-            variable_type = VariableType.DYNAMIC
+
+        # Check for user_data variable type first
+        user_data_pattern = re.compile(VariableConstants.USER_DATA_VARIABLE_REGEX)
+        if re.findall(user_data_pattern, variable):
+            variable_type = VariableType.USER_DATA
         else:
-            variable_type = VariableType.STATIC
+            # Check for dynamic variable type
+            dynamic_pattern = re.compile(VariableConstants.DYNAMIC_VARIABLE_URL_REGEX)
+            if re.findall(dynamic_pattern, variable):
+                variable_type = VariableType.DYNAMIC
+            else:
+                variable_type = VariableType.STATIC
         return variable_type
 
     @staticmethod
@@ -90,6 +97,58 @@ class VariableReplacementHelper:
             variable=static_variable_marker_string,
             value=formatted_api_response,
         )
+        return replaced_prompt
+
+    @staticmethod
+    def replace_user_data_variable(
+        prompt: str, variable: str, user_data: dict[str, Any]
+    ) -> str:
+        """Replace user_data variable in prompt.
+
+        Args:
+            prompt: The prompt containing variables
+            variable: The variable to replace (e.g., "user_data.name")
+            user_data: The user data dictionary
+
+        Returns:
+            prompt with variable replaced
+        """
+        if not user_data:
+            app.logger.warning(
+                f"User data is empty. Unable to replace variable {variable}"
+            )
+            return prompt
+
+        # Extract the path from user_data.path.to.value
+        user_data_match = re.search(VariableConstants.USER_DATA_VARIABLE_REGEX, variable)
+        if not user_data_match:
+            app.logger.warning(f"Invalid user_data variable format: {variable}")
+            return prompt
+
+        path_str = user_data_match.group(1)
+        path_parts = path_str.split(".")
+
+        # Navigate through the nested dictionary
+        try:
+            value = user_data
+            for part in path_parts:
+                value = value[part]
+        except (KeyError, TypeError):
+            app.logger.warning(
+                f"Path {path_str} not found in user_data. Unable to replace variable {variable}"
+            )
+            return prompt
+
+        # Format the value and replace in prompt
+        formatted_value = VariableReplacementHelper.handle_json_and_str_types(value)
+        variable_marker_string = "".join(["{{", variable, "}}"])
+
+        replaced_prompt = VariableReplacementHelper.replace_generic_string_value(
+            prompt=prompt,
+            variable=variable_marker_string,
+            value=formatted_value,
+        )
+
         return replaced_prompt
 
     @staticmethod

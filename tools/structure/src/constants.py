@@ -80,6 +80,7 @@ class SettingsKeys:
     EXECUTION_ID = "execution_id"
     IS_DIRECTORY_MODE = "is_directory_mode"
     LLM_PROFILE_ID = "llm_profile_id"
+    USER_DATA = "user_data"
 
 
 class IndexingConstants:

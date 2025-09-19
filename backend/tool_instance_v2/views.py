@@ -119,8 +119,7 @@ class ToolInstanceViewSet(viewsets.ModelViewSet):
             self.perform_create(serializer)
         except IntegrityError:
             raise DuplicateData(
-                f"{ToolInstanceErrors.TOOL_EXISTS}, "
-                f"{ToolInstanceErrors.DUPLICATE_API}"
+                f"{ToolInstanceErrors.TOOL_EXISTS}, {ToolInstanceErrors.DUPLICATE_API}"
             )
         instance: ToolInstance = serializer.instance
         ToolInstanceHelper.update_metadata_with_default_values(

@@ -210,6 +210,8 @@ class ExecutionRequestSerializer(TagParamsSerializer):
             If not provided, uses API name as document class.
         presigned_urls (list): List of presigned URLs to fetch files from.
             URLs are validated for HTTPS and S3 endpoint requirements.
+        user_data (dict, optional): User-provided data for variable replacement in prompts.
+            Can be accessed in prompts using {{user_data.key}} syntax for dot notation traversal.
     """
 
     MAX_FILES_ALLOWED = 32
@@ -224,6 +226,7 @@ class ExecutionRequestSerializer(TagParamsSerializer):
     presigned_urls = ListField(child=URLField(), required=False)
     llm_profile_id = CharField(required=False, allow_null=True, allow_blank=True)
     hitl_queue_name = CharField(required=False, allow_null=True, allow_blank=True)
+    user_data = JSONField(required=False, allow_null=True)
 
     def validate_hitl_queue_name(self, value: str | None) -> str | None:
         """Validate queue name format using enterprise validation if available."""
@@ -242,6 +245,16 @@ class ExecutionRequestSerializer(TagParamsSerializer):
                 "Learn more at https://docs.unstract.com/unstract/unstract_platform/features/workflows/hqr_deployment_workflows/ or "
                 "contact our sales team at https://unstract.com/contact/"
             )
+        return value
+
+    def validate_user_data(self, value):
+        """Validate user_data is a valid JSON object."""
+        if value is None:
+            return value
+
+        if not isinstance(value, dict):
+            raise ValidationError("user_data must be a JSON object")
+
         return value
 
     files = ListField(

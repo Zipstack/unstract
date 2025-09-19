@@ -155,6 +155,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         tag_names: list[str] = [],
         llm_profile_id: str | None = None,
         hitl_queue_name: str | None = None,
+        user_data: dict[str, Any] | None = None,
         request_headers=None,
     ) -> ReturnDict:
         """Execute workflow by api.
@@ -234,6 +235,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 use_file_history=use_file_history,
                 llm_profile_id=llm_profile_id,
                 hitl_queue_name=hitl_queue_name,
+                user_data=user_data,
             )
             result.status_api = DeploymentHelper.construct_status_endpoint(
                 api_endpoint=api.api_endpoint, execution_id=execution_id
