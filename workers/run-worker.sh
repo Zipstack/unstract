@@ -196,7 +196,7 @@ validate_env() {
 # Function to get worker PIDs
 get_worker_pids() {
     local worker_type=$1
-    pgrep -f "python.*worker.py.*$worker_type" || true
+    pgrep -f "uv run celery.*worker.*$worker_type" || true
 }
 
 # Function to kill workers
@@ -209,7 +209,7 @@ kill_workers() {
         fi
 
         local worker_dir="${WORKERS[${worker}]}"
-        local pids=$(pgrep -f "python.*worker.py" || true)
+        local pids=$(pgrep -f "uv run celery.*worker" || true)
 
         if [[ -n "$pids" ]]; then
             print_status $YELLOW "Killing worker processes: $pids"
