@@ -32,6 +32,16 @@ from pipeline_v2.serializers.execute import (
 )
 from pipeline_v2.serializers.sharing import SharedUserListSerializer
 
+try:
+    from plugins.notification.constants import ResourceType
+    from plugins.notification.sharing_notification import SharingNotificationService
+
+    NOTIFICATION_PLUGIN_AVAILABLE = True
+    sharing_notification_service = SharingNotificationService()
+except ImportError:
+    NOTIFICATION_PLUGIN_AVAILABLE = False
+    sharing_notification_service = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -116,39 +126,49 @@ class PipelineViewSet(viewsets.ModelViewSet):
         serializer = SharedUserListSerializer(pipeline)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    def partial_update(self, request: Request, *args, **kwargs) -> Response:
+    def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         """Override to handle sharing notifications."""
         instance = self.get_object()
         current_shared_users = set(instance.shared_users.all())
 
         response = super().partial_update(request, *args, **kwargs)
 
-        if response.status_code == 200 and "shared_users" in request.data:
+        if (
+            response.status_code == 200
+            and "shared_users" in request.data
+            and NOTIFICATION_PLUGIN_AVAILABLE
+        ):
             try:
                 instance.refresh_from_db()
                 new_shared_users = set(instance.shared_users.all())
                 newly_shared_users = new_shared_users - current_shared_users
 
-                if newly_shared_users:
-                    # Send notifications (if notification plugin is available)
-                    try:
-                        from plugins.notification.sharing_notification import (
-                            SharingNotificationService,
-                        )
+                if ResourceType.ETL.value == instance.pipeline_type:
+                    resource_type = ResourceType.ETL.value
+                elif ResourceType.TASK.value == instance.pipeline_type:
+                    resource_type = ResourceType.TASK.value
 
-                        notification_service = SharingNotificationService()
-                        notification_service.send_sharing_notification(
-                            resource_type="Pipeline",
-                            resource_name=instance.pipeline_name,
-                            resource_id=str(instance.id),
-                            shared_by=request.user,
-                            shared_to=list(newly_shared_users),
-                            resource_instance=instance,
-                        )
-                    except ImportError:
-                        logger.info("Notification plugin not available")
+                if newly_shared_users:
+                    # Only send notifications if there are newly shared users
+                    sharing_notification_service.send_sharing_notification(
+                        resource_type=resource_type,
+                        resource_name=instance.pipeline_name,
+                        resource_id=str(instance.id),
+                        shared_by=request.user,
+                        shared_to=list(newly_shared_users),
+                        resource_instance=instance,
+                    )
+
+                    logger.info(
+                        f"Sent sharing notifications for {instance.pipeline_type} "
+                        f"to {len(newly_shared_users)} users"
+                    )
+
             except Exception as e:
-                logger.error(f"Failed to send sharing notification: {e}")
+                # Log error but don't fail the update operation
+                logger.exception(
+                    f"Failed to send sharing notification, continuing update though: {str(e)}"
+                )
 
         return response
 
