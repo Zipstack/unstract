@@ -59,6 +59,11 @@ test = [
 deploy = [
     # Minimal production dependencies - most are already in main deps
     # Note: Workers don't need WSGI servers or profiling tools
+    # OpenTelemetry for tracing
+    # Keep versions empty and let uv decide version
+    # since we use no code instrumentation and don't use in code
+    "opentelemetry-distro",
+    "opentelemetry-exporter-otlp",
 ]
 
 [build-system]

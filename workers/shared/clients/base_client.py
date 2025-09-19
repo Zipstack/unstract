@@ -103,12 +103,12 @@ class BaseAPIClient:
         self.session = requests.Session()
         self._setup_session()
 
+        # Always log initialization
+        logger.info(f"Initialized BaseAPIClient for {self.base_url}")
+
+        # Only add debug details if debug mode is enabled
         if self.config.debug_api_client_init:
-            logger.info(f"Initialized BaseAPIClient for {self.base_url}")
             logger.debug(f"API endpoint configuration: {self.get_endpoint_config()}")
-        else:
-            # Just log without DEBUG prefix to reduce noise
-            logger.info(f"Initialized BaseAPIClient for {self.base_url}")
 
     def get_endpoint_config(self) -> dict[str, str]:
         """Get current API endpoint configuration for debugging."""

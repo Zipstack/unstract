@@ -9,23 +9,15 @@ import logging
 import os
 import sys
 
+# Add the workers directory to Python path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 # Import the WorkerBuilder and WorkerType
 from shared.enums.worker_enums import WorkerType
 from shared.infrastructure.config.builder import WorkerBuilder
 
-# Add the workers directory to Python path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-# Setup logger
-logger = logging.getLogger(__name__)
-
-# Determine worker type from environment
+# Determine worker type from environment FIRST
 WORKER_TYPE = os.environ.get("WORKER_TYPE", "general")
-
-logger.info("🚀 Unified Worker Entry Point - Using WorkerBuilder System")
-logger.info(f"📋 Worker Type: {WORKER_TYPE}")
-logger.info(f"🐳 Running from: {os.getcwd()}")
-
 
 # Convert WORKER_TYPE string to WorkerType enum
 # Handle directory name mapping: directories use hyphens, enums use underscores
@@ -44,6 +36,17 @@ worker_type_mapping = {
 
 # Get the WorkerType enum
 worker_type = worker_type_mapping.get(WORKER_TYPE, WorkerType.GENERAL)
+
+# CRITICAL: Setup logging IMMEDIATELY before any logging calls
+# This ensures ALL subsequent logs use Django format
+WorkerBuilder.setup_logging(worker_type)
+
+# Now get logger after setup is complete
+logger = logging.getLogger(__name__)
+
+logger.info("🚀 Unified Worker Entry Point - Using WorkerBuilder System")
+logger.info(f"📋 Worker Type: {WORKER_TYPE}")
+logger.info(f"🐳 Running from: {os.getcwd()}")
 logger.info(f"📦 Converted '{WORKER_TYPE}' to {worker_type}")
 
 # Use WorkerBuilder to create the Celery app with proper configuration

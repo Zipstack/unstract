@@ -12,7 +12,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app:/unstract \
     BUILD_CONTEXT_PATH=workers \
     BUILD_PACKAGES_PATH=unstract \
-    APP_HOME=/app
+    APP_HOME=/app \
+    # OpenTelemetry configuration (disabled by default, enable in docker-compose)
+    OTEL_TRACES_EXPORTER=none \
+    OTEL_LOGS_EXPORTER=none \
+    OTEL_SERVICE_NAME=unstract_workers
 
 # Install system dependencies (minimal for workers)
 RUN apt-get update \
@@ -51,7 +55,7 @@ COPY ${BUILD_PACKAGES_PATH}/ /unstract/
 
 # Install external dependencies with --locked for FAST builds
 # No symlinks needed - PYTHONPATH handles the paths
-RUN uv sync --locked --no-install-project --no-dev
+RUN uv sync --group deploy --locked --no-install-project --no-dev
 
 # -----------------------------------------------
 # FINAL STAGE - Minimal image for production
@@ -61,9 +65,13 @@ FROM ext-dependencies AS production
 # Copy application code (this layer changes most frequently)
 COPY ${BUILD_CONTEXT_PATH}/ ./
 
-# Install project and set permissions (as root to avoid permission issues)
+# Set shell with pipefail for proper error handling in pipes
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Install project and OpenTelemetry instrumentation (as root to avoid permission issues)
 # No symlinks needed - PYTHONPATH handles the paths correctly
-RUN uv pip install --no-deps -e . && \
+RUN uv sync --group deploy --locked && \
+    uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement - && \
     { chmod +x ./run-worker.sh ./run-worker-docker.sh 2>/dev/null || true; } && \
     touch requirements.txt && \
     { chown -R worker:worker ./run-worker.sh ./run-worker-docker.sh 2>/dev/null || true; }
