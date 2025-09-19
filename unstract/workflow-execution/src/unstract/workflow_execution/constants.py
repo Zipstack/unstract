@@ -48,6 +48,7 @@ class MetaDataKey:
     LLM_PROFILE_ID = "llm_profile_id"
     TOTAL_ELAPSED_TIME = "total_elapsed_time"
     WORKFLOW_START_TIME = "workflow_start_time"
+    USER_DATA = "user_data"
 
 
 class ToolMetadataKey:

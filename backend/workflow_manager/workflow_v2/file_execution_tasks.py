@@ -751,6 +751,7 @@ class FileExecutionTasks:
                 tags=workflow_execution.tag_names,
                 file_hash=file_hash,
                 llm_profile_id=file_data.llm_profile_id,
+                user_data=file_data.user_data,
             )
             file_hash.file_hash = content_hash
             workflow_file_exec.update(file_hash=content_hash)
@@ -883,6 +884,7 @@ class FileExecutionTasks:
                 file_data.workflow_id, ToolInstanceKey.STEP
             )
         )
+
         execution_service = cls._build_workflow_execution_service(
             organization_id=file_data.organization_id,
             workflow=workflow_execution.workflow,
