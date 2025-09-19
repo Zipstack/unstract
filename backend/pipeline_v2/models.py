@@ -3,6 +3,7 @@ import uuid
 from account_v2.models import User
 from django.conf import settings
 from django.db import models
+from django.db.models import Q
 from utils.models.base_model import BaseModel
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
@@ -23,8 +24,6 @@ class PipelineModelManager(DefaultOrganizationManagerMixin, models.Manager):
         - Pipelines created by the user
         - Pipelines shared with the user
         """
-        from django.db.models import Q
-
         return self.filter(
             Q(created_by=user)  # Owned by user
             | Q(shared_users=user)  # Shared with user
