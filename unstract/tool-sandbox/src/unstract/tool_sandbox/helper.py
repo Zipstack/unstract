@@ -201,9 +201,7 @@ class ToolSandboxHelper:
                 f"File execution data not found for execution_id: {self.execution_id} and file_execution_id: {file_execution_id}"
             )
             file_execution_tracker.set_data(
-                execution_id=self.execution_id,
-                file_execution_id=file_execution_id,
-                file_execution_data=FileExecutionData(
+                data=FileExecutionData(
                     execution_id=self.execution_id,
                     file_execution_id=file_execution_id,
                     organization_id=self.organization_id,

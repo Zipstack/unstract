@@ -6,10 +6,8 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any
 
-from workflow_manager.endpoint_v2.constants import TableColumns
-from workflow_manager.endpoint_v2.exceptions import UnstractDBException
-
 from unstract.connectors.base import UnstractConnector
+from unstract.connectors.databases.constants import TableColumns
 from unstract.connectors.databases.exceptions import UnstractDBConnectorException
 from unstract.connectors.enums import ConnectorMode
 from unstract.connectors.exceptions import ConnectorError
@@ -288,8 +286,8 @@ class UnstractDB(UnstractConnector, ABC):
                     sql_query_or_list,
                 )
             return self.get_information_schema(table_name=table_name)
-        except UnstractDBConnectorException as e:
-            raise UnstractDBException(detail=e.detail) from e
+        except Exception as e:
+            raise UnstractDBConnectorException(detail=str(e)) from e
 
     def get_sql_values_for_query(
         self, values: dict[str, Any], column_types: dict[str, str]

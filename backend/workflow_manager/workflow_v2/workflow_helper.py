@@ -485,18 +485,13 @@ class WorkflowHelper:
                 },
                 queue=queue,
             )
-
-            # Log task_id for debugging
             logger.info(
-                f"[{org_schema}] AsyncResult created with task_id: '{async_execution.id}' "
-                f"(type: {type(async_execution.id).__name__})"
+                f"[{org_schema}] Job '{async_execution}' has been enqueued for "
+                f"execution_id '{execution_id}', '{len(hash_values_of_files)}' files"
             )
-
             workflow_execution: WorkflowExecution = WorkflowExecution.objects.get(
                 id=execution_id
             )
-
-            # Handle empty task_id gracefully using existing validation logic
             if not async_execution.id:
                 logger.warning(
                     f"[{org_schema}] Celery returned empty task_id for execution_id '{execution_id}'. "
@@ -511,6 +506,7 @@ class WorkflowHelper:
                     f"[{org_schema}] Job '{async_execution.id}' has been enqueued for "
                     f"execution_id '{execution_id}', '{len(hash_values_of_files)}' files"
                 )
+
             execution_status = workflow_execution.status
             if timeout > -1:
                 while not ExecutionStatus.is_completed(execution_status) and timeout > 0:
@@ -781,7 +777,7 @@ class WorkflowHelper:
             # Normal Workflow page execution
             workflow_execution = WorkflowExecution.objects.get(pk=execution_id)
             if (
-                workflow_execution.status != ExecutionStatus.PENDING
+                workflow_execution.status != ExecutionStatus.PENDING.value
                 or workflow_execution.execution_type != WorkflowExecution.Type.COMPLETE
             ):
                 raise InvalidRequest(WorkflowErrors.INVALID_EXECUTION_ID)
@@ -815,7 +811,8 @@ class WorkflowHelper:
             ExecutionResponse: The execution response.
         """
         if (
-            result.execution_status in [ExecutionStatus.COMPLETED, ExecutionStatus.ERROR]
+            result.execution_status
+            in [ExecutionStatus.COMPLETED.value, ExecutionStatus.ERROR.value]
             or not timeout
         ):
             return result
@@ -881,7 +878,7 @@ class WorkflowHelper:
             except WorkflowExecution.DoesNotExist:
                 raise WorkflowExecutionNotExist(WorkflowErrors.INVALID_EXECUTION_ID)
             if (
-                workflow_execution.status != ExecutionStatus.PENDING
+                workflow_execution.status != ExecutionStatus.PENDING.value
                 or workflow_execution.execution_type != WorkflowExecution.Type.STEP
             ):
                 raise InvalidRequest(WorkflowErrors.INVALID_EXECUTION_ID)
