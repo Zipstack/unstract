@@ -64,6 +64,7 @@ logger = logging.getLogger(__name__)
 EXECUTION_EXCLUDED_PARAMS = {
     "llm_profile_id",
     "hitl_queue_name",
+    "packet_id",
 }
 
 
@@ -267,6 +268,7 @@ class WorkflowHelper:
         use_file_history: bool = True,
         llm_profile_id: str | None = None,
         hitl_queue_name: str | None = None,
+        packet_id: str | None = None,
     ) -> ExecutionResponse:
         tool_instances: list[ToolInstance] = (
             ToolInstanceHelper.get_tool_instances_by_workflow(
@@ -295,6 +297,7 @@ class WorkflowHelper:
             workflow_log=workflow_log,
             use_file_history=use_file_history,
             hitl_queue_name=hitl_queue_name,
+            packet_id=packet_id,
         )
         try:
             # Validating endpoints
@@ -436,6 +439,7 @@ class WorkflowHelper:
         use_file_history: bool = True,
         llm_profile_id: str | None = None,
         hitl_queue_name: str | None = None,
+        packet_id: str | None = None,
     ) -> ExecutionResponse:
         """Adding a workflow to the queue for execution.
 
@@ -475,6 +479,7 @@ class WorkflowHelper:
                     "use_file_history": use_file_history,
                     "llm_profile_id": llm_profile_id,
                     "hitl_queue_name": hitl_queue_name,
+                    "packet_id": packet_id,
                 },
                 queue=queue,
             )
@@ -692,6 +697,7 @@ class WorkflowHelper:
                 use_file_history=use_file_history,
                 llm_profile_id=kwargs.get("llm_profile_id"),
                 hitl_queue_name=kwargs.get("hitl_queue_name"),
+                packet_id=kwargs.get("packet_id"),
             )
         except Exception as error:
             error_message = traceback.format_exc()
