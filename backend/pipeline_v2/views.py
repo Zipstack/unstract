@@ -1,5 +1,6 @@
 import json
 import logging
+from typing import Any
 
 from account_v2.custom_exceptions import DuplicateData
 from api_v2.exceptions import NoActiveAPIKeyError
@@ -37,7 +38,12 @@ logger = logging.getLogger(__name__)
 class PipelineViewSet(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
     queryset = Pipeline.objects.all()
-    permission_classes = [IsOwnerOrSharedUser]
+
+    def get_permissions(self) -> list[Any]:
+        if self.action in ["destroy", "partial_update", "update"]:
+            return [IsOwner()]
+        return [IsOwnerOrSharedUser()]
+
     serializer_class = PipelineSerializer
 
     def get_queryset(self) -> QuerySet:
