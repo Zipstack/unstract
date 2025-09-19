@@ -6,8 +6,13 @@ from account_v2.models import User
 from cryptography.fernet import Fernet
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
-from platform_settings_v2.platform_auth_service import PlatformAuthenticationService
-from tenant_account_v2.organization_member_service import OrganizationMemberService
+from platform_settings_v2.platform_auth_service import (
+    PlatformAuthenticationService,
+)
+from rest_framework.exceptions import ValidationError
+from tenant_account_v2.organization_member_service import (
+    OrganizationMemberService,
+)
 
 from adapter_processor_v2.constants import AdapterKeys, AllowedDomains
 from adapter_processor_v2.exceptions import (
@@ -27,7 +32,9 @@ from .models import AdapterInstance, UserDefaultAdapter
 logger = logging.getLogger(__name__)
 
 try:
-    from plugins.subscription.time_trials.subscription_adapter import add_unstract_key
+    from plugins.subscription.time_trials.subscription_adapter import (
+        add_unstract_key,
+    )
 except ImportError:
     add_unstract_key = None
 
@@ -92,8 +99,8 @@ class AdapterProcessor:
     def test_adapter(adapter_id: str, adapter_metadata: dict[str, Any]) -> bool:
         logger.info(f"Testing adapter: {adapter_id}")
         try:
-            adapter_class = Adapterkit().get_adapter_class_by_adapter_id(adapter_id)
-
+            # Defensive copy; don't mutate caller dict
+            adapter_metadata = dict(adapter_metadata)
             if adapter_metadata.pop(AdapterKeys.ADAPTER_TYPE) == AdapterKeys.X2TEXT:
                 if (
                     adapter_metadata.get(AdapterKeys.PLATFORM_PROVIDED_UNSTRACT_KEY)
@@ -107,12 +114,22 @@ class AdapterProcessor:
                     platform_key.key
                 )
 
-            adapter_instance = adapter_class(adapter_metadata)
+            # Validate URLs for this adapter configuration
+            try:
+                adapter_instance = AdapterProcessor.validate_adapter_urls(
+                    adapter_id, adapter_metadata
+                )
+            except Exception as e:
+                # Format error message similar to test adapter API
+                adapter_name = adapter_metadata.get(AdapterKeys.ADAPTER_NAME, "adapter")
+                error_detail = f"Error testing '{adapter_name}'. {e!s}"
+                raise ValidationError(error_detail) from e
             test_result: bool = adapter_instance.test_connection()
             return test_result
         except SdkError as e:
             raise TestAdapterError(
-                e, adapter_name=adapter_metadata[AdapterKeys.ADAPTER_NAME]
+                e,
+                adapter_name=adapter_metadata.get(AdapterKeys.ADAPTER_NAME, "adapter"),
             )
 
     @staticmethod
@@ -129,6 +146,39 @@ class AdapterProcessor:
             adapter_metadata_b = f.encrypt(json.dumps(adapter_metadata).encode("utf-8"))
             return adapter_metadata_b
         return adapter_metadata_b
+
+    @staticmethod
+    def validate_adapter_urls(adapter_id: str, adapter_metadata: dict) -> Adapter:
+        """Validate URLs for an adapter configuration without full connection test.
+
+        This method only validates URLs for security (SSRF protection) without
+        attempting actual network connections.
+
+        Args:
+            adapter_id: The adapter ID (e.g., "postgres|70ab6cc2...")
+            adapter_metadata: The adapter configuration metadata
+
+        Returns:
+            Adapter: The adapter instance if validation passes
+
+        Raises:
+            AdapterError: If URL validation fails due to security violations
+        """
+        try:
+            # Get the adapter class
+            adapterkit = Adapterkit()
+            adapter_class = adapterkit.get_adapter_class_by_adapter_id(adapter_id)
+
+            # Create a temporary instance just to validate URLs
+            # Pass validate_urls=True to trigger URL validation
+            return adapter_class(adapter_metadata, validate_urls=True)
+
+        except Exception as e:
+            logger.error(
+                f"URL validation failed for adapter {adapter_id}: {str(e)}",
+                exc_info=True,
+            )
+            raise
 
     @staticmethod
     def __fetch_adapters_by_key_value(key: str, value: Any) -> Adapter:
