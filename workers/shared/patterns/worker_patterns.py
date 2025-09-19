@@ -250,7 +250,7 @@ def demonstrate_separation():
 
     # 4. Status mapping between domains
     logger.info("\n4. Status Mapping:")
-    pipeline_status = StatusMappings.execution_to_pipeline(ExecutionStatus.COMPLETED)
+    pipeline_status = StatusMappings.map_execution_to_pipeline(ExecutionStatus.COMPLETED)
     logger.info(
         f"   Core ExecutionStatus.COMPLETED → Worker PipelineStatus.{pipeline_status}"
     )
