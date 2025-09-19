@@ -921,6 +921,7 @@ class SourceConnector(BaseConnector):
         tags: list[str],
         file_hash: FileHash,
         llm_profile_id: str | None = None,
+        user_data: dict[str, Any] | None = None,
     ) -> str:
         """Add input file to execution directory.
 
@@ -962,6 +963,7 @@ class SourceConnector(BaseConnector):
             source_hash=file_content_hash,
             tags=tags,
             llm_profile_id=llm_profile_id,
+            user_data=user_data,
         )
         return file_content_hash
 

@@ -53,6 +53,7 @@ def prompt_processor() -> Any:
     file_path = payload.get(PSKeys.FILE_PATH)
     doc_name = str(payload.get(PSKeys.FILE_NAME, ""))
     log_events_id: str = payload.get(PSKeys.LOG_EVENTS_ID, "")
+    user_data: dict[str, Any] = payload.get(PSKeys.USER_DATA, {})
     structured_output: dict[str, Any] = {}
     metadata: dict[str, Any] = {
         PSKeys.RUN_ID: run_id,
@@ -94,6 +95,7 @@ def prompt_processor() -> Any:
                 tool_id=tool_id,
                 prompt_name=prompt_name,
                 doc_name=doc_name,
+                user_data=user_data,
             )
 
         app.logger.info(f"[{tool_id}] Executing prompt: '{prompt_name}'")

@@ -34,6 +34,7 @@ class VariableReplacementService:
         tool_id: str,
         prompt_name: str,
         doc_name: str,
+        user_data: dict[str, Any] = None,
     ) -> str:
         """Replaces variables in prompt.
 
@@ -66,13 +67,17 @@ class VariableReplacementService:
         try:
             variable_map = prompt[PSKeys.VARIABLE_MAP]
             prompt_text = VariableReplacementService._execute_variable_replacement(
-                prompt_text=prompt[PSKeys.PROMPT], variable_map=variable_map
+                prompt_text=prompt[PSKeys.PROMPT],
+                variable_map=variable_map,
+                user_data=user_data,
             )
         except KeyError:
             # Executed incase of structured tool and
             # APIs where we do not set the variable map
             prompt_text = VariableReplacementService._execute_variable_replacement(
-                prompt_text=prompt_text, variable_map=structured_output
+                prompt_text=prompt_text,
+                variable_map=structured_output,
+                user_data=user_data,
             )
         finally:
             app.logger.info(
@@ -93,7 +98,7 @@ class VariableReplacementService:
 
     @staticmethod
     def _execute_variable_replacement(
-        prompt_text: str, variable_map: dict[str, Any]
+        prompt_text: str, variable_map: dict[str, Any], user_data: dict[str, Any] = None
     ) -> str:
         variables: list[str] = VariableReplacementHelper.extract_variables_from_prompt(
             prompt_text=prompt_text
@@ -109,10 +114,17 @@ class VariableReplacementService:
                     variable=variable,
                 )
 
-            if variable_type == VariableType.DYNAMIC:
+            elif variable_type == VariableType.DYNAMIC:
                 prompt_text = VariableReplacementHelper.replace_dynamic_variable(
                     prompt=prompt_text,
                     variable=variable,
                     structured_output=variable_map,
+                )
+
+            elif variable_type == VariableType.USER_DATA and user_data:
+                prompt_text = VariableReplacementHelper.replace_user_data_variable(
+                    prompt=prompt_text,
+                    variable=variable,
+                    user_data=user_data,
                 )
         return prompt_text

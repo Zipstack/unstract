@@ -51,7 +51,9 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         tool_instances_as_dto = []
         for tool_instance in tool_instances:
             tool_instances_as_dto.append(
-                self.convert_tool_instance_model_to_data_class(tool_instance)
+                WorkflowExecutionServiceHelper.convert_tool_instance_model_to_data_class(
+                    tool_instance
+                )
             )
         workflow_as_dto: WorkflowDto = self.convert_workflow_model_to_data_class(
             workflow=workflow
