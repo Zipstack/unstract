@@ -121,11 +121,10 @@ class VariableReplacementService:
                     structured_output=variable_map,
                 )
 
-            elif variable_type == VariableType.USER_DATA:
-                if user_data:
-                    prompt_text = VariableReplacementHelper.replace_user_data_variable(
-                        prompt=prompt_text,
-                        variable=variable,
-                        user_data=user_data,
-                    )
+            elif variable_type == VariableType.USER_DATA and user_data:
+                prompt_text = VariableReplacementHelper.replace_user_data_variable(
+                    prompt=prompt_text,
+                    variable=variable,
+                    user_data=user_data,
+                )
         return prompt_text

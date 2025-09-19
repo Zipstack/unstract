@@ -114,16 +114,16 @@ class VariableReplacementHelper:
             prompt with variable replaced
         """
         if not user_data:
-            app.logger.warning(
-                f"User data is empty. Unable to replace variable {variable}"
-            )
-            return prompt
+            error_msg = f"User data is empty. Unable to replace variable {variable}"
+            app.logger.error(error_msg)
+            raise ValueError(error_msg)
 
         # Extract the path from user_data.path.to.value
         user_data_match = re.search(VariableConstants.USER_DATA_VARIABLE_REGEX, variable)
         if not user_data_match:
-            app.logger.warning(f"Invalid user_data variable format: {variable}")
-            return prompt
+            error_msg = f"Invalid user_data variable format: {variable}"
+            app.logger.error(error_msg)
+            raise ValueError(error_msg)
 
         path_str = user_data_match.group(1)
         path_parts = path_str.split(".")
@@ -133,11 +133,10 @@ class VariableReplacementHelper:
             value = user_data
             for part in path_parts:
                 value = value[part]
-        except (KeyError, TypeError):
-            app.logger.warning(
-                f"Path {path_str} not found in user_data. Unable to replace variable {variable}"
-            )
-            return prompt
+        except (KeyError, TypeError) as e:
+            error_msg = f"Path {path_str} not found in user_data for variable {variable}"
+            app.logger.error(error_msg)
+            raise ValueError(error_msg) from e
 
         # Format the value and replace in prompt
         formatted_value = VariableReplacementHelper.handle_json_and_str_types(value)
