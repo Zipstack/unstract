@@ -273,25 +273,12 @@ class FileExecutionResult:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "FileExecutionResult":
         """Create from dictionary (e.g., task result)."""
-        status_str = data.get("status", ApiDeploymentResultStatus.FAILED.value)
-
-        # Handle both string status values and enum instances
-        if isinstance(status_str, str):
-            # Try API deployment status first, then execution status for backward compatibility
-            try:
-                status = ApiDeploymentResultStatus(status_str)
-            except ValueError:
-                # Fallback: map ExecutionStatus to ApiDeploymentResultStatus
-                if status_str in [
-                    ExecutionStatus.COMPLETED.value,
-                    ExecutionStatus.SUCCESS.value,
-                ]:
-                    status = ApiDeploymentResultStatus.SUCCESS
-                else:
-                    status = ApiDeploymentResultStatus.FAILED
-        else:
-            status = status_str
-
+        # Derive status from presence of error to avoid enum mismatch and be consistent with __post_init__
+        status = (
+            ApiDeploymentResultStatus.FAILED
+            if data.get("error")
+            else ApiDeploymentResultStatus.SUCCESS
+        )
         return cls(
             file=data.get("file", ""),
             file_execution_id=data.get("file_execution_id"),

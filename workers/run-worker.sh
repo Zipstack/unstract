@@ -326,29 +326,29 @@ run_worker() {
         cmd_args+=("--concurrency=$concurrency")
     fi
 
-    # Add autoscale for production-like setup
+    # Add concurrency for production-like setup
     if [[ -z "$concurrency" ]]; then
         case "$worker_type" in
             "api-deployment")
-                cmd_args+=("--autoscale=4,1")
+                cmd_args+=("--concurrency=2")
                 ;;
             "general")
-                cmd_args+=("--autoscale=6,2")
+                cmd_args+=("--concurrency=4")
                 ;;
             "file_processing")
-                cmd_args+=("--autoscale=8,2")
+                cmd_args+=("--concurrency=4")
                 ;;
             "callback")
-                cmd_args+=("--autoscale=4,4")
+                cmd_args+=("--concurrency=4")
                 ;;
             "log_consumer")
-                cmd_args+=("--autoscale=2,1")
+                cmd_args+=("--concurrency=2")
                 ;;
             "notification")
-                cmd_args+=("--autoscale=4,1")
+                cmd_args+=("--concurrency=2")
                 ;;
             "scheduler")
-                cmd_args+=("--autoscale=2,1")
+                cmd_args+=("--concurrency=2")
                 ;;
         esac
     fi

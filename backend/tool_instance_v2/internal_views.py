@@ -295,8 +295,5 @@ def tool_instances_by_workflow_internal(request, workflow_id):
         )
 
     except Exception as e:
-        logger.error(f"Failed to get tool instances for workflow {workflow_id}: {e}")
-        import traceback
-
-        logger.error(f"Full traceback: {traceback.format_exc()}")
+        logger.exception(f"Failed to get tool instances for workflow {workflow_id}: {e}")
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

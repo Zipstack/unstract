@@ -177,29 +177,29 @@ run_worker() {
             ;;
     esac
 
-    # Determine autoscale settings
-    local autoscale=""
+    # Determine concurrency settings
+    local concurrency=""
     case "$worker_type" in
         "api_deployment")
-            autoscale="${WORKER_API_DEPLOYMENT_AUTOSCALE:-4,1}"
+            concurrency="${WORKER_API_DEPLOYMENT_CONCURRENCY:-2}"
             ;;
         "general")
-            autoscale="${WORKER_GENERAL_AUTOSCALE:-6,2}"
+            concurrency="${WORKER_GENERAL_CONCURRENCY:-4}"
             ;;
         "file_processing")
-            autoscale="${WORKER_FILE_PROCESSING_AUTOSCALE:-8,2}"
+            concurrency="${WORKER_FILE_PROCESSING_CONCURRENCY:-4}"
             ;;
         "callback")
-            autoscale="${WORKER_CALLBACK_AUTOSCALE:-4,1}"
+            concurrency="${WORKER_CALLBACK_CONCURRENCY:-4}"
             ;;
         "notification")
-            autoscale="${WORKER_NOTIFICATION_AUTOSCALE:-4,1}"
+            concurrency="${WORKER_NOTIFICATION_CONCURRENCY:-2}"
             ;;
         "log_consumer")
-            autoscale="${WORKER_LOG_CONSUMER_AUTOSCALE:-2,1}"
+            concurrency="${WORKER_LOG_CONSUMER_CONCURRENCY:-2}"
             ;;
         "scheduler")
-            autoscale="${WORKER_SCHEDULER_AUTOSCALE:-2,1}"
+            concurrency="${WORKER_SCHEDULER_CONCURRENCY:-2}"
             ;;
     esac
 
@@ -208,7 +208,7 @@ run_worker() {
     print_status $BLUE "Worker Name: $worker_instance_name"
     print_status $BLUE "Queues: $queues"
     print_status $BLUE "Health Port: $health_port"
-    print_status $BLUE "Autoscale: $autoscale"
+    print_status $BLUE "Concurrency: $concurrency"
 
     # Build Celery command with configurable options
     local app_module="${CELERY_APP_MODULE:-worker}"
@@ -266,16 +266,14 @@ run_worker() {
         if [[ -n "$CELERY_CONCURRENCY" ]]; then
             celery_args="$celery_args --concurrency=$CELERY_CONCURRENCY"
         else
-            # Extract max from autoscale for fixed concurrency
-            local max_workers="${autoscale%,*}"
-            celery_args="$celery_args --concurrency=$max_workers"
+            celery_args="$celery_args --concurrency=$concurrency"
         fi
     else
-        # Prefork/solo pools support autoscaling
+        # Prefork pool with fixed concurrency
         if [[ -n "$CELERY_CONCURRENCY" ]]; then
             celery_args="$celery_args --concurrency=$CELERY_CONCURRENCY"
         else
-            celery_args="$celery_args --autoscale=$autoscale"
+            celery_args="$celery_args --concurrency=$concurrency"
         fi
     fi
 
