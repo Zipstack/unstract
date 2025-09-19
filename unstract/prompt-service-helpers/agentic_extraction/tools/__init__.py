@@ -1,5 +1,4 @@
-"""
-Tools module for agentic extraction agents.
+"""Tools module for agentic extraction agents.
 Currently implements RAG tool for document retrieval and search.
 """
 

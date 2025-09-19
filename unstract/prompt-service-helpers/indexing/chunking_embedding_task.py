@@ -1,13 +1,11 @@
-"""
-Celery task for chunking and embedding text extraction results.
+"""Celery task for chunking and embedding text extraction results.
 This task handles text chunking based on user-defined parameters and generates
 embeddings for vector database storage, following the pattern from index_v2.py.
 """
 
 import json
 import logging
-import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from celery import shared_task
 from llama_index.core import Document
@@ -18,6 +16,7 @@ from llama_index.core.vector_stores import (
     VectorStoreQuery,
     VectorStoreQueryResult,
 )
+
 from unstract.sdk.adapter import ToolAdapter
 from unstract.sdk.embedding import Embedding
 from unstract.sdk.exceptions import IndexingError, SdkError
@@ -36,12 +35,11 @@ logger = logging.getLogger(__name__)
 def process_chunking_and_embedding(
     self,
     minio_text_path: str,
-    chunking_params: Dict[str, Any],
-    embedding_params: Dict[str, Any],
-    llm_config: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
-    """
-    Process text chunking and embedding generation following index_v2 pattern.
+    chunking_params: dict[str, Any],
+    embedding_params: dict[str, Any],
+    llm_config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Process text chunking and embedding generation following index_v2 pattern.
 
     Args:
         minio_text_path: Path to the extracted text file in MinIO
@@ -66,24 +64,18 @@ def process_chunking_and_embedding(
             - total_input_tokens: Total tokens in the input file
             - metadata: Additional processing metadata
     """
-
     task_id = self.request.id
     logger.info(f"[Task {task_id}] Starting chunking and embedding task")
 
     try:
         # Step 1: Initialize FileStorage for MinIO access using SDK
         file_storage = FileStorage(
-            provider=FileStorageProvider.MINIO,
-            **get_minio_config()
+            provider=FileStorageProvider.MINIO, **get_minio_config()
         )
 
         # Step 2: Retrieve the extracted text from MinIO using SDK read method
         logger.info(f"[Task {task_id}] Retrieving text from MinIO: {minio_text_path}")
-        text_content = file_storage.read(
-            path=minio_text_path,
-            mode="r",
-            encoding="utf-8"
-        )
+        text_content = file_storage.read(path=minio_text_path, mode="r", encoding="utf-8")
 
         if not text_content:
             raise ValueError(f"No text content found at {minio_text_path}")
@@ -92,7 +84,11 @@ def process_chunking_and_embedding(
         token_helper = TokenCalculationHelper()
 
         # Calculate total input tokens in the file
-        model_name = llm_config.get("model_name", "gpt-3.5-turbo") if llm_config else "gpt-3.5-turbo"
+        model_name = (
+            llm_config.get("model_name", "gpt-3.5-turbo")
+            if llm_config
+            else "gpt-3.5-turbo"
+        )
         total_input_tokens = token_helper.count_tokens(text_content, model_name)
         logger.info(f"[Task {task_id}] Total input tokens in file: {total_input_tokens}")
 
@@ -151,7 +147,9 @@ def process_chunking_and_embedding(
 
         reindex = embedding_params.get("reindex", False)
         if doc_already_indexed and not reindex:
-            logger.info(f"[Task {task_id}] Document already indexed with doc_id: {doc_id}")
+            logger.info(
+                f"[Task {task_id}] Document already indexed with doc_id: {doc_id}"
+            )
             return {
                 "doc_id": doc_id,
                 "minio_text_path": minio_text_path,
@@ -161,7 +159,7 @@ def process_chunking_and_embedding(
                 "metadata": {
                     "already_indexed": True,
                     "task_id": task_id,
-                }
+                },
             }
 
         # Step 10: Prepare document for chunking (following index_v2 pattern)
@@ -206,8 +204,10 @@ def process_chunking_and_embedding(
                 show_progress=True,
             )
 
-            tool.stream_log(f"File has been indexed successfully")
-            logger.info(f"[Task {task_id}] Successfully indexed {len(nodes) if nodes else 0} nodes")
+            tool.stream_log("File has been indexed successfully")
+            logger.info(
+                f"[Task {task_id}] Successfully indexed {len(nodes) if nodes else 0} nodes"
+            )
 
             # Count the nodes created
             chunk_count = len(nodes) if nodes else 0
@@ -240,7 +240,7 @@ def process_chunking_and_embedding(
                 "model_name": model_name,
                 "task_id": task_id,
                 "reindexed": reindex and doc_already_indexed,
-            }
+            },
         }
 
         logger.info(f"[Task {task_id}] Chunking and embedding completed successfully")
@@ -253,17 +253,16 @@ def process_chunking_and_embedding(
 
 def generate_index_key_with_sdk(
     tool: BaseTool,
-    file_hash: Optional[str],
+    file_hash: str | None,
     file_path: str,
     embedding_instance_id: str,
     vector_db_instance_id: str,
-    x2text_instance_id: Optional[str],
+    x2text_instance_id: str | None,
     chunk_size: int,
     chunk_overlap: int,
     file_storage: FileStorage,
 ) -> str:
-    """
-    Generate a unique index key using SDK methods.
+    """Generate a unique index key using SDK methods.
     This follows the pattern from index_v2.generate_index_key but uses SDK methods.
 
     Args:
@@ -295,24 +294,18 @@ def generate_index_key_with_sdk(
     # Get adapter configurations using SDK methods (if tool has platform connection)
     try:
         # Get vector DB config using SDK
-        vector_db_config = ToolAdapter.get_adapter_config(
-            tool, vector_db_instance_id
-        )
+        vector_db_config = ToolAdapter.get_adapter_config(tool, vector_db_instance_id)
         if vector_db_config:
             index_key["vector_db_config"] = vector_db_config
 
         # Get embedding config using SDK
-        embedding_config = ToolAdapter.get_adapter_config(
-            tool, embedding_instance_id
-        )
+        embedding_config = ToolAdapter.get_adapter_config(tool, embedding_instance_id)
         if embedding_config:
             index_key["embedding_config"] = embedding_config
 
         # Get x2text config if provided
         if x2text_instance_id:
-            x2text_config = ToolAdapter.get_adapter_config(
-                tool, x2text_instance_id
-            )
+            x2text_config = ToolAdapter.get_adapter_config(tool, x2text_instance_id)
             if x2text_config:
                 index_key["x2text_config"] = x2text_config
 
@@ -330,7 +323,7 @@ def generate_index_key_with_sdk(
     # Sort keys to ensure consistent hashing
     hashed_index_key = ToolUtils.hash_str(
         json.dumps(index_key, sort_keys=True),
-        hash_method="sha256"  # Use SHA256 for better uniqueness
+        hash_method="sha256",  # Use SHA256 for better uniqueness
     )
 
     return hashed_index_key
@@ -342,8 +335,7 @@ def is_document_indexed(
     vector_db: VectorDB,
     tool: BaseTool,
 ) -> bool:
-    """
-    Check if a document is already indexed using SDK methods.
+    """Check if a document is already indexed using SDK methods.
     This follows the pattern from index_v2.is_document_indexed.
 
     Args:
@@ -388,12 +380,9 @@ def is_document_indexed(
 
 
 def prepare_documents_with_sdk(
-    doc_id: str,
-    full_text: List[Dict[str, Any]],
-    tool: BaseTool
-) -> List[Document]:
-    """
-    Prepare documents for indexing using SDK patterns.
+    doc_id: str, full_text: list[dict[str, Any]], tool: BaseTool
+) -> list[Document]:
+    """Prepare documents for indexing using SDK patterns.
     This follows the pattern from index_v2._prepare_documents.
 
     Args:
@@ -432,9 +421,8 @@ def prepare_documents_with_sdk(
         ) from e
 
 
-def get_minio_config() -> Dict[str, Any]:
-    """
-    Get MinIO configuration from environment or settings.
+def get_minio_config() -> dict[str, Any]:
+    """Get MinIO configuration from environment or settings.
     This uses SDK-compatible configuration format.
 
     Returns:

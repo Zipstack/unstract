@@ -1,15 +1,13 @@
-"""
-Helper for token calculation using LiteLLM model pricing data.
-"""
+"""Helper for token calculation using LiteLLM model pricing data."""
 
 import json
 import logging
-import os
 from datetime import UTC, datetime, timedelta
-from typing import Any, Dict, Optional
+from typing import Any
 
 import requests
 import tiktoken
+
 from unstract.sdk.file_storage.impl import FileStorage
 from unstract.sdk.file_storage.provider import FileStorageProvider
 
@@ -38,10 +36,9 @@ class TokenCalculationHelper:
         self.model_data = self._get_model_data()
 
     def get_model_context_window(
-        self, model_name: str, provider: Optional[str] = None
-    ) -> Optional[int]:
-        """
-        Get the context window size for a specific model.
+        self, model_name: str, provider: str | None = None
+    ) -> int | None:
+        """Get the context window size for a specific model.
 
         Args:
             model_name: Name of the model
@@ -86,11 +83,8 @@ class TokenCalculationHelper:
 
         return None
 
-    def count_tokens(
-        self, text: str, model_name: Optional[str] = "gpt-3.5-turbo"
-    ) -> int:
-        """
-        Count tokens in the given text using the appropriate tokenizer.
+    def count_tokens(self, text: str, model_name: str | None = "gpt-3.5-turbo") -> int:
+        """Count tokens in the given text using the appropriate tokenizer.
 
         Args:
             text: Text to count tokens for
@@ -121,10 +115,12 @@ class TokenCalculationHelper:
             return len(text) // 4
 
     def calculate_optimal_chunk_size(
-        self, model_name: str, provider: Optional[str] = None, target_utilization: float = 0.25
+        self,
+        model_name: str,
+        provider: str | None = None,
+        target_utilization: float = 0.25,
     ) -> int:
-        """
-        Calculate optimal chunk size based on model's context window.
+        """Calculate optimal chunk size based on model's context window.
 
         Args:
             model_name: Name of the model
@@ -152,9 +148,8 @@ class TokenCalculationHelper:
 
         return max(min_chunk_size, min(optimal_size, max_chunk_size))
 
-    def _get_model_data(self) -> Optional[Dict[str, Any]]:
-        """
-        Get model pricing and context data, using cache if available.
+    def _get_model_data(self) -> dict[str, Any] | None:
+        """Get model pricing and context data, using cache if available.
 
         Returns:
             Dictionary of model data, or None if unavailable
@@ -182,9 +177,8 @@ class TokenCalculationHelper:
             # Return default model data as fallback
             return self._get_default_model_data()
 
-    def _fetch_and_save_data(self) -> Optional[Dict[str, Any]]:
-        """
-        Fetch model data from URL and cache it.
+    def _fetch_and_save_data(self) -> dict[str, Any] | None:
+        """Fetch model data from URL and cache it.
 
         Returns:
             Dictionary of model data, or None if fetch fails
@@ -210,9 +204,8 @@ class TokenCalculationHelper:
             logger.error(f"Error fetching model data: {e}")
             return self._get_default_model_data()
 
-    def _get_default_model_data(self) -> Dict[str, Any]:
-        """
-        Get default model data as fallback.
+    def _get_default_model_data(self) -> dict[str, Any]:
+        """Get default model data as fallback.
 
         Returns:
             Dictionary with default model configurations

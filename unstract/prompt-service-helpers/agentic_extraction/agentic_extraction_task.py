@@ -1,19 +1,18 @@
-"""
-Celery task for agentic data extraction using Autogen GraphFlow.
+"""Celery task for agentic data extraction using Autogen GraphFlow.
 This task takes the generated digraph and executes the multi-agent extraction workflow.
 """
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
-from celery import shared_task
+from typing import Any
 
 # Autogen imports
 from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.teams import DiGraphBuilder, GraphFlow
+from celery import shared_task
 
 from .agent_factory import AgentFactory
-from .tools.rag_tool import RAGTool, RetrievalStrategy
+from .tools.rag_tool import RAGTool
 
 logger = logging.getLogger(__name__)
 
@@ -21,14 +20,13 @@ logger = logging.getLogger(__name__)
 @shared_task(bind=True, name="execute_agentic_extraction")
 def execute_agentic_extraction(
     self,
-    digraph_output: Dict[str, Any],
-    answer_prompt_payload: Dict[str, Any],
+    digraph_output: dict[str, Any],
+    answer_prompt_payload: dict[str, Any],
     doc_id: str,
-    extraction_task: Optional[str] = None,
-    platform_key: Optional[str] = None,
-) -> Dict[str, Any]:
-    """
-    Execute agentic data extraction using Autogen GraphFlow with answer_prompt format.
+    extraction_task: str | None = None,
+    platform_key: str | None = None,
+) -> dict[str, Any]:
+    """Execute agentic data extraction using Autogen GraphFlow with answer_prompt format.
 
     Args:
         digraph_output: Output from digraph generation containing graph structure
@@ -44,7 +42,6 @@ def execute_agentic_extraction(
             - execution_metadata: Execution details
             - performance_metrics: Performance information
     """
-
     task_id = self.request.id
     logger.info(f"[Task {task_id}] Starting agentic data extraction")
 
@@ -80,7 +77,9 @@ def execute_agentic_extraction(
             """
 
         # Step 5: Execute the GraphFlow
-        logger.info(f"[Task {task_id}] Executing GraphFlow with {len(graph_flow.participants)} agents")
+        logger.info(
+            f"[Task {task_id}] Executing GraphFlow with {len(graph_flow.participants)} agents"
+        )
         execution_results = execute_graph_flow_team(graph_flow, extraction_task)
 
         # Step 6: Process and format results
@@ -111,12 +110,11 @@ def execute_agentic_extraction(
 
 
 def recreate_graph_flow_from_digraph(
-    digraph_output: Dict[str, Any],
+    digraph_output: dict[str, Any],
     agent_factory: AgentFactory,
-    extraction_spec: Dict[str, Any],
+    extraction_spec: dict[str, Any],
 ) -> GraphFlow:
-    """
-    Recreate GraphFlow from digraph generation output.
+    """Recreate GraphFlow from digraph generation output.
 
     Args:
         digraph_output: Output from digraph generation
@@ -152,12 +150,11 @@ def recreate_graph_flow_from_digraph(
 
 def recreate_edges_from_plan(
     builder: DiGraphBuilder,
-    agents: List[AssistantAgent],
-    execution_plan: Dict[str, Any],
-    extraction_spec: Dict[str, Any],
+    agents: list[AssistantAgent],
+    execution_plan: dict[str, Any],
+    extraction_spec: dict[str, Any],
 ) -> None:
-    """
-    Recreate edges in the DiGraphBuilder based on execution plan.
+    """Recreate edges in the DiGraphBuilder based on execution plan.
 
     Args:
         builder: DiGraphBuilder instance
@@ -205,8 +202,11 @@ def recreate_edges_from_plan(
     if challenger_agent and tool_settings.get("enable_challenge", False):
         # All extraction agents → challenger
         for agent in agents:
-            if (agent != challenger_agent and agent != collation_agent and
-                "extraction_agent" in agent.name):
+            if (
+                agent != challenger_agent
+                and agent != collation_agent
+                and "extraction_agent" in agent.name
+            ):
                 builder.add_edge(agent, challenger_agent)
 
         # Challenger → collation with approval condition
@@ -215,10 +215,10 @@ def recreate_edges_from_plan(
                 challenger_agent,
                 collation_agent,
                 condition=lambda msg: (
-                    "approved" in msg.content.lower() or
-                    "validated" in msg.content.lower() or
-                    "accepted" in msg.content.lower()
-                )
+                    "approved" in msg.content.lower()
+                    or "validated" in msg.content.lower()
+                    or "accepted" in msg.content.lower()
+                ),
             )
     elif collation_agent:
         # Direct extraction agents → collation
@@ -230,9 +230,8 @@ def recreate_edges_from_plan(
 def execute_graph_flow_team(
     graph_flow: GraphFlow,
     extraction_task: str,
-) -> Dict[str, Any]:
-    """
-    Execute the GraphFlow team and collect results.
+) -> dict[str, Any]:
+    """Execute the GraphFlow team and collect results.
 
     Args:
         graph_flow: GraphFlow instance to execute
@@ -256,19 +255,23 @@ def execute_graph_flow_team(
             logger.info(f"Event: {event.type}, Agent: {event.source}")
 
             # Store event for analysis
-            events.append({
-                "type": event.type,
-                "source": event.source,
-                "content": event.content[:200] if hasattr(event, 'content') else None,
-                "timestamp": str(event.timestamp) if hasattr(event, 'timestamp') else None,
-            })
+            events.append(
+                {
+                    "type": event.type,
+                    "source": event.source,
+                    "content": event.content[:200] if hasattr(event, "content") else None,
+                    "timestamp": str(event.timestamp)
+                    if hasattr(event, "timestamp")
+                    else None,
+                }
+            )
 
             # Store agent results
-            if hasattr(event, 'content') and event.content:
+            if hasattr(event, "content") and event.content:
                 results[event.source] = event.content
 
                 # Check for final collation result
-                if event.source == 'data_collation_agent':
+                if event.source == "data_collation_agent":
                     try:
                         final_output = json.loads(event.content)
                     except json.JSONDecodeError:
@@ -290,11 +293,10 @@ def execute_graph_flow_team(
 
 
 def process_execution_results(
-    execution_results: Dict[str, Any],
-    extraction_spec: Dict[str, Any],
-) -> Dict[str, Any]:
-    """
-    Process and validate execution results.
+    execution_results: dict[str, Any],
+    extraction_spec: dict[str, Any],
+) -> dict[str, Any]:
+    """Process and validate execution results.
 
     Args:
         execution_results: Raw execution results from GraphFlow
@@ -335,11 +337,10 @@ def process_execution_results(
 
 
 def calculate_performance_metrics(
-    execution_results: Dict[str, Any],
+    execution_results: dict[str, Any],
     task_id: str,
-) -> Dict[str, Any]:
-    """
-    Calculate performance metrics for the execution.
+) -> dict[str, Any]:
+    """Calculate performance metrics for the execution.
 
     Args:
         execution_results: Execution results

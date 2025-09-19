@@ -1,5 +1,4 @@
-"""
-Celery task for generating Autogen GraphFlow for sequential data extraction.
+"""Celery task for generating Autogen GraphFlow for sequential data extraction.
 This task creates actual Autogen DiGraphBuilder instances and GraphFlow
 to orchestrate extraction agents in a sequential/dependency-based execution pattern.
 
@@ -14,15 +13,15 @@ order based on field dependencies and workflow requirements.
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
-from celery import shared_task
+from typing import Any
 
 # Autogen imports - using the correct components for sequential teams
 from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.teams import DiGraphBuilder, GraphFlow
+from celery import shared_task
+
 # Note: For sequential team processing, we use DiGraphBuilder which creates a directed graph
 # that can be executed by GraphFlow for proper sequential/dependency-based execution
-
 from .spec_parser import ExtractionSpecParser
 
 logger = logging.getLogger(__name__)
@@ -31,11 +30,10 @@ logger = logging.getLogger(__name__)
 @shared_task(bind=True, name="generate_extraction_digraph")
 def generate_extraction_digraph(
     self,
-    extraction_spec: Dict[str, Any],
-    previous_stage_output: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
-    """
-    Generate Autogen GraphFlow for data extraction.
+    extraction_spec: dict[str, Any],
+    previous_stage_output: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Generate Autogen GraphFlow for data extraction.
 
     Args:
         extraction_spec: Data extraction specification containing:
@@ -53,7 +51,6 @@ def generate_extraction_digraph(
             - execution_plan: Execution flow information
             - metadata: Additional information
     """
-
     task_id = self.request.id
     logger.info(f"[Task {task_id}] Starting Autogen digraph generation")
 
@@ -94,7 +91,9 @@ def generate_extraction_digraph(
             builder.add_node(agent)
 
         # Step 6: Add edges to define sequential execution order based on dependencies
-        add_edges_to_builder(builder, autogen_agents, dependencies, parsed_spec.get("tool_settings", {}))
+        add_edges_to_builder(
+            builder, autogen_agents, dependencies, parsed_spec.get("tool_settings", {})
+        )
 
         # Step 7: Build the directed graph using Autogen's DiGraphBuilder
         # This creates the actual graph structure that GraphFlow will execute
@@ -121,7 +120,7 @@ def generate_extraction_digraph(
                 "total_agents": len(autogen_agents),
                 "doc_id": doc_id,
                 "extraction_spec": parsed_spec,
-            }
+            },
         }
 
         logger.info(
@@ -136,11 +135,9 @@ def generate_extraction_digraph(
 
 
 def analyze_field_dependencies(
-    fields: List[Dict[str, Any]],
-    explicit_dependencies: Dict[str, List[str]]
-) -> Dict[str, List[str]]:
-    """
-    Analyze dependencies between fields based on variable references.
+    fields: list[dict[str, Any]], explicit_dependencies: dict[str, list[str]]
+) -> dict[str, list[str]]:
+    """Analyze dependencies between fields based on variable references.
 
     Args:
         fields: List of field specifications
@@ -162,7 +159,8 @@ def analyze_field_dependencies(
 
         # Find variable references in the prompt (e.g., {{other_field}})
         import re
-        variable_pattern = r'\{\{(\w+)\}\}'
+
+        variable_pattern = r"\{\{(\w+)\}\}"
         referenced_fields = re.findall(variable_pattern, prompt_text)
 
         if field_name not in dependencies:
@@ -177,14 +175,13 @@ def analyze_field_dependencies(
 
 
 def generate_agent_configs(
-    fields: List[Dict[str, Any]],
-    required_agents: List[str],
-    tool_settings: Dict[str, Any],
+    fields: list[dict[str, Any]],
+    required_agents: list[str],
+    tool_settings: dict[str, Any],
     parser: ExtractionSpecParser,
-    doc_id: Optional[str] = None,
-) -> List[Dict[str, Any]]:
-    """
-    Generate agent configurations based on required agents and fields.
+    doc_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """Generate agent configurations based on required agents and fields.
 
     Args:
         fields: List of field specifications
@@ -226,7 +223,7 @@ def generate_agent_configs(
                         "field_name": field_name,
                         "extraction_agent_type": agent_type,
                         "doc_id": doc_id,
-                    }
+                    },
                 }
                 agents.append(agent_config)
 
@@ -241,13 +238,15 @@ def generate_agent_configs(
             "field_config": {
                 "agent_role": "challenger",
                 "doc_id": doc_id,
-            }
+            },
         }
         agents.append(challenger_agent)
 
     # Add collation agent (always needed)
     if "data_collation_agent" in required_agents:
-        collation_system_message = parser.create_agent_system_message("data_collation_agent", all_fields=fields)
+        collation_system_message = parser.create_agent_system_message(
+            "data_collation_agent", all_fields=fields
+        )
         collation_agent = {
             "name": "data_collation_agent",
             "agent_type": "AssistantAgent",
@@ -256,7 +255,7 @@ def generate_agent_configs(
             "field_config": {
                 "agent_role": "collation",
                 "output_fields": [f.get("name") for f in fields],
-            }
+            },
         }
         agents.append(collation_agent)
 
@@ -264,12 +263,11 @@ def generate_agent_configs(
 
 
 def determine_agent_config(
-    field: Dict[str, Any],
-    tool_settings: Dict[str, Any],
-    doc_id: Optional[str] = None,
+    field: dict[str, Any],
+    tool_settings: dict[str, Any],
+    doc_id: str | None = None,
 ) -> tuple[str, str]:
-    """
-    Determine agent type and system message for a field.
+    """Determine agent type and system message for a field.
 
     Args:
         field: Field specification
@@ -319,7 +317,11 @@ Tools available: calculator"""
     else:
         # Generic text extraction
         agent_type = "AssistantAgent"
-        rag_instruction = "5. Use the RAG tool to search for relevant context if needed" if doc_id else "5. Work with the provided document content"
+        rag_instruction = (
+            "5. Use the RAG tool to search for relevant context if needed"
+            if doc_id
+            else "5. Work with the provided document content"
+        )
 
         system_message = f"""You are a data extraction specialist. Your task is to extract the field '{field_name}' from the document.
 
@@ -340,12 +342,18 @@ Tools available: {"rag, calculator" if doc_id else "calculator"}"""
     return agent_type, system_message
 
 
-def create_challenger_system_message(fields: List[Dict[str, Any]], doc_id: Optional[str]) -> str:
+def create_challenger_system_message(
+    fields: list[dict[str, Any]], doc_id: str | None
+) -> str:
     """Create system message for the challenger agent."""
     field_names = [f.get("name") for f in fields]
     required_fields = [f.get("name") for f in fields if f.get("required", False)]
 
-    rag_instruction = "- Use RAG to verify information against the source document" if doc_id else "- Verify against the provided document content"
+    rag_instruction = (
+        "- Use RAG to verify information against the source document"
+        if doc_id
+        else "- Verify against the provided document content"
+    )
 
     return f"""You are a quality assurance specialist responsible for validating extracted data.
 
@@ -371,7 +379,7 @@ If extractions are accurate, approve them for final collation.
 Tools available: {"rag, calculator" if doc_id else "calculator"}"""
 
 
-def create_collation_system_message(fields: List[Dict[str, Any]]) -> str:
+def create_collation_system_message(fields: list[dict[str, Any]]) -> str:
     """Create system message for the collation agent."""
     field_names = [f.get("name") for f in fields]
 
@@ -401,12 +409,11 @@ Tools available: string_operations"""
 
 
 def generate_edge_configs(
-    agents: List[Dict[str, Any]],
-    dependencies: Dict[str, List[str]],
-    tool_settings: Dict[str, Any],
-) -> List[Dict[str, Any]]:
-    """
-    Generate edge configurations based on dependencies.
+    agents: list[dict[str, Any]],
+    dependencies: dict[str, list[str]],
+    tool_settings: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Generate edge configurations based on dependencies.
 
     Args:
         agents: List of agent configurations
@@ -417,7 +424,11 @@ def generate_edge_configs(
         List of edge configurations
     """
     edges = []
-    agent_map = {agent["field_config"].get("field_name"): agent["name"] for agent in agents if "field_name" in agent.get("field_config", {})}
+    agent_map = {
+        agent["field_config"].get("field_name"): agent["name"]
+        for agent in agents
+        if "field_name" in agent.get("field_config", {})
+    }
 
     # Add dependency edges
     for field_name, dep_fields in dependencies.items():
@@ -438,7 +449,12 @@ def generate_edge_configs(
     # Add edges to challenger (if enabled)
     has_challenger = tool_settings.get("enable_challenge", False)
     if has_challenger:
-        extraction_agents = [agent["name"] for agent in agents if agent.get("field_config", {}).get("agent_role") != "challenger" and agent.get("field_config", {}).get("agent_role") != "collation"]
+        extraction_agents = [
+            agent["name"]
+            for agent in agents
+            if agent.get("field_config", {}).get("agent_role") != "challenger"
+            and agent.get("field_config", {}).get("agent_role") != "collation"
+        ]
 
         for agent_name in extraction_agents:
             edge = {
@@ -459,7 +475,11 @@ def generate_edge_configs(
         edges.append(edge)
     else:
         # Collation depends directly on extraction agents
-        extraction_agents = [agent["name"] for agent in agents if agent.get("field_config", {}).get("agent_role") != "collation"]
+        extraction_agents = [
+            agent["name"]
+            for agent in agents
+            if agent.get("field_config", {}).get("agent_role") != "collation"
+        ]
 
         for agent_name in extraction_agents:
             edge = {
@@ -473,11 +493,10 @@ def generate_edge_configs(
 
 
 def create_autogen_agents(
-    agent_configs: List[Dict[str, Any]],
-    doc_id: Optional[str] = None,
-) -> List[AssistantAgent]:
-    """
-    Create actual Autogen AssistantAgent instances.
+    agent_configs: list[dict[str, Any]],
+    doc_id: str | None = None,
+) -> list[AssistantAgent]:
+    """Create actual Autogen AssistantAgent instances.
 
     Args:
         agent_configs: List of agent configuration dictionaries
@@ -510,12 +529,11 @@ def create_autogen_agents(
 
 def add_edges_to_builder(
     builder: DiGraphBuilder,
-    agents: List[AssistantAgent],
-    dependencies: Dict[str, List[str]],
-    tool_settings: Dict[str, Any],
+    agents: list[AssistantAgent],
+    dependencies: dict[str, list[str]],
+    tool_settings: dict[str, Any],
 ) -> None:
-    """
-    Add edges to the DiGraphBuilder based on dependencies.
+    """Add edges to the DiGraphBuilder based on dependencies.
 
     Args:
         builder: DiGraphBuilder instance
@@ -570,7 +588,8 @@ def add_edges_to_builder(
             builder.add_edge(
                 challenger_agent,
                 collation_agent,
-                condition=lambda msg: "approved" in msg.content.lower() or "validated" in msg.content.lower()
+                condition=lambda msg: "approved" in msg.content.lower()
+                or "validated" in msg.content.lower(),
             )
     else:
         # Direct extraction agents → collation
@@ -580,9 +599,8 @@ def add_edges_to_builder(
                     builder.add_edge(agent, collation_agent)
 
 
-def serialize_graph_flow(graph_flow: GraphFlow) -> Dict[str, Any]:
-    """
-    Serialize GraphFlow object for JSON storage.
+def serialize_graph_flow(graph_flow: GraphFlow) -> dict[str, Any]:
+    """Serialize GraphFlow object for JSON storage.
 
     Args:
         graph_flow: GraphFlow instance
@@ -597,9 +615,8 @@ def serialize_graph_flow(graph_flow: GraphFlow) -> Dict[str, Any]:
     }
 
 
-def serialize_agent(agent: AssistantAgent) -> Dict[str, Any]:
-    """
-    Serialize AssistantAgent for JSON storage.
+def serialize_agent(agent: AssistantAgent) -> dict[str, Any]:
+    """Serialize AssistantAgent for JSON storage.
 
     Args:
         agent: AssistantAgent instance
@@ -611,13 +628,12 @@ def serialize_agent(agent: AssistantAgent) -> Dict[str, Any]:
         "name": agent.name,
         "type": "AssistantAgent",
         "system_message": agent.system_message,
-        "llm_config": getattr(agent, 'llm_config', {}),
+        "llm_config": getattr(agent, "llm_config", {}),
     }
 
 
-def serialize_graph(graph) -> Dict[str, Any]:
-    """
-    Serialize graph structure for JSON storage.
+def serialize_graph(graph) -> dict[str, Any]:
+    """Serialize graph structure for JSON storage.
 
     Args:
         graph: Graph object from DiGraphBuilder
@@ -632,8 +648,7 @@ def serialize_graph(graph) -> Dict[str, Any]:
 
 
 def verify_autogen_components(builder: DiGraphBuilder, graph_flow: GraphFlow) -> None:
-    """
-    Verify that we're using proper Autogen components.
+    """Verify that we're using proper Autogen components.
 
     Args:
         builder: DiGraphBuilder instance
@@ -645,18 +660,23 @@ def verify_autogen_components(builder: DiGraphBuilder, graph_flow: GraphFlow) ->
     logger.info(f"Participants count: {len(graph_flow.participants)}")
 
     # Confirm we're using the right Autogen classes
-    assert isinstance(builder, DiGraphBuilder), f"Expected DiGraphBuilder, got {type(builder)}"
-    assert isinstance(graph_flow, GraphFlow), f"Expected GraphFlow, got {type(graph_flow)}"
+    assert isinstance(
+        builder, DiGraphBuilder
+    ), f"Expected DiGraphBuilder, got {type(builder)}"
+    assert isinstance(
+        graph_flow, GraphFlow
+    ), f"Expected GraphFlow, got {type(graph_flow)}"
 
-    logger.info("✓ Successfully using Autogen DiGraphBuilder and GraphFlow for sequential team processing")
+    logger.info(
+        "✓ Successfully using Autogen DiGraphBuilder and GraphFlow for sequential team processing"
+    )
 
 
 def execute_graph_flow(
     graph_flow: GraphFlow,
     task: str = "Extract all specified fields from the document accurately.",
-) -> Dict[str, Any]:
-    """
-    Execute the GraphFlow and return results.
+) -> dict[str, Any]:
+    """Execute the GraphFlow and return results.
 
     Args:
         graph_flow: GraphFlow instance to execute
@@ -676,11 +696,11 @@ def execute_graph_flow(
             logger.info(f"Event: {event.type}, Agent: {event.source}")
 
             # Store results
-            if hasattr(event, 'content') and event.content:
+            if hasattr(event, "content") and event.content:
                 results[event.source] = event.content
 
                 # Check if this is the final collation result
-                if event.source == 'data_collation_agent':
+                if event.source == "data_collation_agent":
                     try:
                         final_output = json.loads(event.content)
                     except json.JSONDecodeError:
@@ -698,13 +718,12 @@ def execute_graph_flow(
 
 
 def generate_autogen_code(
-    agents: List[Dict[str, Any]],
-    edges: List[Dict[str, Any]],
-    doc_id: Optional[str],
-    extraction_spec: Dict[str, Any],
+    agents: list[dict[str, Any]],
+    edges: list[dict[str, Any]],
+    doc_id: str | None,
+    extraction_spec: dict[str, Any],
 ) -> str:
-    """
-    Generate executable Autogen GraphFlow code using DiGraphBuilder.
+    """Generate executable Autogen GraphFlow code using DiGraphBuilder.
 
     Args:
         agents: Agent configurations
@@ -718,31 +737,37 @@ def generate_autogen_code(
     code_lines = []
 
     # Imports following Autogen documentation
-    code_lines.extend([
-        "from autogen_agentchat.agents import AssistantAgent",
-        "from autogen_agentchat.teams import DiGraphBuilder, GraphFlow",
-        "import json",
-        "",
-    ])
+    code_lines.extend(
+        [
+            "from autogen_agentchat.agents import AssistantAgent",
+            "from autogen_agentchat.teams import DiGraphBuilder, GraphFlow",
+            "import json",
+            "",
+        ]
+    )
 
     # LLM Configuration
-    code_lines.extend([
-        "# LLM Configuration - configure according to your setup",
-        "llm_config = {",
-        "    'model': 'gpt-4',",
-        "    'temperature': 0.1,",
-        "    'timeout': 300,",
-        "}",
-        "",
-    ])
+    code_lines.extend(
+        [
+            "# LLM Configuration - configure according to your setup",
+            "llm_config = {",
+            "    'model': 'gpt-4',",
+            "    'temperature': 0.1,",
+            "    'timeout': 300,",
+            "}",
+            "",
+        ]
+    )
 
     # Document context
     if doc_id:
-        code_lines.extend([
-            f"# Document context for RAG",
-            f'doc_id = "{doc_id}"',
-            "",
-        ])
+        code_lines.extend(
+            [
+                "# Document context for RAG",
+                f'doc_id = "{doc_id}"',
+                "",
+            ]
+        )
 
     # Agent definitions
     code_lines.append("# Define agents")
@@ -753,83 +778,89 @@ def generate_autogen_code(
     code_lines.append("")
 
     # Graph builder following Autogen pattern
-    code_lines.extend([
-        "# Build the graph using DiGraphBuilder",
-        "builder = DiGraphBuilder()",
-        "",
-        "# Add nodes to the graph",
-    ])
+    code_lines.extend(
+        [
+            "# Build the graph using DiGraphBuilder",
+            "builder = DiGraphBuilder()",
+            "",
+            "# Add nodes to the graph",
+        ]
+    )
 
     # Add nodes using add_node method
     for agent in agents:
         code_lines.append(f"builder.add_node({agent['name']})")
 
-    code_lines.extend([
-        "",
-        "# Add edges to define workflow",
-    ])
+    code_lines.extend(
+        [
+            "",
+            "# Add edges to define workflow",
+        ]
+    )
 
     # Add edges using add_edge method
     for edge in edges:
         edge_code = generate_edge_code(edge)
         code_lines.append(edge_code)
 
-    code_lines.extend([
-        "",
-        "# Build the graph",
-        "graph = builder.build()",
-        "",
-        "# Create the GraphFlow",
-        "flow = GraphFlow(participants=builder.get_participants(), graph=graph)",
-        "",
-        "# Define the extraction task",
-        'task = """Extract all the specified fields from the document accurately. ',
-        'Follow the workflow defined in the graph to ensure proper data extraction.',
-        'Each agent should focus on their specific role and pass results to the next agent."""',
-        "",
-        "# Run the extraction flow",
-        "stream = flow.run_stream(task=task)",
-        "",
-        "# Process the results",
-        "results = {}",
-        "final_output = None",
-        "",
-        "for event in stream:",
-        "    print(f'Event: {event.type}')  # Event type",
-        "    print(f'Agent: {event.source}')  # Source agent",
-        "    print(f'Content: {event.content[:200]}...')  # First 200 chars",
-        "    print('---')",
-        "    ",
-        "    # Store results",
-        "    if hasattr(event, 'content') and event.content:",
-        "        results[event.source] = event.content",
-        "        ",
-        "        # Check if this is the final collation result",
-        "        if event.source == 'data_collation_agent':",
-        "            try:",
-        "                final_output = json.loads(event.content)",
-        "            except json.JSONDecodeError:",
-        "                final_output = event.content",
-        "",
-        "# Display final results",
-        "print('\\n=== EXTRACTION COMPLETE ===')",
-        "if final_output:",
-        "    print('Final extracted data:')",
-        "    if isinstance(final_output, dict):",
-        "        print(json.dumps(final_output, indent=2))",
-        "    else:",
-        "        print(final_output)",
-        "else:",
-        "    print('No final output from collation agent')",
-        "    print('All agent results:')",
-        "    for agent_name, result in results.items():",
-        "        print(f'{agent_name}: {result[:100]}...')",
-    ])
+    code_lines.extend(
+        [
+            "",
+            "# Build the graph",
+            "graph = builder.build()",
+            "",
+            "# Create the GraphFlow",
+            "flow = GraphFlow(participants=builder.get_participants(), graph=graph)",
+            "",
+            "# Define the extraction task",
+            'task = """Extract all the specified fields from the document accurately. ',
+            "Follow the workflow defined in the graph to ensure proper data extraction.",
+            'Each agent should focus on their specific role and pass results to the next agent."""',
+            "",
+            "# Run the extraction flow",
+            "stream = flow.run_stream(task=task)",
+            "",
+            "# Process the results",
+            "results = {}",
+            "final_output = None",
+            "",
+            "for event in stream:",
+            "    print(f'Event: {event.type}')  # Event type",
+            "    print(f'Agent: {event.source}')  # Source agent",
+            "    print(f'Content: {event.content[:200]}...')  # First 200 chars",
+            "    print('---')",
+            "    ",
+            "    # Store results",
+            "    if hasattr(event, 'content') and event.content:",
+            "        results[event.source] = event.content",
+            "        ",
+            "        # Check if this is the final collation result",
+            "        if event.source == 'data_collation_agent':",
+            "            try:",
+            "                final_output = json.loads(event.content)",
+            "            except json.JSONDecodeError:",
+            "                final_output = event.content",
+            "",
+            "# Display final results",
+            "print('\\n=== EXTRACTION COMPLETE ===')",
+            "if final_output:",
+            "    print('Final extracted data:')",
+            "    if isinstance(final_output, dict):",
+            "        print(json.dumps(final_output, indent=2))",
+            "    else:",
+            "        print(final_output)",
+            "else:",
+            "    print('No final output from collation agent')",
+            "    print('All agent results:')",
+            "    for agent_name, result in results.items():",
+            "        print(f'{agent_name}: {result[:100]}...')",
+        ]
+    )
 
     return "\n".join(code_lines)
 
 
-def generate_agent_code(agent: Dict[str, Any]) -> List[str]:
+def generate_agent_code(agent: dict[str, Any]) -> list[str]:
     """Generate code lines for creating an agent."""
     name = agent["name"]
     agent_type = agent["agent_type"]
@@ -839,20 +870,20 @@ def generate_agent_code(agent: Dict[str, Any]) -> List[str]:
     escaped_message = system_message.replace('"""', '\\"\\"\\"')
 
     code_lines = [
-        f'{name} = {agent_type}(',
+        f"{name} = {agent_type}(",
         f'    name="{name}",',
-        f'    system_message="""',
-        f'{escaped_message}',
-        f'    """,',
-        f'    llm_config=llm_config',
-        f')',
+        '    system_message="""',
+        f"{escaped_message}",
+        '    """,',
+        "    llm_config=llm_config",
+        ")",
         "",
     ]
 
     return code_lines
 
 
-def generate_edge_code(edge: Dict[str, Any]) -> str:
+def generate_edge_code(edge: dict[str, Any]) -> str:
     """Generate code for creating an edge."""
     source = edge["source"]
     target = edge["target"]
@@ -864,12 +895,22 @@ def generate_edge_code(edge: Dict[str, Any]) -> str:
         return f"builder.add_edge({source}, {target})"
 
 
-def create_execution_plan(agents: List[Dict[str, Any]], dependencies: Dict[str, List[str]]) -> Dict[str, Any]:
+def create_execution_plan(
+    agents: list[dict[str, Any]], dependencies: dict[str, list[str]]
+) -> dict[str, Any]:
     """Create execution plan information."""
     # Simple analysis of the execution flow
-    extraction_agents = [a for a in agents if a.get("field_config", {}).get("agent_role") not in ["challenger", "collation"]]
-    has_challenger = any(a.get("field_config", {}).get("agent_role") == "challenger" for a in agents)
-    has_collation = any(a.get("field_config", {}).get("agent_role") == "collation" for a in agents)
+    extraction_agents = [
+        a
+        for a in agents
+        if a.get("field_config", {}).get("agent_role") not in ["challenger", "collation"]
+    ]
+    has_challenger = any(
+        a.get("field_config", {}).get("agent_role") == "challenger" for a in agents
+    )
+    has_collation = any(
+        a.get("field_config", {}).get("agent_role") == "collation" for a in agents
+    )
 
     stages = ["Extraction"]
     if has_challenger:

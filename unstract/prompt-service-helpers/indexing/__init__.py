@@ -1,5 +1,4 @@
-"""
-Extraction module for document chunking and embedding generation.
+"""Extraction module for document chunking and embedding generation.
 
 This module provides celery tasks for the document extraction pipeline,
 handling text chunking and embedding generation as part of the agentic

@@ -1,11 +1,10 @@
-"""
-Agent factory for creating Autogen agents with RAG tool integration.
+"""Agent factory for creating Autogen agents with RAG tool integration.
 This factory creates specialized extraction agents that use RAG for document retrieval,
 following the answer_prompt format from the current prompt service.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from autogen_agentchat.agents import AssistantAgent
 
@@ -15,15 +14,13 @@ logger = logging.getLogger(__name__)
 
 
 class AgentFactory:
-    """
-    Factory for creating Autogen agents with RAG tool integration.
+    """Factory for creating Autogen agents with RAG tool integration.
     Focuses on creating agents that can use RAG for document-based extraction,
     using answer_prompt format field configurations.
     """
 
-    def __init__(self, doc_id: str, platform_key: Optional[str] = None):
-        """
-        Initialize agent factory for creating field-specific RAG tools.
+    def __init__(self, doc_id: str, platform_key: str | None = None):
+        """Initialize agent factory for creating field-specific RAG tools.
 
         Args:
             doc_id: Document identifier for retrieval
@@ -34,11 +31,10 @@ class AgentFactory:
 
     def create_agent(
         self,
-        agent_config: Dict[str, Any],
-        field_config: Optional[Dict[str, Any]] = None,
+        agent_config: dict[str, Any],
+        field_config: dict[str, Any] | None = None,
     ) -> AssistantAgent:
-        """
-        Create an Autogen agent based on configuration with field-specific RAG.
+        """Create an Autogen agent based on configuration with field-specific RAG.
 
         Args:
             agent_config: Agent configuration from digraph generation
@@ -83,12 +79,13 @@ class AgentFactory:
             llm_config=llm_config,
         )
 
-        logger.info(f"Created agent: {agent_name} with tools: {tools} for field: {field_config.get('name', 'unknown') if field_config else 'none'}")
+        logger.info(
+            f"Created agent: {agent_name} with tools: {tools} for field: {field_config.get('name', 'unknown') if field_config else 'none'}"
+        )
         return agent
 
-    def _create_field_specific_rag_tool(self, field_config: Dict[str, Any]) -> RAGTool:
-        """
-        Create a RAG tool with field-specific configuration from answer_prompt format.
+    def _create_field_specific_rag_tool(self, field_config: dict[str, Any]) -> RAGTool:
+        """Create a RAG tool with field-specific configuration from answer_prompt format.
 
         Args:
             field_config: Field configuration from answer_prompt
@@ -123,9 +120,10 @@ class AgentFactory:
             chunk_overlap=chunk_overlap,
         )
 
-    def _create_llm_config(self, field_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """
-        Create LLM configuration with field-specific settings.
+    def _create_llm_config(
+        self, field_config: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Create LLM configuration with field-specific settings.
 
         Args:
             field_config: Field configuration from answer_prompt
@@ -151,11 +149,10 @@ class AgentFactory:
         self,
         base_system_message: str,
         agent_name: str,
-        tools: List[str],
-        field_config: Optional[Dict[str, Any]] = None,
+        tools: list[str],
+        field_config: dict[str, Any] | None = None,
     ) -> str:
-        """
-        Enhance system message with field-specific RAG tool instructions.
+        """Enhance system message with field-specific RAG tool instructions.
 
         Args:
             base_system_message: Original system message
@@ -172,8 +169,12 @@ class AgentFactory:
         # Get field-specific details
         field_name = field_config.get("name", "unknown") if field_config else "unknown"
         field_type = field_config.get("type", "text") if field_config else "text"
-        retrieval_strategy = field_config.get("retrieval-strategy", "simple") if field_config else "simple"
-        chunk_size = field_config.get("chunk-size", "default") if field_config else "default"
+        retrieval_strategy = (
+            field_config.get("retrieval-strategy", "simple") if field_config else "simple"
+        )
+        chunk_size = (
+            field_config.get("chunk-size", "default") if field_config else "default"
+        )
 
         rag_instructions = f"""
 
@@ -212,11 +213,10 @@ Remember: The RAG tool retrieves actual content from the document using answer_p
 
     def create_generic_extraction_agent(
         self,
-        field_config: Dict[str, Any],
+        field_config: dict[str, Any],
         required: bool = False,
     ) -> AssistantAgent:
-        """
-        Create a generic data extraction agent with field-specific RAG from answer_prompt format.
+        """Create a generic data extraction agent with field-specific RAG from answer_prompt format.
 
         Args:
             field_config: Field configuration from answer_prompt outputs
@@ -265,11 +265,10 @@ Output format: Return only the extracted value for the field, formatted accordin
 
     def create_table_extraction_agent(
         self,
-        field_config: Dict[str, Any],
+        field_config: dict[str, Any],
         required: bool = False,
     ) -> AssistantAgent:
-        """
-        Create a table data extraction agent with field-specific RAG from answer_prompt format.
+        """Create a table data extraction agent with field-specific RAG from answer_prompt format.
 
         Args:
             field_config: Field configuration from answer_prompt outputs
@@ -319,11 +318,10 @@ Output format: Return the table data in a structured format (JSON, CSV-like, or 
 
     def create_omniparse_extraction_agent(
         self,
-        field_config: Dict[str, Any],
+        field_config: dict[str, Any],
         required: bool = False,
     ) -> AssistantAgent:
-        """
-        Create an omniparse data extraction agent with field-specific RAG from answer_prompt format.
+        """Create an omniparse data extraction agent with field-specific RAG from answer_prompt format.
 
         Args:
             field_config: Field configuration from answer_prompt outputs
@@ -371,9 +369,8 @@ Output format: Return the extracted information with clear indication of its sou
 
         return self.create_agent(agent_config, field_config)
 
-    def create_challenger_agent(self, fields: List[Dict[str, Any]]) -> AssistantAgent:
-        """
-        Create a challenger agent for validation with RAG using answer_prompt field configurations.
+    def create_challenger_agent(self, fields: list[dict[str, Any]]) -> AssistantAgent:
+        """Create a challenger agent for validation with RAG using answer_prompt field configurations.
 
         Args:
             fields: List of field configurations from answer_prompt outputs
@@ -420,9 +417,8 @@ Output format: For each field, state "APPROVED: [field_name]" or "REJECTED: [fie
 
         return self.create_agent(agent_config)
 
-    def create_collation_agent(self, fields: List[Dict[str, Any]]) -> AssistantAgent:
-        """
-        Create a data collation agent using answer_prompt field configurations.
+    def create_collation_agent(self, fields: list[dict[str, Any]]) -> AssistantAgent:
+        """Create a data collation agent using answer_prompt field configurations.
 
         Args:
             fields: List of field configurations from answer_prompt outputs
@@ -432,10 +428,12 @@ Output format: For each field, state "APPROVED: [field_name]" or "REJECTED: [fie
         """
         field_names = [f.get("name", "") for f in fields]
         field_types = {f.get("name", ""): f.get("type", "text") for f in fields}
-        field_json_structure = ',\n'.join([
-            f'  "{name}": "extracted_value"  // Type: {field_types.get(name, "text")}'
-            for name in field_names
-        ])
+        field_json_structure = ",\n".join(
+            [
+                f'  "{name}": "extracted_value"  // Type: {field_types.get(name, "text")}'
+                for name in field_names
+            ]
+        )
 
         system_message = f"""You are a data collation agent responsible for combining all validated field values into the final output.
 

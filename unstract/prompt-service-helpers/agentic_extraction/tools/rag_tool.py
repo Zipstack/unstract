@@ -1,33 +1,32 @@
-"""
-RAG (Retrieval-Augmented Generation) tool for Autogen agents.
+"""RAG (Retrieval-Augmented Generation) tool for Autogen agents.
 This tool enables agents to search and retrieve relevant information from the document
 using the same retrieval techniques as the current prompt service with LlamaIndex integration.
 """
 
-import json
 import logging
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
+
+from llama_index.core.query_engine import RouterQueryEngine, SubQuestionQueryEngine
+from llama_index.core.retrievers import QueryFusionRetriever
+from llama_index.core.selectors import LLMSingleSelector
+from llama_index.core.tools import QueryEngineTool
+
+# LlamaIndex components for retrieval strategies
+from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
 
 # Import Unstract SDK components for RAG functionality
 from unstract.sdk.embedding import Embedding
 from unstract.sdk.index import Index
-from unstract.sdk.vector_db import VectorDB
 from unstract.sdk.tool.base import BaseTool
-
-# LlamaIndex components for retrieval strategies
-from llama_index.core import VectorStoreIndex
-from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
-from llama_index.core.retrievers import QueryFusionRetriever
-from llama_index.core.query_engine import SubQuestionQueryEngine, RouterQueryEngine
-from llama_index.core.selectors import LLMSingleSelector
-from llama_index.core.tools import QueryEngineTool
+from unstract.sdk.vector_db import VectorDB
 
 logger = logging.getLogger(__name__)
 
 
 class RetrievalStrategy(str, Enum):
     """Retrieval strategies matching current prompt service."""
+
     SIMPLE = "simple"
     SUBQUESTION = "subquestion"
     FUSION = "fusion"
@@ -38,8 +37,7 @@ class RetrievalStrategy(str, Enum):
 
 
 class RAGTool:
-    """
-    RAG tool for Autogen agents to retrieve relevant document content.
+    """RAG tool for Autogen agents to retrieve relevant document content.
     Integrates with Unstract SDK and uses LlamaIndex retrieval strategies
     matching the current prompt service implementation.
     """
@@ -47,16 +45,15 @@ class RAGTool:
     def __init__(
         self,
         doc_id: str,
-        platform_key: Optional[str] = None,
-        embedding_instance_id: Optional[str] = None,
-        vector_db_instance_id: Optional[str] = None,
+        platform_key: str | None = None,
+        embedding_instance_id: str | None = None,
+        vector_db_instance_id: str | None = None,
         top_k: int = 5,
         retrieval_strategy: RetrievalStrategy = RetrievalStrategy.SIMPLE,
-        chunk_size: Optional[int] = None,
-        chunk_overlap: Optional[int] = None,
+        chunk_size: int | None = None,
+        chunk_overlap: int | None = None,
     ):
-        """
-        Initialize RAG tool with retrieval strategies.
+        """Initialize RAG tool with retrieval strategies.
 
         Args:
             doc_id: Document identifier for retrieval
@@ -129,7 +126,9 @@ class RAGTool:
             # Initialize retrievers based on strategy
             self._setup_retriever_strategy()
 
-            logger.info(f"LlamaIndex retrievers initialized with strategy: {self.retrieval_strategy}")
+            logger.info(
+                f"LlamaIndex retrievers initialized with strategy: {self.retrieval_strategy}"
+            )
 
         except Exception as e:
             logger.error(f"Error initializing LlamaIndex retrievers: {str(e)}")
@@ -140,15 +139,13 @@ class RAGTool:
         """Setup retriever based on selected strategy."""
         if self.retrieval_strategy == RetrievalStrategy.SIMPLE:
             self.retriever = self.vector_query_engine.as_retriever(
-                similarity_top_k=self.top_k,
-                filters=self.doc_filter
+                similarity_top_k=self.top_k, filters=self.doc_filter
             )
 
         elif self.retrieval_strategy == RetrievalStrategy.FUSION:
             # Multi-query retriever with fusion
             base_retriever = self.vector_query_engine.as_retriever(
-                similarity_top_k=self.top_k,
-                filters=self.doc_filter
+                similarity_top_k=self.top_k, filters=self.doc_filter
             )
             self.retriever = QueryFusionRetriever(
                 retrievers=[base_retriever],
@@ -161,8 +158,7 @@ class RAGTool:
         elif self.retrieval_strategy == RetrievalStrategy.SUBQUESTION:
             # Sub-question query engine
             query_engine = self.vector_query_engine.as_query_engine(
-                similarity_top_k=self.top_k,
-                filters=self.doc_filter
+                similarity_top_k=self.top_k, filters=self.doc_filter
             )
             self.query_engine = SubQuestionQueryEngine.from_defaults(
                 query_engine_tools=[
@@ -176,8 +172,7 @@ class RAGTool:
         elif self.retrieval_strategy == RetrievalStrategy.ROUTER:
             # Router query engine with multiple search strategies
             vector_query_engine = self.vector_query_engine.as_query_engine(
-                similarity_top_k=self.top_k,
-                filters=self.doc_filter
+                similarity_top_k=self.top_k, filters=self.doc_filter
             )
 
             # Create multiple query engines for routing
@@ -196,13 +191,11 @@ class RAGTool:
         else:
             # Default to simple retriever
             self.retriever = self.vector_query_engine.as_retriever(
-                similarity_top_k=self.top_k,
-                filters=self.doc_filter
+                similarity_top_k=self.top_k, filters=self.doc_filter
             )
 
-    def search(self, query: str, context: Optional[str] = None) -> List[Dict[str, Any]]:
-        """
-        Search for relevant content using configured retrieval strategy.
+    def search(self, query: str, context: str | None = None) -> list[dict[str, Any]]:
+        """Search for relevant content using configured retrieval strategy.
 
         Args:
             query: Search query
@@ -223,7 +216,10 @@ class RAGTool:
                 enhanced_query = query
 
             # Use appropriate retrieval method based on strategy
-            if self.retrieval_strategy in [RetrievalStrategy.SUBQUESTION, RetrievalStrategy.ROUTER]:
+            if self.retrieval_strategy in [
+                RetrievalStrategy.SUBQUESTION,
+                RetrievalStrategy.ROUTER,
+            ]:
                 results = self._query_with_engine(enhanced_query)
             else:
                 results = self._retrieve_with_llamaindex(enhanced_query)
@@ -231,7 +227,9 @@ class RAGTool:
             # Format results consistently
             formatted_results = self._format_search_results(results, query)
 
-            logger.info(f"RAG search completed: {len(formatted_results)} results for query: {query[:50]}...")
+            logger.info(
+                f"RAG search completed: {len(formatted_results)} results for query: {query[:50]}..."
+            )
             return formatted_results
 
         except Exception as e:
@@ -241,25 +239,24 @@ class RAGTool:
 
     def _retrieve_with_llamaindex(self, query: str) -> Any:
         """Retrieve using LlamaIndex retriever."""
-        if hasattr(self, 'retriever'):
+        if hasattr(self, "retriever"):
             return self.retriever.retrieve(query)
         else:
             # Fallback to simple retriever
             retriever = self.vector_query_engine.as_retriever(
-                similarity_top_k=self.top_k,
-                filters=self.doc_filter
+                similarity_top_k=self.top_k, filters=self.doc_filter
             )
             return retriever.retrieve(query)
 
     def _query_with_engine(self, query: str) -> Any:
         """Query using LlamaIndex query engine."""
-        if hasattr(self, 'query_engine'):
+        if hasattr(self, "query_engine"):
             response = self.query_engine.query(query)
-            return response.source_nodes if hasattr(response, 'source_nodes') else []
+            return response.source_nodes if hasattr(response, "source_nodes") else []
         else:
             return self._retrieve_with_llamaindex(query)
 
-    def _retrieve_full_document(self) -> List[Dict[str, Any]]:
+    def _retrieve_full_document(self) -> list[dict[str, Any]]:
         """Retrieve full document content when chunk_size = 0."""
         try:
             # Use SDK to get all document content
@@ -267,14 +264,19 @@ class RAGTool:
                 embedding_instance_id=self.embedding_instance_id,
                 vector_db_instance_id=self.vector_db_instance_id,
                 doc_id=self.doc_id,
-                usage_kwargs={"query": "*", "top_k": 1000},  # Large top_k for full retrieval
+                usage_kwargs={
+                    "query": "*",
+                    "top_k": 1000,
+                },  # Large top_k for full retrieval
             )
             return self._format_search_results(results, "full_document")
         except Exception as e:
             logger.error(f"Error retrieving full document: {str(e)}")
             return []
 
-    def _fallback_sdk_search(self, query: str, context: Optional[str] = None) -> List[Dict[str, Any]]:
+    def _fallback_sdk_search(
+        self, query: str, context: str | None = None
+    ) -> list[dict[str, Any]]:
         """Fallback to SDK search when LlamaIndex fails."""
         try:
             enhanced_query = f"{context} {query}" if context else query
@@ -291,9 +293,8 @@ class RAGTool:
             logger.error(f"Error in SDK fallback search: {str(e)}")
             return []
 
-    def _format_search_results(self, results: Any, query: str) -> List[Dict[str, Any]]:
-        """
-        Format search results to match answer_prompt context format.
+    def _format_search_results(self, results: Any, query: str) -> list[dict[str, Any]]:
+        """Format search results to match answer_prompt context format.
 
         Args:
             results: Raw results from retrieval
@@ -306,27 +307,31 @@ class RAGTool:
 
         try:
             # Handle LlamaIndex node results
-            if hasattr(results, '__iter__') and not isinstance(results, str):
-                for idx, result in enumerate(results[:self.top_k]):
-                    if hasattr(result, 'text') and hasattr(result, 'score'):
+            if hasattr(results, "__iter__") and not isinstance(results, str):
+                for idx, result in enumerate(results[: self.top_k]):
+                    if hasattr(result, "text") and hasattr(result, "score"):
                         # LlamaIndex node format
                         formatted_result = {
-                            "chunk_id": getattr(result, 'id_', f"chunk_{idx}"),
+                            "chunk_id": getattr(result, "id_", f"chunk_{idx}"),
                             "content": result.text,
-                            "score": getattr(result, 'score', 1.0),
-                            "metadata": getattr(result, 'metadata', {}),
-                            "section": getattr(result, 'metadata', {}).get('section', 'unknown'),
+                            "score": getattr(result, "score", 1.0),
+                            "metadata": getattr(result, "metadata", {}),
+                            "section": getattr(result, "metadata", {}).get(
+                                "section", "unknown"
+                            ),
                         }
                         formatted_results.append(formatted_result)
-                    elif hasattr(result, 'node'):
+                    elif hasattr(result, "node"):
                         # Handle nested node structure
                         node = result.node
                         formatted_result = {
-                            "chunk_id": getattr(node, 'id_', f"chunk_{idx}"),
-                            "content": getattr(node, 'text', str(node)),
-                            "score": getattr(result, 'score', 1.0),
-                            "metadata": getattr(node, 'metadata', {}),
-                            "section": getattr(node, 'metadata', {}).get('section', 'unknown'),
+                            "chunk_id": getattr(node, "id_", f"chunk_{idx}"),
+                            "content": getattr(node, "text", str(node)),
+                            "score": getattr(result, "score", 1.0),
+                            "metadata": getattr(node, "metadata", {}),
+                            "section": getattr(node, "metadata", {}).get(
+                                "section", "unknown"
+                            ),
                         }
                         formatted_results.append(formatted_result)
                     elif isinstance(result, dict):
@@ -334,23 +339,27 @@ class RAGTool:
                         formatted_results.append(result)
                     else:
                         # Generic result
-                        formatted_results.append({
-                            "chunk_id": f"chunk_{idx}",
-                            "content": str(result),
-                            "score": 1.0,
-                            "metadata": {},
-                            "section": "unknown",
-                        })
+                        formatted_results.append(
+                            {
+                                "chunk_id": f"chunk_{idx}",
+                                "content": str(result),
+                                "score": 1.0,
+                                "metadata": {},
+                                "section": "unknown",
+                            }
+                        )
 
             # Handle SDK results
-            elif hasattr(results, 'nodes') and results.nodes:
-                for idx, node in enumerate(results.nodes[:self.top_k]):
+            elif hasattr(results, "nodes") and results.nodes:
+                for idx, node in enumerate(results.nodes[: self.top_k]):
                     formatted_result = {
-                        "chunk_id": getattr(node, 'id_', f"chunk_{idx}"),
-                        "content": getattr(node, 'text', str(node)),
-                        "score": getattr(node, 'score', 1.0),
-                        "metadata": getattr(node, 'metadata', {}),
-                        "section": getattr(node, 'metadata', {}).get('section', 'unknown'),
+                        "chunk_id": getattr(node, "id_", f"chunk_{idx}"),
+                        "content": getattr(node, "text", str(node)),
+                        "score": getattr(node, "score", 1.0),
+                        "metadata": getattr(node, "metadata", {}),
+                        "section": getattr(node, "metadata", {}).get(
+                            "section", "unknown"
+                        ),
                     }
                     formatted_results.append(formatted_result)
 
@@ -360,8 +369,7 @@ class RAGTool:
         return formatted_results
 
     def get_context_for_field(self, field_name: str, field_prompt: str) -> str:
-        """
-        Get relevant context for a specific field extraction using configured strategy.
+        """Get relevant context for a specific field extraction using configured strategy.
 
         Args:
             field_name: Name of the field to extract
@@ -395,13 +403,9 @@ class RAGTool:
             return f"No specific context found for {field_name}. Please extract from available document content."
 
     def verify_extraction(
-        self,
-        field_name: str,
-        extracted_value: str,
-        confidence_threshold: float = 0.7
-    ) -> Dict[str, Any]:
-        """
-        Verify an extracted value against the document using RAG.
+        self, field_name: str, extracted_value: str, confidence_threshold: float = 0.7
+    ) -> dict[str, Any]:
+        """Verify an extracted value against the document using RAG.
 
         Args:
             field_name: Name of the extracted field
@@ -429,7 +433,14 @@ class RAGTool:
                 supporting_evidence.append(result)
             elif any(
                 keyword in content
-                for keyword in ["not", "incorrect", "wrong", "different", "instead", "rather"]
+                for keyword in [
+                    "not",
+                    "incorrect",
+                    "wrong",
+                    "different",
+                    "instead",
+                    "rather",
+                ]
             ):
                 contradicting_evidence.append(result)
 
@@ -465,9 +476,8 @@ Usage examples:
 Returns structured results with content, relevance scores, sections, and metadata.
         """.strip()
 
-    def to_autogen_function(self) -> Dict[str, Any]:
-        """
-        Convert RAG tool to Autogen function format.
+    def to_autogen_function(self) -> dict[str, Any]:
+        """Convert RAG tool to Autogen function format.
 
         Returns:
             Function definition for Autogen agents

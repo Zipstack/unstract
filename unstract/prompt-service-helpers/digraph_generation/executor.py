@@ -1,24 +1,19 @@
-"""
-Utility for executing Autogen GraphFlow instances.
+"""Utility for executing Autogen GraphFlow instances.
 This module provides functions to execute the generated GraphFlow and get results.
 """
 
-import json
 import logging
-from typing import Any, Dict, Optional
-
-from autogen_agentchat.teams import GraphFlow
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 def execute_extraction_workflow(
-    graph_flow_data: Dict[str, Any],
-    task_description: Optional[str] = None,
-    doc_id: Optional[str] = None,
-) -> Dict[str, Any]:
-    """
-    Execute an extraction workflow using GraphFlow.
+    graph_flow_data: dict[str, Any],
+    task_description: str | None = None,
+    doc_id: str | None = None,
+) -> dict[str, Any]:
+    """Execute an extraction workflow using GraphFlow.
 
     Args:
         graph_flow_data: Serialized GraphFlow data from digraph generation
@@ -40,7 +35,9 @@ def execute_extraction_workflow(
             Follow the workflow defined in the graph to ensure proper data extraction.
             Each agent should focus on their specific role and pass results to the next agent."""
 
-        logger.info(f"Starting extraction workflow with {len(graph_flow_data.get('agents', []))} agents")
+        logger.info(
+            f"Starting extraction workflow with {len(graph_flow_data.get('agents', []))} agents"
+        )
 
         # This would execute the actual GraphFlow
         # graph_flow = deserialize_graph_flow(graph_flow_data)
@@ -51,7 +48,7 @@ def execute_extraction_workflow(
             "final_output": {},
             "all_results": {},
             "execution_status": "not_implemented",
-            "message": "GraphFlow execution needs to be implemented based on Autogen's serialization format"
+            "message": "GraphFlow execution needs to be implemented based on Autogen's serialization format",
         }
 
         return results
@@ -62,13 +59,12 @@ def execute_extraction_workflow(
             "final_output": None,
             "all_results": {},
             "execution_status": "error",
-            "error": str(e)
+            "error": str(e),
         }
 
 
-def validate_graph_flow_data(graph_flow_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Validate GraphFlow data structure.
+def validate_graph_flow_data(graph_flow_data: dict[str, Any]) -> dict[str, Any]:
+    """Validate GraphFlow data structure.
 
     Args:
         graph_flow_data: GraphFlow data to validate
@@ -100,11 +96,12 @@ def validate_graph_flow_data(graph_flow_data: Dict[str, Any]) -> Dict[str, Any]:
 
     # Check for collation agent
     has_collation = any(
-        "data_collation_agent" in agent.get("name", "")
-        for agent in agents
+        "data_collation_agent" in agent.get("name", "") for agent in agents
     )
     if not has_collation:
-        warnings.append("No collation agent found - results may not be properly formatted")
+        warnings.append(
+            "No collation agent found - results may not be properly formatted"
+        )
 
     return {
         "is_valid": len(issues) == 0,

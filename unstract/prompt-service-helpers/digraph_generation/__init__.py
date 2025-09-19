@@ -1,13 +1,12 @@
-"""
-Digraph generation module for Autogen GraphFlow.
+"""Digraph generation module for Autogen GraphFlow.
 
 This module provides celery tasks for generating directed graphs that can be used
 with Microsoft Autogen's GraphFlow for orchestrating multi-agent data extraction.
 """
 
-from .digraph_task import generate_extraction_digraph, execute_graph_flow
-from .spec_parser import ExtractionSpecParser
+from .digraph_task import execute_graph_flow, generate_extraction_digraph
 from .executor import execute_extraction_workflow, validate_graph_flow_data
+from .spec_parser import ExtractionSpecParser
 
 __all__ = [
     "generate_extraction_digraph",
