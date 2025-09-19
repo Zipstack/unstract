@@ -122,11 +122,15 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         organization_id = UserSessionUtils.get_organization_id(self.request)
         instance.delete(organization_id)
 
-    def destroy(
-        self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
-    ) -> Response:
-        instance: CustomTool = self.get_object()
-        # Checks if tool is exported
+    def _check_tool_usage(self, instance: CustomTool) -> tuple[bool, set]:
+        """Check if a tool is being used in any workflows.
+
+        Args:
+            instance: The CustomTool instance to check
+
+        Returns:
+            Tuple of (is_used: bool, dependent_workflows: set)
+        """
         if hasattr(instance, "prompt_studio_registry"):
             exported_tool_instances_in_use = ToolInstance.objects.filter(
                 tool_id__exact=instance.prompt_studio_registry.pk
@@ -134,15 +138,24 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             dependent_wfs = set()
             for tool_instance in exported_tool_instances_in_use:
                 dependent_wfs.add(tool_instance.workflow_id)
-            if len(dependent_wfs) > 0:
-                logger.info(
-                    f"Cannot destroy custom tool {instance.tool_id},"
-                    f" depended by workflows {dependent_wfs}"
-                )
-                raise ToolDeleteError(
-                    "Failed to delete tool, its used in other workflows. "
-                    "Delete its usages first"
-                )
+            return len(dependent_wfs) > 0, dependent_wfs
+        return False, set()
+
+    def destroy(
+        self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
+    ) -> Response:
+        instance: CustomTool = self.get_object()
+        # Checks if tool is exported
+        is_used, dependent_wfs = self._check_tool_usage(instance)
+        if is_used:
+            logger.info(
+                f"Cannot destroy custom tool {instance.tool_id},"
+                f" depended by workflows {dependent_wfs}"
+            )
+            raise ToolDeleteError(
+                "Failed to delete tool, its used in other workflows. "
+                "Delete its usages first"
+            )
         return super().destroy(request, *args, **kwargs)
 
     def partial_update(
@@ -635,5 +648,90 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             logger.error(f"Error importing project: {exc}")
             return Response(
                 {"error": "Failed to import project"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=True, methods=["get"])
+    def check_deployment_usage(self, request: Request, pk: Any = None) -> Response:
+        """Check if the Prompt Studio project is used in any deployments.
+
+        This endpoint checks if the exported tool from this project is being used in:
+        - API Deployments
+        - ETL Pipelines
+        - Task Pipelines
+        - Manual Review (Human Quality Review)
+
+        Returns:
+            Response: Contains is_used flag and deployment types where it's used
+        """
+        try:
+            instance: CustomTool = self.get_object()
+            is_used, workflow_ids = self._check_tool_usage(instance)
+
+            deployment_info = {
+                "is_used": is_used,
+                "deployment_types": [],
+                "message": ""
+            }
+
+            if is_used and workflow_ids:
+                # Import necessary models
+                from api_v2.models import APIDeployment
+                from pipeline_v2.models import Pipeline
+                from workflow_manager.workflow_v2.models.workflow import Workflow
+                from workflow_manager.endpoint_v2.models import WorkflowEndpoint
+
+                deployment_types = set()
+
+                # Check API Deployments
+                if APIDeployment.objects.filter(
+                    workflow_id__in=workflow_ids, is_active=True
+                ).exists():
+                    deployment_types.add("API Deployment")
+
+                # Check Pipelines
+                pipelines = Pipeline.objects.filter(
+                    workflow_id__in=workflow_ids, is_active=True
+                ).values_list('pipeline_type', flat=True).distinct()
+
+                for pipeline_type in pipelines:
+                    if pipeline_type == 'ETL':
+                        deployment_types.add("ETL Pipeline")
+                    elif pipeline_type == 'TASK':
+                        deployment_types.add("Task Pipeline")
+
+                # Check for Manual Review
+                workflows_with_manual_review = WorkflowEndpoint.objects.filter(
+                    workflow_id__in=workflow_ids,
+                    connection_type=WorkflowEndpoint.ConnectionType.MANUALREVIEW
+                ).values_list('workflow_id', flat=True).distinct()
+
+                if workflows_with_manual_review:
+                    deployment_types.add("Human Quality Review")
+
+                deployment_info["deployment_types"] = list(deployment_types)
+
+                # Construct the message if deployments exist
+                if deployment_types:
+                    types_list = sorted(deployment_types)
+                    if len(types_list) == 1:
+                        types_text = types_list[0]
+                    elif len(types_list) == 2:
+                        types_text = f"{types_list[0]} or {types_list[1]}"
+                    else:
+                        types_text = ", ".join(types_list[:-1]) + f", or {types_list[-1]}"
+
+                    deployment_info["message"] = (
+                        f"You have made changes to this Prompt Studio project. "
+                        f"This project is used in {types_text}. "
+                        f"Please export it for the changes to take effect in the deployment(s)."
+                    )
+
+            return Response(deployment_info, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"Error checking deployment usage for tool {pk}: {e}")
+            return Response(
+                {"error": "Failed to check deployment usage"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
