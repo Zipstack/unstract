@@ -169,6 +169,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
             tag_names (list(str)): list of tag names
             llm_profile_id (str, optional): LLM profile ID for overriding tool settings
             hitl_queue_name (str, optional): Custom queue name for manual review
+            user_data (dict[str, Any], optional): JSON data for user_data variable replacement in prompts
 
         Returns:
             ReturnDict: execution status/ result
