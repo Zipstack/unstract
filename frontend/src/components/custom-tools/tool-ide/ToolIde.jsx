@@ -1,5 +1,5 @@
 import { Col, Row } from "antd";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -10,6 +10,7 @@ import { DocumentManager } from "../document-manager/DocumentManager";
 import { Header } from "../header/Header";
 import { SettingsModal } from "../settings-modal/SettingsModal";
 import { ToolsMain } from "../tools-main/ToolsMain";
+import { ExportReminderBar } from "../export-reminder-bar/ExportReminderBar";
 import "./ToolIde.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import { PageTitle } from "../../widgets/page-title/PageTitle.jsx";
@@ -47,6 +48,10 @@ function ToolIde() {
     deleteIndexDoc,
     shareId,
     isPublicSource,
+    hasUnsavedChanges,
+    deploymentUsageInfo,
+    setDeploymentUsageInfo,
+    markChangesAsExported,
   } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
@@ -57,6 +62,9 @@ function ToolIde() {
   const [openShareConfirmation, setOpenShareConfirmation] = useState(false);
   const [openShareModal, setOpenShareModal] = useState(false);
   const [openCloneModal, setOpenCloneModal] = useState(false);
+  const [showExportReminder, setShowExportReminder] = useState(false);
+  const [isCheckingUsage, setIsCheckingUsage] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     if (openShareModal) {
@@ -76,6 +84,98 @@ function ToolIde() {
       setOpenShareLink(false);
     }
   }, [openShareModal]);
+
+  // Check deployment usage when there are unsaved changes
+  const checkDeploymentUsage = useCallback(async () => {
+    if (!details?.tool_id || !hasUnsavedChanges || isCheckingUsage) {
+      return;
+    }
+
+    setIsCheckingUsage(true);
+    try {
+      const response = await axiosPrivate.get(
+        `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${details?.tool_id}/check_deployment_usage/`,
+      );
+
+      const usageInfo = response.data;
+      setDeploymentUsageInfo(usageInfo);
+
+      // Show reminder if the tool is being used in deployments
+      if (usageInfo?.is_used && usageInfo?.message) {
+        setShowExportReminder(true);
+      } else {
+        setShowExportReminder(false);
+      }
+    } catch (error) {
+      console.error("Error checking deployment usage:", error);
+      setShowExportReminder(false);
+    } finally {
+      setIsCheckingUsage(false);
+    }
+  }, [
+    details?.tool_id,
+    hasUnsavedChanges,
+    isCheckingUsage,
+    axiosPrivate,
+    sessionDetails?.orgId,
+    setDeploymentUsageInfo,
+  ]);
+
+  useEffect(() => {
+    checkDeploymentUsage();
+  }, [checkDeploymentUsage, hasUnsavedChanges, details?.tool_id]);
+
+  // Handle export from reminder bar
+  const handleExportFromReminder = useCallback(async () => {
+    setIsExporting(true);
+    try {
+      const requestOptions = {
+        method: "POST",
+        url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/export/${details?.tool_id}`,
+        headers: {
+          "X-CSRFToken": sessionDetails?.csrfToken,
+          "Content-Type": "application/json",
+        },
+        data: {
+          is_shared_with_org: false,
+          user_id: [details?.created_by || sessionDetails?.userId],
+          force_export: true,
+        },
+      };
+
+      await axiosPrivate(requestOptions);
+
+      setAlertDetails({
+        type: "success",
+        content: "Custom tool exported successfully",
+      });
+
+      // Mark changes as exported
+      markChangesAsExported();
+      setShowExportReminder(false);
+
+      try {
+        setPostHogCustomEvent("ps_exported_from_reminder", {
+          info: "Exported from reminder bar",
+          tool_name: details?.tool_name,
+        });
+      } catch (err) {
+        // Ignore posthog errors
+      }
+    } catch (err) {
+      setAlertDetails(handleException(err, "Failed to export"));
+    } finally {
+      setIsExporting(false);
+    }
+  }, [
+    axiosPrivate,
+    details,
+    sessionDetails,
+    setAlertDetails,
+    handleException,
+    markChangesAsExported,
+    setPostHogCustomEvent,
+  ]);
 
   const generateIndex = async (doc) => {
     const docId = doc?.document_id;
@@ -120,7 +220,7 @@ function ToolIde() {
       })
       .catch((err) => {
         setAlertDetails(
-          handleException(err, `${doc?.document_name} - Failed to index`)
+          handleException(err, `${doc?.document_name} - Failed to index`),
         );
       })
       .finally(() => {
@@ -186,6 +286,13 @@ function ToolIde() {
     <div className="tool-ide-layout">
       <PageTitle title={details?.tool_name} />
       {isPublicSource && HeaderPublic && <HeaderPublic />}
+      {showExportReminder && deploymentUsageInfo?.message && (
+        <ExportReminderBar
+          message={deploymentUsageInfo.message}
+          onExport={handleExportFromReminder}
+          isExporting={isExporting}
+        />
+      )}
       <div>
         <Header
           handleUpdateTool={handleUpdateTool}

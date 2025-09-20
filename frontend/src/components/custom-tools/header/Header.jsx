@@ -44,7 +44,8 @@ function Header({
   setOpenCloneModal,
 }) {
   const [isExportLoading, setIsExportLoading] = useState(false);
-  const { details, isPublicSource } = useCustomToolStore();
+  const { details, isPublicSource, markChangesAsExported } =
+    useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -69,7 +70,7 @@ function Header({
     selectedUsers,
     toolDetail,
     isSharedWithEveryone,
-    forcedExport = false
+    forcedExport = false,
   ) => {
     const body = {
       is_shared_with_org: isSharedWithEveryone,
@@ -92,6 +93,8 @@ function Header({
           type: "success",
           content: "Custom tool exported successfully",
         });
+        // Clear the export reminder after successful export
+        markChangesAsExported();
       })
       .catch((err) => {
         if (err?.response?.data?.errors[0]?.code === "warning") {
@@ -117,7 +120,7 @@ function Header({
 
     handleExport(selectedUsers, toolDetail, isSharedWithEveryone, true);
     setConfirmModalVisible(false);
-  }, [lastExportParams]);
+  }, [lastExportParams, handleExport]);
 
   const handleShare = (isEdit) => {
     try {
@@ -170,7 +173,7 @@ function Header({
           users.map((user) => ({
             id: user?.id,
             email: user?.email,
-          }))
+          })),
         );
         return users;
       })
@@ -271,7 +274,7 @@ function Header({
       })
       .catch((err) => {
         setAlertDetails(
-          handleException(err, "Failed to check existing deployments")
+          handleException(err, "Failed to check existing deployments"),
         );
         // If check fails, still allow proceeding
         setOpenCreateApiDeploymentModal(true);
