@@ -1,5 +1,6 @@
 import logging
 import os
+from datetime import datetime
 from typing import Any
 
 import aiohttp
@@ -90,7 +91,22 @@ class HttpFS(UnstractFileSystem):
         Returns:
             bool: True if the path is a directory, False otherwise.
         """
-        raise NotImplementedError
+        return False  # HTTP(S) connector doesn't support directories
+
+    def extract_modified_date(self, metadata: dict[str, Any]) -> datetime | None:
+        """Extract the last modified date from HTTP(S) metadata.
+
+        Args:
+            metadata: File metadata dictionary from fsspec
+
+        Returns:
+            datetime object or None if not available
+        """
+        # HTTP(S) connector - return None as files don't have modification times
+        logger.debug(
+            f"[HTTP(S)] Modified date not applicable for HTTP resources: {metadata}"
+        )
+        return None
 
     def test_credentials(self) -> bool:
         """To test credentials for HTTP(S)."""

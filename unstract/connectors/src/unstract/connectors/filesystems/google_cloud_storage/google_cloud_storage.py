@@ -2,6 +2,7 @@ import base64
 import json
 import logging
 import os
+from datetime import UTC, datetime
 from typing import Any
 
 from gcsfs import GCSFileSystem
@@ -110,6 +111,46 @@ class GoogleCloudStorageFS(UnstractFileSystem):
         """
         # Note: Here Metadata type seems to be always "file" even for directories
         return metadata.get("type") == "directory"
+
+    def extract_modified_date(self, metadata: dict[str, Any]) -> datetime | None:
+        """Extract the last modified date from GCS metadata.
+
+        Args:
+            metadata: File metadata dictionary from fsspec
+
+        Returns:
+            datetime object or None if not available
+        """
+        # Prefer explicit presence check so falsy values like 0 are not skipped.
+        updated = (
+            metadata.get("updated") if "updated" in metadata else metadata.get("mtime")
+        )
+        if isinstance(updated, datetime):
+            # Normalize to timezone-aware (UTC) to avoid naive/aware comparison errors.
+            if updated.tzinfo is None:
+                logger.debug("[GCS] Naive datetime encountered; assuming UTC.")
+                return updated.replace(tzinfo=UTC)
+            return updated.astimezone(UTC)
+        elif isinstance(updated, (int, float)):
+            # Epoch in seconds, milliseconds, or microseconds -> normalize to seconds.
+            ts = float(updated)
+            if ts > 1e14:  # microseconds since epoch
+                ts /= 1e6
+            elif ts > 1e11:  # milliseconds since epoch
+                ts /= 1e3
+            return datetime.fromtimestamp(ts, tz=UTC)
+        elif isinstance(updated, str):
+            # ISO8601 string (e.g., 2023-01-01T00:00:00Z)
+            try:
+                dt = datetime.fromisoformat(updated.strip().replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    return dt.replace(tzinfo=UTC)
+                return dt.astimezone(UTC)
+            except ValueError:
+                logger.warning(f"[GCS] Invalid datetime format: {updated}")
+                return None
+        logger.debug(f"[GCS] No modified date found in metadata: {metadata}")
+        return None
 
     def test_credentials(self) -> bool:
         """Test Google Cloud Storage credentials by accessing the root path info.

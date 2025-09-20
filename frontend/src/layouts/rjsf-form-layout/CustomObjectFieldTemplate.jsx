@@ -17,6 +17,7 @@ const CustomObjectFieldTemplate = (props) => {
     "processSubDirectories",
     "fileExtensions",
     "maxFiles",
+    "fileProcessingOrder",
     "fileReprocessingHandling",
     // Conditional fields at bottom:
     "reprocessInterval",

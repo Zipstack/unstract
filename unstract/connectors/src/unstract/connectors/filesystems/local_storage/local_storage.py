@@ -1,5 +1,6 @@
 import logging
 import os
+from datetime import UTC, datetime
 from typing import Any
 
 from fsspec.implementations.local import LocalFileSystem
@@ -80,7 +81,50 @@ class LocalStorageFS(UnstractFileSystem):
         Returns:
             bool: True if the path is a directory, False otherwise.
         """
-        raise NotImplementedError
+        return metadata.get("type") == "directory"
+
+    def extract_modified_date(self, metadata: dict[str, Any]) -> datetime | None:
+        """Extract the last modified date from local filesystem metadata.
+
+        Args:
+            metadata: File metadata dictionary from fsspec
+
+        Returns:
+            datetime object or None if not available
+        """
+        # Try common keys across providers
+        mtime = None
+        for key in ("mtime", "modified", "last_modified", "LastModified"):
+            if key in metadata:
+                mtime = metadata[key]
+                break
+        if isinstance(mtime, datetime):
+            dt = mtime if mtime.tzinfo else mtime.replace(tzinfo=UTC)
+            return dt.astimezone(UTC)
+        if isinstance(mtime, (int, float)):
+            # Unix timestamp (seconds)
+            return datetime.fromtimestamp(mtime, tz=UTC)
+        if isinstance(mtime, str):
+            s = mtime.strip()
+            # Handle trailing 'Z'
+            if s.endswith("Z"):
+                s = s[:-1] + "+00:00"
+            try:
+                dt = datetime.fromisoformat(s)
+            except ValueError:
+                # Fall back: numeric string
+                try:
+                    return datetime.fromtimestamp(float(s), tz=UTC)
+                except Exception:
+                    logger.debug(
+                        f"[LocalStorage] Unparseable modified date in metadata: {metadata}"
+                    )
+                    return None
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=UTC)
+            return dt.astimezone(UTC)
+        logger.debug(f"[LocalStorage] No modified date found in metadata: {metadata}")
+        return None
 
     def test_credentials(self, *args, **kwargs) -> bool:  # type:ignore
         """To test credentials for LocalStorage."""

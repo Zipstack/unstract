@@ -1,5 +1,6 @@
 import logging
 import os
+from datetime import UTC, datetime
 from typing import Any
 
 from fsspec.implementations.sftp import SFTPFileSystem
@@ -86,7 +87,25 @@ class SftpFS(UnstractFileSystem):
         Returns:
             bool: True if the path is a directory, False otherwise.
         """
-        raise NotImplementedError
+        return metadata.get("type") == "directory"
+
+    def extract_modified_date(self, metadata: dict[str, Any]) -> datetime | None:
+        """Extract the last modified date from SFTP metadata.
+
+        Args:
+            metadata: File metadata dictionary from fsspec
+
+        Returns:
+            datetime object or None if not available
+        """
+        mtime = metadata.get("mtime")
+        if isinstance(mtime, datetime):
+            return mtime
+        elif isinstance(mtime, (int, float)):
+            # Unix timestamp
+            return datetime.fromtimestamp(mtime, tz=UTC)
+        logger.debug(f"[SFTP] No modified date found in metadata: {metadata}")
+        return None
 
     # TODO: Check if this method can be removed, and use it from parent class
     # (class UnstractFileSystem)
