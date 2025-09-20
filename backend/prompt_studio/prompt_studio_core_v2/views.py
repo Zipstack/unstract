@@ -668,17 +668,12 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             instance: CustomTool = self.get_object()
             is_used, workflow_ids = self._check_tool_usage(instance)
 
-            deployment_info = {
-                "is_used": is_used,
-                "deployment_types": [],
-                "message": ""
-            }
+            deployment_info = {"is_used": is_used, "deployment_types": [], "message": ""}
 
             if is_used and workflow_ids:
                 # Import necessary models
                 from api_v2.models import APIDeployment
                 from pipeline_v2.models import Pipeline
-                from workflow_manager.workflow_v2.models.workflow import Workflow
                 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 
                 deployment_types = set()
@@ -690,21 +685,27 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                     deployment_types.add("API Deployment")
 
                 # Check Pipelines
-                pipelines = Pipeline.objects.filter(
-                    workflow_id__in=workflow_ids, is_active=True
-                ).values_list('pipeline_type', flat=True).distinct()
+                pipelines = (
+                    Pipeline.objects.filter(workflow_id__in=workflow_ids, is_active=True)
+                    .values_list("pipeline_type", flat=True)
+                    .distinct()
+                )
 
                 for pipeline_type in pipelines:
-                    if pipeline_type == 'ETL':
+                    if pipeline_type == "ETL":
                         deployment_types.add("ETL Pipeline")
-                    elif pipeline_type == 'TASK':
+                    elif pipeline_type == "TASK":
                         deployment_types.add("Task Pipeline")
 
                 # Check for Manual Review
-                workflows_with_manual_review = WorkflowEndpoint.objects.filter(
-                    workflow_id__in=workflow_ids,
-                    connection_type=WorkflowEndpoint.ConnectionType.MANUALREVIEW
-                ).values_list('workflow_id', flat=True).distinct()
+                workflows_with_manual_review = (
+                    WorkflowEndpoint.objects.filter(
+                        workflow_id__in=workflow_ids,
+                        connection_type=WorkflowEndpoint.ConnectionType.MANUALREVIEW,
+                    )
+                    .values_list("workflow_id", flat=True)
+                    .distinct()
+                )
 
                 if workflows_with_manual_review:
                     deployment_types.add("Human Quality Review")
