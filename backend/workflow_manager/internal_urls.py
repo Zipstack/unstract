@@ -22,16 +22,6 @@ urlpatterns = [
         internal_api_views.get_workflow_execution_data,
         name="get_workflow_execution_data",
     ),
-    # path(
-    #     "<str:execution_id>/update_status/",
-    #     internal_api_views.update_workflow_execution_status,
-    #     name="update_workflow_execution_status",
-    # ),
-    path(
-        "execution/status/",
-        internal_api_views.update_workflow_execution_status,
-        name="update_workflow_execution_status",
-    ),
     # Tool instance endpoints
     path(
         "workflow/<str:workflow_id>/tool-instances/",
@@ -104,11 +94,7 @@ urlpatterns = [
         internal_views.WorkflowSourceFilesAPIView.as_view(),
         name="get_workflow_source_files",
     ),
-    path(
-        "execution/finalize/<str:execution_id>/",
-        internal_views.ExecutionFinalizationAPIView.as_view(),
-        name="finalize_execution",
-    ),
+    # path("execution/finalize/<str:execution_id>/", removed - ExecutionFinalizationAPIView was unused dead code
     path(
         "execution/cleanup/",
         internal_views.WorkflowExecutionCleanupAPIView.as_view(),

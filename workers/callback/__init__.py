@@ -5,7 +5,7 @@ internal APIs instead of direct Django ORM access.
 """
 
 from .tasks import (
-    finalize_execution_callback,
+    # finalize_execution_callback removed - dead code (never called)
     process_batch_callback,
     process_batch_callback_api,
 )
@@ -15,5 +15,5 @@ __all__ = [
     "celery_app",
     "process_batch_callback",
     "process_batch_callback_api",
-    "finalize_execution_callback",
+    # "finalize_execution_callback" removed - dead code (never called)
 ]

@@ -227,12 +227,6 @@ urlpatterns = [
         include("workflow_manager.workflow_v2.file_history_internal_urls"),
         name="file_history_internal",
     ),
-    # Execution finalization and cleanup APIs
-    path(
-        "v1/execution/",
-        include("workflow_manager.execution.internal_urls"),
-        name="execution_internal",
-    ),
     # Webhook notification APIs
     path(
         "v1/webhook/",

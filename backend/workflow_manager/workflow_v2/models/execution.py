@@ -6,7 +6,6 @@ from api_v2.models import APIDeployment
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
 from django.db.models import QuerySet, Sum
-from django.utils import timezone
 from pipeline_v2.models import Pipeline
 from tags.models import Tag
 from usage_v2.constants import UsageKeys
@@ -261,19 +260,15 @@ class WorkflowExecution(BaseModel):
             increment_attempt (bool, optional): Whether to increment attempt counter. Defaults to False.
         """
         if status is not None:
+            status = ExecutionStatus(status)
             self.status = status.value
-            if (
-                status
-                in [
-                    ExecutionStatus.COMPLETED,
-                    ExecutionStatus.ERROR,
-                    ExecutionStatus.STOPPED,
-                ]
-                and not self.execution_time
-            ):
-                self.execution_time = round(
-                    (timezone.now() - self.created_at).total_seconds(), 3
-                )
+            if status in [
+                ExecutionStatus.COMPLETED,
+                ExecutionStatus.ERROR,
+                ExecutionStatus.STOPPED,
+            ]:
+                self.execution_time = CommonUtils.time_since(self.created_at, 3)
+
         if error:
             self.error_message = error[:EXECUTION_ERROR_LENGTH]
         if increment_attempt:

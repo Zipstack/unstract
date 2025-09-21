@@ -1,18 +1,7 @@
 """File Processing Callback Worker Tasks
 
-Optimized callback implementation with performance enhancements:
-- Redis-based status caching to reduce PostgreSQL queries
-- Exponential backoff for retry operations
-- Batched status updates to minimize API calls
-- Smart circuit breaker patterns for resilience
-
-Replaces the heavy Django process_batch_callback task with API coordination.
-
-TODO: Circuit Breaker Improvements
-- Implement retry queue for operations blocked by open circuit breakers
-- Add reconciliation task to process queued updates when circuit closes
-- Prevent data loss/staleness from skipped DB updates
-- See inline TODOs for specific implementation details
+Handles workflow execution finalization and status updates when file processing completes.
+Provides Redis-based caching, exponential backoff, and circuit breaker patterns for reliability.
 """
 
 import time
@@ -25,7 +14,6 @@ from celery import current_app as app
 from shared.api import InternalAPIClient
 
 # Import from shared worker modules
-from shared.constants import Account
 from shared.enums import PipelineType
 from shared.enums.status_enums import PipelineStatus
 from shared.enums.task_enums import TaskName
@@ -40,27 +28,16 @@ from shared.infrastructure.logging import (
     WorkerLogger,
     log_context,
     monitor_performance,
-    with_execution_context,
 )
 from shared.patterns.notification.helper import handle_status_notifications
 from shared.patterns.retry.backoff import (
-    get_retry_manager,
     initialize_backoff_managers,
 )
 from shared.patterns.retry.utils import CircuitBreakerOpenError, circuit_breaker
-from shared.processing.files.batch import (
-    BatchConfig,
-    add_pipeline_update_to_batch,
-    add_status_update_to_batch,
-    get_batch_processor,
-    initialize_batch_processor,
-)
 from shared.processing.files.time_utils import (
     WallClockTimeCalculator,
     aggregate_file_batch_results,
 )
-from shared.utils.local_context import StateStore
-from shared.workflow.execution.context import WorkerExecutionContext
 
 # Import shared data models for type safety
 from unstract.core.data_models import ExecutionStatus
@@ -105,20 +82,6 @@ def _initialize_performance_managers():
         # Initialize backoff and retry managers
         initialize_backoff_managers(cache_manager)
         logger.info("Backoff and retry managers initialized")
-
-        # Initialize batch processor with optimized configuration
-        # DISABLE auto-flush to prevent duplicate notifications
-        batch_config = BatchConfig(
-            max_batch_size=8,  # Reduced batch size for faster processing
-            max_wait_time=3.0,  # Reduced wait time for better responsiveness
-            flush_interval=1.5,  # More frequent flushes
-            enable_auto_flush=False,  # DISABLED to prevent duplicate notifications
-        )
-
-        # Initialize batch processor with API client
-        # We'll create the API client in the callback task when we have proper context
-        initialize_batch_processor(batch_config, api_client=None)
-        logger.info("Batch processor initialized")
 
         _performance_managers_initialized = True
         logger.info("All performance optimization managers initialized successfully")
@@ -309,67 +272,7 @@ def _fetch_api_deployment_data(
         return None
 
 
-def _update_status_with_batching(
-    execution_id: str,
-    status: str,
-    organization_id: str,
-    api_client: InternalAPIClient,
-    **additional_fields,
-) -> bool:
-    """Update execution status using batching optimization.
-
-    Args:
-        execution_id: Execution ID
-        status: New status
-        organization_id: Organization context
-        api_client: API client instance
-        **additional_fields: Additional status fields
-
-    Returns:
-        True if update was queued successfully
-    """
-    batch_processor = get_batch_processor()
-
-    if batch_processor:
-        # Use batch processing for better performance
-        success = add_status_update_to_batch(
-            batch_processor=batch_processor,
-            execution_id=execution_id,
-            status=status,
-            organization_id=organization_id,
-            **additional_fields,
-        )
-
-        if success:
-            logger.debug(f"Queued status update for execution {execution_id}: {status}")
-
-            # Invalidate cache
-            cache_manager = get_cache_manager()
-            if cache_manager:
-                cache_manager.invalidate_execution_status(execution_id, organization_id)
-
-            return True
-
-    # Fallback to direct API call
-    try:
-        api_client.update_workflow_execution_status(
-            execution_id=execution_id, status=status, **additional_fields
-        )
-
-        # Invalidate cache
-        cache_manager = get_cache_manager()
-        if cache_manager:
-            cache_manager.invalidate_execution_status(execution_id, organization_id)
-
-        logger.debug(f"Direct status update for execution {execution_id}: {status}")
-        return True
-
-    except Exception as e:
-        logger.error(f"Failed to update execution status for {execution_id}: {e}")
-        return False
-
-
-def _update_pipeline_with_batching(
+def _update_pipeline_directly(
     pipeline_id: str,
     execution_id: str,
     status: str,
@@ -377,7 +280,7 @@ def _update_pipeline_with_batching(
     api_client: InternalAPIClient,
     **additional_fields,
 ) -> bool:
-    """Update pipeline status using batching optimization.
+    """Update pipeline status using direct API call.
 
     Args:
         pipeline_id: Pipeline ID
@@ -388,34 +291,8 @@ def _update_pipeline_with_batching(
         **additional_fields: Additional pipeline fields
 
     Returns:
-        True if update was queued successfully
+        True if update was successful
     """
-    batch_processor = get_batch_processor()
-
-    # TEMPORARY FIX: Skip batch processing due to BatchOperationResponse.error_response() bug
-    # Use direct API calls for reliability until batch processing bug is fixed
-    if False and batch_processor:  # Disabled batch processing
-        # Use batch processing for better performance
-        success = add_pipeline_update_to_batch(
-            batch_processor=batch_processor,
-            pipeline_id=pipeline_id,
-            execution_id=execution_id,
-            status=status,
-            organization_id=organization_id,
-            **additional_fields,
-        )
-
-        if success:
-            logger.debug(f"Queued pipeline update for {pipeline_id}: {status}")
-
-            # Invalidate cache
-            cache_manager = get_cache_manager()
-            if cache_manager:
-                cache_manager.invalidate_pipeline_status(pipeline_id, organization_id)
-
-            return True
-
-    # Fallback to direct API call
     try:
         api_client.update_pipeline_status(
             pipeline_id=pipeline_id,
@@ -424,14 +301,12 @@ def _update_pipeline_with_batching(
             **additional_fields,
         )
 
-        # Invalidate cache
+        # Invalidate cache after successful update
         cache_manager = get_cache_manager()
         if cache_manager:
             cache_manager.invalidate_pipeline_status(pipeline_id, organization_id)
 
-        # NOTE: Notifications are triggered by main batch completion logic, not here
-        # This avoids duplicate notifications for the same execution
-
+        logger.debug(f"Pipeline update for {pipeline_id}: {status}")
         return True
 
     except Exception as e:
@@ -454,10 +329,11 @@ def _get_performance_stats() -> dict:
     if cache_manager:
         stats["cache"] = cache_manager.get_cache_stats()
 
-    # Batch processor stats
-    batch_processor = get_batch_processor()
-    if batch_processor:
-        stats["batch"] = batch_processor.get_batch_stats()
+    # Note: Batch processor removed - it was ineffective with auto-flush disabled
+    stats["optimizations"] = {
+        "eliminated_batch_processor": True,
+        "using_direct_api_calls": True,
+    }
 
     return stats
 
@@ -480,7 +356,7 @@ class CallbackContext:
 def _extract_callback_parameters(
     task_instance, results: list, kwargs: dict[str, Any]
 ) -> CallbackContext:
-    """Extract and validate callback processing parameters.
+    """Extract and validate all callback parameters using workflow execution as single source of truth.
 
     Args:
         task_instance: The Celery task instance
@@ -488,7 +364,7 @@ def _extract_callback_parameters(
         kwargs: Keyword arguments from the callback
 
     Returns:
-        CallbackContext with extracted parameters
+        CallbackContext with all parameters populated
 
     Raises:
         ValueError: If required parameters are missing
@@ -498,340 +374,114 @@ def _extract_callback_parameters(
         task_instance.request.id if hasattr(task_instance, "request") else "unknown"
     )
 
-    # Extract execution_id from kwargs exactly like Django backend
+    # 1. Get execution_id from kwargs (always present)
     context.execution_id = kwargs.get("execution_id")
     if not context.execution_id:
         raise ValueError("execution_id is required in kwargs")
 
-    # Get pipeline_id directly from kwargs first (preferred)
-    context.pipeline_id = kwargs.get("pipeline_id")
+    # 2. Always fetch workflow execution data (authoritative source for all context)
+    logger.info(
+        f"Fetching complete context from workflow execution {context.execution_id}"
+    )
 
-    return context
-
-
-def _setup_organization_context(
-    context: CallbackContext, results: list, kwargs: dict[str, Any]
-) -> str:
-    """Setup organization context for API calls.
-
-    Args:
-        context: Callback context to populate
-        results: List of batch results for fallback extraction
-        kwargs: Keyword arguments for parameter extraction
-
-    Returns:
-        Organization ID that was determined
-
-    Raises:
-        RuntimeError: If no organization_id can be determined
-    """
-    # CRITICAL FIX: Get organization_id from multiple sources in priority order
-    # This ensures we always have the properly formatted organization context for API calls
-    organization_id = None
-
-    # 1. First try kwargs (highest priority - passed from API/general worker)
-    organization_id = kwargs.get("organization_id")
-    if organization_id:
-        logger.info(f"Setting up the organization context for: {organization_id}")
-
-    # 2. Fall back to worker configuration (properly formatted)
-    if not organization_id:
-        config_temp = WorkerConfig()
-        if config_temp.organization_id:
-            organization_id = config_temp.organization_id
-            logger.info(f"Setting up the organization context for: {organization_id}")
-
-    # 3. Last resort: extract from batch results (may be raw database ID)
-    if not organization_id:
-        for i, result in enumerate(results):
-            if isinstance(result, dict) and "organization_id" in result:
-                extracted_org_id = result["organization_id"]
-                # Validate and format if needed
-                if extracted_org_id and not extracted_org_id.startswith("org_"):
-                    logger.warning(
-                        f"Batch result has raw database ID '{extracted_org_id}', may need proper formatting"
-                    )
-                organization_id = extracted_org_id
-                logger.info(
-                    f"✅ Extracted organization_id from batch result {i}: {organization_id}"
-                )
-                break
-        else:
-            logger.warning(
-                f"❌ No organization_id found in any of the {len(results)} batch results"
-            )
-
-    if not organization_id:
-        logger.error(
-            f"CRITICAL: Could not determine organization_id for execution {context.execution_id}"
-        )
-        logger.error(
-            "This will likely cause API calls to fail due to missing organization context"
-        )
-        raise RuntimeError(
-            f"No organization_id available for execution {context.execution_id}"
-        )
-
-    context.organization_id = organization_id
-    return organization_id
-
-
-def _setup_api_client_and_execution_context(
-    context: CallbackContext,
-) -> tuple[WorkerConfig, InternalAPIClient]:
-    """Setup API client and fetch execution context.
-
-    Args:
-        context: Callback context to populate
-
-    Returns:
-        Tuple of (config, api_client)
-
-    Raises:
-        Exception: If execution context cannot be fetched
-    """
-    # Get workflow execution context via API with caching optimization
     config = WorkerConfig()
-    api_client = InternalAPIClient(config)
+    with InternalAPIClient(config) as temp_api_client:
+        try:
+            execution_response = temp_api_client.get_workflow_execution(
+                context.execution_id
+            )
 
-    # Final fallback: use API client's default organization_id if available
-    if not context.organization_id and api_client.organization_id:
-        context.organization_id = api_client.organization_id
+            if not execution_response.success:
+                raise ValueError(
+                    f"Failed to get workflow execution: {execution_response.error}"
+                )
 
-    # Set organization context BEFORE making API calls (CRITICAL for getting correct pipeline_id)
-    if context.organization_id:
-        api_client.set_organization_context(context.organization_id)
-        logger.info(
-            f"✅ Set organization context before API calls: {context.organization_id}"
-        )
-    else:
-        logger.error(
-            "CRITICAL: No organization_id available for API calls - this will cause pipeline_id to be null"
-        )
+            execution_data = execution_response.data
 
-    execution_response = api_client.get_workflow_execution(context.execution_id)
-    if not execution_response.success:
-        raise Exception(f"Failed to get execution context: {execution_response.error}")
+            # Extract nested structures from response (corrected paths)
+            execution_info = execution_data.get("execution", {})
+            workflow_definition = execution_data.get("workflow_definition", {})
+            organization_context = execution_data.get("organization_context", {})
+            source_config = execution_data.get("source_config", {})
 
-    execution_context = execution_response.data
-    workflow_execution = execution_context.get("execution", {})
-    workflow = execution_context.get("workflow", {})
+            # 3. Extract parameters with kwargs as fast path, execution data as fallback
+            context.pipeline_id = kwargs.get("pipeline_id") or execution_info.get(
+                "pipeline_id"
+            )
+            context.organization_id = (
+                kwargs.get("organization_id")
+                or organization_context.get("organization_id")
+                or workflow_definition.get("organization_id")
+            )
 
-    # Organization_id already extracted before API call - use as fallback if needed
+            # Always populate workflow_id from correct nested path
+            context.workflow_id = execution_info.get(
+                "workflow_id"
+            ) or workflow_definition.get("workflow_id")
+
+            # Use existing API detection from source_config (no additional API calls needed)
+            is_api_deployment = source_config.get("is_api", False)
+
+            if is_api_deployment:
+                # This is an API deployment
+                context.pipeline_data = {
+                    "is_api": True,
+                    "resolved_pipeline_type": "API",
+                    "resolved_pipeline_name": workflow_definition.get(
+                        "workflow_name", "Unknown API"
+                    ),
+                }
+                context.pipeline_type = "API"
+                context.pipeline_name = workflow_definition.get(
+                    "workflow_name", "Unknown API"
+                )
+                logger.info(
+                    f"Detected API deployment from source_config: {context.pipeline_id}"
+                )
+            else:
+                # This is ETL/TASK/APP workflow
+                context.pipeline_data = {
+                    "is_api": False,
+                    "resolved_pipeline_type": "ETL",
+                    "resolved_pipeline_name": workflow_definition.get(
+                        "workflow_name", "Unknown Workflow"
+                    ),
+                }
+                context.pipeline_type = "ETL"
+                context.pipeline_name = workflow_definition.get(
+                    "workflow_name", "Unknown Workflow"
+                )
+                logger.info(
+                    f"Detected ETL workflow from source_config: {context.pipeline_id}"
+                )
+
+            logger.info(
+                f"Extracted from kwargs: pipeline_id={kwargs.get('pipeline_id')}, org_id={kwargs.get('organization_id')}"
+            )
+            logger.info(
+                f"Extracted from execution: workflow_id={context.workflow_id}, is_api={is_api_deployment}, pipeline_type={context.pipeline_type}"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to fetch workflow execution context: {e}")
+            raise ValueError(f"Could not get execution context: {e}")
+
+    # 4. Validate required context is now available
     if not context.organization_id:
-        context.organization_id = (
-            workflow_execution.get("organization_id")
-            or workflow.get("organization_id")
-            or workflow.get("organization", {}).get("id")
-            if isinstance(workflow.get("organization"), dict)
-            else execution_context.get("organization_context", {}).get("organization_id")
-            or None
-        )
-        if context.organization_id:
-            logger.info(
-                f"Fallback: extracted organization_id from execution context: {context.organization_id}"
-            )
+        raise ValueError("organization_id could not be determined from execution context")
 
-    context.workflow_id = workflow_execution.get("workflow_id") or workflow.get("id")
-    context.api_client = api_client
-
-    return config, api_client
-
-
-def _fetch_and_validate_pipeline_data(context: CallbackContext) -> None:
-    """Fetch pipeline data and handle API/ETL routing fixes.
-
-    Args:
-        context: Callback context to populate with pipeline data
-    """
-    # Extract Pipeline data via unified internal API (optimized for ETL/TASK/APP pipelines)
-    # Note: process_batch_callback handles ETL/TASK/APP types (Pipeline model)
-    # while process_batch_callback_api handles API type (APIDeployment model via v2 endpoint)
-    context.pipeline_name = None
-    context.pipeline_type = None
-    context.pipeline_data = None
-
-    if context.pipeline_id:
-        # SMART ROUTING: Check pipeline type first to avoid unnecessary 404 errors
-        # Only attempt API deployment fetch for actual API deployments
-        pipeline_type_response = context.api_client.get_pipeline_type(
-            context.pipeline_id, context.organization_id
-        )
-
-        pipeline_type = "ETL"  # Default fallback
-        if pipeline_type_response.success and pipeline_type_response.data:
-            pipeline_type = pipeline_type_response.data.get("pipeline_type", "ETL")
-            logger.debug(
-                f"Detected pipeline type for {context.pipeline_id}: {pipeline_type}"
-            )
-
-        if pipeline_type == "API":
-            # This is an API deployment - use API-specific fetch
-            logger.info(
-                f"✅ ROUTING: Detected API deployment {context.pipeline_id}, using API endpoint"
-            )
-            api_deployment_data = _fetch_api_deployment_data(
-                context.pipeline_id, context.organization_id, context.api_client
-            )
-            if api_deployment_data:
-                context.pipeline_name = api_deployment_data.get("resolved_pipeline_name")
-                context.pipeline_type = api_deployment_data.get("resolved_pipeline_type")
-                context.pipeline_data = api_deployment_data
-                logger.info(
-                    f"✅ ROUTING FIX: APIDeployment routed to ETL callback - correcting type: name='{context.pipeline_name}', type='{context.pipeline_type}'"
-                )
-            else:
-                # Fallback to regular pipeline lookup if API fetch fails
-                logger.warning(
-                    f"API deployment fetch failed for {context.pipeline_id}, falling back to pipeline lookup"
-                )
-                context.pipeline_data = _fetch_pipeline_data(
-                    context.pipeline_id, context.organization_id, context.api_client
-                )
-        else:
-            # This is an ETL/TASK/APP pipeline - use regular pipeline fetch directly
-            logger.info(
-                f"✅ ROUTING: Detected ETL pipeline {context.pipeline_id}, using pipeline endpoint"
-            )
-            context.pipeline_data = _fetch_pipeline_data(
-                context.pipeline_id, context.organization_id, context.api_client
-            )
-
-        # Set pipeline metadata from fetched data
-        if context.pipeline_data:
-            context.pipeline_name = context.pipeline_data.get("resolved_pipeline_name")
-            context.pipeline_type = context.pipeline_data.get("resolved_pipeline_type")
-            logger.info(
-                f"✅ Pipeline data retrieved: name='{context.pipeline_name}', type='{context.pipeline_type}', is_api={context.pipeline_data.get('is_api', False)}"
-            )
-    else:
-        # No pipeline_id provided - check if we can extract from execution context
-        logger.warning(
-            "No pipeline_id provided directly for ETL/TASK/APP callback. Checking execution context..."
-        )
-
-    # Try to extract pipeline_id from execution context if not passed directly
-    if not context.pipeline_id:
-        # Get execution context again (we should cache this in the future)
-        execution_response = context.api_client.get_workflow_execution(
-            context.execution_id
-        )
-        if execution_response.success:
-            execution_context = execution_response.data
-            workflow_execution = execution_context.get("execution", {})
-
-            context.pipeline_id = workflow_execution.get("pipeline_id")
-            logger.info(
-                f"Using pipeline_id from execution context: {context.pipeline_id}"
-            )
-
-            # BACKWARD COMPATIBILITY: During Django transition, execution_log_id might contain the pipeline_id
-            if not context.pipeline_id:
-                execution_log_id = workflow_execution.get("execution_log_id")
-                if execution_log_id:
-                    logger.warning(
-                        f"BACKWARD COMPATIBILITY: pipeline_id is None but execution_log_id exists: {execution_log_id}"
-                    )
-                    logger.info(
-                        "Attempting to use execution_log_id as pipeline_id for Django compatibility"
-                    )
-                    context.pipeline_id = execution_log_id
-
-        # Now try to fetch pipeline data with the extracted pipeline_id
-        if context.pipeline_id:
-            # Validate that pipeline_id is a proper UUID before attempting API calls
-            try:
-                import uuid
-
-                uuid.UUID(str(context.pipeline_id))
-            except ValueError:
-                # Invalid UUID - this is likely an execution_log_id from worker-based execution
-                logger.info(
-                    f"WORKERS FLOW: Skipping pipeline data fetch - pipeline_id '{context.pipeline_id}' is not a valid UUID (likely execution_log_id from worker-based execution)"
-                )
-                context.pipeline_id = None  # Clear invalid pipeline_id
-                context.pipeline_data = None
-                context.pipeline_name = None
-                context.pipeline_type = None
-            else:
-                # Valid UUID - proceed with pipeline data fetching using smart routing
-                # SMART ROUTING: Check pipeline type first to avoid unnecessary 404 errors (from execution context)
-                pipeline_type_response = context.api_client.get_pipeline_type(
-                    context.pipeline_id, context.organization_id
-                )
-
-                pipeline_type = "ETL"  # Default fallback
-                if pipeline_type_response.success and pipeline_type_response.data:
-                    pipeline_type = pipeline_type_response.data.get(
-                        "pipeline_type", "ETL"
-                    )
-                    logger.debug(
-                        f"Detected pipeline type from execution context for {context.pipeline_id}: {pipeline_type}"
-                    )
-
-                if pipeline_type == "API":
-                    # This is an API deployment - use API-specific fetch
-                    logger.info(
-                        f"✅ ROUTING: Detected API deployment from execution context {context.pipeline_id}, using API endpoint"
-                    )
-                    api_deployment_data = _fetch_api_deployment_data(
-                        context.pipeline_id, context.organization_id, context.api_client
-                    )
-                    if api_deployment_data:
-                        context.pipeline_name = api_deployment_data.get(
-                            "resolved_pipeline_name"
-                        )
-                        context.pipeline_type = api_deployment_data.get(
-                            "resolved_pipeline_type"
-                        )
-                        context.pipeline_data = api_deployment_data
-                        logger.info(
-                            f"✅ ROUTING FIX: APIDeployment from execution context - correcting type: name='{context.pipeline_name}', type='{context.pipeline_type}'"
-                        )
-                    else:
-                        # Fallback to regular pipeline lookup if API fetch fails
-                        logger.warning(
-                            f"API deployment fetch failed for {context.pipeline_id} from execution context, falling back to pipeline lookup"
-                        )
-                        context.pipeline_data = _fetch_pipeline_data(
-                            context.pipeline_id,
-                            context.organization_id,
-                            context.api_client,
-                        )
-                else:
-                    # This is an ETL/TASK/APP pipeline - use regular pipeline fetch directly
-                    logger.info(
-                        f"✅ ROUTING: Detected ETL pipeline from execution context {context.pipeline_id}, using pipeline endpoint"
-                    )
-                    context.pipeline_data = _fetch_pipeline_data(
-                        context.pipeline_id, context.organization_id, context.api_client
-                    )
-
-                # Set pipeline metadata from fetched data
-                if context.pipeline_data:
-                    context.pipeline_name = context.pipeline_data.get(
-                        "resolved_pipeline_name"
-                    )
-                    context.pipeline_type = context.pipeline_data.get(
-                        "resolved_pipeline_type"
-                    )
-                    logger.info(
-                        f"✅ Pipeline data from execution context: name='{context.pipeline_name}', type='{context.pipeline_type}', is_api={context.pipeline_data.get('is_api', False)}"
-                    )
-        else:
-            # No pipeline_id found anywhere - this is a critical error for ETL/TASK/APP callbacks
-            error_msg = f"No pipeline_id found for ETL/TASK/APP callback. execution_id={context.execution_id}, workflow_id={context.workflow_id}"
-            logger.error(error_msg)
-            logger.error(
-                "ETL/TASK/APP callbacks require pipeline_id to fetch Pipeline data. Cannot proceed without it."
-            )
-            raise ValueError(error_msg)
-    else:
-        logger.info(f"Using pipeline_id from direct kwargs: {context.pipeline_id}")
+    # 5. Setup persistent API client for callback operations (single source of truth)
+    config = WorkerConfig()
+    context.api_client = InternalAPIClient(config)
+    context.api_client.set_organization_context(context.organization_id)
 
     logger.info(
-        f"Extracted context: organization_id={context.organization_id}, workflow_id={context.workflow_id}, pipeline_id={context.pipeline_id}"
+        f"✅ Extracted complete callback context: execution={context.execution_id}, "
+        f"pipeline={context.pipeline_id}, workflow={context.workflow_id}, org={context.organization_id}, "
+        f"api_client=initialized, pipeline_data=✓, type={context.pipeline_type}"
     )
+
+    return context
 
 
 def _process_results_and_update_status(
@@ -871,23 +521,18 @@ def _process_results_and_update_status(
         else ExecutionStatus.ERROR.value
     )
 
-    # Use batched status update for better performance
-    _update_status_with_batching(
-        execution_id=context.execution_id,
-        status=final_status,
-        organization_id=context.organization_id,
-        api_client=context.api_client,
-        total_files=aggregated_results["total_files"],
-        execution_time=aggregated_results["total_execution_time"],
-    )
-
+    # OPTIMIZATION: Return results without status update
+    # Status update is now consolidated in main flow to avoid redundant calls
     return aggregated_results, final_status
 
 
 def _finalize_execution(
     context: CallbackContext, final_status: str, aggregated_results: dict[str, Any]
 ) -> dict[str, Any]:
-    """Finalize the workflow execution with smart retry logic.
+    """Finalize the workflow execution with optimized single status update.
+
+    OPTIMIZATION: This is the ONLY place where workflow execution status is updated,
+    eliminating redundant status calls and reducing API overhead.
 
     Args:
         context: Callback context with execution details
@@ -897,64 +542,41 @@ def _finalize_execution(
     Returns:
         Finalization result dictionary
     """
-    # Finalize the execution with smart retry logic
-    retry_manager = get_retry_manager()
-    finalization_result = {}
+    try:
+        # OPTIMIZATION: Single consolidated workflow execution status update
+        # Note: execution_time is now automatically calculated by the model's update_execution method
+        context.api_client.update_workflow_execution_status(
+            execution_id=context.execution_id,
+            status=final_status,
+            total_files=aggregated_results["total_files"],
+            organization_id=context.organization_id,
+        )
 
-    if retry_manager:
-        try:
-            finalization_result = retry_manager.execute_with_smart_retry(
-                func=context.api_client.finalize_workflow_execution,
-                operation_id=f"finalize:{context.execution_id}",
-                kwargs={
-                    "execution_id": context.execution_id,
-                    "final_status": final_status,
-                    "total_files_processed": aggregated_results["total_files"],
-                    "total_execution_time": aggregated_results["total_execution_time"],
-                    "results_summary": aggregated_results,
-                    "error_summary": aggregated_results.get("errors", {}),
-                    "organization_id": context.organization_id,
-                },
-                max_attempts=3,
-                base_delay=1.0,
-                max_delay=10.0,
-            )
-        except Exception as e:
-            if "404" in str(e) or NOT_FOUND_MSG in str(e):
-                logger.info(
-                    "Finalization API endpoint not available, workflow finalization completed via status update"
-                )
-                finalization_result = {
-                    "status": "simulated",
-                    "message": "Finalized via status update",
-                }
-            else:
-                raise e
-    else:
-        # Fallback to direct API call
-        try:
-            finalization_result = context.api_client.finalize_workflow_execution(
-                execution_id=context.execution_id,
-                final_status=final_status,
-                total_files_processed=aggregated_results["total_files"],
-                total_execution_time=aggregated_results["total_execution_time"],
-                results_summary=aggregated_results,
-                error_summary=aggregated_results.get("errors", {}),
-                organization_id=context.organization_id,
-            )
-        except Exception as e:
-            if "404" in str(e) or NOT_FOUND_MSG in str(e):
-                logger.info(
-                    "Finalization API endpoint not available, workflow finalization completed via status update"
-                )
-                finalization_result = {
-                    "status": "simulated",
-                    "message": "Finalized via status update",
-                }
-            else:
-                raise e
+        finalization_result = {
+            "status": "completed",
+            "method": "optimized_status_update",
+            "message": "Execution finalized via optimized status update",
+            "execution_id": context.execution_id,
+            "final_status": final_status,
+            "total_files": aggregated_results["total_files"],
+            # execution_time is now calculated by backend model from (timezone.now() - created_at)
+        }
 
-    return finalization_result
+        logger.info(f"Successfully finalized execution {context.execution_id}")
+
+        return finalization_result
+
+    except Exception as e:
+        logger.error(
+            f"Failed to finalize execution {context.execution_id} via status update: {e}"
+        )
+        # Return error result instead of re-raising to maintain callback flow
+        return {
+            "status": "failed",
+            "method": "optimized_status_update",
+            "error": str(e),
+            "execution_id": context.execution_id,
+        }
 
 
 def _update_pipeline_status(context: CallbackContext, final_status: str) -> bool:
@@ -1001,8 +623,8 @@ def _update_pipeline_status(context: CallbackContext, final_status: str) -> bool
                 # Map execution status to pipeline status
                 pipeline_status = _map_execution_status_to_pipeline_status(final_status)
 
-                # Use batched pipeline update for better performance
-                pipeline_updated = _update_pipeline_with_batching(
+                # Use direct pipeline update (optimized - removed ineffective batching)
+                pipeline_updated = _update_pipeline_directly(
                     pipeline_id=context.pipeline_id,
                     execution_id=context.execution_id,
                     status=pipeline_status,
@@ -1015,11 +637,11 @@ def _update_pipeline_status(context: CallbackContext, final_status: str) -> bool
 
                 if pipeline_updated:
                     logger.info(
-                        f"Successfully queued pipeline update {context.pipeline_id} last_run_status to {pipeline_status}"
+                        f"Successfully updated pipeline {context.pipeline_id} last_run_status to {pipeline_status}"
                     )
                 else:
                     logger.warning(
-                        f"Failed to queue pipeline update for {context.pipeline_id} - pipeline_status={pipeline_status}, pipeline_name={context.pipeline_name}"
+                        f"Failed to update pipeline for {context.pipeline_id} - pipeline_status={pipeline_status}, pipeline_name={context.pipeline_name}"
                     )
             except CircuitBreakerOpenError:
                 # TODO: Implement retry queue to prevent lost DB updates
@@ -1050,8 +672,287 @@ def _update_pipeline_status(context: CallbackContext, final_status: str) -> bool
     return pipeline_updated
 
 
+def _is_api_deployment(context: CallbackContext) -> bool:
+    """Check if this is an API deployment execution.
+
+    API deployments should preserve cache for subsequent requests.
+    """
+    try:
+        # Check if this is an API deployment by looking at the pipeline type
+        if hasattr(context, "pipeline_type") and context.pipeline_type:
+            return context.pipeline_type.lower() == "api"
+
+        # Fallback: check execution type if available
+        if hasattr(context, "execution_type") and context.execution_type:
+            return "api" in context.execution_type.lower()
+
+        # If we can't determine, be conservative and assume it's not API
+        return False
+    except Exception:
+        # If any error occurs, be conservative
+        return False
+
+
+def _cleanup_execution_cache_direct(context: CallbackContext) -> None:
+    """Clean execution cache directly using cache manager.
+
+    This replaces the broken backend API call with direct cache operations.
+    """
+    try:
+        # Use the existing cache manager to clear execution cache
+        from shared.cache import get_cache_manager
+
+        cache_manager = get_cache_manager()
+        if cache_manager and hasattr(cache_manager, "delete_execution_cache"):
+            # Use the direct cache method similar to ExecutionCacheUtils.delete_execution
+            cache_manager.delete_execution_cache(
+                workflow_id=context.workflow_id, execution_id=context.execution_id
+            )
+            logger.info(f"Cleared execution cache for {context.execution_id}")
+        else:
+            logger.debug("Cache manager not available or method not found")
+    except ImportError:
+        logger.debug("Cache manager not available for direct cleanup")
+    except Exception as e:
+        logger.warning(f"Failed to clear execution cache directly: {e}")
+        # Don't raise - cache cleanup is not critical for callback success
+
+
+def _create_cleanup_result(cleanup_type: str, status: str, **kwargs) -> dict[str, Any]:
+    """Create standardized cleanup result structure.
+
+    Args:
+        cleanup_type: Type of cleanup (api, workflow, backend, etc.)
+        status: Status (success, failed, skipped)
+        **kwargs: Additional fields (message, error, cleaned_paths, files_deleted, etc.)
+
+    Returns:
+        Standardized cleanup result dictionary
+    """
+    result = {
+        "type": cleanup_type,
+        "status": status,
+    }
+
+    # Add optional fields if provided
+    if "message" in kwargs:
+        result["message"] = kwargs["message"]
+    if "error" in kwargs:
+        result["error"] = str(kwargs["error"])
+    if "cleaned_paths" in kwargs:
+        result["cleaned_paths"] = kwargs["cleaned_paths"]
+    if "failed_paths" in kwargs:
+        result["failed_paths"] = kwargs["failed_paths"]
+    if "files_deleted" in kwargs:
+        result["files_deleted"] = kwargs["files_deleted"]
+    if "method" in kwargs:
+        result["method"] = kwargs["method"]
+    if "reason" in kwargs:
+        result["reason"] = kwargs["reason"]
+
+    return result
+
+
+def _setup_file_system(storage_type):
+    """Setup FileSystem instance with error handling.
+
+    Args:
+        storage_type: FileStorageType enum value
+
+    Returns:
+        FileStorage instance
+
+    Raises:
+        Exception: If FileSystem setup fails
+    """
+    from unstract.filesystem import FileSystem
+
+    file_system = FileSystem(storage_type)
+    return file_system.get_file_storage()
+
+
+def _cleanup_directory(
+    file_storage, directory_path: str, cleanup_type: str
+) -> dict[str, Any]:
+    """Perform directory cleanup with file counting and logging.
+
+    Args:
+        file_storage: FileStorage instance
+        directory_path: Path to directory to clean
+        cleanup_type: Type identifier for logging (api/workflow)
+
+    Returns:
+        Cleanup result dictionary
+    """
+    try:
+        if file_storage.exists(directory_path):
+            # Get file count before cleanup
+            try:
+                files = file_storage.ls(directory_path)
+                file_count = len(files) if files else 0
+
+                # Remove the entire execution directory
+                file_storage.rm(directory_path, recursive=True)
+
+                logger.info(
+                    f"✅ Successfully cleaned up {cleanup_type} execution directory: {directory_path} ({file_count} files)"
+                )
+
+                return _create_cleanup_result(
+                    cleanup_type=cleanup_type,
+                    status="success",
+                    cleaned_paths=[directory_path],
+                    files_deleted=file_count,
+                    message=f"{cleanup_type.title()} execution directory cleaned: {directory_path}",
+                )
+
+            except Exception as cleanup_error:
+                logger.error(
+                    f"Failed to clean {cleanup_type} execution directory: {cleanup_error}"
+                )
+                return _create_cleanup_result(
+                    cleanup_type=cleanup_type,
+                    status="failed",
+                    error=cleanup_error,
+                    failed_paths=[directory_path],
+                )
+        else:
+            logger.warning(
+                f"{cleanup_type.title()} execution directory not found: {directory_path}"
+            )
+            return _create_cleanup_result(
+                cleanup_type=cleanup_type,
+                status="skipped",
+                message=f"Directory not found: {directory_path}",
+            )
+
+    except Exception as e:
+        logger.error(f"Directory cleanup failed for {cleanup_type}: {e}")
+        return _create_cleanup_result(cleanup_type=cleanup_type, status="failed", error=e)
+
+
+def _get_execution_directory(context: CallbackContext) -> tuple[str, any, str]:
+    """Determine execution directory path, storage type, and cleanup type.
+
+    Args:
+        context: Callback context with execution details
+
+    Returns:
+        Tuple of (directory_path, storage_type, cleanup_type)
+
+    Raises:
+        ValueError: If execution type cannot be determined
+    """
+    from unstract.filesystem import FileStorageType
+    from unstract.workflow_execution.execution_file_handler import ExecutionFileHandler
+
+    # Determine if this is an API or workflow execution
+    is_api_execution = context.pipeline_data and context.pipeline_data.get(
+        "is_api", False
+    )
+
+    if is_api_execution and context.pipeline_id:
+        # API execution
+        api_execution_dir = ExecutionFileHandler.get_api_execution_dir(
+            workflow_id=context.workflow_id,
+            execution_id=context.execution_id,
+            organization_id=context.organization_id,
+        )
+        return api_execution_dir, FileStorageType.API, "api"
+
+    elif context.workflow_id:
+        # Workflow execution
+        file_handler = ExecutionFileHandler(
+            workflow_id=context.workflow_id,
+            execution_id=context.execution_id,
+            organization_id=context.organization_id,
+        )
+        execution_dir = file_handler.execution_dir
+        return execution_dir, FileStorageType.WORKFLOW_EXECUTION, "workflow"
+
+    else:
+        raise ValueError(
+            f"Cannot determine execution type: is_api={is_api_execution}, "
+            f"workflow_id={context.workflow_id}, pipeline_id={context.pipeline_id}"
+        )
+
+
+def _cleanup_execution_directory(context: CallbackContext) -> dict[str, Any]:
+    """Clean up execution directory with unified logic for API and workflow types.
+
+    Args:
+        context: Callback context with execution details
+
+    Returns:
+        Directory cleanup result dictionary
+    """
+    try:
+        # Get directory path and storage type
+        directory_path, storage_type, cleanup_type = _get_execution_directory(context)
+
+        logger.info(
+            f"🧹 Starting {cleanup_type} execution directory cleanup for {context.execution_id}"
+        )
+
+        # Setup file system
+        file_storage = _setup_file_system(storage_type)
+
+        # Perform cleanup
+        return _cleanup_directory(file_storage, directory_path, cleanup_type)
+
+    except ValueError as ve:
+        logger.warning(f"⚠️ {ve}")
+        return _create_cleanup_result(
+            cleanup_type="unknown", status="skipped", message=str(ve)
+        )
+    except Exception as e:
+        logger.error(f"Failed to setup directory cleanup: {e}")
+        return _create_cleanup_result(
+            cleanup_type="unknown", status="failed", error=f"Setup error: {str(e)}"
+        )
+
+
+def _cleanup_backend_cache(context: CallbackContext) -> dict[str, Any]:
+    """Clean up backend cache for non-API deployments.
+
+    Args:
+        context: Callback context with execution details
+
+    Returns:
+        Backend cleanup result dictionary
+    """
+    try:
+        # Only clear execution cache for non-API deployments
+        # API deployments may need cache persistence for subsequent requests
+        if not _is_api_deployment(context):
+            _cleanup_execution_cache_direct(context)
+            logger.info(
+                "✅ Direct execution cache cleanup completed for non-API deployment"
+            )
+            return _create_cleanup_result(
+                cleanup_type="backend",
+                status="cleaned_direct",
+                method="direct_cache_cleanup",
+                message="Execution cache cleared for non-API deployment",
+            )
+        else:
+            logger.info("ℹ️  Cache cleanup skipped for API deployment (cache preserved)")
+            return _create_cleanup_result(
+                cleanup_type="backend",
+                status="skipped",
+                reason="api_deployment",
+                message="Cache preserved for API deployment",
+            )
+    except Exception as e:
+        logger.warning(f"Direct cache cleanup failed: {e}")
+        return _create_cleanup_result(cleanup_type="backend", status="failed", error=e)
+
+
 def _cleanup_execution_resources(context: CallbackContext) -> dict[str, Any]:
-    """Perform comprehensive resource cleanup (backend + directories).
+    """Streamlined resource cleanup with unified logic for backend cache and directories.
+
+    REFACTORED: Eliminated ~200 lines of duplicated code by extracting common utilities.
+    Now uses shared functions for consistent error handling and result structures.
 
     Args:
         context: Callback context with execution details
@@ -1059,239 +960,28 @@ def _cleanup_execution_resources(context: CallbackContext) -> dict[str, Any]:
     Returns:
         Cleanup result dictionary with status and details
     """
-    cleanup_result = {"status": "partial", "backend": {}, "directories": {}}
+    # 1. Backend cache cleanup
+    backend_result = _cleanup_backend_cache(context)
 
-    # 1. Backend cleanup (existing API-based cleanup)
-    try:
-        backend_cleanup = context.api_client.cleanup_execution_resources(
-            execution_ids=[context.execution_id], cleanup_types=["cache", "temp_files"]
-        )
-        cleanup_result["backend"] = backend_cleanup
-        logger.info(
-            f"✅ Backend resource cleanup completed: {backend_cleanup.get('status', 'unknown')}"
-        )
-    except CircuitBreakerOpenError:
-        # TODO: Queue cleanup tasks for later when circuit breaker is open
-        # Similar to pipeline status updates, cleanup operations should be queued
-        # for retry rather than skipped entirely to prevent resource leaks
-        logger.info(
-            "Cleanup endpoint circuit breaker open - skipping backend resource cleanup"
-        )
-        cleanup_result["backend"] = {
-            "status": "skipped",
-            "message": "Circuit breaker open",
-        }
-    except Exception as e:
-        if "404" in str(e) or NOT_FOUND_MSG in str(e):
-            logger.info(
-                "Cleanup API endpoint not available, skipping backend resource cleanup"
-            )
-            cleanup_result["backend"] = {
-                "status": "skipped",
-                "message": "Cleanup endpoint not available",
-            }
-        else:
-            logger.warning(f"Backend cleanup failed but continuing execution: {str(e)}")
-            cleanup_result["backend"] = {
-                "status": "failed",
-                "error": str(e),
-                "execution_continued": True,
-            }
+    # 2. Directory cleanup (unified logic for API and workflow)
+    directory_result = _cleanup_execution_directory(context)
 
-    # 2. Cloud storage directory cleanup using existing ExecutionFileHandler
-    try:
-        from unstract.workflow_execution.execution_file_handler import (
-            ExecutionFileHandler,
-        )
-
-        # Determine if this is an API or workflow execution
-        is_api_execution = context.pipeline_data and context.pipeline_data.get(
-            "is_api", False
-        )
-
-        if is_api_execution and context.pipeline_id:
-            # API execution cleanup: Using existing ExecutionFileHandler with API path
-            logger.info(
-                f"🧹 Starting API execution directory cleanup for {context.execution_id}"
-            )
-
-            # Create ExecutionFileHandler for API execution directory
-            # Note: For API, we use get_api_execution_dir but need to clean the entire execution
-            api_execution_dir = ExecutionFileHandler.get_api_execution_dir(
-                workflow_id=context.pipeline_id,  # For API executions, pipeline_id is the API deployment ID
-                execution_id=context.execution_id,
-                organization_id=context.organization_id,
-            )
-
-            try:
-                # Use FileSystem to clean up API execution directory
-                from unstract.filesystem import FileStorageType, FileSystem
-
-                file_system = FileSystem(FileStorageType.API)  # Use API storage type
-                file_storage = file_system.get_file_storage()
-
-                # Check if directory exists and remove it
-                if file_storage.exists(api_execution_dir):
-                    # Get directory info before cleanup
-                    try:
-                        # List files to get count (use ls method from interface)
-                        files = file_storage.ls(api_execution_dir)
-                        file_count = len(files) if files else 0
-
-                        # Remove the entire execution directory (use rm method from interface)
-                        file_storage.rm(api_execution_dir, recursive=True)
-
-                        cleanup_result["directories"] = {
-                            "type": "api",
-                            "status": "success",
-                            "cleaned_paths": [api_execution_dir],
-                            "files_deleted": file_count,
-                            "message": f"API execution directory cleaned: {api_execution_dir}",
-                        }
-                        logger.info(
-                            f"✅ Successfully cleaned up API execution directory: {api_execution_dir} ({file_count} files)"
-                        )
-
-                    except Exception as cleanup_error:
-                        logger.error(
-                            f"Failed to clean API execution directory: {cleanup_error}"
-                        )
-                        cleanup_result["directories"] = {
-                            "type": "api",
-                            "status": "failed",
-                            "error": str(cleanup_error),
-                            "failed_paths": [api_execution_dir],
-                        }
-                else:
-                    logger.warning(
-                        f"API execution directory not found: {api_execution_dir}"
-                    )
-                    cleanup_result["directories"] = {
-                        "type": "api",
-                        "status": "skipped",
-                        "message": f"Directory not found: {api_execution_dir}",
-                    }
-
-            except Exception as fs_error:
-                logger.error(f"Failed to initialize API file system: {fs_error}")
-                cleanup_result["directories"] = {
-                    "type": "api",
-                    "status": "failed",
-                    "error": f"FileSystem error: {str(fs_error)}",
-                }
-
-        elif context.workflow_id:
-            # Workflow execution cleanup: Use existing ExecutionFileHandler method
-            logger.info(
-                f"🧹 Starting workflow execution directory cleanup for {context.execution_id}"
-            )
-
-            try:
-                # Create ExecutionFileHandler for the specific execution (no file_execution_id = entire execution)
-                file_handler = ExecutionFileHandler(
-                    workflow_id=context.workflow_id,
-                    execution_id=context.execution_id,
-                    organization_id=context.organization_id,
-                    file_execution_id=None,  # Clean entire execution, not individual file
-                )
-
-                # Use the existing delete method - but we need to enhance it for entire execution
-                execution_dir = file_handler.execution_dir
-
-                # Use FileSystem to clean up workflow execution directory
-                from unstract.filesystem import FileStorageType, FileSystem
-
-                file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
-                file_storage = file_system.get_file_storage()
-
-                # Check if directory exists and remove it
-                if file_storage.exists(execution_dir):
-                    # Get directory info before cleanup
-                    try:
-                        # List files to get count (use ls method from interface)
-                        files = file_storage.ls(execution_dir)
-                        file_count = len(files) if files else 0
-
-                        # Remove the entire execution directory (use rm method from interface)
-                        file_storage.rm(execution_dir, recursive=True)
-
-                        cleanup_result["directories"] = {
-                            "type": "workflow",
-                            "status": "success",
-                            "cleaned_paths": [execution_dir],
-                            "files_deleted": file_count,
-                            "message": f"Workflow execution directory cleaned: {execution_dir}",
-                        }
-                        logger.info(
-                            f"✅ Successfully cleaned up workflow execution directory: {execution_dir} ({file_count} files)"
-                        )
-
-                    except Exception as cleanup_error:
-                        logger.error(
-                            f"Failed to clean workflow execution directory: {cleanup_error}"
-                        )
-                        cleanup_result["directories"] = {
-                            "type": "workflow",
-                            "status": "failed",
-                            "error": str(cleanup_error),
-                            "failed_paths": [execution_dir],
-                        }
-                else:
-                    logger.warning(
-                        f"Workflow execution directory not found: {execution_dir}"
-                    )
-                    cleanup_result["directories"] = {
-                        "type": "workflow",
-                        "status": "skipped",
-                        "message": f"Directory not found: {execution_dir}",
-                    }
-
-            except Exception as handler_error:
-                logger.error(f"Failed to create ExecutionFileHandler: {handler_error}")
-                cleanup_result["directories"] = {
-                    "type": "workflow",
-                    "status": "failed",
-                    "error": f"ExecutionFileHandler error: {str(handler_error)}",
-                }
-        else:
-            logger.warning(
-                f"⚠️ Cannot determine execution type for cleanup: is_api={is_api_execution}, workflow_id={context.workflow_id}, pipeline_id={context.pipeline_id}"
-            )
-            cleanup_result["directories"] = {
-                "status": "skipped",
-                "message": "Cannot determine execution type for directory cleanup",
-            }
-
-    except ImportError as import_error:
-        logger.warning(
-            f"Cloud storage directory cleanup module not available: {import_error}"
-        )
-        cleanup_result["directories"] = {
-            "status": "failed",
-            "error": f"Import error: {str(import_error)}",
-        }
-    except Exception as dir_cleanup_error:
-        logger.error(f"Cloud storage directory cleanup failed: {dir_cleanup_error}")
-        cleanup_result["directories"] = {
-            "status": "failed",
-            "error": str(dir_cleanup_error),
-        }
-
-    # Determine overall cleanup status
-    backend_success = cleanup_result["backend"].get("status") in [
+    # 3. Aggregate results with consistent status logic
+    backend_success = backend_result.get("status") in [
         "success",
         "completed",
         "skipped",
+        "cleaned_direct",
     ]
-    directory_success = cleanup_result["directories"].get("status") in [
-        "success",
-        "skipped",
-    ]
-    cleanup_result["status"] = (
-        "completed" if (backend_success and directory_success) else "partial"
-    )
+    directory_success = directory_result.get("status") in ["success", "skipped"]
 
-    return cleanup_result
+    overall_status = "completed" if (backend_success and directory_success) else "partial"
+
+    return {
+        "status": overall_status,
+        "backend": backend_result,
+        "directories": directory_result,
+    }
 
 
 def _handle_callback_notifications(context: CallbackContext) -> None:
@@ -1300,9 +990,7 @@ def _handle_callback_notifications(context: CallbackContext) -> None:
     Args:
         context: Callback context with execution details
     """
-    # Trigger notifications after successful batch completion (worker-to-worker approach)
-    # NOTE: Both callback worker and Django backend may send notifications for backward compatibility
-    # Multiple notifications are allowed for now and will be handled by deduplication later
+    # Trigger notifications after successful batch completion
     try:
         # Try to trigger notifications using workflow_id if pipeline_id is None
         notification_target_id = (
@@ -1334,72 +1022,38 @@ def _handle_callback_notifications(context: CallbackContext) -> None:
 def _process_batch_callback_core(
     task_instance, results, *args, **kwargs
 ) -> dict[str, Any]:
-    """Core implementation of batch callback processing.
+    """Simplified callback processing with optimized single-source-of-truth approach.
 
-    This function contains the actual processing logic that both the new task
-    and Django compatibility task will use.
+    OPTIMIZATIONS:
+    - Single parameter extraction function handles all context setup
+    - Only 2 essential status updates: workflow execution + pipeline status
+    - Eliminated redundant organization context setup functions
+    - Direct API calls replace ineffective batch processing
 
     Args:
         task_instance: The Celery task instance (self)
         results (list): List of results from each batch
-            Each result is a dictionary containing:
-            - successful_files: Number of successfully processed files
-            - failed_files: Number of failed files
-        **kwargs: Additional arguments including:
-            - execution_id: ID of the execution
+        **kwargs: Additional arguments including execution_id, pipeline_id, organization_id
 
     Returns:
-        Callback processing result
+        Callback processing result with optimized execution flow
     """
     # Initialize performance optimizations
     _initialize_performance_managers()
 
-    # Step 1: Extract and validate parameters
+    # Extract and validate all parameters using single source of truth
     context = _extract_callback_parameters(task_instance, results, kwargs)
 
-    # Step 2: Setup organization context
-    _setup_organization_context(context, results, kwargs)
-
-    # Step 3: Setup API client and execution context
-    config, api_client = _setup_api_client_and_execution_context(context)
-
-    # Step 4: Fetch and validate pipeline data
-    _fetch_and_validate_pipeline_data(context)
-
-    # Handle final organization validation and context setup
-    if not context.organization_id:
-        # Try to extract from the first file batch result if available
-        for result in results:
-            if isinstance(result, dict) and "organization_id" in result:
-                context.organization_id = result["organization_id"]
-                logger.info(
-                    f"Extracted organization_id from batch result: {context.organization_id}"
-                )
-                break
-
-    # Set organization context using shared utility
-    if context.organization_id:
-        try:
-            # Use standardized execution context setup
-            config, api_client = WorkerExecutionContext.setup_execution_context(
-                context.organization_id, context.execution_id, context.workflow_id
-            )
-            context.api_client = api_client
-        except Exception as context_error:
-            logger.error(f"Failed to setup execution context: {context_error}")
-            # Fallback to manual setup for backward compatibility
-            StateStore.set(Account.ORGANIZATION_ID, context.organization_id)
-            api_client.set_organization_context(context.organization_id)
-    else:
+    # Validate that context is properly set up (API client and organization already configured in _extract_callback_parameters)
+    if not context.organization_id or not context.api_client:
         logger.error(
-            f"Could not extract organization_id for execution {context.execution_id}. Pipeline status update may fail."
+            f"CRITICAL: Context not properly initialized for execution {context.execution_id}. "
+            f"organization_id={context.organization_id}, api_client={context.api_client is not None}"
         )
+        raise RuntimeError(f"Invalid context for execution {context.execution_id}")
 
-    # Configure batch processor with API client for better performance
-    batch_processor = get_batch_processor()
-    if batch_processor and not batch_processor.api_client:
-        batch_processor.set_api_client(api_client)
-        logger.debug("API client configured for batch processor")
+    # Note: Batch processor removed - it was ineffective with auto-flush disabled
+    # Using direct API calls for the 1-2 status updates in callback is more efficient
 
     with log_context(
         task_id=context.task_id,
@@ -1413,34 +1067,30 @@ def _process_batch_callback_core(
         )
 
         try:
-            # Step 5: Process results and update execution status
+            # Process and aggregate batch results
+            config = WorkerConfig()  # Create config for wall-clock time calculation
             aggregated_results, final_status = _process_results_and_update_status(
                 context, results, config
             )
 
-            # Destination processing is now handled in file processing worker (not callback)
-            # Callback worker only handles finalization and aggregation
-            logger.info(
-                f"Destination processing was handled during file processing for {aggregated_results['successful_files']} successful files"
-            )
-            destination_results = {
-                "status": "handled_in_file_processing",
-                "reason": "destination_processing_moved_to_file_worker",
-                "successful_files": aggregated_results["successful_files"],
-            }
-
-            # Step 6: Finalize the execution
+            # 1. Update workflow execution status (consolidated single call)
             finalization_result = _finalize_execution(
                 context, final_status, aggregated_results
             )
 
-            # Step 7: Update pipeline status
-            pipeline_updated = _update_pipeline_status(context, final_status)
+            # 2. Update pipeline status (second essential call)
+            _update_pipeline_status(context, final_status)
 
-            # Step 8: Cleanup execution resources
+            # 3. Cleanup execution resources (only for non-API deployments)
             cleanup_result = _cleanup_execution_resources(context)
 
-            # Step 9: Get performance optimization statistics
+            # Note: Destination processing is handled in file processing worker
+            destination_results = {
+                "status": "handled_in_file_processing",
+                "successful_files": aggregated_results["successful_files"],
+            }
+
+            # Collect performance statistics
             performance_stats = _get_performance_stats()
 
             callback_result = {
@@ -1454,30 +1104,22 @@ def _process_batch_callback_core(
                 "cleanup_result": cleanup_result,
                 "pipeline_id": context.pipeline_id,
                 "performance_optimizations": {
-                    "status_batching_used": True,  # Status update was attempted
-                    "pipeline_batching_used": pipeline_updated
-                    if context.pipeline_id
-                    else False,
+                    "optimized_finalization": True,  # Using simple status update instead of complex finalization
+                    "direct_api_calls": True,  # Using direct API calls instead of ineffective batching
                     "cache_stats": performance_stats.get("cache", {}),
-                    "batch_stats": performance_stats.get("batch", {}),
+                    "optimizations": performance_stats.get("optimizations", {}),
+                    "eliminated_complex_features": [
+                        "finalize_workflow_execution",
+                        "batch_processor (was disabled anyway)",
+                    ],
                 },
             }
 
             logger.info(
-                f"Completed batch callback processing for execution {context.execution_id}"
+                f"Completed callback processing for execution {context.execution_id}"
             )
 
-            # Manually flush batch processor to ensure all updates are processed
-            # (but without auto-flush that causes duplicate notifications)
-            batch_processor = get_batch_processor()
-            if batch_processor:
-                try:
-                    flushed_count = batch_processor.flush_all()
-                    logger.debug(f"Manually flushed {flushed_count} batch operations")
-                except Exception as flush_error:
-                    logger.warning(f"Failed to flush batch operations: {flush_error}")
-
-            # Step 10: Handle notifications
+            # 4. Handle notifications (non-critical)
             _handle_callback_notifications(context)
 
             return callback_result
@@ -1487,26 +1129,18 @@ def _process_batch_callback_core(
                 f"Batch callback processing failed for execution {context.execution_id}: {e}"
             )
 
-            # Try to mark execution as failed
+            # Try to mark execution as failed using simple status update
             try:
-                with InternalAPIClient(config) as error_api_client:
-                    error_api_client.set_organization_context(context.organization_id)
-                    try:
-                        error_api_client.finalize_workflow_execution(
-                            execution_id=context.execution_id,
-                            final_status=ExecutionStatus.ERROR.value,
-                            error_summary={"callback_error": str(e)},
-                            organization_id=context.organization_id,
-                        )
-                    except Exception as finalize_error:
-                        if "404" in str(finalize_error) or NOT_FOUND_MSG in str(
-                            finalize_error
-                        ):
-                            logger.info(
-                                "Finalization API endpoint not available, execution marked as failed via status update"
-                            )
-                        else:
-                            raise finalize_error
+                # Reuse existing API client from context
+                context.api_client.set_organization_context(context.organization_id)
+                # Use optimized simple status update instead of complex finalization
+                context.api_client.update_workflow_execution_status(
+                    execution_id=context.execution_id,
+                    status=ExecutionStatus.ERROR.value,
+                    error_message=str(e)[:500],  # Limit error message length
+                    organization_id=context.organization_id,
+                )
+                logger.info(f"Marked execution {context.execution_id} as failed")
             except Exception as cleanup_error:
                 logger.error(f"Failed to mark execution as failed: {cleanup_error}")
 
@@ -1726,10 +1360,12 @@ def process_batch_callback_api(
                             f"API deployment execution {execution_id} completed with {len(failed_files)} failed files out of {total_files} total"
                         )
 
+                # Update workflow execution status
                 api_client.update_workflow_execution_status(
                     execution_id=execution_id,
                     status=execution_status,
-                    execution_time=execution_time,
+                    total_files=total_files,
+                    organization_id=organization_id,
                 )
 
                 # OPTIMIZATION: Skip pipeline status update for API deployments
@@ -1741,9 +1377,7 @@ def process_batch_callback_api(
                         f"OPTIMIZATION: Skipping pipeline status update for API deployment {pipeline_id} (no Pipeline record exists)"
                     )
 
-                    # Trigger notifications for API deployment (worker-to-worker approach)
-                    # NOTE: Both callback worker and Django backend may send notifications for backward compatibility
-                    # Multiple notifications are allowed for now and will be handled by deduplication later
+                    # Trigger notifications for API deployment
                     try:
                         config = WorkerConfig.from_env("CALLBACK")
                         handle_status_notifications(
@@ -1771,6 +1405,10 @@ def process_batch_callback_api(
                     "total_execution_time": execution_time,
                     "batches_processed": len(file_batch_results),
                     "task_id": task_id,
+                    "optimization": {
+                        "method": "simple_status_update",
+                        "eliminated_complex_finalization": True,
+                    },
                 }
 
                 logger.info(
@@ -1788,10 +1426,12 @@ def process_batch_callback_api(
                 config = WorkerConfig()
                 with InternalAPIClient(config) as api_client:
                     api_client.set_organization_context(schema_name)
+                    # Update execution status to error
                     api_client.update_workflow_execution_status(
                         execution_id=execution_id,
                         status=ExecutionStatus.ERROR.value,
-                        error=str(e),
+                        error_message=str(e)[:500],  # Limit error message length
+                        organization_id=schema_name,
                     )
 
                     # OPTIMIZATION: Skip pipeline status update for API deployments on error
@@ -1803,99 +1443,6 @@ def process_batch_callback_api(
                 logger.error(f"Failed to update execution status: {update_error}")
 
             raise
-
-
-@app.task(
-    bind=True,
-    name="finalize_execution_callback",
-    autoretry_for=(Exception,),
-    max_retries=2,
-    retry_backoff=True,
-)
-@monitor_performance
-@with_execution_context
-def finalize_execution_callback(
-    self, schema_name: str, execution_id: str, cleanup_resources: bool = True
-) -> dict[str, Any]:
-    """Finalize execution and cleanup resources.
-
-    This is a standalone task for execution finalization that can be
-    called independently or as part of the callback processing.
-    """
-    logger.info(f"Finalizing execution {execution_id}")
-
-    try:
-        config = WorkerConfig()
-        with InternalAPIClient(config) as api_client:
-            api_client.set_organization_context(schema_name)
-
-            # Get current execution status
-            finalization_status = api_client.get_execution_finalization_status(
-                execution_id
-            )
-
-            if finalization_status.get("is_finalized"):
-                logger.info(f"Execution {execution_id} already finalized")
-                return {
-                    "status": "already_finalized",
-                    "execution_id": execution_id,
-                    "current_status": finalization_status.get("current_status"),
-                }
-
-            # Perform comprehensive cleanup if requested (backend + directories)
-            cleanup_result = None
-            if cleanup_resources:
-                # Backend cleanup
-                backend_cleanup = api_client.cleanup_execution_resources(
-                    execution_ids=[execution_id],
-                    cleanup_types=["cache", "temp_files", "logs"],
-                )
-
-                # Directory cleanup (if we can determine the context)
-                directory_cleanup = {
-                    "status": "skipped",
-                    "message": "Context not available in finalize_execution",
-                }
-                try:
-                    # Try to get execution context to determine cleanup type
-                    # Note: This function has limited context, so directory cleanup may be skipped
-                    # The main cleanup should happen in process_batch_callback with full context
-                    logger.info(
-                        "🧹 Finalize execution: Directory cleanup skipped - insufficient context"
-                    )
-                    logger.info(
-                        "   (Main directory cleanup should occur in process_batch_callback)"
-                    )
-                except Exception as dir_error:
-                    logger.warning(
-                        f"Directory cleanup in finalize_execution failed: {dir_error}"
-                    )
-
-                cleanup_result = {
-                    "backend": backend_cleanup,
-                    "directories": directory_cleanup,
-                    "note": "Full directory cleanup should occur in main callback with complete context",
-                }
-
-                finalization_result = {
-                    "status": "finalized",
-                    "execution_id": execution_id,
-                    "task_id": self.request.id,
-                    "cleanup_result": cleanup_result,
-                    "finalized_at": time.time(),
-                }
-
-                logger.info(f"Successfully finalized execution {execution_id}")
-
-                return finalization_result
-
-    except Exception as e:
-        logger.error(f"Failed to finalize execution {execution_id}: {e}")
-        raise
-
-
-# Backward compatibility aliases for Django backend during transition
-# Register the same task function with the old Django task names for compatibility
 
 
 @app.task(

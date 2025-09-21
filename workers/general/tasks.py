@@ -40,8 +40,7 @@ from shared.workflow.execution import (
     WorkflowOrchestrationUtils,
 )
 
-# NOTE: ActiveFileManager and FileManagementUtils imports removed
-# These are now handled internally by StreamingFileDiscovery
+# File management handled by StreamingFileDiscovery
 # Import from local worker module (avoid circular import)
 from worker import app, config
 
@@ -93,8 +92,7 @@ def _log_batch_statistics_to_ui(
         logger.debug(f"Failed to log batch statistics: {log_error}")
 
 
-# NOTE: _log_file_filtering_statistics has been removed as filtering
-# is now done in the StreamingFileDiscovery with integrated logging
+# File filtering handled by StreamingFileDiscovery
 
 
 def _log_batch_creation_statistics(
@@ -270,9 +268,7 @@ def async_execute_bin_general(
 
             api_client.update_workflow_execution_status(**update_request.to_dict())
 
-            # NOTE: Active file cache cleanup is now handled by the callback worker
-            # when file processing is complete. The StreamingFileDiscovery doesn't
-            # create cache entries since it filters files during discovery.
+            # Cache cleanup handled by callback worker
 
             logger.info(
                 f"Successfully completed general workflow execution {execution_id}"
@@ -340,8 +336,7 @@ def async_execute_bin_general(
             except Exception as update_error:
                 logger.error(f"Failed to update execution status: {update_error}")
 
-            # NOTE: Active file cache cleanup not needed on error path
-            # StreamingFileDiscovery doesn't create cache entries
+            # Cache cleanup not needed - no entries created
 
             # CRITICAL: Clean up StateStore to prevent data leaks between tasks (error path)
             try:

@@ -301,7 +301,7 @@ class WorkerSourceConnector:
     def _get_existing_file_executions_optimized(
         self, provider_file_uuids: list[str]
     ) -> dict[str, str]:
-        """OPTIMIZED: Check specific files against active executions in single API call.
+        """Check specific files against active executions in single API call.
 
         Instead of:
         1. Get ALL PENDING/EXECUTING executions (100+ executions)

@@ -135,22 +135,15 @@ class WorkflowFileExecution(BaseModel):
         Return:
             The updated `WorkflowExecutionInputFile` object
         """
-        # Django automatically converts enum to string for database storage
-        self.status = status
-
         # Set execution_time if provided, otherwise calculate it for final states
-        if execution_time is not None:
-            self.execution_time = execution_time
-        elif (
-            status
-            in [
-                ExecutionStatus.COMPLETED.value,
-                ExecutionStatus.ERROR.value,
-                ExecutionStatus.STOPPED.value,
-            ]
-            and not self.execution_time
-        ):
-            self.execution_time = CommonUtils.time_since(self.created_at)
+        status = ExecutionStatus(status)
+        self.status = status.value
+        if status in [
+            ExecutionStatus.COMPLETED,
+            ExecutionStatus.ERROR,
+            ExecutionStatus.STOPPED,
+        ]:
+            self.execution_time = CommonUtils.time_since(self.created_at, 3)
 
         self.execution_error = execution_error
         self.save()

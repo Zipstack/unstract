@@ -94,7 +94,7 @@ class WorkerRegistry:
             routes=[
                 TaskRoute("process_batch_callback", QueueName.CALLBACK),
                 TaskRoute("process_batch_callback_api", QueueName.CALLBACK_API),
-                TaskRoute("finalize_execution_callback", QueueName.CALLBACK),
+                # TaskRoute("finalize_execution_callback", QueueName.CALLBACK), removed - dead code
             ],
         ),
         WorkerType.NOTIFICATION: WorkerTaskRouting(

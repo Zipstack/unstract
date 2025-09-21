@@ -673,67 +673,9 @@ class ToolExecutionInternalAPIView(APIView):
             )
 
 
-class ExecutionFinalizationAPIView(APIView):
-    """Internal API endpoint for finalizing workflow executions."""
-
-    def post(self, request, execution_id):
-        """Finalize a workflow execution."""
-        try:
-            # Get workflow execution
-            execution = get_object_or_404(WorkflowExecution, id=execution_id)
-
-            # Apply organization filtering if needed
-            organization_id = StateStore.get(Account.ORGANIZATION_ID)
-
-            if organization_id and execution.organization_id != organization_id:
-                return Response(
-                    {"error": "Execution not found or access denied"},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-
-            request_data = request.data
-            final_status = request_data.get("final_status", "COMPLETED")
-            total_files_processed = request_data.get("total_files_processed", 0)
-            error_summary = request_data.get("error_summary", {})
-
-            with transaction.atomic():
-                # FIXED: Use update_execution() method for proper wall-clock time calculation
-                # Don't override execution_time with worker's summed time
-
-                from workflow_manager.workflow_v2.enums import ExecutionStatus
-
-                status_enum = ExecutionStatus(final_status)
-
-                # Use the model's update_execution method for proper wall-clock calculation
-                execution.update_execution(
-                    status=status_enum,
-                    error=str(error_summary) if error_summary else None,
-                    increment_attempt=False,
-                )
-
-                # Update total_files separately (not handled by update_execution)
-                execution.total_files = total_files_processed
-                execution.save()
-
-            logger.info(f"Finalized execution {execution_id} with status {final_status}")
-
-            return Response(
-                {
-                    "status": "finalized",
-                    "execution_id": str(execution.id),
-                    "final_status": execution.status,
-                    "total_files_processed": execution.total_files,
-                    "execution_time": execution.execution_time,
-                    "finalized_at": execution.modified_at.isoformat(),
-                }
-            )
-
-        except Exception as e:
-            logger.error(f"Failed to finalize execution {execution_id}: {str(e)}")
-            return Response(
-                {"error": "Failed to finalize execution", "detail": str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+# ExecutionFinalizationAPIView class removed - it was unused dead code
+# Workers now use simple update_workflow_execution_status instead of complex finalization
+# This eliminates unnecessary API complexity and improves callback performance
 
 
 class WorkflowFileExecutionCheckActiveAPIView(APIView):

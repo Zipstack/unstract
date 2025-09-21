@@ -723,26 +723,7 @@ class InternalAPIClient(CachedAPIClientMixin):
 
         return results
 
-    def finalize_workflow_execution(
-        self,
-        execution_id: str | uuid.UUID,
-        final_status: str = "COMPLETED",
-        total_files_processed: int | None = None,
-        total_execution_time: float = 0.0,
-        results_summary: dict[str, Any] | None = None,
-        error_summary: dict[str, Any] | None = None,
-        organization_id: str | None = None,
-    ) -> dict[str, Any]:
-        """Finalize workflow execution with organization context."""
-        return self.execution_client.finalize_workflow_execution(
-            execution_id,
-            final_status,
-            total_files_processed,
-            total_execution_time,
-            results_summary,
-            error_summary,
-            organization_id,
-        )
+    # Workflow execution finalization handled by status updates
 
     def cleanup_execution_resources(
         self, execution_ids: list[str | uuid.UUID], cleanup_types: list | None = None
@@ -752,11 +733,8 @@ class InternalAPIClient(CachedAPIClientMixin):
             execution_ids, cleanup_types
         )
 
-    def get_execution_finalization_status(
-        self, execution_id: str | uuid.UUID
-    ) -> dict[str, Any]:
-        """Get execution finalization status."""
-        return self.execution_client.get_execution_finalization_status(execution_id)
+    # get_execution_finalization_status method removed - it was dead code
+    # Only used by finalize_execution_callback which was never called
 
     def increment_completed_files(
         self, workflow_id: str, execution_id: str
