@@ -6,6 +6,7 @@ from flask import Blueprint, request
 from flask import current_app as app
 
 from unstract.core.flask.exceptions import APIError
+from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.constants import RetrievalStrategy, RunLevel
 from unstract.prompt_service.exceptions import BadRequest
@@ -23,14 +24,24 @@ from unstract.prompt_service.services.variable_replacement import (
 )
 from unstract.prompt_service.utils.file_utils import FileUtils
 from unstract.prompt_service.utils.log import publish_log
-from unstract.sdk.adapter import ToolAdapter
-from unstract.sdk.adapters.llm.no_op.src.no_op_custom_llm import NoOpCustomLLM
-from unstract.sdk.constants import LogLevel
-from unstract.sdk.embedding import Embedding
-from unstract.sdk.exceptions import SdkError
-from unstract.sdk.index import Index
-from unstract.sdk.llm import LLM
-from unstract.sdk.vector_db import VectorDB
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.constants import LogLevel
+    from unstract.sdk1.embedding import EmbeddingCompat
+    from unstract.sdk1.exceptions import SdkError
+    from unstract.sdk1.index import Index
+    from unstract.sdk1.llm import LLM
+    from unstract.sdk1.platform import PlatformHelper as ToolAdapter
+    from unstract.sdk1.vector_db import VectorDB
+else:
+    from unstract.sdk.adapter import ToolAdapter
+    from unstract.sdk.adapters.llm.no_op.src.no_op_custom_llm import NoOpCustomLLM
+    from unstract.sdk.constants import LogLevel
+    from unstract.sdk.embedding import Embedding
+    from unstract.sdk.exceptions import SdkError
+    from unstract.sdk.index import Index
+    from unstract.sdk.llm import LLM
+    from unstract.sdk.vector_db import VectorDB
 
 answer_prompt_bp = Blueprint("answer-prompt", __name__)
 
@@ -138,22 +149,40 @@ def prompt_processor() -> Any:
 
         try:
             usage_kwargs = {"run_id": run_id, "execution_id": execution_id}
-            adapter_instance_id = output[PSKeys.LLM]
-            llm = LLM(
-                tool=util,
-                adapter_instance_id=adapter_instance_id,
-                usage_kwargs={
-                    **usage_kwargs,
-                    PSKeys.LLM_USAGE_REASON: PSKeys.EXTRACTION,
-                },
-                capture_metrics=True,
-            )
+            if check_feature_flag_status("sdk1"):
+                llm = LLM(
+                    adapter_instance_id=output[PSKeys.LLM],
+                    tool=util,
+                    kwargs={
+                        **usage_kwargs,
+                        PSKeys.LLM_USAGE_REASON: PSKeys.EXTRACTION,
+                        PSKeys.CAPTURE_METRICS: True,
+                    },
+                )
 
-            embedding = Embedding(
-                tool=util,
-                adapter_instance_id=output[PSKeys.EMBEDDING],
-                usage_kwargs=usage_kwargs.copy(),
-            )
+                embedding = EmbeddingCompat(
+                    adapter_instance_id=output[PSKeys.EMBEDDING],
+                    tool=util,
+                    kwargs={
+                        **usage_kwargs,
+                    },
+                )
+            else:
+                llm = LLM(
+                    tool=util,
+                    adapter_instance_id=output[PSKeys.LLM],
+                    usage_kwargs={
+                        **usage_kwargs,
+                        PSKeys.LLM_USAGE_REASON: PSKeys.EXTRACTION,
+                    },
+                    capture_metrics=True,
+                )
+
+                embedding = Embedding(
+                    tool=util,
+                    adapter_instance_id=output[PSKeys.EMBEDDING],
+                    usage_kwargs=usage_kwargs.copy(),
+                )
 
             vector_db = VectorDB(
                 tool=util,
@@ -181,7 +210,10 @@ def prompt_processor() -> Any:
             llm_config = adapter_parent_data.get("adapter_metadata")
             adapter_id = adapter_parent_data.get("adapter_id")
             adapter_prefix = adapter_id.split("|")[0]
-            llm_provider = llm._usage_kwargs.get("provider")
+            if check_feature_flag_status("sdk1"):
+                llm_provider = llm.kwargs.get("provider")
+            else:
+                llm_provider = llm._usage_kwargs.get("provider")
             llm_adapter_config = {"adapter_id": adapter_prefix}
             llm_adapter_config["provider"] = llm_provider
             if adapter_prefix == "azureopenai":
@@ -448,17 +480,20 @@ def prompt_processor() -> Any:
                             LogLevel.ERROR,
                         )
                         structured_output[output[PSKeys.NAME]] = None
-                        # No-op adapter always returns a string data and
-                        # to keep this response uniform
-                        # through all enforce types
-                        # we add this check, if not for this,
-                        # type casting to float raises
-                        # an error and we return None.
-                        if isinstance(
-                            llm.get_llm(adapter_instance_id=adapter_instance_id),
-                            NoOpCustomLLM,
-                        ):
-                            structured_output[output[PSKeys.NAME]] = answer
+                        if check_feature_flag_status("sdk1"):
+                            pass
+                        else:
+                            # No-op adapter always returns a string data and
+                            # to keep this response uniform
+                            # through all enforce types
+                            # we add this check, if not for this,
+                            # type casting to float raises
+                            # an error and we return None.
+                            if isinstance(
+                                llm.get_llm(adapter_instance_id=adapter_instance_id),
+                                NoOpCustomLLM,
+                            ):
+                                structured_output[output[PSKeys.NAME]] = answer
             elif output[PSKeys.TYPE] == PSKeys.EMAIL:
                 if answer.lower() == "na":
                     structured_output[output[PSKeys.NAME]] = None
@@ -542,15 +577,26 @@ def prompt_processor() -> Any:
                             RunLevel.CHALLENGE,
                             "Challenging response",
                         )
-                        challenge_llm = LLM(
-                            tool=util,
-                            adapter_instance_id=tool_settings[PSKeys.CHALLENGE_LLM],
-                            usage_kwargs={
-                                **usage_kwargs,
-                                PSKeys.LLM_USAGE_REASON: PSKeys.CHALLENGE,
-                            },
-                            capture_metrics=True,
-                        )
+                        if check_feature_flag_status("sdk1"):
+                            challenge_llm = LLM(
+                                adapter_instance_id=tool_settings[PSKeys.CHALLENGE_LLM],
+                                tool=util,
+                                kwargs={
+                                    **usage_kwargs,
+                                    PSKeys.LLM_USAGE_REASON: PSKeys.CHALLENGE,
+                                    PSKeys.CAPTURE_METRICS: True,
+                                },
+                            )
+                        else:
+                            challenge_llm = LLM(
+                                tool=util,
+                                adapter_instance_id=tool_settings[PSKeys.CHALLENGE_LLM],
+                                usage_kwargs={
+                                    **usage_kwargs,
+                                    PSKeys.LLM_USAGE_REASON: PSKeys.CHALLENGE,
+                                },
+                                capture_metrics=True,
+                            )
                         challenge = challenge_plugin["entrypoint_cls"](
                             llm=llm,
                             challenge_llm=challenge_llm,

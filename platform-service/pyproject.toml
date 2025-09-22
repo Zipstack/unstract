@@ -18,11 +18,13 @@ dependencies = [
     "unstract-sdk[gcs, azure, aws]~=0.76.1", # Add version
     "unstract-flags",
     "unstract-core[flask]",
+    "unstract-sdk1"
 ]
 
 [tool.uv.sources]
 unstract-flags = { path = "../unstract/flags", editable = true }
 unstract-core = { path = "../unstract/core", editable = true }
+unstract-sdk1 = { path = "../unstract/sdk1", editable = true }
 
 [dependency-groups]
 test = ["pytest>=8.0.1"]

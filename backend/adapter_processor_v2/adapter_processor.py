@@ -15,11 +15,21 @@ from adapter_processor_v2.exceptions import (
     InValidAdapterId,
     TestAdapterError,
 )
-from unstract.sdk.adapters.adapterkit import Adapterkit
-from unstract.sdk.adapters.base import Adapter
-from unstract.sdk.adapters.enums import AdapterTypes
-from unstract.sdk.adapters.x2text.constants import X2TextConstants
-from unstract.sdk.exceptions import SdkError
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.adapters.adapterkit import Adapterkit
+    from unstract.sdk1.adapters.base import Adapter
+    from unstract.sdk1.constants import AdapterTypes
+    from unstract.sdk1.embedding import EmbeddingCompat
+    from unstract.sdk1.exceptions import SdkError
+    from unstract.sdk1.llm import LLM
+else:
+    from unstract.sdk.adapters.adapterkit import Adapterkit
+    from unstract.sdk.adapters.base import Adapter
+    from unstract.sdk.adapters.enums import AdapterTypes
+    from unstract.sdk.adapters.x2text.constants import X2TextConstants
+    from unstract.sdk.exceptions import SdkError
 
 from .models import AdapterInstance, UserDefaultAdapter
 
@@ -89,30 +99,77 @@ class AdapterProcessor:
 
     @staticmethod
     def test_adapter(adapter_id: str, adapter_metadata: dict[str, Any]) -> bool:
-        logger.info(f"Testing adapter: {adapter_id}")
-        try:
-            adapter_class = Adapterkit().get_adapter_class_by_adapter_id(adapter_id)
+        if check_feature_flag_status("sdk1"):
+            try:
+                adapter_type = adapter_metadata.get(AdapterKeys.ADAPTER_TYPE)
 
-            if adapter_metadata.pop(AdapterKeys.ADAPTER_TYPE) == AdapterKeys.X2TEXT:
-                if (
-                    adapter_metadata.get(AdapterKeys.PLATFORM_PROVIDED_UNSTRACT_KEY)
-                    and add_unstract_key
-                ):
-                    adapter_metadata = add_unstract_key(adapter_metadata)
-                adapter_metadata[X2TextConstants.X2TEXT_HOST] = settings.X2TEXT_HOST
-                adapter_metadata[X2TextConstants.X2TEXT_PORT] = settings.X2TEXT_PORT
-                platform_key = PlatformAuthenticationService.get_active_platform_key()
-                adapter_metadata[X2TextConstants.PLATFORM_SERVICE_API_KEY] = str(
-                    platform_key.key
+                if adapter_type == AdapterKeys.EMBEDDING:
+                    embedding = EmbeddingCompat(
+                        adapter_id=adapter_id, adapter_metadata=adapter_metadata
+                    )
+                    return embedding.test_connection()
+                elif adapter_type == AdapterKeys.LLM:
+                    llm = LLM(adapter_id=adapter_id, adapter_metadata=adapter_metadata)
+                    return llm.test_connection()
+                else:
+                    adapter_class = Adapterkit().get_adapter_class_by_adapter_id(
+                        adapter_id
+                    )
+
+                    if (
+                        adapter_metadata.pop(AdapterKeys.ADAPTER_TYPE)
+                        == AdapterKeys.X2TEXT
+                    ):
+                        if (
+                            adapter_metadata.get(
+                                AdapterKeys.PLATFORM_PROVIDED_UNSTRUCT_KEY
+                            )
+                            and add_unstract_key
+                        ):
+                            adapter_metadata = add_unstract_key(adapter_metadata)
+                        adapter_metadata[X2TextConstants.X2TEXT_HOST] = (
+                            settings.X2TEXT_HOST
+                        )
+                        adapter_metadata[X2TextConstants.X2TEXT_PORT] = (
+                            settings.X2TEXT_PORT
+                        )
+                        platform_key = (
+                            PlatformAuthenticationService.get_active_platform_key()
+                        )
+                        adapter_metadata[X2TextConstants.PLATFORM_SERVICE_API_KEY] = str(
+                            platform_key.key
+                        )
+
+                    adapter_instance = adapter_class(adapter_metadata)
+                    return adapter_instance.test_connection()
+            except SdkError as e:
+                raise TestAdapterError(
+                    e, adapter_name=adapter_metadata[AdapterKeys.ADAPTER_NAME]
                 )
+        else:
+            try:
+                adapter_class = Adapterkit().get_adapter_class_by_adapter_id(adapter_id)
 
-            adapter_instance = adapter_class(adapter_metadata)
-            test_result: bool = adapter_instance.test_connection()
-            return test_result
-        except SdkError as e:
-            raise TestAdapterError(
-                e, adapter_name=adapter_metadata[AdapterKeys.ADAPTER_NAME]
-            )
+                if adapter_metadata.pop(AdapterKeys.ADAPTER_TYPE) == AdapterKeys.X2TEXT:
+                    if (
+                        adapter_metadata.get(AdapterKeys.PLATFORM_PROVIDED_UNSTRUCT_KEY)
+                        and add_unstract_key
+                    ):
+                        adapter_metadata = add_unstract_key(adapter_metadata)
+                    adapter_metadata[X2TextConstants.X2TEXT_HOST] = settings.X2TEXT_HOST
+                    adapter_metadata[X2TextConstants.X2TEXT_PORT] = settings.X2TEXT_PORT
+                    platform_key = PlatformAuthenticationService.get_active_platform_key()
+                    adapter_metadata[X2TextConstants.PLATFORM_SERVICE_API_KEY] = str(
+                        platform_key.key
+                    )
+
+                adapter_instance = adapter_class(adapter_metadata)
+                test_result: bool = adapter_instance.test_connection()
+                return test_result
+            except SdkError as e:
+                raise TestAdapterError(
+                    e, adapter_name=adapter_metadata[AdapterKeys.ADAPTER_NAME]
+                )
 
     @staticmethod
     def update_adapter_metadata(adapter_metadata_b: Any, **kwargs) -> Any:

@@ -46,7 +46,7 @@ services:
       - traefik.http.routers.minio.rule=Host(`minio.unstract.localhost`)
       - traefik.http.services.minio.loadbalancer.server.port=9001
 
-  createbuckets:
+  minio-bootstrap:
     image: minio/mc
     depends_on:
       - minio
@@ -137,7 +137,7 @@ services:
   rabbitmq:
     image: rabbitmq:4.1.0-management
     container_name: unstract-rabbitmq
-    hostname: unstract-rabbit
+    hostname: unstract-rabbitmq
     restart: unless-stopped
     env_file:
       - ./essentials.env
