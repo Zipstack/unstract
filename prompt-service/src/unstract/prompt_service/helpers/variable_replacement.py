@@ -108,13 +108,13 @@ class VariableReplacementHelper:
         Args:
             prompt: The prompt containing variables
             variable: The variable to replace (e.g., "custom_data.name")
-            custom_data: The user data dictionary
+            custom_data: The custom_data data dictionary
 
         Returns:
             prompt with variable replaced
         """
         if not custom_data:
-            error_msg = f"User data is empty. Unable to replace variable {variable}"
+            error_msg = f"Custom data is empty. Unable to replace variable {variable}"
             app.logger.error(error_msg)
             raise ValueError(error_msg)
 

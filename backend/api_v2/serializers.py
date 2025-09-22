@@ -195,23 +195,28 @@ class ExecutionRequestSerializer(TagParamsSerializer):
     """Execution request serializer.
 
     Attributes:
-        timeout (int): Timeout for the API deployment, maximum value can be 300s.
-            If -1 it corresponds to async execution. Defaults to -1
-        include_metadata (bool): Flag to include metadata in API response
-        include_metrics (bool): Flag to include metrics in API response
-        use_file_history (bool): Flag to use FileHistory to save and retrieve
-            responses quickly. This is undocumented to the user and can be
-            helpful for demos.
-        tags (str): Comma-separated List of tags to associate with the execution.
-            e.g:'tag1,tag2-name,tag3_name'
-        llm_profile_id (str): UUID of the LLM profile to override the default profile.
-            If not provided, the default profile will be used.
-        hitl_queue_name (str, optional): Document class name for manual review queue.
-            If not provided, uses API name as document class.
-        presigned_urls (list): List of presigned URLs to fetch files from.
-            URLs are validated for HTTPS and S3 endpoint requirements.
-        custom_data (dict, optional): User-provided data for variable replacement in prompts.
-            Can be accessed in prompts using {{custom_data.key}} syntax for dot notation traversal.
+            timeout (int): Timeout for the API deployment, maximum value can be 300s.
+                If -1 it corresponds to async execution. Defaults to -1
+            include_metadata (bool): Flag to include metadata in API response
+            include_metrics (bool): Flag to include metrics in API response
+            use_file_history (bool): Flag to use FileHistory to save and retrieve
+                responses quickly. This is undocumented to the user and can be
+                helpful for demos.
+            tags (str): Comma-separated List of tags to associate with the execution.
+                e.g:'tag1,tag2-name,tag3_name'
+            llm_profile_id (str): UUID of the LLM profile to override the default profile.
+                If not provided, the default profile will be used.
+            hitl_queue_name (str, optional): Document class name for manual review queue.
+                If not provided, uses API name as document class.
+            presigned_urls (list): List of presigned URLs to fetch files from.
+                URLs are validated for HTTPS and S3 endpoint requirements.
+    <<<<<<< HEAD
+            custom_data (dict, optional): User-provided data for variable replacement in prompts.
+                Can be accessed in prompts using {{custom_data.key}} syntax for dot notation traversal.
+    =======
+            user_data (dict, optional): User-provided data for variable replacement in prompts.
+                Can be accessed in prompts using {{user_data.key}} syntax for dot notation traversal.
+    >>>>>>> d40ea543047c312af2a4f7864179ebaaee55e1dc
     """
 
     MAX_FILES_ALLOWED = 32
