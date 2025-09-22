@@ -153,17 +153,55 @@ class OpenAILLMParameters(BaseChatCompletionParameters):
     api_key: str
     api_base: str
     api_version: str | None = None
+    reasoning_effort: str | None = None
 
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
         adapter_metadata["model"] = OpenAILLMParameters.validate_model(adapter_metadata)
 
-        return OpenAILLMParameters(**adapter_metadata).model_dump()
+        # Handle OpenAI reasoning configuration
+        enable_reasoning = adapter_metadata.get("enable_reasoning", False)
+
+        # If enable_reasoning is not explicitly provided but reasoning_effort is present,
+        # assume reasoning was enabled in a previous validation
+        has_reasoning_effort = "reasoning_effort" in adapter_metadata and adapter_metadata.get("reasoning_effort") is not None
+        if not enable_reasoning and has_reasoning_effort:
+            enable_reasoning = True
+
+        # Create a copy to avoid mutating the original metadata
+        result_metadata = adapter_metadata.copy()
+
+        if enable_reasoning:
+            reasoning_effort = adapter_metadata.get("reasoning_effort", "medium")
+            result_metadata["reasoning_effort"] = reasoning_effort
+            result_metadata["temperature"] = 1
+
+        # Create validation metadata excluding control fields
+        exclude_fields = {"enable_reasoning"}
+        if not enable_reasoning:
+            exclude_fields.add("reasoning_effort")
+
+        validation_metadata = {k: v for k, v in result_metadata.items()
+                              if k not in exclude_fields}
+
+        validated = OpenAILLMParameters(**validation_metadata).model_dump()
+
+        # Clean up result based on reasoning state
+        if not enable_reasoning and "reasoning_effort" in validated:
+            validated.pop("reasoning_effort")
+        elif enable_reasoning:
+            validated["reasoning_effort"] = result_metadata.get("reasoning_effort", "medium")
+
+        return validated
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
         model = adapter_metadata.get("model", "")
-        return f"openai/{model}" if "/" not in model else model
+        # Only add openai/ prefix if the model doesn't already have it
+        if model.startswith("openai/"):
+            return model
+        else:
+            return f"openai/{model}"
 
 
 class AzureOpenAILLMParameters(BaseChatCompletionParameters):
@@ -174,6 +212,7 @@ class AzureOpenAILLMParameters(BaseChatCompletionParameters):
     api_key: str
     temperature: float | None = 1
     num_retries: int | None = 3
+    reasoning_effort: str | None = None
 
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
@@ -183,12 +222,50 @@ class AzureOpenAILLMParameters(BaseChatCompletionParameters):
         azure_endpoint = adapter_metadata.get("azure_endpoint", "")
         if azure_endpoint:
             adapter_metadata["api_base"] = azure_endpoint
-        return AzureOpenAILLMParameters(**adapter_metadata).model_dump()
+
+        # Handle Azure OpenAI reasoning configuration
+        enable_reasoning = adapter_metadata.get("enable_reasoning", False)
+
+        # If enable_reasoning is not explicitly provided but reasoning_effort is present,
+        # assume reasoning was enabled in a previous validation
+        has_reasoning_effort = "reasoning_effort" in adapter_metadata and adapter_metadata.get("reasoning_effort") is not None
+        if not enable_reasoning and has_reasoning_effort:
+            enable_reasoning = True
+
+        # Create a copy to avoid mutating the original metadata
+        result_metadata = adapter_metadata.copy()
+
+        if enable_reasoning:
+            reasoning_effort = adapter_metadata.get("reasoning_effort", "medium")
+            result_metadata["reasoning_effort"] = reasoning_effort
+            result_metadata["temperature"] = 1
+
+        # Create validation metadata excluding control fields
+        exclude_fields = {"enable_reasoning"}
+        if not enable_reasoning:
+            exclude_fields.add("reasoning_effort")
+
+        validation_metadata = {k: v for k, v in result_metadata.items()
+                              if k not in exclude_fields}
+
+        validated = AzureOpenAILLMParameters(**validation_metadata).model_dump()
+
+        # Clean up result based on reasoning state
+        if not enable_reasoning and "reasoning_effort" in validated:
+            validated.pop("reasoning_effort")
+        elif enable_reasoning:
+            validated["reasoning_effort"] = result_metadata.get("reasoning_effort", "medium")
+
+        return validated
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
         model = adapter_metadata.get("model", "")
-        return f"azure/{model}" if "/" not in model else model
+        # Only add azure/ prefix if the model doesn't already have it
+        if model.startswith("azure/"):
+            return model
+        else:
+            return f"azure/{model}"
 
 
 class VertexAILLMParameters(BaseChatCompletionParameters):
@@ -261,7 +338,11 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
     @staticmethod
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
         model = adapter_metadata.get("model", "")
-        return f"vertex_ai/{model}" if "/" not in model else model
+        # Only add vertex_ai/ prefix if the model doesn't already have it
+        if model.startswith("vertex_ai/"):
+            return model
+        else:
+            return f"vertex_ai/{model}"
 
 
 class AWSBedrockLLMParameters(BaseChatCompletionParameters):
@@ -270,7 +351,7 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
     aws_access_key_id: str | None
     aws_secret_access_key: str | None
     aws_region_name: str | None
-    max_retries: int | None
+    max_retries: int | None = None
 
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
@@ -280,29 +361,55 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
         ):
             adapter_metadata["aws_region_name"] = adapter_metadata["region_name"]
 
-        # Apply AWS Bedrock specific thinking logic
+        # Handle AWS Bedrock thinking configuration (for Claude models)
         enable_thinking = adapter_metadata.get("enable_thinking", False)
+
+        # If enable_thinking is not explicitly provided but thinking config is present,
+        # assume thinking was enabled in a previous validation
+        has_thinking_config = "thinking" in adapter_metadata and adapter_metadata.get("thinking") is not None
+        if not enable_thinking and has_thinking_config:
+            enable_thinking = True
+
+        # Create a copy to avoid mutating the original metadata
+        result_metadata = adapter_metadata.copy()
+
         if enable_thinking:
             # Set temperature to 1 for thinking mode
-            adapter_metadata["temperature"] = 1
+            result_metadata["temperature"] = 1
 
-            # Add additionalModelRequestFields for thinking
-            thinking = {
-                "thinking": {
-                    "type": "enabled",
-                    "budget_tokens": adapter_metadata.get("budget_tokens", None),
-                }
-            }
-            adapter_metadata.update(thinking)
-            adapter_metadata.pop("enable_thinking")
-            adapter_metadata.pop("budget_tokens")
+            if has_thinking_config:
+                # Preserve existing thinking config
+                result_metadata["thinking"] = adapter_metadata["thinking"]
+            else:
+                # Create new thinking config
+                thinking_config = {"type": "enabled"}
+                budget_tokens = adapter_metadata.get("budget_tokens")
+                if budget_tokens is not None:
+                    thinking_config["budget_tokens"] = budget_tokens
+                result_metadata["thinking"] = thinking_config
+                result_metadata["temperature"] = 1
 
-        return AWSBedrockLLMParameters(**adapter_metadata).model_dump()
+
+        # Create validation metadata excluding control fields
+        validation_metadata = {k: v for k, v in result_metadata.items()
+                              if k not in ("enable_thinking", "budget_tokens", "thinking")}
+
+        validated = AWSBedrockLLMParameters(**validation_metadata).model_dump()
+
+        # Add thinking config to final result if enabled
+        if enable_thinking and "thinking" in result_metadata:
+            validated["thinking"] = result_metadata["thinking"]
+
+        return validated
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
         model = adapter_metadata.get("model", "")
-        return f"bedrock/{model}" if "/" not in model else model
+        # Only add bedrock/ prefix if the model doesn't already have it
+        if model.startswith("bedrock/"):
+            return model
+        else:
+            return f"bedrock/{model}"
 
 
 class AnthropicLLMParameters(BaseChatCompletionParameters):
@@ -314,12 +421,52 @@ class AnthropicLLMParameters(BaseChatCompletionParameters):
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
         adapter_metadata["model"] = AnthropicLLMParameters.validate_model(adapter_metadata)
 
-        return AnthropicLLMParameters(**adapter_metadata).model_dump()
+        # Handle Anthropic thinking configuration
+        enable_thinking = adapter_metadata.get("enable_thinking", False)
+
+        # If enable_thinking is not explicitly provided but thinking config is present,
+        # assume thinking was enabled in a previous validation
+        has_thinking_config = "thinking" in adapter_metadata and adapter_metadata.get("thinking") is not None
+        if not enable_thinking and has_thinking_config:
+            enable_thinking = True
+
+        # Create a copy to avoid mutating the original metadata
+        result_metadata = adapter_metadata.copy()
+
+        if enable_thinking:
+            if has_thinking_config:
+                # Preserve existing thinking config
+                result_metadata["thinking"] = adapter_metadata["thinking"]
+            else:
+                # Create new thinking config
+                thinking_config = {"type": "enabled"}
+                budget_tokens = adapter_metadata.get("budget_tokens")
+                if budget_tokens is not None:
+                    thinking_config["budget_tokens"] = budget_tokens
+                result_metadata["thinking"] = thinking_config
+                result_metadata["temperature"] = 1
+
+
+        # Create validation metadata excluding control fields
+        validation_metadata = {k: v for k, v in result_metadata.items()
+                              if k not in ("enable_thinking", "budget_tokens", "thinking")}
+
+        validated = AnthropicLLMParameters(**validation_metadata).model_dump()
+
+        # Add thinking config to final result if enabled
+        if enable_thinking and "thinking" in result_metadata:
+            validated["thinking"] = result_metadata["thinking"]
+
+        return validated
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
         model = adapter_metadata.get("model", "")
-        return f"anthropic/{model}" if "/" not in model else model
+        # Only add anthropic/ prefix if the model doesn't already have it
+        if model.startswith("anthropic/"):
+            return model
+        else:
+            return f"anthropic/{model}"
 
 
 class AnyscaleLLMParameters(BaseChatCompletionParameters):
@@ -336,7 +483,11 @@ class AnyscaleLLMParameters(BaseChatCompletionParameters):
     @staticmethod
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
         model = adapter_metadata.get("model", "")
-        return f"anyscale/{model}" if "/" not in model else model
+        # Only add anyscale/ prefix if the model doesn't already have it
+        if model.startswith("anyscale/"):
+            return model
+        else:
+            return f"anyscale/{model}"
 
 
 class MistralLLMParameters(BaseChatCompletionParameters):
@@ -353,7 +504,11 @@ class MistralLLMParameters(BaseChatCompletionParameters):
     @staticmethod
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
         model = adapter_metadata.get("model", "")
-        return f"mistral/{model}" if "/" not in model else model
+        # Only add mistral/ prefix if the model doesn't already have it
+        if model.startswith("mistral/"):
+            return model
+        else:
+            return f"mistral/{model}"
 
 
 class OllamaLLMParameters(BaseChatCompletionParameters):
@@ -371,7 +526,11 @@ class OllamaLLMParameters(BaseChatCompletionParameters):
     @staticmethod
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
         model = adapter_metadata.get("model", "")
-        return f"ollama_chat/{model}" if "/" not in model else model
+        # Only add ollama_chat/ prefix if the model doesn't already have it
+        if model.startswith("ollama_chat/"):
+            return model
+        else:
+            return f"ollama_chat/{model}"
 
 
 # Embedding Parameter Classes
@@ -421,10 +580,14 @@ class AzureOpenAIEmbeddingParameters(BaseEmbeddingParameters):
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
-        model = adapter_metadata.get("deployment_name", "") #litellm expects model to be in the format of "azure/<deployment_namke>"
-        model = f"azure/{model}" if "/" not in model else model
+        model = adapter_metadata.get("deployment_name", "") #litellm expects model to be in the format of "azure/<deployment_name>"
+        # Only add azure/ prefix if the model doesn't already have it
+        if model.startswith("azure/"):
+            formatted_model = model
+        else:
+            formatted_model = f"azure/{model}"
         del adapter_metadata["deployment_name"]
-        return model
+        return formatted_model
 
 
 class VertexAIEmbeddingParameters(BaseEmbeddingParameters):
