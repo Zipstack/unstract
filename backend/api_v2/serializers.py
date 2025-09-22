@@ -210,13 +210,8 @@ class ExecutionRequestSerializer(TagParamsSerializer):
                 If not provided, uses API name as document class.
             presigned_urls (list): List of presigned URLs to fetch files from.
                 URLs are validated for HTTPS and S3 endpoint requirements.
-    <<<<<<< HEAD
             custom_data (dict, optional): User-provided data for variable replacement in prompts.
                 Can be accessed in prompts using {{custom_data.key}} syntax for dot notation traversal.
-    =======
-            user_data (dict, optional): User-provided data for variable replacement in prompts.
-                Can be accessed in prompts using {{user_data.key}} syntax for dot notation traversal.
-    >>>>>>> d40ea543047c312af2a4f7864179ebaaee55e1dc
     """
 
     MAX_FILES_ALLOWED = 32
