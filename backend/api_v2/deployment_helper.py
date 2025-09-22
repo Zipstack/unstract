@@ -155,7 +155,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         tag_names: list[str] = [],
         llm_profile_id: str | None = None,
         hitl_queue_name: str | None = None,
-        user_data: dict[str, Any] | None = None,
+        custom_data: dict[str, Any] | None = None,
         request_headers=None,
     ) -> ReturnDict:
         """Execute workflow by api.
@@ -169,7 +169,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
             tag_names (list(str)): list of tag names
             llm_profile_id (str, optional): LLM profile ID for overriding tool settings
             hitl_queue_name (str, optional): Custom queue name for manual review
-            user_data (dict[str, Any], optional): JSON data for user_data variable replacement in prompts
+            custom_data (dict[str, Any], optional): JSON data for custom_data variable replacement in prompts
 
         Returns:
             ReturnDict: execution status/ result
@@ -236,7 +236,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 use_file_history=use_file_history,
                 llm_profile_id=llm_profile_id,
                 hitl_queue_name=hitl_queue_name,
-                user_data=user_data,
+                custom_data=custom_data,
             )
             result.status_api = DeploymentHelper.construct_status_endpoint(
                 api_endpoint=api.api_endpoint, execution_id=execution_id

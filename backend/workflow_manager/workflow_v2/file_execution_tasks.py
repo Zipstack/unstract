@@ -751,7 +751,7 @@ class FileExecutionTasks:
                 tags=workflow_execution.tag_names,
                 file_hash=file_hash,
                 llm_profile_id=file_data.llm_profile_id,
-                user_data=file_data.user_data,
+                custom_data=file_data.custom_data,
             )
             file_hash.file_hash = content_hash
             workflow_file_exec.update(file_hash=content_hash)

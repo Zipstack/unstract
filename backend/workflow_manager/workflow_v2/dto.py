@@ -156,7 +156,7 @@ class FileData:
     use_file_history: bool
     q_file_no_list: list[int]
     llm_profile_id: str | None = None
-    user_data: dict[str, Any] | None = None
+    custom_data: dict[str, Any] | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> FileData:
