@@ -5,7 +5,6 @@ from typing import Any
 
 from constants import IndexingConstants as IKeys
 from constants import SettingsKeys  # type: ignore [attr-defined]
-
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.tool.base import BaseTool
 

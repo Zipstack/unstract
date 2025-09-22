@@ -3,7 +3,6 @@ import os
 from typing import Any
 
 from redis import Redis
-
 from unstract.core.pubsub_helper import LogPublisher
 from unstract.tool_registry import ToolRegistry
 from unstract.tool_sandbox import ToolSandbox

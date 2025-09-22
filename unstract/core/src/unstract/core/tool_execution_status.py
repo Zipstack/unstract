@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from enum import Enum
 
 import redis
-
 from unstract.core.exceptions import (
     ToolExecutionStatusException,
     ToolExecutionValueException,

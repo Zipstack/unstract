@@ -6,9 +6,9 @@ from datetime import date, datetime
 from typing import Any
 
 from fsspec import AbstractFileSystem
-
 from unstract.connectors.base import UnstractConnector
 from unstract.connectors.enums import ConnectorMode
+
 from unstract.filesystem import FileStorageType, FileSystem
 
 logger = logging.getLogger(__name__)

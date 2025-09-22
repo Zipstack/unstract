@@ -3,7 +3,6 @@ import os
 from typing import Any
 
 from fsspec.implementations.sftp import SFTPFileSystem
-
 from unstract.connectors.exceptions import ConnectorError, PermissionDeniedError
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
@@ -121,8 +120,7 @@ class SftpFS(UnstractFileSystem):
             ) from e
         if not is_dir:
             raise ConnectorError(
-                "Unable to connect to SFTP server, "
-                "please check the connection settings."
+                "Unable to connect to SFTP server, please check the connection settings."
             )
         return True
 

@@ -8,13 +8,12 @@ from typing import Any
 
 from constants import SettingsKeys  # type: ignore [attr-defined]
 from helpers import StructureToolHelper as STHelper
-from utils import json_to_markdown
-
 from unstract.sdk.constants import LogState, MetadataKey, ToolEnv, UsageKwargs
 from unstract.sdk.platform import PlatformHelper
 from unstract.sdk.prompt import PromptTool
 from unstract.sdk.tool.base import BaseTool
 from unstract.sdk.tool.entrypoint import ToolEntrypoint
+from utils import json_to_markdown
 
 logger = logging.getLogger(__name__)
 

@@ -5,7 +5,6 @@ from helper import (
     ClassifierHelper,  # type: ignore
     ReservedBins,
 )
-
 from unstract.sdk.constants import (
     LogLevel,
     LogState,

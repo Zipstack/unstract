@@ -4,7 +4,6 @@ import time
 from typing import Any
 
 import redis
-
 from unstract.core.pubsub_helper import LogPublisher
 from unstract.tool_sandbox import ToolSandbox
 from unstract.workflow_execution.constants import StepExecution, ToolExecution
