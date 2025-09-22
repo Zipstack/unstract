@@ -751,7 +751,7 @@ class FileExecutionTasks:
                 tags=workflow_execution.tag_names,
                 file_hash=file_hash,
                 llm_profile_id=file_data.llm_profile_id,
-                user_data=file_data.user_data,
+                custom_data=file_data.custom_data,
             )
             file_hash.file_hash = content_hash
             workflow_file_exec.update(file_hash=content_hash)
@@ -920,7 +920,8 @@ class FileExecutionTasks:
                 )
                 # Log execution costs
                 execution_service.log_total_cost_per_file(
-                    run_id=str(workflow_file_execution.id), file_name=file_hash.file_name
+                    run_id=str(workflow_file_execution.id),
+                    file_name=file_hash.file_name,
                 )
             tool_execution_result = ToolExecutionResult(error=None, result=None)
             return tool_execution_result
@@ -995,7 +996,9 @@ class FileExecutionTasks:
                 file_path = file_hash.file_path if not destination.is_api else None
                 # Collect metadata from file history if available
                 file_history = FileHistoryHelper.get_file_history(
-                    workflow=workflow, cache_key=file_hash.file_hash, file_path=file_path
+                    workflow=workflow,
+                    cache_key=file_hash.file_hash,
+                    file_path=file_path,
                 )
             else:
                 file_history = None

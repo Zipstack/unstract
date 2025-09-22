@@ -103,7 +103,7 @@ class ExecutionFileHandler:
         source_hash: str,
         tags: list[str],
         llm_profile_id: str | None = None,
-        user_data: dict[str, Any] | None = None,
+        custom_data: dict[str, Any] | None = None,
     ) -> None:
         """Creating metadata for workflow. This method is responsible for
         creating metadata for the workflow. It takes the input file path and
@@ -144,9 +144,9 @@ class ExecutionFileHandler:
         if llm_profile_id:
             content[MetaDataKey.LLM_PROFILE_ID] = llm_profile_id
 
-        # Add user_data to metadata if provided
-        if user_data:
-            content[MetaDataKey.USER_DATA] = user_data
+        # Add custom_data to metadata if provided
+        if custom_data:
+            content[MetaDataKey.CUSTOM_DATA] = custom_data
 
         file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
         file_storage = file_system.get_file_storage()

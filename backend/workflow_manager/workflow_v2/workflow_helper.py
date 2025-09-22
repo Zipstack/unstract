@@ -64,7 +64,7 @@ logger = logging.getLogger(__name__)
 EXECUTION_EXCLUDED_PARAMS = {
     "llm_profile_id",
     "hitl_queue_name",
-    "user_data",
+    "custom_data",
 }
 
 
@@ -151,7 +151,7 @@ class WorkflowHelper:
         execution_mode: tuple[str, str],
         use_file_history: bool,
         llm_profile_id: str | None,
-        user_data: dict[str, Any] | None = None,
+        custom_data: dict[str, Any] | None = None,
     ) -> str | None:
         total_files = len(input_files)
         workflow_log.publish_initial_workflow_logs(total_files=total_files)
@@ -203,7 +203,7 @@ class WorkflowHelper:
                 use_file_history=use_file_history,
                 q_file_no_list=list(q_file_no_list) if q_file_no_list else [],
                 llm_profile_id=llm_profile_id,
-                user_data=user_data,
+                custom_data=custom_data,
             )
             batch_data = FileBatchData(files=batch, file_data=file_data)
 
@@ -270,7 +270,7 @@ class WorkflowHelper:
         use_file_history: bool = True,
         llm_profile_id: str | None = None,
         hitl_queue_name: str | None = None,
-        user_data: dict[str, Any] | None = None,
+        custom_data: dict[str, Any] | None = None,
     ) -> ExecutionResponse:
         tool_instances: list[ToolInstance] = (
             ToolInstanceHelper.get_tool_instances_by_workflow(
@@ -322,7 +322,7 @@ class WorkflowHelper:
                 use_file_history=use_file_history,
                 execution_mode=execution_mode,
                 llm_profile_id=llm_profile_id,
-                user_data=user_data,
+                custom_data=custom_data,
             )
             api_results = []
             return ExecutionResponse(
@@ -441,7 +441,7 @@ class WorkflowHelper:
         use_file_history: bool = True,
         llm_profile_id: str | None = None,
         hitl_queue_name: str | None = None,
-        user_data: dict[str, Any] | None = None,
+        custom_data: dict[str, Any] | None = None,
     ) -> ExecutionResponse:
         """Adding a workflow to the queue for execution.
 
@@ -481,7 +481,7 @@ class WorkflowHelper:
                     "use_file_history": use_file_history,
                     "llm_profile_id": llm_profile_id,
                     "hitl_queue_name": hitl_queue_name,
-                    "user_data": user_data,
+                    "custom_data": custom_data,
                 },
                 queue=queue,
             )
@@ -695,7 +695,7 @@ class WorkflowHelper:
                 use_file_history=use_file_history,
                 llm_profile_id=kwargs.get("llm_profile_id"),
                 hitl_queue_name=kwargs.get("hitl_queue_name"),
-                user_data=kwargs.get("user_data"),
+                custom_data=kwargs.get("custom_data"),
             )
         except Exception as error:
             error_message = traceback.format_exc()

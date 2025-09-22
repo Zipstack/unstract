@@ -49,6 +49,7 @@ class MetaDataKey:
     TOTAL_ELAPSED_TIME = "total_elapsed_time"
     WORKFLOW_START_TIME = "workflow_start_time"
     USER_DATA = "user_data"
+    CUSTOM_DATA = "custom_data"
 
 
 class ToolMetadataKey:
