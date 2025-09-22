@@ -7,7 +7,6 @@ from enum import Enum
 from typing import Any
 
 from unstract.connectors.base import UnstractConnector
-from unstract.connectors.constants import TableColumns
 from unstract.connectors.enums import ConnectorMode
 from unstract.connectors.exceptions import ConnectorError
 
@@ -127,17 +126,20 @@ class UnstractDB(UnstractConnector, ABC):
             str: generates a create sql base query with the constant columns
         """
 
-    def create_table_query(self, table: str, database_entry: dict[str, Any]) -> Any:
+    def create_table_query(
+        self, table: str, database_entry: dict[str, Any], permanent_columns: list[str]
+    ) -> Any:
         """Function to create a create table sql query.
 
         Args:
             table (str): db-connector table name
             database_entry (dict[str, Any]): a dictionary of column name and types
+            permanent_columns (list[str]): list of permanent column names to exclude
 
         Returns:
             Any: generates a create sql query for all the columns
         """
-        PERMANENT_COLUMNS = TableColumns.PERMANENT_COLUMNS
+        PERMANENT_COLUMNS = permanent_columns
 
         sql_query = ""
         create_table_query = self.get_create_table_base_query(table=table)

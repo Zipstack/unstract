@@ -4,11 +4,11 @@ import logging
 from typing import Any
 
 from utils.constants import Common
+from workflow_manager.endpoint_v2.constants import TableColumns
 from workflow_manager.endpoint_v2.enums import FileProcessingStatus
 from workflow_manager.endpoint_v2.exceptions import UnstractDBException
 from workflow_manager.workflow_v2.enums import AgentName, ColumnModes
 
-from unstract.connectors.constants import TableColumns
 from unstract.connectors.databases import connectors as db_connectors
 from unstract.connectors.databases.exceptions import UnstractDBConnectorException
 from unstract.connectors.databases.unstract_db import UnstractDB
@@ -289,7 +289,11 @@ class DatabaseUtils:
         Raises:
             e: _description_
         """
-        sql = db_class.create_table_query(table=table_name, database_entry=database_entry)
+        sql = db_class.create_table_query(
+            table=table_name,
+            database_entry=database_entry,
+            permanent_columns=TableColumns.PERMANENT_COLUMNS,
+        )
         logger.info(f"creating table {table_name} with: {sql} query")
 
         try:
