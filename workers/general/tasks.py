@@ -812,6 +812,7 @@ def _orchestrate_file_processing_general(
 
         hitl_queue_name = kwargs.get("hitl_queue_name")
         llm_profile_id = kwargs.get("llm_profile_id")
+        user_data = kwargs.get("user_data")
 
         worker_file_data = WorkerFileData(
             workflow_id=str(workflow_id),
@@ -826,6 +827,7 @@ def _orchestrate_file_processing_general(
             manual_review_config={},
             hitl_queue_name=hitl_queue_name,
             llm_profile_id=llm_profile_id,
+            user_data=user_data,
         )
 
         # Calculate manual review configuration ONCE for all files before batching

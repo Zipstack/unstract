@@ -173,9 +173,6 @@ def _unified_api_execution(
         config, api_client = WorkerExecutionContext.setup_execution_context(
             organization_id, execution_id, workflow_id
         )
-        # Use parameter value if provided, otherwise fall back to kwargs
-        hitl_queue_name = hitl_queue_name or kwargs.get("hitl_queue_name")
-        llm_profile_id = kwargs.get("llm_profile_id")
 
         # Log task start with standardized format
         WorkerExecutionContext.log_task_start(
@@ -187,8 +184,9 @@ def _unified_api_execution(
                 "scheduled": scheduled,
                 "use_file_history": use_file_history,
                 "files_count": len(hash_values_of_files) if hash_values_of_files else 0,
-                "hitl_queue_name": hitl_queue_name,
-                "llm_profile_id": llm_profile_id,
+                "hitl_queue_name": kwargs.get("hitl_queue_name"),
+                "llm_profile_id": kwargs.get("llm_profile_id"),
+                "user_data": kwargs.get("user_data"),
             },
         )
 
@@ -223,8 +221,7 @@ def _unified_api_execution(
             pipeline_id=pipeline_id,
             use_file_history=use_file_history,
             task_id=task_instance.request.id,  # Add required task_id
-            hitl_queue_name=hitl_queue_name,
-            llm_profile_id=llm_profile_id,
+            **kwargs,
         )
 
         # Log completion with standardized format
@@ -404,8 +401,7 @@ def _run_workflow_api(
     pipeline_id: str | None,
     use_file_history: bool,
     task_id: str,
-    hitl_queue_name: str | None = None,
-    llm_profile_id: str | None = None,
+    **kwargs: dict[str, Any],
 ) -> dict[str, Any]:
     """Run workflow matching the exact pattern from Django backend.
 
@@ -602,8 +598,7 @@ def _run_workflow_api(
             use_file_history=use_file_history,
             api_client=api_client,
             total_files=total_files,
-            hitl_queue_name=hitl_queue_name,
-            llm_profile_id=llm_profile_id,
+            **kwargs,
         )
 
         # Calculate manual review decisions for this specific batch
@@ -784,8 +779,7 @@ def _create_file_data(
     use_file_history: bool,
     api_client: InternalAPIClient,
     total_files: int = 0,
-    hitl_queue_name: str | None = None,
-    llm_profile_id: str | None = None,
+    **kwargs: dict[str, Any],
 ) -> WorkerFileData:
     """Create file data matching Django FileData structure exactly.
 
@@ -798,8 +792,7 @@ def _create_file_data(
         execution_mode: Execution mode string
         use_file_history: Whether to use file history
         api_client: API client for fetching manual review rules
-        hitl_queue_name: Optional HITL queue name for manual review routing
-        llm_profile_id: Optional LLM profile ID for LLM processing
+        **kwargs: Additional keyword arguments
 
     Returns:
         File data dictionary matching Django FileData with manual review config
@@ -824,6 +817,9 @@ def _create_file_data(
     logger.info(
         f"No manual review rules configured for API deployment workflow {workflow_id}"
     )
+    hitl_queue_name = kwargs.get("hitl_queue_name")
+    llm_profile_id = kwargs.get("llm_profile_id")
+    user_data = kwargs.get("user_data")
 
     file_data = WorkerFileData(
         workflow_id=str(workflow_id),
@@ -839,6 +835,7 @@ def _create_file_data(
         manual_review_config=manual_review_config,
         is_manualreview_required=bool(hitl_queue_name),
         llm_profile_id=llm_profile_id,
+        user_data=user_data,
     )
 
     return file_data
