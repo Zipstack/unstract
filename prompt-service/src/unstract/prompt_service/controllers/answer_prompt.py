@@ -11,7 +11,9 @@ from unstract.prompt_service.constants import RetrievalStrategy, RunLevel
 from unstract.prompt_service.exceptions import BadRequest
 from unstract.prompt_service.helpers.auth import AuthHelper
 from unstract.prompt_service.helpers.plugin import PluginManager
-from unstract.prompt_service.helpers.prompt_ide_base_tool import PromptServiceBaseTool
+from unstract.prompt_service.helpers.prompt_ide_base_tool import (
+    PromptServiceBaseTool,
+)
 from unstract.prompt_service.helpers.usage import UsageHelper
 from unstract.prompt_service.services.answer_prompt import AnswerPromptService
 from unstract.prompt_service.services.rentrolls_extractor.interface import (
@@ -86,15 +88,33 @@ def prompt_processor() -> Any:
         app.logger.info(f"[{tool_id}] chunk size: {chunk_size}")
         util = PromptServiceBaseTool(platform_key=platform_key)
         index = Index(tool=util, run_id=run_id, capture_metrics=True)
-        if VariableReplacementService.is_variables_present(prompt_text=prompt_text):
-            prompt_text = VariableReplacementService.replace_variables_in_prompt(
-                prompt=output,
-                structured_output=structured_output,
-                log_events_id=log_events_id,
-                tool_id=tool_id,
-                prompt_name=prompt_name,
-                doc_name=doc_name,
+        try:
+            if VariableReplacementService.is_variables_present(prompt_text=prompt_text):
+                prompt_text = VariableReplacementService.replace_variables_in_prompt(
+                    prompt=output,
+                    structured_output=structured_output,
+                    log_events_id=log_events_id,
+                    tool_id=tool_id,
+                    prompt_name=prompt_name,
+                    doc_name=doc_name,
+                )
+        except BadRequest as e:
+            app.logger.error(
+                f"[{tool_id}] Error during variable replacement: {e}",
+                exc_info=True,
             )
+            publish_log(
+                log_events_id,
+                {
+                    "tool_id": tool_id,
+                    "prompt_key": prompt_name,
+                    "doc_name": doc_name,
+                },
+                LogLevel.ERROR,
+                RunLevel.RUN,
+                f"Error during variable replacement: {e}",
+            )
+            raise
 
         app.logger.info(f"[{tool_id}] Executing prompt: '{prompt_name}'")
         publish_log(
@@ -243,7 +263,9 @@ def prompt_processor() -> Any:
 
                     # Track token usage by sending to the audit service
                     try:
-                        from unstract.sdk.utils.token_counter import TokenCounter
+                        from unstract.sdk.utils.token_counter import (
+                            TokenCounter,
+                        )
 
                         # Get metrics from the extraction result
                         metrics = extraction_result.get("metrics", {})

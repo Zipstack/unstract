@@ -4,6 +4,7 @@ from flask import current_app as app
 
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.constants import RunLevel, VariableType
+from unstract.prompt_service.exceptions import BadRequest
 from unstract.prompt_service.helpers.variable_replacement import (
     VariableReplacementHelper,
 )
@@ -74,6 +75,8 @@ class VariableReplacementService:
             prompt_text = VariableReplacementService._execute_variable_replacement(
                 prompt_text=prompt_text, variable_map=structured_output
             )
+        except BadRequest:
+            raise
         finally:
             app.logger.info(
                 f"[{tool_id}] Prompt after variable replacement: {prompt_text}"

@@ -6,7 +6,9 @@ from typing import Any
 from flask import current_app as app
 
 from unstract.prompt_service.constants import VariableConstants, VariableType
+from unstract.prompt_service.exceptions import BadRequest
 from unstract.prompt_service.utils.request import HTTPMethod, make_http_request
+from unstract.sdk.adapters.url_validator import URLValidator
 
 
 class VariableReplacementHelper:
@@ -22,7 +24,9 @@ class VariableReplacementHelper:
         static_variable_marker_string = "".join(["{{", variable, "}}"])
 
         replaced_prompt: str = VariableReplacementHelper.replace_generic_string_value(
-            prompt=prompt, variable=static_variable_marker_string, value=output_value
+            prompt=prompt,
+            variable=static_variable_marker_string,
+            value=output_value,
         )
 
         return replaced_prompt
@@ -71,7 +75,12 @@ class VariableReplacementHelper:
     def replace_dynamic_variable(
         prompt: str, variable: str, structured_output: dict[str, Any]
     ) -> str:
-        url = re.search(VariableConstants.DYNAMIC_VARIABLE_URL_REGEX, variable).group(0)
+        url_match = re.search(VariableConstants.DYNAMIC_VARIABLE_URL_REGEX, variable)
+        if not url_match:
+            app.logger.error(f"No URL found in dynamic variable: {variable}")
+            return prompt
+
+        url = url_match.group(0)
         data = re.findall(VariableConstants.DYNAMIC_VARIABLE_DATA_REGEX, variable)[0]
         output_value = VariableReplacementHelper.check_static_variable_run_status(
             structure_output=structured_output, variable=data
@@ -107,6 +116,15 @@ class VariableReplacementHelper:
         # inputs for POST requests in this version.
         # Future versions may include support for
         #  authentication and other input formats.
+
+        # Validate URL before making the request
+        is_valid, error_message = URLValidator.validate_url(url)
+        if not is_valid:
+            # app.logger.error(
+            #     f"Invalid or unsafe URL detected: {url} - {error_message}",
+            #     exc_info=True,
+            # )
+            raise BadRequest(f"Invalid or unsafe URL: {url} - {error_message}")
 
         verb: HTTPMethod = HTTPMethod.POST
         headers = {"Content-Type": "text/plain"}
