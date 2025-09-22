@@ -6,7 +6,6 @@ from enum import Enum
 from typing import Any
 
 import redis
-
 from unstract.core.exceptions import (
     FileExecutionStageException,
     FileExecutionTrackerNotFound,

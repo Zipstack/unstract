@@ -8,7 +8,6 @@ import google.api_core.exceptions as GoogleApiException
 from oauth2client.client import OAuth2Credentials
 from pydrive2.auth import GoogleAuth
 from pydrive2.fs import GDriveFileSystem
-
 from unstract.connectors.exceptions import ConnectorError, FSAccessDeniedError
 from unstract.connectors.filesystems.google_drive.constants import GDriveConstants
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
@@ -136,8 +135,7 @@ class GoogleDriveFS(UnstractFileSystem):
             ) from e
         if not is_dir:
             raise ConnectorError(
-                "Unable to connect to Google Drive, "
-                "please check the connection settings."
+                "Unable to connect to Google Drive, please check the connection settings."
             )
         return True
 

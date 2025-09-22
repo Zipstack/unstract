@@ -6,13 +6,12 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any
 
-from workflow_manager.endpoint_v2.constants import TableColumns
-from workflow_manager.endpoint_v2.exceptions import UnstractDBException
-
 from unstract.connectors.base import UnstractConnector
 from unstract.connectors.databases.exceptions import UnstractDBConnectorException
 from unstract.connectors.enums import ConnectorMode
 from unstract.connectors.exceptions import ConnectorError
+from workflow_manager.endpoint_v2.constants import TableColumns
+from workflow_manager.endpoint_v2.exceptions import UnstractDBException
 
 logger = logging.getLogger(__name__)
 
