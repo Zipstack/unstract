@@ -7,6 +7,9 @@ and general workflow executions using internal APIs.
 import time
 from typing import Any
 
+from celery import shared_task
+from scheduler.tasks import execute_pipeline_task_v2
+
 # Import shared worker infrastructure using new structure
 from shared.api import InternalAPIClient
 
@@ -1522,3 +1525,31 @@ def async_execute_bin(
 
 # Note: Webhook and API deployment tasks are handled by specialized workers
 # to prevent routing conflicts and ensure proper separation of concerns
+
+
+# BACKWARD COMPATIBILITY: Register scheduler tasks for general worker
+# This allows general worker to handle scheduler tasks sent to celery queue
+logger.info("✅ Registered scheduler tasks in general worker for backward compatibility")
+
+
+@shared_task(name="scheduler.tasks.execute_pipeline_task", bind=True)
+def execute_pipeline_task(
+    self,
+    workflow_id: Any,
+    org_schema: Any,
+    execution_action: Any,
+    execution_id: Any,
+    pipepline_id: Any,  # Note: keeping original typo for compatibility
+    with_logs: Any,
+    name: Any,
+) -> None:
+    """Execute pipeline task - maintains exact signature from backend scheduler.
+
+    This is the main entry point for scheduled pipeline executions, delegating
+    to the v2 implementation for actual processing.
+    """
+    return execute_pipeline_task_v2(
+        organization_id=org_schema,
+        pipeline_id=pipepline_id,
+        pipeline_name=name,
+    )

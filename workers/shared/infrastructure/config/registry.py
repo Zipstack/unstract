@@ -60,7 +60,9 @@ class WorkerRegistry:
             primary_queue=QueueName.LOG_CONSUMER,
             additional_queues=[QueueName.PERIODIC_LOGS],
         ),
-        WorkerType.SCHEDULER: WorkerQueueConfig(primary_queue=QueueName.SCHEDULER),
+        WorkerType.SCHEDULER: WorkerQueueConfig(
+            primary_queue=QueueName.SCHEDULER, additional_queues=[QueueName.GENERAL]
+        ),
     }
 
     # Task routing rules for each worker type

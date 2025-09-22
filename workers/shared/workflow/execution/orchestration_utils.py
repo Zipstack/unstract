@@ -10,7 +10,7 @@ from typing import Any
 from celery import chord
 
 from ...enums import FileDestinationType, PipelineType
-from ...enums.task_enums import QueueName
+from ...enums.worker_enums import QueueName
 from ...infrastructure.logging import WorkerLogger
 
 logger = WorkerLogger.get_logger(__name__)
@@ -228,10 +228,10 @@ class WorkflowOrchestrationUtils:
         """
         # Map workflow types to specific queues using enums
         queue_mapping = {
-            PipelineType.API.value: QueueName.CELERY_API_DEPLOYMENTS.value,
-            PipelineType.ETL.value: QueueName.CELERY.value,
-            PipelineType.TASK.value: QueueName.CELERY.value,
-            PipelineType.APP.value: QueueName.CELERY.value,
+            PipelineType.API.value: QueueName.API_DEPLOYMENTS.value,
+            PipelineType.ETL.value: QueueName.GENERAL.value,
+            PipelineType.TASK.value: QueueName.GENERAL.value,
+            PipelineType.APP.value: QueueName.GENERAL.value,
         }
 
         # Check for environment-specific overrides

@@ -26,7 +26,8 @@ from .status_enums import (
     WebhookStatus,
     WorkerTaskStatus,
 )
-from .task_enums import QueueName, TaskName
+from .task_enums import TaskName
+from .worker_enums import QueueName
 
 __all__ = [
     "TaskName",

@@ -36,28 +36,3 @@ class TaskName(str, Enum):
     def __str__(self):
         """Return enum value for Celery task naming."""
         return self.value
-
-
-class QueueName(str, Enum):
-    """Standardized queue names across all workers."""
-
-    # Standard Celery queues
-    CELERY = "celery"
-    CELERY_API_DEPLOYMENTS = "celery_api_deployments"
-    CELERY_LOG_TASK_QUEUE = "celery_log_task_queue"
-    CELERY_PERIODIC_LOGS = "celery_periodic_logs"
-
-    # Worker-specific queues
-    GENERAL = "general"
-    FILE_PROCESSING = "file_processing"
-    CALLBACK = "callback"
-    API_DEPLOYMENTS = "api_deployments"
-    WEBHOOK = "webhook"
-
-    # Callback-specific queues
-    FILE_PROCESSING_CALLBACK = "file_processing_callback"
-    GENERAL_CALLBACK = "general_callback"
-
-    def __str__(self):
-        """Return enum value for Celery queue routing."""
-        return self.value

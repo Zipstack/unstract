@@ -9,7 +9,7 @@ from typing import Any
 
 from celery import shared_task
 from shared.enums.status_enums import PipelineStatus
-from shared.enums.task_enums import QueueName
+from shared.enums.worker_enums import QueueName
 from shared.infrastructure.config import WorkerConfig
 from shared.infrastructure.logging import WorkerLogger
 from shared.models.pipeline_models import PipelineApiResponse
@@ -107,7 +107,7 @@ def _execute_scheduled_workflow(
                     "use_file_history": context.use_file_history,  # Pass as kwarg
                     "pipeline_id": context.pipeline_id,  # CRITICAL FIX: Pass pipeline_id for direct status updates
                 },
-                queue=QueueName.CELERY,  # Route to celery queue (what general worker listens to)
+                queue=QueueName.GENERAL,  # Route to General queue for proper separation
             )
 
             task_id = async_result.id
