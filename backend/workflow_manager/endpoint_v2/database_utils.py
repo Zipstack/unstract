@@ -4,11 +4,11 @@ import logging
 from typing import Any
 
 from utils.constants import Common
-from workflow_manager.endpoint_v2.constants import TableColumns
 from workflow_manager.endpoint_v2.enums import FileProcessingStatus
 from workflow_manager.endpoint_v2.exceptions import UnstractDBException
 from workflow_manager.workflow_v2.enums import AgentName, ColumnModes
 
+from unstract.connectors.constants import TableColumns
 from unstract.connectors.databases import connectors as db_connectors
 from unstract.connectors.databases.exceptions import UnstractDBConnectorException
 from unstract.connectors.databases.unstract_db import UnstractDB
@@ -290,7 +290,7 @@ class DatabaseUtils:
             e: _description_
         """
         sql = db_class.create_table_query(table=table_name, database_entry=database_entry)
-        logger.debug(f"creating table {table_name} with: {sql} query")
+        logger.info(f"creating table {table_name} with: {sql} query")
 
         try:
             db_class.execute_query(
@@ -298,4 +298,34 @@ class DatabaseUtils:
             )
         except UnstractDBConnectorException as e:
             raise UnstractDBException(detail=e.detail) from e
-        logger.debug(f"successfully created table {table_name} with: {sql} query")
+        logger.info(f"successfully created table {table_name} with: {sql} query")
+
+    @staticmethod
+    def migrate_table_to_v2(
+        db_class: UnstractDB,
+        engine: Any,
+        table_name: str,
+        column_name: str,
+    ) -> dict[str, str]:
+        """Migrate table to v2 by adding _v2 columns.
+
+        Args:
+            db_class (UnstractDB): DB Connection class
+            engine (Any): Database engine
+            table_name (str): Name of the table to migrate
+            column_name (str): Base column name for v2 migration
+
+        Returns:
+            dict[str, str]: Updated table information schema
+
+        Raises:
+            UnstractDBException: If migration fails
+        """
+        try:
+            return db_class.migrate_table_to_v2(
+                table_name=table_name,
+                column_name=column_name,
+                engine=engine,
+            )
+        except UnstractDBConnectorException as e:
+            raise UnstractDBException(detail=e.detail) from e
