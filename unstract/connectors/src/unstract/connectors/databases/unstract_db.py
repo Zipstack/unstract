@@ -135,6 +135,10 @@ class UnstractDB(UnstractConnector, ABC):
             table (str): db-connector table name
             database_entry (dict[str, Any]): a dictionary of column name and types
             permanent_columns (list[str]): list of permanent column names to exclude
+                from dynamic column creation. These columns are already defined in the
+                base table schema (e.g., 'id', 'created_by', 'created_at', 'metadata',
+                'status', 'error_message', etc.) and should not be added again during
+                table creation to avoid duplication.
 
         Returns:
             Any: generates a create sql query for all the columns
