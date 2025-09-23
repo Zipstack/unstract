@@ -326,10 +326,11 @@ class DatabaseUtils:
             UnstractDBException: If migration fails
         """
         try:
-            return db_class.migrate_table_to_v2(
+            result: dict[str, str] = db_class.migrate_table_to_v2(
                 table_name=table_name,
                 column_name=column_name,
                 engine=engine,
             )
+            return result
         except UnstractDBConnectorException as e:
             raise UnstractDBException(detail=e.detail) from e
