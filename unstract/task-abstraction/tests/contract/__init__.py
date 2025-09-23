@@ -1,0 +1,1 @@
+"""Contract tests that verify backend interface compliance."""

@@ -1,0 +1,120 @@
+[project]
+name = "unstract-task-backend"
+version = "0.1.0"
+description = "Worker management service that uses task-abstraction library to run backend workers"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "AGPL-3.0"}
+
+dependencies = [
+    # Core dependencies
+    "unstract-task-abstraction",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "python-dotenv>=1.0.0",
+
+    # Backend dependencies (required for worker initialization)
+    "celery[redis]>=5.3.0",
+    "redis>=5.0.0",
+
+    # Process management
+    "psutil>=5.9.0",
+]
+
+[project.optional-dependencies]
+hatchet = [
+    "hatchet-sdk>=0.30.0",
+]
+temporal = [
+    "temporalio>=1.5.0",
+]
+all = [
+    "hatchet-sdk>=0.30.0",
+    "temporalio>=1.5.0",
+]
+
+[project.scripts]
+task-backend-worker = "unstract.task_backend.worker:main"
+
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"unstract.task_backend" = ["py.typed"]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-mock>=3.12.0",
+    "ruff>=0.1.0",
+    "mypy>=1.7.0",
+    "pre-commit>=3.5.0",
+]
+
+[tool.uv.sources]
+unstract-task-abstraction = { path = "../unstract/task-abstraction", editable = true }
+
+# Poethepoet task definitions (similar to backend)
+[tool.poe.tasks.worker]
+cmd = "python -m unstract.task_backend.worker"
+help = "Runs the task backend worker (auto-detects backend from env)"
+
+[tool.poe.tasks.worker-celery]
+cmd = "python -m unstract.task_backend.worker --backend=celery"
+help = "Runs Celery workers using task abstraction"
+
+[tool.poe.tasks.worker-hatchet]
+cmd = "python -m unstract.task_backend.worker --backend=hatchet"
+help = "Runs Hatchet worker using task abstraction"
+
+[tool.poe.tasks.worker-temporal]
+cmd = "python -m unstract.task_backend.worker --backend=temporal"
+help = "Runs Temporal worker using task abstraction"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 90
+extend-exclude = [".venv", "build", "dist"]
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long, handled by black
+    "B008",  # do not perform function calls in argument defaults
+    "C901",  # too complex
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"test_*.py" = ["S101"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+markers = [
+    "integration: integration tests",
+    "unit: unit tests",
+]

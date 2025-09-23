@@ -1,0 +1,217 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "unstract-prompt-helpers"
+version = "0.1.0"
+description = "Decoupled prompt processing helper functions for Unstract platform"
+readme = "README.md"
+license = {text = "AGPL-3.0"}
+requires-python = ">=3.12"
+authors = [
+    {name = "Unstract Team", email = "engineering@zipstack.com"}
+]
+keywords = [
+    "prompt processing",
+    "llm helpers", 
+    "document processing",
+    "data extraction",
+    "prompt studio"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    # Core dependencies - keeping minimal
+    "pydantic>=2.5.0",
+    "structlog>=23.1.0",
+    
+    # LLM and processing
+    "unstract-sdk1>=1.0.0",
+    
+    # Text processing 
+    "tiktoken>=0.5.0",
+    "llama-index-core>=0.11.0",
+    "llama-index-text-splitters>=0.2.0",
+    
+    # Vector operations
+    "numpy>=1.24.0",
+    "scipy>=1.11.0",
+    
+    # HTTP client for API calls
+    "httpx>=0.25.0",
+    
+    # Utilities
+    "python-dateutil>=2.8.0",
+    "typing-extensions>=4.8.0",
+]
+
+[project.optional-dependencies]
+# Document processing
+document = [
+    "pypdf>=4.0.0",
+    "python-docx>=1.1.0", 
+    "openpyxl>=3.1.0",
+]
+
+# Advanced text processing
+advanced-text = [
+    "spacy>=3.7.0",
+    "nltk>=3.8.0",
+    "transformers>=4.35.0",
+]
+
+# Vector databases
+vector-db = [
+    "chroma-db>=0.4.0",
+    "pinecone-client>=3.0.0",
+    "weaviate-client>=4.4.0",
+    "pgvector>=0.2.0",
+]
+
+# Autogen integration
+autogen = [
+    "unstract-autogen-client>=1.0.0",
+    "pyautogen>=0.2.0",
+]
+
+# Evaluation
+evaluation = [
+    "presidio-analyzer>=2.2.0",
+    "presidio-anonymizer>=2.2.0",
+    "detoxify>=0.5.0",
+    "rouge-score>=0.1.0",
+    "sacrebleu>=2.3.0",
+]
+
+# Development tools
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-mock>=3.11.0",
+    "pytest-cov>=4.1.0",
+    "mypy>=1.5.0",
+    "ruff>=0.1.0",
+    "pre-commit>=3.4.0",
+]
+
+# All optional dependencies
+all = [
+    "unstract-prompt-helpers[document,advanced-text,vector-db,autogen,evaluation]",
+]
+
+[project.urls]
+Homepage = "https://github.com/Zipstack/unstract"
+Documentation = "https://docs.unstract.com"
+Repository = "https://github.com/Zipstack/unstract"
+Issues = "https://github.com/Zipstack/unstract/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["unstract*"]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.uv.sources]
+# Local dependencies
+"unstract-sdk1" = {path = "../sdk1", editable = true}
+"unstract-autogen-client" = {path = "../autogen-client", editable = true}
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-mock>=3.11.0",
+    "pytest-cov>=4.1.0",
+    "mypy>=1.5.0",
+    "ruff>=0.1.0",
+    "pre-commit>=3.4.0",
+]
+
+[tool.ruff]
+line-length = 90
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long, handled by formatter
+    "B008",  # do not perform function calls in argument defaults
+    "C901",  # too complex
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+[tool.mypy]
+python_version = "3.12"
+check_untyped_defs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+strict_equality = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--disable-warnings",
+    "--cov=src/unstract/prompt_helpers",
+    "--cov-report=term-missing",
+    "--cov-report=html:htmlcov",
+    "--cov-report=xml",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+
+[tool.coverage.run]
+source = ["src/unstract/prompt_helpers"]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
