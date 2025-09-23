@@ -82,6 +82,45 @@ load_env() {
     fi
 }
 
+
+# Function to detect worker type from command-line arguments
+detect_worker_type_from_args() {
+    local -n args_ref=$1
+
+    # Look for --queues argument to infer worker type
+    local queues=""
+    local i=0
+    while [[ $i -lt ${#args_ref[@]} ]]; do
+        local arg="${args_ref[$i]}"
+        case "$arg" in
+            --queues=*)
+                queues="${arg#--queues=}"
+                break
+                ;;
+            --queues)
+                ((i++))
+                if [[ $i -lt ${#args_ref[@]} ]]; then
+                    queues="${args_ref[$i]}"
+                    break
+                fi
+                ;;
+        esac
+        ((i++))
+    done
+
+    # Map queue patterns to worker types
+    case "$queues" in
+        *"file_processing"*) echo "file_processing" ;;
+        *"celery_api_deployments"*) echo "api_deployment" ;;
+        *"file_processing_callback"*) echo "callback" ;;
+        *"notifications"*) echo "notification" ;;
+        *"celery_log_task_queue"*) echo "log_consumer" ;;
+        *"scheduler"*) echo "scheduler" ;;
+        *"celery"*) echo "general" ;;
+        *) echo "general" ;; # fallback
+    esac
+}
+
 # Function to run a single worker
 run_worker() {
     local worker_type=$1
@@ -212,29 +251,31 @@ run_worker() {
 
     # Build Celery command with configurable options
     local app_module="${CELERY_APP_MODULE:-worker}"
-    local log_level="${CELERY_LOG_LEVEL:-${LOG_LEVEL:-INFO}}"
-    local hostname="${CELERY_HOSTNAME:-${worker_instance_name}@%h}"
 
+    # Initial command without specific args - they'll be resolved with priority system
     local celery_cmd="/app/.venv/bin/celery -A $app_module worker"
-    local celery_args="--loglevel=$log_level --queues=$queues --hostname=$hostname"
+    local celery_args=""
 
     # =============================================================================
-    # Hierarchical Configuration Resolution (3-tier priority system)
+    # Hierarchical Configuration Resolution (4-tier priority system)
     # =============================================================================
     # Resolve worker-specific overrides using the hierarchical configuration pattern:
-    # 1. {WORKER_TYPE}_{SETTING_NAME} (highest priority)
-    # 2. CELERY_{SETTING_NAME} (medium priority)
-    # 3. Default value (lowest priority)
+    # 1. Command-line arguments (highest priority)
+    # 2. {WORKER_TYPE}_{SETTING_NAME} (high priority)
+    # 3. CELERY_{SETTING_NAME} (medium priority)
+    # 4. Default value (lowest priority)
+
+    # Traditional environment-based command building (no CLI parsing needed)
 
     # Convert worker_type to uppercase for environment variable resolution
     local worker_type_upper=$(echo "$worker_type" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
 
-    # Helper function for hierarchical configuration resolution
+    # Helper function for hierarchical configuration resolution (environment-based)
     resolve_config() {
         local setting_name=$1
         local default_value=$2
 
-        # Check worker-specific setting first (highest priority)
+        # Check worker-specific setting (highest priority)
         local worker_specific_var="${worker_type_upper}_${setting_name}"
         local worker_value=$(eval echo "\${${worker_specific_var}:-}")
         if [[ -n "$worker_value" ]]; then
@@ -254,80 +295,73 @@ run_worker() {
         echo "$default_value"
     }
 
+    # Resolve configuration using environment variables only
+    local resolved_queues="$queues"
+    celery_args="$celery_args --queues=$resolved_queues"
+
+    # Resolve log level
+    local resolved_loglevel="${CELERY_LOG_LEVEL:-${LOG_LEVEL:-INFO}}"
+    celery_args="$celery_args --loglevel=$resolved_loglevel"
+
+    # Resolve hostname
+    local resolved_hostname="${CELERY_HOSTNAME:-${worker_instance_name}@%h}"
+    celery_args="$celery_args --hostname=$resolved_hostname"
+
     # Apply hierarchical configuration for pool type
     local pool_type=$(resolve_config "POOL_TYPE" "prefork")
     # Override with legacy CELERY_POOL for backward compatibility
     pool_type="${CELERY_POOL:-$pool_type}"
     celery_args="$celery_args --pool=$pool_type"
 
-    # Configure concurrency based on pool type
-    if [[ "$pool_type" == "threads" ]] || [[ "$pool_type" == "eventlet" ]] || [[ "$pool_type" == "gevent" ]]; then
-        # Thread/async pools don't support autoscaling, use fixed concurrency
-        if [[ -n "$CELERY_CONCURRENCY" ]]; then
-            celery_args="$celery_args --concurrency=$CELERY_CONCURRENCY"
-        else
-            celery_args="$celery_args --concurrency=$concurrency"
-        fi
-    else
-        # Prefork pool with fixed concurrency
-        if [[ -n "$CELERY_CONCURRENCY" ]]; then
-            celery_args="$celery_args --concurrency=$CELERY_CONCURRENCY"
-        else
-            celery_args="$celery_args --concurrency=$concurrency"
-        fi
-    fi
+    # Configure concurrency with hierarchical resolution
+    local resolved_concurrency=$(resolve_config "CONCURRENCY" "$concurrency")
+    # Apply legacy CELERY_CONCURRENCY
+    resolved_concurrency="${CELERY_CONCURRENCY:-$resolved_concurrency}"
+    celery_args="$celery_args --concurrency=$resolved_concurrency"
 
     # Apply hierarchical configuration for optional parameters
 
-    # Prefetch multiplier - hierarchical resolution with backward compatibility
+    # Prefetch multiplier
     local prefetch_multiplier=$(resolve_config "PREFETCH_MULTIPLIER" "")
     prefetch_multiplier="${CELERY_PREFETCH_MULTIPLIER:-$prefetch_multiplier}"
     if [[ -n "$prefetch_multiplier" ]]; then
         celery_args="$celery_args --prefetch-multiplier=$prefetch_multiplier"
-        print_status $BLUE "  → Prefetch multiplier: $prefetch_multiplier"
     fi
 
-    # Max tasks per child - hierarchical resolution with backward compatibility
+    # Max tasks per child
     local max_tasks_per_child=$(resolve_config "MAX_TASKS_PER_CHILD" "")
     max_tasks_per_child="${CELERY_MAX_TASKS_PER_CHILD:-$max_tasks_per_child}"
     if [[ -n "$max_tasks_per_child" ]]; then
         celery_args="$celery_args --max-tasks-per-child=$max_tasks_per_child"
-        print_status $BLUE "  → Max tasks per child: $max_tasks_per_child"
     fi
 
-    # Task time limit - hierarchical resolution with backward compatibility
+    # Task time limit
     local time_limit=$(resolve_config "TASK_TIME_LIMIT" "")
     time_limit="${CELERY_TIME_LIMIT:-$time_limit}"
     if [[ -n "$time_limit" ]]; then
         celery_args="$celery_args --time-limit=$time_limit"
-        print_status $BLUE "  → Task time limit: $time_limit"
     fi
 
-    # Task soft time limit - hierarchical resolution with backward compatibility
+    # Task soft time limit
     local soft_time_limit=$(resolve_config "TASK_SOFT_TIME_LIMIT" "")
     soft_time_limit="${CELERY_SOFT_TIME_LIMIT:-$soft_time_limit}"
     if [[ -n "$soft_time_limit" ]]; then
         celery_args="$celery_args --soft-time-limit=$soft_time_limit"
-        print_status $BLUE "  → Task soft time limit: $soft_time_limit"
     fi
 
     # Add gossip, mingle, and heartbeat control flags based on environment variables
     # Default: gossip=true, mingle=true, heartbeat=true (Celery defaults)
-    # To disable, set environment variable to "false"
 
     if [[ "${CELERY_WORKER_GOSSIP:-true}" == "false" ]]; then
         celery_args="$celery_args --without-gossip"
-        print_status $YELLOW "  → Gossip disabled (inter-worker discovery)"
     fi
 
     if [[ "${CELERY_WORKER_MINGLE:-true}" == "false" ]]; then
         celery_args="$celery_args --without-mingle"
-        print_status $YELLOW "  → Mingle disabled (startup synchronization)"
     fi
 
     if [[ "${CELERY_WORKER_HEARTBEAT:-true}" == "false" ]]; then
         celery_args="$celery_args --without-heartbeat"
-        print_status $YELLOW "  → Heartbeat disabled (health monitoring)"
     fi
 
     # Add any additional custom Celery arguments
@@ -335,35 +369,90 @@ run_worker() {
         celery_args="$celery_args $CELERY_EXTRA_ARGS"
     fi
 
-    print_status $BLUE "Final Celery command: $celery_cmd $celery_args"
-
     # Execute the command
     exec $celery_cmd $celery_args
 }
 
 # Main execution
-# Docker containers pass the worker type as the first argument
-WORKER_TYPE="${1:-general}"
-
-# Load environment if exists
+# Load environment first for any needed variables
 load_env "$ENV_FILE"
 
 # Add PYTHONPATH for imports - include both /app and /unstract for packages
 export PYTHONPATH="/app:/unstract/core/src:/unstract/connectors/src:/unstract/filesystem/src:/unstract/flags/src:/unstract/tool-registry/src:/unstract/tool-sandbox/src:/unstract/workflow-execution/src:${PYTHONPATH:-}"
 
-# Check for direct command override
-if [[ -n "$CELERY_COMMAND_OVERRIDE" ]]; then
-    print_status $BLUE "🔄 Using direct Celery command override..."
-    print_status $BLUE "Command: /app/.venv/bin/celery $CELERY_COMMAND_OVERRIDE"
+# Two-path logic: Full Celery command vs Traditional worker type
+if [[ "$1" == *"celery"* ]] || [[ "$1" == *".venv"* ]]; then
+    # =============================================================================
+    # PATH 1: Full Celery Command Detected - Use Directly
+    # =============================================================================
+    print_status $BLUE "🚀 Full Celery command detected - executing directly"
 
-    # Set worker type for consistency
+    # Extract worker type for environment setup
+    ALL_ARGS=("$@")
+    WORKER_TYPE=$(detect_worker_type_from_args ALL_ARGS)
+
+    print_status $BLUE "Detected worker type: $WORKER_TYPE"
+    print_status $BLUE "Command: $*"
+
+    # Set essential environment variables for worker identification
     export WORKER_TYPE="$WORKER_TYPE"
+    export WORKER_NAME="${WORKER_TYPE}-worker"
 
-    # Execute the override command (prepend celery binary path)
-    exec /app/.venv/bin/celery $CELERY_COMMAND_OVERRIDE
+    # Set worker instance name for identification
+    if [[ -n "$HOSTNAME" ]]; then
+        worker_instance_name="${WORKER_TYPE}-${HOSTNAME}"
+    elif [[ -n "$WORKER_INSTANCE_ID" ]]; then
+        worker_instance_name="${WORKER_TYPE}-worker-${WORKER_INSTANCE_ID}"
+    else
+        worker_instance_name="${WORKER_TYPE}-worker-docker"
+    fi
+    export WORKER_NAME="$worker_instance_name"
+
+    # Set health port environment variable based on worker type
+    case "$WORKER_TYPE" in
+        "api_deployment")
+            export API_DEPLOYMENT_HEALTH_PORT="8080"
+            export API_DEPLOYMENT_METRICS_PORT="8080"
+            ;;
+        "general")
+            export GENERAL_HEALTH_PORT="8081"
+            export GENERAL_METRICS_PORT="8081"
+            ;;
+        "file_processing")
+            export FILE_PROCESSING_HEALTH_PORT="8082"
+            export FILE_PROCESSING_METRICS_PORT="8082"
+            ;;
+        "callback")
+            export CALLBACK_HEALTH_PORT="8083"
+            export CALLBACK_METRICS_PORT="8083"
+            ;;
+        "notification")
+            export NOTIFICATION_HEALTH_PORT="8085"
+            export NOTIFICATION_METRICS_PORT="8085"
+            ;;
+        "log_consumer")
+            export LOG_CONSUMER_HEALTH_PORT="8084"
+            export LOG_CONSUMER_METRICS_PORT="8084"
+            ;;
+        "scheduler")
+            export SCHEDULER_HEALTH_PORT="8087"
+            export SCHEDULER_METRICS_PORT="8087"
+            ;;
+    esac
+
+    print_status $GREEN "✅ Executing Celery command with highest priority..."
+
+    # Execute the full command directly - Celery will handle all arguments
+    exec "$@"
+
+else
+    # =============================================================================
+    # PATH 2: Traditional Worker Type - Build from Environment
+    # =============================================================================
+    WORKER_TYPE="${1:-general}"
+    print_status $BLUE "🔧 Traditional worker type detected: $WORKER_TYPE"
+    print_status $BLUE "Building command from environment variables..."
+
+    # Use existing run_worker function for environment-based building
+    run_worker "$WORKER_TYPE"
 fi
-
-# Run the worker
-print_status $BLUE "Docker Unified Worker Starting..."
-print_status $BLUE "Worker Type: $WORKER_TYPE"
-run_worker "$WORKER_TYPE"

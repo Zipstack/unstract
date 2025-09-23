@@ -9,40 +9,111 @@ code maintainability and reduce duplication across workers.
 """
 
 import os
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
 from shared.enums.worker_enums import QueueName, WorkerType
 
+# Global cache for command-line Celery settings
+_CMDLINE_CELERY_SETTINGS: dict[str, str] | None = None
+
+
+def _parse_celery_cmdline_args() -> dict[str, str]:
+    """Parse Celery settings from command-line arguments.
+
+    Extracts --setting=value pairs from sys.argv and converts them to
+    setting names compatible with get_celery_setting().
+
+    Returns:
+        Dictionary mapping setting names to values from command-line
+
+    Examples:
+        --pool=prefork -> {"POOL_TYPE": "prefork"}
+        --concurrency=20 -> {"CONCURRENCY": "20"}
+        --loglevel=INFO -> {"LOG_LEVEL": "INFO"}
+    """
+    settings = {}
+
+    # Convert common Celery argument names to setting names
+    setting_mapping = {
+        "pool": "POOL_TYPE",
+        "concurrency": "CONCURRENCY",
+        "loglevel": "LOG_LEVEL",
+        "prefetch-multiplier": "PREFETCH_MULTIPLIER",
+        "max-tasks-per-child": "MAX_TASKS_PER_CHILD",
+        "time-limit": "TASK_TIME_LIMIT",
+        "soft-time-limit": "TASK_SOFT_TIME_LIMIT",
+        "without-gossip": "WORKER_GOSSIP",
+        "without-mingle": "WORKER_MINGLE",
+        "without-heartbeat": "WORKER_HEARTBEAT",
+        # Add more mappings as needed
+    }
+
+    for arg in sys.argv:
+        if arg.startswith("--"):
+            if "=" in arg:
+                # Handle --setting=value
+                setting_arg, value = arg[2:].split("=", 1)
+                setting_name = setting_mapping.get(
+                    setting_arg, setting_arg.upper().replace("-", "_")
+                )
+                settings[setting_name] = value
+            elif arg[2:] in setting_mapping:
+                # Handle --without-* flags (they don't have values)
+                setting_arg = arg[2:]
+                if setting_arg.startswith("without-"):
+                    setting_name = setting_mapping[setting_arg]
+                    settings[setting_name] = "false"
+
+    return settings
+
+
+def _get_cmdline_celery_settings() -> dict[str, str]:
+    """Get cached command-line Celery settings, parsing if needed."""
+    global _CMDLINE_CELERY_SETTINGS
+    if _CMDLINE_CELERY_SETTINGS is None:
+        _CMDLINE_CELERY_SETTINGS = _parse_celery_cmdline_args()
+    return _CMDLINE_CELERY_SETTINGS
+
 
 def get_celery_setting(
     setting_name: str, worker_type: WorkerType, default: Any, setting_type: type = str
 ) -> Any:
-    """Get Celery configuration setting with 3-tier hierarchy resolution.
+    """Get Celery configuration setting with 4-tier hierarchy resolution.
 
     Resolution order (most specific wins):
-    1. {WORKER_TYPE}_{SETTING_NAME} (worker-specific override)
-    2. CELERY_{SETTING_NAME} (global override)
-    3. default (Celery standard/provided default)
+    1. Command-line arguments (--pool=prefork, --concurrency=20, etc.) - HIGHEST
+    2. {WORKER_TYPE}_{SETTING_NAME} (worker-specific env override)
+    3. CELERY_{SETTING_NAME} (global env override)
+    4. default (Celery standard/provided default) - LOWEST
 
     Args:
         setting_name: The setting name (e.g., "TASK_TIME_LIMIT")
         worker_type: Worker type for worker-specific overrides
-        default: Default value if no environment variables are set
+        default: Default value if no settings are found
         setting_type: Type to convert the setting value to (str, int, bool, etc.)
 
     Returns:
         Resolved configuration value with proper type conversion
 
     Examples:
-        # Check CALLBACK_TASK_TIME_LIMIT, then CELERY_TASK_TIME_LIMIT, then default
-        timeout = get_celery_setting("TASK_TIME_LIMIT", WorkerType.CALLBACK, 300, int)
-
-        # Check FILE_PROCESSING_POOL_TYPE, then CELERY_POOL_TYPE, then "prefork"
+        # Check --pool=, then FILE_PROCESSING_POOL_TYPE, then CELERY_POOL_TYPE, then default
         pool = get_celery_setting("POOL_TYPE", WorkerType.FILE_PROCESSING, "prefork", str)
+
+        # Check --concurrency=, then CALLBACK_CONCURRENCY, then CELERY_CONCURRENCY, then default
+        concurrency = get_celery_setting("CONCURRENCY", WorkerType.CALLBACK, 4, int)
     """
-    # 1. Check worker-specific setting first (highest priority)
+    # 1. Check command-line arguments first (highest priority)
+    cmdline_settings = _get_cmdline_celery_settings()
+    if setting_name in cmdline_settings:
+        cmdline_value = cmdline_settings[setting_name]
+        converted_value = _convert_setting_value(cmdline_value, setting_type)
+        if converted_value is not None:
+            return converted_value
+
+    # 2. Check worker-specific setting (high priority)
     worker_specific_key = f"{worker_type.name}_{setting_name}"
     worker_value = os.getenv(worker_specific_key)
     if worker_value is not None:
@@ -50,7 +121,7 @@ def get_celery_setting(
         if converted_value is not None:
             return converted_value
 
-    # 2. Check global Celery setting (medium priority)
+    # 3. Check global Celery setting (medium priority)
     global_key = f"CELERY_{setting_name}"
     global_value = os.getenv(global_key)
     if global_value is not None:
@@ -58,7 +129,7 @@ def get_celery_setting(
         if converted_value is not None:
             return converted_value
 
-    # 3. Use provided default (lowest priority)
+    # 4. Use provided default (lowest priority)
     return default
 
 
@@ -368,11 +439,8 @@ class WorkerCeleryConfig:
 
     def _add_pool_configuration(self, config: dict[str, Any]) -> None:
         """Add worker pool configuration based on worker type and environment."""
-        # FILE_PROCESSING worker uses threads by default, others use prefork
-        if self.worker_type == WorkerType.FILE_PROCESSING:
-            default_pool = "threads"
-        else:
-            default_pool = "prefork"
+        # All workers use prefork as default (consistent with command-line args)
+        default_pool = "prefork"
 
         pool_type = get_celery_setting("POOL_TYPE", self.worker_type, default_pool)
         if pool_type == "threads":
