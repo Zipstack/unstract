@@ -2,7 +2,7 @@ import base64
 import logging
 import os
 from abc import ABC, abstractmethod
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 from fsspec import AbstractFileSystem
@@ -102,6 +102,124 @@ class UnstractFileSystem(UnstractConnector, ABC):
             bool: True if the path is a directory, False otherwise.
         """
         pass
+
+    @abstractmethod
+    def extract_modified_date(self, metadata: dict[str, Any]) -> datetime | None:
+        """Extract the last modified date from file metadata.
+
+        Args:
+            metadata: File metadata dictionary from fsspec
+
+        Returns:
+            datetime object or None if not available
+        """
+        pass
+
+    def sort_files_by_modified_date(
+        self, file_metadata_list: list[dict[str, Any]], ascending: bool = True
+    ) -> list[dict[str, Any]]:
+        """Sort files by their last modified date.
+
+        Args:
+            file_metadata_list: List of file metadata dictionaries
+            ascending: If True, sort oldest first (FIFO); if False, newest first (LIFO)
+
+        Returns:
+            Sorted list of file metadata
+        """
+
+        def get_modified_date(metadata: dict[str, Any]) -> datetime:
+            try:
+                dt = self.extract_modified_date(metadata)
+                if dt is None:
+                    # Fallback to epoch for files without timestamp
+                    logger.warning(
+                        f"No modified date found for file: {metadata['name']}, "
+                        "falling back to epoch for such files with no timestamp"
+                    )
+                    return datetime.fromtimestamp(0, tz=UTC)
+                # Ensure the extracted date is normalized to UTC and timezone-aware
+                if dt.tzinfo is None:
+                    # Naive datetime - assume UTC
+                    return dt.replace(tzinfo=UTC)
+                else:
+                    # Convert to UTC
+                    return dt.astimezone(UTC)
+            except Exception as e:
+                # Log per-file warning and store error for this specific metadata entry
+                file_name = metadata.get("name", "unknown file")
+                msg = (
+                    f"Failed to extract modified date for file: {file_name}, "
+                    "falling back to epoch for such files and continuing execution"
+                )
+                logger.exception(f"{msg}: {e}")
+                self._store_user_error(msg)
+                # Return epoch as fallback so sorting never fails
+                return datetime.fromtimestamp(0, tz=UTC)
+
+        return sorted(file_metadata_list, key=get_modified_date, reverse=not ascending)
+
+    def _store_user_error(self, error_msg: str) -> None:
+        """Store user-friendly error message for later reporting.
+
+        Args:
+            error_msg: User-friendly error message without technical details
+        """
+        if not hasattr(self, "_user_errors"):
+            self._user_errors = []
+        self._user_errors.append(error_msg)
+
+    def list_files(
+        self,
+        directory: str,
+        max_depth: int = 1,
+        include_dirs: bool = False,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """List files in a directory with optional sorting.
+
+        Args:
+            directory: Directory path to list
+            max_depth: Maximum depth for recursive traversal
+            include_dirs: Whether to include directories in results
+            limit: Maximum number of files to collect (for performance)
+
+        Returns:
+            List of file metadata dictionaries
+        """
+        all_files = []
+        fs_fsspec = self.get_fsspec_fs()
+
+        for root, dirs, _ in fs_fsspec.walk(directory, maxdepth=max_depth):
+            try:
+                fs_metadata_list = fs_fsspec.listdir(root, detail=True)
+                for metadata in fs_metadata_list:
+                    if not include_dirs and self.is_dir_by_metadata(metadata):
+                        continue
+                    all_files.append(metadata)
+
+                    if limit is not None and len(all_files) >= limit:
+                        return all_files
+            except Exception as e:
+                logger.warning(f"Failed to list directory {root}: {e}")
+                self._store_user_error(f"Could not access directory: {root}")
+                continue
+        return all_files
+
+    def report_errors_to_user(self) -> list[str]:
+        """Get accumulated errors and clear the list.
+
+        This method will be called from source.py after list_files() completes,
+        to get any accumulated errors for reporting to the user.
+
+        Returns:
+            List of user-friendly error messages
+        """
+        if hasattr(self, "_user_errors") and self._user_errors:
+            errors = self._user_errors.copy()
+            self._user_errors.clear()
+            return errors
+        return []
 
     @staticmethod
     def get_connector_root_dir(input_dir: str, **kwargs: Any) -> str:
