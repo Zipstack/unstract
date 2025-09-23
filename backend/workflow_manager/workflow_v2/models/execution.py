@@ -120,8 +120,7 @@ class WorkflowExecution(BaseModel):
     result_acknowledged = models.BooleanField(
         default=False,
         db_comment=(
-            "To track if result is acknowledged by user - "
-            "used mainly by API deployments"
+            "To track if result is acknowledged by user - used mainly by API deployments"
         ),
     )
     total_files = models.PositiveIntegerField(

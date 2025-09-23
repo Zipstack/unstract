@@ -219,6 +219,9 @@ class StructureTool(BaseTool):
             SettingsKeys.FILE_PATH: extracted_input_file,
             SettingsKeys.EXECUTION_SOURCE: SettingsKeys.TOOL,
         }
+
+        custom_data = self.get_exec_metadata.get(SettingsKeys.CUSTOM_DATA, {})
+        payload["custom_data"] = custom_data
         self.stream_log(f"Extracting document '{self.source_file_name}'")
         usage_kwargs: dict[Any, Any] = dict()
         usage_kwargs[UsageKwargs.RUN_ID] = self.file_execution_id
