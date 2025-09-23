@@ -13,6 +13,9 @@ from unstract.connectors.queues.unstract_queue import UnstractQueue
 
 logger = logging.getLogger(__name__)
 
+# HITL connectors registry (initialized at module level, similar to Redis pattern)
+hitl_connectors = {}
+
 
 class QueueResultStatus(Enum):
     SUCCESS = "success"
@@ -106,36 +109,46 @@ class QueueUtils:
 
     @staticmethod
     def _import_hitl_connector(connector_name: str):
-        """Dynamically import HITL connector class.
+        """Get HITL connector class from registry (follows Redis pattern with lazy loading).
 
         Args:
-            connector_name: Name of the connector class to import
+            connector_name: Name of the connector class to get
 
         Returns:
-            The imported connector class
+            The connector class
 
         Raises:
-            ImportError: When the connector cannot be imported
+            ImportError: When the connector is not available
         """
-        try:
-            from pluggable_apps.manual_review_v2.connectors import (
-                HybridQueue,
-                PostgreSQLQueue,
+        global hitl_connectors
+
+        # Lazy initialization on first access (avoids circular imports)
+        if not hitl_connectors:
+            try:
+                from pluggable_apps.manual_review_v2.connectors import (
+                    HybridQueue,
+                    PostgreSQLQueue,
+                )
+
+                hitl_connectors = {
+                    "PostgreSQLQueue": PostgreSQLQueue,
+                    "HybridQueue": HybridQueue,
+                }
+            except ImportError as e:
+                logger.debug(f"HITL connectors not available: {e}")
+
+        if not hitl_connectors:
+            raise ImportError(
+                "HITL connectors not available. Make sure 'pluggable_apps.manual_review_v2' is installed."
             )
 
-            connectors = {
-                "PostgreSQLQueue": PostgreSQLQueue,
-                "HybridQueue": HybridQueue,
-            }
+        if connector_name not in hitl_connectors:
+            available_connectors = list(hitl_connectors.keys())
+            raise ImportError(
+                f"Unknown HITL connector: {connector_name}. Available: {available_connectors}"
+            )
 
-            if connector_name not in connectors:
-                raise ImportError(f"Unknown HITL connector: {connector_name}")
-
-            return connectors[connector_name]
-
-        except ImportError as e:
-            logger.debug(f"Failed to import HITL connector '{connector_name}': {e}")
-            raise
+        return hitl_connectors[connector_name]
 
     @staticmethod
     def calculate_remaining_ttl(enqueued_at: float, ttl_seconds: int) -> int | None:

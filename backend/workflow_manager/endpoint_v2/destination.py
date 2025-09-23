@@ -219,7 +219,6 @@ class DestinationConnector(BaseConnector):
         """Handle the output based on the connection type."""
         connection_type = self.endpoint.connection_type
         tool_execution_result: str | None = None
-
         if connection_type == WorkflowEndpoint.ConnectionType.FILESYSTEM:
             self.copy_output_to_output_directory()
         elif connection_type == WorkflowEndpoint.ConnectionType.DATABASE:
@@ -800,9 +799,21 @@ class DestinationConnector(BaseConnector):
 
             queue_result_json = json.dumps(queue_result)
 
-            conn = QueueUtils.get_queue_inst()
-            conn.enqueue(queue_name=q_name, message=queue_result_json)
-            logger.info(f"Pushed {file_name} to queue {q_name} with file content")
+            # Get organization_id for proper HITL queue filtering
+            organization_id = UserContext.get_organization_identifier()
+            conn = QueueUtils.get_queue_inst(
+                {"use_hitl_backend": True, "organization_id": organization_id}
+            )
+            # API deployments don't have TTL, use system actor
+            conn.enqueue_with_ttl(
+                queue_name=q_name,
+                message=queue_result_json,
+                ttl_seconds=None,  # No TTL for API deployments
+                actor_id=None,  # System-initiated enqueue
+            )
+            logger.info(
+                f"Pushed {file_name} to queue {q_name} with organization_id {organization_id}"
+            )
             return
         connector_settings: dict[str, Any] = connector.connector_metadata
 
@@ -836,7 +847,6 @@ class DestinationConnector(BaseConnector):
                 file_execution_id=file_execution_id,
                 extracted_text=extracted_text,
             )
-
             # Add TTL metadata based on HITLSettings
             queue_result_obj.ttl_seconds = WorkflowUtil.get_hitl_ttl_seconds(workflow)
 
@@ -850,15 +860,22 @@ class DestinationConnector(BaseConnector):
                 )
                 raise ValueError("Cannot enqueue empty JSON message")
 
-            conn = QueueUtils.get_queue_inst()
-
-            # Use the TTL metadata that was already set in the QueueResult object
-            ttl_seconds = queue_result_obj.ttl_seconds
-
-            conn.enqueue_with_ttl(
-                queue_name=q_name, message=queue_result_json, ttl_seconds=ttl_seconds
+            # Get organization_id for proper HITL queue filtering
+            organization_id = UserContext.get_organization_identifier()
+            conn = QueueUtils.get_queue_inst(
+                {"use_hitl_backend": True, "organization_id": organization_id}
             )
-            logger.info(f"Pushed {file_name} to queue {q_name} with file content")
+            # Use TTL from workflow settings, system actor for workflow enqueue
+            ttl_seconds = queue_result_obj.ttl_seconds
+            conn.enqueue_with_ttl(
+                queue_name=q_name,
+                message=queue_result_json,
+                ttl_seconds=ttl_seconds,
+                actor_id=None,  # System-initiated enqueue
+            )
+            logger.info(
+                f"Pushed {file_name} to queue {q_name} with organization_id {organization_id} and TTL {ttl_seconds}"
+            )
 
     def _read_file_content_for_queue(self, input_file_path: str, file_name: str) -> str:
         """Read and encode file content for queue message.
