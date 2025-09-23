@@ -3986,7 +3986,7 @@ requires-dist = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.77.1"
+version = "0.77.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filetype" },
@@ -4025,9 +4025,9 @@ dependencies = [
     { name = "tiktoken" },
     { name = "transformers" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f0/0d/48bcf9ae4addc194c6c571b510d037dd0c194e85161457ee8b164e3d8ffa/unstract_sdk-0.77.1.tar.gz", hash = "sha256:947a83daae0633e5c309aad88a9b8bb85b0c5b1e927ef45dde8dfb0aeed814d6", size = 2375731 }
+sdist = { url = "https://files.pythonhosted.org/packages/c5/e8/f7e1045fee076c75c42bb27b4fa5a077836cfa8fd3fd580f6c6193fa19dc/unstract_sdk-0.77.3.tar.gz", hash = "sha256:378c19129a91e861b7235e92411ef72792c6c851320cb7897b380d08d3489c9d", size = 2375843 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ea/dd/94559267061413eb0e6f9c9351961a3a1e87ee32d9612861f7045aeaa5a9/unstract_sdk-0.77.1-py3-none-any.whl", hash = "sha256:91d38b35b2692244eb5433a8e4716c73b71e7634ac11f9e72c2328b158434977", size = 266608 },
+    { url = "https://files.pythonhosted.org/packages/d5/84/d596295fce3a713b1953a4fd7be3be1d788920e5633e28fbea7c7331b68a/unstract_sdk-0.77.3-py3-none-any.whl", hash = "sha256:74e83cbb68eef98fbaecfc83e0cfd2228e5958506e1b51a65fae0d891027aaee", size = 266640 },
 ]
 
 [package.optional-dependencies]
@@ -4109,7 +4109,7 @@ requires-dist = [
     { name = "unstract-core", editable = "unstract/core" },
     { name = "unstract-filesystem", editable = "unstract/filesystem" },
     { name = "unstract-flags", editable = "unstract/flags" },
-    { name = "unstract-sdk", extras = ["azure"], specifier = "~=0.77.1" },
+    { name = "unstract-sdk", extras = ["azure"], specifier = "~=0.77.3" },
     { name = "unstract-tool-registry", editable = "unstract/tool-registry" },
     { name = "unstract-tool-sandbox", editable = "unstract/tool-sandbox" },
     { name = "unstract-workflow-execution", editable = "unstract/workflow-execution" },
