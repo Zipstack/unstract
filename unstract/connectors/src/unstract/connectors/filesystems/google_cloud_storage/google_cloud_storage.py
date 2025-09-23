@@ -4,7 +4,7 @@ import logging
 import os
 from typing import Any
 
-from gcsfs import GCSFileSystem
+from fsspec import AbstractFileSystem
 
 from unstract.connectors.exceptions import ConnectorError
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
@@ -25,6 +25,8 @@ class GoogleCloudStorageFS(UnstractFileSystem):
         project_id = settings.get("project_id", "")
         json_credentials_str = settings.get("json_credentials", "{}")
         try:
+            from gcsfs import GCSFileSystem
+
             json_credentials = json.loads(json_credentials_str)
             self.gcs_fs = GCSFileSystem(
                 token=json_credentials,
@@ -80,7 +82,7 @@ class GoogleCloudStorageFS(UnstractFileSystem):
     def can_read() -> bool:
         return True
 
-    def get_fsspec_fs(self) -> GCSFileSystem:
+    def get_fsspec_fs(self) -> AbstractFileSystem:
         return self.gcs_fs
 
     def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> str | None:

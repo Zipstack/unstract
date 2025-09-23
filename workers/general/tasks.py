@@ -717,7 +717,7 @@ def _execute_general_workflow(
                 api_client.update_workflow_execution_status(
                     execution_id=execution_id,
                     status=ExecutionStatus.ERROR.value,
-                    error=str(e),
+                    error_message=str(e),
                 )
             except Exception as status_error:
                 logger.warning(f"Failed to update error status: {status_error}")
