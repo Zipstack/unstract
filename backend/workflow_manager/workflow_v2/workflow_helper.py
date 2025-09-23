@@ -107,31 +107,28 @@ class WorkflowHelper:
         BATCH_SIZE = Configuration.get_value_by_organization(
             config_key=ConfigKey.MAX_PARALLEL_FILE_BATCHES, organization=organization
         )  # Max number of batches
+        BATCH_SIZE = (
+            int(BATCH_SIZE)
+            if isinstance(BATCH_SIZE, int) or str(BATCH_SIZE).isdigit()
+            else 1
+        )
         file_items = list(json_serializable_files.items())
 
         # Calculate distribution
         num_files = len(file_items)
         # Target number of batches (can't exceed number of files)
         num_batches = min(BATCH_SIZE, num_files)
+        # Guard against invalid batch sizes
+        if num_batches <= 0:
+            num_batches = 1
 
-        # Distribute files as evenly as possible
-        base_items_per_batch = num_files // num_batches
-        remainder = num_files % num_batches
-
-        # Create batches
-        batches = []
-        start_index = 0
-
-        for i in range(num_batches):
-            # First 'remainder' batches get one extra item
-            batch_size = base_items_per_batch + (1 if i < remainder else 0)
-
-            if start_index < len(file_items):
-                end_index = min(start_index + batch_size, len(file_items))
-                batch = file_items[start_index:end_index]
-                if batch:  # Only add non-empty batches
-                    batches.append(batch)
-                start_index = end_index
+        # Round-robin distribution for maintaining order in case its sorted
+        batches = [[] for _ in range(num_batches)]
+        for i, file_item in enumerate(file_items):
+            batch_index = i % num_batches
+            batches[batch_index].append(file_item)
+        # Remove empties when num_files < num_batches
+        batches = [b for b in batches if b]
 
         return batches
 
@@ -185,6 +182,7 @@ class WorkflowHelper:
             else str(execution_mode)
         )
         result = None
+
         logger.info(
             f"Execution {workflow_execution.id} processing {total_files} files in {len(batches)} batches"
         )
