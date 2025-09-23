@@ -20,7 +20,7 @@ dependencies = [
     "prometheus-client>=0.17.0,<1.0.0", # Metrics collection
     "psutil>=5.9.0,<6.0.0", # System resource monitoring
     # Essential Unstract packages - with Azure support for connectors
-    "unstract-sdk[azure]~=0.77.1", # Core SDK with Azure connector support
+    "unstract-sdk[azure]~=0.77.3", # Core SDK with Azure connector support
     "unstract-connectors",
     "unstract-core",
     "unstract-flags",

@@ -647,7 +647,7 @@ class WorkerWorkflowExecutionService:
                 source_hash=computed_hash,
                 tags=tag_names,  # Pass actual tag names from execution
                 llm_profile_id=file_data.llm_profile_id,
-                user_data=file_data.user_data,
+                custom_data=file_data.custom_data,
             )
             logger.info(f"Initial metadata file created for {file_path}")
 

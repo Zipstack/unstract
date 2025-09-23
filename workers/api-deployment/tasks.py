@@ -186,7 +186,7 @@ def _unified_api_execution(
                 "files_count": len(hash_values_of_files) if hash_values_of_files else 0,
                 "hitl_queue_name": kwargs.get("hitl_queue_name"),
                 "llm_profile_id": kwargs.get("llm_profile_id"),
-                "user_data": kwargs.get("user_data"),
+                "custom_data": kwargs.get("custom_data"),
             },
         )
 
@@ -819,7 +819,7 @@ def _create_file_data(
     )
     hitl_queue_name = kwargs.get("hitl_queue_name")
     llm_profile_id = kwargs.get("llm_profile_id")
-    user_data = kwargs.get("user_data")
+    custom_data = kwargs.get("custom_data")
 
     file_data = WorkerFileData(
         workflow_id=str(workflow_id),
@@ -835,7 +835,7 @@ def _create_file_data(
         manual_review_config=manual_review_config,
         is_manualreview_required=bool(hitl_queue_name),
         llm_profile_id=llm_profile_id,
-        user_data=user_data,
+        custom_data=custom_data,
     )
 
     return file_data

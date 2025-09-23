@@ -1376,7 +1376,7 @@ class WorkerFileData:
     is_manualreview_required: bool = field(default=False)
     llm_profile_id: str | None = field(default=None)
     tags: list[TagData] = field(default_factory=list)
-    user_data: dict[str, Any] | None = field(default=None)
+    custom_data: dict[str, Any] | None = field(default=None)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "WorkerFileData":
