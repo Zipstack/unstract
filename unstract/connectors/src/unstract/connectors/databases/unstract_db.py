@@ -278,11 +278,11 @@ class UnstractDB(UnstractConnector, ABC):
                 sql_values=None,
                 table_name=table_name,
             )
-            logger.info(
-                "successfully migrated table %s with: %s query",
-                table_name,
-                sql_query_or_list,
-            )
+        logger.info(
+            "successfully migrated table %s with: %s query",
+            table_name,
+            sql_query_or_list,
+        )
         return self.get_information_schema(table_name=table_name)
 
     def get_sql_values_for_query(

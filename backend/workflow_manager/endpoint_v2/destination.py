@@ -367,7 +367,6 @@ class DestinationConnector(BaseConnector):
         )
 
         engine = db_class.get_engine()
-
         table_info = db_class.get_information_schema(table_name=table_name)
 
         logger.info(
