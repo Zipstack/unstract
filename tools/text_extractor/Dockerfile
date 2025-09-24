@@ -1,4 +1,4 @@
-FROM python:3.12.11-slim-trixie
+FROM python:3.12-slim-trixie
 
 LABEL maintainer="Zipstack Inc."
 
