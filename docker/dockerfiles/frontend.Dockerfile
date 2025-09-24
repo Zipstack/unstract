@@ -36,7 +36,7 @@ COPY ${BUILD_CONTEXT_PATH}/ .
 RUN npm run build
 
 # Production stage
-FROM nginx:1.29-alpine AS production
+FROM nginx:1.29.1-alpine AS production
 LABEL maintainer="Zipstack Inc."
 
 # Copy built assets from the builder stage
