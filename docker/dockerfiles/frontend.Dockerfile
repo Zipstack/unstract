@@ -1,7 +1,7 @@
 # Multi-stage build for both development and production
 
 # Base stage with common setup
-FROM node:16-alpine AS base
+FROM node:20-alpine AS base
 ENV BUILD_CONTEXT_PATH=frontend
 WORKDIR /app
 
@@ -36,7 +36,7 @@ COPY ${BUILD_CONTEXT_PATH}/ .
 RUN npm run build
 
 # Production stage
-FROM nginx:1.25-alpine AS production
+FROM nginx:1.29-alpine AS production
 LABEL maintainer="Zipstack Inc."
 
 # Copy built assets from the builder stage
