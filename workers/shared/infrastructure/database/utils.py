@@ -345,6 +345,13 @@ class WorkerDatabaseUtils:
         """Process data for single column mode."""
         v2_col_name = f"{single_column_name}_v2"
         has_v2_col = WorkerDatabaseUtils._has_table_column(table_info, v2_col_name)
+
+        # Safety check: Handle None data (from failed tool executions)
+        if data is None:
+            # Don't add data columns - let database handle as NULL
+            # This prevents 'None' string from being passed to JSON columns
+            return
+
         if isinstance(data, str):
             wrapped_dict = {"result": data}
             values[single_column_name] = wrapped_dict

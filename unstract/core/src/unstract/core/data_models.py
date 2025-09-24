@@ -1322,6 +1322,9 @@ class DestinationConfig:
             "use_file_history": self.use_file_history,
             "connector_settings": self.connector_settings,
             "connector_name": self.connector_name,
+            "source_connector_id": self.source_connector_id,
+            "source_connector_settings": self.source_connector_settings,
+            "hitl_queue_name": self.hitl_queue_name,
         }
 
     @classmethod

@@ -248,8 +248,6 @@ class WorkerDestinationConnector:
         else:
             return f"{self.connection_type} destination"
 
-    # ========== REFACTORED HANDLE_OUTPUT HELPER METHODS ==========
-
     def _setup_execution_context(
         self,
         workflow_id: str,
@@ -397,7 +395,7 @@ class WorkerDestinationConnector:
                 exec_ctx.file_execution_id,
                 f"📤 File '{file_ctx.file_name}' marked for DATABASE processing - preparing to insert data",
             )
-            if result.tool_execution_result:
+            if result.tool_execution_result or file_ctx.execution_error:
                 self.insert_into_db(
                     file_ctx.input_file_path,
                     result.tool_execution_result,
@@ -408,7 +406,7 @@ class WorkerDestinationConnector:
                 )
             else:
                 logger.warning(
-                    f"No tool execution result found for file {file_ctx.file_name}, skipping database insertion"
+                    f"No tool execution result or execution error found for file {file_ctx.file_name}, skipping database insertion"
                 )
         else:
             logger.info(
