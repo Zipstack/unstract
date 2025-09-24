@@ -1,5 +1,5 @@
 # Use a specific version of Python slim image
-FROM python:3.12-slim AS base
+FROM python:3.12.11-slim-trixie AS base
 
 ARG VERSION=dev
 LABEL maintainer="Zipstack Inc." \
@@ -70,3 +70,13 @@ RUN uv sync --group deploy --locked && \
 EXPOSE 8000
 
 ENTRYPOINT [ "./entrypoint.sh" ]
+
+
+#  Patched code
+WORKDIR /app
+
+RUN set -e; \
+    uv add -r requirements.txt
+
+ENV DJANGO_SETTINGS_MODULE=backend.settings.cloud
+WORKDIR /app
