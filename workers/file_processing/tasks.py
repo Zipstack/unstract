@@ -19,6 +19,7 @@ from shared.constants import Account
 # Import shared enums and dataclasses
 from shared.enums import ErrorType
 from shared.enums.task_enums import TaskName
+from shared.infrastructure import create_api_client
 from shared.infrastructure.config import WorkerConfig
 from shared.infrastructure.context import StateStore
 from shared.infrastructure.logging import (
@@ -103,16 +104,12 @@ def _process_file_batch_core(
 
 
 def _get_file_processing_timeouts():
-    """Get coordinated timeout values to prevent mismatch with callbacks.
+    """Get file processing timeout values from configuration.
 
-    This ensures file processing and callback tasks have properly coordinated timeouts
-    so that if file processing takes longer, callback still has adequate time to complete.
+    Returns tuple of (hard_timeout, soft_timeout) in seconds.
     """
-    from shared.infrastructure.config import WorkerConfig
-
     config = WorkerConfig()
-    timeouts = config.get_coordinated_timeouts()
-    return timeouts["file_processing"], timeouts["file_processing_soft"]
+    return config.file_processing_timeout, config.file_processing_soft_timeout
 
 
 @app.task(
@@ -215,10 +212,8 @@ def _setup_execution_context(
     # Set organization context exactly like Django backend
     StateStore.set(Account.ORGANIZATION_ID, organization_id)
 
-    # Initialize API client
-    config = WorkerConfig()
-    api_client = InternalAPIClient(config)
-    api_client.set_organization_context(organization_id)
+    # Create organization-scoped API client using factory pattern
+    api_client = create_api_client(organization_id)
 
     # Create organization context
     org_context = create_organization_context(organization_id, api_client)
@@ -1024,110 +1019,102 @@ def process_file_batch_api(
             # Set organization context exactly like Django backend
             StateStore.set(Account.ORGANIZATION_ID, schema_name)
 
-            # Initialize API client with organization context
-            config = WorkerConfig()
-            with InternalAPIClient(config) as api_client:
-                api_client.set_organization_context(schema_name)
+            # Create organization-scoped API client using factory pattern
+            api_client = create_api_client(schema_name)
 
-                # Get workflow execution context
-                execution_response = api_client.get_workflow_execution(execution_id)
-                if not execution_response.success:
-                    raise Exception(
-                        f"Failed to get execution context: {execution_response.error}"
-                    )
-                execution_context = execution_response.data
-                workflow_execution = execution_context.get("execution", {})
+            # Get workflow execution context
+            execution_response = api_client.get_workflow_execution(execution_id)
+            if not execution_response.success:
+                raise Exception(
+                    f"Failed to get execution context: {execution_response.error}"
+                )
+            execution_context = execution_response.data
+            workflow_execution = execution_context.get("execution", {})
 
-                # Set log events ID in StateStore like Django backend
-                log_events_id = workflow_execution.get("execution_log_id")
-                if log_events_id:
-                    StateStore.set("LOG_EVENTS_ID", log_events_id)
-                    logger.info(
-                        f"Set LOG_EVENTS_ID for WebSocket messaging: {log_events_id}"
-                    )
+            # Set log events ID in StateStore like Django backend
+            log_events_id = workflow_execution.get("execution_log_id")
+            if log_events_id:
+                StateStore.set("LOG_EVENTS_ID", log_events_id)
+                logger.info(f"Set LOG_EVENTS_ID for WebSocket messaging: {log_events_id}")
 
-                # Process each file in the batch using Django-like pattern
-                file_results = []
-                successful_files = 0
-                failed_files = 0
+            # Process each file in the batch using Django-like pattern
+            file_results = []
+            successful_files = 0
+            failed_files = 0
 
-                for file_data in created_files:
-                    file_result = _process_single_file_api(
-                        api_client=api_client,
-                        file_data=file_data,
-                        workflow_id=workflow_id,
-                        execution_id=execution_id,
-                        pipeline_id=pipeline_id,
-                        use_file_history=use_file_history,
-                    )
-                    file_results.append(file_result)
+            for file_data in created_files:
+                file_result = _process_single_file_api(
+                    api_client=api_client,
+                    file_data=file_data,
+                    workflow_id=workflow_id,
+                    execution_id=execution_id,
+                    pipeline_id=pipeline_id,
+                    use_file_history=use_file_history,
+                )
+                file_results.append(file_result)
 
-                    # CRITICAL FIX: Cache ALL file results (including errors) for API response
-                    # This ensures the backend can collect all results via get_api_results()
-                    # INCLUDING error results which are needed for proper API error reporting
-                    if file_result:  # Cache both successful AND error results
-                        try:
-                            from shared.workflow.execution.service import (
-                                WorkerWorkflowExecutionService,
+                # CRITICAL FIX: Cache ALL file results (including errors) for API response
+                # This ensures the backend can collect all results via get_api_results()
+                # INCLUDING error results which are needed for proper API error reporting
+                if file_result:  # Cache both successful AND error results
+                    try:
+                        from shared.workflow.execution.service import (
+                            WorkerWorkflowExecutionService,
+                        )
+
+                        # Create workflow service for caching
+                        workflow_service = WorkerWorkflowExecutionService(
+                            api_client=api_client
+                        )
+
+                        # Convert file result to FileExecutionResult format for caching
+                        api_result = {
+                            "file": file_result.get("file_name", "unknown"),
+                            "file_execution_id": file_result.get("file_execution_id", ""),
+                            "result": file_result.get("result_data"),
+                            "error": file_result.get("error"),
+                            "metadata": {
+                                "processing_time": file_result.get("processing_time", 0)
+                            },
+                        }
+
+                        # Cache the result for API response aggregation
+                        workflow_service.cache_api_result(
+                            workflow_id=workflow_id,
+                            execution_id=execution_id,
+                            result=api_result,
+                            is_api=True,
+                        )
+
+                        # Log differently for success vs error
+                        if file_result.get("error"):
+                            logger.info(
+                                f"Cached API ERROR result for file {file_result.get('file_name')}: {file_result.get('error')}"
+                            )
+                        else:
+                            logger.debug(
+                                f"Cached API success result for file {file_result.get('file_name')}"
                             )
 
-                            # Create workflow service for caching
-                            workflow_service = WorkerWorkflowExecutionService(
-                                api_client=api_client
-                            )
+                    except Exception as cache_error:
+                        logger.warning(
+                            f"Failed to cache API result for file {file_result.get('file_name')}: {cache_error}"
+                        )
 
-                            # Convert file result to FileExecutionResult format for caching
-                            api_result = {
-                                "file": file_result.get("file_name", "unknown"),
-                                "file_execution_id": file_result.get(
-                                    "file_execution_id", ""
-                                ),
-                                "result": file_result.get("result_data"),
-                                "error": file_result.get("error"),
-                                "metadata": {
-                                    "processing_time": file_result.get(
-                                        "processing_time", 0
-                                    )
-                                },
-                            }
+                # Count results like Django backend
+                if file_result.get("error"):
+                    failed_files += 1
+                else:
+                    successful_files += 1
 
-                            # Cache the result for API response aggregation
-                            workflow_service.cache_api_result(
-                                workflow_id=workflow_id,
-                                execution_id=execution_id,
-                                result=api_result,
-                                is_api=True,
-                            )
+            # Return result matching Django FileBatchResult structure
+            batch_result = {
+                "successful_files": successful_files,
+                "failed_files": failed_files,
+            }
 
-                            # Log differently for success vs error
-                            if file_result.get("error"):
-                                logger.info(
-                                    f"Cached API ERROR result for file {file_result.get('file_name')}: {file_result.get('error')}"
-                                )
-                            else:
-                                logger.debug(
-                                    f"Cached API success result for file {file_result.get('file_name')}"
-                                )
-
-                        except Exception as cache_error:
-                            logger.warning(
-                                f"Failed to cache API result for file {file_result.get('file_name')}: {cache_error}"
-                            )
-
-                    # Count results like Django backend
-                    if file_result.get("error"):
-                        failed_files += 1
-                    else:
-                        successful_files += 1
-
-                # Return result matching Django FileBatchResult structure
-                batch_result = {
-                    "successful_files": successful_files,
-                    "failed_files": failed_files,
-                }
-
-                logger.info(f"Successfully processed API file batch {batch_id}")
-                return batch_result
+            logger.info(f"Successfully processed API file batch {batch_id}")
+            return batch_result
 
         except Exception as e:
             logger.error(f"API file batch processing failed for {batch_id}: {e}")

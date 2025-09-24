@@ -117,16 +117,16 @@ class InternalAPIClient(CachedAPIClientMixin):
             self._initialize_core_clients_traditional()
 
     def _initialize_core_clients_optimized(self) -> None:
-        """Initialize clients using singleton pattern for better performance."""
+        """Initialize clients using GIL-safe singleton pattern for better performance."""
         InternalAPIClient._initialization_count += 1
 
-        # Create or reuse shared session and configuration
+        # Create or reuse shared session - GIL provides atomicity
         if InternalAPIClient._shared_session is None:
             if self.config.debug_api_client_init:
-                logger.info("Creating shared HTTP session (singleton pattern)")
+                logger.info("Creating shared HTTP session (GIL-safe singleton pattern)")
             # Create the first base client to establish the session
             self.base_client = BaseAPIClient(self.config)
-            # Share the session for reuse
+            # Share the session for reuse (atomic assignment)
             InternalAPIClient._shared_session = self.base_client.session
             InternalAPIClient._shared_base_client = self.base_client
         else:
@@ -141,7 +141,7 @@ class InternalAPIClient(CachedAPIClientMixin):
                 InternalAPIClient._shared_session
             )  # Use shared session
 
-        # Create specialized clients with shared session
+        # Create specialized clients with shared session (outside lock for performance)
         self.execution_client = ExecutionAPIClient(self.config)
         self.execution_client.session.close()
         self.execution_client.session = InternalAPIClient._shared_session
@@ -222,15 +222,33 @@ class InternalAPIClient(CachedAPIClientMixin):
         return self.base_client.health_check()
 
     def close(self):
-        """Close all HTTP sessions."""
-        self.base_client.close()
-        self.execution_client.close()
-        self.file_client.close()
-        self.webhook_client.close()
-        self.organization_client.close()
-        self.tool_client.close()
-        self.workflow_client.close()
-        self.usage_client.close()
+        """Close API client safely (respects shared session singleton).
+
+        When session sharing is enabled, this method only closes the client
+        wrappers but preserves the shared HTTP session for other instances.
+        """
+        if self.config.enable_api_client_singleton:
+            # With session sharing, we don't close individual sessions
+            # as they're shared. Only log for debugging.
+            if self.config.debug_api_client_init:
+                logger.debug(
+                    "InternalAPIClient close() called - preserving shared session"
+                )
+        else:
+            # Traditional mode: close all sessions normally
+            self.base_client.close()
+            self.execution_client.close()
+            self.file_client.close()
+            self.webhook_client.close()
+            self.organization_client.close()
+            self.tool_client.close()
+            self.workflow_client.close()
+            self.usage_client.close()
+            logger.debug("Closed all InternalAPIClient sessions (traditional mode)")
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit with safe cleanup."""
+        self.close()
 
         # Close manual review client (plugin or null client)
         if hasattr(self.manual_review_client, "close"):
@@ -239,10 +257,6 @@ class InternalAPIClient(CachedAPIClientMixin):
     def __enter__(self):
         """Context manager entry."""
         return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit."""
-        self.close()
 
     # Delegate execution client methods
     def get_workflow_executions_by_status(

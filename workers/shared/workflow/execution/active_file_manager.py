@@ -11,12 +11,31 @@ Key Features:
 """
 
 import hashlib
+import os
 import time
 from typing import Any, Protocol
 
 from ...api.internal_client import InternalAPIClient
 from ...cache.base_cache import RedisCacheBackend
 from ...infrastructure.logging import WorkerLogger
+
+# Constants for cache configuration
+DEFAULT_ACTIVE_FILE_CACHE_TTL = 300  # 5 minutes
+MAX_ACTIVE_FILE_CACHE_TTL = 3600  # 1 hour maximum
+
+
+def get_active_file_cache_ttl() -> int:
+    """Get the configurable TTL for active file cache entries.
+
+    Returns:
+        TTL in seconds, with sensible defaults and bounds checking
+    """
+    try:
+        ttl = int(os.environ.get("ACTIVE_FILE_CACHE_TTL", DEFAULT_ACTIVE_FILE_CACHE_TTL))
+        # Ensure TTL is within reasonable bounds
+        return min(max(ttl, 60), MAX_ACTIVE_FILE_CACHE_TTL)  # Between 1 minute and 1 hour
+    except (ValueError, TypeError):
+        return DEFAULT_ACTIVE_FILE_CACHE_TTL
 
 
 class LoggerProtocol(Protocol):
@@ -227,6 +246,142 @@ class ActiveFileManager:
             return source_files, original_count, filtering_stats
 
     @staticmethod
+    def create_cache_entries(
+        source_files: dict[str, Any],
+        files_to_cache: dict[str, Any],
+        workflow_id: str,
+        execution_id: str,
+        logger_instance: LoggerProtocol | None = None,
+    ) -> dict[str, Any]:
+        """Create cache entries for files to prevent race conditions (cache-only, no filtering).
+
+        This method ONLY creates cache entries for race condition prevention. It does NOT
+        filter files or modify the source_files dictionary. Use this after FilterPipeline
+        has already applied all necessary filtering including ActiveFileFilter.
+
+        Args:
+            source_files: Dictionary of all source files (used for file_tracking_data)
+            files_to_cache: Dictionary of specific files to create cache entries for
+            workflow_id: Workflow identifier
+            execution_id: Current execution identifier
+            logger_instance: Optional logger override (uses module logger if None)
+
+        Returns:
+            Cache statistics dictionary with creation results
+
+        Example:
+            >>> # After FilterPipeline has filtered files
+            >>> cache_stats = ActiveFileManager.create_cache_entries(
+            ...     source_files=all_files,  # Original files for tracking data
+            ...     files_to_cache=filtered_files,  # Only cache these specific files
+            ...     workflow_id="workflow-123",
+            ...     execution_id="exec-456",
+            ... )
+            >>> print(f"Created {cache_stats['cache_created']} cache entries")
+        """
+        log = logger_instance or logger
+
+        if not files_to_cache:
+            return {
+                "cache_created": 0,
+                "cache_errors": 0,
+                "processing_files": [],
+            }
+
+        cache_stats = {
+            "cache_created": 0,
+            "cache_errors": 0,
+            "processing_files": [],
+        }
+
+        try:
+            # Extract provider_file_uuids and file paths from source files for tracking data
+            file_tracking_data = {}  # file_key -> {provider_uuid, file_path, file_data} mapping
+
+            for file_key, file_data in source_files.items():
+                provider_uuid = ActiveFileManager._extract_provider_uuid(file_data)
+                file_path = ActiveFileManager._extract_file_path(file_data)
+
+                if provider_uuid:
+                    file_tracking_data[file_key] = {
+                        "provider_uuid": provider_uuid,
+                        "file_path": file_path
+                        or file_key,  # fallback to file_key if no file_path
+                        "file_data": file_data,
+                    }
+
+            if not file_tracking_data:
+                log.warning(
+                    "No provider_file_uuid found in source files, skipping cache creation"
+                )
+                return cache_stats
+
+            log.info(
+                f"🔒 Creating cache entries for {len(files_to_cache)} files to prevent race conditions"
+            )
+
+            # Create cache entries only for the specified files
+            ActiveFileManager._create_cache_entries_for_selected_files(
+                final_files_to_process=files_to_cache,
+                file_tracking_data=file_tracking_data,
+                workflow_id=workflow_id,
+                execution_id=execution_id,
+                log=log,
+                filtering_stats=cache_stats,
+            )
+
+            log.info(
+                f"✅ Cache creation complete: {cache_stats['cache_created']} entries created, "
+                f"{cache_stats['cache_errors']} errors"
+            )
+
+        except Exception as cache_error:
+            log.warning(f"Cache entry creation failed: {cache_error}")
+            cache_stats["error"] = str(cache_error)
+
+        return cache_stats
+
+    @staticmethod
+    def create_cache_entries_simple(
+        files_to_cache: dict[str, Any],
+        workflow_id: str,
+        execution_id: str,
+        logger_instance: LoggerProtocol | None = None,
+    ) -> dict[str, Any]:
+        """Create cache entries for files to prevent race conditions (simplified API).
+
+        This is a simplified version of create_cache_entries() for cases where you only
+        have the final filtered files to cache (e.g., in discovery methods after FilterPipeline).
+        Use this when source_files and files_to_cache would be the same dictionary.
+
+        Args:
+            files_to_cache: Dictionary of files to create cache entries for
+            workflow_id: Workflow identifier
+            execution_id: Current execution identifier
+            logger_instance: Optional logger override (uses module logger if None)
+
+        Returns:
+            Cache statistics dictionary with creation results
+
+        Example:
+            >>> # After FilterPipeline in discovery methods
+            >>> cache_stats = ActiveFileManager.create_cache_entries_simple(
+            ...     files_to_cache=final_filtered_files,
+            ...     workflow_id="workflow-123",
+            ...     execution_id="exec-456",
+            ... )
+            >>> print(f"Created {cache_stats['cache_created']} cache entries")
+        """
+        # Delegate to the full method with same dict for both parameters
+        return ActiveFileManager.create_cache_entries(
+            source_files=files_to_cache,
+            files_to_cache=files_to_cache,
+            workflow_id=workflow_id,
+            execution_id=execution_id,
+            logger_instance=logger_instance,
+        )
+
+    @staticmethod
     def _extract_provider_uuid(file_data: Any) -> str | None:
         """Extract provider_file_uuid from file data, handling different formats."""
         if hasattr(file_data, "provider_file_uuid") and file_data.provider_file_uuid:
@@ -270,7 +425,7 @@ class ActiveFileManager:
         execution_id: str,
         log: LoggerProtocol,
     ) -> dict[str, Any]:
-        """Handle cache checking operations using file-path-aware cache keys."""
+        """Handle cache checking operations using batch Redis operations for performance."""
         cache = RedisCacheBackend()
         active_files_to_skip = set()  # Set of file_keys to skip
         stats = {
@@ -280,43 +435,115 @@ class ActiveFileManager:
             "cache_errors": 0,
         }
 
-        # Check which files are already active using file-path-aware cache keys
+        if not file_tracking_data:
+            return {"active_files": active_files_to_skip, "stats": stats}
+
+        try:
+            # BATCH OPTIMIZATION: Pre-compute all cache keys and fetch in single operation
+            cache_key_to_file_key = {}  # cache_key -> file_key mapping
+            file_key_to_tracking = {}  # file_key -> tracking_info mapping
+
+            # Pre-compute all cache keys
+            for file_key, tracking_info in file_tracking_data.items():
+                provider_uuid = tracking_info["provider_uuid"]
+                file_path = tracking_info["file_path"]
+
+                cache_key = ActiveFileManager._create_cache_key(
+                    workflow_id, provider_uuid, file_path
+                )
+                cache_key_to_file_key[cache_key] = file_key
+                file_key_to_tracking[file_key] = tracking_info
+
+            # Single batch Redis call instead of N individual calls
+            cache_keys = list(cache_key_to_file_key.keys())
+            log.debug(f"Batch checking {len(cache_keys)} cache keys for active files")
+
+            cached_results = cache.mget(cache_keys)
+
+            # Process batch results
+            for cache_key, cached_data in cached_results.items():
+                file_key = cache_key_to_file_key[cache_key]
+                tracking_info = file_key_to_tracking[file_key]
+
+                if cached_data and isinstance(cached_data, dict):
+                    # Extract data from cache wrapper
+                    cached_active = cached_data.get("data", {})
+
+                    if isinstance(cached_active, dict):
+                        cached_execution_id = cached_active.get("execution_id")
+                        cached_file_path = cached_active.get("file_path", "unknown")
+                        current_file_path = tracking_info["file_path"]
+
+                        log.debug(
+                            f"File {file_key}: cached_execution_id={cached_execution_id}, current_execution_id={execution_id}"
+                        )
+                        log.debug(
+                            f"  Cache path: {cached_file_path}, Current path: {current_file_path}"
+                        )
+
+                        if cached_execution_id != execution_id:
+                            active_files_to_skip.add(file_key)
+                            stats["cache_active"].append(file_key)
+                            log.debug(
+                                f"File {file_key} already active by execution {cached_execution_id}, will skip"
+                            )
+                        else:
+                            log.debug(
+                                f"File {file_key} cached by same execution {execution_id}, will process"
+                            )
+
+            if active_files_to_skip:
+                log.info(
+                    f"⚡ Found {len(active_files_to_skip)} files already active in cache (batch check)"
+                )
+
+        except Exception as batch_error:
+            log.warning(
+                f"Batch cache check failed, falling back to individual checks: {batch_error}"
+            )
+            # Fallback to individual checks if batch fails
+            return ActiveFileManager._handle_cache_check_fallback(
+                file_tracking_data, workflow_id, execution_id, log
+            )
+
+        return {"active_files": active_files_to_skip, "stats": stats}
+
+    @staticmethod
+    def _handle_cache_check_fallback(
+        file_tracking_data: dict[str, dict],
+        workflow_id: str,
+        execution_id: str,
+        log: LoggerProtocol,
+    ) -> dict[str, Any]:
+        """Fallback method using individual Redis operations if batch fails."""
+        cache = RedisCacheBackend()
+        active_files_to_skip = set()
+        stats = {
+            "cache_active": [],
+            "processing_files": [],
+            "cache_created": 0,
+            "cache_errors": 0,
+        }
+
+        # Fallback to individual cache checks
         for file_key, tracking_info in file_tracking_data.items():
             provider_uuid = tracking_info["provider_uuid"]
             file_path = tracking_info["file_path"]
 
-            # Create file-path-aware cache key
-            cache_key = ActiveFileManager._create_cache_key(
-                workflow_id, provider_uuid, file_path
-            )
-            cached_active = cache.get(cache_key)
-
-            if cached_active and isinstance(cached_active, dict):
-                cached_execution_id = cached_active.get("execution_id")
-                cached_file_path = cached_active.get("file_path", "unknown")
-
-                log.debug(
-                    f"File {file_key}: cached_execution_id={cached_execution_id}, current_execution_id={execution_id}"
+            try:
+                cache_key = ActiveFileManager._create_cache_key(
+                    workflow_id, provider_uuid, file_path
                 )
-                log.debug(f"  Cache path: {cached_file_path}, Current path: {file_path}")
+                cached_active = cache.get(cache_key)
 
-                if cached_execution_id != execution_id:
-                    active_files_to_skip.add(
-                        file_key
-                    )  # Track by file_key, not provider_uuid
-                    stats["cache_active"].append(file_key)
-                    log.debug(
-                        f"File {file_key} already active by execution {cached_execution_id}, will skip"
-                    )
-                else:
-                    log.debug(
-                        f"File {file_key} cached by same execution {execution_id}, will process"
-                    )
+                if cached_active and isinstance(cached_active, dict):
+                    cached_execution_id = cached_active.get("execution_id")
+                    if cached_execution_id != execution_id:
+                        active_files_to_skip.add(file_key)
+                        stats["cache_active"].append(file_key)
 
-        if active_files_to_skip:
-            log.info(
-                f"⚡ Found {len(active_files_to_skip)} files already active in cache"
-            )
+            except Exception as key_error:
+                log.debug(f"Individual cache check failed for {file_key}: {key_error}")
 
         return {"active_files": active_files_to_skip, "stats": stats}
 
@@ -331,6 +558,7 @@ class ActiveFileManager:
     ) -> None:
         """Create cache entries only for files that will actually be processed.
 
+        OPTIMIZED: Uses batch Redis operations for better performance with large file sets.
         Uses file-path-aware cache keys to differentiate files with the same content
         but different paths.
         """
@@ -338,25 +566,115 @@ class ActiveFileManager:
             return
 
         cache = RedisCacheBackend()
+        ttl = get_active_file_cache_ttl()  # Use configurable TTL
+
+        log.info(
+            f"Creating cache entries for {len(final_files_to_process)} final selected files (TTL: {ttl}s)"
+        )
+
+        try:
+            # BATCH OPTIMIZATION: Prepare all cache entries for batch creation
+            batch_cache_data = {}  # cache_key -> (cache_data, ttl)
+            processing_files = []
+            cache_errors = 0
+
+            for file_key, file_data in final_files_to_process.items():
+                # Get tracking info for this file
+                tracking_info = file_tracking_data.get(file_key)
+                if not tracking_info:
+                    log.warning(f"No tracking info found for file: {file_key}")
+                    cache_errors += 1
+                    continue
+
+                provider_uuid = tracking_info["provider_uuid"]
+                file_path = tracking_info["file_path"]
+
+                if not provider_uuid:
+                    cache_errors += 1
+                    continue
+
+                try:
+                    # Prepare cache entry data
+                    cache_key = ActiveFileManager._create_cache_key(
+                        workflow_id, provider_uuid, file_path
+                    )
+                    cache_data = {
+                        "execution_id": execution_id,
+                        "workflow_id": workflow_id,
+                        "provider_file_uuid": provider_uuid,
+                        "file_path": file_path,
+                        "status": "EXECUTING",
+                        "created_at": time.time(),
+                    }
+
+                    batch_cache_data[cache_key] = (cache_data, ttl)
+                    processing_files.append(file_key)
+                    log.debug(f"Prepared cache entry for: {file_key} ({provider_uuid})")
+
+                except Exception as prep_error:
+                    log.warning(
+                        f"Failed to prepare cache entry for {file_key}: {prep_error}"
+                    )
+                    cache_errors += 1
+
+            # Single batch Redis operation instead of N individual operations
+            if batch_cache_data:
+                cache_created = cache.mset(batch_cache_data)
+                log.info(
+                    f"🔒 Batch created {cache_created}/{len(batch_cache_data)} cache entries "
+                    f"for race condition prevention"
+                )
+            else:
+                cache_created = 0
+                log.warning("No valid cache entries prepared for batch creation")
+
+        except Exception as batch_error:
+            log.warning(
+                f"Batch cache creation failed, falling back to individual operations: {batch_error}"
+            )
+            # Fallback to individual cache creation
+            cache_created, cache_errors, processing_files = (
+                ActiveFileManager._create_cache_entries_fallback(
+                    final_files_to_process=final_files_to_process,
+                    file_tracking_data=file_tracking_data,
+                    workflow_id=workflow_id,
+                    execution_id=execution_id,
+                    log=log,
+                    ttl=ttl,
+                )
+            )
+
+        # Update statistics with the actual cache creation results
+        filtering_stats["cache_created"] = cache_created
+        filtering_stats["cache_errors"] = cache_errors
+        filtering_stats["processing_files"] = processing_files
+
+    @staticmethod
+    def _create_cache_entries_fallback(
+        final_files_to_process: dict[str, Any],
+        file_tracking_data: dict[str, dict],
+        workflow_id: str,
+        execution_id: str,
+        log: LoggerProtocol,
+        ttl: int,
+    ) -> tuple[int, int, list[str]]:
+        """Fallback method for individual cache creation if batch fails."""
+        cache = RedisCacheBackend()
         cache_created = 0
         cache_errors = 0
         processing_files = []
 
-        log.info(
-            f"Creating cache entries for {len(final_files_to_process)} final selected files"
-        )
-
         for file_key, file_data in final_files_to_process.items():
-            # Get tracking info for this file
             tracking_info = file_tracking_data.get(file_key)
             if not tracking_info:
-                log.warning(f"No tracking info found for file: {file_key}")
+                cache_errors += 1
                 continue
 
             provider_uuid = tracking_info["provider_uuid"]
             file_path = tracking_info["file_path"]
 
             if not provider_uuid:
+                cache_errors += 1
                 continue
 
             success = ActiveFileManager._create_cache_entry(
@@ -366,26 +684,16 @@ class ActiveFileManager:
                 provider_uuid=provider_uuid,
                 file_path=file_path,
                 log=log,
+                ttl=ttl,
             )
 
             if success:
                 cache_created += 1
                 processing_files.append(file_key)
-                log.debug(
-                    f"Created file-path-aware cache entry for: {file_key} ({provider_uuid})"
-                )
             else:
                 cache_errors += 1
 
-        # Update statistics with the actual cache creation results
-        filtering_stats["cache_created"] = cache_created
-        filtering_stats["cache_errors"] = cache_errors
-        filtering_stats["processing_files"] = processing_files
-
-        if cache_created > 0:
-            log.info(
-                f"🔒 Successfully created {cache_created} cache entries for final selection"
-            )
+        return cache_created, cache_errors, processing_files
 
     @staticmethod
     def _create_cache_entry(
@@ -395,10 +703,14 @@ class ActiveFileManager:
         provider_uuid: str,
         file_path: str,
         log: LoggerProtocol,
-        ttl: int = 300,
+        ttl: int | None = None,
     ) -> bool:
         """Create a cache entry for an active file using file-path-aware key."""
         try:
+            # Use configurable TTL if not provided
+            if ttl is None:
+                ttl = get_active_file_cache_ttl()
+
             cache_key = ActiveFileManager._create_cache_key(
                 workflow_id, provider_uuid, file_path
             )
@@ -488,6 +800,7 @@ class ActiveFileManager:
     ) -> int:
         """Clean up file-path-aware cache entries for completed file processing.
 
+        OPTIMIZED: Uses non-blocking SCAN instead of blocking KEYS for production safety.
         Uses pattern matching to find all cache entries for the given provider UUIDs
         since we don't have the file paths available during cleanup.
 
@@ -512,12 +825,35 @@ class ActiveFileManager:
                 # Find all file-path-aware cache entries for this provider_uuid
                 pattern = f"file_active:{workflow_id}:{provider_uuid}:*"
                 try:
-                    # Get all keys matching the pattern
-                    matching_keys = cache.keys(pattern)
-                    for key in matching_keys:
-                        if cache.delete(key):
-                            cleaned_count += 1
-                            logger_instance.debug(f"Cleaned up cache entry: {key}")
+                    # Use non-blocking SCAN instead of blocking KEYS
+                    matching_keys = cache.scan_keys(
+                        pattern, count=50
+                    )  # Small batches for safety
+
+                    if matching_keys:
+                        # Delete in batches to avoid large delete operations
+                        batch_size = 100
+                        for i in range(0, len(matching_keys), batch_size):
+                            batch_keys = matching_keys[i : i + batch_size]
+                            try:
+                                # Batch delete for efficiency
+                                deleted_count = cache.redis_client.delete(*batch_keys)
+                                cleaned_count += deleted_count
+                                logger_instance.debug(
+                                    f"Cleaned up {deleted_count} cache entries for {provider_uuid} (batch {i//batch_size + 1})"
+                                )
+                            except Exception as batch_error:
+                                logger_instance.warning(
+                                    f"Failed to delete batch for {provider_uuid}: {batch_error}"
+                                )
+                                # Fallback to individual deletion
+                                for key in batch_keys:
+                                    try:
+                                        if cache.delete(key):
+                                            cleaned_count += 1
+                                    except Exception:
+                                        pass  # Continue with other keys
+
                 except Exception as pattern_error:
                     logger_instance.warning(
                         f"Failed to cleanup entries for {provider_uuid}: {pattern_error}"
@@ -525,7 +861,7 @@ class ActiveFileManager:
 
             if cleaned_count > 0:
                 logger_instance.info(
-                    f"🧹 Cleaned up {cleaned_count} active file cache entries"
+                    f"🧹 Cleaned up {cleaned_count} active file cache entries (non-blocking SCAN)"
                 )
 
             return cleaned_count
@@ -533,26 +869,6 @@ class ActiveFileManager:
         except Exception as cleanup_error:
             logger_instance.warning(f"Failed to cleanup cache entries: {cleanup_error}")
             return 0
-
-
-# Convenience functions for common operations
-# def filter_active_files(
-#     source_files: dict[str, Any],
-#     workflow_id: str,
-#     execution_id: str,
-#     api_client: Any,
-#     logger_instance: LoggerProtocol | None = None,
-#     final_files_to_process: dict[str, Any] | None = None,
-# ) -> tuple[dict[str, Any], int, dict[str, Any]]:
-#     """Convenience function that delegates to ActiveFileManager.filter_and_cache_files()."""
-#     return ActiveFileManager.filter_and_cache_files(
-#         source_files=source_files,
-#         workflow_id=workflow_id,
-#         execution_id=execution_id,
-#         api_client=api_client,
-#         logger_instance=logger_instance,
-#         final_files_to_process=final_files_to_process,
-#     )
 
 
 def cleanup_active_file_cache(

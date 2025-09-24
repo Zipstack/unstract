@@ -193,6 +193,56 @@ class FileManagementUtils:
         )
 
     @staticmethod
+    def create_file_cache_entries(
+        source_files: dict[str, Any],
+        files_to_cache: dict[str, Any],
+        workflow_id: str,
+        execution_id: str,
+        logger_instance: LoggerProtocol | None = None,
+    ) -> dict[str, Any]:
+        """Create cache entries for files to prevent race conditions (cache-only, no filtering).
+
+        This is a utility wrapper around ActiveFileManager.create_cache_entries() that provides
+        a consistent interface for cache creation across different workflow types. Use this
+        after FilterPipeline has already applied all necessary filtering.
+
+        Args:
+            source_files: Dictionary of all source files (used for tracking data)
+            files_to_cache: Dictionary of specific files to create cache entries for
+            workflow_id: Workflow ID
+            execution_id: Current execution ID
+            logger_instance: Optional logger instance
+
+        Returns:
+            Cache statistics dictionary with creation results
+
+        Example:
+            >>> # After FilterPipeline has processed files
+            >>> cache_stats = FileManagementUtils.create_file_cache_entries(
+            ...     source_files=all_discovered_files,
+            ...     files_to_cache=final_filtered_files,
+            ...     workflow_id="workflow-123",
+            ...     execution_id="exec-456",
+            ... )
+            >>> print(f"Created {cache_stats['cache_created']} cache entries")
+        """
+        log = logger_instance or logger
+
+        if not files_to_cache:
+            log.debug("No files provided for cache creation")
+            return {"cache_created": 0, "cache_errors": 0, "processing_files": []}
+
+        log.debug(f"Creating cache entries for {len(files_to_cache)} files")
+
+        return ActiveFileManager.create_cache_entries(
+            source_files=source_files,
+            files_to_cache=files_to_cache,
+            workflow_id=workflow_id,
+            execution_id=execution_id,
+            logger_instance=log,
+        )
+
+    @staticmethod
     def extract_provider_uuids(hash_values_of_files: dict[str, Any]) -> list[str]:
         """Extract provider file UUIDs from file hash data.
 
@@ -293,14 +343,13 @@ class FileManagementUtils:
             log.info(
                 f"Creating cache entries for {limit_result.final_count} final selected files"
             )
-            # Call filter_and_cache_files again just for cache creation
-            ActiveFileManager.filter_and_cache_files(
+            # Use cache-only method for race condition prevention
+            FileManagementUtils.create_file_cache_entries(
                 source_files=source_files,  # Need original for file_tracking_data
+                files_to_cache=limit_result.limited_files,  # Create cache for these files only
                 workflow_id=workflow_id,
                 execution_id=execution_id,
-                api_client=api_client,
                 logger_instance=log,
-                final_files_to_process=limit_result.limited_files,  # Create cache for these files only
             )
 
         # Step 4: Log statistics

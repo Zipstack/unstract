@@ -81,6 +81,40 @@ class BaseCacheBackend(ABC):
         """Delete keys matching pattern."""
         pass
 
+    @abstractmethod
+    def mget(self, keys: list[str]) -> dict[str, Any]:
+        """Get multiple values from cache in a single operation.
+
+        Args:
+            keys: List of cache keys to retrieve
+
+        Returns:
+            Dict mapping keys to their values (only includes keys that exist)
+        """
+        pass
+
+    @abstractmethod
+    def mset(self, data: dict[str, tuple[dict[str, Any], int]]) -> int:
+        """Set multiple values in cache with individual TTLs.
+
+        Args:
+            data: Dict mapping keys to (value, ttl) tuples
+
+        Returns:
+            Number of keys successfully set
+        """
+        pass
+
+    @abstractmethod
+    def keys(self, pattern: str) -> list[str]:
+        """Get keys matching a pattern."""
+        pass
+
+    @abstractmethod
+    def scan_keys(self, pattern: str, count: int = 100) -> list[str]:
+        """Non-blocking scan for keys matching a pattern using SCAN cursor."""
+        pass
+
 
 class RedisCacheBackend(BaseCacheBackend):
     """Redis-based cache backend for workers."""
@@ -206,11 +240,21 @@ class RedisCacheBackend(BaseCacheBackend):
             return False
 
     def keys(self, pattern: str) -> list[str]:
-        """Get keys matching pattern."""
+        """Get keys matching pattern.
+
+        ⚠️ WARNING: This method uses Redis KEYS command which can block the server!
+        For production use, prefer scan_keys() which uses non-blocking SCAN.
+        """
         if not self.available:
             return []
 
         try:
+            # Log warning about blocking operation
+            logger.warning(
+                f"Using blocking KEYS command with pattern '{pattern}'. "
+                "Consider using scan_keys() for production safety."
+            )
+
             keys = self.redis_client.keys(pattern)
             # Convert bytes to strings if needed
             return [
@@ -221,19 +265,152 @@ class RedisCacheBackend(BaseCacheBackend):
             return []
 
     def delete_pattern(self, pattern: str) -> int:
-        """Delete keys matching pattern."""
+        """Delete keys matching pattern using non-blocking SCAN."""
         if not self.available:
             return 0
 
         try:
-            keys = self.redis_client.keys(pattern)
+            # Use non-blocking SCAN instead of blocking KEYS
+            keys = self.scan_keys(pattern)
             if keys:
                 count = self.redis_client.delete(*keys)
-                logger.debug(f"Deleted {count} keys matching pattern {pattern}")
+                logger.debug(
+                    f"Deleted {count} keys matching pattern {pattern} (using SCAN)"
+                )
                 return count
             return 0
         except Exception as e:
             logger.error(f"Error deleting pattern {pattern}: {e}")
+            return 0
+
+    def scan_keys(self, pattern: str, count: int = 100) -> list[str]:
+        """Non-blocking scan for keys matching a pattern using SCAN cursor.
+
+        This replaces the blocking KEYS command with SCAN for production safety.
+        SCAN iterates through the keyspace in small chunks, preventing Redis blocking.
+
+        Args:
+            pattern: Redis pattern to match (e.g., "file_active:*")
+            count: Hint for number of keys to return per SCAN iteration
+
+        Returns:
+            List of matching keys
+        """
+        if not self.available:
+            return []
+
+        try:
+            keys = []
+            cursor = 0
+
+            # Use SCAN cursor to iterate through keyspace non-blocking
+            while True:
+                # SCAN returns (new_cursor, list_of_keys)
+                cursor, batch_keys = self.redis_client.scan(
+                    cursor=cursor, match=pattern, count=count
+                )
+
+                # Convert bytes to strings if needed and add to result
+                batch_keys_str = [
+                    key.decode("utf-8") if isinstance(key, bytes) else key
+                    for key in batch_keys
+                ]
+                keys.extend(batch_keys_str)
+
+                # cursor=0 means we've completed the full iteration
+                if cursor == 0:
+                    break
+
+            logger.debug(f"SCAN found {len(keys)} keys matching pattern {pattern}")
+            return keys
+
+        except Exception as e:
+            logger.error(f"Error scanning keys for pattern {pattern}: {e}")
+            return []
+
+    def mget(self, keys: list[str]) -> dict[str, Any]:
+        """Get multiple values from Redis cache in a single operation.
+
+        Args:
+            keys: List of cache keys to retrieve
+
+        Returns:
+            Dict mapping keys to their values (only includes keys that exist)
+        """
+        if not self.available or not keys:
+            return {}
+
+        try:
+            # Use Redis mget for batch retrieval
+            values = self.redis_client.mget(keys)
+            result = {}
+
+            for key, value_str in zip(keys, values, strict=False):
+                if value_str:  # Skip None values (missing keys)
+                    try:
+                        data = json.loads(value_str)
+                        if data:
+                            # Check if cached data has timestamp and is still valid
+                            if isinstance(data, dict) and "cached_at" in data:
+                                result[key] = data
+                            else:
+                                # Backward compatibility for data without metadata
+                                result[key] = {
+                                    "data": data,
+                                    "cached_at": datetime.now(UTC).isoformat(),
+                                }
+                    except json.JSONDecodeError:
+                        logger.warning(f"Invalid JSON in cache key {key}, skipping")
+
+            logger.debug(f"Batch retrieved {len(result)}/{len(keys)} cache keys")
+            return result
+
+        except Exception as e:
+            logger.error(f"Error batch getting cache keys: {e}")
+            return {}
+
+    def mset(self, data: dict[str, tuple[dict[str, Any], int]]) -> int:
+        """Set multiple values in Redis cache with individual TTLs.
+
+        Args:
+            data: Dict mapping keys to (value, ttl) tuples
+
+        Returns:
+            Number of keys successfully set
+        """
+        if not self.available or not data:
+            return 0
+
+        try:
+            # Use Redis pipeline for efficient batch operations
+            pipe = self.redis_client.pipeline()
+            successful_keys = 0
+
+            for key, (value, ttl) in data.items():
+                try:
+                    # Add metadata to cached data
+                    cache_data = {
+                        "data": value,
+                        "cached_at": datetime.now(UTC).isoformat(),
+                        "ttl": ttl,
+                    }
+
+                    # Use pipeline to batch the setex operations
+                    pipe.setex(key, ttl, json.dumps(cache_data))
+                    successful_keys += 1
+
+                except Exception as key_error:
+                    logger.warning(f"Failed to prepare cache key {key}: {key_error}")
+
+            # Execute all operations in the pipeline
+            if successful_keys > 0:
+                pipe.execute()
+                logger.debug(f"Batch set {successful_keys} cache keys")
+
+            return successful_keys
+
+        except Exception as e:
+            logger.error(f"Error batch setting cache keys: {e}")
             return 0
 
 

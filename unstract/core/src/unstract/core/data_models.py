@@ -223,8 +223,9 @@ class FileOperationConstants:
     """Constants for file operations."""
 
     READ_CHUNK_SIZE = 4194304  # 4MB chunks for file reading
-    MAX_RECURSIVE_DEPTH = 20  # Maximum directory traversal depth
+    MAX_RECURSIVE_DEPTH = 10  # Maximum directory traversal depth
     DEFAULT_MAX_FILES = 100  # Default maximum files to process
+    MAX_FILES_FOR_SORTING = 40000
 
     # File pattern defaults
     DEFAULT_FILE_PATTERNS = ["*"]
@@ -250,11 +251,13 @@ class SourceKey:
     MAX_FILES = "max_files"
     FOLDERS = "folders"
     USE_FILE_HISTORY = "use_file_history"
+    FILE_PROCESSING_ORDER = "file_processing_order"
 
     # CamelCase (backend compatibility)
     FILE_EXTENSIONS_CAMEL = "fileExtensions"
     PROCESS_SUB_DIRECTORIES_CAMEL = "processSubDirectories"
     MAX_FILES_CAMEL = "maxFiles"
+    FILE_PROCESSING_ORDER_CAMEL = "fileProcessingOrder"
 
     @classmethod
     def get_file_extensions(cls, config: dict) -> list:
@@ -280,6 +283,13 @@ class SourceKey:
     def get_folders(cls, config: dict) -> list:
         """Get folders setting from config."""
         return list(config.get(cls.FOLDERS, ["/"]))
+
+    @classmethod
+    def get_file_processing_order(cls, config: dict) -> str | None:
+        """Get file processing order setting from config using both naming conventions."""
+        return config.get(cls.FILE_PROCESSING_ORDER) or config.get(
+            cls.FILE_PROCESSING_ORDER_CAMEL
+        )
 
 
 def serialize_dataclass_to_dict(obj) -> dict[str, Any]:

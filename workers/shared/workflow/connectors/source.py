@@ -20,6 +20,7 @@ from unstract.core.data_models import (
 from unstract.core.file_operations import FileOperations
 
 from ...api.internal_client import InternalAPIClient
+from ...enums.file_types import FileProcessingOrder
 from .utils import get_connector_instance
 
 logger = logging.getLogger(__name__)
@@ -138,6 +139,10 @@ class WorkerSourceConnector:
         limit = SourceKey.get_max_files(
             source_config, FileOperationConstants.DEFAULT_MAX_FILES
         )
+        # Get file processing order (matching backend source.py:175)
+        file_processing_order = FileProcessingOrder.from_value(
+            SourceKey.get_file_processing_order(source_config)
+        )
         root_dir_path = connector_settings.get("path", "")
         folders_to_process = SourceKey.get_folders(source_config)
 
@@ -215,45 +220,36 @@ class WorkerSourceConnector:
                 )
                 continue
 
-        # NEW: Use StreamingFileDiscovery with FilterPipeline for efficient processing
+        # Choose processing strategy based on file_processing_order (matching backend source.py:215-231)
         if not valid_directories:
             logger.warning("No valid directories found to process")
             return {}, 0
 
-        logger.info(
-            f"[exec:{self.execution_id}] Starting streaming file discovery for {len(valid_directories)} directories"
-        )
-
-        # Import from shared processing module - no circular dependency
-        from ...processing.file_discovery import StreamingFileDiscovery
-        from ...processing.filter_pipeline import create_standard_pipeline
-
-        # Create the streaming discovery instance
-        streaming_discovery = StreamingFileDiscovery(
-            source_fs=source_fs,
-            api_client=self.api_client,
-            workflow_id=self.workflow_id,
-            execution_id=self.execution_id,
-            organization_id=self.organization_id,
-            connector_id=connector_id,
-        )
-
-        # Create filter pipeline with all filters applied during discovery
-        # File history and active file filtering are now done during discovery, not after
-        filter_pipeline = create_standard_pipeline(
-            use_file_history=self.use_file_history,
-            enable_active_filtering=True,  # Always enable for ETL/TASK workflows
-        )
-
-        # Discover files with streaming and early filtering
-        matched_files, total_count = streaming_discovery.discover_files_streaming(
-            directories=valid_directories,
-            patterns=patterns,
-            recursive=recursive,
-            file_hard_limit=limit,  # Hard limit - will stop when reached
-            filter_pipeline=filter_pipeline,
-            batch_size=100,  # Process files in batches of 100
-        )
+        if file_processing_order == FileProcessingOrder.UNORDERED:
+            # Use existing StreamingFileDiscovery for unordered processing
+            logger.info(
+                f"[exec:{self.execution_id}] Starting unordered streaming file discovery for {len(valid_directories)} directories"
+            )
+            matched_files, total_count = self._process_without_sorting(
+                source_fs=source_fs,
+                valid_directories=valid_directories,
+                patterns=patterns,
+                recursive=recursive,
+                limit=limit,
+            )
+        else:
+            # Use new sorting-based processing for OLDEST_FIRST/NEWEST_FIRST
+            logger.info(
+                f"[exec:{self.execution_id}] Starting ordered file processing ({file_processing_order.value}) for {len(valid_directories)} directories"
+            )
+            matched_files, total_count = self._process_with_sorting(
+                source_fs=source_fs,
+                valid_directories=valid_directories,
+                patterns=patterns,
+                recursive=recursive,
+                limit=limit,
+                file_processing_order=file_processing_order,
+            )
 
         logger.info(
             f"[exec:{self.execution_id}] Streaming discovery complete: {total_count} files found "
@@ -330,10 +326,6 @@ class WorkerSourceConnector:
                 workflow_id=self.workflow_id,
                 provider_file_uuids=provider_file_uuids,
                 current_execution_id=self.execution_id,
-            )
-
-            print(
-                f"=====check_files_active_processing==========response: {response}================================="
             )
 
             if not response.success:
@@ -523,3 +515,98 @@ class WorkerSourceConnector:
             str: SHA256 hash of file content
         """
         return FileOperations.compute_file_content_hash_from_fsspec(source_fs, file_path)
+
+    def _process_without_sorting(
+        self,
+        source_fs: UnstractFileSystem,
+        valid_directories: list[str],
+        patterns: list[str],
+        recursive: bool,
+        limit: int,
+    ) -> tuple[dict[str, FileHashData], int]:
+        """Process files without ordering using StreamingFileDiscovery (existing logic).
+
+        This method wraps the existing StreamingFileDiscovery logic to maintain
+        compatibility with unordered processing while allowing ordered processing
+        via the new _process_with_sorting method.
+        """
+        # Import from shared processing module - no circular dependency
+        from ...processing.file_discovery import StreamingFileDiscovery
+        from ...processing.filter_pipeline import create_standard_pipeline
+
+        # Create the streaming discovery instance
+        streaming_discovery = StreamingFileDiscovery(
+            source_fs=source_fs,
+            api_client=self.api_client,
+            workflow_id=self.workflow_id,
+            execution_id=self.execution_id,
+            organization_id=self.organization_id,
+            connector_id=None,  # Set to None if not available
+        )
+
+        # Create filter pipeline with all filters applied during discovery
+        # File history and active file filtering are now done during discovery, not after
+        filter_pipeline = create_standard_pipeline(
+            use_file_history=self.use_file_history,
+            enable_active_filtering=True,  # Always enable for ETL/TASK workflows
+        )
+
+        # Discover files with streaming and early filtering
+        matched_files, total_count = streaming_discovery.discover_files_streaming(
+            directories=valid_directories,
+            patterns=patterns,
+            recursive=recursive,
+            file_hard_limit=limit,  # Hard limit - will stop when reached
+            filter_pipeline=filter_pipeline,
+            batch_size=100,  # Process files in batches of 100
+        )
+
+        return matched_files, total_count
+
+    def _process_with_sorting(
+        self,
+        source_fs: UnstractFileSystem,
+        valid_directories: list[str],
+        patterns: list[str],
+        recursive: bool,
+        limit: int,
+        file_processing_order: FileProcessingOrder,
+    ) -> tuple[dict[str, FileHashData], int]:
+        """Process files with ordering using OrderedFileDiscovery.
+
+        This method delegates to OrderedFileDiscovery for clean architecture separation.
+
+        Args:
+            source_fs: Filesystem connector
+            valid_directories: List of validated directories to process
+            patterns: File patterns to match
+            recursive: Whether to search recursively
+            limit: Maximum number of files to return
+            file_processing_order: Order to process files (OLDEST_FIRST or NEWEST_FIRST)
+
+        Returns:
+            tuple: (matched_files_dict, total_count)
+        """
+        # Lazy import to avoid circular dependencies
+        from ...processing.file_discovery import OrderedFileDiscovery
+
+        # Create ordered file discovery instance
+        ordered_discovery = OrderedFileDiscovery(
+            source_fs=source_fs,
+            api_client=self.api_client,
+            workflow_id=self.workflow_id,
+            execution_id=self.execution_id,
+            organization_id=self.organization_id,
+            use_file_history=self.use_file_history,
+            connector_id=None,  # Set to None if not available
+        )
+
+        # Discover files with ordering and chunked filtering
+        return ordered_discovery.discover_files_ordered(
+            directories=valid_directories,
+            patterns=patterns,
+            recursive=recursive,
+            file_hard_limit=limit,
+            file_processing_order=file_processing_order.value,  # Convert enum to string
+            batch_size=100,  # Process in batches of 100 files
+        )

@@ -6,6 +6,13 @@ Worker-specific status enums for tasks, pipelines, and webhooks.
 from enum import Enum
 
 
+class FileProcessingStatus(str, Enum):
+    """File processing status to be used in destination database."""
+
+    SUCCESS = "SUCCESS"
+    ERROR = "ERROR"
+
+
 class WorkerTaskStatus(str, Enum):
     """Task execution status for workers."""
 

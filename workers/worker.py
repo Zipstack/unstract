@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Import the WorkerBuilder and WorkerType
 from shared.enums.worker_enums import WorkerType
+from shared.infrastructure import initialize_worker_infrastructure
 from shared.infrastructure.config.builder import WorkerBuilder
 
 # Determine worker type from environment FIRST
@@ -53,6 +54,13 @@ logger.info(f"📦 Converted '{WORKER_TYPE}' to {worker_type}")
 # This ensures chord retry configuration is applied correctly
 logger.info(f"🔧 Building Celery app using WorkerBuilder for {worker_type}")
 app, config = WorkerBuilder.build_celery_app(worker_type)
+
+# Initialize worker infrastructure (singleton API clients, cache managers, etc.)
+# This must happen BEFORE task imports so tasks can use shared infrastructure
+logger.info("🏗️ Initializing worker infrastructure (singleton pattern)...")
+
+initialize_worker_infrastructure()
+logger.info("✅ Worker infrastructure initialized successfully")
 
 # Import tasks from the worker-specific directory
 # Handle directory name mapping for task imports

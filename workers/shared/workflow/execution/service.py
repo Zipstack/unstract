@@ -8,16 +8,20 @@ directly using the ToolSandbox and runner services.
 import time
 from typing import Any
 
+import magic
+from shared.enums.file_types import AllowedFileTypes
 from shared.exceptions.execution_exceptions import (
     NotFoundDestinationConfiguration,
     NotFoundSourceConfiguration,
 )
+from shared.exceptions.file_exceptions import EmptyFileError, UnsupportedMimeTypeError
 from shared.models.file_processing import FileProcessingContext
 
 # Import shared dataclasses for type safety and consistency
 from unstract.core.data_models import (
     # DestinationConfig, # remove once verified
     FileHashData,
+    FileOperationConstants,
     WorkflowDefinitionResponseData,
     WorkflowEndpointConfigData,
 )
@@ -52,6 +56,8 @@ logger = WorkerLogger.get_logger(__name__)
 
 class WorkerWorkflowExecutionService:
     """Worker-compatible workflow execution service."""
+
+    READ_CHUNK_SIZE = FileOperationConstants.READ_CHUNK_SIZE
 
     def __init__(self, api_client: InternalAPIClient = None):
         self.api_client = api_client
@@ -707,7 +713,7 @@ class WorkerWorkflowExecutionService:
         source_file_path: str,
         file_processing_context: FileProcessingContext,
     ) -> str:
-        """Copy file from API storage to workflow execution directory."""
+        """Copy file from API storage to workflow execution directory using chunked reading."""
         import hashlib
 
         from unstract.filesystem import FileStorageType, FileSystem
@@ -721,33 +727,36 @@ class WorkerWorkflowExecutionService:
         workflow_file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
         workflow_file_storage = workflow_file_system.get_file_storage()
 
-        # Read file from API storage
-        file_content = api_file_storage.read(path=file_path, mode="rb")
+        # Copy file in chunks
+        file_content_hash = hashlib.sha256()
+        total_bytes_copied = 0
+        seek_position = 0  # Track position for sequential reads
 
-        if file_content:
-            # Calculate hash
-            file_content_hash = hashlib.sha256()
-            file_content_hash.update(file_content)
-            computed_hash = file_content_hash.hexdigest()
+        logger.info(f"Starting chunked file copy from API storage for {file_path}")
 
-            # Write to both INFILE and SOURCE paths
-            workflow_file_storage.write(path=infile_path, mode="wb", data=file_content)
-            workflow_file_storage.write(
-                path=source_file_path, mode="wb", data=file_content
-            )
+        # Read and write in chunks
+        while chunk := api_file_storage.read(
+            path=file_path,
+            mode="rb",
+            seek_position=seek_position,
+            length=self.READ_CHUNK_SIZE,
+        ):
+            file_content_hash.update(chunk)
+            total_bytes_copied += len(chunk)
+            seek_position += len(chunk)
 
-            total_bytes = len(file_content)
-            logger.info(
-                f"Successfully copied {total_bytes} bytes from API storage with hash: {computed_hash}"
-            )
+            # Write chunk to both INFILE and SOURCE
+            workflow_file_storage.write(path=infile_path, mode="ab", data=chunk)
+            workflow_file_storage.write(path=source_file_path, mode="ab", data=chunk)
+
+        # Handle empty files - raise exception instead of creating placeholders
+        if total_bytes_copied == 0:
+            raise EmptyFileError(file_path)
         else:
-            # Handle empty file
-            computed_hash = hashlib.sha256(b"").hexdigest()
-            logger.warning(f"API file {file_path} is empty")
-
-            # Create empty files
-            workflow_file_storage.write(path=infile_path, mode="wb", data=b"")
-            workflow_file_storage.write(path=source_file_path, mode="wb", data=b"")
+            computed_hash = file_content_hash.hexdigest()
+            logger.info(
+                f"Successfully copied {total_bytes_copied} bytes from API storage with hash: {computed_hash}"
+            )
 
         # Store computed hash in file_data for file history
         file_processing_context.file_hash.file_hash = computed_hash
@@ -806,14 +815,25 @@ class WorkerWorkflowExecutionService:
         source_fs = source_connector.get_fsspec_fs()
 
         # Copy file in chunks
-        READ_CHUNK_SIZE = 4194304  # 4MB chunks
         file_content_hash = hashlib.sha256()
         total_bytes_copied = 0
+        first_chunk = True
 
         logger.info(f"Starting chunked file copy from {file_path} to execution directory")
 
         with source_fs.open(file_path, "rb") as source_file:
-            while chunk := source_file.read(READ_CHUNK_SIZE):
+            while chunk := source_file.read(self.READ_CHUNK_SIZE):
+                # MIME type detection and validation on first chunk
+                if first_chunk:
+                    mime_type = magic.from_buffer(chunk, mime=True)
+                    logger.info(f"Detected MIME type: {mime_type} for file {file_path}")
+
+                    if not AllowedFileTypes.is_allowed(mime_type):
+                        raise UnsupportedMimeTypeError(
+                            f"Unsupported MIME type '{mime_type}' for file '{file_path}'"
+                        )
+                    first_chunk = False
+
                 file_content_hash.update(chunk)
                 total_bytes_copied += len(chunk)
 
@@ -821,14 +841,9 @@ class WorkerWorkflowExecutionService:
                 workflow_file_storage.write(path=infile_path, mode="ab", data=chunk)
                 workflow_file_storage.write(path=source_file_path, mode="ab", data=chunk)
 
-        # Handle empty files
+        # Handle empty files - raise exception instead of using _handle_empty_file
         if total_bytes_copied == 0:
-            computed_hash = self._handle_empty_file(
-                file_path=file_path,
-                infile_path=infile_path,
-                source_file_path=source_file_path,
-                workflow_file_storage=workflow_file_storage,
-            )
+            raise EmptyFileError(file_path)
         else:
             computed_hash = file_content_hash.hexdigest()
             logger.info(
@@ -871,38 +886,6 @@ class WorkerWorkflowExecutionService:
 
         logger.error("No connector_id found in any configuration source")
         return None, {}
-
-    def _handle_empty_file(
-        self,
-        file_path: str,
-        infile_path: str,
-        source_file_path: str,
-        workflow_file_storage,
-    ) -> str:
-        """Handle empty files by creating placeholder content."""
-        import hashlib
-
-        logger.warning(f"Source file {file_path} is empty (0 bytes)")
-
-        # Create placeholder content
-        placeholder_content = (
-            f"# Empty file placeholder\n"
-            f"# Original file: {file_path}\n"
-            f"# Size: 0 bytes\n"
-        )
-        placeholder_bytes = placeholder_content.encode("utf-8")
-
-        # Overwrite with placeholder
-        workflow_file_storage.write(path=infile_path, mode="wb", data=placeholder_bytes)
-        workflow_file_storage.write(
-            path=source_file_path, mode="wb", data=placeholder_bytes
-        )
-
-        # Calculate hash of placeholder
-        computed_hash = hashlib.sha256(placeholder_bytes).hexdigest()
-        logger.info(f"Created placeholder content for empty file. Hash: {computed_hash}")
-
-        return computed_hash
 
     def _handle_destination_processing(
         self,

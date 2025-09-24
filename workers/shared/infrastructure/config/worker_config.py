@@ -302,19 +302,9 @@ class WorkerConfig:
         == "true"
     )
 
-    # Task Timeout Settings (in seconds) - 1 hour defaults
-    task_timeout: int = field(
-        default_factory=lambda: int(
-            os.getenv("TASK_TIMEOUT", str(DefaultConfig.DEFAULT_TASK_TIMEOUT))
-        )
-    )
-    task_soft_timeout: int = field(
-        default_factory=lambda: int(
-            os.getenv("TASK_SOFT_TIMEOUT", str(DefaultConfig.DEFAULT_TASK_SOFT_TIMEOUT))
-        )
-    )
+    # Simplified Task Timeout Settings (in seconds) - Direct timeout configuration
 
-    # File Processing Task Timeouts
+    # File Processing Task Timeouts - Handles large files and complex processing
     file_processing_timeout: int = field(
         default_factory=lambda: int(
             os.getenv(
@@ -331,7 +321,7 @@ class WorkerConfig:
         )
     )
 
-    # Callback Task Timeouts
+    # Callback Task Timeouts - Processes results, usually faster than file processing
     callback_timeout: int = field(
         default_factory=lambda: int(
             os.getenv("CALLBACK_TIMEOUT", str(DefaultConfig.CALLBACK_TIMEOUT))
@@ -341,31 +331,6 @@ class WorkerConfig:
         default_factory=lambda: int(
             os.getenv("CALLBACK_SOFT_TIMEOUT", str(DefaultConfig.CALLBACK_SOFT_TIMEOUT))
         )
-    )
-
-    # Webhook Task Timeouts (kept shorter for webhooks)
-    webhook_timeout: int = field(
-        default_factory=lambda: int(
-            os.getenv("WEBHOOK_TIMEOUT", str(DefaultConfig.WEBHOOK_TIMEOUT))
-        )
-    )
-
-    # Workflow-Level Timeout Management (prevents timeout mismatches)
-    workflow_total_timeout: int = field(
-        default_factory=lambda: int(
-            os.getenv("WORKFLOW_TOTAL_TIMEOUT", str(DefaultConfig.DEFAULT_TASK_TIMEOUT))
-        )
-    )
-    callback_min_timeout: int = field(
-        default_factory=lambda: int(
-            os.getenv("CALLBACK_MIN_TIMEOUT", "300")
-        )  # 5 minutes minimum
-    )
-
-    # Backward compatibility mode - enables gradual migration from old backend workers
-    enable_coordinated_timeouts: bool = field(
-        default_factory=lambda: os.getenv("ENABLE_COORDINATED_TIMEOUTS", "true").lower()
-        == "true"
     )
 
     # Monitoring Settings
@@ -619,8 +584,9 @@ class WorkerConfig:
             "worker_max_tasks_per_child": int(
                 os.getenv("CELERY_WORKER_MAX_TASKS_PER_CHILD", "1000")
             ),
-            "task_time_limit": self.task_timeout,
-            "task_soft_time_limit": max(30, self.task_timeout - 30),
+            # Default timeouts (individual workers override these in task decorators)
+            "task_time_limit": 3600,  # 1 hour default
+            "task_soft_time_limit": 3300,  # 55 minutes default
             "task_reject_on_worker_lost": True,
             "task_acks_on_failure_or_timeout": True,
             "worker_disable_rate_limits": False,
@@ -641,46 +607,6 @@ class WorkerConfig:
             "task_send_sent_event": True,
             "worker_log_format": "[%(asctime)s: %(levelname)s/%(processName)s] %(message)s",
             "worker_task_log_format": "[%(asctime)s: %(levelname)s/%(processName)s][%(task_name)s(%(task_id)s)] %(message)s",
-        }
-
-    def get_coordinated_timeouts(self) -> dict[str, int]:
-        """Calculate coordinated timeouts to prevent timeout mismatches between workflow steps.
-
-        This ensures that if file processing takes a long time, the callback still has
-        adequate time to complete. Prevents the issue where callback times out because
-        it only gets its base timeout regardless of how long file processing took.
-
-        Supports backward compatibility mode for gradual migration from old backend workers.
-
-        Returns:
-            dict: Coordinated timeout values for workflow steps
-        """
-        if not self.enable_coordinated_timeouts:
-            # BACKWARD COMPATIBILITY MODE: Use individual timeout values like before
-            # This allows gradual migration from old @backend/ workers to new @workers/
-            return {
-                "workflow_total": self.workflow_total_timeout,
-                "file_processing": self.file_processing_timeout,
-                "file_processing_soft": self.file_processing_soft_timeout,
-                "callback": self.callback_timeout,
-                "callback_soft": self.callback_soft_timeout,
-            }
-
-        # NEW COORDINATED MODE: Calculate coordinated timeouts
-        # File processing gets 85%, callback gets 15%
-        # This ensures callback always has adequate time after file processing completes
-        file_timeout = int(self.workflow_total_timeout * 0.85)  # 85% for processing
-        callback_timeout = max(
-            int(self.workflow_total_timeout * 0.15),  # 15% for callback
-            self.callback_min_timeout,  # But never less than minimum (5 minutes default)
-        )
-
-        return {
-            "workflow_total": self.workflow_total_timeout,
-            "file_processing": file_timeout,
-            "file_processing_soft": int(file_timeout * 0.9),  # 90% of hard limit
-            "callback": callback_timeout,
-            "callback_soft": int(callback_timeout * 0.9),  # 90% of hard limit
         }
 
     def __repr__(self) -> str:

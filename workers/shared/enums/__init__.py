@@ -4,6 +4,7 @@ Task names, queue names, and status enums used by workers.
 """
 
 from .batch_enums import BatchOperationType
+from .file_types import AllowedFileTypes
 from .method_enums import (
     CircuitBreakerState,
     ConnectionType,
@@ -40,6 +41,7 @@ __all__ = [
     "ToolOutputType",
     "NotificationMethod",
     "BatchOperationType",
+    "AllowedFileTypes",
     "CircuitBreakerState",
     "ConnectionType",
     "DestinationConfigKey",

@@ -247,7 +247,30 @@ class StreamingFileDiscovery:
                     f"  • Final rate: {final_count / elapsed_time:.0f} accepted files/sec"
                 )
 
-            return matched_files, final_count
+            # Create cache entries for files that will be processed to prevent race conditions
+            try:
+                from ..workflow.execution.active_file_manager import ActiveFileManager
+
+                cache_stats = ActiveFileManager.create_cache_entries_simple(
+                    files_to_cache=matched_files,  # Create cache entries for all final files
+                    workflow_id=self.workflow_id,
+                    execution_id=self.execution_id,
+                    logger_instance=logger,
+                )
+
+                logger.info(
+                    f"[StreamingDiscovery] 🔒 Created {cache_stats.get('cache_created', 0)} cache entries "
+                    f"for race condition prevention"
+                )
+
+                # Return original matched_files since FilterPipeline already applied all filtering
+                return matched_files, final_count
+
+            except Exception as cache_error:
+                logger.warning(
+                    f"[StreamingDiscovery] Cache creation failed (proceeding anyway): {cache_error}"
+                )
+                return matched_files, final_count
 
         except Exception as e:
             logger.error(
@@ -351,7 +374,7 @@ class StreamingFileDiscovery:
             workflow_id=self.workflow_id,
             execution_id=self.execution_id,
             api_client=self.api_client,
-            organization_id=self.organization_id,  # Fix: Add missing organization_id
+            organization_id=self.organization_id,
         )
 
         logger.info(
@@ -474,6 +497,464 @@ class StreamingFileDiscovery:
         import os
 
         file_name = os.path.basename(file_path)
+        for pattern in patterns:
+            # Case-insensitive matching
+            if fnmatch.fnmatch(file_name.lower(), pattern.lower()):
+                return True
+
+        return False
+
+
+class OrderedFileDiscovery:
+    """Ordered file discovery with sorting and chunked filtering.
+
+    This class handles ORDERED file processing (FIFO/LIFO) by:
+    1. Loading all file metadata into memory (up to MAX_FILES_FOR_SORTING)
+    2. Sorting by modification time (oldest/newest first)
+    3. Filtering in chunks using FilterPipeline to avoid overwhelming backend APIs
+
+    This provides the same memory behavior as backend source.py while maintaining
+    clean architecture separation.
+    """
+
+    def __init__(
+        self,
+        source_fs: UnstractFileSystem,
+        api_client,  # Removed type hint to avoid import
+        workflow_id: str,
+        execution_id: str,
+        organization_id: str,
+        use_file_history: bool = True,
+        connector_id: str | None = None,
+    ):
+        """Initialize ordered file discovery.
+
+        Args:
+            source_fs: Filesystem connector
+            api_client: API client for backend communication
+            workflow_id: Workflow ID for filtering
+            execution_id: Current execution ID
+            organization_id: Organization ID
+            use_file_history: Whether to use file history filtering
+            connector_id: Optional connector ID for metadata
+        """
+        self.source_fs = source_fs
+        self.api_client = api_client
+        self.workflow_id = workflow_id
+        self.execution_id = execution_id
+        self.organization_id = organization_id
+        self.use_file_history = use_file_history
+        self.connector_id = connector_id
+        self.fs_fsspec = source_fs.get_fsspec_fs()
+
+    def discover_files_ordered(
+        self,
+        directories: list[str],
+        patterns: list[str],
+        recursive: bool,
+        file_hard_limit: int,
+        file_processing_order: str,  # FileProcessingOrder enum value
+        batch_size: int = 100,
+    ) -> tuple[dict[str, FileHashData], int]:
+        """Discover files with ordering (OLDEST_FIRST/NEWEST_FIRST).
+
+        Memory behavior: Load all files → Sort → Filter in chunks
+        This mirrors the backend logic exactly.
+
+        Args:
+            directories: List of directories to search
+            patterns: File patterns to match
+            recursive: Whether to search recursively
+            file_hard_limit: Maximum files to return (hard stop)
+            file_processing_order: Order to process files (OLDEST_FIRST/NEWEST_FIRST)
+            batch_size: Size of filter processing chunks
+
+        Returns:
+            Tuple of (matched_files, count)
+        """
+        start_time = time.time()
+
+        # Metrics tracking for comprehensive analysis
+        metrics = {
+            "total_files_collected": 0,
+            "directories_processed": 0,
+            "files_matching_patterns": 0,
+            "files_after_filtering": 0,
+            "batches_processed": 0,
+            "collection_time": 0.0,
+            "filtering_time": 0.0,
+        }
+
+        logger.info(
+            f"[OrderedDiscovery] Starting ordered file discovery for {len(directories)} directories "
+            f"with limit={file_hard_limit}, batch_size={batch_size}, recursive={recursive}, "
+            f"patterns={patterns}, order={file_processing_order}"
+        )
+
+        try:
+            # Step 1: Collect and sort all files (load into memory)
+            collection_start = time.time()
+            sorted_files = self._collect_and_sort_files(
+                directories, recursive, file_processing_order, metrics
+            )
+            metrics["collection_time"] = time.time() - collection_start
+
+            logger.info(
+                f"[OrderedDiscovery] Collected {len(sorted_files)} files for ordered processing "
+                f"in {metrics['collection_time']:.2f}s"
+            )
+
+            if not sorted_files:
+                # Log comprehensive metrics even for empty results
+                elapsed_time = time.time() - start_time
+                logger.info(
+                    f"[OrderedDiscovery] 🎯 Discovery complete in {elapsed_time:.2f}s:\n"
+                    f"  • Directories processed: {metrics['directories_processed']}\n"
+                    f"  • Total files collected: {metrics['total_files_collected']}\n"
+                    f"  • Files matching patterns: 0\n"
+                    f"  • Files after all filters: 0\n"
+                    f"  • Batches processed: 0\n"
+                    f"  • Hard limit: {file_hard_limit}\n"
+                    f"  • Processing order: {file_processing_order}\n"
+                    f"  • Early termination: No"
+                )
+                return {}, 0
+
+            # Step 2: Process in chunks with FilterPipeline
+            filtering_start = time.time()
+            matched_files, total_processed = self._process_sorted_files_in_chunks(
+                sorted_files, patterns, file_hard_limit, batch_size, metrics
+            )
+            metrics["filtering_time"] = time.time() - filtering_start
+            final_count = total_processed
+
+            # Update final metrics
+            elapsed_time = time.time() - start_time
+            metrics["files_after_filtering"] = final_count
+
+            # Log comprehensive metrics
+            logger.info(
+                f"[OrderedDiscovery] 🎯 Discovery complete in {elapsed_time:.2f}s:\n"
+                f"  • Directories processed: {metrics['directories_processed']}\n"
+                f"  • Total files collected: {metrics['total_files_collected']}\n"
+                f"  • Files matching patterns: {metrics['files_matching_patterns']}\n"
+                f"  • Files after all filters: {metrics['files_after_filtering']}\n"
+                f"  • Batches processed: {metrics['batches_processed']}\n"
+                f"  • Hard limit: {file_hard_limit}\n"
+                f"  • Processing order: {file_processing_order}\n"
+                f"  • Early termination: {'Yes' if final_count >= file_hard_limit else 'No'}"
+            )
+
+            # Performance metrics
+            if metrics["total_files_collected"] > 0:
+                filter_efficiency = (
+                    (metrics["total_files_collected"] - final_count)
+                    / metrics["total_files_collected"]
+                    * 100
+                )
+                collection_rate = (
+                    metrics["total_files_collected"] / metrics["collection_time"]
+                    if metrics["collection_time"] > 0
+                    else 0
+                )
+                processing_rate = final_count / elapsed_time if elapsed_time > 0 else 0
+
+                logger.info(
+                    f"[OrderedDiscovery] 📊 Performance metrics:\n"
+                    f"  • Filter efficiency: {filter_efficiency:.1f}% files filtered out\n"
+                    f"  • Collection rate: {collection_rate:.0f} files/sec\n"
+                    f"  • Processing rate: {processing_rate:.0f} accepted files/sec\n"
+                    f"  • Phase timing - Collection: {metrics['collection_time']:.1f}s, "
+                    f"Filtering: {metrics['filtering_time']:.1f}s"
+                )
+
+            return matched_files, total_processed
+
+        except Exception as e:
+            elapsed_time = time.time() - start_time
+            logger.error(
+                f"[OrderedDiscovery] Error during ordered file discovery after {elapsed_time:.1f}s: {e}",
+                exc_info=True,
+            )
+            # Return partial results if available
+            return {}, 0
+
+    def _collect_and_sort_files(
+        self,
+        directories: list[str],
+        recursive: bool,
+        file_processing_order: str,
+        metrics: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """Collect files from all directories and sort globally.
+
+        This matches the backend logic from source.py:282-370 exactly.
+
+        Args:
+            directories: List of directories to search
+            recursive: Whether to search recursively
+            file_processing_order: Order to sort files
+            metrics: Metrics dictionary to populate
+
+        Returns:
+            List of file metadata dictionaries sorted by modified date
+        """
+        all_files_metadata = []
+        max_depth = FileOperationConstants.MAX_RECURSIVE_DEPTH if recursive else 1
+        max_files_for_sorting = FileOperationConstants.MAX_FILES_FOR_SORTING
+        total_collected = 0
+
+        # Collect files from all directories (matching backend logic)
+        for directory in directories:
+            logger.debug(f"[OrderedDiscovery] Collecting files from: {directory}")
+            metrics["directories_processed"] += 1
+
+            # Calculate remaining limit for this directory
+            remaining_limit = max_files_for_sorting - total_collected
+            if remaining_limit <= 0:
+                logger.debug(
+                    "[OrderedDiscovery] Reached collection limit, stopping directory processing"
+                )
+                break
+
+            try:
+                files_metadata = self.source_fs.list_files(
+                    directory=directory,
+                    max_depth=max_depth,
+                    include_dirs=False,
+                    limit=remaining_limit,
+                )
+                all_files_metadata.extend(files_metadata)
+                total_collected += len(files_metadata)
+
+                logger.debug(
+                    f"[OrderedDiscovery] Collected {len(files_metadata)} files from {directory} "
+                    f"(total: {total_collected}/{max_files_for_sorting})"
+                )
+
+                # Check if we've hit the limit
+                if total_collected >= max_files_for_sorting:
+                    logger.warning(
+                        f"[OrderedDiscovery] File collection limit of '{max_files_for_sorting}' reached. "
+                        "Ordering may not reflect all available files."
+                    )
+                    break
+
+            except Exception as e:
+                error_msg = f"Failed to collect files from {directory}"
+                logger.error(f"[OrderedDiscovery] {error_msg}: {e}")
+                continue
+
+        # Update metrics with collection results
+        metrics["total_files_collected"] = total_collected
+
+        # Apply sorting (matching backend logic)
+        if file_processing_order == "oldest_first":
+            sorted_files = self.source_fs.sort_files_by_modified_date(
+                all_files_metadata, ascending=True
+            )
+            order_desc = "FIFO (oldest first)"
+        else:  # newest_first
+            sorted_files = self.source_fs.sort_files_by_modified_date(
+                all_files_metadata, ascending=False
+            )
+            order_desc = "LIFO (newest first)"
+
+        logger.info(
+            f"[OrderedDiscovery] Collected {len(all_files_metadata)} files, processing in {order_desc} order"
+        )
+
+        return sorted_files
+
+    def _process_sorted_files_in_chunks(
+        self,
+        sorted_files: list[dict[str, Any]],
+        patterns: list[str],
+        file_hard_limit: int,
+        batch_size: int,
+        metrics: dict[str, Any],
+    ) -> tuple[dict[str, FileHashData], int]:
+        """Process sorted files in chunks using FilterPipeline.
+
+        This avoids sending 40K files to backend APIs at once by processing
+        in manageable chunks of ~100 files each.
+
+        Args:
+            sorted_files: Pre-sorted list of file metadata
+            patterns: File patterns for filtering
+            file_hard_limit: Maximum files to return
+            batch_size: Size of each processing chunk
+            metrics: Metrics dictionary to populate
+
+        Returns:
+            Tuple of (matched_files, total_count)
+        """
+        from .filter_pipeline import create_standard_pipeline
+
+        matched_files = {}
+        total_processed = 0
+        files_pattern_matched = 0
+
+        # Create FilterPipeline for chunked processing
+        filter_pipeline = create_standard_pipeline(
+            use_file_history=self.use_file_history,
+            enable_active_filtering=True,  # Always enable for ordered processing
+        )
+
+        logger.info(
+            f"[OrderedDiscovery] Processing {len(sorted_files)} sorted files in chunks of {batch_size}"
+        )
+
+        for i in range(0, len(sorted_files), batch_size):
+            # Check if we've reached the limit
+            if total_processed >= file_hard_limit:
+                logger.info(
+                    f"[OrderedDiscovery] Hard limit of '{file_hard_limit}' files reached"
+                )
+                break
+
+            # Get current chunk
+            chunk_files = sorted_files[i : i + batch_size]
+            chunk_num = (i // batch_size) + 1
+            metrics["batches_processed"] += 1
+
+            logger.debug(
+                f"[OrderedDiscovery] Processing chunk {chunk_num}: files {i + 1}-{min(i + batch_size, len(sorted_files))}"
+            )
+
+            # Convert metadata to FileHashData for this chunk (with pattern filtering)
+            chunk_file_dict = {}
+            chunk_pattern_matched = 0
+
+            for file_metadata in chunk_files:
+                file_path = file_metadata.get("name")
+                if not file_path:
+                    continue
+
+                # Create FileHashData from metadata
+                file_hash_data = self._create_file_hash_from_metadata(
+                    file_path, file_metadata
+                )
+
+                # Apply pattern matching (same as backend logic)
+                if not self._should_process_file(file_hash_data.file_name, patterns):
+                    logger.debug(
+                        f"[OrderedDiscovery] File failed pattern match: {file_path} (patterns: {patterns})"
+                    )
+                    continue
+
+                chunk_file_dict[file_path] = file_hash_data
+                chunk_pattern_matched += 1
+
+            files_pattern_matched += chunk_pattern_matched
+
+            if not chunk_file_dict:
+                logger.debug(
+                    f"[OrderedDiscovery] Chunk {chunk_num}: No files passed pattern matching"
+                )
+                continue
+
+            # Apply FilterPipeline to this chunk (DeduplicationFilter, FileHistoryFilter, ActiveFileFilter)
+            filtered_chunk = filter_pipeline.apply_filters(
+                files=chunk_file_dict,
+                workflow_id=self.workflow_id,
+                execution_id=self.execution_id,
+                api_client=self.api_client,
+                organization_id=self.organization_id,
+            )
+
+            # Add filtered files to results (respecting hard limit)
+            chunk_accepted = 0
+            for file_path, file_hash_data in filtered_chunk.items():
+                if total_processed >= file_hard_limit:
+                    break
+                matched_files[file_path] = file_hash_data
+                total_processed += 1
+                chunk_accepted += 1
+
+            logger.debug(
+                f"[OrderedDiscovery] Chunk {chunk_num}: {len(chunk_files)} → {chunk_pattern_matched} → {len(filtered_chunk)} → {chunk_accepted} files "
+                f"(total: {total_processed})"
+            )
+
+        # Update metrics
+        metrics["files_matching_patterns"] = files_pattern_matched
+
+        logger.info(
+            f"[OrderedDiscovery] Ordered processing complete: {len(sorted_files)} → {files_pattern_matched} → {total_processed} files matched"
+        )
+
+        # Create cache entries for files that will be processed to prevent race conditions
+        try:
+            from ..workflow.execution.active_file_manager import ActiveFileManager
+
+            cache_stats = ActiveFileManager.create_cache_entries_simple(
+                files_to_cache=matched_files,  # Create cache entries for all final files
+                workflow_id=self.workflow_id,
+                execution_id=self.execution_id,
+                logger_instance=logger,
+            )
+
+            logger.info(
+                f"[OrderedDiscovery] 🔒 Created {cache_stats.get('cache_created', 0)} cache entries "
+                f"for race condition prevention"
+            )
+
+            # Return original matched_files since FilterPipeline already applied all filtering
+            return matched_files, total_processed
+
+        except Exception as cache_error:
+            logger.warning(
+                f"[OrderedDiscovery] Cache creation failed (proceeding anyway): {cache_error}"
+            )
+            return matched_files, total_processed
+
+    def _create_file_hash_from_metadata(
+        self, file_path: str, file_metadata: dict[str, Any]
+    ) -> FileHashData:
+        """Create FileHashData from file metadata.
+
+        Args:
+            file_path: Path to the file
+            file_metadata: File metadata dictionary
+
+        Returns:
+            FileHashData: File hash data object
+        """
+        file_name = file_path.split("/")[-1]  # Get basename
+        file_size = file_metadata.get("size", 0)
+        provider_file_uuid = self.source_fs.get_file_system_uuid(
+            file_path=file_path, metadata=file_metadata
+        )
+        serialized_metadata = self.source_fs.serialize_metadata_value(value=file_metadata)
+
+        return FileHashData(
+            file_path=file_path,
+            source_connection_type=ConnectionType.FILESYSTEM,
+            file_name=file_name,
+            file_size=file_size,
+            provider_file_uuid=provider_file_uuid,
+            fs_metadata=serialized_metadata,
+        )
+
+    def _should_process_file(self, file_name: str, patterns: list[str]) -> bool:
+        """Check if file matches the given patterns.
+
+        Args:
+            file_name: Name of the file to check
+            patterns: List of patterns to match against
+
+        Returns:
+            bool: True if file should be processed, False otherwise
+        """
+        if not patterns:
+            return True
+
+        # Use the existing pattern matching logic from StreamingFileDiscovery
+        import fnmatch
+        import os
+
+        file_name = os.path.basename(file_name)
         for pattern in patterns:
             # Case-insensitive matching
             if fnmatch.fnmatch(file_name.lower(), pattern.lower()):

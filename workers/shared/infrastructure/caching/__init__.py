@@ -7,10 +7,12 @@ functionality for worker performance optimization.
 # Import from the existing cache directory
 from ...cache import CachedAPIClientMixin, with_cache
 from ...cache.cache_types import CacheType
-from .cache_utils import WorkerCacheManager
+from .cache_utils import WorkerCacheManager, get_cache_manager, initialize_cache_manager
 
 __all__ = [
     "WorkerCacheManager",
+    "get_cache_manager",
+    "initialize_cache_manager",
     # From cache subdirectory
     "CachedAPIClientMixin",
     "with_cache",

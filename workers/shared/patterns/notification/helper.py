@@ -9,33 +9,12 @@ import logging
 from celery import current_app
 
 # Import shared data models from @unstract/core
-try:
-    from unstract.core.data_models import (
-        ExecutionStatus,
-        NotificationPayload,
-        NotificationSource,
-        WorkflowType,
-    )
-except ImportError:
-    # Fallback for testing environments
-    logging.warning("Could not import shared data models from unstract.core")
-
-    class ExecutionStatus:
-        COMPLETED = "COMPLETED"
-        ERROR = "ERROR"
-        STOPPED = "STOPPED"
-
-    class NotificationStatus:
-        SUCCESS = "SUCCESS"
-        FAILURE = "FAILURE"
-
-    class WorkflowType:
-        API = "API"
-        ETL = "ETL"
-
-    class NotificationSource:
-        CALLBACK_WORKER = "callback-worker"
-
+from unstract.core.data_models import (
+    ExecutionStatus,
+    NotificationPayload,
+    NotificationSource,
+    WorkflowType,
+)
 
 logger = logging.getLogger(__name__)
 

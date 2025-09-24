@@ -30,6 +30,7 @@ from shared.utils.manual_review_factory import (
 )
 
 from unstract.connectors.connectorkit import Connectorkit
+from unstract.connectors.exceptions import ConnectorError
 from unstract.core.data_models import ConnectionType as CoreConnectionType
 from unstract.core.data_models import FileHashData
 from unstract.filesystem import FileStorageType, FileSystem
@@ -592,6 +593,15 @@ class WorkerDestinationConnector:
         api_client: "InternalAPIClient" = None,
     ) -> None:
         """Insert data into the database (following production pattern)."""
+        # If no data and no error, don't execute CREATE or INSERT query
+        if not (tool_execution_result or error_message):
+            raise ValueError("No tool_execution_result or error_message provided")
+
+        if error_message:
+            logger.info(
+                f"Proceeding with error record insertion for {input_file_path}: {error_message}"
+            )
+
         # Store file_execution_id for logging
         if file_execution_id:
             self.current_file_execution_id = file_execution_id
@@ -615,10 +625,6 @@ class WorkerDestinationConnector:
             raise ValueError(
                 "No connector_settings provided in destination configuration"
             )
-
-        # If no data and no error, don't execute CREATE or INSERT query
-        if not (tool_execution_result or error_message):
-            raise ValueError("No tool_execution_result or error_message provided")
 
         db_class = WorkerDatabaseUtils.get_db_class(
             connector_id=connector_id,
@@ -657,21 +663,6 @@ class WorkerDestinationConnector:
         else:
             execution_id = self.execution_id
 
-        values = WorkerDatabaseUtils.get_columns_and_values(
-            column_mode_str=column_mode,
-            data=data,
-            include_timestamp=include_timestamp,
-            include_agent=include_agent,
-            agent_name=agent_name,
-            single_column_name=single_column_name,
-            file_path_name=file_path_name,
-            execution_id_name=execution_id_name,
-            file_path=input_file_path,
-            execution_id=execution_id,
-            metadata=metadata,
-            error=error_message,
-        )
-
         engine = None
         try:
             logger.info(f"Creating database connection with connector ID: {connector_id}")
@@ -679,9 +670,39 @@ class WorkerDestinationConnector:
                 connector_id=connector_id,
                 connector_settings=connector_settings,
             )
+            table_info = db_class.get_information_schema(table_name=table_name)
+
+            logger.info(
+                f"destination connector table_name: {table_name} with table_info: {table_info}"
+            )
             engine = db_class.get_engine()
 
+            if table_info:
+                if db_class.has_no_metadata(table_info=table_info):
+                    table_info = WorkerDatabaseUtils.migrate_table_to_v2(
+                        db_class=db_class,
+                        engine=engine,
+                        table_name=table_name,
+                        column_name=single_column_name,
+                    )
+
             logger.info(f"Creating table {table_name} if not exists")
+
+            values = WorkerDatabaseUtils.get_columns_and_values(
+                column_mode_str=column_mode,
+                data=data,
+                include_timestamp=include_timestamp,
+                include_agent=include_agent,
+                agent_name=agent_name,
+                single_column_name=single_column_name,
+                file_path_name=file_path_name,
+                execution_id_name=execution_id_name,
+                file_path=input_file_path,
+                execution_id=execution_id,
+                metadata=metadata,
+                error=error_message,
+            )
+
             WorkerDatabaseUtils.create_table_if_not_exists(
                 db_class=db_class,
                 engine=engine,
@@ -695,7 +716,9 @@ class WorkerDestinationConnector:
                 table_name=table_name,
                 values=values,
             )
-
+            logger.info(
+                f"sql_columns_and_values for table_name: {table_name} are: {sql_columns_and_values}"
+            )
             logger.info(
                 f"Executing insert query for {len(sql_columns_and_values)} columns"
             )
@@ -716,7 +739,10 @@ class WorkerDestinationConnector:
                     self.current_file_execution_id,
                     f"📥 Data successfully inserted into database table '{table_name}'",
                 )
-
+        except ConnectorError as e:
+            error_msg = f"Database connection failed for {input_file_path}: {str(e)}"
+            logger.error(error_msg)
+            raise
         except Exception as e:
             error_msg = (
                 f"Failed to insert data into database for {input_file_path}: {str(e)}"

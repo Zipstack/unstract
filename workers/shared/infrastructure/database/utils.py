@@ -6,8 +6,9 @@ of backend/workflow_manager/endpoint_v2/database_utils.py without Django depende
 
 import datetime
 import json
-import uuid
 from typing import Any
+
+from shared.enums.status_enums import FileProcessingStatus
 
 # Import unstract database connectors
 from unstract.connectors.databases import connectors as db_connectors
@@ -34,6 +35,22 @@ class TableColumns:
 
     CREATED_BY = "created_by"
     CREATED_AT = "created_at"
+    METADATA = "metadata"
+    ERROR_MESSAGE = "error_message"
+    STATUS = "status"
+    USER_FIELD_1 = "user_field_1"
+    USER_FIELD_2 = "user_field_2"
+    USER_FIELD_3 = "user_field_3"
+    PERMANENT_COLUMNS = [
+        "created_by",
+        "created_at",
+        "metadata",
+        "error_message",
+        "status",
+        "user_field_1",
+        "user_field_2",
+        "user_field_3",
+    ]
 
 
 class ColumnModes:
@@ -62,70 +79,22 @@ class WorkerDatabaseUtils:
 
     @staticmethod
     def get_sql_values_for_query(
-        values: dict[str, Any], column_types: dict[str, str], cls_name: str
+        conn_cls: Any,
+        values: dict[str, Any],
+        column_types: dict[str, str],
     ) -> dict[str, str]:
         """Making SQL Columns and Values for Query.
 
         Args:
+            conn_cls (Any): DB Connection class
             values (Dict[str, Any]): dictionary of columns and values
             column_types (Dict[str, str]): types of columns
-            cls_name (str): The database connection class name for handling database-specific queries.
 
         Returns:
             Dict[str, str]: SQL values formatted for the specific database type
 
-        Note:
-            - If `cls_name` is not provided or is None, the function assumes a
-                Default SQL database and makes values accordingly.
-            - If `cls_name` matches DBConnectionClass.SNOWFLAKE,
-                the function makes values using Snowflake-specific syntax.
-            - Unstract creates id by default if table not exists.
-                If there is column 'id' in db table, it will insert
-                    'id' as uuid into the db table.
-                Else it will GET table details from INFORMATION SCHEMA and
-                    insert into the table accordingly
         """
-        sql_values: dict[str, Any] = {}
-        for column in values:
-            if cls_name == DBConnectionClass.SNOWFLAKE:
-                col = column.lower()
-                type_x = column_types.get(col, "")
-                if type_x == "VARIANT":
-                    values[column] = values[column].replace("'", "\\'")
-                    sql_values[column] = f"parse_json($${values[column]}$$)"
-                else:
-                    sql_values[column] = f"{values[column]}"
-            else:
-                # Default to Other SQL DBs - handle numeric types without quotes
-                col = column.lower()
-                type_x = column_types.get(col, "").upper()
-
-                # Numeric types don't need quotes
-                if type_x in [
-                    "INT",
-                    "INTEGER",
-                    "BIGINT",
-                    "SMALLINT",
-                    "TINYINT",
-                    "DECIMAL",
-                    "NUMERIC",
-                    "FLOAT",
-                    "DOUBLE",
-                    "REAL",
-                    "NUMBER",
-                    "BIT",
-                ]:
-                    sql_values[column] = str(values[column])
-                else:
-                    sql_values[column] = f"{values[column]}"
-
-        # If table has a column 'id', unstract inserts a unique value to it
-        # Oracle db has column 'ID' instead of 'id'
-        if any(key in column_types for key in ["id", "ID"]):
-            uuid_id = str(uuid.uuid4())
-            sql_values["id"] = f"{uuid_id}"
-
-        return sql_values
+        return conn_cls.get_sql_values_for_query(values=values, column_types=column_types)
 
     @staticmethod
     def get_column_types(conn_cls: Any, table_name: str) -> Any:
@@ -154,6 +123,26 @@ class WorkerDatabaseUtils:
             raise
 
     @staticmethod
+    def _create_safe_error_json(data_description: str, original_error: Exception) -> dict:
+        """Create a standardized error JSON object that can be safely serialized.
+
+        Args:
+            data_description (str): Description of the data being serialized
+            original_error (Exception): The original exception that occurred
+
+        Returns:
+            dict: A safely serializable JSON object with error details
+        """
+        return {
+            "error": "JSON serialization failed",
+            "error_type": original_error.__class__.__name__,
+            "error_message": str(original_error),
+            "data_type": str(type(original_error)),
+            "data_description": data_description,
+            "timestamp": datetime.datetime.now().isoformat(),
+        }
+
+    @staticmethod
     def get_columns_and_values(
         column_mode_str: str,
         data: Any,
@@ -165,6 +154,7 @@ class WorkerDatabaseUtils:
         include_agent: bool = False,
         agent_name: str | None = AgentName.UNSTRACT_DBWRITER,
         single_column_name: str = "data",
+        table_info: dict[str, str] | None = None,
         metadata: dict[str, Any] | None = None,
         error: str | None = None,
     ) -> dict[str, Any]:
@@ -187,6 +177,13 @@ class WorkerDatabaseUtils:
             single_column_name (str, optional): The name of the single column
                 when using 'WRITE_JSON_TO_A_SINGLE_COLUMN' mode.
                 Defaults to "data".
+            table_info (dict[str, str], optional): Information about the table
+                to be used for generating the columns and values.
+                Defaults to None.
+            metadata (dict[str, Any], optional): Metadata to be included in the
+                dictionary. Defaults to None.
+            error (str, optional): Error message to be included in the dictionary.
+                Defaults to None.
 
         Returns:
             Dict[str, Any]: A dictionary containing columns and values based on
@@ -194,20 +191,30 @@ class WorkerDatabaseUtils:
         """
         values: dict[str, Any] = {}
 
-        # Determine column mode and add metadata
+        # Determine column mode
         column_mode = WorkerDatabaseUtils._determine_column_mode(column_mode_str)
+
+        # Add metadata columns (agent, timestamp)
         WorkerDatabaseUtils._add_metadata_columns(
             values, include_agent, agent_name, include_timestamp
         )
 
+        # Add processing columns (metadata, error, status)
+        WorkerDatabaseUtils._add_processing_columns(values, table_info, metadata, error)
+
         # Process data based on column mode
         WorkerDatabaseUtils._process_data_by_mode(
-            values, column_mode, data, single_column_name
+            values=values,
+            column_mode=column_mode,
+            data=data,
+            single_column_name=single_column_name,
+            table_info=table_info,
         )
 
-        # Add required columns
+        # Add required identifier columns
         values[file_path_name] = file_path
         values[execution_id_name] = execution_id
+
         return values
 
     @staticmethod
@@ -225,6 +232,24 @@ class WorkerDatabaseUtils:
             return ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN
 
     @staticmethod
+    def _has_table_column(table_info: dict[str, str] | None, column_name: str) -> bool:
+        """Check if a column exists in table info (case-insensitive).
+
+        Args:
+            table_info: Dictionary containing table column information
+            column_name: Name of the column to check for existence
+
+        Returns:
+            bool: True if column exists or table_info is None, False otherwise
+        """
+        return (
+            (table_info is None)
+            or any(k.lower() == column_name.lower() for k in table_info)
+            if table_info
+            else True
+        )
+
+    @staticmethod
     def _add_metadata_columns(
         values: dict[str, Any],
         include_agent: bool,
@@ -239,31 +264,96 @@ class WorkerDatabaseUtils:
             values[TableColumns.CREATED_AT] = datetime.datetime.now()
 
     @staticmethod
+    def _add_processing_columns(
+        values: dict[str, Any],
+        table_info: dict[str, str] | None,
+        metadata: dict[str, Any] | None,
+        error: str | None,
+    ) -> None:
+        """Add metadata, error, and status columns to values dictionary.
+
+        Args:
+            values: Dictionary to add columns to
+            table_info: Table column information for existence checking
+            metadata: Metadata to serialize and store
+            error: Error message to store
+        """
+        # Check column existence once
+        has_metadata_col = WorkerDatabaseUtils._has_table_column(
+            table_info, TableColumns.METADATA
+        )
+        has_error_col = WorkerDatabaseUtils._has_table_column(
+            table_info, TableColumns.ERROR_MESSAGE
+        )
+        has_status_col = WorkerDatabaseUtils._has_table_column(
+            table_info, TableColumns.STATUS
+        )
+
+        # Add metadata with safe JSON serialization
+        if metadata and has_metadata_col:
+            try:
+                values[TableColumns.METADATA] = json.dumps(metadata)
+            except (TypeError, ValueError) as e:
+                logger.error(f"Failed to serialize metadata to JSON: {e}")
+                # Create a safe fallback error object
+                fallback_metadata = WorkerDatabaseUtils._create_safe_error_json(
+                    "metadata", e
+                )
+                values[TableColumns.METADATA] = json.dumps(fallback_metadata)
+
+        # Add error message
+        if error and has_error_col:
+            values[TableColumns.ERROR_MESSAGE] = error
+
+        # Add status based on error presence
+        if has_status_col:
+            values[TableColumns.STATUS] = (
+                FileProcessingStatus.ERROR if error else FileProcessingStatus.SUCCESS
+            )
+
+    @staticmethod
     def _process_data_by_mode(
         values: dict[str, Any],
         column_mode: ColumnModes,
         data: Any,
         single_column_name: str,
+        table_info: dict[str, str] | None = None,
     ) -> None:
         """Process data based on the specified column mode."""
         if column_mode == ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN:
             WorkerDatabaseUtils._process_single_column_mode(
-                values, data, single_column_name
+                values=values,
+                data=data,
+                single_column_name=single_column_name,
+                table_info=table_info,
             )
         elif column_mode == ColumnModes.SPLIT_JSON_INTO_COLUMNS:
+            # Note: This function is not used in the current implementation
             WorkerDatabaseUtils._process_split_column_mode(
-                values, data, single_column_name
+                values=values,
+                data=data,
+                single_column_name=single_column_name,
             )
 
     @staticmethod
     def _process_single_column_mode(
-        values: dict[str, Any], data: Any, single_column_name: str
+        values: dict[str, Any],
+        data: Any,
+        single_column_name: str,
+        table_info: dict[str, str] | None = None,
     ) -> None:
         """Process data for single column mode."""
+        v2_col_name = f"{single_column_name}_v2"
+        has_v2_col = WorkerDatabaseUtils._has_table_column(table_info, v2_col_name)
         if isinstance(data, str):
-            values[single_column_name] = data
+            wrapped_dict = {"result": data}
+            values[single_column_name] = wrapped_dict
+            if has_v2_col:
+                values[v2_col_name] = wrapped_dict
         else:
-            values[single_column_name] = json.dumps(data)
+            values[single_column_name] = data
+            if has_v2_col:
+                values[v2_col_name] = data
 
     @staticmethod
     def _process_split_column_mode(
@@ -275,7 +365,17 @@ class WorkerDatabaseUtils:
         elif isinstance(data, str):
             values[single_column_name] = data
         else:
-            values[single_column_name] = json.dumps(data)
+            try:
+                values[single_column_name] = json.dumps(data)
+            except (TypeError, ValueError) as e:
+                logger.error(
+                    f"Failed to serialize data to JSON in split column mode: {e}"
+                )
+                # Create a safe fallback error object
+                fallback_data = WorkerDatabaseUtils._create_safe_error_json(
+                    "split_column_data", e
+                )
+                values[single_column_name] = json.dumps(fallback_data)
 
     @staticmethod
     def get_sql_query_data(
@@ -294,22 +394,14 @@ class WorkerDatabaseUtils:
 
         Returns:
             Dict[str, Any]: A dictionary of SQL values suitable for use in an insert query.
-
-        Note:
-            - This function determines the database type based on the class name.
-            - If the database is Snowflake (DBConnectionClass.SNOWFLAKE),
-                it handles Snowflake-specific SQL generation.
-            - For other SQL databases, it uses default SQL generation
-                based on column types.
         """
-        cls_name = conn_cls.__class__.__name__
         column_types: dict[str, str] = WorkerDatabaseUtils.get_column_types(
             conn_cls=conn_cls, table_name=table_name
         )
         sql_columns_and_values = WorkerDatabaseUtils.get_sql_values_for_query(
+            conn_cls=conn_cls,
             values=values,
             column_types=column_types,
-            cls_name=cls_name,
         )
         return sql_columns_and_values
 
@@ -330,11 +422,6 @@ class WorkerDatabaseUtils:
             sql_keys (list[str]): columns
             sql_values (list[str]): values
 
-        Notes:
-        - Snowflake does not support INSERT INTO ... VALUES ...
-          syntax when VARIANT columns are present (JSON).
-          So we need to use INSERT INTO ... SELECT ... syntax
-        - sql values can contain data with single quote. It needs to be handled properly
         """
         sql = db_class.get_sql_insert_query(
             table_name=table_name, sql_keys=sql_keys, sql_values=sql_values
@@ -442,7 +529,9 @@ class WorkerDatabaseUtils:
         """
         try:
             sql = db_class.create_table_query(
-                table=table_name, database_entry=database_entry
+                table=table_name,
+                database_entry=database_entry,
+                permanent_columns=TableColumns.PERMANENT_COLUMNS,
             )
             logger.debug(f"Creating table {table_name} with: {sql} query")
 
@@ -457,3 +546,32 @@ class WorkerDatabaseUtils:
         except Exception as e:
             logger.error(f"Failed to create table {table_name}: {str(e)}")
             raise WorkerDBException(f"Table creation failed: {str(e)}") from e
+
+    @staticmethod
+    def migrate_table_to_v2(
+        db_class: UnstractDB,
+        engine: Any,
+        table_name: str,
+        column_name: str,
+    ) -> dict[str, str]:
+        """Migrate table to v2 by adding _v2 columns.
+
+        Args:
+            db_class (UnstractDB): DB Connection class
+            engine (Any): Database engine
+            table_name (str): Name of the table to migrate
+            column_name (str): Base column name for v2 migration
+        Returns:
+            dict[str, str]: Updated table information schema
+        Raises:
+            UnstractDBException: If migration fails
+        """
+        try:
+            result: dict[str, str] = db_class.migrate_table_to_v2(
+                table_name=table_name,
+                column_name=column_name,
+                engine=engine,
+            )
+            return result
+        except UnstractDBConnectorException as e:
+            raise WorkerDBException(detail=e.detail) from e
