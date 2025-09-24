@@ -1,5 +1,5 @@
 # Use a specific version of Python slim image
-FROM python:3.12.9-slim AS base
+FROM python:3.12-slim  AS base
 
 ARG VERSION=dev
 LABEL maintainer="Zipstack Inc." \
@@ -23,10 +23,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Install system dependencies, create user, and setup directories in one layer
 RUN apt-get update \
     && apt-get --no-install-recommends install -y \
-       build-essential \
-       libmagic-dev \
-       pkg-config \
-       git \
+    build-essential \
+    libmagic-dev \
+    pkg-config \
+    git \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* \
     && adduser -u 5678 --disabled-password --gecos "" ${APP_USER} \

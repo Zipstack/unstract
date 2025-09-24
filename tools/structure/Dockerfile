@@ -1,8 +1,8 @@
-FROM python:3.12.9-slim
+FROM python:3.12-slim
 
 LABEL maintainer="Zipstack Inc." \
-      description="Structure Tool Container" \
-      version="1.0"
+    description="Structure Tool Container" \
+    version="1.0"
 
 ENV \
     # Keeps Python from generating .pyc files in the container
