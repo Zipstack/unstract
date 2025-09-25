@@ -50,46 +50,6 @@ dependencies = [
     "llmwhisperer-client>=2.2.1",
 ]
 
-[project.optional-dependencies]
-# aws = ["s3fs[boto3]~=2024.10.0", "boto3~=1.34.131"]
-# gcs = ["gcsfs~=2024.10.0"]
-# azure = ["adlfs~=2024.7.0"]
-# v0 = [
-#     "llama-index==0.12.37",
-#     "transformers==4.37.0",
-#     "llama-index-embeddings-google==0.3.0",
-#     "llama-index-embeddings-azure-openai==0.3.0",
-#     # Disabling Hugging Face & FastEmbed to
-#     # keep the image size under check
-#     #        "llama-index-embeddings-huggingface==0.2.0",
-#     # Disabling fast embed due to high processing power
-#     #        "llama-index-embeddings-fastembed==0.1.4",
-#     "llama-index-embeddings-openai==0.3.1",
-#     "llama-index-embeddings-ollama==0.5.0",
-#     "llama-index-embeddings-bedrock==0.5.0",
-#     "llama-index-embeddings-vertex==0.3.1",
-#     "llama-index-vector-stores-postgres==0.4.1",
-#     # Including Supabase conflicts with postgres on pg-vector.
-#     # Hence, commenting it out at the moment
-#     #        "llama-index-vector-stores-supabase==0.1.3",
-#     "llama-index-vector-stores-milvus==0.4.0",
-#     "llama-index-vector-stores-weaviate==1.3.1",
-#     "llama-index-vector-stores-pinecone==0.4.2",
-#     "llama-index-vector-stores-qdrant==0.4.2",
-#     "llama-index-llms-openai==0.3.42",
-#     "llama-index-llms-palm==0.3.0",
-#     "llama-index-llms-mistralai==0.3.1",
-#     "mistralai==1.2.5",
-#     "llama-index-llms-anyscale==0.3.0",
-#     "llama-index-llms-anthropic==0.6.14",
-#     "llama-index-llms-azure-openai==0.3.2",
-#     "llama-index-llms-vertex==0.4.6",
-#     "llama-index-llms-replicate==0.4.0",
-#     "llama-index-llms-ollama==0.5.0",
-#     "llama-index-llms-bedrock==0.3.3",
-# ]
-# v1 = ["litellm==1.74.0"]
-
 [dependency-groups]
 dev = [
     "docutils~=0.20.1",
@@ -107,8 +67,6 @@ test = [
     "pytest-mock==3.14.0",
 ]
 
-# [project.scripts]
-# unstract-tool-gen = "unstract.sdk1.scripts.tool_gen:main"
 
 [build-system]
 requires = ["hatchling"]
