@@ -13,6 +13,7 @@ from utils.organization_utils import filter_queryset_by_organization
 
 from tool_instance_v2.models import ToolInstance
 from tool_instance_v2.serializers import ToolInstanceSerializer
+from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
 from tool_instance_v2.tool_processor import ToolProcessor
 
 logger = logging.getLogger(__name__)
@@ -297,3 +298,106 @@ def tool_instances_by_workflow_internal(request, workflow_id):
     except Exception as e:
         logger.exception(f"Failed to get tool instances for workflow {workflow_id}: {e}")
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@csrf_exempt  # Safe: Internal API with Bearer token auth, no session/cookies
+@api_view(["POST"])
+def validate_tool_instances_internal(request):
+    """Validate tool instances and ensure adapter IDs are migrated.
+
+    This internal endpoint validates tool instances for a workflow, ensuring:
+    1. Adapter names are migrated to IDs
+    2. User has permissions to access tools and adapters
+    3. Tool settings match JSON schema requirements
+
+    Used by workers to validate tools before execution.
+
+    Args:
+        request: Request containing:
+            - workflow_id: ID of the workflow
+            - tool_instances: List of tool instance IDs
+
+    Returns:
+        Response with validation results and migrated metadata
+    """
+    workflow_id = request.data.get("workflow_id")
+    tool_instance_ids = request.data.get("tool_instances", [])
+
+    if not workflow_id:
+        return Response(
+            {"error": "workflow_id is required"}, status=status.HTTP_400_BAD_REQUEST
+        )
+
+    validated_instances = []
+    validation_errors = []
+
+    try:
+        # Get tool instances from database with organization filtering
+        tool_instances_queryset = ToolInstance.objects.filter(
+            workflow_id=workflow_id, id__in=tool_instance_ids
+        ).select_related("workflow", "workflow__created_by")
+
+        # Apply organization filtering
+        tool_instances_queryset = filter_queryset_by_organization(
+            tool_instances_queryset, request, "workflow__organization"
+        )
+        tool_instances = list(tool_instances_queryset)
+
+        # Validate each tool instance
+        for tool in tool_instances:
+            try:
+                # Get the user who created the workflow
+                user = tool.workflow.created_by
+
+                # Ensure adapter IDs are migrated from names to IDs
+                migrated_metadata = ToolInstanceHelper.ensure_adapter_ids_in_metadata(
+                    tool, user=user
+                )
+
+                # Validate tool settings
+                ToolInstanceHelper.validate_tool_settings(
+                    user=user,
+                    tool_uid=tool.tool_id,
+                    tool_meta=migrated_metadata,
+                )
+
+                # Add to validated list with migrated metadata
+                validated_instances.append(
+                    {
+                        "id": str(tool.id),
+                        "tool_id": tool.tool_id,
+                        "metadata": migrated_metadata,
+                        "step": tool.step,
+                        "status": "valid",
+                    }
+                )
+
+            except Exception as e:
+                validation_errors.append(
+                    {
+                        "tool_id": tool.tool_id,
+                        "tool_instance_id": str(tool.id),
+                        "error": str(e),
+                    }
+                )
+                logger.error(f"Tool validation failed for {tool.tool_id}: {e}")
+
+        # Return validation results
+        response_data = {
+            "success": len(validation_errors) == 0,
+            "validated_instances": validated_instances,
+            "errors": validation_errors,
+            "workflow_id": workflow_id,
+        }
+
+        if validation_errors:
+            return Response(response_data, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+        return Response(response_data, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        logger.error(f"Tool validation failed: {e}", exc_info=True)
+        return Response(
+            {"error": f"Tool validation failed: {str(e)}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )

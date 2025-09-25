@@ -551,6 +551,47 @@ class InternalAPIClient(CachedAPIClientMixin):
         # Convert to ToolInstancesResponse for type safety
         return ToolInstancesResponse.from_api_response(response)
 
+    def validate_tool_instances(
+        self, workflow_id: str, tool_instance_ids: list[str], organization_id: str
+    ) -> dict[str, Any]:
+        """Validate tool instances and ensure adapter IDs are migrated.
+
+        Args:
+            workflow_id: ID of the workflow
+            tool_instance_ids: List of tool instance IDs to validate
+            organization_id: Organization ID
+
+        Returns:
+            Dictionary with validation results:
+            {
+                "success": bool,
+                "validated_instances": [...],  # List of validated instances with migrated metadata
+                "errors": [...],  # List of validation errors
+                "workflow_id": str
+            }
+        """
+        validation_data = {
+            "workflow_id": workflow_id,
+            "tool_instances": tool_instance_ids,
+        }
+
+        try:
+            response = self.execution_client.post(
+                "v1/tool-execution/validate/",
+                validation_data,
+                organization_id=organization_id,
+            )
+            return response
+        except Exception as e:
+            logger.error(f"Tool validation API call failed: {e}")
+            # Return error response in expected format
+            return {
+                "success": False,
+                "validated_instances": [],
+                "errors": [{"error": f"API call failed: {str(e)}"}],
+                "workflow_id": workflow_id,
+            }
+
     def compile_workflow(
         self, workflow_id: str, execution_id: str, organization_id: str
     ) -> dict[str, Any]:

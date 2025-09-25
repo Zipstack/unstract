@@ -20,6 +20,7 @@ from shared.infrastructure.logging.workflow_logger import WorkerWorkflowLogger
 from shared.patterns.retry.utils import retry
 from shared.processing.files import FileProcessingUtils
 from shared.workflow.execution import WorkerExecutionContext, WorkflowOrchestrationUtils
+from shared.workflow.execution.tool_validation import validate_workflow_tool_instances
 from worker import app
 
 from unstract.core.data_models import ExecutionStatus, FileHashData, WorkerFileData
@@ -140,7 +141,6 @@ def _unified_api_execution(
     pipeline_id: str | None = None,
     log_events_id: str | None = None,
     use_file_history: bool = False,
-    hitl_queue_name: str | None = None,
     task_type: str = "api",
     **kwargs: dict[str, Any],
 ) -> dict[str, Any]:
@@ -160,7 +160,6 @@ def _unified_api_execution(
         pipeline_id: Pipeline ID (for API deployments)
         log_events_id: Log events ID
         use_file_history: Whether to use file history
-        hitl_queue_name: Optional HITL queue name for manual review routing
         task_type: Type of task (api/legacy) for differentiation
         **kwargs: Additional keyword arguments
 
@@ -304,7 +303,6 @@ def async_execute_bin_api(
     pipeline_id: str | None = None,
     log_events_id: str | None = None,
     use_file_history: bool = False,
-    hitl_queue_name: str | None = None,
     **kwargs: dict[str, Any],
 ) -> dict[str, Any]:
     """API deployment workflow execution task.
@@ -322,8 +320,6 @@ def async_execute_bin_api(
         pipeline_id: Pipeline ID (for API deployments)
         log_events_id: Log events ID
         use_file_history: Whether to use file history
-        hitl_queue_name: Optional HITL queue name for manual review routing
-
     Returns:
         Execution result dictionary
     """
@@ -338,7 +334,6 @@ def async_execute_bin_api(
         pipeline_id=pipeline_id,
         log_events_id=log_events_id,
         use_file_history=use_file_history,
-        hitl_queue_name=hitl_queue_name,
         task_type="api",
         **kwargs,
     )
@@ -409,6 +404,26 @@ def _run_workflow_api(
     WorkflowHelper.process_input_files() methods.
     """
     total_files = len(hash_values_of_files)
+
+    # TOOL VALIDATION: Validate tool instances before API workflow orchestration
+    # Get workflow execution context to retrieve tool instances
+    execution_response = api_client.get_workflow_execution(execution_id)
+    if not execution_response.success:
+        logger.error(
+            f"Failed to get execution context: {execution_response.error} for execution {execution_id}"
+        )
+        raise Exception(f"Failed to get execution context: {execution_response.error}")
+
+    # TOOL VALIDATION: Validate tool instances before API workflow orchestration
+    # This prevents resource waste on invalid tool configurations
+    validate_workflow_tool_instances(
+        api_client=api_client,
+        workflow_id=workflow_id,
+        execution_id=execution_id,
+        organization_id=schema_name,
+        pipeline_id=pipeline_id,
+        workflow_type="api",
+    )
 
     # Update total_files at workflow start
     api_client.update_workflow_execution_status(
@@ -793,6 +808,10 @@ def _create_file_data(
         use_file_history: Whether to use file history
         api_client: API client for fetching manual review rules
         **kwargs: Additional keyword arguments
+        expected_kwargs:
+            hitl_queue_name: Optional HITL queue name for manual review routing
+            llm_profile_id: Optional LLM profile ID for manual review routing
+            custom_data: Optional custom data for manual review routing
 
     Returns:
         File data dictionary matching Django FileData with manual review config

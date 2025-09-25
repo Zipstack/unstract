@@ -368,6 +368,33 @@ class WorkerWorkflowLogger:
             log_events_id=log_events_id,
         )
 
+    @classmethod
+    def create_for_api_workflow(
+        cls,
+        execution_id: str,
+        organization_id: str | None = None,
+        pipeline_id: str | None = None,
+        log_events_id: str | None = None,
+    ) -> "WorkerWorkflowLogger":
+        """Factory method for API workflow execution.
+
+        Args:
+            execution_id: Workflow execution ID
+            organization_id: Organization ID
+            pipeline_id: Pipeline ID (for API deployments)
+            log_events_id: Log events ID
+
+        Returns:
+            Configured WorkerWorkflowLogger for API workflow
+        """
+        return cls(
+            execution_id=execution_id,
+            log_stage=LogStage.RUN,  # Same as general workflow
+            organization_id=organization_id,
+            pipeline_id=pipeline_id,
+            log_events_id=log_events_id,
+        )
+
     def create_file_logger(self, file_execution_id: str) -> "WorkerWorkflowLogger":
         """Create a file-specific logger from an existing workflow logger.
 

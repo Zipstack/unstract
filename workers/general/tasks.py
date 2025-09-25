@@ -42,6 +42,7 @@ from shared.workflow.execution import (
     WorkerExecutionContext,
     WorkflowOrchestrationUtils,
 )
+from shared.workflow.execution.tool_validation import validate_workflow_tool_instances
 
 # File management handled by StreamingFileDiscovery
 # Import from local worker module (avoid circular import)
@@ -229,6 +230,17 @@ def async_execute_bin_general(
 
             # NOTE: Concurrent executions are allowed - individual active files are filtered out
             # during source file discovery using cache + database checks
+
+            # TOOL VALIDATION: Validate tool instances before file processing
+            # This prevents resource waste on invalid tool configurations
+            validate_workflow_tool_instances(
+                api_client=api_client,
+                workflow_id=workflow_id,
+                execution_id=execution_id,
+                organization_id=schema_name,
+                pipeline_id=pipeline_id,
+                workflow_type="general",
+            )
 
             # Update execution status to in progress
             api_client.update_workflow_execution_status(

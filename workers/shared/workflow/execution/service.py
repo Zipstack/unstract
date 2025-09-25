@@ -1017,10 +1017,6 @@ class WorkerWorkflowExecutionService:
 
             # Handle metadata for API workflows (matching backend pattern)
             execution_metadata = None
-            # if destination.is_api:
-            #     execution_metadata = destination.get_metadata(file_history)
-
-            # Create file history if needed (matching backend _should_create_file_history logic)
             if self._should_create_file_history(
                 destination=destination,
                 # file_history=file_history,
@@ -1044,14 +1040,6 @@ class WorkerWorkflowExecutionService:
                     except Exception as e:
                         logger.warning(f"Failed to serialize result: {e}")
                         result_json = str(output_result)
-
-                # metadata_json = ""
-                # if execution_metadata and destination.is_api:
-                #     try:
-                #         metadata_json = json.dumps(execution_metadata) if isinstance(execution_metadata, (dict, list)) else str(execution_metadata)
-                #     except Exception as e:
-                #         logger.warning(f"Failed to serialize metadata: {e}")
-                #         metadata_json = str(execution_metadata)
 
                 # Create file history via API
                 file_history_response = self.api_client.create_file_history(
