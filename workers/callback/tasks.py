@@ -30,6 +30,7 @@ from shared.infrastructure.logging import (
     log_context,
     monitor_performance,
 )
+from shared.infrastructure.logging.workflow_logger import WorkerWorkflowLogger
 from shared.patterns.notification.helper import handle_status_notifications
 from shared.patterns.retry.backoff import (
     initialize_backoff_managers,
@@ -1289,6 +1290,13 @@ def _process_batch_callback_core(
                 context, execution_status, is_api_deployment=False
             )
 
+            # Add missing UI logs for cost and final workflow status (matching backend behavior)
+            _publish_final_workflow_ui_logs(
+                context=context,
+                aggregated_results=aggregated_results,
+                execution_status=execution_status,
+            )
+
             # Handle resource cleanup using existing function
             cleanup_result = _cleanup_execution_resources(context)
 
@@ -1526,6 +1534,13 @@ def process_batch_callback_api(
             context.pipeline_type = pipeline_type
             context.api_client = api_client
 
+            # Add missing UI logs for cost and final workflow status (matching backend behavior)
+            _publish_final_workflow_ui_logs_api(
+                context=context,
+                aggregated_results=aggregated_results,
+                execution_status=execution_status,
+            )
+
             # Handle pipeline updates (skip for API deployments)
             pipeline_result = _handle_pipeline_updates_unified(
                 context=context, final_status=execution_status, is_api_deployment=True
@@ -1597,6 +1612,154 @@ def process_batch_callback_api(
                 logger.error(f"Failed to update execution status: {update_error}")
 
             raise
+
+
+def _publish_final_workflow_ui_logs(
+    context: "CallbackContext",
+    aggregated_results: dict[str, Any],
+    execution_status: str,
+) -> None:
+    """Publish final workflow UI logs for cost and execution summary.
+
+    This matches the backend's file_execution_tasks.py:361-371 behavior to provide
+    consistent UI feedback for workflow completion including cost tracking.
+
+    Args:
+        context: Callback context with execution details
+        aggregated_results: Aggregated file processing results
+        execution_status: Final execution status
+    """
+    try:
+        # Extract file statistics from aggregated results
+        total_files = aggregated_results.get("total_files", 0)
+        successful_files = aggregated_results.get("successful_files", 0)
+        failed_files = aggregated_results.get("failed_files", 0)
+
+        # Get execution data to extract cost information
+        execution_response = context.api_client.get_workflow_execution(
+            context.execution_id
+        )
+        if not execution_response.success:
+            logger.warning(
+                f"Could not get execution data for UI logging in {context.execution_id}: {execution_response.error}"
+            )
+            return
+
+        execution_data = execution_response.data.get("execution", {})
+        aggregated_usage_cost = execution_data.get("aggregated_usage_cost")
+
+        # Create workflow logger for UI feedback
+        # Use general workflow logger since this is called from general workflow callback
+        workflow_logger = WorkerWorkflowLogger.create_for_general_workflow(
+            execution_id=context.execution_id,
+            organization_id=context.organization_id,
+            pipeline_id=context.pipeline_id,
+        )
+
+        if workflow_logger:
+            # Publish average cost log (matches backend file_execution_tasks.py:361-366)
+            workflow_logger.publish_average_cost_log(
+                worker_logger=logger,
+                total_files=total_files,
+                execution_id=context.execution_id,
+                total_cost=aggregated_usage_cost,
+            )
+
+            # Publish final workflow logs (matches backend file_execution_tasks.py:367-371)
+            workflow_logger.publish_final_workflow_logs(
+                total_files=total_files,
+                successful_files=successful_files,
+                failed_files=failed_files,
+            )
+
+            logger.info(
+                f"Published final UI logs for execution {context.execution_id}: "
+                f"{total_files} total, {successful_files} successful, {failed_files} failed, "
+                f"cost: ${aggregated_usage_cost}"
+            )
+        else:
+            logger.warning(
+                f"Could not create workflow logger for UI logging in {context.execution_id}"
+            )
+
+    except Exception as e:
+        logger.error(
+            f"Failed to publish final workflow UI logs for {context.execution_id}: {str(e)}"
+        )
+
+
+def _publish_final_workflow_ui_logs_api(
+    context: "CallbackContext",
+    aggregated_results: dict[str, Any],
+    execution_status: str,
+) -> None:
+    """Publish final workflow UI logs for API workflow cost and execution summary.
+
+    This matches the backend's file_execution_tasks.py:361-371 behavior to provide
+    consistent UI feedback for API workflow completion including cost tracking.
+
+    Args:
+        context: Callback context with execution details
+        aggregated_results: Aggregated file processing results
+        execution_status: Final execution status
+    """
+    try:
+        # Extract file statistics from aggregated results
+        total_files = aggregated_results.get("total_files", 0)
+        successful_files = aggregated_results.get("successful_files", 0)
+        failed_files = aggregated_results.get("failed_files", 0)
+
+        # Get execution data to extract cost information
+        execution_response = context.api_client.get_workflow_execution(
+            context.execution_id
+        )
+        if not execution_response.success:
+            logger.warning(
+                f"Could not get execution data for UI logging in API workflow {context.execution_id}: {execution_response.error}"
+            )
+            return
+
+        execution_data = execution_response.data.get("execution", {})
+        aggregated_usage_cost = execution_data.get("aggregated_usage_cost")
+
+        # Create workflow logger for UI feedback
+        # Use API workflow logger since this is called from API workflow callback
+        workflow_logger = WorkerWorkflowLogger.create_for_api_workflow(
+            execution_id=context.execution_id,
+            organization_id=context.organization_id,
+            pipeline_id=context.pipeline_id,
+        )
+
+        if workflow_logger:
+            # Publish average cost log (matches backend file_execution_tasks.py:361-366)
+            workflow_logger.publish_average_cost_log(
+                worker_logger=logger,
+                total_files=total_files,
+                execution_id=context.execution_id,
+                total_cost=aggregated_usage_cost,
+            )
+
+            # Publish final workflow logs (matches backend file_execution_tasks.py:367-371)
+            workflow_logger.publish_final_workflow_logs(
+                total_files=total_files,
+                successful_files=successful_files,
+                failed_files=failed_files,
+            )
+
+            logger.info(
+                f"Published final UI logs for API workflow {context.execution_id}: "
+                f"{total_files} total, {successful_files} successful, {failed_files} failed, "
+                f"cost: ${aggregated_usage_cost}"
+            )
+        else:
+            logger.warning(
+                f"Could not create API workflow logger for UI logging in {context.execution_id}"
+            )
+
+    except Exception as e:
+        logger.error(
+            f"Failed to publish final workflow UI logs for API workflow {context.execution_id}: {str(e)}"
+        )
 
 
 @app.task(

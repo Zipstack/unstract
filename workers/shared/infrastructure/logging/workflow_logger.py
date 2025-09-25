@@ -249,10 +249,10 @@ class WorkerWorkflowLogger:
             error: Error message if processing failed
         """
         if success:
-            message = f"✓ Successfully processed: {file_name}"
+            message = f"✓ `File '{file_name}' processed successfully"
             level = LogLevel.INFO
         else:
-            message = f"✗ Failed to process: {file_name}"
+            message = f"✗ File '{file_name}' processing failed"
             if error:
                 message += f" - {error}"
             level = LogLevel.ERROR
@@ -415,3 +415,78 @@ class WorkerWorkflowLogger:
             pipeline_id=None,  # Use the messaging channel from parent
             log_events_id=self.messaging_channel,  # Preserve messaging channel
         )
+
+    def publish_average_cost_log(
+        self,
+        worker_logger: logging.Logger,
+        total_files: int,
+        execution_id: str,
+        total_cost: float | None,
+    ) -> None:
+        """Publish average cost log for the workflow execution.
+
+        This matches the backend's WorkflowLog.publish_average_cost_log method
+        to provide consistent UI feedback for cost tracking.
+
+        Args:
+            worker_logger: Worker logger instance for console/file logging
+            total_files: Total number of files processed
+            execution_id: Execution ID for cost calculation
+            total_cost: Total aggregated cost in dollars (can be None)
+        """
+        try:
+            if total_cost is not None and total_files > 0:
+                average_cost = round(total_cost / total_files, 5)
+                message = (
+                    f"The average cost per file for execution "
+                    f"'{execution_id}' is '${average_cost}'"
+                )
+
+                # Send to WebSocket for UI display
+                self.publish_log(message, level=LogLevel.INFO)
+
+                # Log to worker logger for debugging
+                worker_logger.info(message)
+            else:
+                # Handle cases where cost data is unavailable
+                if total_cost is None:
+                    worker_logger.debug(
+                        f"No cost data available for execution {execution_id}"
+                    )
+                elif total_files == 0:
+                    worker_logger.debug(f"No files processed in execution {execution_id}")
+
+        except Exception as e:
+            error_msg = f"Unable to get aggregated cost for '{execution_id}': {str(e)}"
+            worker_logger.warning(error_msg)
+
+    def publish_final_workflow_logs(
+        self,
+        total_files: int,
+        successful_files: int,
+        failed_files: int,
+    ) -> None:
+        """Publish final workflow execution logs.
+
+        This matches the backend's WorkflowLog.publish_final_workflow_logs method
+        to provide consistent UI feedback for execution completion.
+
+        Args:
+            total_files: Total number of files processed
+            successful_files: Number of successfully processed files
+            failed_files: Number of files that failed processing
+        """
+        # Publish workflow end status to UI status bar
+        self.publish_update_log(LogState.END_WORKFLOW, "1", LogComponent.STATUS_BAR)
+
+        # Publish workflow completion status
+        self.publish_update_log(
+            LogState.SUCCESS, "Executed successfully", LogComponent.WORKFLOW
+        )
+
+        # Publish detailed execution summary
+        summary_message = (
+            f"Total files: {total_files}, "
+            f"{successful_files} successfully executed and {failed_files} error(s)"
+        )
+        self.publish_log(summary_message, level=LogLevel.INFO)

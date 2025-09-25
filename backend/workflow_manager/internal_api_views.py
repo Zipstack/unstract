@@ -71,6 +71,7 @@ def get_workflow_execution_data(request, execution_id: str):
             "completed_files": execution.completed_files,
             "failed_files": execution.failed_files,
             "execution_log_id": execution.execution_log_id,  # Include for WebSocket messaging
+            "aggregated_usage_cost": execution.aggregated_usage_cost,  # Include cost for UI logging
         }
 
         return Response(

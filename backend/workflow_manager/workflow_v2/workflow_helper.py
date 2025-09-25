@@ -779,13 +779,12 @@ class WorkflowHelper:
                 or workflow_execution.execution_type != WorkflowExecution.Type.COMPLETE
             ):
                 raise InvalidRequest(WorkflowErrors.INVALID_EXECUTION_ID)
-            organization_identifier = UserContext.get_organization_identifier()
-            result: ExecutionResponse = WorkflowHelper.run_workflow(
-                workflow=workflow,
-                workflow_execution=workflow_execution,
+            result: ExecutionResponse = WorkflowHelper.execute_workflow_async(
+                workflow_id=str(workflow.id),
+                pipeline_id=str(pipeline_id),
+                execution_id=str(execution_id),
                 hash_values_of_files=hash_values_of_files,
                 use_file_history=use_file_history,
-                organization_id=organization_identifier,
             )
             result = WorkflowHelper.wait_for_execution(result, timeout=timeout)
             return result
