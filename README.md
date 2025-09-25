@@ -26,7 +26,7 @@ Prompt Studio is a purpose-built environment that supercharges your schema defin
 
 ![img Prompt Studio](docs/assets/prompt_studio.png)
 
-## 🔌 Integrations that suite your environment
+## 🔌 Integrations that suit your environment
 
 Once you've used Prompt Studio to define your schema, Unstract makes it easy to integrate into your existing workflows. Simply choose the integration type that best fits your environment:
 
