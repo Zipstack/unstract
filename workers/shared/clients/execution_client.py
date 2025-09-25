@@ -100,20 +100,29 @@ class ExecutionAPIClient(BaseAPIClient):
     """
 
     def get_workflow_execution(
-        self, execution_id: str | uuid.UUID, organization_id: str | None = None
+        self,
+        execution_id: str | uuid.UUID,
+        organization_id: str | None = None,
+        include_cost: bool = False,
     ) -> ExecutionResponse:
         """Get workflow execution with context.
 
         Args:
             execution_id: Workflow execution ID
             organization_id: Optional organization ID override
+            include_cost: Whether to include aggregated usage cost (expensive operation)
 
         Returns:
             ExecutionResponse containing workflow execution data
         """
         try:
+            # Build URL with optional cost parameter
+            url = self._build_url("workflow_execution", f"{str(execution_id)}/")
+            if include_cost:
+                url += "?include_cost=true"
+
             response = self.get(
-                self._build_url("workflow_execution", f"{str(execution_id)}/"),
+                url,
                 organization_id=organization_id,
             )
             return ExecutionResponse.success_response(

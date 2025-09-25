@@ -199,6 +199,7 @@ class WorkflowExecutionContextSerializer(serializers.Serializer):
     destination_config = serializers.DictField(required=False)
     organization_context = OrganizationContextSerializer()
     file_executions = serializers.ListField(required=False)
+    aggregated_usage_cost = serializers.FloatField(required=False, allow_null=True)
 
 
 class FileBatchCreateSerializer(serializers.Serializer):

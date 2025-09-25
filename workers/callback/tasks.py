@@ -1635,9 +1635,9 @@ def _publish_final_workflow_ui_logs(
         successful_files = aggregated_results.get("successful_files", 0)
         failed_files = aggregated_results.get("failed_files", 0)
 
-        # Get execution data to extract cost information
+        # Get execution data to extract cost information (with cost calculation)
         execution_response = context.api_client.get_workflow_execution(
-            context.execution_id
+            context.execution_id, include_cost=True
         )
         if not execution_response.success:
             logger.warning(
@@ -1645,8 +1645,8 @@ def _publish_final_workflow_ui_logs(
             )
             return
 
-        execution_data = execution_response.data.get("execution", {})
-        aggregated_usage_cost = execution_data.get("aggregated_usage_cost")
+        # Cost data is at the top level of response when include_cost=True
+        aggregated_usage_cost = execution_response.data.get("aggregated_usage_cost")
 
         # Create workflow logger for UI feedback
         # Use general workflow logger since this is called from general workflow callback
@@ -1709,9 +1709,9 @@ def _publish_final_workflow_ui_logs_api(
         successful_files = aggregated_results.get("successful_files", 0)
         failed_files = aggregated_results.get("failed_files", 0)
 
-        # Get execution data to extract cost information
+        # Get execution data to extract cost information (with cost calculation)
         execution_response = context.api_client.get_workflow_execution(
-            context.execution_id
+            context.execution_id, include_cost=True
         )
         if not execution_response.success:
             logger.warning(
@@ -1719,8 +1719,8 @@ def _publish_final_workflow_ui_logs_api(
             )
             return
 
-        execution_data = execution_response.data.get("execution", {})
-        aggregated_usage_cost = execution_data.get("aggregated_usage_cost")
+        # Cost data is at the top level of response when include_cost=True
+        aggregated_usage_cost = execution_response.data.get("aggregated_usage_cost")
 
         # Create workflow logger for UI feedback
         # Use API workflow logger since this is called from API workflow callback

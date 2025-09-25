@@ -109,6 +109,9 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             execution = self.get_object()
 
+            # Check if cost data is requested (expensive operation)
+            include_cost = request.GET.get("include_cost", "false").lower() == "true"
+
             # Build comprehensive context
             workflow_definition = {}
             if execution.workflow:
@@ -131,6 +134,10 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                 "organization_context": self._get_organization_context(execution),
                 "file_executions": list(execution.file_executions.values()),
             }
+
+            # Only calculate cost if explicitly requested (expensive database operation)
+            if include_cost:
+                context_data["aggregated_usage_cost"] = execution.aggregated_usage_cost
 
             serializer = WorkflowExecutionContextSerializer(context_data)
             return Response(serializer.data)

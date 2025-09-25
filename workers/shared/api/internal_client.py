@@ -401,11 +401,23 @@ class InternalAPIClient(CachedAPIClientMixin):
             )
 
     def get_workflow_execution(
-        self, execution_id: str | uuid.UUID, organization_id: str | None = None
+        self,
+        execution_id: str | uuid.UUID,
+        organization_id: str | None = None,
+        include_cost: bool = False,
     ) -> WorkflowExecutionResponse:
-        """Get workflow execution with context."""
+        """Get workflow execution with context.
+
+        Args:
+            execution_id: Workflow execution ID
+            organization_id: Optional organization ID override
+            include_cost: Whether to include aggregated usage cost (expensive operation)
+
+        Returns:
+            WorkflowExecutionResponse containing workflow execution data
+        """
         response = self.execution_client.get_workflow_execution(
-            execution_id, organization_id
+            execution_id, organization_id, include_cost=include_cost
         )
         # Convert ExecutionResponse to WorkflowExecutionResponse for type safety
         if hasattr(response, "to_dict"):
