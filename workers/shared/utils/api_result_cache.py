@@ -47,7 +47,9 @@ class APIResultCacheManager:
         """Track API Hub usage."""
         # Track usage for API Hub deployments (graceful fallback for OSS)
         try:
-            logger.info("_track_api_hub_usage: Tracking API Hub usage")
+            logger.info(
+                f"_track_api_hub_usage: Tracking API Hub usage for {execution_id} : {file_execution_id}"
+            )
             APIHubUsageUtil.track_api_hub_usage(
                 workflow_execution_id=execution_id,
                 workflow_file_execution_id=file_execution_id,
@@ -55,7 +57,9 @@ class APIResultCacheManager:
             )
         except Exception as e:
             # Log but don't fail the main execution for usage tracking issues
-            logger.warning(f"Could not track API hub usage: {e}")
+            logger.warning(
+                f"Could not track API hub usage for {execution_id} : {file_execution_id}: {e}"
+            )
 
     def cache_file_processing_result(
         self,
