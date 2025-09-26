@@ -137,7 +137,7 @@ services:
   rabbitmq:
     image: rabbitmq:4.1.0-management
     container_name: unstract-rabbitmq
-    hostname: unstract-rabbitmq
+    hostname: unstract-rabbit
     restart: unless-stopped
     env_file:
       - ./essentials.env
