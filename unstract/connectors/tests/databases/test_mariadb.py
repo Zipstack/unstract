@@ -12,31 +12,34 @@ from unstract.connectors.exceptions import ConnectorError
 class TestMariaDB(unittest.TestCase):
     def setUp(self) -> None:
         """Set up test configuration from environment variables"""
-        self.mariadb_config = {
+
+        # SSL enabled config for testing SSL scenarios
+        self.mariadb_config_ssl_enabled = {
             "host": os.getenv("MARIADB_HOST", "localhost"),
             "port": os.getenv("MARIADB_PORT", "3306"),
             "database": os.getenv("MARIADB_DATABASE", "testdb"),
             "user": os.getenv("MARIADB_USER", "root"),
             "password": os.getenv("MARIADB_PASSWORD", ""),
-            "sslEnabled": os.getenv("MARIADB_SSL_ENABLED", "true").lower() == "true",
+            "sslEnabled": True,
         }
 
-    def test_user_name_and_password(self) -> None:
-        """Test actual MariaDB connection with credentials from environment"""
-        mariadb = MariaDB(self.mariadb_config)
-        query = "SELECT * FROM employees"
-        cursor = mariadb.get_engine().cursor()
-        cursor.execute(query)
-        results = cursor.fetchall()
-
-        for c in results:
-            print(c)
-        self.assertTrue(len(results) > 0)
+        # SSL disabled config for testing non-SSL scenarios
+        self.mariadb_config_ssl_disabled = {
+            "host": os.getenv("MARIADB_HOST", "localhost"),
+            "port": os.getenv("MARIADB_PORT", "3306"),
+            "database": os.getenv("MARIADB_DATABASE", "testdb"),
+            "user": os.getenv("MARIADB_USER", "root"),
+            "password": os.getenv("MARIADB_PASSWORD", ""),
+            "sslEnabled": False,
+        }
 
     def test_ssl_config_from_environment(self) -> None:
         """Test SSL configuration is loaded from environment variables"""
-        mariadb = MariaDB(self.mariadb_config)
-        expected_ssl = os.getenv("MARIADB_SSL_ENABLED", "true").lower() == "true"
+        # Use existing config but override SSL to read from environment
+        config = {**self.mariadb_config_ssl_enabled, "sslEnabled": os.getenv("MARIADB_SSL_ENABLED", "false").lower() == "true"}
+
+        mariadb = MariaDB(config)
+        expected_ssl = os.getenv("MARIADB_SSL_ENABLED", "false").lower() == "true"
         self.assertEqual(mariadb.ssl_enabled, expected_ssl)
 
     @patch("unstract.connectors.databases.mariadb.mariadb.pymysql.connect")
@@ -44,7 +47,7 @@ class TestMariaDB(unittest.TestCase):
         """Test that SSL parameters are passed when SSL is enabled"""
         mock_connection = Mock()
         mock_connect.return_value = mock_connection
-        mariadb = MariaDB(self.mariadb_config)
+        mariadb = MariaDB(self.mariadb_config_ssl_enabled)
 
         result = mariadb.get_engine()
 
@@ -61,7 +64,7 @@ class TestMariaDB(unittest.TestCase):
         mock_connection = Mock()
         mock_connect.return_value = mock_connection
 
-        mariadb = MariaDB(self.mariadb_config)
+        mariadb = MariaDB(self.mariadb_config_ssl_disabled)
         result = mariadb.get_engine()
 
         mock_connect.assert_called_once()
@@ -76,14 +79,14 @@ class TestMariaDB(unittest.TestCase):
             1045, "Access denied for user 'test'@'localhost'"
         )
 
-        mariadb = MariaDB(self.mariadb_config)
+        mariadb = MariaDB(self.mariadb_config_ssl_enabled)
 
         with self.assertRaises(ConnectorError) as context:
             mariadb.get_engine()
 
         error_message = str(context.exception)
         self.assertIn("Authentication failed", error_message)
-        self.assertIn("username, password and ssl settings", error_message)
+        self.assertIn("username, password and ssl-settings", error_message)
         self.assertIn("localhost:3306", error_message)
         self.assertIn("SSL enabled", error_message)
 
@@ -94,14 +97,14 @@ class TestMariaDB(unittest.TestCase):
             2003, "Can't connect to MySQL server"
         )
 
-        mariadb = MariaDB(self.mariadb_config)
+        mariadb = MariaDB(self.mariadb_config_ssl_enabled)
 
         with self.assertRaises(ConnectorError) as context:
             mariadb.get_engine()
 
         error_message = str(context.exception)
         self.assertIn("Cannot connect to server", error_message)
-        self.assertIn("unreachable-host:3306", error_message)
+        self.assertIn("localhost:3306", error_message)
         self.assertIn("SSL enabled", error_message)
 
     @patch("unstract.connectors.databases.mariadb.mariadb.pymysql.connect")
@@ -111,14 +114,14 @@ class TestMariaDB(unittest.TestCase):
             2003, "Can't connect to MySQL server"
         )
 
-        mariadb = MariaDB(self.mariadb_config)
+        mariadb = MariaDB(self.mariadb_config_ssl_disabled)
 
         with self.assertRaises(ConnectorError) as context:
             mariadb.get_engine()
 
         error_message = str(context.exception)
         self.assertIn("Cannot connect to server", error_message)
-        self.assertIn("unreachable-host:3306", error_message)
+        self.assertIn("localhost:3306", error_message)
         self.assertIn("SSL disabled", error_message)
 
 

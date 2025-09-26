@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 # MySQL/MariaDB connection error codes mapping
 CONNECTION_ERROR_MESSAGES = {
-    1045: "Authentication failed. Please check your username, password and ssl settings.",
+    1045: "Authentication failed. Please check your username, password and ssl-settings enabled.",
     2003: "Cannot connect to server. Please check the host, port, and network connectivity.",
     1049: "Unknown database. Please verify the database name exists.",
     2005: "Unknown host. Please check the host address.",
@@ -106,6 +106,6 @@ class MysqlHandler:
             ssl_context = f" (SSL {'enabled' if ssl_enabled else 'disabled'})"
 
         return (
-            f"{user_message} Connection: '{host}:{port}'{ssl_context} \n"
+            f"{user_message} Connection: '{host}:{port}{ssl_context}' \n"
             f"```\n{original_message}\n```"
         )
