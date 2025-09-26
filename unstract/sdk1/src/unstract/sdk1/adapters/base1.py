@@ -16,9 +16,7 @@ from unstract.sdk1.adapters.enums import AdapterTypes
 logger = logging.getLogger(__name__)
 
 
-def register_adapters(
-    adapters: dict[str, dict[str, "Any"]], adapter_type: str
-) -> None:
+def register_adapters(adapters: dict[str, dict[str, "Any"]], adapter_type: str) -> None:
     """Register all SDK v1 adapters of given type.
 
     Args:
