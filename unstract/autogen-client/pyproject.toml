@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = [
     "autogen",
-    "unstract",
+    "unstract", 
     "llm",
     "ai",
     "chatbot",
@@ -37,6 +37,7 @@ dependencies = [
     "autogen-core>=0.4.0",
     "pydantic>=2.0.0",
     "typing-extensions>=4.0.0",
+    "unstract-sdk1",
 ]
 
 [project.optional-dependencies]
@@ -64,9 +65,12 @@ path = "src/unstract/autogen_client/__init__.py"
 [tool.hatch.build.targets.wheel]
 packages = ["src/unstract"]
 
+[tool.uv.sources]
+unstract-sdk1 = { path = "../sdk1", editable = true }
+
 [tool.black]
 line-length = 88
-target-version = ['py38']
+target-version = ['py310']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -83,7 +87,7 @@ extend-exclude = '''
 '''
 
 [tool.ruff]
-target-version = "py38"
+target-version = "py310"
 line-length = 88
 select = [
     "E",  # pycodestyle errors
@@ -104,7 +108,7 @@ ignore = [
 "__init__.py" = ["F401"]
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.10"
 check_untyped_defs = true
 disallow_any_generics = true
 disallow_incomplete_defs = true
