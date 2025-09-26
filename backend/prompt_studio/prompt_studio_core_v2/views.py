@@ -62,7 +62,12 @@ from prompt_studio.prompt_studio_registry_v2.serializers import (
 from prompt_studio.prompt_studio_v2.constants import ToolStudioPromptErrors
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_v2.serializers import ToolStudioPromptSerializer
-from unstract.sdk.utils.common_utils import CommonUtils
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.utils.common import Utils as CommonUtils
+else:
+    from unstract.sdk.utils.common_utils import CommonUtils
 
 from .models import CustomTool
 from .serializers import (
@@ -357,7 +362,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
     def create_profile_manager(self, request: HttpRequest, pk: Any = None) -> Response:
         context = super().get_serializer_context()
         serializer = ProfileManagerSerializer(data=request.data, context=context)
-
         serializer.is_valid(raise_exception=True)
         # Check for the maximum number of profiles constraint
         prompt_studio_tool = serializer.validated_data[

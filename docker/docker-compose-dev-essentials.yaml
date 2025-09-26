@@ -46,7 +46,7 @@ services:
       - traefik.http.routers.minio.rule=Host(`minio.unstract.localhost`)
       - traefik.http.services.minio.loadbalancer.server.port=9001
 
-  createbuckets:
+  minio-bootstrap:
     image: minio/mc
     depends_on:
       - minio

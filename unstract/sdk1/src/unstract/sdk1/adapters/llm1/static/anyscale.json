@@ -1,0 +1,54 @@
+{
+  "title": "AnyScale LLM",
+  "type": "object",
+  "required": ["api_key", "adapter_name"],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this adapter instance. Example: anyscale-group-1"
+    },
+    "model": {
+      "type": "string",
+      "title": "Model",
+      "default": "mistralai/Mistral-7B-Instruct-v0.1",
+      "description": "Model name. Example: mistralai/Mistral-7B-Instruct-v0.1"
+    },
+    "additional_kwargs": {
+      "type": "string",
+      "title": "Additional kwargs",
+      "default": "",
+      "description": "Additional kwargs to pass to the model."
+    },
+    "api_base": {
+      "type": "string",
+      "title": "API Base",
+      "default": "https://api.endpoints.anyscale.com/v1",
+      "format": "uri",
+      "description": "Base URL for the AnyScale API. Change it from the default if you are using a custom deployment."
+    },
+    "api_key": {
+      "type": "string",
+      "title": "API Key",
+      "format": "password",
+      "description": "API Key for the AnyScale API."
+    },
+    "max_tokens": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Maximum Output Tokens",
+      "default": 256,
+      "description": "Maximum number of output tokens to limit LLM replies, maximum possible varies from model to model."
+    },
+    "max_retries": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Max Retries",
+      "default": 5,
+      "description": "Maximum number of retries to attempt when a request fails."
+    }
+  }
+}

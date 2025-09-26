@@ -23,8 +23,18 @@ services:
   tool-structure:
     image: unstract/tool-structure:${VERSION}
     build:
-      dockerfile: ./Dockerfile
-      context: ../tools/structure/
+      dockerfile: tools/structure/Dockerfile
+      context: ..
+  tool-text_extractor:
+    image: unstract/tool-text_extractor:${VERSION}
+    build:
+      dockerfile: tools/text_extractor/Dockerfile
+      context: ..
+  tool-classifier:
+    image: unstract/tool-classifier:${VERSION}
+    build:
+      dockerfile: tools/classifier/Dockerfile
+      context: ..
   platform-service:
     image: unstract/platform-service:${VERSION}
     build:

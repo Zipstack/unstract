@@ -60,5 +60,6 @@ tools
 unstract
 !unstract/core
 !unstract/flags
+!unstract/sdk1
 runner
 x2text-service
