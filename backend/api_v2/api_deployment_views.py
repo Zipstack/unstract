@@ -303,6 +303,6 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
                         resource_instance=instance,
                     )
             except Exception as e:
-                logger.error(f"Failed to send sharing notification: {e}")
+                logger.exception(f"Failed to send sharing notification: {e}")
 
         return response
