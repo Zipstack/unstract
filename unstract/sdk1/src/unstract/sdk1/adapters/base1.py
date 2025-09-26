@@ -4,7 +4,10 @@ import logging
 import os
 from abc import ABC, abstractmethod
 from importlib import import_module
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import Any
 
 from pydantic import BaseModel, Field
 from unstract.sdk1.adapters.constants import Common
@@ -13,8 +16,15 @@ from unstract.sdk1.adapters.enums import AdapterTypes
 logger = logging.getLogger(__name__)
 
 
-def register_adapters(adapters: dict[str, dict[str, Any]], adapter_type: str):
-    """Register all SDK v1 adapters of given type."""
+def register_adapters(
+    adapters: dict[str, dict[str, "Any"]], adapter_type: str
+) -> None:
+    """Register all SDK v1 adapters of given type.
+
+    Args:
+        adapters: Dictionary to store registered adapters.
+        adapter_type: Type of adapter to register.
+    """
     adapter_type = adapter_type.lower()
     adapter_type_ver = adapter_type + "1"  # e.g. embedding1, llm1, etc
 
@@ -94,7 +104,11 @@ class BaseAdapter(ABC):
 
     @classmethod
     def get_json_schema(cls) -> str:
-        schema_path = f"{os.path.dirname(__file__)}/{cls.get_adapter_type().name.lower()}1/static/{cls.get_provider()}.json"
+        schema_path = (
+            f"{os.path.dirname(__file__)}/"
+            f"{cls.get_adapter_type().name.lower()}1/static/"
+            f"{cls.get_provider()}.json"
+        )
         with open(schema_path) as f:
             return f.read()
 
@@ -122,12 +136,12 @@ class BaseChatCompletionParameters(BaseModel):
     @staticmethod
     @abstractmethod
     # NOTE: Apply metadata transformations before provider args validation.
-    def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
         pass
 
     @staticmethod
     @abstractmethod
-    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
         pass
 
 
@@ -140,12 +154,12 @@ class BaseEmbeddingParameters(BaseModel):
 
     @staticmethod
     @abstractmethod
-    def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
         pass
 
     @staticmethod
     @abstractmethod
-    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
         pass
 
 
@@ -158,7 +172,7 @@ class OpenAILLMParameters(BaseChatCompletionParameters):
     reasoning_effort: str | None = None
 
     @staticmethod
-    def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
         adapter_metadata["model"] = OpenAILLMParameters.validate_model(adapter_metadata)
 
         # Handle OpenAI reasoning configuration
@@ -203,7 +217,7 @@ class OpenAILLMParameters(BaseChatCompletionParameters):
         return validated
 
     @staticmethod
-    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
         model = adapter_metadata.get("model", "")
         # Only add openai/ prefix if the model doesn't already have it
         if model.startswith("openai/"):
@@ -223,7 +237,7 @@ class AzureOpenAILLMParameters(BaseChatCompletionParameters):
     reasoning_effort: str | None = None
 
     @staticmethod
-    def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
         adapter_metadata["model"] = AzureOpenAILLMParameters.validate_model(
             adapter_metadata
         )
@@ -275,7 +289,7 @@ class AzureOpenAILLMParameters(BaseChatCompletionParameters):
         return validated
 
     @staticmethod
-    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
         model = adapter_metadata.get("model", "")
         # Only add azure/ prefix if the model doesn't already have it
         if model.startswith("azure/"):
@@ -292,7 +306,7 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
     safety_settings: list[dict[str, str]]
 
     @staticmethod
-    def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
         # Make a copy so we don't modify the original
         metadata_copy = {**adapter_metadata}
 
@@ -359,7 +373,7 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
         return validated_data
 
     @staticmethod
-    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
         model = adapter_metadata.get("model", "")
         # Only add vertex_ai/ prefix if the model doesn't already have it
         if model.startswith("vertex_ai/"):
@@ -377,7 +391,7 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
     max_retries: int | None = None
 
     @staticmethod
-    def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
         adapter_metadata["model"] = AWSBedrockLLMParameters.validate_model(
             adapter_metadata
         )
@@ -433,7 +447,7 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
         return validated
 
     @staticmethod
-    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
         model = adapter_metadata.get("model", "")
         # Only add bedrock/ prefix if the model doesn't already have it
         if model.startswith("bedrock/"):
@@ -448,7 +462,7 @@ class AnthropicLLMParameters(BaseChatCompletionParameters):
     api_key: str
 
     @staticmethod
-    def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
         adapter_metadata["model"] = AnthropicLLMParameters.validate_model(
             adapter_metadata
         )
@@ -497,7 +511,7 @@ class AnthropicLLMParameters(BaseChatCompletionParameters):
         return validated
 
     @staticmethod
-    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
         model = adapter_metadata.get("model", "")
         # Only add anthropic/ prefix if the model doesn't already have it
         if model.startswith("anthropic/"):
@@ -512,13 +526,13 @@ class AnyscaleLLMParameters(BaseChatCompletionParameters):
     api_key: str
 
     @staticmethod
-    def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
         adapter_metadata["model"] = AnyscaleLLMParameters.validate_model(adapter_metadata)
 
         return AnyscaleLLMParameters(**adapter_metadata).model_dump()
 
     @staticmethod
-    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
         model = adapter_metadata.get("model", "")
         # Only add anyscale/ prefix if the model doesn't already have it
         if model.startswith("anyscale/"):
@@ -533,13 +547,13 @@ class MistralLLMParameters(BaseChatCompletionParameters):
     api_key: str
 
     @staticmethod
-    def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
         adapter_metadata["model"] = MistralLLMParameters.validate_model(adapter_metadata)
 
         return MistralLLMParameters(**adapter_metadata).model_dump()
 
     @staticmethod
-    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
         model = adapter_metadata.get("model", "")
         # Only add mistral/ prefix if the model doesn't already have it
         if model.startswith("mistral/"):
@@ -554,14 +568,14 @@ class OllamaLLMParameters(BaseChatCompletionParameters):
     api_base: str
 
     @staticmethod
-    def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
         adapter_metadata["model"] = OllamaLLMParameters.validate_model(adapter_metadata)
         adapter_metadata["api_base"] = adapter_metadata.get("base_url", "")
 
         return OllamaLLMParameters(**adapter_metadata).model_dump()
 
     @staticmethod
-    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
         model = adapter_metadata.get("model", "")
         # Only add ollama_chat/ prefix if the model doesn't already have it
         if model.startswith("ollama_chat/"):
@@ -581,7 +595,7 @@ class OpenAIEmbeddingParameters(BaseEmbeddingParameters):
     embed_batch_size: int | None = 10
 
     @staticmethod
-    def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
         adapter_metadata["model"] = OpenAIEmbeddingParameters.validate_model(
             adapter_metadata
         )
@@ -589,7 +603,7 @@ class OpenAIEmbeddingParameters(BaseEmbeddingParameters):
         return OpenAIEmbeddingParameters(**adapter_metadata).model_dump()
 
     @staticmethod
-    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
         model = adapter_metadata.get("model", "")
         return model
 
@@ -604,7 +618,7 @@ class AzureOpenAIEmbeddingParameters(BaseEmbeddingParameters):
     num_retries: int | None = 3
 
     @staticmethod
-    def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
         adapter_metadata["model"] = AzureOpenAIEmbeddingParameters.validate_model(
             adapter_metadata
         )
@@ -621,7 +635,7 @@ class AzureOpenAIEmbeddingParameters(BaseEmbeddingParameters):
         return AzureOpenAIEmbeddingParameters(**adapter_metadata).model_dump()
 
     @staticmethod
-    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
         model = adapter_metadata.get(
             "deployment_name", ""
         )  # litellm expects model to be in the format of "azure/<deployment_name>"
@@ -643,7 +657,7 @@ class VertexAIEmbeddingParameters(BaseEmbeddingParameters):
     embed_mode: str | None = "default"
 
     @staticmethod
-    def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
         # Make a copy so we don't modify the original
         metadata_copy = {**adapter_metadata}
 
@@ -661,7 +675,7 @@ class VertexAIEmbeddingParameters(BaseEmbeddingParameters):
         return VertexAIEmbeddingParameters(**metadata_copy).model_dump()
 
     @staticmethod
-    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
         model = adapter_metadata.get("model", "")
         return model
 
@@ -674,7 +688,7 @@ class AWSBedrockEmbeddingParameters(BaseEmbeddingParameters):
     aws_region_name: str | None
 
     @staticmethod
-    def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
         adapter_metadata["model"] = AWSBedrockEmbeddingParameters.validate_model(
             adapter_metadata
         )
@@ -686,7 +700,7 @@ class AWSBedrockEmbeddingParameters(BaseEmbeddingParameters):
         return AWSBedrockEmbeddingParameters(**adapter_metadata).model_dump()
 
     @staticmethod
-    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
         model = adapter_metadata.get("model", "")
         return model
 
@@ -698,7 +712,7 @@ class OllamaEmbeddingParameters(BaseEmbeddingParameters):
     embed_batch_size: int | None = 10
 
     @staticmethod
-    def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
         adapter_metadata["model"] = OllamaEmbeddingParameters.validate_model(
             adapter_metadata
         )
@@ -707,6 +721,6 @@ class OllamaEmbeddingParameters(BaseEmbeddingParameters):
         return OllamaEmbeddingParameters(**adapter_metadata).model_dump()
 
     @staticmethod
-    def validate_model(adapter_metadata: dict[str, Any]) -> str:
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
         model = adapter_metadata.get("model_name", "")
         return model

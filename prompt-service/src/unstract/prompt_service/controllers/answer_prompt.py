@@ -492,7 +492,7 @@ def prompt_processor() -> Any:
                             # type casting to float raises
                             # an error and we return None.
                             if isinstance(
-                                llm.get_llm(adapter_instance_id=adapter_instance_id),
+                                llm.get_llm(adapter_instance_id=output[PSKeys.LLM]),
                                 NoOpCustomLLM,
                             ):
                                 structured_output[output[PSKeys.NAME]] = answer
