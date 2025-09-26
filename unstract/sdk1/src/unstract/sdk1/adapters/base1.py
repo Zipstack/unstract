@@ -130,6 +130,7 @@ class BaseChatCompletionParameters(BaseModel):
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
         pass
 
+
 class BaseEmbeddingParameters(BaseModel):
     """Base parameters for all SDK v1 embedding providers."""
 
@@ -146,6 +147,7 @@ class BaseEmbeddingParameters(BaseModel):
     @abstractmethod
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
         pass
+
 
 class OpenAILLMParameters(BaseChatCompletionParameters):
     """See https://docs.litellm.ai/docs/providers/openai/"""
@@ -164,7 +166,10 @@ class OpenAILLMParameters(BaseChatCompletionParameters):
 
         # If enable_reasoning is not explicitly provided but reasoning_effort is present,
         # assume reasoning was enabled in a previous validation
-        has_reasoning_effort = "reasoning_effort" in adapter_metadata and adapter_metadata.get("reasoning_effort") is not None
+        has_reasoning_effort = (
+            "reasoning_effort" in adapter_metadata
+            and adapter_metadata.get("reasoning_effort") is not None
+        )
         if not enable_reasoning and has_reasoning_effort:
             enable_reasoning = True
 
@@ -181,8 +186,9 @@ class OpenAILLMParameters(BaseChatCompletionParameters):
         if not enable_reasoning:
             exclude_fields.add("reasoning_effort")
 
-        validation_metadata = {k: v for k, v in result_metadata.items()
-                              if k not in exclude_fields}
+        validation_metadata = {
+            k: v for k, v in result_metadata.items() if k not in exclude_fields
+        }
 
         validated = OpenAILLMParameters(**validation_metadata).model_dump()
 
@@ -190,7 +196,9 @@ class OpenAILLMParameters(BaseChatCompletionParameters):
         if not enable_reasoning and "reasoning_effort" in validated:
             validated.pop("reasoning_effort")
         elif enable_reasoning:
-            validated["reasoning_effort"] = result_metadata.get("reasoning_effort", "medium")
+            validated["reasoning_effort"] = result_metadata.get(
+                "reasoning_effort", "medium"
+            )
 
         return validated
 
@@ -216,7 +224,9 @@ class AzureOpenAILLMParameters(BaseChatCompletionParameters):
 
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
-        adapter_metadata["model"] = AzureOpenAILLMParameters.validate_model(adapter_metadata)
+        adapter_metadata["model"] = AzureOpenAILLMParameters.validate_model(
+            adapter_metadata
+        )
 
         # Ensure we have the endpoint in the right format for Azure
         azure_endpoint = adapter_metadata.get("azure_endpoint", "")
@@ -228,7 +238,10 @@ class AzureOpenAILLMParameters(BaseChatCompletionParameters):
 
         # If enable_reasoning is not explicitly provided but reasoning_effort is present,
         # assume reasoning was enabled in a previous validation
-        has_reasoning_effort = "reasoning_effort" in adapter_metadata and adapter_metadata.get("reasoning_effort") is not None
+        has_reasoning_effort = (
+            "reasoning_effort" in adapter_metadata
+            and adapter_metadata.get("reasoning_effort") is not None
+        )
         if not enable_reasoning and has_reasoning_effort:
             enable_reasoning = True
 
@@ -245,8 +258,9 @@ class AzureOpenAILLMParameters(BaseChatCompletionParameters):
         if not enable_reasoning:
             exclude_fields.add("reasoning_effort")
 
-        validation_metadata = {k: v for k, v in result_metadata.items()
-                              if k not in exclude_fields}
+        validation_metadata = {
+            k: v for k, v in result_metadata.items() if k not in exclude_fields
+        }
 
         validated = AzureOpenAILLMParameters(**validation_metadata).model_dump()
 
@@ -254,7 +268,9 @@ class AzureOpenAILLMParameters(BaseChatCompletionParameters):
         if not enable_reasoning and "reasoning_effort" in validated:
             validated.pop("reasoning_effort")
         elif enable_reasoning:
-            validated["reasoning_effort"] = result_metadata.get("reasoning_effort", "medium")
+            validated["reasoning_effort"] = result_metadata.get(
+                "reasoning_effort", "medium"
+            )
 
         return validated
 
@@ -279,19 +295,21 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
         # Make a copy so we don't modify the original
         metadata_copy = {**adapter_metadata}
-        
+
         # Set model with proper prefix
         metadata_copy["model"] = VertexAILLMParameters.validate_model(metadata_copy)
-        
+
         # Map credentials and project fields
-        if "json_credentials" in metadata_copy and not metadata_copy.get("vertex_credentials"):
+        if "json_credentials" in metadata_copy and not metadata_copy.get(
+            "vertex_credentials"
+        ):
             metadata_copy["vertex_credentials"] = metadata_copy["json_credentials"]
         if "project" in metadata_copy and not metadata_copy.get("vertex_project"):
             metadata_copy["vertex_project"] = metadata_copy["project"]
-        
+
         # Handle safety settings
         ss_dict = metadata_copy.get("safety_settings", {})
-        
+
         # Handle case where safety_settings is already a list
         if isinstance(ss_dict, list):
             metadata_copy["safety_settings"] = ss_dict
@@ -322,17 +340,22 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
 
         # These are the fields to preserve (in addition to model fields)
         fields_to_preserve = [
-            "max_tokens", "max_retries", "timeout", "temperature", "n", "stream"
+            "max_tokens",
+            "max_retries",
+            "timeout",
+            "temperature",
+            "n",
+            "stream",
         ]
-        
+
         # First validate using pydantic
         validated_data = VertexAILLMParameters(**metadata_copy).model_dump()
-        
+
         # Preserve any important fields not in the model
         for field in fields_to_preserve:
             if field in metadata_copy and field not in validated_data:
                 validated_data[field] = metadata_copy[field]
-                
+
         return validated_data
 
     @staticmethod
@@ -355,7 +378,9 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
 
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
-        adapter_metadata["model"] = AWSBedrockLLMParameters.validate_model(adapter_metadata)
+        adapter_metadata["model"] = AWSBedrockLLMParameters.validate_model(
+            adapter_metadata
+        )
         if "region_name" in adapter_metadata and not adapter_metadata.get(
             "aws_region_name"
         ):
@@ -366,7 +391,10 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
 
         # If enable_thinking is not explicitly provided but thinking config is present,
         # assume thinking was enabled in a previous validation
-        has_thinking_config = "thinking" in adapter_metadata and adapter_metadata.get("thinking") is not None
+        has_thinking_config = (
+            "thinking" in adapter_metadata
+            and adapter_metadata.get("thinking") is not None
+        )
         if not enable_thinking and has_thinking_config:
             enable_thinking = True
 
@@ -389,10 +417,12 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
                 result_metadata["thinking"] = thinking_config
                 result_metadata["temperature"] = 1
 
-
         # Create validation metadata excluding control fields
-        validation_metadata = {k: v for k, v in result_metadata.items()
-                              if k not in ("enable_thinking", "budget_tokens", "thinking")}
+        validation_metadata = {
+            k: v
+            for k, v in result_metadata.items()
+            if k not in ("enable_thinking", "budget_tokens", "thinking")
+        }
 
         validated = AWSBedrockLLMParameters(**validation_metadata).model_dump()
 
@@ -419,14 +449,19 @@ class AnthropicLLMParameters(BaseChatCompletionParameters):
 
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
-        adapter_metadata["model"] = AnthropicLLMParameters.validate_model(adapter_metadata)
+        adapter_metadata["model"] = AnthropicLLMParameters.validate_model(
+            adapter_metadata
+        )
 
         # Handle Anthropic thinking configuration
         enable_thinking = adapter_metadata.get("enable_thinking", False)
 
         # If enable_thinking is not explicitly provided but thinking config is present,
         # assume thinking was enabled in a previous validation
-        has_thinking_config = "thinking" in adapter_metadata and adapter_metadata.get("thinking") is not None
+        has_thinking_config = (
+            "thinking" in adapter_metadata
+            and adapter_metadata.get("thinking") is not None
+        )
         if not enable_thinking and has_thinking_config:
             enable_thinking = True
 
@@ -446,10 +481,12 @@ class AnthropicLLMParameters(BaseChatCompletionParameters):
                 result_metadata["thinking"] = thinking_config
                 result_metadata["temperature"] = 1
 
-
         # Create validation metadata excluding control fields
-        validation_metadata = {k: v for k, v in result_metadata.items()
-                              if k not in ("enable_thinking", "budget_tokens", "thinking")}
+        validation_metadata = {
+            k: v
+            for k, v in result_metadata.items()
+            if k not in ("enable_thinking", "budget_tokens", "thinking")
+        }
 
         validated = AnthropicLLMParameters(**validation_metadata).model_dump()
 
@@ -535,6 +572,7 @@ class OllamaLLMParameters(BaseChatCompletionParameters):
 
 # Embedding Parameter Classes
 
+
 class OpenAIEmbeddingParameters(BaseEmbeddingParameters):
     """See https://docs.litellm.ai/docs/providers/openai"""
 
@@ -544,7 +582,9 @@ class OpenAIEmbeddingParameters(BaseEmbeddingParameters):
 
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
-        adapter_metadata["model"] = OpenAIEmbeddingParameters.validate_model(adapter_metadata)
+        adapter_metadata["model"] = OpenAIEmbeddingParameters.validate_model(
+            adapter_metadata
+        )
 
         return OpenAIEmbeddingParameters(**adapter_metadata).model_dump()
 
@@ -565,13 +605,15 @@ class AzureOpenAIEmbeddingParameters(BaseEmbeddingParameters):
 
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
-        adapter_metadata["model"] = AzureOpenAIEmbeddingParameters.validate_model(adapter_metadata)
+        adapter_metadata["model"] = AzureOpenAIEmbeddingParameters.validate_model(
+            adapter_metadata
+        )
 
         # Ensure we have the endpoint in the right format for Azure
         azure_endpoint = adapter_metadata.get("azure_endpoint", "")
         if azure_endpoint:
             adapter_metadata["api_base"] = azure_endpoint
-    
+
         # Map num_retries to max_retries for consistency
         if "num_retries" in adapter_metadata and not adapter_metadata.get("max_retries"):
             adapter_metadata["max_retries"] = adapter_metadata["num_retries"]
@@ -580,7 +622,9 @@ class AzureOpenAIEmbeddingParameters(BaseEmbeddingParameters):
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, Any]) -> str:
-        model = adapter_metadata.get("deployment_name", "") #litellm expects model to be in the format of "azure/<deployment_name>"
+        model = adapter_metadata.get(
+            "deployment_name", ""
+        )  # litellm expects model to be in the format of "azure/<deployment_name>"
         # Only add azure/ prefix if the model doesn't already have it
         if model.startswith("azure/"):
             formatted_model = model
@@ -602,12 +646,14 @@ class VertexAIEmbeddingParameters(BaseEmbeddingParameters):
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
         # Make a copy so we don't modify the original
         metadata_copy = {**adapter_metadata}
-        
+
         # Set model with proper prefix
         metadata_copy["model"] = VertexAIEmbeddingParameters.validate_model(metadata_copy)
-        
+
         # Map credentials and project fields
-        if "json_credentials" in metadata_copy and not metadata_copy.get("vertex_credentials"):
+        if "json_credentials" in metadata_copy and not metadata_copy.get(
+            "vertex_credentials"
+        ):
             metadata_copy["vertex_credentials"] = metadata_copy["json_credentials"]
         if "project" in metadata_copy and not metadata_copy.get("vertex_project"):
             metadata_copy["vertex_project"] = metadata_copy["project"]
@@ -629,8 +675,12 @@ class AWSBedrockEmbeddingParameters(BaseEmbeddingParameters):
 
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
-        adapter_metadata["model"] = AWSBedrockEmbeddingParameters.validate_model(adapter_metadata)
-        if "region_name" in adapter_metadata and not adapter_metadata.get("aws_region_name"):
+        adapter_metadata["model"] = AWSBedrockEmbeddingParameters.validate_model(
+            adapter_metadata
+        )
+        if "region_name" in adapter_metadata and not adapter_metadata.get(
+            "aws_region_name"
+        ):
             adapter_metadata["aws_region_name"] = adapter_metadata["region_name"]
 
         return AWSBedrockEmbeddingParameters(**adapter_metadata).model_dump()
@@ -649,7 +699,9 @@ class OllamaEmbeddingParameters(BaseEmbeddingParameters):
 
     @staticmethod
     def validate(adapter_metadata: dict[str, Any]) -> dict[str, Any]:
-        adapter_metadata["model"] = OllamaEmbeddingParameters.validate_model(adapter_metadata)
+        adapter_metadata["model"] = OllamaEmbeddingParameters.validate_model(
+            adapter_metadata
+        )
         adapter_metadata["api_base"] = adapter_metadata.get("base_url", "")
 
         return OllamaEmbeddingParameters(**adapter_metadata).model_dump()

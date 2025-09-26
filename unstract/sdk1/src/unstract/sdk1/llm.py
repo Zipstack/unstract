@@ -90,7 +90,7 @@ class LLM:
 
             if self._adapter_instance_id:
                 self.platform_kwargs["adapter_instance_id"] = self._adapter_instance_id
-                
+
             self.kwargs = self.adapter.validate(self._adapter_metadata)
 
             # REF: https://docs.litellm.ai/docs/completion/input#translated-openai-params
@@ -149,8 +149,7 @@ class LLM:
             dict[str, Any]  : A dictionary containing the result of the completion,
                 any processed output, and the captured metrics (if applicable).
         """
-
-        litellm.drop_params = True # drop params that are not supported by the model
+        litellm.drop_params = True  # drop params that are not supported by the model
 
         messages: list[dict[str, str]] = [
             {"role": "system", "content": self._system_prompt},

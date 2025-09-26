@@ -5,7 +5,7 @@ LABEL maintainer="Zipstack Inc."
 ENV \
     # Extended PYTHONPATH to include all unstract module source directories
     APP_HOME=/app \
-    BUILD_PACKAGES_PATH=unstract 
+    BUILD_PACKAGES_PATH=unstract
 
 # Install dependencies for unstructured library's partition
 RUN apt-get update && apt-get --no-install-recommends -y install dumb-init libmagic-dev poppler-utils\
