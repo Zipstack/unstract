@@ -18,6 +18,7 @@ from utils.user_context import UserContext
 from workflow_manager.endpoint_v2.base_connector import BaseConnector
 from workflow_manager.endpoint_v2.constants import (
     FilePattern,
+    FileProcessingOrder,
     FileSystemConnector,
     FileType,
     SourceConstant,
@@ -46,7 +47,7 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 from unstract.filesystem import FileStorageType, FileSystem
 from unstract.sdk.file_storage import FileStorage
-from unstract.workflow_execution.enums import LogStage, LogState
+from unstract.workflow_execution.enums import LogLevel, LogStage, LogState
 
 logger = logging.getLogger(__name__)
 
@@ -146,40 +147,46 @@ class SourceConnector(BaseConnector):
 
     def list_file_from_api_storage(
         self, file_hashes: dict[str, FileHash]
-    ) -> tuple[dict[str, FileHash], int]:
+    ) -> dict[str, FileHash]:
         """List all files from the api_storage_dir directory."""
-        return file_hashes, len(file_hashes)
+        return file_hashes
 
-    def list_files_from_file_connector(self) -> tuple[dict[str, FileHash], int]:
+    def list_files_from_file_connector(self) -> dict[str, FileHash]:
         """_summary_
 
         Raises:
             InvalidDirectory: _description_
 
         Returns:
-            tuple[dict[str, FileHash], int]: A dictionary of matched file paths
-            and their corresponding FileHash objects, along with the total count
-            of matched files.
+            dict[str, FileHash]: A dictionary of matched file paths
+            and their corresponding FileHash objects.
         """
         connector: ConnectorInstance = self.endpoint.connector_instance
         connector_settings: dict[str, Any] = connector.connector_metadata
-        source_configurations: dict[str, Any] = self.endpoint.configuration
-        required_patterns = list(source_configurations.get(SourceKey.FILE_EXTENSIONS, []))
+        source_configuration: dict[str, Any] = self.endpoint.configuration
+        logger.info("Source configuration: %s", source_configuration)
+        required_patterns = list(source_configuration.get(SourceKey.FILE_EXTENSIONS, []))
         recursive = bool(
-            source_configurations.get(SourceKey.PROCESS_SUB_DIRECTORIES, False)
+            source_configuration.get(SourceKey.PROCESS_SUB_DIRECTORIES, False)
         )
         limit = int(
-            source_configurations.get(SourceKey.MAX_FILES, FileSystemConnector.MAX_FILES)
+            source_configuration.get(SourceKey.MAX_FILES, FileSystemConnector.MAX_FILES)
+        )
+        file_processing_order = FileProcessingOrder.from_value(
+            source_configuration.get(SourceKey.FILE_PROCESSING_ORDER)
         )
         root_dir_path = connector_settings.get(ConnectorKeys.PATH, "")
-        folders_to_process = list(source_configurations.get(SourceKey.FOLDERS, ["/"]))
+        folders_to_process = list(source_configuration.get(SourceKey.FOLDERS, ["/"]))
         # Process from root in case its user provided list is empty
         if not folders_to_process:
             folders_to_process = ["/"]
         patterns = self.valid_file_patterns(required_patterns=required_patterns)
-        self.publish_user_sys_log(
+        self.workflow_log.publish_log(
             f"Matching for patterns '{', '.join(patterns)}' from "
-            f"'{', '.join(folders_to_process)}'"
+            f"'{', '.join(folders_to_process)}' to process upto {limit} files "
+            "recursively"
+            if recursive
+            else ""
         )
 
         source_fs = self.get_fs_connector(
@@ -205,27 +212,26 @@ class SourceConnector(BaseConnector):
                     raise
                 raise InvalidInputDirectory(detail=msg)
 
-        total_files_to_process = 0
-        total_matched_files = {}
-        unique_file_paths: set[str] = set()
-
-        for input_directory in valid_directories:
-            logger.debug(f"Listing files from:  {input_directory}")
-            matched_files, count = self._get_matched_files(
+        if file_processing_order == FileProcessingOrder.UNORDERED:
+            total_matched_files = self._process_without_sorting(
                 source_fs,
-                input_directory,
+                valid_directories,
                 patterns,
                 recursive,
                 limit,
-                unique_file_paths,
             )
-            self.publish_user_sys_log(f"Matched '{count}' files from '{input_directory}'")
-            total_matched_files.update(matched_files)
-            total_files_to_process += count
-        self.publish_input_output_list_file_logs(
-            folders_to_process, total_matched_files, total_files_to_process
-        )
-        return total_matched_files, total_files_to_process
+        else:
+            total_matched_files = self._process_with_sorting(
+                source_fs,
+                valid_directories,
+                patterns,
+                recursive,
+                limit,
+                file_processing_order,
+            )
+
+        self.publish_input_output_list_file_logs(folders_to_process, total_matched_files)
+        return total_matched_files
 
     def publish_user_sys_log(self, msg: str) -> None:
         """Publishes log to the user and system.
@@ -240,14 +246,14 @@ class SourceConnector(BaseConnector):
         self.workflow_log.publish_log(message=msg)
 
     def publish_input_output_list_file_logs(
-        self, folders: list[str], matched_files: dict[str, FileHash], count: int
+        self, folders: list[str], matched_files: dict[str, FileHash]
     ) -> None:
         folders_list = "\n".join(f"- `{folder.strip()}`" for folder in folders)
         input_log = f"## Folders to process:\n\n{folders_list}\n\n"
         self.workflow_log.publish_update_log(
             state=LogState.INPUT_UPDATE, message=input_log
         )
-        output_log = self._matched_files_component_log(matched_files, count)
+        output_log = self._matched_files_component_log(matched_files)
         self.workflow_log.publish_update_log(
             state=LogState.OUTPUT_UPDATE, message=output_log
         )
@@ -264,16 +270,178 @@ class SourceConnector(BaseConnector):
             state=LogState.OUTPUT_UPDATE, message=output_log_message
         )
 
-    def _matched_files_component_log(
-        self, matched_files: dict[str, FileHash], count: int
-    ) -> str:
+    def _matched_files_component_log(self, matched_files: dict[str, FileHash]) -> str:
         output_log = "### Matched files \n```text\n\n\n"
         for file_path in islice(matched_files.keys(), 20):
             output_log += f"- {file_path}\n"
         output_log += "```\n\n"
-        output_log += f"""Total matched files: {count}
+        output_log += f"""Total matched files: {len(matched_files)}
             \n\nPlease note that only the first 20 files are shown.\n\n"""
         return output_log
+
+    def _collect_and_sort_files(
+        self,
+        source_fs: UnstractFileSystem,
+        valid_directories: list[str],
+        recursive: bool,
+        file_processing_order: str,
+    ) -> list[dict[str, Any]]:
+        """Collect files from all directories and apply global sorting.
+
+        Used when file_processing_order is not UNORDERED.
+        """
+        all_files_metadata = []
+        max_depth = int(SourceConstant.MAX_RECURSIVE_DEPTH) if recursive else 1
+        max_files_for_sorting = SourceConstant.MAX_FILES_FOR_SORTING
+        total_collected = 0
+
+        # Collect files from all directories
+        for input_directory in valid_directories:
+            logger.debug(f"Collecting files from: {input_directory}")
+
+            # Calculate remaining limit for this directory
+            remaining_limit = max_files_for_sorting - total_collected
+            if remaining_limit <= 0:
+                break
+
+            try:
+                files_metadata = source_fs.list_files(
+                    directory=input_directory,
+                    max_depth=max_depth,
+                    include_dirs=False,
+                    limit=remaining_limit,
+                )
+                all_files_metadata.extend(files_metadata)
+                total_collected += len(files_metadata)
+
+                # Report errors
+                user_errors = source_fs.report_errors_to_user()
+                for error_msg in user_errors[:5]:
+                    self.workflow_log.publish_log(error_msg, level=LogLevel.ERROR)
+                if len(user_errors) > 5:
+                    self.workflow_log.publish_log(
+                        f"... and {len(user_errors) - 5} more errors",
+                        level=LogLevel.ERROR,
+                    )
+
+                # Check if we've hit the limit
+                if total_collected >= max_files_for_sorting:
+                    break
+
+            except Exception as e:
+                error_msg = f"Failed to collect files from {input_directory}"
+                logger.error(f"{error_msg}: {e}")
+                self.workflow_log.publish_log(error_msg, level=LogLevel.ERROR)
+
+        # Log warning if collection limit was reached
+        if total_collected >= max_files_for_sorting:
+            warning_msg = (
+                f"File collection limit of '{max_files_for_sorting}' files reached. "
+                "Ordering may not reflect all available files from source file system"
+            )
+            logger.warning(warning_msg)
+            self.workflow_log.publish_log(warning_msg, level=LogLevel.WARN)
+
+        # Apply sorting
+        if file_processing_order == FileProcessingOrder.OLDEST_FIRST:
+            sorted_files = source_fs.sort_files_by_modified_date(
+                all_files_metadata, ascending=True
+            )
+            order_desc = "FIFO (oldest first)"
+        else:
+            sorted_files = source_fs.sort_files_by_modified_date(
+                all_files_metadata, ascending=False
+            )
+            order_desc = "LIFO (newest first)"
+
+        self.workflow_log.publish_log(
+            f"Collected {len(all_files_metadata)} files, processing in {order_desc} order"
+        )
+
+        # Debug logging for first few files in sorted order
+        if sorted_files and logger.isEnabledFor(logging.DEBUG):
+            logger.debug("File processing order (first 10):")
+            for i, file_meta in enumerate(sorted_files[:10]):
+                file_path = file_meta.get("name", "unknown")
+                modified_date = source_fs.extract_modified_date(file_meta)
+                date_str = modified_date.isoformat() if modified_date else "unknown"
+                logger.debug(f"  {i + 1}. {file_path} (modified: {date_str})")
+
+        return sorted_files
+
+    def _process_with_sorting(
+        self,
+        source_fs: UnstractFileSystem,
+        valid_directories: list[str],
+        patterns: list[str],
+        recursive: bool,
+        limit: int,
+        file_processing_order: str,
+    ) -> dict[str, FileHash]:
+        """In case ordering is expected, collect and sort all files."""
+        matched_files = {}
+        unique_file_paths: set[str] = set()
+
+        # Collect and sort all files
+        sorted_files = self._collect_and_sort_files(
+            source_fs, valid_directories, recursive, file_processing_order
+        )
+
+        self._process_file_fs_directory(
+            fs_metadata_list=sorted_files,
+            count=0,
+            limit=limit,
+            unique_file_paths=unique_file_paths,
+            matched_files=matched_files,
+            patterns=patterns,
+            source_fs=source_fs,
+            dirs=[],  # Not needed for pre-collected files
+        )
+
+        return matched_files
+
+    def _process_without_sorting(
+        self,
+        source_fs: UnstractFileSystem,
+        valid_directories: list[str],
+        patterns: list[str],
+        recursive: bool,
+        limit: int,
+    ) -> dict[str, FileHash]:
+        """Process files directory by directory while checking for limit."""
+        total_matched_files = {}
+        total_files_to_process = 0
+        unique_file_paths: set[str] = set()
+
+        for input_directory in valid_directories:
+            logger.debug(f"Listing files from:  {input_directory}")
+
+            remaining_limit = limit - total_files_to_process
+            if remaining_limit <= 0:
+                break
+
+            matched_files = self._get_matched_files(
+                source_fs,
+                input_directory,
+                patterns,
+                recursive,
+                remaining_limit,
+                unique_file_paths,
+            )
+            matched_file_count = len(matched_files)
+            self.publish_user_sys_log(
+                f"Matched '{matched_file_count}' files from '{input_directory}'"
+            )
+            total_matched_files.update(matched_files)
+            total_files_to_process += matched_file_count
+
+            if total_files_to_process >= limit:
+                msg = f"Maximum limit of '{limit}' files to process reached"
+                self.workflow_log.publish_log(msg)
+                logger.info(msg)
+                break
+
+        return total_matched_files
 
     def _get_matched_files(
         self,
@@ -283,7 +451,7 @@ class SourceConnector(BaseConnector):
         recursive: bool,
         limit: int,
         unique_file_paths: set[str],
-    ) -> tuple[dict[str, FileHash], int]:
+    ) -> dict[str, FileHash]:
         """Get a dictionary of matched files based on patterns in a directory.
 
         This method searches for files in the specified `input_directory` that
@@ -299,13 +467,15 @@ class SourceConnector(BaseConnector):
             limit (int): The maximum number of matched files to return.
 
         Returns:
-            tuple[dict[str, FileHash], int]: A dictionary of matched file paths
-            and their corresponding FileHash objects, along with the total count
-            of matched files.
+            dict[str, FileHash]: A dictionary of matched file paths
+            and their corresponding FileHash objects.
         """
         matched_files: dict[str, FileHash] = {}
         count = 0
+
+        # Get max depth for recursive traversal
         max_depth = int(SourceConstant.MAX_RECURSIVE_DEPTH) if recursive else 1
+
         fs_fsspec = source_fs.get_fsspec_fs()
         for root, dirs, _ in fs_fsspec.walk(input_directory, maxdepth=max_depth):
             try:
@@ -326,7 +496,8 @@ class SourceConnector(BaseConnector):
                 source_fs=source_fs,
                 dirs=dirs,
             )
-        return matched_files, count
+
+        return matched_files
 
     def _process_file_fs_directory(
         self,
@@ -737,16 +908,16 @@ class SourceConnector(BaseConnector):
         """
         connection_type = self.endpoint.connection_type
         if connection_type == WorkflowEndpoint.ConnectionType.FILESYSTEM:
-            files, count = self.list_files_from_file_connector()
+            files = self.list_files_from_file_connector()
         elif connection_type == WorkflowEndpoint.ConnectionType.API:
-            files, count = self.list_file_from_api_storage(file_hashes)
+            files = self.list_file_from_api_storage(file_hashes)
         else:
             raise InvalidSourceConnectionType()
         # TODO: move this to where file is listed at source.
         for index, file_hash in enumerate(files.values(), start=1):
             file_hash.file_number = index
 
-        return files, count
+        return files, len(files)
 
     def get_file_content_hash(self, source_fs: UnstractFileSystem, file_path: str) -> str:
         """Generate a hash value from the file content.
@@ -921,6 +1092,7 @@ class SourceConnector(BaseConnector):
         tags: list[str],
         file_hash: FileHash,
         llm_profile_id: str | None = None,
+        custom_data: dict[str, Any] | None = None,
     ) -> str:
         """Add input file to execution directory.
 
@@ -962,6 +1134,7 @@ class SourceConnector(BaseConnector):
             source_hash=file_content_hash,
             tags=tags,
             llm_profile_id=llm_profile_id,
+            custom_data=custom_data,
         )
         return file_content_hash
 

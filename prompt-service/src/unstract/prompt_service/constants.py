@@ -67,6 +67,7 @@ class PromptServiceConstants:
     SUMMARIZE_AS_SOURCE = "summarize_as_source"
     VARIABLE_MAP = "variable_map"
     RECORD = "record"
+    CUSTOM_DATA = "custom_data"
     TEXT = "text"
     ENABLE_HIGHLIGHT = "enable_highlight"
     FILE_PATH = "file_path"
@@ -147,6 +148,7 @@ class VariableType(str, Enum):
 
     STATIC = "STATIC"
     DYNAMIC = "DYNAMIC"
+    CUSTOM_DATA = "CUSTOM_DATA"
 
 
 class RetrievalStrategy(str, Enum):
@@ -166,7 +168,11 @@ class VariableConstants:
 
     VARIABLE_REGEX = "{{(.+?)}}"
     DYNAMIC_VARIABLE_DATA_REGEX = r"\[(.*?)\]"
-    DYNAMIC_VARIABLE_URL_REGEX = r"(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'\".,<>?«»“”‘’]))"  # noqa: E501
+    DYNAMIC_VARIABLE_URL_REGEX = (
+        r"(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'\".,<>?«»"
+        "'']))"
+    )  # noqa: E501
+    CUSTOM_DATA_VARIABLE_REGEX = r"custom_data\.([a-zA-Z0-9_\.]+)"
 
 
 class IndexingConstants:

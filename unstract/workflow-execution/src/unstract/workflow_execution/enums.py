@@ -97,6 +97,8 @@ class LogType(Enum):
     UPDATE = "UPDATE"
 
 
+# TODO: Use Enum from SDK instead
 class LogLevel(Enum):
     INFO = "INFO"
     ERROR = "ERROR"
+    WARN = "WARN"

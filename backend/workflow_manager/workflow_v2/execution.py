@@ -51,7 +51,9 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         tool_instances_as_dto = []
         for tool_instance in tool_instances:
             tool_instances_as_dto.append(
-                self.convert_tool_instance_model_to_data_class(tool_instance)
+                WorkflowExecutionServiceHelper.convert_tool_instance_model_to_data_class(
+                    tool_instance
+                )
             )
         workflow_as_dto: WorkflowDto = self.convert_workflow_model_to_data_class(
             workflow=workflow
@@ -284,7 +286,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         cost_dict = UsageHelper.get_aggregated_token_count(run_id=run_id)
         if not cost_dict:
             self.publish_log(
-                f"No cost data available for file '{file_name}'", level=LogLevel.WARNING
+                f"No cost data available for file '{file_name}'", level=LogLevel.WARN
             )
             return
         cost = round(cost_dict.get("cost_in_dollars") or 0, 5)
