@@ -3,9 +3,8 @@
 
 # Unstract
 
-## No-code LLM Platform to launch APIs and ETL Pipelines to structure unstructured documents
+## The Data Layer for your Agentic Workflows—Automate Document-based workflows with close to 100% accuracy!
 
-##
 
 ![Python Version from PEP 621 TOML](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2FZipstack%2Funstract%2Frefs%2Fheads%2Fmain%2Fpyproject.toml)
 [![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
@@ -23,26 +22,44 @@
 
 ## 🤖 Prompt Studio
 
-Prompt Studio's primary reason for existence is so you can develop the necessary prompts for document data extraction super efficiently. It is a purpose-built environment that makes this not just easy for you—but, lot of fun! The document sample, its variants, the prompts you're developing, outputs from different LLMs, the schema you're developing, costing details of the extraction and various tools that let you measure the effectiveness of your prompts are just a click away and easily accessible. Prompt Studio is designed for effective and high speed development and iteration of prompts for document data extraction. Welcome to IDP 2.0!
-
+Prompt Studio is a purpose-built environment that supercharges your schema definition efforts. Compare outputs from different LLMs side-by-side, keep tab on costs while you develop generic prompts that work across wide-ranging document variations. And when you're ready, launch extraction APIs with a single click.
 
 ![img Prompt Studio](docs/assets/prompt_studio.png)
 
-## 🧘‍♀️ Three step nirvana with Workflow Studio
+## 🔌 Integrations that suit your environment
 
-Automate critical business processes that involve complex documents with a human in the loop. Go beyond RPA with the power of Large Language Models.
+Once you've used Prompt Studio to define your schema, Unstract makes it easy to integrate into your existing workflows. Simply choose the integration type that best fits your environment:
 
-🌟 **Step 1**: Add documents to no-code Prompt Studio and do prompt engineering to extract required fields <br>
-🌟 **Step 2**: Configure Prompt Studio project as API deployment or configure input source and output destination for ETL Pipeline<br>
-🌟 **Step 3**: Deploy Workflows as unstructured data APIs or unstructured data ETL Pipelines!
+| Integration Type | Description | Best For | Documentation |
+|------------------|-------------|----------|---------------|
+| 🖥️ **MCP Servers** | Run Unstract as an MCP Server to provide structured data extraction to Agents or LLMs in your ecosystem. | Developers building **Agentic/LLM apps/tools** that speak MCP. | [Unstract MCP Server Docs](https://docs.unstract.com/unstract/unstract_platform/mcp/unstract_platform_mcp_server/) |
+| 🌐 **API Deployments** | Turn any document into JSON with an API call. Deploy any Prompt Studio project as a REST API endpoint with a single click. | Teams needing **programmatic access** in apps, services, or custom tooling. | [API Deployment Docs](https://docs.unstract.com/unstract/unstract_platform/api_deployment/unstract_api_deployment_intro/) |
+| ⚙️ **ETL Pipelines** | Embed Unstract directly into your ETL jobs to transform unstructured data before loading it into your warehouse / database. | **Engineering and Data engineering teams** that need to batch process documents into clean JSON. | [ETL Pipelines Docs](https://docs.unstract.com/unstract/unstract_platform/etl_pipeline/unstract_etl_pipeline_intro/) |
+| 🧩 **n8n Nodes** | Use Unstract as ready-made nodes in n8n workflows for drag-and-drop automation. | **Low-code users** and **ops teams** automating workflows. | [Unstract n8n Nodes Docs](https://docs.unstract.com/unstract/unstract_platform/api_deployment/unstract_api_deployment_n8n_custom_node/) |
 
-![img Using Unstract](docs/assets/Using_Unstract.png)
+## ☁️ Getting Started (Cloud / Enterprise)
 
-## 🚀 Getting started
+The easy-peasy way to try Unstract is to [sign up for a **14-day free trial**](https://unstract.com/start-for-free/). Give Unstract a spin now!  
+
+Unstract Cloud also comes with some really awesome features that give serious accuracy boosts to agentic/LLM-powered document-centric workflows in the enterprise.
+
+| Feature | Description | Documentation |
+|---------|-------------|---------------|
+| 🧪 **LLMChallenge** | Uses two Large Language Models to ensure trustworthy output. You either get the right response or no response at all. | [Docs](https://docs.unstract.com/unstract/unstract_platform/features/llm_challenge/llm_challenge_intro/) |
+| ⚡ **SinglePass Extraction** | Reduces LLM token usage by up to **8x**, dramatically cutting costs. | [Docs](https://docs.unstract.com/unstract/editions/cloud_edition/#singlepass-extraction) |
+| 📉 **SummarizedExtraction** | Reduces LLM token usage by up to **6x**, saving costs while keeping accuracy. | [Docs](https://docs.unstract.com/unstract/unstract_platform/features/summarized_extraction/summarized_extraction_intro/) |
+| 👀 **Human-In-The-Loop** | Side-by-side comparison of extracted value and source document, with highlighting for human review and tweaking. | [Docs](https://docs.unstract.com/unstract/unstract_platform/human_quality_review/human_quality_review_intro/) |
+| 🔐 **SSO Support** | Enterprise-ready authentication options for seamless onboarding and off-boarding. | [Docs](https://docs.unstract.com/unstract/editions/cloud_edition/#enterprise-features) |
+
+## ⏩ Quick Start Guide
+
+Unstract comes well documented. You can get introduced to the [basics of Unstract](https://docs.unstract.com/unstract/), and [learn how to connect](https://docs.unstract.com/unstract/unstract_platform/setup_accounts/whats_needed) various systems like LLMs, Vector Databases, Embedding Models and Text Extractors to it. The easiest way to wet your feet is to go through our [Quick Start Guide](https://docs.unstract.com/unstract/unstract_platform/quick_start) where you actually get to do some prompt engineering in Prompt Studio and launch an API to structure varied credit card statements!
+
+## 🚀 Getting started (self-hosted)
 
 ### System Requirements
 
-- 8GB RAM (recommended)
+- 8GB RAM (minimum)
 
 ### Prerequisites
 
@@ -56,7 +73,6 @@ Next, either download a release or clone this repo and do the following:
 ✅ `./run-platform.sh`<br>
 ✅ Now visit [http://frontend.unstract.localhost](http://frontend.unstract.localhost) in your browser <br>
 ✅ Use username and password `unstract` to login
-
 
 That's all there is to it!
 
@@ -93,10 +109,6 @@ Unstract supports a wide range of file formats for document processing:
 | | TIFF | Tagged Image File Format |
 | | WEBP | Web Picture Format |
 
-## ⏩ Quick Start Guide
-
-Unstract comes well documented. You can get introduced to the [basics of Unstract](https://docs.unstract.com/unstract/), and [learn how to connect](https://docs.unstract.com/unstract/unstract_platform/setup_accounts/whats_needed) various systems like LLMs, Vector Databases, Embedding Models and Text Extractors to it. The easiest way to wet your feet is to go through our [Quick Start Guide](https://docs.unstract.com/unstract/unstract_platform/quick_start) where you actually get to do some prompt engineering in Prompt Studio and launch an API to structure varied credit card statements!
-
 ## 🤝 Ecosystem support
 
 ### LLM Providers
@@ -113,7 +125,6 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 | <img src="docs/assets/3rd_party/anyscale.png" width="32"/>     | Anyscale                    | ✅ Working |
 | <img src="docs/assets/3rd_party/mistral_ai.png" width="32"/>   | Mistral AI                  | ✅ Working |
 
-
 ### Vector Databases
 
 || Provider | Status |
@@ -123,8 +134,6 @@ Unstract comes well documented. You can get introduced to the [basics of Unstrac
 |<img src="docs/assets/3rd_party/pinecone.png" width="32"/>| Pinecone | ✅ Working |
 |<img src="docs/assets/3rd_party/postgres.png" width="32"/>| PostgreSQL | ✅ Working |
 |<img src="docs/assets/3rd_party/milvus.png" width="32"/>| Milvus | ✅ Working |
-
-
 
 ### Embeddings
 

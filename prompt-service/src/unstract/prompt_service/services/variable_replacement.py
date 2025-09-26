@@ -34,7 +34,7 @@ class VariableReplacementService:
         tool_id: str,
         prompt_name: str,
         doc_name: str,
-        user_data: dict[str, Any] = None,
+        custom_data: dict[str, Any] = None,
     ) -> str:
         """Replaces variables in prompt.
 
@@ -69,7 +69,7 @@ class VariableReplacementService:
             prompt_text = VariableReplacementService._execute_variable_replacement(
                 prompt_text=prompt[PSKeys.PROMPT],
                 variable_map=variable_map,
-                user_data=user_data,
+                custom_data=custom_data,
             )
         except KeyError:
             # Executed incase of structured tool and
@@ -77,7 +77,7 @@ class VariableReplacementService:
             prompt_text = VariableReplacementService._execute_variable_replacement(
                 prompt_text=prompt_text,
                 variable_map=structured_output,
-                user_data=user_data,
+                custom_data=custom_data,
             )
         finally:
             app.logger.info(
@@ -98,7 +98,9 @@ class VariableReplacementService:
 
     @staticmethod
     def _execute_variable_replacement(
-        prompt_text: str, variable_map: dict[str, Any], user_data: dict[str, Any] = None
+        prompt_text: str,
+        variable_map: dict[str, Any],
+        custom_data: dict[str, Any] = None,
     ) -> str:
         variables: list[str] = VariableReplacementHelper.extract_variables_from_prompt(
             prompt_text=prompt_text
@@ -121,10 +123,10 @@ class VariableReplacementService:
                     structured_output=variable_map,
                 )
 
-            elif variable_type == VariableType.USER_DATA and user_data:
-                prompt_text = VariableReplacementHelper.replace_user_data_variable(
+            elif variable_type == VariableType.CUSTOM_DATA and custom_data:
+                prompt_text = VariableReplacementHelper.replace_custom_data_variable(
                     prompt=prompt_text,
                     variable=variable,
-                    user_data=user_data,
+                    custom_data=custom_data,
                 )
         return prompt_text

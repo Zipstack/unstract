@@ -61,10 +61,10 @@ class VariableReplacementHelper:
     def identify_variable_type(variable: str) -> VariableType:
         variable_type: VariableType
 
-        # Check for user_data variable type first
-        user_data_pattern = re.compile(VariableConstants.USER_DATA_VARIABLE_REGEX)
-        if re.findall(user_data_pattern, variable):
-            variable_type = VariableType.USER_DATA
+        # Check for custom_data variable type first
+        custom_data_pattern = re.compile(VariableConstants.CUSTOM_DATA_VARIABLE_REGEX)
+        if re.findall(custom_data_pattern, variable):
+            variable_type = VariableType.CUSTOM_DATA
         else:
             # Check for dynamic variable type
             dynamic_pattern = re.compile(VariableConstants.DYNAMIC_VARIABLE_URL_REGEX)
@@ -100,41 +100,45 @@ class VariableReplacementHelper:
         return replaced_prompt
 
     @staticmethod
-    def replace_user_data_variable(
-        prompt: str, variable: str, user_data: dict[str, Any]
+    def replace_custom_data_variable(
+        prompt: str, variable: str, custom_data: dict[str, Any]
     ) -> str:
-        """Replace user_data variable in prompt.
+        """Replace custom_data variable in prompt.
 
         Args:
             prompt: The prompt containing variables
-            variable: The variable to replace (e.g., "user_data.name")
-            user_data: The user data dictionary
+            variable: The variable to replace (e.g., "custom_data.name")
+            custom_data: The custom_data data dictionary
 
         Returns:
             prompt with variable replaced
         """
-        if not user_data:
-            error_msg = f"User data is empty. Unable to replace variable {variable}"
+        if not custom_data:
+            error_msg = f"Custom data is empty. Unable to replace variable {variable}"
             app.logger.error(error_msg)
             raise ValueError(error_msg)
 
-        # Extract the path from user_data.path.to.value
-        user_data_match = re.search(VariableConstants.USER_DATA_VARIABLE_REGEX, variable)
-        if not user_data_match:
-            error_msg = f"Invalid user_data variable format: {variable}"
+        # Extract the path from custom_data.path.to.value
+        custom_data_match = re.search(
+            VariableConstants.CUSTOM_DATA_VARIABLE_REGEX, variable
+        )
+        if not custom_data_match:
+            error_msg = f"Invalid custom_data variable format: {variable}"
             app.logger.error(error_msg)
             raise ValueError(error_msg)
 
-        path_str = user_data_match.group(1)
+        path_str = custom_data_match.group(1)
         path_parts = path_str.split(".")
 
         # Navigate through the nested dictionary
         try:
-            value = user_data
+            value = custom_data
             for part in path_parts:
                 value = value[part]
         except (KeyError, TypeError) as e:
-            error_msg = f"Path {path_str} not found in user_data for variable {variable}"
+            error_msg = (
+                f"Path {path_str} not found in custom_data for variable {variable}"
+            )
             app.logger.error(error_msg)
             raise ValueError(error_msg) from e
 

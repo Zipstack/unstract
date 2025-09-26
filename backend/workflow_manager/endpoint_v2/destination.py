@@ -367,7 +367,6 @@ class DestinationConnector(BaseConnector):
         )
 
         engine = db_class.get_engine()
-
         table_info = db_class.get_information_schema(table_name=table_name)
 
         logger.info(
@@ -376,10 +375,11 @@ class DestinationConnector(BaseConnector):
 
         if table_info:
             if db_class.has_no_metadata(table_info=table_info):
-                table_info = db_class.migrate_table_to_v2(
+                table_info = DatabaseUtils.migrate_table_to_v2(
+                    db_class=db_class,
+                    engine=engine,
                     table_name=table_name,
                     column_name=single_column_name,
-                    engine=engine,
                 )
 
         values = DatabaseUtils.get_columns_and_values(
