@@ -319,7 +319,6 @@ function Pipelines({ type }) {
       // Only open modal after data is loaded
       setOpenShareModal(true);
     } catch (error) {
-      console.error("Error fetching sharing data:", error);
       setAlertDetails(handleException(error));
       // Ensure allUsers is always an array even on error
       setAllUsers([]);
