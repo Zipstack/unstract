@@ -61,9 +61,11 @@ function ToolSelectionSidebar({
     <div className="tool-selection-sidebar-overlay">
       <div className="tool-selection-sidebar">
         <div className="tool-selection-header">
-          <Typography.Title level={4}>Select Exported Tool</Typography.Title>
+          <Typography.Title level={4}>
+            Select Exported Prompt Studio project
+          </Typography.Title>
           <Input
-            placeholder="Search tools..."
+            placeholder="Search Prompt Studio project..."
             prefix={<SearchOutlined />}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -132,7 +134,7 @@ function ToolSelectionSidebar({
             onClick={handleSave}
             disabled={!tempSelectedTool}
           >
-            {hasChanges ? "Save Changes" : "Select Tool"}
+            {hasChanges ? "Save Changes" : "Select Prompt Studio project"}
           </Button>
         </div>
       </div>

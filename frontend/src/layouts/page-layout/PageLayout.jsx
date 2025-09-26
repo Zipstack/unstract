@@ -13,6 +13,7 @@ function PageLayout({
   sideBarOptions,
   topNavBarOptions,
   showLogsAndNotifications = true,
+  hideSidebar = false,
 }) {
   const initialCollapsedValue =
     JSON.parse(localStorage.getItem("collapsed")) || false;
@@ -20,22 +21,25 @@ function PageLayout({
   useEffect(() => {
     localStorage.setItem("collapsed", JSON.stringify(collapsed));
   }, [collapsed]);
-
   return (
     <div className="landingPage">
       <TopNavBar topNavBarOptions={topNavBarOptions} />
       <Layout>
-        <SideNavBar collapsed={collapsed} {...sideBarOptions} />
+        {!hideSidebar && (
+          <SideNavBar collapsed={collapsed} {...sideBarOptions} />
+        )}
         <Layout>
-          <Button
-            shape="circle"
-            size="small"
-            icon={collapsed ? <RightOutlined /> : <LeftOutlined />}
-            onClick={() => setCollapsed(!collapsed)}
-            className="collapse_btn"
-          />
+          {!hideSidebar && (
+            <Button
+              shape="circle"
+              size="small"
+              icon={collapsed ? <RightOutlined /> : <LeftOutlined />}
+              onClick={() => setCollapsed(!collapsed)}
+              className="collapse_btn"
+            />
+          )}
           <Outlet />
-          <div className="height-40" />
+          {!hideSidebar && <div className="height-40" />}
           {showLogsAndNotifications && <DisplayLogsAndNotifications />}
         </Layout>
       </Layout>
@@ -46,6 +50,7 @@ PageLayout.propTypes = {
   sideBarOptions: PropTypes.any,
   topNavBarOptions: PropTypes.any,
   showLogsAndNotifications: PropTypes.bool,
+  hideSidebar: PropTypes.bool,
 };
 
 export { PageLayout };

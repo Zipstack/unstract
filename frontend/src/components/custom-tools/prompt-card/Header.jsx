@@ -8,8 +8,18 @@ import {
   SyncOutlined,
   InfoCircleOutlined,
 } from "@ant-design/icons";
-import { useEffect, useState } from "react";
-import { Button, Checkbox, Col, Dropdown, Row, Tag, Tooltip } from "antd";
+import { useEffect, useState, useRef } from "react";
+import {
+  Button,
+  Checkbox,
+  Col,
+  Dropdown,
+  Input,
+  Row,
+  Tag,
+  Tooltip,
+} from "antd";
+import debounce from "lodash/debounce";
 import PropTypes from "prop-types";
 
 import {
@@ -61,6 +71,37 @@ function Header({
 
   const [isDisablePrompt, setIsDisablePrompt] = useState(null);
   const [required, setRequired] = useState(false);
+  const [webhookEnabled, setWebhookEnabled] = useState(false);
+  const [webhookUrl, setWebhookUrl] = useState("");
+
+  // Stable debounced functions using useRef
+  const debouncedWebhookEnabledChangeRef = useRef(
+    debounce((value, promptId, handleChangeFn, setStateFn) => {
+      handleChangeFn(
+        value,
+        promptId,
+        "enable_postprocessing_webhook",
+        true,
+        true
+      ).catch(() => {
+        setStateFn(!value);
+      });
+    }, 300)
+  );
+
+  const debouncedWebhookUrlChangeRef = useRef(
+    debounce((value, promptId, handleChangeFn, setStateFn) => {
+      handleChangeFn(
+        value,
+        promptId,
+        "postprocessing_webhook_url",
+        true,
+        true
+      ).catch(() => {
+        setStateFn(promptDetails?.postprocessing_webhook_url || "");
+      });
+    }, 500)
+  );
 
   const handleRunBtnClick = (promptRunType, docId = null) => {
     setExpandCard(true);
@@ -89,9 +130,32 @@ function Header({
       setRequired(promptDetails?.required || null); // Rollback state in case of error
     });
   };
+
+  const handleWebhookEnabledChange = (e) => {
+    const newValue = e.target.checked;
+    setWebhookEnabled(newValue);
+    debouncedWebhookEnabledChangeRef.current(
+      newValue,
+      promptDetails?.prompt_id,
+      handleChange,
+      setWebhookEnabled
+    );
+  };
+
+  const handleWebhookUrlChange = (value) => {
+    setWebhookUrl(value);
+    debouncedWebhookUrlChangeRef.current(
+      value,
+      promptDetails?.prompt_id,
+      handleChange,
+      setWebhookUrl
+    );
+  };
   useEffect(() => {
     setIsDisablePrompt(promptDetails?.active);
     setRequired(promptDetails?.required);
+    setWebhookEnabled(promptDetails?.enable_postprocessing_webhook || false);
+    setWebhookUrl(promptDetails?.postprocessing_webhook_url || "");
   }, [promptDetails, details]);
 
   useEffect(() => {
@@ -134,11 +198,50 @@ function Header({
                   onChange={() => handleRequiredChange("any")}
                   className="required-checkbox-padding"
                 >
-                  Atleast 1 JSON Value Required
+                  At least 1 JSON Value Required
                 </Checkbox>
                 <Tooltip title="When set, saving this record won't be allowed in Human Quality Review without at least one value filled in this JSON structure.">
                   <InfoCircleOutlined />
                 </Tooltip>
+                <div
+                  style={{
+                    marginTop: "8px",
+                    borderTop: "1px solid #f0f0f0",
+                    paddingTop: "8px",
+                  }}
+                >
+                  <Checkbox
+                    checked={webhookEnabled}
+                    onChange={handleWebhookEnabledChange}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Enable Postprocessing Webhook{" "}
+                    <Tooltip title="Enable external webhook call to postprocess JSON responses before returning to user.">
+                      <InfoCircleOutlined />
+                    </Tooltip>
+                  </Checkbox>
+                  {webhookEnabled && (
+                    <div style={{ marginTop: "8px", marginLeft: "24px" }}>
+                      <Input
+                        placeholder="https://example.com/webhook"
+                        value={webhookUrl}
+                        onChange={(e) => handleWebhookUrlChange(e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        size="small"
+                        style={{ width: "280px" }}
+                      />
+                      <div
+                        style={{
+                          fontSize: "11px",
+                          color: "#999",
+                          marginTop: "4px",
+                        }}
+                      >
+                        External service URL for JSON postprocessing
+                      </div>
+                    </div>
+                  )}
+                </div>
               </>
             )}
           </div>
@@ -167,7 +270,7 @@ function Header({
     }
 
     setItems(dropdownItems);
-  }, [isDisablePrompt, required, enforceType]);
+  }, [isDisablePrompt, required, enforceType, webhookEnabled, webhookUrl]);
 
   return (
     <Row>
@@ -258,7 +361,7 @@ function Header({
                   isCoverageLoading ||
                   indexDocs?.includes(selectedDoc?.document_id) ||
                   isPublicSource ||
-                  spsLoading[selectedDoc?.document_id]
+                  spsLoading?.[selectedDoc?.document_id]
                 }
               >
                 <PlayCircleOutlined className="prompt-card-actions-head" />
@@ -313,7 +416,7 @@ function Header({
 
 Header.propTypes = {
   promptDetails: PropTypes.object.isRequired,
-  promptKey: PropTypes.text,
+  promptKey: PropTypes.string,
   setPromptKey: PropTypes.func.isRequired,
   progressMsg: PropTypes.object.isRequired,
   handleRun: PropTypes.func.isRequired,
@@ -328,7 +431,7 @@ Header.propTypes = {
   setExpandCard: PropTypes.func.isRequired,
   spsLoading: PropTypes.object,
   handleSpsLoading: PropTypes.func.isRequired,
-  enforceType: PropTypes.text,
+  enforceType: PropTypes.string,
 };
 
 export { Header };

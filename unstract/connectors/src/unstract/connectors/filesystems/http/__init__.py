@@ -7,5 +7,5 @@ metadata = {
     "version": "1.0.0",
     "connector": HttpFS,
     "description": "HttpFS connector",
-    "is_active": True,
+    "is_active": False,
 }

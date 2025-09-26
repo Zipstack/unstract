@@ -159,7 +159,7 @@ wheels = [
 
 [[package]]
 name = "anthropic"
-version = "0.52.0"
+version = "0.64.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -305,7 +305,7 @@ wheels = [
 
 [[package]]
 name = "banks"
-version = "2.1.1"
+version = "2.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "deprecated" },
@@ -1119,14 +1119,13 @@ wheels = [
 
 [[package]]
 name = "httpx"
-version = "0.27.0"
+version = "0.28.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
     { name = "certifi" },
     { name = "httpcore" },
     { name = "idna" },
-    { name = "sniffio" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/5c/2d/3da5bdf4408b8b2800061c339f240c1802f2e82d55e50bd39c5a881f47f0/httpx-0.27.0.tar.gz", hash = "sha256:a0cb88a46f32dc874e04ee956e4c2764aba2aa228f650b06788ba6bda2962ab5", size = 126413, upload-time = "2024-02-21T13:07:52.434Z" }
 wheels = [
@@ -1337,7 +1336,7 @@ wheels = [
 
 [[package]]
 name = "llama-cloud"
-version = "0.1.17"
+version = "0.1.35"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
@@ -1351,18 +1350,14 @@ wheels = [
 
 [[package]]
 name = "llama-index"
-version = "0.12.39"
+version = "0.13.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "llama-index-agent-openai" },
     { name = "llama-index-cli" },
     { name = "llama-index-core" },
     { name = "llama-index-embeddings-openai" },
     { name = "llama-index-indices-managed-llama-cloud" },
     { name = "llama-index-llms-openai" },
-    { name = "llama-index-multi-modal-llms-openai" },
-    { name = "llama-index-program-openai" },
-    { name = "llama-index-question-gen-openai" },
     { name = "llama-index-readers-file" },
     { name = "llama-index-readers-llama-parse" },
     { name = "nltk" },
@@ -1388,7 +1383,7 @@ wheels = [
 
 [[package]]
 name = "llama-index-cli"
-version = "0.4.3"
+version = "0.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "llama-index-core" },
@@ -1402,7 +1397,7 @@ wheels = [
 
 [[package]]
 name = "llama-index-core"
-version = "0.12.40"
+version = "0.13.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1414,14 +1409,17 @@ dependencies = [
     { name = "filetype" },
     { name = "fsspec" },
     { name = "httpx" },
+    { name = "llama-index-workflows" },
     { name = "nest-asyncio" },
     { name = "networkx" },
     { name = "nltk" },
     { name = "numpy" },
     { name = "pillow" },
+    { name = "platformdirs" },
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "requests" },
+    { name = "setuptools" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "tenacity" },
     { name = "tiktoken" },
@@ -1437,7 +1435,7 @@ wheels = [
 
 [[package]]
 name = "llama-index-embeddings-azure-openai"
-version = "0.3.0"
+version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "llama-index-core" },
@@ -1451,7 +1449,7 @@ wheels = [
 
 [[package]]
 name = "llama-index-embeddings-bedrock"
-version = "0.5.0"
+version = "0.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aioboto3" },
@@ -1465,7 +1463,7 @@ wheels = [
 
 [[package]]
 name = "llama-index-embeddings-google"
-version = "0.3.0"
+version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "google-generativeai" },
@@ -1478,7 +1476,7 @@ wheels = [
 
 [[package]]
 name = "llama-index-embeddings-ollama"
-version = "0.5.0"
+version = "0.8.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "llama-index-core" },
@@ -1491,7 +1489,7 @@ wheels = [
 
 [[package]]
 name = "llama-index-embeddings-openai"
-version = "0.3.1"
+version = "0.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "llama-index-core" },
@@ -1504,7 +1502,7 @@ wheels = [
 
 [[package]]
 name = "llama-index-embeddings-vertex"
-version = "0.3.1"
+version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "google-cloud-aiplatform" },
@@ -1517,9 +1515,10 @@ wheels = [
 
 [[package]]
 name = "llama-index-indices-managed-llama-cloud"
-version = "0.6.11"
+version = "0.9.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "deprecated" },
     { name = "llama-cloud" },
     { name = "llama-index-core" },
 ]
@@ -1530,7 +1529,7 @@ wheels = [
 
 [[package]]
 name = "llama-index-llms-anthropic"
-version = "0.7.2"
+version = "0.8.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anthropic", extra = ["bedrock", "vertex"] },
@@ -1543,7 +1542,7 @@ wheels = [
 
 [[package]]
 name = "llama-index-llms-anyscale"
-version = "0.3.1"
+version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "llama-index-core" },
@@ -1556,7 +1555,7 @@ wheels = [
 
 [[package]]
 name = "llama-index-llms-azure-openai"
-version = "0.3.3"
+version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "azure-identity" },
@@ -1571,7 +1570,7 @@ wheels = [
 
 [[package]]
 name = "llama-index-llms-bedrock-converse"
-version = "0.7.1"
+version = "0.8.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aioboto3" },
@@ -1585,7 +1584,7 @@ wheels = [
 
 [[package]]
 name = "llama-index-llms-mistralai"
-version = "0.3.1"
+version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "llama-index-core" },
@@ -1598,7 +1597,7 @@ wheels = [
 
 [[package]]
 name = "llama-index-llms-ollama"
-version = "0.5.0"
+version = "0.7.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "llama-index-core" },
@@ -1611,7 +1610,7 @@ wheels = [
 
 [[package]]
 name = "llama-index-llms-openai"
-version = "0.4.1"
+version = "0.5.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "llama-index-core" },
@@ -1624,7 +1623,7 @@ wheels = [
 
 [[package]]
 name = "llama-index-llms-palm"
-version = "0.3.0"
+version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "google-generativeai" },
@@ -1637,7 +1636,7 @@ wheels = [
 
 [[package]]
 name = "llama-index-llms-replicate"
-version = "0.4.0"
+version = "0.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "llama-index-core" },
@@ -1649,7 +1648,7 @@ wheels = [
 
 [[package]]
 name = "llama-index-llms-vertex"
-version = "0.4.6"
+version = "0.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "google-cloud-aiplatform" },
@@ -1703,10 +1702,11 @@ wheels = [
 
 [[package]]
 name = "llama-index-readers-file"
-version = "0.4.7"
+version = "0.5.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "beautifulsoup4" },
+    { name = "defusedxml" },
     { name = "llama-index-core" },
     { name = "pandas" },
     { name = "pypdf" },
@@ -1719,7 +1719,7 @@ wheels = [
 
 [[package]]
 name = "llama-index-readers-llama-parse"
-version = "0.4.0"
+version = "0.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "llama-index-core" },
@@ -1732,7 +1732,7 @@ wheels = [
 
 [[package]]
 name = "llama-index-vector-stores-milvus"
-version = "0.4.0"
+version = "0.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "llama-index-core" },
@@ -1745,11 +1745,11 @@ wheels = [
 
 [[package]]
 name = "llama-index-vector-stores-pinecone"
-version = "0.4.2"
+version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "llama-index-core" },
-    { name = "pinecone-client" },
+    { name = "pinecone" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/40/9c/29aad886f1a6f78435ec224410816922924b09e7df7e74b06fbff727e41a/llama_index_vector_stores_pinecone-0.4.2.tar.gz", hash = "sha256:999acfadcf09fc17b7eac58410facf31cf49f4342b7a75d67886155d4ecfb9fd", size = 6807, upload-time = "2024-12-11T17:33:35.699Z" }
 wheels = [
@@ -1758,7 +1758,7 @@ wheels = [
 
 [[package]]
 name = "llama-index-vector-stores-postgres"
-version = "0.4.1"
+version = "0.6.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "asyncpg" },
@@ -1774,7 +1774,7 @@ wheels = [
 
 [[package]]
 name = "llama-index-vector-stores-qdrant"
-version = "0.4.2"
+version = "0.7.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "grpcio" },
@@ -1788,7 +1788,7 @@ wheels = [
 
 [[package]]
 name = "llama-index-vector-stores-weaviate"
-version = "1.3.1"
+version = "1.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "llama-index-core" },
@@ -1871,15 +1871,16 @@ wheels = [
 
 [[package]]
 name = "mistralai"
-version = "1.2.5"
+version = "1.9.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "eval-type-backport" },
     { name = "httpx" },
-    { name = "jsonpath-python" },
+    { name = "invoke" },
     { name = "pydantic" },
     { name = "python-dateutil" },
-    { name = "typing-inspect" },
+    { name = "pyyaml" },
+    { name = "typing-inspection" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/55/34/95efe73fd3cd0d5f3f0198b2bfc570dfe485aa5045100aa97fa176dcb653/mistralai-1.2.5.tar.gz", hash = "sha256:05d4130f79704e3b19c0b6320944a348547879fce6894feeb72d9e9d0ee65151", size = 132348, upload-time = "2024-12-04T15:33:24.464Z" }
 wheels = [
@@ -2007,7 +2008,7 @@ wheels = [
 
 [[package]]
 name = "ollama"
-version = "0.4.7"
+version = "0.5.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
@@ -2269,14 +2270,13 @@ wheels = [
 ]
 
 [[package]]
-name = "pinecone-client"
-version = "5.0.1"
+name = "pinecone"
+version = "7.0.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
-    { name = "pinecone-plugin-inference" },
     { name = "pinecone-plugin-interface" },
-    { name = "tqdm" },
+    { name = "python-dateutil" },
     { name = "typing-extensions" },
     { name = "urllib3" },
 ]
@@ -2452,7 +2452,7 @@ wheels = [
 
 [[package]]
 name = "pydantic"
-version = "2.11.1"
+version = "2.11.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-types" },
@@ -2467,7 +2467,7 @@ wheels = [
 
 [[package]]
 name = "pydantic-core"
-version = "2.33.0"
+version = "2.33.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "typing-extensions" },
@@ -2506,14 +2506,14 @@ crypto = [
 
 [[package]]
 name = "pymilvus"
-version = "2.4.9"
+version = "2.5.15"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "environs" },
     { name = "grpcio" },
     { name = "milvus-lite", marker = "sys_platform != 'win32'" },
     { name = "pandas" },
     { name = "protobuf" },
+    { name = "python-dotenv" },
     { name = "setuptools" },
     { name = "ujson" },
 ]
@@ -2589,7 +2589,7 @@ wheels = [
 
 [[package]]
 name = "python-dotenv"
-version = "1.0.0"
+version = "1.0.1"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/31/06/1ef763af20d0572c032fa22882cfbfb005fba6e7300715a37840858c919e/python-dotenv-1.0.0.tar.gz", hash = "sha256:a8df96034aae6d2d50a4ebe8216326c61c3eb64836776504fcca410e5937a3ba", size = 37399, upload-time = "2023-02-24T06:46:37.282Z" }
 wheels = [
@@ -2821,7 +2821,7 @@ wheels = [
 
 [[package]]
 name = "setuptools"
-version = "78.1.0"
+version = "80.9.0"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/a9/5a/0db4da3bc908df06e5efae42b44e75c81dd52716e10192ff36d0c1c8e379/setuptools-78.1.0.tar.gz", hash = "sha256:18fd474d4a82a5f83dac888df697af65afa82dec7323d09c3e37d1f14288da54", size = 1367827, upload-time = "2025-03-25T22:49:35.332Z" }
 wheels = [
@@ -3161,7 +3161,7 @@ test = [{ name = "pytest", specifier = ">=8.0.1" }]
 
 [[package]]
 name = "unstract-sdk"
-version = "0.76.1"
+version = "0.77.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filetype" },
@@ -3318,16 +3318,15 @@ wheels = [
 
 [[package]]
 name = "weaviate-client"
-version = "4.9.6"
+version = "4.16.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "authlib" },
+    { name = "deprecation" },
     { name = "grpcio" },
-    { name = "grpcio-health-checking" },
-    { name = "grpcio-tools" },
     { name = "httpx" },
+    { name = "protobuf" },
     { name = "pydantic" },
-    { name = "requests" },
     { name = "validators" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/5d/7d/3894d12065d006743271b0b6bcc3bf911910473e91179d5966966816d694/weaviate_client-4.9.6.tar.gz", hash = "sha256:56d67c40fc94b0d53e81e0aa4477baaebbf3646fbec26551df66e396a72adcb6", size = 696813, upload-time = "2024-12-03T13:15:55.876Z" }

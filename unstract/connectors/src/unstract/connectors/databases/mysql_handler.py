@@ -4,6 +4,7 @@ from typing import Any
 
 import pymysql.err as MysqlError
 
+from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.exceptions import (
     ColumnMissingException,
     InvalidSyntaxException,
@@ -15,24 +16,31 @@ logger = logging.getLogger(__name__)
 
 class MysqlHandler:
     @staticmethod
-    def sql_to_db_mapping(value: str) -> str:
+    def sql_to_db_mapping(value: Any, column_name: str | None = None) -> str:
         """Function to generate information schema of the corresponding table.
 
         Args:
-            table_name (str): db-connector table name
+            value (str): python datatype
+            column_name (str | None): name of the column being mapped
 
         Returns:
-            dict[str, str]: a dictionary contains db column name and
-            db column types of corresponding table
+            str: database columntype
         """
-        python_type = type(value)
+        data_type = type(value)
+
+        if data_type in (dict, list):
+            if column_name and column_name.endswith("_v2"):
+                return str(DatabaseTypeConstants.MYSQL_JSON)
+            else:
+                return str(DatabaseTypeConstants.MYSQL_LONGTEXT)
+
         mapping = {
-            str: "LONGTEXT",
-            int: "BIGINT",
-            float: "FLOAT",
-            datetime.datetime: "TIMESTAMP",
+            str: DatabaseTypeConstants.MYSQL_LONGTEXT,
+            int: DatabaseTypeConstants.MYSQL_BIGINT,
+            float: DatabaseTypeConstants.MYSQL_FLOAT,
+            datetime.datetime: DatabaseTypeConstants.MYSQL_TIMESTAMP,
         }
-        return mapping.get(python_type, "LONGTEXT")
+        return str(mapping.get(data_type, DatabaseTypeConstants.MYSQL_LONGTEXT))
 
     @staticmethod
     def execute_query(

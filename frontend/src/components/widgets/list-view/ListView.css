@@ -6,7 +6,7 @@
   width: 70%;
   min-width: 800px;
   max-width: 1400px;
-  padding: 0px 10px;
+  padding: 0px 10px 40px 10px;
 }
 
 .list-view-item {
@@ -22,12 +22,19 @@
   overflow: hidden;
 }
 
+.action-button-container {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding-right: 12px;
+}
+
 .action-icon-buttons {
   font-size: 18px;
-  margin-left: 20px;
   z-index: 20;
   color: #092c4c;
-  flex: content;
+  cursor: pointer;
+  transition: color 0.2s ease;
 }
 
 .cur-pointer .ant-list-item-meta {
@@ -92,9 +99,6 @@
   padding-bottom: 10px;
 }
 
-.edit-icon {
-  margin-right: 10px;
-}
 
 .edit-icon:hover {
   color: #1890ff;
@@ -102,4 +106,8 @@
 
 .delete-icon:hover {
   color: #ff4d4f;
+}
+
+.share-icon:hover {
+  color: #1890ff;
 }
