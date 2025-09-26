@@ -292,7 +292,6 @@ function ApiDeployment() {
       };
       setSelectedRow(updatedSelectedRow);
     } catch (err) {
-      console.error("Error fetching sharing data:", err);
       setAlertDetails(
         handleException(err, `Unable to fetch sharing information`)
       );
