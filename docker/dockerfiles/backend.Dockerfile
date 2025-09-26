@@ -1,5 +1,5 @@
 # Use a specific version of Python slim image
-FROM python:3.12.9-slim AS base
+FROM python:3.12-slim-trixie AS base
 
 ARG VERSION=dev
 LABEL maintainer="Zipstack Inc." \
@@ -22,13 +22,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Install system dependencies
 RUN apt-get update \
     && apt-get --no-install-recommends install -y \
-       build-essential \
-       freetds-dev \
-       git \
-       libkrb5-dev \
-       libmagic-dev \
-       libssl-dev \
-       pkg-config \
+    build-essential \
+    freetds-dev \
+    git \
+    libkrb5-dev \
+    libmagic-dev \
+    libssl-dev \
+    pkg-config \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 # Install uv package manager
