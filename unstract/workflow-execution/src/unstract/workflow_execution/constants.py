@@ -46,6 +46,7 @@ class MetaDataKey:
     TOOL_METADATA = "tool_metadata"
     TAGS = "tags"
     LLM_PROFILE_ID = "llm_profile_id"
+    CUSTOM_DATA = "custom_data"
 
 
 class ToolMetadataKey:

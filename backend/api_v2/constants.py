@@ -11,3 +11,4 @@ class ApiExecution:
     LLM_PROFILE_ID: str = "llm_profile_id"
     HITL_QUEUE_NAME: str = "hitl_queue_name"
     PRESIGNED_URLS: str = "presigned_urls"
+    CUSTOM_DATA: str = "custom_data"

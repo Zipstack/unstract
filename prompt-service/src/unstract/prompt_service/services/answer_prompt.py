@@ -317,7 +317,7 @@ class AnswerPromptService:
                         "prompt_key": prompt_key,
                         "doc_name": doc_name,
                     },
-                    LogLevel.WARNING,
+                    LogLevel.WARN,
                     RunLevel.RUN,
                     "Unable to parse JSON response from LLM, try using our"
                     " cloud / enterprise feature 'record' or 'table' type",
