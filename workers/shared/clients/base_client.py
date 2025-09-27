@@ -97,7 +97,10 @@ class BaseAPIClient:
         self.config = config or WorkerConfig()
         self.base_url = self.config.internal_api_base_url
         self.api_key = self.config.internal_api_key
-        self.organization_id = self.config.organization_id
+
+        # Organization ID is set dynamically via set_organization_context()
+        # It comes from task context, not from configuration
+        self.organization_id = None
 
         # Initialize requests session with retry strategy
         self.session = requests.Session()

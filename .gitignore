@@ -6,7 +6,8 @@
 # list Exceptional files with ! like !fix-and-test.sh
 !run-platform.sh
 !workers/run-worker.sh
-!workers/workers/run-worker-docker.sh
+!workers/run-worker-docker.sh
+!workers/log_consumer/scheduler.sh
 
 ### Django ###
 *.log

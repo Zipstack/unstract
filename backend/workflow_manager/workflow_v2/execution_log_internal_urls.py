@@ -14,11 +14,6 @@ app_name = "execution_log_internal"
 urlpatterns = [
     # Execution log management endpoints
     path(
-        "execution-logs/bulk-create/",
-        execution_log_internal_views.BulkCreateExecutionLogsAPIView.as_view(),
-        name="bulk_create_execution_logs",
-    ),
-    path(
         "workflow-executions/by-ids/",
         execution_log_internal_views.GetWorkflowExecutionsByIdsAPIView.as_view(),
         name="get_workflow_executions_by_ids",
@@ -34,8 +29,8 @@ urlpatterns = [
         name="validate_execution_references",
     ),
     path(
-        "cache/log-batch/",
-        execution_log_internal_views.GetCacheLogBatchAPIView.as_view(),
-        name="get_cache_log_batch",
+        "process-log-history/",
+        execution_log_internal_views.ProcessLogHistoryAPIView.as_view(),
+        name="process_log_history",
     ),
 ]

@@ -16,6 +16,8 @@ dependencies = [
     "urllib3>=1.26.0", # HTTP utilities and retry strategies
     "httpx>=0.27.0", # Async HTTP client
     "python-dotenv>=1.0.0,<2.0.0", # Environment variable loading
+    # WebSocket support for log consumer
+    "python-socketio>=5.9.0", # Socket.IO client for emitting log events
     # Monitoring and system utilities
     "prometheus-client>=0.17.0,<1.0.0", # Metrics collection
     "psutil>=5.9.0,<6.0.0", # System resource monitoring

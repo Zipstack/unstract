@@ -141,6 +141,10 @@ class CacheService:
         return redis_cache.lpop(key)
 
     @staticmethod
+    def llen(key: str) -> int:
+        return redis_cache.llen(key)
+
+    @staticmethod
     def lrem(key: str, value: str) -> None:
         redis_cache.lrem(key, value)
 

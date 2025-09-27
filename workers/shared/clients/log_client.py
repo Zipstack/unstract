@@ -5,9 +5,8 @@ direct Django ORM dependencies.
 """
 
 import logging
-from typing import Any
 
-from ..data.response_models import APIResponse, BatchOperationResponse
+from ..data.response_models import APIResponse
 from .base_client import BaseAPIClient
 
 logger = logging.getLogger(__name__)
@@ -15,54 +14,6 @@ logger = logging.getLogger(__name__)
 
 class LogAPIClient(BaseAPIClient):
     """Client for log-related operations through internal APIs."""
-
-    def create_execution_logs_bulk(
-        self, logs_data: list[dict[str, Any]]
-    ) -> BatchOperationResponse:
-        """Create execution logs in bulk via internal API.
-
-        Args:
-            logs_data: List of log data dictionaries containing:
-                - execution_id: String ID of the workflow execution
-                - file_execution_id: String ID of the file execution (optional)
-                - data: Log data dictionary
-                - event_time: Timestamp of the log event
-                - organization_id: Organization ID for the logs
-
-        Returns:
-            BatchOperationResponse containing creation results
-        """
-        try:
-            # Use _make_request directly to specify a longer timeout for bulk operations
-            response_data = self._make_request(
-                method="POST",
-                endpoint="/v1/execution-logs/execution-logs/bulk-create/",
-                data={"logs": logs_data},
-                timeout=300,  # Longer timeout for bulk operations
-            )
-
-            created_count = response_data.get("created_count", 0)
-            total_logs = response_data.get("total_logs", len(logs_data))
-            failed_count = total_logs - created_count
-
-            logger.info(
-                f"Successfully created {created_count}/{total_logs} execution logs"
-            )
-
-            return BatchOperationResponse.success_response(
-                successful_items=created_count,
-                total_items=total_logs,
-                failed_items=failed_count,
-                message=f"Bulk created {created_count} execution logs",
-            )
-
-        except Exception as e:
-            logger.error(f"Exception creating execution logs: {e}")
-            return BatchOperationResponse.error_response(
-                total_items=len(logs_data),
-                errors=[str(e)],
-                message="Failed to create execution logs",
-            )
 
     def get_workflow_executions(self, execution_ids: list[str]) -> APIResponse:
         """Get workflow execution data for given IDs.

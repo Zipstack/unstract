@@ -567,8 +567,8 @@ def _handle_notifications_unified(
     status: str,
     organization_id: str,
     execution_id: str,
-    pipeline_id: str | None,
-    workflow_id: str | None,
+    pipeline_id: str | None = None,
+    workflow_id: str | None = None,
     pipeline_name: str | None = None,
     pipeline_type: str | None = None,
     error_message: str | None = None,
@@ -590,40 +590,37 @@ def _handle_notifications_unified(
         Notification result dictionary
     """
     try:
-        # Try to trigger notifications using workflow_id if pipeline_id is None
-        notification_target_id = pipeline_id if pipeline_id else workflow_id
-
-        if notification_target_id:
-            logger.info(
-                f"Triggering notifications for target_id={notification_target_id} (execution completed)"
-            )
-
-            # Ensure organization context is set for notification requests
-            api_client.set_organization_context(organization_id)
-
-            handle_status_notifications(
-                api_client=api_client,
-                pipeline_id=notification_target_id,
-                status=status,
-                execution_id=execution_id,
-                error_message=error_message,
-                pipeline_name=pipeline_name,
-                pipeline_type=pipeline_type,
-                organization_id=organization_id,
-            )
-
-            return {
-                "status": "completed",
-                "target_id": notification_target_id,
-                "message": "Notifications sent successfully",
-            }
-        else:
-            logger.info("No target ID available for notifications")
+        if not pipeline_id:
+            logger.warning("No pipeline_id provided - skipping notifications")
             return {
                 "status": "skipped",
-                "reason": "no_target_id",
-                "message": "No notification target available",
+                "reason": "no_pipeline_id",
+                "message": "No pipeline_id available for notifications",
             }
+
+        logger.info(
+            f"Triggering notifications for target_id={pipeline_id} (execution completed)"
+        )
+
+        # Ensure organization context is set for notification requests
+        api_client.set_organization_context(organization_id)
+
+        handle_status_notifications(
+            api_client=api_client,
+            pipeline_id=pipeline_id,
+            status=status,
+            execution_id=execution_id,
+            error_message=error_message,
+            pipeline_name=pipeline_name,
+            pipeline_type=pipeline_type,
+            organization_id=organization_id,
+        )
+
+        return {
+            "status": "completed",
+            "target_id": pipeline_id,
+            "message": "Notifications sent successfully",
+        }
 
     except Exception as notif_error:
         logger.warning(f"Failed to trigger completion notifications: {notif_error}")

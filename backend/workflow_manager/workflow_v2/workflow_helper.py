@@ -780,9 +780,9 @@ class WorkflowHelper:
             ):
                 raise InvalidRequest(WorkflowErrors.INVALID_EXECUTION_ID)
             result: ExecutionResponse = WorkflowHelper.execute_workflow_async(
-                workflow_id=str(workflow.id),
-                pipeline_id=str(pipeline_id),
-                execution_id=str(execution_id),
+                workflow_id=str(workflow.id) if workflow else None,
+                pipeline_id=str(pipeline_id) if pipeline_id else None,
+                execution_id=str(execution_id) if execution_id else None,
                 hash_values_of_files=hash_values_of_files,
                 use_file_history=use_file_history,
             )

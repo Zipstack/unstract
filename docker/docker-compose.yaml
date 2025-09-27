@@ -309,7 +309,8 @@ services:
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-file-processing-v2
     restart: unless-stopped
-    command: ["file-processing"]
+    # command: ["file-processing"]
+    command: [".venv/bin/celery", "-A", "worker", "worker", "--queues=file_processing,api_file_processing,file_processing_priority", "--loglevel=INFO", "--pool=prefork", "--concurrency=20", "--prefetch-multiplier=1", "--without-gossip", "--without-mingle", "--without-heartbeat"]
     ports:
       - "8087:8082"
     env_file:
@@ -471,6 +472,31 @@ services:
     volumes:
       - ./workflow_data:/data
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+    profiles:
+      - workers-v2
+
+  worker-log-history-scheduler-v2:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-log-history-scheduler-v2
+    restart: unless-stopped
+    entrypoint: ["/bin/bash"]
+    command: ["/app/log_consumer/scheduler.sh"]
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+      - rabbitmq
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-log-history-scheduler-v2
+      # Scheduler interval in seconds
+      - LOG_HISTORY_CONSUMER_INTERVAL=${LOG_HISTORY_CONSUMER_INTERVAL:-5}
+      # Override example: TASK_TRIGGER_COMMAND=/custom/trigger/script.sh
+      - TASK_TRIGGER_COMMAND=${TASK_TRIGGER_COMMAND:-}
+    labels:
+      - traefik.enable=false
     profiles:
       - workers-v2
 

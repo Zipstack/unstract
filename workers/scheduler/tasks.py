@@ -364,6 +364,5 @@ def health_check() -> dict[str, Any]:
         "api": api_status,
         "config": {
             "queue": config.queue_name,
-            "organization_id": config.organization_id,
         },
     }

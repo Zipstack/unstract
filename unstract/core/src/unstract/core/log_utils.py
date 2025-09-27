@@ -6,6 +6,7 @@ backend Django services and worker processes for consistent log handling.
 
 import json
 import logging
+import os
 from typing import Any
 
 import redis
@@ -78,7 +79,10 @@ def store_execution_log(
     log_queue_name: str,
     is_enabled: bool = True,
 ) -> None:
-    """Store execution log in Redis queue.
+    """Store execution log in Redis queue with automatic size protection.
+
+    Protects against memory overflow by capping queue at configurable maximum size.
+    When limit is reached, new logs are dropped to prevent queue overflow.
 
     Args:
         data: Execution log data
@@ -91,8 +95,25 @@ def store_execution_log(
 
     try:
         log_data = get_validated_log_data(json_data=data)
-        if log_data:
-            redis_client.rpush(log_queue_name, log_data.to_json())
+        if not log_data:
+            return
+
+        # Get max queue size from environment (default: 10,000 logs ~10MB)
+        max_queue_size = int(os.getenv("LOG_QUEUE_MAX_SIZE", "10000"))
+
+        # Check if queue is at limit (O(1) operation)
+        queue_length = redis_client.llen(log_queue_name)
+
+        if queue_length >= max_queue_size:
+            logger.warning(
+                f"Log queue '{log_queue_name}' at capacity ({max_queue_size}), "
+                "dropping current log - scheduler may be falling behind"
+            )
+            return
+
+        # Add new log to end of queue (O(1) operation)
+        redis_client.rpush(log_queue_name, log_data.to_json())
+
     except Exception as e:
         logger.error(f"Error storing execution log: {e}")
 

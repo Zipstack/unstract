@@ -113,16 +113,10 @@ class WorkerConfig:
 
     # Internal API Configuration (matches backend patterns)
     internal_api_base_url: str = field(
-        default_factory=lambda: os.getenv(
-            "INTERNAL_API_BASE_URL",
-            os.getenv("DJANGO_APP_BACKEND_URL", "http://unstract-backend:8000")
-            + "/internal",
-        )
+        default_factory=lambda: os.getenv("INTERNAL_API_BASE_URL") or ""
     )
     internal_api_key: str = field(
-        default_factory=lambda: os.getenv(
-            "INTERNAL_SERVICE_API_KEY", "dev-internal-key-123"
-        )
+        default_factory=lambda: os.getenv("INTERNAL_SERVICE_API_KEY") or ""
     )
 
     # Celery Broker Configuration (matches backend/settings/base.py exactly)
@@ -171,24 +165,16 @@ class WorkerConfig:
         default_factory=lambda: os.getenv("CACHE_REDIS_ENABLED", "true").lower() == "true"
     )
     cache_redis_host: str = field(
-        default_factory=lambda: os.getenv(
-            "CACHE_REDIS_HOST", os.getenv("REDIS_HOST", "localhost")
-        )
+        default_factory=lambda: os.getenv("CACHE_REDIS_HOST", "localhost")
     )
     cache_redis_port: int = field(
-        default_factory=lambda: int(
-            os.getenv("CACHE_REDIS_PORT", os.getenv("REDIS_PORT", "6379"))
-        )
+        default_factory=lambda: int(os.getenv("CACHE_REDIS_PORT", "6379"))
     )
     cache_redis_db: int = field(
-        default_factory=lambda: int(
-            os.getenv("CACHE_REDIS_DB", os.getenv("REDIS_DB", "1"))
-        )  # Default to DB 1 (separate from Celery DB 0)
+        default_factory=lambda: int(os.getenv("CACHE_REDIS_DB", "1"))
     )
     cache_redis_password: str = field(
-        default_factory=lambda: os.getenv(
-            "CACHE_REDIS_PASSWORD", os.getenv("REDIS_PASSWORD", "")
-        )
+        default_factory=lambda: os.getenv("CACHE_REDIS_PASSWORD", "")
     )
     cache_redis_username: str = field(
         default_factory=lambda: os.getenv("CACHE_REDIS_USERNAME", "")
@@ -214,11 +200,6 @@ class WorkerConfig:
     )
     worker_instance_id: str = field(
         default_factory=lambda: os.getenv("HOSTNAME", "unknown")
-    )
-
-    # Organization Context
-    organization_id: str | None = field(
-        default_factory=lambda: os.getenv("ORGANIZATION_ID")
     )
 
     # API Client Settings

@@ -52,12 +52,11 @@ class WorkflowOrchestrationUtils:
                 kwargs=callback_kwargs,
                 queue=callback_queue,
             )
-
             # For zero files, skip chord entirely - parent should handle status updates directly
             if not batch_tasks:
                 # Extract execution_id from callback kwargs for logging
-                execution_id = callback_kwargs.get("execution_id", "unknown")
-                pipeline_id = callback_kwargs.get("pipeline_id", "unknown")
+                execution_id = callback_kwargs.get("execution_id")
+                pipeline_id = callback_kwargs.get("pipeline_id")
                 logger.info(
                     f"[exec:{execution_id}] [pipeline:{pipeline_id}] Zero batch tasks detected - skipping chord execution "
                     f"(parent should handle pipeline status updates directly)"

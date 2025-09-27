@@ -13,7 +13,9 @@ def build_internal_endpoint(endpoint: str) -> str:
     """Build internal API endpoint URL - simplified to avoid circular imports."""
     import os
 
-    base_url = os.getenv("INTERNAL_API_BASE_URL", "http://localhost:8000")
+    base_url = os.getenv("INTERNAL_API_BASE_URL")
+    if not base_url:
+        raise ValueError("INTERNAL_API_BASE_URL environment variable not set")
     return f"{base_url.rstrip('/')}/{endpoint.lstrip('/')}"
 
 

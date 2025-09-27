@@ -534,7 +534,7 @@ def _execute_general_workflow(
         )
 
         logger.info(
-            f"Starting real workflow execution for workflow {workflow_context.workflow_id}, execution {workflow_context.execution_id}, organization_id={workflow_context.organization_context.organization_id}"
+            f"Starting real workflow execution for pipeline {pipeline_id}, workflow {workflow_id}, execution {execution_id}, organization_id={org_context.organization_id}"
         )
 
         # For ETL/TASK workflows, we need to:
