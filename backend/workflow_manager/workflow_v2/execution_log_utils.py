@@ -16,15 +16,35 @@ from workflow_manager.workflow_v2.models import ExecutionLog, WorkflowExecution
 logger = logging.getLogger(__name__)
 
 
-@shared_task(name=ExecutionLogConstants.TASK_V2)
-def consume_log_history() -> None:
+def process_log_history_from_cache(
+    queue_name: str = ExecutionLogConstants.LOG_QUEUE_NAME,
+    batch_limit: int = ExecutionLogConstants.LOGS_BATCH_LIMIT,
+) -> dict:
+    """Process log history from Redis cache.
+
+    This function contains the core business logic for processing execution logs
+    from Redis cache to database. It can be called by both the Celery task and
+    internal API endpoints.
+
+    Args:
+        queue_name: Redis queue name to process logs from
+        batch_limit: Maximum number of logs to process in one batch
+
+    Returns:
+        Dictionary with processing results:
+        - processed_count: Number of logs successfully stored
+        - skipped_count: Number of logs skipped (invalid references)
+        - total_logs: Total number of logs retrieved from cache
+        - organizations_processed: Number of organizations affected
+    """
     organization_logs = defaultdict(list)
     logs_count = 0
     logs_to_process = []
+    skipped_count = 0
 
     # Collect logs from cache (batch retrieval)
-    while logs_count < ExecutionLogConstants.LOGS_BATCH_LIMIT:
-        log = CacheService.lpop(ExecutionLogConstants.LOG_QUEUE_NAME)
+    while logs_count < batch_limit:
+        log = CacheService.lpop(queue_name)
         if not log:
             break
 
@@ -34,9 +54,14 @@ def consume_log_history() -> None:
             logs_count += 1
 
     if not logs_to_process:
-        return  # No logs to process
+        return {
+            "processed_count": 0,
+            "skipped_count": 0,
+            "total_logs": 0,
+            "organizations_processed": 0,
+        }
 
-    logger.info(f"Logs count: {logs_count}")
+    logger.info(f"Processing {logs_count} logs from queue '{queue_name}'")
 
     # Preload required WorkflowExecution and WorkflowFileExecution objects
     execution_ids = {log.execution_id for log in logs_to_process}
@@ -60,7 +85,8 @@ def consume_log_history() -> None:
                 f"Execution not found for execution_id: {log_data.execution_id}, "
                 "skipping log push"
             )
-            continue  # Skip logs with missing execution reference
+            skipped_count += 1
+            continue
 
         execution_log = ExecutionLog(
             wf_execution=execution,
@@ -69,16 +95,42 @@ def consume_log_history() -> None:
         )
 
         if log_data.file_execution_id:
-            execution_log.file_execution = file_execution_map.get(
-                log_data.file_execution_id
-            )
+            file_execution = file_execution_map.get(log_data.file_execution_id)
+            if file_execution:
+                execution_log.file_execution = file_execution
+            else:
+                logger.warning(
+                    f"File execution not found for file_execution_id: {log_data.file_execution_id}, "
+                    "skipping log push"
+                )
+                skipped_count += 1
+                continue
 
         organization_logs[log_data.organization_id].append(execution_log)
 
     # Bulk insert logs for each organization
+    processed_count = 0
     for organization_id, logs in organization_logs.items():
-        logger.info(f"Storing '{len(logs)}' logs for org: {organization_id}")
+        logger.info(f"Storing {len(logs)} logs for org: {organization_id}")
         ExecutionLog.objects.bulk_create(objs=logs, ignore_conflicts=True)
+        processed_count += len(logs)
+
+    return {
+        "processed_count": processed_count,
+        "skipped_count": skipped_count,
+        "total_logs": logs_count,
+        "organizations_processed": len(organization_logs),
+    }
+
+
+@shared_task(name=ExecutionLogConstants.TASK_V2)
+def consume_log_history() -> None:
+    """Celery task to consume log history from Redis cache.
+
+    This task is a thin wrapper around process_log_history_from_cache() for
+    backward compatibility with existing Celery Beat schedules.
+    """
+    process_log_history_from_cache()
 
 
 def create_log_consumer_scheduler_if_not_exists() -> None:

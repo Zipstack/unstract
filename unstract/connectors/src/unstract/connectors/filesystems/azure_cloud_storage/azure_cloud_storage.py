@@ -5,7 +5,7 @@ from email.utils import parsedate_to_datetime
 from typing import Any
 
 import azure.core.exceptions as AzureException
-from adlfs import AzureBlobFileSystem
+from fsspec import AbstractFileSystem
 
 from unstract.connectors.exceptions import AzureHttpError
 from unstract.connectors.filesystems.azure_cloud_storage.exceptions import (
@@ -14,7 +14,17 @@ from unstract.connectors.filesystems.azure_cloud_storage.exceptions import (
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 from unstract.filesystem import FileStorageType, FileSystem
 
+# Suppress verbose Azure SDK HTTP request/response logging
 logging.getLogger("azurefs").setLevel(logging.ERROR)
+logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(
+    logging.WARNING
+)
+logging.getLogger("azure.storage.blob").setLevel(logging.WARNING)
+logging.getLogger("azure.storage").setLevel(logging.WARNING)
+logging.getLogger("azure.core").setLevel(logging.WARNING)
+# Keep ADLFS filesystem errors visible but suppress HTTP noise
+logging.getLogger("adlfs").setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 
@@ -23,6 +33,8 @@ class AzureCloudStorageFS(UnstractFileSystem):
         INVALID_PATH = "The specifed resource name contains invalid characters."
 
     def __init__(self, settings: dict[str, Any]):
+        from adlfs import AzureBlobFileSystem
+
         super().__init__("AzureCloudStorageFS")
         account_name = settings.get("account_name", "")
         access_key = settings.get("access_key", "")
@@ -70,7 +82,7 @@ class AzureCloudStorageFS(UnstractFileSystem):
     def can_read() -> bool:
         return True
 
-    def get_fsspec_fs(self) -> AzureBlobFileSystem:
+    def get_fsspec_fs(self) -> AbstractFileSystem:
         return self.azure_fs
 
     def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> str | None:

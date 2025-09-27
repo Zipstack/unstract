@@ -562,7 +562,6 @@ SOCIAL_AUTH_GOOGLE_OAUTH2_AUTH_EXTRA_ARGUMENTS = {
 }
 SOCIAL_AUTH_GOOGLE_OAUTH2_USE_UNIQUE_USER_ID = True
 
-
 # Always keep this line at the bottom of the file.
 if missing_settings:
     ERROR_MESSAGE = "Below required settings are missing.\n" + ",\n".join(
