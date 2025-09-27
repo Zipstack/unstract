@@ -20,13 +20,8 @@ if os.path.exists(env_path):
 class DefaultConfig:
     """Default configuration values for workers."""
 
-    # Task timeouts (in seconds) - Higher defaults for production stability
-    DEFAULT_TASK_TIMEOUT = 7200  # 2 hours - safer for complex workflows
-    DEFAULT_TASK_SOFT_TIMEOUT = 6300  # 1h 45m (gives 15 minutes for cleanup)
-    FILE_PROCESSING_TIMEOUT = 7200  # 2 hours - handles large files and complex processing
-    FILE_PROCESSING_SOFT_TIMEOUT = 6300  # 1h 45m (gives 15 minutes for cleanup)
-    CALLBACK_TIMEOUT = 3600  # 1 hour - callbacks are usually faster
-    CALLBACK_SOFT_TIMEOUT = 3300  # 55 minutes (gives 5 minutes for cleanup)
+    # Task timeouts moved to WorkerSettings._get_worker_specific_timeout_defaults()
+    # and configured via environment variables (TASK_TIME_LIMIT, TASK_SOFT_TIME_LIMIT, etc.)
     WEBHOOK_TIMEOUT = 30  # 30 seconds (keep short for webhooks)
 
     # Retry configuration
@@ -283,36 +278,12 @@ class WorkerConfig:
         == "true"
     )
 
-    # Simplified Task Timeout Settings (in seconds) - Direct timeout configuration
-
-    # File Processing Task Timeouts - Handles large files and complex processing
-    file_processing_timeout: int = field(
-        default_factory=lambda: int(
-            os.getenv(
-                "FILE_PROCESSING_TIMEOUT", str(DefaultConfig.FILE_PROCESSING_TIMEOUT)
-            )
-        )
-    )
-    file_processing_soft_timeout: int = field(
-        default_factory=lambda: int(
-            os.getenv(
-                "FILE_PROCESSING_SOFT_TIMEOUT",
-                str(DefaultConfig.FILE_PROCESSING_SOFT_TIMEOUT),
-            )
-        )
-    )
-
-    # Callback Task Timeouts - Processes results, usually faster than file processing
-    callback_timeout: int = field(
-        default_factory=lambda: int(
-            os.getenv("CALLBACK_TIMEOUT", str(DefaultConfig.CALLBACK_TIMEOUT))
-        )
-    )
-    callback_soft_timeout: int = field(
-        default_factory=lambda: int(
-            os.getenv("CALLBACK_SOFT_TIMEOUT", str(DefaultConfig.CALLBACK_SOFT_TIMEOUT))
-        )
-    )
+    # Task Timeout Settings (in seconds)
+    # NOTE: Task timeouts are now configured via Celery's standard naming convention:
+    #   - General: TASK_TIME_LIMIT, TASK_SOFT_TIME_LIMIT
+    #   - Worker-specific: {WORKER_TYPE}_TASK_TIME_LIMIT, {WORKER_TYPE}_TASK_SOFT_TIME_LIMIT
+    # Examples: FILE_PROCESSING_TASK_TIME_LIMIT, CALLBACK_TASK_SOFT_TIME_LIMIT
+    # These are handled by WorkerSettings.get_celery_config() automatically
 
     # Monitoring Settings
     enable_metrics: bool = field(

@@ -14,6 +14,7 @@ import uuid
 from typing import Any
 
 import requests
+from celery.exceptions import SoftTimeLimitExceeded
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -352,6 +353,14 @@ class BaseAPIClient:
 
             except (AuthenticationError, APIRequestError):
                 # Re-raise these without retrying
+                raise
+
+            except SoftTimeLimitExceeded:
+                # Don't wrap Celery timeout - let it propagate for graceful task shutdown
+                logger.warning(
+                    f"Task soft time limit exceeded during API request to {endpoint}. "
+                    "Task should begin cleanup."
+                )
                 raise
 
             except Exception as e:

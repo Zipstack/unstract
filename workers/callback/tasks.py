@@ -68,17 +68,6 @@ class CallbackContext:
         self.api_client: InternalAPIClient | None = None
 
 
-def _get_callback_timeouts():
-    """Get callback timeout values from configuration.
-
-    Returns tuple of (hard_timeout, soft_timeout) in seconds.
-    """
-    from shared.infrastructure.config import WorkerConfig
-
-    config = WorkerConfig()
-    return config.callback_timeout, config.callback_soft_timeout
-
-
 def _initialize_performance_managers():
     """Initialize performance optimization managers once per worker process."""
     global _performance_managers_initialized
@@ -1371,12 +1360,7 @@ def _process_batch_callback_core(
     name=TaskName.PROCESS_BATCH_CALLBACK,
     max_retries=0,  # Match Django backend pattern
     ignore_result=False,  # Match Django backend pattern
-    task_time_limit=_get_callback_timeouts()[
-        0
-    ],  # Configurable hard timeout (default: 1 hour)
-    task_soft_time_limit=_get_callback_timeouts()[
-        1
-    ],  # Configurable soft timeout (default: 55 minutes)
+    # Timeout inherited from global Celery config (CALLBACK_TASK_TIME_LIMIT env var)
 )
 @monitor_performance
 @circuit_breaker(failure_threshold=5, recovery_timeout=120.0)
@@ -1403,12 +1387,7 @@ def process_batch_callback(self, results, *args, **kwargs) -> dict[str, Any]:
     retry_backoff=True,
     retry_backoff_max=300,
     retry_jitter=True,
-    task_time_limit=_get_callback_timeouts()[
-        0
-    ],  # Configurable hard timeout (default: 1 hour)
-    task_soft_time_limit=_get_callback_timeouts()[
-        1
-    ],  # Configurable soft timeout (default: 55 minutes)
+    # Timeout inherited from global Celery config (CALLBACK_TASK_TIME_LIMIT env var)
 )
 @monitor_performance
 @circuit_breaker(failure_threshold=5, recovery_timeout=120.0)

@@ -20,7 +20,6 @@ from shared.constants import Account
 from shared.enums import ErrorType
 from shared.enums.task_enums import TaskName
 from shared.infrastructure import create_api_client
-from shared.infrastructure.config import WorkerConfig
 from shared.infrastructure.context import StateStore
 from shared.infrastructure.logging import (
     WorkerLogger,
@@ -103,15 +102,6 @@ def _process_file_batch_core(
     return _compile_batch_result(context)
 
 
-def _get_file_processing_timeouts():
-    """Get file processing timeout values from configuration.
-
-    Returns tuple of (hard_timeout, soft_timeout) in seconds.
-    """
-    config = WorkerConfig()
-    return config.file_processing_timeout, config.file_processing_soft_timeout
-
-
 @app.task(
     bind=True,
     name=TaskName.PROCESS_FILE_BATCH,
@@ -121,12 +111,7 @@ def _get_file_processing_timeouts():
     retry_backoff_max=500,  # Match Django backend
     retry_jitter=True,
     default_retry_delay=5,  # Match Django backend
-    task_time_limit=_get_file_processing_timeouts()[
-        0
-    ],  # Configurable hard timeout (default: 1 hour)
-    task_soft_time_limit=_get_file_processing_timeouts()[
-        1
-    ],  # Configurable soft timeout (default: 55 minutes)
+    # Timeout inherited from global Celery config (FILE_PROCESSING_TASK_TIME_LIMIT env var)
 )
 @monitor_performance
 def process_file_batch(self, file_batch_data: dict[str, Any]) -> dict[str, Any]:
@@ -965,12 +950,7 @@ def _process_file(
     retry_backoff_max=500,
     retry_jitter=True,
     default_retry_delay=5,
-    task_time_limit=_get_file_processing_timeouts()[
-        0
-    ],  # Configurable hard timeout (default: 1 hour)
-    task_soft_time_limit=_get_file_processing_timeouts()[
-        1
-    ],  # Configurable soft timeout (default: 55 minutes)
+    # Timeout inherited from global Celery config (FILE_PROCESSING_TASK_TIME_LIMIT env var)
 )
 @monitor_performance
 def process_file_batch_api(

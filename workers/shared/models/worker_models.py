@@ -331,6 +331,24 @@ class WorkerCeleryConfig:
     # Task annotations (for task-specific settings like retry policies)
     task_annotations: dict[str, dict[str, Any]] = field(default_factory=dict)
 
+    def _get_worker_specific_timeout_defaults(self) -> tuple[int, int]:
+        """Get worker-specific timeout defaults.
+
+        Returns static defaults based on worker type that will be overridden
+        by environment variables like FILE_PROCESSING_TASK_TIME_LIMIT.
+
+        Returns:
+            tuple[int, int]: (hard_timeout, soft_timeout) in seconds
+        """
+        # Worker-specific defaults (will be overridden by env vars)
+        if self.worker_type == WorkerType.FILE_PROCESSING:
+            return 7200, 6300  # 2 hours / 1h 45m (large files)
+        elif self.worker_type == WorkerType.CALLBACK:
+            return 3600, 3300  # 1 hour / 55 min
+        else:
+            # Conservative defaults for other workers
+            return 3600, 3300  # 1 hour / 55 min
+
     def to_celery_dict(self, broker_url: str, result_backend: str) -> dict[str, Any]:
         """Generate complete Celery configuration dictionary with hierarchical resolution.
 
@@ -385,18 +403,19 @@ class WorkerCeleryConfig:
             "worker_disable_rate_limits": get_celery_setting(
                 "DISABLE_RATE_LIMITS", self.worker_type, False, bool
             ),
-            # Timeouts (configurable from env with conservative defaults)
+            # Timeouts (configurable from env with worker-specific defaults)
+            # Falls back to task-specific timeout env vars (FILE_PROCESSING_TIMEOUT, etc.)
             "task_time_limit": get_celery_setting(
                 "TASK_TIME_LIMIT",
                 self.worker_type,
-                300,
-                int,  # 5 minutes default
+                self._get_worker_specific_timeout_defaults()[0],
+                int,
             ),
             "task_soft_time_limit": get_celery_setting(
                 "TASK_SOFT_TIME_LIMIT",
                 self.worker_type,
-                270,
-                int,  # 4.5 minutes default
+                self._get_worker_specific_timeout_defaults()[1],
+                int,
             ),
             # Retry configuration (configurable from env)
             "task_default_retry_delay": get_celery_setting(
