@@ -9,7 +9,8 @@ from collections.abc import Callable
 from functools import wraps
 from typing import Any
 
-from .base_cache import APIClientCache, CacheKeyGenerator
+from .cache_keys import CacheKeyGenerator
+from .cache_manager import CacheManager
 from .cache_utils import make_json_serializable, reconstruct_from_cache
 
 logger = logging.getLogger(__name__)
@@ -82,7 +83,7 @@ class CachedAPIClientMixin:
     def __init__(self, *args, **kwargs):
         """Initialize the cached client mixin."""
         super().__init__(*args, **kwargs)
-        self._cache = APIClientCache()
+        self._cache = CacheManager()
 
         if self._cache.backend.available:
             logger.info(f"Caching enabled for {self.__class__.__name__}")

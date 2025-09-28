@@ -9,7 +9,7 @@ import logging
 from collections.abc import Callable
 from typing import Union
 
-from .base_cache import CacheKeyGenerator
+from .cache_keys import CacheKeyGenerator
 from .cache_types import CacheType
 
 logger = logging.getLogger(__name__)

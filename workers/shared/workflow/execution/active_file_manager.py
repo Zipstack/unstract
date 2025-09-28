@@ -16,7 +16,7 @@ import time
 from typing import Any, Protocol
 
 from ...api.internal_client import InternalAPIClient
-from ...cache.base_cache import RedisCacheBackend
+from ...cache.cache_backends import RedisCacheBackend
 from ...infrastructure.logging import WorkerLogger
 
 # Constants for cache configuration

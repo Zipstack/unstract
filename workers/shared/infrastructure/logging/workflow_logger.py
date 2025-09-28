@@ -249,7 +249,7 @@ class WorkerWorkflowLogger:
             error: Error message if processing failed
         """
         if success:
-            message = f"✓ `File '{file_name}' processed successfully"
+            message = f"✓ File '{file_name}' processed successfully"
             level = LogLevel.INFO
         else:
             message = f"✗ File '{file_name}' processing failed"

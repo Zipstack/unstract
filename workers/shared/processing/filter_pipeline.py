@@ -10,7 +10,7 @@ from typing import Any
 from unstract.core.data_models import ExecutionStatus, FileHashData
 
 from ..api.internal_client import InternalAPIClient
-from ..cache.base_cache import RedisCacheBackend
+from ..cache.cache_backends import RedisCacheBackend
 from ..infrastructure.logging import WorkerLogger
 
 logger = WorkerLogger.get_logger(__name__)
