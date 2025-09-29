@@ -8,7 +8,6 @@ import requests
 from filetype import filetype
 from google.auth.transport import requests as google_requests
 from google.oauth2.service_account import Credentials
-
 from unstract.sdk1.adapters.exceptions import AdapterError
 from unstract.sdk1.adapters.ocr.constants import FileType
 from unstract.sdk1.adapters.ocr.ocr_adapter import OCRAdapter

@@ -5,7 +5,6 @@ import uuid
 
 from requests import Response
 from requests.exceptions import RequestException
-
 from unstract.sdk1.constants import Common, LogLevel, MimeType
 from unstract.sdk1.utils.metrics_mixin import MetricsMixin
 

@@ -3,7 +3,6 @@ import os
 from typing import Any
 
 import requests
-
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants
 from unstract.sdk1.adapters.x2text.dto import (
     TextExtractionMetadata,
