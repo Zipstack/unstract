@@ -17,8 +17,8 @@ class NoOpCustomVectorDB(VectorStore):
         dim: int,
     ) -> None:
         """Initialize params."""
-        wait_time = wait_time
-        dim = dim
+        self.wait_time = wait_time
+        self.dim = dim
 
     def query(self, query, **kwargs: Any) -> VectorStoreQueryResult:
         """Query vector store."""
