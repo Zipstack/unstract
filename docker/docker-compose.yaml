@@ -18,7 +18,7 @@ services:
       - rabbitmq
       - reverse-proxy
       - minio
-      - createbuckets
+      - minio-bootstrap
       - platform-service
       - prompt-service
       - x2text-service
@@ -196,7 +196,7 @@ services:
     depends_on:
       - db
       - minio
-      - createbuckets
+      - minio-bootstrap
       - rabbitmq
     ports:
       - "3003:3003"
