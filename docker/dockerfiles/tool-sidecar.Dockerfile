@@ -1,5 +1,5 @@
 # Use Python 3.12.9-slim for minimal size
-FROM python:3.12.9-slim AS base
+FROM python:3.12-slim-trixie  AS base
 
 ARG VERSION=dev
 LABEL maintainer="Zipstack Inc." \
@@ -22,10 +22,18 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/app/.venv/bin:$PATH"
 
 # Install system dependencies in a single layer
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN apt-get update \
     && apt-get --no-install-recommends install -y \
-       docker \
-       build-essential \
+    ca-certificates \
+    curl \
+    gnupg \
+    lsb-release \
+    build-essential \
+    && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
+    && apt-get update \
+    && apt-get --no-install-recommends install -y docker-ce-cli \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* \
     && adduser --uid 5678 --disabled-password --gecos "" ${APP_USER} \

@@ -1,5 +1,5 @@
 # Use a specific version of Python slim image
-FROM python:3.12.9-slim AS base
+FROM python:3.12-slim-trixie AS base
 
 ARG VERSION=dev
 LABEL maintainer="Zipstack Inc." \
@@ -20,10 +20,18 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     OTEL_SERVICE_NAME=unstract_runner
 
 # Install system dependencies
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN apt-get update \
     && apt-get --no-install-recommends install -y \
-       docker \
-       git \
+    ca-certificates \
+    curl \
+    gnupg \
+    lsb-release \
+    git \
+    && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
+    && apt-get update \
+    && apt-get --no-install-recommends install -y docker-ce-cli \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
@@ -64,9 +72,9 @@ RUN uv sync --group deploy --no-dev --locked
 
 # Install cloud requirements if they exist and setup OTEL
 RUN if [ -f cloud_requirements.txt ]; then \
-        uv pip install -r cloud_requirements.txt; \
+    uv pip install -r cloud_requirements.txt; \
     else \
-        echo "cloud_requirements.txt does not exist"; \
+    echo "cloud_requirements.txt does not exist"; \
     fi && \
     uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement -
 
