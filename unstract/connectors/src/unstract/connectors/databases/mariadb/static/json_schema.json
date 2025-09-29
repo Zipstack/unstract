@@ -40,6 +40,12 @@
       "title": "Password",
       "format": "password",
       "default": ""
+    },
+    "sslEnabled": {
+      "type": "boolean",
+      "title": "Enable SSL",
+      "description": "Toggle TLS/SSL for the client connection. Enable if your server enforces TLS; disable if your environment requires plain connections.",
+      "default": false
     }
   }
 }

@@ -1,0 +1,114 @@
+{
+  "title": "Pinecone Vector DB",
+  "type": "object",
+  "required": [
+    "adapter_name",
+    "api_key",
+    "spec"
+  ],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this adapter instance. Example: pinecone-vdb-1"
+    },
+    "api_key": {
+      "type": "string",
+      "title": "API Key",
+      "format": "password",
+      "description": "Provide the API key for your Pinecone account"
+    },
+    "spec": {
+      "type": "string",
+      "title": "Specification",
+      "enum": [
+        "pod",
+        "serverless"
+      ],
+      "default": "serverless",
+      "description": "Configurations describing how the index should be deployed"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "spec": {
+            "const": "pod"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "environment": {
+            "type": "string",
+            "title": "Environment",
+            "default": "us-west1-gcp",
+            "description": "Provide the environment for your Pinecone account. Example us-west1-gcp-free"
+          },
+          "replicas": {
+            "type": "string",
+            "title": "Number of replicas",
+            "default": "1",
+            "description": "The number of replicas to deploy for the pod index.",
+            "readOnly": true
+          },
+          "shards": {
+            "type": "string",
+            "title": "Number of shards",
+            "default": "1",
+            "description": "The number of shards to use. Shards are used to expand the amount of vectors you can store beyond the capacity of a single pod.",
+            "readOnly": true
+          },
+          "pods": {
+            "type": "string",
+            "title": "Number of pods",
+            "default": "1",
+            "description": "Number of pods to deploy.",
+            "readOnly": true
+          },
+          "pod_type": {
+            "type": "string",
+            "title": "Pod type",
+            "default": "p1.x1",
+            "description": "This value combines pod type and pod size into a single string. This configuration is your main lever for vertical scaling.",
+            "readOnly": true
+          }
+        },
+        "required": [
+          "environment"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "spec": {
+            "const": "serverless"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "cloud": {
+            "type": "string",
+            "title": "Cloud",
+            "default": "aws",
+            "description": "Cloud provider"
+          },
+          "region": {
+            "type": "string",
+            "title": "Region",
+            "default": "us-west1-gcp",
+            "description": "Provide the AWS region for your Pinecone account. Example us-west1-gcp-free"
+          }
+        },
+        "required": [
+          "cloud",
+          "region"
+        ]
+      }
+    }
+  ]
+}

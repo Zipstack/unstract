@@ -6,6 +6,7 @@ from typing import Any
 import oracledb
 from oracledb.connection import Connection
 
+from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.unstract_db import UnstractDB
 
 logger = logging.getLogger(__name__)
@@ -73,26 +74,30 @@ class OracleDB(UnstractDB):
         )
         return con
 
-    def sql_to_db_mapping(self, value: str) -> str:
+    def sql_to_db_mapping(self, value: Any, column_name: str | None = None) -> str:
         """Function to generate information schema of the corresponding table.
 
         Args:
-            table_name (str): db-connector table name
+            value (Any): python value of any datatype
+            column_name (str | None): name of the column being mapped
 
         Returns:
-            dict[str, str]: a dictionary contains db column name and
-            db column types of corresponding table
+            str: database columntype
         """
-        python_type = type(value)
+        data_type = type(value)
+        if data_type in (dict, list):
+            if column_name and column_name.endswith("_v2"):
+                return str(DatabaseTypeConstants.ORACLE_CLOB)
+            else:
+                return str(DatabaseTypeConstants.ORACLE_VARCHAR2)
+
         mapping = {
-            str: "VARCHAR2(32767)",
-            int: "NUMBER",
-            float: "LONG",
-            datetime.datetime: "TIMESTAMP",
-            dict: "CLOB",
-            list: "CLOB",
+            str: DatabaseTypeConstants.ORACLE_VARCHAR2,
+            int: DatabaseTypeConstants.ORACLE_NUMBER,
+            float: DatabaseTypeConstants.ORACLE_LONG,
+            datetime.datetime: DatabaseTypeConstants.ORACLE_TIMESTAMP,
         }
-        return mapping.get(python_type, "VARCHAR2(32767)")
+        return str(mapping.get(data_type, DatabaseTypeConstants.ORACLE_VARCHAR2))
 
     def get_create_table_base_query(self, table: str) -> str:
         """Function to create a base create table sql query.

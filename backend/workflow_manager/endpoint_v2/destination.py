@@ -37,9 +37,15 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 from backend.exceptions import UnstractFSException
 from unstract.connectors.exceptions import ConnectorError
 from unstract.filesystem import FileStorageType, FileSystem
-from unstract.sdk.constants import ToolExecKey
-from unstract.sdk.tool.mime_types import EXT_MIME_MAP
+from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.workflow_execution.constants import ToolOutputType
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.constants import ToolExecKey
+    from unstract.sdk1.tool.mime_types import EXT_MIME_MAP
+else:
+    from unstract.sdk.constants import ToolExecKey
+    from unstract.sdk.tool.mime_types import EXT_MIME_MAP
 
 logger = logging.getLogger(__name__)
 
@@ -367,19 +373,19 @@ class DestinationConnector(BaseConnector):
         )
 
         engine = db_class.get_engine()
-
         table_info = db_class.get_information_schema(table_name=table_name)
 
         logger.info(
-            f"destination connector engine: {engine} with table_info: {table_info}"
+            f"destination connector table_name: {table_name} with table_info: {table_info}"
         )
 
         if table_info:
             if db_class.has_no_metadata(table_info=table_info):
-                table_info = db_class.migrate_table_to_v2(
+                table_info = DatabaseUtils.migrate_table_to_v2(
+                    db_class=db_class,
+                    engine=engine,
                     table_name=table_name,
                     column_name=single_column_name,
-                    engine=engine,
                 )
 
         values = DatabaseUtils.get_columns_and_values(
@@ -415,9 +421,7 @@ class DestinationConnector(BaseConnector):
                 table_name=table_name,
                 values=values,
             )
-            logger.info(
-                f"destination.py sql_columns_and_values: {sql_columns_and_values}"
-            )
+            logger.info("destination.py sql_columns_and_values", sql_columns_and_values)
             DatabaseUtils.execute_write_query(
                 db_class=db_class,
                 engine=engine,

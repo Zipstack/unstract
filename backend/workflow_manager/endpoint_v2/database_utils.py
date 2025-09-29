@@ -251,8 +251,7 @@ class DatabaseUtils:
         sql = db_class.get_sql_insert_query(
             table_name=table_name, sql_keys=sql_keys, sql_values=sql_values
         )
-
-        logger.debug(f"inserting into table {table_name} with: {sql} query")
+        logger.debug(f"inserting into table_name: {table_name} with sql_query: {sql}")
         logger.debug(f"sql_values: {sql_values}")
 
         try:
@@ -290,8 +289,12 @@ class DatabaseUtils:
         Raises:
             e: _description_
         """
-        sql = db_class.create_table_query(table=table_name, database_entry=database_entry)
-        logger.debug(f"creating table {table_name} with: {sql} query")
+        sql = db_class.create_table_query(
+            table=table_name,
+            database_entry=database_entry,
+            permanent_columns=TableColumns.PERMANENT_COLUMNS,
+        )
+        logger.info(f"creating table {table_name} with: {sql} query")
 
         try:
             db_class.execute_query(
@@ -299,4 +302,35 @@ class DatabaseUtils:
             )
         except UnstractDBConnectorException as e:
             raise UnstractDBException(detail=e.detail) from e
-        logger.debug(f"successfully created table {table_name} with: {sql} query")
+        logger.info(f"successfully created table {table_name} with: {sql} query")
+
+    @staticmethod
+    def migrate_table_to_v2(
+        db_class: UnstractDB,
+        engine: Any,
+        table_name: str,
+        column_name: str,
+    ) -> dict[str, str]:
+        """Migrate table to v2 by adding _v2 columns.
+
+        Args:
+            db_class (UnstractDB): DB Connection class
+            engine (Any): Database engine
+            table_name (str): Name of the table to migrate
+            column_name (str): Base column name for v2 migration
+
+        Returns:
+            dict[str, str]: Updated table information schema
+
+        Raises:
+            UnstractDBException: If migration fails
+        """
+        try:
+            result: dict[str, str] = db_class.migrate_table_to_v2(
+                table_name=table_name,
+                column_name=column_name,
+                engine=engine,
+            )
+            return result
+        except UnstractDBConnectorException as e:
+            raise UnstractDBException(detail=e.detail) from e
