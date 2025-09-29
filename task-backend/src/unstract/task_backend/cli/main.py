@@ -1,17 +1,14 @@
 """Main CLI entry point for task backend worker."""
 
-import sys
 import argparse
 import signal
-import time
-from typing import Optional
+import sys
 
 import structlog
 
-from ..worker import TaskBackendWorker
 from ..config import get_task_backend_config
 from ..health import HealthChecker
-
+from ..worker import TaskBackendWorker
 
 logger = structlog.get_logger(__name__)
 
@@ -62,21 +59,19 @@ Examples:
 
   # Health check only
   task-backend-worker --health-check
-        """
+        """,
     )
 
     # Backend selection
     parser.add_argument(
         "--backend",
         choices=["celery", "hatchet", "temporal"],
-        help="Backend type to use (overrides config)"
+        help="Backend type to use (overrides config)",
     )
 
     # Configuration
     parser.add_argument(
-        "--config",
-        metavar="FILE",
-        help="Path to YAML configuration file"
+        "--config", metavar="FILE", help="Path to YAML configuration file"
     )
 
     # Logging
@@ -84,67 +79,45 @@ Examples:
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="Log level (default: INFO)"
+        help="Log level (default: INFO)",
     )
 
     parser.add_argument(
         "--log-format",
         default="structured",
         choices=["structured", "console"],
-        help="Log format (default: structured)"
+        help="Log format (default: structured)",
     )
 
     # Worker options
     parser.add_argument(
-        "--concurrency",
-        type=int,
-        help="Worker concurrency (overrides config)"
+        "--concurrency", type=int, help="Worker concurrency (overrides config)"
     )
 
-    parser.add_argument(
-        "--worker-name",
-        help="Worker instance name (overrides config)"
-    )
+    parser.add_argument("--worker-name", help="Worker instance name (overrides config)")
 
     # Backend-specific options
-    parser.add_argument(
-        "--broker-url",
-        help="Celery broker URL (overrides config)"
-    )
+    parser.add_argument("--broker-url", help="Celery broker URL (overrides config)")
 
-    parser.add_argument(
-        "--token",
-        help="Hatchet API token (overrides config)"
-    )
+    parser.add_argument("--token", help="Hatchet API token (overrides config)")
 
-    parser.add_argument(
-        "--host",
-        help="Temporal host (overrides config)"
-    )
+    parser.add_argument("--host", help="Temporal host (overrides config)")
 
-    parser.add_argument(
-        "--port",
-        type=int,
-        help="Temporal port (overrides config)"
-    )
+    parser.add_argument("--port", type=int, help="Temporal port (overrides config)")
 
     # Operations
     parser.add_argument(
-        "--health-check",
-        action="store_true",
-        help="Run health check and exit"
+        "--health-check", action="store_true", help="Run health check and exit"
     )
 
     parser.add_argument(
-        "--list-tasks",
-        action="store_true",
-        help="List registered tasks and exit"
+        "--list-tasks", action="store_true", help="List registered tasks and exit"
     )
 
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Validate configuration without starting worker"
+        help="Validate configuration without starting worker",
     )
 
     return parser
@@ -194,7 +167,7 @@ def list_registered_tasks(worker: TaskBackendWorker) -> None:
     """List tasks that would be registered."""
     logger.info("Registered tasks", backend=worker.backend_type)
 
-    if hasattr(worker, 'backend') and worker.backend:
+    if hasattr(worker, "backend") and worker.backend:
         tasks = list(worker.backend._tasks.keys())
         for task_name in tasks:
             logger.info(f"  - {task_name}")
@@ -202,7 +175,7 @@ def list_registered_tasks(worker: TaskBackendWorker) -> None:
         logger.info("No tasks registered (worker not started)")
 
 
-def handle_signal(signum, frame, worker: Optional[TaskBackendWorker] = None):
+def handle_signal(signum, frame, worker: TaskBackendWorker | None = None):
     """Handle shutdown signals gracefully."""
     logger.info("Received shutdown signal", signal=signum)
 
@@ -220,10 +193,7 @@ def main() -> int:
     args = parser.parse_args()
 
     # Setup logging first
-    setup_logging(
-        log_level=args.log_level,
-        structured=(args.log_format == "structured")
-    )
+    setup_logging(log_level=args.log_level, structured=(args.log_format == "structured"))
 
     logger.info("Starting task backend worker", version="0.1.0")
 
@@ -243,7 +213,7 @@ def main() -> int:
             "Configuration loaded",
             backend=config.backend_type,
             worker_name=config.worker_name,
-            concurrency=config.worker_concurrency
+            concurrency=config.worker_concurrency,
         )
 
         # Health check mode

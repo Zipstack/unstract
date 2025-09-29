@@ -1,8 +1,6 @@
 """Unit tests for TaskBackend base class."""
 
 import pytest
-from unittest.mock import Mock
-
 from task_abstraction.base import TaskBackend, task
 from task_abstraction.models import BackendConfig
 
@@ -25,12 +23,9 @@ class MockTaskBackend(TaskBackend):
             raise ValueError(f"Task '{name}' not registered")
 
         task_id = f"mock-{len(self.submitted_tasks)}"
-        self.submitted_tasks.append({
-            "task_id": task_id,
-            "name": name,
-            "args": args,
-            "kwargs": kwargs
-        })
+        self.submitted_tasks.append(
+            {"task_id": task_id, "name": name, "args": args, "kwargs": kwargs}
+        )
 
         # Execute immediately for testing
         result = self._tasks[name](*args, **kwargs)
@@ -46,14 +41,11 @@ class MockTaskBackend(TaskBackend):
                 task_id=task_id,
                 task_name="test",
                 status="completed",
-                result=self.task_results[task_id]
+                result=self.task_results[task_id],
             )
         else:
             return TaskResult(
-                task_id=task_id,
-                task_name="test",
-                status="failed",
-                error="Task not found"
+                task_id=task_id, task_name="test", status="failed", error="Task not found"
             )
 
     def run_worker(self):
@@ -66,10 +58,7 @@ class TestTaskBackend:
 
     def test_backend_initialization(self):
         """Test TaskBackend initialization."""
-        config = BackendConfig(
-            backend_type="mock",
-            connection_params={"test": "value"}
-        )
+        config = BackendConfig(backend_type="mock", connection_params={"test": "value"})
 
         backend = MockTaskBackend(config)
 

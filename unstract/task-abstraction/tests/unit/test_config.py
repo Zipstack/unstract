@@ -2,25 +2,27 @@
 
 import os
 import tempfile
-import pytest
 from unittest.mock import patch
 
+import pytest
 from task_abstraction.config import (
-    load_config_from_env,
     get_default_config,
-    load_config_from_file
+    load_config_from_env,
+    load_config_from_file,
 )
-from task_abstraction.models import BackendConfig
 
 
 class TestLoadConfigFromEnv:
     """Test environment-based configuration loading."""
 
-    @patch.dict(os.environ, {
-        'CELERY_BROKER_URL': 'redis://test:6379/1',
-        'CELERY_RESULT_BACKEND': 'redis://test:6379/2',
-        'CELERY_WORKER_CONCURRENCY': '8',
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "CELERY_BROKER_URL": "redis://test:6379/1",
+            "CELERY_RESULT_BACKEND": "redis://test:6379/2",
+            "CELERY_WORKER_CONCURRENCY": "8",
+        },
+    )
     def test_load_celery_config_from_env(self):
         """Test loading Celery config from environment."""
         config = load_config_from_env("celery")
@@ -30,11 +32,14 @@ class TestLoadConfigFromEnv:
         assert config.connection_params["result_backend"] == "redis://test:6379/2"
         assert config.worker_config["concurrency"] == 8
 
-    @patch.dict(os.environ, {
-        'HATCHET_TOKEN': 'test-token-123',
-        'HATCHET_SERVER_URL': 'https://test.hatchet.run',
-        'HATCHET_WORKER_NAME': 'test-worker',
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "HATCHET_TOKEN": "test-token-123",
+            "HATCHET_SERVER_URL": "https://test.hatchet.run",
+            "HATCHET_WORKER_NAME": "test-worker",
+        },
+    )
     def test_load_hatchet_config_from_env(self):
         """Test loading Hatchet config from environment."""
         config = load_config_from_env("hatchet")
@@ -44,12 +49,15 @@ class TestLoadConfigFromEnv:
         assert config.connection_params["server_url"] == "https://test.hatchet.run"
         assert config.worker_config["worker_name"] == "test-worker"
 
-    @patch.dict(os.environ, {
-        'TEMPORAL_HOST': 'test.temporal.io',
-        'TEMPORAL_PORT': '7234',
-        'TEMPORAL_NAMESPACE': 'test-namespace',
-        'TEMPORAL_TASK_QUEUE': 'test-queue',
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "TEMPORAL_HOST": "test.temporal.io",
+            "TEMPORAL_PORT": "7234",
+            "TEMPORAL_NAMESPACE": "test-namespace",
+            "TEMPORAL_TASK_QUEUE": "test-queue",
+        },
+    )
     def test_load_temporal_config_from_env(self):
         """Test loading Temporal config from environment."""
         config = load_config_from_env("temporal")
@@ -134,7 +142,7 @@ worker:
   concurrency: 16
   max_tasks_per_child: 200
 """
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_content)
             f.flush()
 
@@ -162,7 +170,7 @@ worker:
 celery:
   broker_url: redis://localhost:6379/0
 """
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_content)
             f.flush()
 
@@ -180,17 +188,19 @@ celery:
   # Missing required broker_url
   result_backend: redis://localhost:6379/0
 """
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_content)
             f.flush()
 
             try:
-                with pytest.raises(ValueError, match="Invalid configuration for backend type"):
+                with pytest.raises(
+                    ValueError, match="Invalid configuration for backend type"
+                ):
                     load_config_from_file(f.name)
             finally:
                 os.unlink(f.name)
 
-    @patch('task_abstraction.config.YAML_AVAILABLE', False)
+    @patch("task_abstraction.config.YAML_AVAILABLE", False)
     def test_load_config_yaml_not_available(self):
         """Test loading config when PyYAML is not available."""
         with pytest.raises(ImportError, match="PyYAML is not installed"):

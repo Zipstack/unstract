@@ -6,12 +6,12 @@ registered with the backend abstraction layer.
 
 import logging
 import time
-from typing import Any, Dict
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-def health_check() -> Dict[str, Any]:
+def health_check() -> dict[str, Any]:
     """Simple health check task that returns worker status.
 
     Returns:
@@ -22,7 +22,7 @@ def health_check() -> Dict[str, Any]:
         "status": "healthy",
         "timestamp": time.time(),
         "worker": "task-backend",
-        "message": "Worker is operational"
+        "message": "Worker is operational",
     }
 
 
@@ -55,7 +55,7 @@ def add_numbers(a: int, b: int) -> int:
     return result
 
 
-def process_data(data: Dict[str, Any], operation: str = "validate") -> Dict[str, Any]:
+def process_data(data: dict[str, Any], operation: str = "validate") -> dict[str, Any]:
     """Generic data processing task.
 
     Args:
@@ -65,13 +65,15 @@ def process_data(data: Dict[str, Any], operation: str = "validate") -> Dict[str,
     Returns:
         Processed data with metadata
     """
-    logger.info(f"Executing process_data task - operation: {operation}, data_keys: {list(data.keys())}")
+    logger.info(
+        f"Executing process_data task - operation: {operation}, data_keys: {list(data.keys())}"
+    )
 
     processed_data = {
         "original": data,
         "operation": operation,
         "processed_at": time.time(),
-        "status": "completed"
+        "status": "completed",
     }
 
     # Simulate some processing based on operation
@@ -85,7 +87,7 @@ def process_data(data: Dict[str, Any], operation: str = "validate") -> Dict[str,
     return processed_data
 
 
-def simulate_work(duration: int = 1) -> Dict[str, Any]:
+def simulate_work(duration: int = 1) -> dict[str, Any]:
     """Task that simulates some work by sleeping.
 
     Args:
@@ -109,7 +111,7 @@ def simulate_work(duration: int = 1) -> Dict[str, Any]:
         "actual_duration": actual_duration,
         "start_time": start_time,
         "end_time": end_time,
-        "status": "completed"
+        "status": "completed",
     }
 
 

@@ -1,9 +1,8 @@
 """Unit tests for task abstraction models."""
 
-import pytest
 from datetime import datetime
 
-from task_abstraction.models import TaskResult, BackendConfig
+from task_abstraction.models import BackendConfig, TaskResult
 
 
 class TestTaskResult:
@@ -15,7 +14,7 @@ class TestTaskResult:
             task_id="test-123",
             task_name="test_task",
             status="completed",
-            result={"success": True}
+            result={"success": True},
         )
 
         assert result.task_id == "test-123"
@@ -64,7 +63,7 @@ class TestTaskResult:
             task_name="test",
             status="completed",
             started_at=start_time,
-            completed_at=end_time
+            completed_at=end_time,
         )
 
         assert result.duration == 5.0
@@ -77,8 +76,7 @@ class TestTaskResult:
     def test_task_result_duration_only_start(self):
         """Test duration when only start time is set."""
         result = TaskResult(
-            "test", "test", "running",
-            started_at=datetime(2023, 1, 1, 12, 0, 0)
+            "test", "test", "running", started_at=datetime(2023, 1, 1, 12, 0, 0)
         )
         assert result.duration is None
 
@@ -92,8 +90,8 @@ class TestBackendConfig:
             backend_type="celery",
             connection_params={
                 "broker_url": "redis://localhost:6379/0",
-                "result_backend": "redis://localhost:6379/0"
-            }
+                "result_backend": "redis://localhost:6379/0",
+            },
         )
 
         assert config.backend_type == "celery"
@@ -105,7 +103,7 @@ class TestBackendConfig:
         config = BackendConfig(
             backend_type="celery",
             connection_params={"broker_url": "redis://localhost:6379/0"},
-            worker_config={"concurrency": 8, "max_tasks_per_child": 200}
+            worker_config={"concurrency": 8, "max_tasks_per_child": 200},
         )
 
         assert config.worker_config["concurrency"] == 8
@@ -116,14 +114,14 @@ class TestBackendConfig:
         # Valid config
         valid_config = BackendConfig(
             backend_type="celery",
-            connection_params={"broker_url": "redis://localhost:6379/0"}
+            connection_params={"broker_url": "redis://localhost:6379/0"},
         )
         assert valid_config.validate()
 
         # Invalid config - missing broker_url
         invalid_config = BackendConfig(
             backend_type="celery",
-            connection_params={"result_backend": "redis://localhost:6379/0"}
+            connection_params={"result_backend": "redis://localhost:6379/0"},
         )
         assert not invalid_config.validate()
 
@@ -134,15 +132,15 @@ class TestBackendConfig:
             backend_type="hatchet",
             connection_params={
                 "token": "test-token",
-                "server_url": "https://app.hatchet.run"
-            }
+                "server_url": "https://app.hatchet.run",
+            },
         )
         assert valid_config.validate()
 
         # Invalid config - missing token
         invalid_config = BackendConfig(
             backend_type="hatchet",
-            connection_params={"server_url": "https://app.hatchet.run"}
+            connection_params={"server_url": "https://app.hatchet.run"},
         )
         assert not invalid_config.validate()
 
@@ -155,24 +153,20 @@ class TestBackendConfig:
                 "host": "localhost",
                 "port": 7233,
                 "namespace": "default",
-                "task_queue": "test-queue"
-            }
+                "task_queue": "test-queue",
+            },
         )
         assert valid_config.validate()
 
         # Invalid config - missing required fields
         invalid_config = BackendConfig(
-            backend_type="temporal",
-            connection_params={"host": "localhost"}
+            backend_type="temporal", connection_params={"host": "localhost"}
         )
         assert not invalid_config.validate()
 
     def test_invalid_backend_type(self):
         """Test validation with invalid backend type."""
-        config = BackendConfig(
-            backend_type="invalid",
-            connection_params={}
-        )
+        config = BackendConfig(backend_type="invalid", connection_params={})
         assert not config.validate()
 
     def test_post_init_worker_config(self):
@@ -180,6 +174,6 @@ class TestBackendConfig:
         config = BackendConfig(
             backend_type="celery",
             connection_params={"broker_url": "redis://localhost:6379/0"},
-            worker_config=None
+            worker_config=None,
         )
         assert config.worker_config == {}

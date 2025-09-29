@@ -1,11 +1,12 @@
 """Configuration management for task backends."""
 
 import os
-from typing import Dict, Any, Optional
+
 from .models import BackendConfig
 
 try:
     import yaml
+
     YAML_AVAILABLE = True
 except ImportError:
     YAML_AVAILABLE = False
@@ -35,21 +36,21 @@ def load_config_from_file(config_path: str) -> BackendConfig:
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"Configuration file not found: {config_path}")
 
-    with open(config_path, 'r') as f:
+    with open(config_path) as f:
         config_data = yaml.safe_load(f)
 
-    backend_type = config_data.get('backend')
+    backend_type = config_data.get("backend")
     if not backend_type:
         raise ValueError("Backend type must be specified in configuration")
 
     # Get backend-specific connection parameters
     connection_params = config_data.get(backend_type, {})
-    worker_config = config_data.get('worker', {})
+    worker_config = config_data.get("worker", {})
 
     config = BackendConfig(
         backend_type=backend_type,
         connection_params=connection_params,
-        worker_config=worker_config
+        worker_config=worker_config,
     )
 
     if not config.validate():
@@ -88,7 +89,9 @@ def load_config_from_env(backend_type: str) -> BackendConfig:
     if backend_type == "celery":
         connection_params = {
             "broker_url": os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0"),
-            "result_backend": os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0"),
+            "result_backend": os.getenv(
+                "CELERY_RESULT_BACKEND", "redis://localhost:6379/0"
+            ),
         }
         worker_config = {
             "concurrency": int(os.getenv("CELERY_WORKER_CONCURRENCY", "4")),
@@ -114,7 +117,9 @@ def load_config_from_env(backend_type: str) -> BackendConfig:
         }
         worker_config = {
             "max_concurrent_activities": int(os.getenv("TEMPORAL_MAX_ACTIVITIES", "100")),
-            "max_concurrent_workflow_tasks": int(os.getenv("TEMPORAL_MAX_WORKFLOWS", "100")),
+            "max_concurrent_workflow_tasks": int(
+                os.getenv("TEMPORAL_MAX_WORKFLOWS", "100")
+            ),
         }
 
     else:
@@ -123,7 +128,7 @@ def load_config_from_env(backend_type: str) -> BackendConfig:
     config = BackendConfig(
         backend_type=backend_type,
         connection_params=connection_params,
-        worker_config=worker_config
+        worker_config=worker_config,
     )
 
     if not config.validate():
@@ -151,7 +156,7 @@ def get_default_config(backend_type: str) -> BackendConfig:
             worker_config={
                 "concurrency": 4,
                 "max_tasks_per_child": 100,
-            }
+            },
         )
 
     elif backend_type == "hatchet":
@@ -164,7 +169,7 @@ def get_default_config(backend_type: str) -> BackendConfig:
             worker_config={
                 "worker_name": "default-worker",
                 "max_runs": 100,
-            }
+            },
         )
 
     elif backend_type == "temporal":
@@ -179,7 +184,7 @@ def get_default_config(backend_type: str) -> BackendConfig:
             worker_config={
                 "max_concurrent_activities": 100,
                 "max_concurrent_workflow_tasks": 100,
-            }
+            },
         )
 
     else:

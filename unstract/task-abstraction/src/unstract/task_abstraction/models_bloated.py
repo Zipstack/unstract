@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 @dataclass
@@ -17,9 +17,9 @@ class TaskResult:
     task_name: str
     status: str  # pending, running, completed, failed
     result: Any = None
-    error: Optional[str] = None
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    error: str | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
 
     @property
     def is_pending(self) -> bool:
@@ -42,7 +42,7 @@ class TaskResult:
         return self.status == "failed"
 
     @property
-    def duration(self) -> Optional[float]:
+    def duration(self) -> float | None:
         """Get task execution duration in seconds."""
         if self.started_at and self.completed_at:
             return (self.completed_at - self.started_at).total_seconds()
@@ -58,8 +58,8 @@ class BackendConfig:
     """
 
     backend_type: str  # celery, hatchet, temporal
-    connection_params: Dict[str, Any]
-    worker_config: Optional[Dict[str, Any]] = None
+    connection_params: dict[str, Any]
+    worker_config: dict[str, Any] | None = None
 
     def __post_init__(self):
         """Initialize worker_config if not provided."""
@@ -94,16 +94,16 @@ class PersistenceConfig:
     use_native_persistence: bool = True
     """Use the backend's native persistence mechanism (Redis for Celery, PostgreSQL for Hatchet, etc.)"""
 
-    unified_state_store: Optional[str] = None
+    unified_state_store: str | None = None
     """Optional unified state store: 'redis', 'postgres', 'memory', or None for native only"""
 
     enable_cross_backend_compat: bool = False
     """Enable cross-backend workflow compatibility (requires unified_state_store)"""
 
-    state_ttl_seconds: Optional[int] = None
+    state_ttl_seconds: int | None = None
     """TTL for workflow state in unified store (None = no expiration)"""
 
-    connection_params: Optional[Dict[str, Any]] = None
+    connection_params: dict[str, Any] | None = None
     """Connection parameters for unified state store"""
 
     def __post_init__(self):
@@ -121,19 +121,24 @@ class PersistenceConfig:
 
     def validate(self) -> bool:
         """Validate persistence configuration."""
-        if self.unified_state_store and self.unified_state_store not in ['redis', 'postgres', 'memory']:
+        if self.unified_state_store and self.unified_state_store not in [
+            "redis",
+            "postgres",
+            "memory",
+        ]:
             return False
 
         if self.enable_cross_backend_compat and not self.unified_state_store:
             return False
 
         # Validate connection params for unified stores
-        if self.unified_state_store == 'redis':
+        if self.unified_state_store == "redis":
             # Redis requires at least host
-            return 'host' in self.connection_params
-        elif self.unified_state_store == 'postgres':
+            return "host" in self.connection_params
+        elif self.unified_state_store == "postgres":
             # PostgreSQL requires connection string or connection components
-            return ('connection_string' in self.connection_params or
-                   all(key in self.connection_params for key in ['host', 'database']))
+            return "connection_string" in self.connection_params or all(
+                key in self.connection_params for key in ["host", "database"]
+            )
 
         return True

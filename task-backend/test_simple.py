@@ -2,10 +2,11 @@
 """Simple test to debug the basic functionality."""
 
 from dotenv import load_dotenv
-from unstract.task_abstraction import get_backend, TASK_REGISTRY
+from unstract.task_abstraction import TASK_REGISTRY, get_backend
 
 # Load environment
 load_dotenv()
+
 
 def test_simple_task():
     """Test a simple task execution."""
@@ -36,6 +37,7 @@ def test_simple_task():
     else:
         print("❌ Simple task test FAILED!")
         return False
+
 
 if __name__ == "__main__":
     test_simple_task()

@@ -1,8 +1,8 @@
 """Core task modules available in all editions."""
 
 from .basic_operations import BASIC_OPERATION_TASKS
-from .system_tasks import SYSTEM_TASKS
 from .data_processing import DATA_PROCESSING_TASKS
+from .system_tasks import SYSTEM_TASKS
 
 # Combine all core tasks
 CORE_TASKS = []

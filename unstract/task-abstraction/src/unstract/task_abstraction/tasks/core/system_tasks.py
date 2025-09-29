@@ -2,12 +2,12 @@
 
 import logging
 import time
-from typing import Any, Dict
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-def health_check() -> Dict[str, Any]:
+def health_check() -> dict[str, Any]:
     """Simple health check task that returns worker status.
 
     Returns:
@@ -18,7 +18,7 @@ def health_check() -> Dict[str, Any]:
         "status": "healthy",
         "timestamp": time.time(),
         "worker": "task-abstraction",
-        "message": "Worker is operational"
+        "message": "Worker is operational",
     }
 
 
@@ -35,7 +35,7 @@ def echo(message: str) -> str:
     return f"Echo: {message}"
 
 
-def simulate_work(duration: int = 1) -> Dict[str, Any]:
+def simulate_work(duration: int = 1) -> dict[str, Any]:
     """Task that simulates some work by sleeping.
 
     Args:
@@ -59,7 +59,7 @@ def simulate_work(duration: int = 1) -> Dict[str, Any]:
         "actual_duration": actual_duration,
         "start_time": start_time,
         "end_time": end_time,
-        "status": "completed"
+        "status": "completed",
     }
 
 

@@ -1,19 +1,20 @@
 """Celery backend implementation for task abstraction."""
 
 import logging
-import uuid
+from collections.abc import Callable
 from datetime import datetime
-from typing import Any, Callable, Optional
+from typing import Any
 
 try:
     from celery import Celery
     from celery.result import AsyncResult
+
     CELERY_AVAILABLE = True
 except ImportError:
     CELERY_AVAILABLE = False
 
 from ..base import TaskBackend
-from ..models import TaskResult, BackendConfig
+from ..models import BackendConfig, TaskResult
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ class CeleryBackend(TaskBackend):
     - run_worker() → celery worker process
     """
 
-    def __init__(self, config: Optional[BackendConfig] = None):
+    def __init__(self, config: BackendConfig | None = None):
         """Initialize Celery backend.
 
         Args:
@@ -52,19 +53,21 @@ class CeleryBackend(TaskBackend):
                 connection_params={
                     "broker_url": "redis://localhost:6379/0",
                     "result_backend": "redis://localhost:6379/0",
-                }
+                },
             )
 
         # Initialize Celery app
-        logger.debug(f"Configuring Celery with broker: {self.config.connection_params['broker_url']}")
-        self.app = Celery('task-abstraction')
+        logger.debug(
+            f"Configuring Celery with broker: {self.config.connection_params['broker_url']}"
+        )
+        self.app = Celery("task-abstraction")
         self.app.conf.update(
             broker_url=self.config.connection_params["broker_url"],
             result_backend=self.config.connection_params.get("result_backend"),
-            task_serializer='json',
-            accept_content=['json'],
-            result_serializer='json',
-            timezone='UTC',
+            task_serializer="json",
+            accept_content=["json"],
+            result_serializer="json",
+            timezone="UTC",
             enable_utc=True,
         )
 
@@ -72,7 +75,7 @@ class CeleryBackend(TaskBackend):
         if self.config.worker_config:
             self.app.conf.update(**self.config.worker_config)
 
-    def register_task(self, fn: Callable, name: Optional[str] = None) -> Callable:
+    def register_task(self, fn: Callable, name: str | None = None) -> Callable:
         """Register a function as a Celery task.
 
         Args:
@@ -139,18 +142,18 @@ class CeleryBackend(TaskBackend):
 
         # Map Celery states to our standard states
         status_mapping = {
-            'PENDING': 'pending',
-            'STARTED': 'running',
-            'SUCCESS': 'completed',
-            'FAILURE': 'failed',
-            'RETRY': 'running',
-            'REVOKED': 'failed',
+            "PENDING": "pending",
+            "STARTED": "running",
+            "SUCCESS": "completed",
+            "FAILURE": "failed",
+            "RETRY": "running",
+            "REVOKED": "failed",
         }
 
-        status = status_mapping.get(async_result.state, 'pending')
+        status = status_mapping.get(async_result.state, "pending")
 
         # Get task name from result info (if available)
-        task_name = getattr(async_result, 'name', 'unknown')
+        task_name = getattr(async_result, "name", "unknown")
 
         # Build TaskResult
         task_result = TaskResult(
@@ -159,13 +162,15 @@ class CeleryBackend(TaskBackend):
             status=status,
         )
 
-        if status == 'completed':
+        if status == "completed":
             task_result.result = async_result.result
-        elif status == 'failed':
-            task_result.error = str(async_result.result) if async_result.result else "Task failed"
+        elif status == "failed":
+            task_result.error = (
+                str(async_result.result) if async_result.result else "Task failed"
+            )
 
         # Get timing info if available
-        if hasattr(async_result, 'date_done') and async_result.date_done:
+        if hasattr(async_result, "date_done") and async_result.date_done:
             task_result.completed_at = async_result.date_done
 
         return task_result
@@ -186,11 +191,11 @@ class CeleryBackend(TaskBackend):
         worker_config = self.config.worker_config or {}
 
         # Get queues to listen to
-        queues = worker_config.get('queues', ['celery'])
+        queues = worker_config.get("queues", ["celery"])
         logger.info(f"Celery worker starting with queues: {', '.join(queues)}")
 
         # Check if events should be enabled (for monitoring with Flower, etc.)
-        events_enabled = os.getenv('CELERY_EVENTS_ENABLED', 'false').lower() == 'true'
+        events_enabled = os.getenv("CELERY_EVENTS_ENABLED", "false").lower() == "true"
 
         # Configure app to send task events if enabled
         if events_enabled:
@@ -201,9 +206,9 @@ class CeleryBackend(TaskBackend):
 
         # Build worker options
         worker_options = {
-            'concurrency': worker_config.get('concurrency', 4),
-            'max_tasks_per_child': worker_config.get('max_tasks_per_child', 100),
-            'queues': queues,  # Pass queues to worker
+            "concurrency": worker_config.get("concurrency", 4),
+            "max_tasks_per_child": worker_config.get("max_tasks_per_child", 100),
+            "queues": queues,  # Pass queues to worker
         }
 
         # Start Celery worker
@@ -253,7 +258,9 @@ class CeleryBackend(TaskBackend):
             chain_tasks = []
             for step in workflow_def.steps:
                 if step.task_name not in self._tasks:
-                    raise ValueError(f"Task '{step.task_name}' not registered in workflow '{name}'")
+                    raise ValueError(
+                        f"Task '{step.task_name}' not registered in workflow '{name}'"
+                    )
 
                 celery_task = self._tasks[step.task_name]
 
@@ -293,15 +300,15 @@ class CeleryBackend(TaskBackend):
 
             # Map Celery chain status to workflow status
             status_mapping = {
-                'PENDING': 'pending',
-                'STARTED': 'running',
-                'SUCCESS': 'completed',
-                'FAILURE': 'failed',
-                'RETRY': 'running',
-                'REVOKED': 'failed',
+                "PENDING": "pending",
+                "STARTED": "running",
+                "SUCCESS": "completed",
+                "FAILURE": "failed",
+                "RETRY": "running",
+                "REVOKED": "failed",
             }
 
-            status = status_mapping.get(chain_result.state, 'pending')
+            status = status_mapping.get(chain_result.state, "pending")
 
             from ..workflow import WorkflowResult
 
@@ -309,14 +316,16 @@ class CeleryBackend(TaskBackend):
                 workflow_id=workflow_id,
                 workflow_name="celery_workflow",  # Could be enhanced to track actual name
                 status=status,
-                steps_completed=1 if status == 'completed' else 0,
+                steps_completed=1 if status == "completed" else 0,
                 total_steps=1,  # Chain is treated as single unit
             )
 
-            if status == 'completed':
+            if status == "completed":
                 workflow_result.final_result = chain_result.result
-            elif status == 'failed':
-                workflow_result.error = str(chain_result.result) if chain_result.result else "Workflow failed"
+            elif status == "failed":
+                workflow_result.error = (
+                    str(chain_result.result) if chain_result.result else "Workflow failed"
+                )
 
             return workflow_result
 
@@ -332,6 +341,7 @@ class CeleryBackend(TaskBackend):
         """
         try:
             from celery.result import AsyncResult
+
             from ..workflow import WorkflowResult
 
             # Get the task/chain result from Celery's result backend
@@ -339,37 +349,39 @@ class CeleryBackend(TaskBackend):
 
             # Map Celery status to workflow status
             status_mapping = {
-                'PENDING': 'pending',
-                'STARTED': 'running',
-                'SUCCESS': 'completed',
-                'FAILURE': 'failed',
-                'RETRY': 'running',
-                'REVOKED': 'failed',
+                "PENDING": "pending",
+                "STARTED": "running",
+                "SUCCESS": "completed",
+                "FAILURE": "failed",
+                "RETRY": "running",
+                "REVOKED": "failed",
             }
 
-            status = status_mapping.get(async_result.state, 'pending')
+            status = status_mapping.get(async_result.state, "pending")
 
             # Create WorkflowResult from Celery result
             workflow_result = WorkflowResult(
                 workflow_id=workflow_id,
-                workflow_name=getattr(async_result, 'name', 'unknown'),
+                workflow_name=getattr(async_result, "name", "unknown"),
                 status=status,
-                steps_completed=1 if status == 'completed' else 0,
+                steps_completed=1 if status == "completed" else 0,
                 total_steps=1,
             )
 
-            if status == 'completed':
+            if status == "completed":
                 workflow_result.final_result = async_result.result
-            elif status == 'failed':
-                workflow_result.error = str(async_result.result) if async_result.result else "Workflow failed"
+            elif status == "failed":
+                workflow_result.error = (
+                    str(async_result.result) if async_result.result else "Workflow failed"
+                )
 
             # Add timing information if available
-            if hasattr(async_result, 'date_done') and async_result.date_done:
+            if hasattr(async_result, "date_done") and async_result.date_done:
                 workflow_result.step_results = [
                     {
-                        'completed_at': async_result.date_done.isoformat(),
-                        'result': async_result.result if status == 'completed' else None,
-                        'error': str(async_result.result) if status == 'failed' else None
+                        "completed_at": async_result.date_done.isoformat(),
+                        "result": async_result.result if status == "completed" else None,
+                        "error": str(async_result.result) if status == "failed" else None,
                     }
                 ]
 
@@ -379,16 +391,19 @@ class CeleryBackend(TaskBackend):
             logger.error(f"Failed to get native workflow result for {workflow_id}: {e}")
             # Return not found result
             from ..workflow import WorkflowResult
+
             return WorkflowResult(
                 workflow_id=workflow_id,
                 workflow_name="unknown",
                 status="not_found",
                 steps_completed=0,
                 total_steps=0,
-                error=f"Failed to retrieve from Celery result backend: {e}"
+                error=f"Failed to retrieve from Celery result backend: {e}",
             )
 
-    def _store_native_workflow_result(self, workflow_id: str, workflow_name: str, result_data: dict) -> None:
+    def _store_native_workflow_result(
+        self, workflow_id: str, workflow_name: str, result_data: dict
+    ) -> None:
         """Store workflow result using Celery's native result backend.
 
         Celery automatically stores task results in the configured result backend,
@@ -401,23 +416,24 @@ class CeleryBackend(TaskBackend):
 
             # Create a metadata record in Celery's result backend
             # This uses the same storage mechanism as regular task results
-            from celery.result import AsyncResult
 
             # Create a synthetic result to store workflow metadata
             # Note: This is a simplified approach - in production you might want
             # to use Celery's result backend directly or store in a dedicated table
             metadata = {
-                'workflow_id': workflow_id,
-                'workflow_name': workflow_name,
-                'stored_at': datetime.now().isoformat(),
-                **result_data
+                "workflow_id": workflow_id,
+                "workflow_name": workflow_name,
+                "stored_at": datetime.now().isoformat(),
+                **result_data,
             }
 
             # Store using Celery's result backend
             backend = self.app.backend
-            backend.store_result(workflow_metadata_key, metadata, status='SUCCESS')
+            backend.store_result(workflow_metadata_key, metadata, status="SUCCESS")
 
-            logger.debug(f"Stored workflow metadata in Celery result backend: {workflow_id}")
+            logger.debug(
+                f"Stored workflow metadata in Celery result backend: {workflow_id}"
+            )
 
         except Exception as e:
             logger.error(f"Failed to store workflow result in Celery backend: {e}")

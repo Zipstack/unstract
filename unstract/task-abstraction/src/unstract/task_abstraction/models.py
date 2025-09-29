@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 @dataclass
@@ -17,9 +17,9 @@ class TaskResult:
     task_name: str
     status: str  # pending, running, completed, failed
     result: Any = None
-    error: Optional[str] = None
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    error: str | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
 
     @property
     def is_pending(self) -> bool:
@@ -42,7 +42,7 @@ class TaskResult:
         return self.status == "failed"
 
     @property
-    def duration(self) -> Optional[float]:
+    def duration(self) -> float | None:
         """Get task execution duration in seconds."""
         if self.started_at and self.completed_at:
             return (self.completed_at - self.started_at).total_seconds()
@@ -61,8 +61,8 @@ class BackendConfig:
     """
 
     backend_type: str  # celery, hatchet, temporal
-    connection_params: Dict[str, Any]
-    worker_config: Optional[Dict[str, Any]] = None
+    connection_params: dict[str, Any]
+    worker_config: dict[str, Any] | None = None
 
     def __post_init__(self):
         """Initialize worker_config if not provided."""

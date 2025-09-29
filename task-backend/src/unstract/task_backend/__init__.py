@@ -21,7 +21,12 @@ Usage:
 __version__ = "0.1.0"
 
 from .config import TaskBackendConfig, get_task_backend_config
-from .worker import TaskBackendWorker
 from .tasks import TASK_REGISTRY
+from .worker import TaskBackendWorker
 
-__all__ = ["TaskBackendConfig", "get_task_backend_config", "TaskBackendWorker", "TASK_REGISTRY"]
+__all__ = [
+    "TaskBackendConfig",
+    "get_task_backend_config",
+    "TaskBackendWorker",
+    "TASK_REGISTRY",
+]

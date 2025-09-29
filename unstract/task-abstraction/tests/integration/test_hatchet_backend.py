@@ -4,9 +4,9 @@ These tests require Hatchet SDK to be installed and valid credentials.
 Run with: pytest tests/integration/test_hatchet_backend.py -m integration
 """
 
-import pytest
-from unittest.mock import patch, Mock
+from unittest.mock import Mock, patch
 
+import pytest
 from task_abstraction.backends.hatchet import HatchetBackend
 from task_abstraction.models import BackendConfig
 
@@ -27,7 +27,7 @@ class TestHatchetBackendIntegration:
             worker_config={
                 "worker_name": "test-worker",
                 "max_runs": 50,
-            }
+            },
         )
 
     @pytest.fixture
@@ -56,7 +56,7 @@ class TestHatchetBackendIntegration:
         """Test that invalid configuration is rejected."""
         invalid_config = BackendConfig(
             backend_type="hatchet",
-            connection_params={"server_url": "https://app.hatchet.run"}  # Missing token
+            connection_params={"server_url": "https://app.hatchet.run"},  # Missing token
         )
 
         with pytest.raises(ValueError, match="Invalid Hatchet configuration"):
@@ -65,7 +65,7 @@ class TestHatchetBackendIntegration:
             except ImportError:
                 pytest.skip("Hatchet SDK not installed")
 
-    @patch('hatchet_sdk.Hatchet')
+    @patch("hatchet_sdk.Hatchet")
     def test_task_registration(self, mock_hatchet_class, hatchet_config):
         """Test registering tasks with Hatchet backend."""
         mock_hatchet = Mock()
@@ -88,7 +88,7 @@ class TestHatchetBackendIntegration:
         except ImportError:
             pytest.skip("Hatchet SDK not installed")
 
-    @patch('hatchet_sdk.Hatchet')
+    @patch("hatchet_sdk.Hatchet")
     def test_task_registration_with_name(self, mock_hatchet_class, hatchet_config):
         """Test registering task with custom name."""
         mock_hatchet = Mock()
@@ -108,7 +108,7 @@ class TestHatchetBackendIntegration:
         except ImportError:
             pytest.skip("Hatchet SDK not installed")
 
-    @patch('hatchet_sdk.Hatchet')
+    @patch("hatchet_sdk.Hatchet")
     def test_task_submission(self, mock_hatchet_class, hatchet_config):
         """Test submitting tasks for execution."""
         mock_hatchet = Mock()
@@ -131,13 +131,13 @@ class TestHatchetBackendIntegration:
             # Verify workflow was triggered with correct parameters
             mock_hatchet.admin.trigger_workflow.assert_called_once_with(
                 workflow_name="analyze_text_workflow",
-                input_data={"args": ["hello world"], "kwargs": {}}
+                input_data={"args": ["hello world"], "kwargs": {}},
             )
 
         except ImportError:
             pytest.skip("Hatchet SDK not installed")
 
-    @patch('hatchet_sdk.Hatchet')
+    @patch("hatchet_sdk.Hatchet")
     def test_task_result_retrieval(self, mock_hatchet_class, hatchet_config):
         """Test retrieving task results."""
         mock_hatchet = Mock()
@@ -169,7 +169,7 @@ class TestHatchetBackendIntegration:
         except ImportError:
             pytest.skip("Hatchet SDK not installed")
 
-    @patch('hatchet_sdk.Hatchet')
+    @patch("hatchet_sdk.Hatchet")
     def test_task_result_failed(self, mock_hatchet_class, hatchet_config):
         """Test retrieving result for failed task."""
         mock_hatchet = Mock()
@@ -193,7 +193,7 @@ class TestHatchetBackendIntegration:
         except ImportError:
             pytest.skip("Hatchet SDK not installed")
 
-    @patch('hatchet_sdk.Hatchet')
+    @patch("hatchet_sdk.Hatchet")
     def test_submit_unregistered_task(self, mock_hatchet_class, hatchet_config):
         """Test submitting an unregistered task raises error."""
         mock_hatchet = Mock()
@@ -208,7 +208,7 @@ class TestHatchetBackendIntegration:
         except ImportError:
             pytest.skip("Hatchet SDK not installed")
 
-    @patch('hatchet_sdk.Hatchet')
+    @patch("hatchet_sdk.Hatchet")
     def test_connection_check(self, mock_hatchet_class, hatchet_config):
         """Test backend connection checking."""
         mock_hatchet = Mock()
@@ -234,7 +234,7 @@ class TestHatchetBackendIntegration:
 class TestHatchetWorkerIntegration:
     """Integration tests that require Hatchet worker process."""
 
-    @patch('hatchet_sdk.Hatchet')
+    @patch("hatchet_sdk.Hatchet")
     def test_worker_startup_simulation(self, mock_hatchet_class):
         """Test worker startup configuration (without actually starting)."""
         config = BackendConfig(
@@ -246,7 +246,7 @@ class TestHatchetWorkerIntegration:
             worker_config={
                 "worker_name": "integration-test-worker",
                 "max_runs": 100,
-            }
+            },
         )
 
         mock_hatchet = Mock()
@@ -264,8 +264,7 @@ class TestHatchetWorkerIntegration:
 
             # Verify Hatchet client was configured correctly
             mock_hatchet_class.assert_called_once_with(
-                token="test-token-12345",
-                server_url="https://app.hatchet.run"
+                token="test-token-12345", server_url="https://app.hatchet.run"
             )
 
         except ImportError:

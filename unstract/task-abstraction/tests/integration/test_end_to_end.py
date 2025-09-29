@@ -4,12 +4,12 @@ These tests verify the complete task abstraction workflow across all backends.
 Run with: pytest tests/integration/test_end_to_end.py -m integration
 """
 
-import pytest
-from unittest.mock import patch, Mock, AsyncMock
+from unittest.mock import AsyncMock, Mock, patch
 
-from task_abstraction import get_backend, get_available_backends
-from task_abstraction.models import BackendConfig
+import pytest
+from task_abstraction import get_available_backends, get_backend
 from task_abstraction.config import get_default_config
+from task_abstraction.models import BackendConfig
 
 
 @pytest.mark.integration
@@ -34,7 +34,7 @@ class TestEndToEndWorkflow:
             assert config.backend_type == backend_type
             assert config.validate()
 
-    @patch('task_abstraction.backends.celery.Celery')
+    @patch("task_abstraction.backends.celery.Celery")
     def test_celery_end_to_end_workflow(self, mock_celery_class):
         """Test complete workflow with Celery backend."""
         # Mock Celery app and components
@@ -55,13 +55,13 @@ class TestEndToEndWorkflow:
             def calculate_fibonacci(n):
                 if n <= 1:
                     return n
-                return calculate_fibonacci(n-1) + calculate_fibonacci(n-2)
+                return calculate_fibonacci(n - 1) + calculate_fibonacci(n - 2)
 
             # Verify task was registered
             assert "calculate_fibonacci" in backend._tasks
 
             # Mock task submission
-            with patch.object(backend, 'submit') as mock_submit:
+            with patch.object(backend, "submit") as mock_submit:
                 mock_submit.return_value = "celery-task-123"
 
                 task_id = backend.submit("calculate_fibonacci", 5)
@@ -69,13 +69,14 @@ class TestEndToEndWorkflow:
                 mock_submit.assert_called_once_with("calculate_fibonacci", 5)
 
             # Mock result retrieval
-            with patch.object(backend, 'get_result') as mock_get_result:
+            with patch.object(backend, "get_result") as mock_get_result:
                 from task_abstraction.models import TaskResult
+
                 expected_result = TaskResult(
                     task_id="celery-task-123",
                     task_name="calculate_fibonacci",
                     status="completed",
-                    result=5  # fibonacci(5) = 5
+                    result=5,  # fibonacci(5) = 5
                 )
                 mock_get_result.return_value = expected_result
 
@@ -86,7 +87,7 @@ class TestEndToEndWorkflow:
         except ImportError:
             pytest.skip("Celery not installed")
 
-    @patch('hatchet_sdk.Hatchet')
+    @patch("hatchet_sdk.Hatchet")
     def test_hatchet_end_to_end_workflow(self, mock_hatchet_class):
         """Test complete workflow with Hatchet backend."""
         # Mock Hatchet client
@@ -104,8 +105,8 @@ class TestEndToEndWorkflow:
             backend_type="hatchet",
             connection_params={
                 "token": "test-token",
-                "server_url": "https://app.hatchet.run"
-            }
+                "server_url": "https://app.hatchet.run",
+            },
         )
 
         try:
@@ -133,10 +134,12 @@ class TestEndToEndWorkflow:
         except ImportError:
             pytest.skip("Hatchet SDK not installed")
 
-    @patch('temporalio.client.Client.connect')
-    @patch('temporalio.activity.defn')
-    @patch('temporalio.workflow.defn')
-    def test_temporal_end_to_end_workflow(self, mock_workflow_defn, mock_activity_defn, mock_connect):
+    @patch("temporalio.client.Client.connect")
+    @patch("temporalio.activity.defn")
+    @patch("temporalio.workflow.defn")
+    def test_temporal_end_to_end_workflow(
+        self, mock_workflow_defn, mock_activity_defn, mock_connect
+    ):
         """Test complete workflow with Temporal backend."""
         # Mock decorators
         mock_activity_defn.return_value = lambda fn: fn
@@ -175,10 +178,15 @@ class TestEndToEndWorkflow:
         # Test with different backend types
         backend_configs = [
             BackendConfig("celery", {"broker_url": "redis://localhost:6379/0"}),
-            BackendConfig("temporal", {
-                "host": "localhost", "port": 7233,
-                "namespace": "default", "task_queue": "test"
-            })
+            BackendConfig(
+                "temporal",
+                {
+                    "host": "localhost",
+                    "port": 7233,
+                    "namespace": "default",
+                    "task_queue": "test",
+                },
+            ),
         ]
 
         for config in backend_configs:
@@ -196,9 +204,9 @@ class TestEndToEndWorkflow:
             except ImportError:
                 pytest.skip(f"{config.backend_type} not installed")
 
-    @patch('task_abstraction.config.yaml.safe_load')
-    @patch('builtins.open')
-    @patch('os.path.exists')
+    @patch("task_abstraction.config.yaml.safe_load")
+    @patch("builtins.open")
+    @patch("os.path.exists")
     def test_file_based_configuration(self, mock_exists, mock_open, mock_yaml_load):
         """Test loading backend from YAML configuration file."""
         # Mock file exists
@@ -209,16 +217,14 @@ class TestEndToEndWorkflow:
             "backend": "celery",
             "celery": {
                 "broker_url": "redis://config:6379/0",
-                "result_backend": "redis://config:6379/1"
+                "result_backend": "redis://config:6379/1",
             },
-            "worker": {
-                "concurrency": 8
-            }
+            "worker": {"concurrency": 8},
         }
 
         try:
             # Mock the YAML_AVAILABLE flag
-            with patch('task_abstraction.config.YAML_AVAILABLE', True):
+            with patch("task_abstraction.config.YAML_AVAILABLE", True):
                 backend = get_backend(config="test-config.yaml")
                 assert backend.backend_type == "celery"
 
@@ -270,7 +276,7 @@ class TestEndToEndWorkflow:
 class TestConcurrentTaskExecution:
     """Test concurrent task execution scenarios."""
 
-    @patch('task_abstraction.backends.celery.Celery')
+    @patch("task_abstraction.backends.celery.Celery")
     def test_multiple_task_registration(self, mock_celery_class):
         """Test registering and managing multiple tasks."""
         mock_app = Mock()
@@ -329,9 +335,7 @@ class TestConcurrentTaskExecution:
         assert not running_result.is_failed
 
         # Completed state
-        completed_result = TaskResult(
-            task_id, "test_task", "completed", result="done"
-        )
+        completed_result = TaskResult(task_id, "test_task", "completed", result="done")
         assert not completed_result.is_pending
         assert not completed_result.is_running
         assert completed_result.is_completed

@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Test script to submit tasks to the running worker."""
 
-import os
 import time
+
 from dotenv import load_dotenv
-from unstract.task_abstraction import get_backend, TASK_REGISTRY
+from unstract.task_abstraction import TASK_REGISTRY, get_backend
 
 # Load environment
 load_dotenv()
+
 
 def test_task_execution():
     """Test task submission and execution."""
@@ -29,9 +30,9 @@ def test_task_execution():
     print("\n📝 Test 1: Submitting add_numbers task to file_processing queue...")
 
     # For Celery, we need to submit with queue routing
-    if hasattr(backend, 'app'):  # Celery backend
+    if hasattr(backend, "app"):  # Celery backend
         celery_task = backend._tasks["add_numbers"]
-        result = celery_task.apply_async(args=[15, 25], queue='file_processing')
+        result = celery_task.apply_async(args=[15, 25], queue="file_processing")
         task_id = result.id
     else:
         task_id = backend.submit("add_numbers", 15, 25)
@@ -48,9 +49,11 @@ def test_task_execution():
     # Test 2: Echo task
     print("\n📝 Test 2: Submitting echo task to api_processing queue...")
 
-    if hasattr(backend, 'app'):  # Celery backend
+    if hasattr(backend, "app"):  # Celery backend
         celery_task = backend._tasks["echo"]
-        result = celery_task.apply_async(args=["Hello from task-backend!"], queue='api_processing')
+        result = celery_task.apply_async(
+            args=["Hello from task-backend!"], queue="api_processing"
+        )
         task_id = result.id
     else:
         task_id = backend.submit("echo", "Hello from task-backend!")
@@ -64,9 +67,9 @@ def test_task_execution():
     # Test 3: Health check
     print("\n📝 Test 3: Submitting health_check task to callback_processing queue...")
 
-    if hasattr(backend, 'app'):  # Celery backend
+    if hasattr(backend, "app"):  # Celery backend
         celery_task = backend._tasks["health_check"]
-        result = celery_task.apply_async(queue='callback_processing')
+        result = celery_task.apply_async(queue="callback_processing")
         task_id = result.id
     else:
         task_id = backend.submit("health_check")
@@ -78,6 +81,7 @@ def test_task_execution():
     print(f"🎉 Result: {result}")
 
     print("\n✅ All tests completed successfully!")
+
 
 if __name__ == "__main__":
     test_task_execution()

@@ -2,12 +2,12 @@
 
 import logging
 import time
-from typing import Any, Dict
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-def process_data(data: Dict[str, Any], operation: str = "validate") -> Dict[str, Any]:
+def process_data(data: dict[str, Any], operation: str = "validate") -> dict[str, Any]:
     """Generic data processing task.
 
     Args:
@@ -17,13 +17,15 @@ def process_data(data: Dict[str, Any], operation: str = "validate") -> Dict[str,
     Returns:
         Processed data with metadata
     """
-    logger.info(f"Executing process_data task - operation: {operation}, data_keys: {list(data.keys())}")
+    logger.info(
+        f"Executing process_data task - operation: {operation}, data_keys: {list(data.keys())}"
+    )
 
     processed_data = {
         "original": data,
         "operation": operation,
         "processed_at": time.time(),
-        "status": "completed"
+        "status": "completed",
     }
 
     # Simulate some processing based on operation

@@ -16,8 +16,9 @@ Example:
 """
 
 import logging
-from typing import List, Tuple, Dict, Any, Optional, Union, Callable
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -25,26 +26,28 @@ logger = logging.getLogger(__name__)
 @dataclass
 class WorkflowStep:
     """A single step in a workflow."""
-    task_name: str
-    kwargs: Dict[str, Any]
 
-    def __init__(self, task_name: str, kwargs: Optional[Dict[str, Any]] = None):
+    task_name: str
+    kwargs: dict[str, Any]
+
+    def __init__(self, task_name: str, kwargs: dict[str, Any] | None = None):
         self.task_name = task_name
         self.kwargs = kwargs or {}
 
 
 class ExecutionPattern:
     """Base class for workflow execution patterns."""
+
     pass
 
 
 class Sequential(ExecutionPattern):
     """Sequential execution pattern - steps run one after another."""
 
-    def __init__(self, steps: List[Union[str, Tuple[str, Dict]]]):
+    def __init__(self, steps: list[str | tuple[str, dict]]):
         self.steps = self._normalize_steps(steps)
 
-    def _normalize_steps(self, steps: List[Union[str, Tuple[str, Dict]]]) -> List[WorkflowStep]:
+    def _normalize_steps(self, steps: list[str | tuple[str, dict]]) -> list[WorkflowStep]:
         """Convert step definitions to WorkflowStep objects."""
         workflow_steps = []
         for step in steps:
@@ -61,10 +64,10 @@ class Sequential(ExecutionPattern):
 class Parallel(ExecutionPattern):
     """Parallel execution pattern - steps run simultaneously."""
 
-    def __init__(self, steps: List[Union[str, Tuple[str, Dict]]]):
+    def __init__(self, steps: list[str | tuple[str, dict]]):
         self.steps = self._normalize_steps(steps)
 
-    def _normalize_steps(self, steps: List[Union[str, Tuple[str, Dict]]]) -> List[WorkflowStep]:
+    def _normalize_steps(self, steps: list[str | tuple[str, dict]]) -> list[WorkflowStep]:
         """Convert step definitions to WorkflowStep objects."""
         workflow_steps = []
         for step in steps:
@@ -81,12 +84,18 @@ class Parallel(ExecutionPattern):
 @dataclass
 class WorkflowDefinition:
     """Definition of a workflow with support for sequential, parallel, and mixed patterns."""
+
     name: str
-    patterns: List[ExecutionPattern]
-    description: Optional[str] = None
+    patterns: list[ExecutionPattern]
+    description: str | None = None
 
     @classmethod
-    def sequential(cls, steps: List[Union[str, Tuple[str, Dict]]], name: str = "sequential_workflow", description: Optional[str] = None):
+    def sequential(
+        cls,
+        steps: list[str | tuple[str, dict]],
+        name: str = "sequential_workflow",
+        description: str | None = None,
+    ):
         """Create a purely sequential workflow.
 
         Args:
@@ -105,14 +114,15 @@ class WorkflowDefinition:
             ])
         """
         sequential_pattern = Sequential(steps)
-        return cls(
-            name=name,
-            patterns=[sequential_pattern],
-            description=description
-        )
+        return cls(name=name, patterns=[sequential_pattern], description=description)
 
     @classmethod
-    def parallel(cls, steps: List[Union[str, Tuple[str, Dict]]], name: str = "parallel_workflow", description: Optional[str] = None):
+    def parallel(
+        cls,
+        steps: list[str | tuple[str, dict]],
+        name: str = "parallel_workflow",
+        description: str | None = None,
+    ):
         """Create a purely parallel workflow.
 
         Args:
@@ -131,14 +141,15 @@ class WorkflowDefinition:
             ])
         """
         parallel_pattern = Parallel(steps)
-        return cls(
-            name=name,
-            patterns=[parallel_pattern],
-            description=description
-        )
+        return cls(name=name, patterns=[parallel_pattern], description=description)
 
     @classmethod
-    def mixed(cls, patterns: List[ExecutionPattern], name: str = "mixed_workflow", description: Optional[str] = None):
+    def mixed(
+        cls,
+        patterns: list[ExecutionPattern],
+        name: str = "mixed_workflow",
+        description: str | None = None,
+    ):
         """Create a mixed workflow with sequential and parallel patterns.
 
         Args:
@@ -156,14 +167,15 @@ class WorkflowDefinition:
                 Sequential([("aggregate_results", {})])
             ])
         """
-        return cls(
-            name=name,
-            patterns=patterns,
-            description=description
-        )
+        return cls(name=name, patterns=patterns, description=description)
 
     @classmethod
-    def from_step_list(cls, name: str, steps: List[Union[str, Tuple[str, Dict]]], description: Optional[str] = None):
+    def from_step_list(
+        cls,
+        name: str,
+        steps: list[str | tuple[str, dict]],
+        description: str | None = None,
+    ):
         """Create workflow from list of steps (sequential).
 
         Args:
@@ -177,11 +189,11 @@ class WorkflowDefinition:
         return cls.sequential(steps, name, description)
 
     @property
-    def steps(self) -> List[WorkflowStep]:
+    def steps(self) -> list[WorkflowStep]:
         """Get all workflow steps as a flat list."""
         all_steps = []
         for pattern in self.patterns:
-            if hasattr(pattern, 'steps'):
+            if hasattr(pattern, "steps"):
                 all_steps.extend(pattern.steps)
         return all_steps
 
@@ -192,7 +204,9 @@ class WorkflowExecutor:
     def __init__(self, backend):
         self.backend = backend
 
-    def execute_workflow(self, workflow_def: WorkflowDefinition, initial_input: Any) -> str:
+    def execute_workflow(
+        self, workflow_def: WorkflowDefinition, initial_input: Any
+    ) -> str:
         """Execute a workflow definition.
 
         Args:
@@ -208,7 +222,9 @@ class WorkflowExecutor:
         """
         return self.backend.submit_workflow(workflow_def.name, initial_input)
 
-    def execute_workflow_patterns(self, workflow_def: WorkflowDefinition, initial_input: Any) -> Any:
+    def execute_workflow_patterns(
+        self, workflow_def: WorkflowDefinition, initial_input: Any
+    ) -> Any:
         """Execute workflow with support for sequential, parallel, and mixed patterns.
 
         Args:
@@ -253,7 +269,9 @@ class WorkflowExecutor:
                 task_id = self.backend.submit(step.task_name, **step.kwargs)
             elif step.kwargs:
                 # Task with explicit kwargs - pass current_result as first argument
-                task_id = self.backend.submit(step.task_name, current_result, **step.kwargs)
+                task_id = self.backend.submit(
+                    step.task_name, current_result, **step.kwargs
+                )
             else:
                 # Task without kwargs - pass current_result as only argument
                 task_id = self.backend.submit(step.task_name, current_result)
@@ -261,7 +279,7 @@ class WorkflowExecutor:
             # Get result (backend handles retries/timeouts)
             result = self.backend.get_result(task_id)
 
-            if result.status == 'completed':
+            if result.status == "completed":
                 current_result = result.result
             else:
                 # Backend should handle retry logic
@@ -269,7 +287,7 @@ class WorkflowExecutor:
 
         return current_result
 
-    def _execute_parallel_pattern(self, pattern: Parallel, input_data: Any) -> List[Any]:
+    def _execute_parallel_pattern(self, pattern: Parallel, input_data: Any) -> list[Any]:
         """Execute a parallel pattern.
 
         Args:
@@ -294,7 +312,7 @@ class WorkflowExecutor:
         results = []
         for task_id in task_ids:
             result = self.backend.get_result(task_id)
-            if result.status == 'completed':
+            if result.status == "completed":
                 results.append(result.result)
             else:
                 # Backend should handle retry logic
@@ -303,7 +321,7 @@ class WorkflowExecutor:
         return results
 
 
-def workflow(backend, name: Optional[str] = None, description: Optional[str] = None):
+def workflow(backend, name: str | None = None, description: str | None = None):
     """Decorator for defining workflows.
 
     Args:
@@ -323,6 +341,7 @@ def workflow(backend, name: Optional[str] = None, description: Optional[str] = N
                 ("store_results", {})
             ]
     """
+
     def decorator(fn: Callable) -> Callable:
         workflow_name = name or fn.__name__
 
@@ -330,7 +349,9 @@ def workflow(backend, name: Optional[str] = None, description: Optional[str] = N
         steps = fn()
 
         # Create and register workflow definition
-        workflow_def = WorkflowDefinition.from_step_list(workflow_name, steps, description)
+        workflow_def = WorkflowDefinition.from_step_list(
+            workflow_name, steps, description
+        )
         backend.register_workflow(workflow_def)
 
         logger.info(f"Registered workflow: {workflow_name}")
@@ -339,7 +360,12 @@ def workflow(backend, name: Optional[str] = None, description: Optional[str] = N
     return decorator
 
 
-def register_workflow(backend, steps: List[Union[str, Tuple[str, Dict]]], name: str, description: Optional[str] = None):
+def register_workflow(
+    backend,
+    steps: list[str | tuple[str, dict]],
+    name: str,
+    description: str | None = None,
+):
     """Register a workflow from a step list.
 
     Args:
@@ -365,5 +391,5 @@ __all__ = [
     "Parallel",
     "ExecutionPattern",
     "workflow",
-    "register_workflow"
+    "register_workflow",
 ]

@@ -1,14 +1,14 @@
 """Unit tests for backend factory."""
 
-import pytest
-from unittest.mock import patch, Mock
+from unittest.mock import patch
 
+import pytest
 from task_abstraction.factory import (
-    register_backend,
-    get_available_backends,
+    BACKEND_REGISTRY,
     create_backend,
+    get_available_backends,
     get_backend,
-    BACKEND_REGISTRY
+    register_backend,
 )
 from task_abstraction.models import BackendConfig
 
@@ -55,8 +55,7 @@ class TestBackendRegistry:
             register_backend("mock", MockBackend)
 
             config = BackendConfig(
-                backend_type="mock",
-                connection_params={"test": "value"}
+                backend_type="mock", connection_params={"test": "value"}
             )
 
             backend = create_backend("mock", config)
@@ -73,6 +72,7 @@ class TestBackendRegistry:
 
     def test_create_backend_import_error(self):
         """Test backend creation when dependencies are missing."""
+
         # Mock a backend that raises ImportError
         class FailingBackend:
             def __init__(self, config=None):
@@ -105,10 +105,7 @@ class TestGetBackend:
 
     def test_get_backend_with_config_object(self):
         """Test get_backend with BackendConfig object."""
-        config = BackendConfig(
-            backend_type="mock",
-            connection_params={"test": "value"}
-        )
+        config = BackendConfig(backend_type="mock", connection_params={"test": "value"})
 
         backend = get_backend(config=config)
         assert isinstance(backend, MockBackend)
@@ -116,30 +113,23 @@ class TestGetBackend:
 
     def test_get_backend_with_backend_type_and_config(self):
         """Test get_backend with both backend_type and config."""
-        config = BackendConfig(
-            backend_type="mock",
-            connection_params={"test": "value"}
-        )
+        config = BackendConfig(backend_type="mock", connection_params={"test": "value"})
 
         backend = get_backend(backend_type="mock", config=config)
         assert isinstance(backend, MockBackend)
 
     def test_get_backend_type_mismatch(self):
         """Test get_backend with mismatched backend_type and config."""
-        config = BackendConfig(
-            backend_type="mock",
-            connection_params={"test": "value"}
-        )
+        config = BackendConfig(backend_type="mock", connection_params={"test": "value"})
 
         with pytest.raises(ValueError, match="Backend type mismatch"):
             get_backend(backend_type="other", config=config)
 
-    @patch('task_abstraction.factory.load_config_from_env')
+    @patch("task_abstraction.factory.load_config_from_env")
     def test_get_backend_from_env(self, mock_load_env):
         """Test get_backend loading from environment."""
         mock_config = BackendConfig(
-            backend_type="mock",
-            connection_params={"from": "env"}
+            backend_type="mock", connection_params={"from": "env"}
         )
         mock_load_env.return_value = mock_config
 
@@ -148,12 +138,11 @@ class TestGetBackend:
         mock_load_env.assert_called_once_with("mock")
         assert isinstance(backend, MockBackend)
 
-    @patch('task_abstraction.factory.get_default_config')
+    @patch("task_abstraction.factory.get_default_config")
     def test_get_backend_default_config(self, mock_get_default):
         """Test get_backend with default configuration."""
         mock_config = BackendConfig(
-            backend_type="mock",
-            connection_params={"from": "default"}
+            backend_type="mock", connection_params={"from": "default"}
         )
         mock_get_default.return_value = mock_config
 
@@ -162,12 +151,11 @@ class TestGetBackend:
         mock_get_default.assert_called_once_with("mock")
         assert isinstance(backend, MockBackend)
 
-    @patch('task_abstraction.factory.load_config_from_file')
+    @patch("task_abstraction.factory.load_config_from_file")
     def test_get_backend_from_file(self, mock_load_file):
         """Test get_backend loading from file."""
         mock_config = BackendConfig(
-            backend_type="mock",
-            connection_params={"from": "file"}
+            backend_type="mock", connection_params={"from": "file"}
         )
         mock_load_file.return_value = mock_config
 
@@ -181,12 +169,11 @@ class TestGetBackend:
         with pytest.raises(ValueError, match="Backend type must be specified"):
             get_backend()
 
-    @patch('task_abstraction.factory.load_config_from_file')
+    @patch("task_abstraction.factory.load_config_from_file")
     def test_get_backend_file_config_type_mismatch(self, mock_load_file):
         """Test get_backend with file config that doesn't match requested type."""
         mock_config = BackendConfig(
-            backend_type="mock",
-            connection_params={"from": "file"}
+            backend_type="mock", connection_params={"from": "file"}
         )
         mock_load_file.return_value = mock_config
 

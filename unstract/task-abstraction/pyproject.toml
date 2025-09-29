@@ -38,7 +38,7 @@ temporal = [
 ]
 dev = [
     "pytest>=7.4.0",
-    "pytest-asyncio>=0.21.1", 
+    "pytest-asyncio>=0.21.1",
     "pytest-mock>=3.11.1",
     "pytest-cov>=4.1.0",      # Coverage reporting
     "pytest-xdist>=3.3.0",    # Parallel test execution
@@ -67,7 +67,7 @@ target-version = "py312"
 [tool.ruff.lint]
 select = [
     "E",  # pycodestyle errors
-    "W",  # pycodestyle warnings  
+    "W",  # pycodestyle warnings
     "F",  # pyflakes
     "I",  # isort
     "B",  # flake8-bugbear

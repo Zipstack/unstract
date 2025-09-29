@@ -4,10 +4,9 @@ These tests require Redis to be running and Celery to be installed.
 Run with: pytest tests/integration/test_celery_backend.py -m integration
 """
 
-import pytest
-import time
 from unittest.mock import patch
 
+import pytest
 from task_abstraction.backends.celery import CeleryBackend
 from task_abstraction.models import BackendConfig
 
@@ -28,7 +27,7 @@ class TestCeleryBackendIntegration:
             worker_config={
                 "concurrency": 2,
                 "max_tasks_per_child": 10,
-            }
+            },
         )
 
     @pytest.fixture
@@ -47,6 +46,7 @@ class TestCeleryBackendIntegration:
 
     def test_task_registration(self, celery_backend):
         """Test registering tasks with Celery backend."""
+
         @celery_backend.register_task
         def add(x, y):
             return x + y
@@ -60,6 +60,7 @@ class TestCeleryBackendIntegration:
 
     def test_task_registration_with_name(self, celery_backend):
         """Test registering task with custom name."""
+
         def multiply(x, y):
             return x * y
 
@@ -70,6 +71,7 @@ class TestCeleryBackendIntegration:
 
     def test_task_submission(self, celery_backend):
         """Test submitting tasks for execution."""
+
         @celery_backend.register_task
         def subtract(x, y):
             return x - y
@@ -81,6 +83,7 @@ class TestCeleryBackendIntegration:
 
     def test_task_result_retrieval(self, celery_backend):
         """Test retrieving task results."""
+
         @celery_backend.register_task
         def divide(x, y):
             return x / y
@@ -99,7 +102,7 @@ class TestCeleryBackendIntegration:
         with pytest.raises(ValueError, match="Task 'nonexistent' not registered"):
             celery_backend.submit("nonexistent", 1, 2)
 
-    @patch('celery.app.Celery.control')
+    @patch("celery.app.Celery.control")
     def test_connection_check(self, mock_control, celery_backend):
         """Test backend connection checking."""
         # Mock successful connection
@@ -117,7 +120,10 @@ class TestCeleryBackendIntegration:
         try:
             backend = CeleryBackend()
             assert backend.config.backend_type == "celery"
-            assert backend.config.connection_params["broker_url"] == "redis://localhost:6379/0"
+            assert (
+                backend.config.connection_params["broker_url"]
+                == "redis://localhost:6379/0"
+            )
         except ImportError:
             pytest.skip("Celery not installed")
 
@@ -128,7 +134,7 @@ class TestCeleryBackendIntegration:
             connection_params={
                 "broker_url": "redis://localhost:6379/0",
                 "result_backend": "redis://localhost:6379/0",
-            }
+            },
         )
 
         try:
@@ -168,7 +174,7 @@ class TestCeleryWorkerIntegration:
             worker_config={
                 "concurrency": 4,
                 "max_tasks_per_child": 100,
-            }
+            },
         )
 
         try:

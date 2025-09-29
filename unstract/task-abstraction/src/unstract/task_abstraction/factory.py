@@ -2,19 +2,19 @@
 
 import logging
 import os
-from typing import Dict, Type, Union, Optional
+
 from .base import TaskBackend
+from .config import load_config_from_env, load_config_from_file
 from .models import BackendConfig
-from .config import load_config_from_file, load_config_from_env
 
 logger = logging.getLogger(__name__)
 
 
 # Registry of available backend implementations
-BACKEND_REGISTRY: Dict[str, Type[TaskBackend]] = {}
+BACKEND_REGISTRY: dict[str, type[TaskBackend]] = {}
 
 
-def register_backend(backend_type: str, backend_class: Type[TaskBackend]) -> None:
+def register_backend(backend_type: str, backend_class: type[TaskBackend]) -> None:
     """Register a backend implementation.
 
     Args:
@@ -33,7 +33,7 @@ def get_available_backends() -> list[str]:
     return list(BACKEND_REGISTRY.keys())
 
 
-def create_backend(backend_type: str, config: Optional[BackendConfig] = None) -> TaskBackend:
+def create_backend(backend_type: str, config: BackendConfig | None = None) -> TaskBackend:
     """Create a backend instance of the specified type.
 
     Args:
@@ -76,7 +76,7 @@ def create_backend(backend_type: str, config: Optional[BackendConfig] = None) ->
         ) from e
 
 
-def get_backend(config: Optional[Union[BackendConfig, str]] = None) -> TaskBackend:
+def get_backend(config: BackendConfig | str | None = None) -> TaskBackend:
     """Get a task backend instance with automatic configuration loading.
 
     Auto-detects backend type from TASK_BACKEND_TYPE environment variable.
@@ -134,6 +134,7 @@ def _register_available_backends():
     # Try to register Celery backend
     try:
         from .backends.celery import CeleryBackend
+
         register_backend("celery", CeleryBackend)
         logger.debug("Registered Celery backend")
     except ImportError:
@@ -142,6 +143,7 @@ def _register_available_backends():
     # Try to register Hatchet backend
     try:
         from .backends.hatchet import HatchetBackend
+
         register_backend("hatchet", HatchetBackend)
         logger.debug("Registered Hatchet backend")
     except ImportError:
@@ -150,6 +152,7 @@ def _register_available_backends():
     # Try to register Temporal backend
     try:
         from .backends.temporal import TemporalBackend
+
         register_backend("temporal", TemporalBackend)
         logger.debug("Registered Temporal backend")
     except ImportError:

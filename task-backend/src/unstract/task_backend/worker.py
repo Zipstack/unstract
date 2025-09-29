@@ -9,13 +9,13 @@ import logging.config
 import signal
 import socket
 import sys
-from typing import Optional
 
 from dotenv import load_dotenv
-# Import task abstraction library
-from unstract.task_abstraction import get_backend, BackendConfig, TASK_REGISTRY
 
-from .config import get_task_backend_config, get_backend_config_for_type
+# Import task abstraction library
+from unstract.task_abstraction import TASK_REGISTRY, BackendConfig, get_backend
+
+from .config import get_backend_config_for_type, get_task_backend_config
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,13 @@ logger = logging.getLogger(__name__)
 class TaskBackendWorker:
     """Simple worker that delegates to task-abstraction backends."""
 
-    def __init__(self, backend_type: Optional[str] = None, queues: Optional[list] = None, worker_name: Optional[str] = None, concurrency: Optional[int] = None):
+    def __init__(
+        self,
+        backend_type: str | None = None,
+        queues: list | None = None,
+        worker_name: str | None = None,
+        concurrency: int | None = None,
+    ):
         """Initialize worker with backend type and queue configuration.
 
         Args:
@@ -64,7 +70,7 @@ class TaskBackendWorker:
         self.backend = None
         self.shutdown_requested = False
 
-    def _resolve_queues(self, cli_queues: Optional[list]) -> list:
+    def _resolve_queues(self, cli_queues: list | None) -> list:
         """Resolve queue names with proper priority: CLI > ENV > Error.
 
         Args:
@@ -89,10 +95,14 @@ class TaskBackendWorker:
 
         if env_queues and environment != "prod":
             queues = [q.strip() for q in env_queues.split(",") if q.strip()]
-            logger.info(f"Using queues from TASK_QUEUES environment (ENVIRONMENT={environment}): {', '.join(queues)}")
+            logger.info(
+                f"Using queues from TASK_QUEUES environment (ENVIRONMENT={environment}): {', '.join(queues)}"
+            )
             return queues
         elif env_queues and environment == "prod":
-            logger.warning("TASK_QUEUES ignored in production environment. Use --queues argument.")
+            logger.warning(
+                "TASK_QUEUES ignored in production environment. Use --queues argument."
+            )
 
         # Priority 3: Error - no queues specified
         if environment == "prod":
@@ -123,7 +133,7 @@ class TaskBackendWorker:
             backend_config = BackendConfig(
                 backend_type=self.backend_type,
                 connection_params=self._get_connection_params(),
-                worker_config=self._get_worker_config()
+                worker_config=self._get_worker_config(),
             )
 
             # Get backend instance using task-abstraction with our config
@@ -171,7 +181,6 @@ class TaskBackendWorker:
 
         logger.info(f"Worker listening to queues: {', '.join(self.queues)}")
 
-
     def _get_connection_params(self) -> dict:
         """Get backend-specific connection parameters from config."""
         return self.config.get_backend_specific_config(self.queues)
@@ -185,20 +194,26 @@ class TaskBackendWorker:
 
         # Add backend-specific worker settings
         if self.backend_type == "celery":
-            base_config.update({
-                "max_tasks_per_child": 100,
-            })
+            base_config.update(
+                {
+                    "max_tasks_per_child": 100,
+                }
+            )
         elif self.backend_type == "hatchet":
-            base_config.update({
-                "max_runs": 100,
-                "workflows": self.queues,  # Map queues to workflows for Hatchet
-            })
+            base_config.update(
+                {
+                    "max_runs": 100,
+                    "workflows": self.queues,  # Map queues to workflows for Hatchet
+                }
+            )
         elif self.backend_type == "temporal":
-            base_config.update({
-                "task_queues": self.queues,  # Map queues to task queues for Temporal
-                "max_concurrent_activities": 100,
-                "max_concurrent_workflow_tasks": 100,
-            })
+            base_config.update(
+                {
+                    "task_queues": self.queues,  # Map queues to task queues for Temporal
+                    "max_concurrent_activities": 100,
+                    "max_concurrent_workflow_tasks": 100,
+                }
+            )
 
         return base_config
 
@@ -224,26 +239,25 @@ def main() -> None:
     parser.add_argument(
         "--backend",
         choices=["celery", "hatchet", "temporal"],
-        help="Backend type to use (overrides environment config)"
+        help="Backend type to use (overrides environment config)",
     )
     parser.add_argument(
         "--queues",
-        help="Comma-separated list of queues to listen to (e.g., 'file_processing,api_processing'). If not specified, uses default queue."
+        help="Comma-separated list of queues to listen to (e.g., 'file_processing,api_processing'). If not specified, uses default queue.",
     )
     parser.add_argument(
         "--concurrency",
         type=int,
-        help="Number of worker processes/threads (overrides config)"
+        help="Number of worker processes/threads (overrides config)",
     )
     parser.add_argument(
-        "--worker-name",
-        help="Worker instance name (auto-generated if not provided)"
+        "--worker-name", help="Worker instance name (auto-generated if not provided)"
     )
     parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="Log level"
+        help="Log level",
     )
 
     args = parser.parse_args()
@@ -255,8 +269,8 @@ def main() -> None:
     class RequestIDFilter(logging.Filter):
         def filter(self, record):
             # For worker processes, we can use task_id or a generated request_id
-            if not hasattr(record, 'request_id'):
-                setattr(record, 'request_id', '-')
+            if not hasattr(record, "request_id"):
+                record.request_id = "-"
             return True
 
     # Define OTel filter for consistency
@@ -267,46 +281,48 @@ def main() -> None:
                     setattr(record, attr, "-")
             return True
 
-    logging.config.dictConfig({
-        "version": 1,
-        "disable_existing_loggers": False,
-        "filters": {
-            "request_id": {"()": RequestIDFilter},
-            "otel_ids": {"()": OTelFieldFilter},
-        },
-        "formatters": {
-            "enriched": {
-                "format": (
-                    "%(levelname)s : [%(asctime)s]"
-                    "{module:%(module)s process:%(process)d "
-                    "thread:%(thread)d request_id:%(request_id)s "
-                    "trace_id:%(otelTraceID)s span_id:%(otelSpanID)s} :- %(message)s"
-                ),
+    logging.config.dictConfig(
+        {
+            "version": 1,
+            "disable_existing_loggers": False,
+            "filters": {
+                "request_id": {"()": RequestIDFilter},
+                "otel_ids": {"()": OTelFieldFilter},
             },
-        },
-        "handlers": {
-            "console": {
+            "formatters": {
+                "enriched": {
+                    "format": (
+                        "%(levelname)s : [%(asctime)s]"
+                        "{module:%(module)s process:%(process)d "
+                        "thread:%(thread)d request_id:%(request_id)s "
+                        "trace_id:%(otelTraceID)s span_id:%(otelSpanID)s} :- %(message)s"
+                    ),
+                },
+            },
+            "handlers": {
+                "console": {
+                    "level": log_level,
+                    "class": "logging.StreamHandler",
+                    "filters": ["request_id", "otel_ids"],
+                    "formatter": "enriched",
+                },
+            },
+            "root": {
                 "level": log_level,
-                "class": "logging.StreamHandler",
-                "filters": ["request_id", "otel_ids"],
-                "formatter": "enriched",
+                "handlers": ["console"],
             },
-        },
-        "root": {
-            "level": log_level,
-            "handlers": ["console"],
-        },
-    })
+        }
+    )
 
     # Parse queue arguments
-    queues = args.queues.split(',') if args.queues else None
+    queues = args.queues.split(",") if args.queues else None
 
     # Create and start worker
     worker = TaskBackendWorker(
         backend_type=args.backend,
         queues=queues,
         worker_name=args.worker_name,
-        concurrency=args.concurrency
+        concurrency=args.concurrency,
     )
 
     try:

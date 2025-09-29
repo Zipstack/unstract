@@ -4,9 +4,9 @@ These tests verify that all backend implementations properly implement
 the TaskBackend interface contract.
 """
 
-import pytest
 from abc import ABC
 
+import pytest
 from task_abstraction.base import TaskBackend
 from task_abstraction.models import BackendConfig
 
@@ -30,31 +30,34 @@ class BackendContractTestBase(ABC):
 
     def test_backend_has_required_methods(self, backend):
         """Test that backend implements all required methods."""
-        required_methods = ['register_task', 'submit', 'get_result', 'run_worker']
+        required_methods = ["register_task", "submit", "get_result", "run_worker"]
         for method_name in required_methods:
             assert hasattr(backend, method_name), f"Missing method: {method_name}"
-            assert callable(getattr(backend, method_name)), f"Method not callable: {method_name}"
+            assert callable(
+                getattr(backend, method_name)
+            ), f"Method not callable: {method_name}"
 
     def test_backend_has_required_properties(self, backend):
         """Test that backend has required properties."""
-        assert hasattr(backend, 'backend_type')
+        assert hasattr(backend, "backend_type")
         assert isinstance(backend.backend_type, str)
         assert len(backend.backend_type) > 0
 
     def test_backend_config_stored(self, backend, backend_config):
         """Test that backend stores configuration."""
-        assert hasattr(backend, 'config')
+        assert hasattr(backend, "config")
         # Config might be None for some backends
         if backend.config is not None:
             assert isinstance(backend.config, BackendConfig)
 
     def test_tasks_registry_exists(self, backend):
         """Test that backend maintains a tasks registry."""
-        assert hasattr(backend, '_tasks')
+        assert hasattr(backend, "_tasks")
         assert isinstance(backend._tasks, dict)
 
     def test_register_task_basic(self, backend):
         """Test basic task registration."""
+
         def sample_task(x):
             return x * 2
 
@@ -64,40 +67,47 @@ class BackendContractTestBase(ABC):
         assert result == sample_task
 
         # Should store in tasks registry
-        assert 'sample_task' in backend._tasks
-        assert backend._tasks['sample_task'] == sample_task
+        assert "sample_task" in backend._tasks
+        assert backend._tasks["sample_task"] == sample_task
 
     def test_register_task_with_custom_name(self, backend):
         """Test task registration with custom name."""
+
         def another_task(x):
             return x + 1
 
-        backend.register_task(another_task, name='custom_name')
+        backend.register_task(another_task, name="custom_name")
 
-        assert 'custom_name' in backend._tasks
-        assert backend._tasks['custom_name'] == another_task
+        assert "custom_name" in backend._tasks
+        assert backend._tasks["custom_name"] == another_task
 
     def test_register_task_as_decorator(self, backend):
         """Test using register_task as a decorator."""
+
         @backend.register_task
         def decorated_task(x):
-            return x ** 2
+            return x**2
 
-        assert 'decorated_task' in backend._tasks
+        assert "decorated_task" in backend._tasks
         assert decorated_task(5) == 25  # Function should still work
 
     def test_submit_requires_registered_task(self, backend):
         """Test that submit() requires task to be registered."""
         with pytest.raises(ValueError, match="not registered"):
-            backend.submit('nonexistent_task', 1, 2, 3)
+            backend.submit("nonexistent_task", 1, 2, 3)
 
     def test_backend_type_property_format(self, backend):
         """Test backend_type property format."""
         backend_type = backend.backend_type
         assert isinstance(backend_type, str)
         assert backend_type.islower()  # Should be lowercase
-        assert ' ' not in backend_type  # No spaces
-        assert backend_type in ['celery', 'hatchet', 'temporal', 'mocktaskbackend']  # Known types
+        assert " " not in backend_type  # No spaces
+        assert backend_type in [
+            "celery",
+            "hatchet",
+            "temporal",
+            "mocktaskbackend",
+        ]  # Known types
 
     def test_repr_contains_backend_info(self, backend):
         """Test that __repr__ contains useful information."""
@@ -123,12 +133,9 @@ class MockTaskBackendForContract(TaskBackend):
             raise ValueError(f"Task '{name}' not registered")
 
         task_id = f"mock-{len(self.submitted_tasks)}"
-        self.submitted_tasks.append({
-            'task_id': task_id,
-            'name': name,
-            'args': args,
-            'kwargs': kwargs
-        })
+        self.submitted_tasks.append(
+            {"task_id": task_id, "name": name, "args": args, "kwargs": kwargs}
+        )
         return task_id
 
     def get_result(self, task_id):
@@ -136,30 +143,27 @@ class MockTaskBackendForContract(TaskBackend):
 
         # Find the submitted task
         for task in self.submitted_tasks:
-            if task['task_id'] == task_id:
+            if task["task_id"] == task_id:
                 # Execute the task synchronously for testing
-                fn = self._tasks[task['name']]
+                fn = self._tasks[task["name"]]
                 try:
-                    result = fn(*task['args'], **task['kwargs'])
+                    result = fn(*task["args"], **task["kwargs"])
                     return TaskResult(
                         task_id=task_id,
-                        task_name=task['name'],
-                        status='completed',
-                        result=result
+                        task_name=task["name"],
+                        status="completed",
+                        result=result,
                     )
                 except Exception as e:
                     return TaskResult(
                         task_id=task_id,
-                        task_name=task['name'],
-                        status='failed',
-                        error=str(e)
+                        task_name=task["name"],
+                        status="failed",
+                        error=str(e),
                     )
 
         return TaskResult(
-            task_id=task_id,
-            task_name='unknown',
-            status='failed',
-            error='Task not found'
+            task_id=task_id, task_name="unknown", status="failed", error="Task not found"
         )
 
     def run_worker(self):
@@ -172,10 +176,7 @@ class TestMockBackendContract(BackendContractTestBase):
 
     @pytest.fixture
     def backend_config(self):
-        return BackendConfig(
-            backend_type='mock',
-            connection_params={'test': 'value'}
-        )
+        return BackendConfig(backend_type="mock", connection_params={"test": "value"})
 
     @pytest.fixture
     def backend(self, backend_config):
@@ -183,32 +184,34 @@ class TestMockBackendContract(BackendContractTestBase):
 
     def test_submit_and_get_result_workflow(self, backend):
         """Test complete submit -> get_result workflow."""
+
         @backend.register_task
         def add_numbers(a, b):
             return a + b
 
         # Submit task
-        task_id = backend.submit('add_numbers', 5, 3)
+        task_id = backend.submit("add_numbers", 5, 3)
         assert isinstance(task_id, str)
 
         # Get result
         result = backend.get_result(task_id)
         assert result.task_id == task_id
-        assert result.task_name == 'add_numbers'
-        assert result.status == 'completed'
+        assert result.task_name == "add_numbers"
+        assert result.status == "completed"
         assert result.result == 8
 
     def test_failed_task_result(self, backend):
         """Test getting result for failed task."""
+
         @backend.register_task
         def failing_task():
             raise Exception("Task failed")
 
-        task_id = backend.submit('failing_task')
+        task_id = backend.submit("failing_task")
         result = backend.get_result(task_id)
 
-        assert result.status == 'failed'
-        assert 'Task failed' in result.error
+        assert result.status == "failed"
+        assert "Task failed" in result.error
 
 
 class TestRealBackendContracts:
@@ -220,16 +223,16 @@ class TestRealBackendContracts:
             from task_abstraction.backends.celery import CeleryBackend
 
             config = BackendConfig(
-                backend_type='celery',
-                connection_params={'broker_url': 'redis://localhost:6379/0'}
+                backend_type="celery",
+                connection_params={"broker_url": "redis://localhost:6379/0"},
             )
 
             backend = CeleryBackend(config)
 
             # Run basic contract tests
             assert isinstance(backend, TaskBackend)
-            assert backend.backend_type == 'celery'
-            assert hasattr(backend, '_tasks')
+            assert backend.backend_type == "celery"
+            assert hasattr(backend, "_tasks")
 
         except ImportError:
             pytest.skip("Celery not installed")
@@ -240,19 +243,19 @@ class TestRealBackendContracts:
             from task_abstraction.backends.hatchet import HatchetBackend
 
             config = BackendConfig(
-                backend_type='hatchet',
+                backend_type="hatchet",
                 connection_params={
-                    'token': 'test-token',
-                    'server_url': 'https://app.hatchet.run'
-                }
+                    "token": "test-token",
+                    "server_url": "https://app.hatchet.run",
+                },
             )
 
             backend = HatchetBackend(config)
 
             # Run basic contract tests
             assert isinstance(backend, TaskBackend)
-            assert backend.backend_type == 'hatchet'
-            assert hasattr(backend, '_tasks')
+            assert backend.backend_type == "hatchet"
+            assert hasattr(backend, "_tasks")
 
         except ImportError:
             pytest.skip("Hatchet SDK not installed")
@@ -263,21 +266,21 @@ class TestRealBackendContracts:
             from task_abstraction.backends.temporal import TemporalBackend
 
             config = BackendConfig(
-                backend_type='temporal',
+                backend_type="temporal",
                 connection_params={
-                    'host': 'localhost',
-                    'port': 7233,
-                    'namespace': 'default',
-                    'task_queue': 'test-queue'
-                }
+                    "host": "localhost",
+                    "port": 7233,
+                    "namespace": "default",
+                    "task_queue": "test-queue",
+                },
             )
 
             backend = TemporalBackend(config)
 
             # Run basic contract tests
             assert isinstance(backend, TaskBackend)
-            assert backend.backend_type == 'temporal'
-            assert hasattr(backend, '_tasks')
+            assert backend.backend_type == "temporal"
+            assert hasattr(backend, "_tasks")
 
         except ImportError:
             pytest.skip("Temporal SDK not installed")

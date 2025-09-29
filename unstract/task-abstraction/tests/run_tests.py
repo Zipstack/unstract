@@ -6,7 +6,6 @@ For full test suite, use: pytest tests/
 """
 
 import sys
-import traceback
 from pathlib import Path
 
 # Add src to path
@@ -26,8 +25,9 @@ def run_test(test_name, test_func):
 
 def test_models():
     """Test core models."""
-    from task_abstraction.models import TaskResult, BackendConfig
     from datetime import datetime
+
+    from task_abstraction.models import BackendConfig, TaskResult
 
     # Test TaskResult
     result = TaskResult("test-123", "test_task", "completed", result=42)
@@ -37,7 +37,9 @@ def test_models():
     # Test duration calculation
     start = datetime(2023, 1, 1, 12, 0, 0)
     end = datetime(2023, 1, 1, 12, 0, 5)
-    timed_result = TaskResult("test", "test", "completed", started_at=start, completed_at=end)
+    timed_result = TaskResult(
+        "test", "test", "completed", started_at=start, completed_at=end
+    )
     assert timed_result.duration == 5.0
 
     # Test BackendConfig
@@ -51,7 +53,7 @@ def test_models():
 def test_base_interface():
     """Test TaskBackend base interface."""
     from task_abstraction.base import TaskBackend, task
-    from task_abstraction.models import BackendConfig, TaskResult
+    from task_abstraction.models import TaskResult
 
     class MockBackend(TaskBackend):
         def __init__(self, config=None):
@@ -67,7 +69,9 @@ def test_base_interface():
             if name not in self._tasks:
                 raise ValueError(f"Task '{name}' not registered")
             task_id = f"mock-{len(self.submitted)}"
-            self.submitted.append({"id": task_id, "name": name, "args": args, "kwargs": kwargs})
+            self.submitted.append(
+                {"id": task_id, "name": name, "args": args, "kwargs": kwargs}
+            )
             return task_id
 
         def get_result(self, task_id):
@@ -116,8 +120,8 @@ def test_base_interface():
 
 def test_factory():
     """Test backend factory."""
-    from task_abstraction.factory import get_available_backends, BACKEND_REGISTRY
     from task_abstraction.config import get_default_config
+    from task_abstraction.factory import get_available_backends
 
     # Test available backends
     backends = get_available_backends()
@@ -133,9 +137,8 @@ def test_factory():
 
 def test_configuration():
     """Test configuration system."""
-    from task_abstraction.config import load_config_from_env, get_default_config
-    from task_abstraction.models import BackendConfig
-    import os
+
+    from task_abstraction.config import get_default_config, load_config_from_env
 
     # Test environment loading with defaults
     with_env = load_config_from_env("celery")

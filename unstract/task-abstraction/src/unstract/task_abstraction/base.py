@@ -5,7 +5,8 @@ that works across Celery, Hatchet, and Temporal backends.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Optional, TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from .models import BackendConfig
@@ -27,14 +28,13 @@ class TaskBackend(ABC):
         Note: Persistence is handled by the backend's native mechanisms.
         Configure retries, DLQ, and state storage in your backend configuration.
         """
-        from .models import BackendConfig
 
         self.config = config
         self._tasks = {}
         self._workflows = {}
 
     @abstractmethod
-    def register_task(self, fn: Callable, name: Optional[str] = None) -> Callable:
+    def register_task(self, fn: Callable, name: str | None = None) -> Callable:
         """Register a function as a task.
 
         Args:
@@ -135,6 +135,7 @@ class TaskBackend(ABC):
             For production use, configure resilience in your backend.
         """
         import uuid
+
         from .workflow import WorkflowExecutor
 
         workflow_def = self._workflows[name]
@@ -169,5 +170,5 @@ class TaskBackend(ABC):
             task_id=workflow_id,
             task_name="workflow",
             status="completed",
-            result="Workflow completed (simple implementation)"
+            result="Workflow completed (simple implementation)",
         )

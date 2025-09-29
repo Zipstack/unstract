@@ -1,20 +1,18 @@
 """Hatchet backend implementation for task abstraction."""
 
-import asyncio
 import logging
-import uuid
-from datetime import datetime
-from typing import Any, Callable, Dict, Optional
+from collections.abc import Callable
+from typing import Any
 
 try:
     from hatchet_sdk import Hatchet
-    from hatchet_sdk.clients.workflow_listener import WorkflowRunRef
+
     HATCHET_AVAILABLE = True
 except ImportError:
     HATCHET_AVAILABLE = False
 
 from ..base import TaskBackend
-from ..models import TaskResult, BackendConfig
+from ..models import BackendConfig, TaskResult
 
 logger = logging.getLogger(__name__)
 
@@ -29,21 +27,25 @@ class HatchetBackend(TaskBackend):
     - run_worker() → hatchet worker polling
     """
 
-    def __init__(self, config: Optional[BackendConfig] = None):
+    def __init__(self, config: BackendConfig | None = None):
         """Initialize Hatchet backend.
 
         Args:
             config: Backend configuration with Hatchet connection parameters
         """
         if not HATCHET_AVAILABLE:
-            raise ImportError("Hatchet SDK is not installed. Install with: pip install hatchet-sdk")
+            raise ImportError(
+                "Hatchet SDK is not installed. Install with: pip install hatchet-sdk"
+            )
 
         super().__init__()
 
         if config:
             self.config = config
         else:
-            raise ValueError("Hatchet backend requires configuration with token and server_url")
+            raise ValueError(
+                "Hatchet backend requires configuration with token and server_url"
+            )
 
         if not self.config.validate():
             raise ValueError("Invalid Hatchet configuration")
@@ -51,13 +53,13 @@ class HatchetBackend(TaskBackend):
         # Initialize Hatchet client
         self.hatchet = Hatchet(
             token=self.config.connection_params["token"],
-            server_url=self.config.connection_params["server_url"]
+            server_url=self.config.connection_params["server_url"],
         )
 
         # Track workflow definitions for our tasks
-        self._workflows: Dict[str, Any] = {}
+        self._workflows: dict[str, Any] = {}
 
-    def register_task(self, fn: Callable, name: Optional[str] = None) -> Callable:
+    def register_task(self, fn: Callable, name: str | None = None) -> Callable:
         """Register a function as a Hatchet step within a workflow.
 
         Args:
@@ -81,8 +83,8 @@ class HatchetBackend(TaskBackend):
             def execute_task(self, context):
                 # Extract args and kwargs from context input
                 input_data = context.workflow_input()
-                args = input_data.get('args', [])
-                kwargs = input_data.get('kwargs', {})
+                args = input_data.get("args", [])
+                kwargs = input_data.get("kwargs", {})
 
                 # Call the original function
                 return fn(*args, **kwargs)
@@ -111,16 +113,12 @@ class HatchetBackend(TaskBackend):
             raise ValueError(f"Task '{name}' not registered")
 
         # Prepare input data for the workflow
-        input_data = {
-            'args': args,
-            'kwargs': kwargs
-        }
+        input_data = {"args": args, "kwargs": kwargs}
 
         # Trigger the workflow
         workflow_name = f"{name}_workflow"
         workflow_run = self.hatchet.admin.trigger_workflow(
-            workflow_name=workflow_name,
-            input_data=input_data
+            workflow_name=workflow_name, input_data=input_data
         )
 
         return workflow_run.workflow_run_id
@@ -145,19 +143,23 @@ class HatchetBackend(TaskBackend):
 
             # Map Hatchet states to our standard states
             status_mapping = {
-                'PENDING': 'pending',
-                'RUNNING': 'running',
-                'SUCCEEDED': 'completed',
-                'FAILED': 'failed',
-                'CANCELLED': 'failed',
+                "PENDING": "pending",
+                "RUNNING": "running",
+                "SUCCEEDED": "completed",
+                "FAILED": "failed",
+                "CANCELLED": "failed",
             }
 
             hatchet_status = workflow_run.status
-            status = status_mapping.get(hatchet_status, 'pending')
+            status = status_mapping.get(hatchet_status, "pending")
 
             # Extract task name from workflow name (remove _workflow suffix)
             workflow_name = workflow_run.workflow_version.workflow.name
-            task_name = workflow_name.replace('_workflow', '') if workflow_name.endswith('_workflow') else workflow_name
+            task_name = (
+                workflow_name.replace("_workflow", "")
+                if workflow_name.endswith("_workflow")
+                else workflow_name
+            )
 
             task_result = TaskResult(
                 task_id=task_id,
@@ -165,7 +167,7 @@ class HatchetBackend(TaskBackend):
                 status=status,
             )
 
-            if status == 'completed':
+            if status == "completed":
                 # Get the result from the step output
                 steps = workflow_run.steps or []
                 if steps:
@@ -174,17 +176,17 @@ class HatchetBackend(TaskBackend):
                         if step.step_name == task_name:
                             task_result.result = step.output
                             break
-            elif status == 'failed':
+            elif status == "failed":
                 # Get error information
-                if hasattr(workflow_run, 'error') and workflow_run.error:
+                if hasattr(workflow_run, "error") and workflow_run.error:
                     task_result.error = workflow_run.error
                 else:
                     task_result.error = "Workflow execution failed"
 
             # Set timing information
-            if hasattr(workflow_run, 'created_at') and workflow_run.created_at:
+            if hasattr(workflow_run, "created_at") and workflow_run.created_at:
                 task_result.started_at = workflow_run.created_at
-            if hasattr(workflow_run, 'finished_at') and workflow_run.finished_at:
+            if hasattr(workflow_run, "finished_at") and workflow_run.finished_at:
                 task_result.completed_at = workflow_run.finished_at
 
             return task_result
@@ -195,7 +197,7 @@ class HatchetBackend(TaskBackend):
                 task_id=task_id,
                 task_name="unknown",
                 status="failed",
-                error=f"Failed to get result: {str(e)}"
+                error=f"Failed to get result: {str(e)}",
             )
 
     def run_worker(self) -> None:
@@ -209,13 +211,12 @@ class HatchetBackend(TaskBackend):
         """
         # Get worker configuration
         worker_config = self.config.worker_config or {}
-        worker_name = worker_config.get('worker_name', 'task-abstraction-worker')
+        worker_name = worker_config.get("worker_name", "task-abstraction-worker")
 
         # Start the worker
         # This will block and listen for workflows to execute
         self.hatchet.worker.start(
-            worker_name=worker_name,
-            max_runs=worker_config.get('max_runs', 100)
+            worker_name=worker_name, max_runs=worker_config.get("max_runs", 100)
         )
 
     @property
@@ -265,7 +266,9 @@ class HatchetBackend(TaskBackend):
                         step_name = f"{step.task_name}_{i}"
 
                         if step.task_name not in self._tasks:
-                            raise ValueError(f"Task '{step.task_name}' not registered in workflow '{name}'")
+                            raise ValueError(
+                                f"Task '{step.task_name}' not registered in workflow '{name}'"
+                            )
 
                         # Create step with parent dependency for sequential execution
                         if previous_step:
@@ -284,7 +287,7 @@ class HatchetBackend(TaskBackend):
                                 workflow_input = context.step_output(parents[0])
                             else:
                                 # Use initial workflow input
-                                workflow_input = context.workflow_input()['initial_input']
+                                workflow_input = context.workflow_input()["initial_input"]
 
                             # Execute task with input and step kwargs
                             return task_fn(workflow_input, **step.kwargs)
@@ -299,7 +302,7 @@ class HatchetBackend(TaskBackend):
             # Trigger the workflow
             workflow_run = self.hatchet.admin.trigger_workflow(
                 workflow_name=f"{name}_execution",
-                input_data={'initial_input': initial_input}
+                input_data={"initial_input": initial_input},
             )
 
             return workflow_run.workflow_run_id
@@ -316,21 +319,21 @@ class HatchetBackend(TaskBackend):
 
             # Map Hatchet status to workflow status
             status_mapping = {
-                'PENDING': 'pending',
-                'RUNNING': 'running',
-                'SUCCEEDED': 'completed',
-                'FAILED': 'failed',
-                'CANCELLED': 'failed',
+                "PENDING": "pending",
+                "RUNNING": "running",
+                "SUCCEEDED": "completed",
+                "FAILED": "failed",
+                "CANCELLED": "failed",
             }
 
             hatchet_status = workflow_run.status
-            status = status_mapping.get(hatchet_status, 'pending')
+            status = status_mapping.get(hatchet_status, "pending")
 
             from ..workflow import WorkflowResult
 
             # Count completed steps
             steps = workflow_run.steps or []
-            completed_steps = len([step for step in steps if step.status == 'SUCCEEDED'])
+            completed_steps = len([step for step in steps if step.status == "SUCCEEDED"])
             total_steps = len(steps)
 
             workflow_result = WorkflowResult(
@@ -341,12 +344,14 @@ class HatchetBackend(TaskBackend):
                 total_steps=total_steps,
             )
 
-            if status == 'completed' and steps:
+            if status == "completed" and steps:
                 # Get result from final step
                 final_step = steps[-1]
                 workflow_result.final_result = final_step.output
-            elif status == 'failed':
-                workflow_result.error = getattr(workflow_run, 'error', 'Workflow execution failed')
+            elif status == "failed":
+                workflow_result.error = getattr(
+                    workflow_run, "error", "Workflow execution failed"
+                )
 
             return workflow_result
 

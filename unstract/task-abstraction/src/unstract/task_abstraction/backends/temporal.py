@@ -3,19 +3,20 @@
 import asyncio
 import logging
 import uuid
-from datetime import datetime
-from typing import Any, Callable, Dict, Optional
+from collections.abc import Callable
+from typing import Any
 
 try:
-    from temporalio import activity, workflow, common
+    from temporalio import activity, common, workflow
     from temporalio.client import Client
     from temporalio.worker import Worker
+
     TEMPORAL_AVAILABLE = True
 except ImportError:
     TEMPORAL_AVAILABLE = False
 
 from ..base import TaskBackend
-from ..models import TaskResult, BackendConfig
+from ..models import BackendConfig, TaskResult
 
 logger = logging.getLogger(__name__)
 
@@ -30,14 +31,16 @@ class TemporalBackend(TaskBackend):
     - run_worker() → temporal worker listening
     """
 
-    def __init__(self, config: Optional[BackendConfig] = None):
+    def __init__(self, config: BackendConfig | None = None):
         """Initialize Temporal backend.
 
         Args:
             config: Backend configuration with Temporal connection parameters
         """
         if not TEMPORAL_AVAILABLE:
-            raise ImportError("Temporal is not installed. Install with: pip install temporalio")
+            raise ImportError(
+                "Temporal is not installed. Install with: pip install temporalio"
+            )
 
         super().__init__()
 
@@ -52,7 +55,7 @@ class TemporalBackend(TaskBackend):
                     "port": 7233,
                     "namespace": "default",
                     "task_queue": "task-abstraction-queue",
-                }
+                },
             )
 
         if not self.config.validate():
@@ -61,8 +64,8 @@ class TemporalBackend(TaskBackend):
         # Temporal client and worker will be initialized async
         self._client = None
         self._worker = None
-        self._activities: Dict[str, Any] = {}
-        self._workflows: Dict[str, Any] = {}
+        self._activities: dict[str, Any] = {}
+        self._workflows: dict[str, Any] = {}
 
     async def _ensure_client(self):
         """Ensure Temporal client is initialized."""
@@ -77,7 +80,7 @@ class TemporalBackend(TaskBackend):
             )
         return self._client
 
-    def register_task(self, fn: Callable, name: Optional[str] = None) -> Callable:
+    def register_task(self, fn: Callable, name: str | None = None) -> Callable:
         """Register a function as a Temporal activity.
 
         Args:
@@ -206,7 +209,7 @@ class TemporalBackend(TaskBackend):
                     error = None
 
                 # Extract task name from workflow ID
-                task_name = task_id.split('-')[0] if '-' in task_id else "unknown"
+                task_name = task_id.split("-")[0] if "-" in task_id else "unknown"
 
                 task_result = TaskResult(
                     task_id=task_id,
@@ -217,9 +220,9 @@ class TemporalBackend(TaskBackend):
                 )
 
                 # Set timing information if available
-                if hasattr(description, 'start_time') and description.start_time:
+                if hasattr(description, "start_time") and description.start_time:
                     task_result.started_at = description.start_time
-                if hasattr(description, 'close_time') and description.close_time:
+                if hasattr(description, "close_time") and description.close_time:
                     task_result.completed_at = description.close_time
 
                 return task_result
@@ -229,7 +232,7 @@ class TemporalBackend(TaskBackend):
                     task_id=task_id,
                     task_name="unknown",
                     status="failed",
-                    error=f"Failed to get workflow result: {str(e)}"
+                    error=f"Failed to get workflow result: {str(e)}",
                 )
 
         except Exception as e:
@@ -237,7 +240,7 @@ class TemporalBackend(TaskBackend):
                 task_id=task_id,
                 task_name="unknown",
                 status="failed",
-                error=f"Failed to get workflow handle: {str(e)}"
+                error=f"Failed to get workflow handle: {str(e)}",
             )
 
     def run_worker(self) -> None:
@@ -270,7 +273,9 @@ class TemporalBackend(TaskBackend):
             activities=activities,
             workflows=workflows,
             max_concurrent_activities=worker_config.get("max_concurrent_activities", 100),
-            max_concurrent_workflow_tasks=worker_config.get("max_concurrent_workflow_tasks", 100),
+            max_concurrent_workflow_tasks=worker_config.get(
+                "max_concurrent_workflow_tasks", 100
+            ),
         )
 
         # This blocks until shutdown
@@ -322,20 +327,19 @@ class TemporalBackend(TaskBackend):
             class SequentialWorkflow:
                 @workflow.run
                 async def run(self, workflow_input: dict) -> Any:
-                    current_result = workflow_input['initial_input']
+                    current_result = workflow_input["initial_input"]
 
                     # Execute each step sequentially
                     for step in workflow_def.steps:
                         if step.task_name not in self._activities:
-                            raise ValueError(f"Activity '{step.task_name}' not registered in workflow '{name}'")
+                            raise ValueError(
+                                f"Activity '{step.task_name}' not registered in workflow '{name}'"
+                            )
 
                         activity = self._activities[step.task_name]
 
                         # Execute activity with current result and step kwargs
-                        activity_input = {
-                            'input': current_result,
-                            'kwargs': step.kwargs
-                        }
+                        activity_input = {"input": current_result, "kwargs": step.kwargs}
 
                         current_result = await workflow.execute_activity(
                             activity,
@@ -346,20 +350,24 @@ class TemporalBackend(TaskBackend):
                     return current_result
 
             # Run the workflow
-            return asyncio.run(self._async_submit_workflow(SequentialWorkflow, name, initial_input))
+            return asyncio.run(
+                self._async_submit_workflow(SequentialWorkflow, name, initial_input)
+            )
 
         except Exception:
             # Fallback to default sequential execution
             return super().submit_workflow(name, initial_input)
 
-    async def _async_submit_workflow(self, workflow_class, name: str, initial_input: Any) -> str:
+    async def _async_submit_workflow(
+        self, workflow_class, name: str, initial_input: Any
+    ) -> str:
         """Async implementation of workflow submission."""
         client = await self._ensure_client()
 
         # Start the workflow
         handle = await client.start_workflow(
             workflow_class.run,
-            args=[{'initial_input': initial_input}],
+            args=[{"initial_input": initial_input}],
             id=f"{name}-{uuid.uuid4()}",
             task_queue=self.config.connection_params["task_queue"],
         )
@@ -385,16 +393,16 @@ class TemporalBackend(TaskBackend):
             from temporalio.common import WorkflowExecutionStatus
 
             status_mapping = {
-                WorkflowExecutionStatus.RUNNING: 'running',
-                WorkflowExecutionStatus.COMPLETED: 'completed',
-                WorkflowExecutionStatus.FAILED: 'failed',
-                WorkflowExecutionStatus.CANCELLED: 'failed',
-                WorkflowExecutionStatus.TERMINATED: 'failed',
-                WorkflowExecutionStatus.CONTINUED_AS_NEW: 'running',
-                WorkflowExecutionStatus.TIMED_OUT: 'failed',
+                WorkflowExecutionStatus.RUNNING: "running",
+                WorkflowExecutionStatus.COMPLETED: "completed",
+                WorkflowExecutionStatus.FAILED: "failed",
+                WorkflowExecutionStatus.CANCELLED: "failed",
+                WorkflowExecutionStatus.TERMINATED: "failed",
+                WorkflowExecutionStatus.CONTINUED_AS_NEW: "running",
+                WorkflowExecutionStatus.TIMED_OUT: "failed",
             }
 
-            status = status_mapping.get(description.status, 'pending')
+            status = status_mapping.get(description.status, "pending")
 
             from ..workflow import WorkflowResult
 
@@ -402,18 +410,18 @@ class TemporalBackend(TaskBackend):
                 workflow_id=workflow_id,
                 workflow_name="temporal_workflow",
                 status=status,
-                steps_completed=1 if status == 'completed' else 0,
+                steps_completed=1 if status == "completed" else 0,
                 total_steps=1,  # Workflow is treated as single unit
             )
 
-            if status == 'completed':
+            if status == "completed":
                 try:
                     final_result = await handle.result()
                     workflow_result.final_result = final_result
                 except Exception as e:
-                    workflow_result.status = 'failed'
+                    workflow_result.status = "failed"
                     workflow_result.error = str(e)
-            elif status == 'failed':
+            elif status == "failed":
                 try:
                     await handle.result()
                 except Exception as e:

@@ -4,10 +4,9 @@ These tests require Temporal server to be running and temporalio to be installed
 Run with: pytest tests/integration/test_temporal_backend.py -m integration
 """
 
-import pytest
-import asyncio
-from unittest.mock import patch, Mock, AsyncMock
+from unittest.mock import AsyncMock, Mock, patch
 
+import pytest
 from task_abstraction.backends.temporal import TemporalBackend
 from task_abstraction.models import BackendConfig
 
@@ -30,7 +29,7 @@ class TestTemporalBackendIntegration:
             worker_config={
                 "max_concurrent_activities": 50,
                 "max_concurrent_workflow_tasks": 25,
-            }
+            },
         )
 
     @pytest.fixture
@@ -61,7 +60,7 @@ class TestTemporalBackendIntegration:
         """Test that invalid configuration is rejected."""
         invalid_config = BackendConfig(
             backend_type="temporal",
-            connection_params={"host": "localhost"}  # Missing required fields
+            connection_params={"host": "localhost"},  # Missing required fields
         )
 
         with pytest.raises(ValueError, match="Invalid Temporal configuration"):
@@ -70,9 +69,11 @@ class TestTemporalBackendIntegration:
             except ImportError:
                 pytest.skip("Temporal SDK not installed")
 
-    @patch('temporalio.activity.defn')
-    @patch('temporalio.workflow.defn')
-    def test_task_registration(self, mock_workflow_defn, mock_activity_defn, temporal_backend):
+    @patch("temporalio.activity.defn")
+    @patch("temporalio.workflow.defn")
+    def test_task_registration(
+        self, mock_workflow_defn, mock_activity_defn, temporal_backend
+    ):
         """Test registering tasks with Temporal backend."""
         mock_activity_defn.return_value = lambda fn: fn
         mock_workflow_defn.return_value = lambda cls: cls
@@ -89,9 +90,11 @@ class TestTemporalBackendIntegration:
         mock_activity_defn.assert_called_once_with(name="calculate_sum")
         mock_workflow_defn.assert_called_once()
 
-    @patch('temporalio.activity.defn')
-    @patch('temporalio.workflow.defn')
-    def test_task_registration_with_name(self, mock_workflow_defn, mock_activity_defn, temporal_backend):
+    @patch("temporalio.activity.defn")
+    @patch("temporalio.workflow.defn")
+    def test_task_registration_with_name(
+        self, mock_workflow_defn, mock_activity_defn, temporal_backend
+    ):
         """Test registering task with custom name."""
         mock_activity_defn.return_value = lambda fn: fn
         mock_workflow_defn.return_value = lambda cls: cls
@@ -107,8 +110,8 @@ class TestTemporalBackendIntegration:
 
         mock_activity_defn.assert_called_once_with(name="custom_process")
 
-    @patch('temporalio.client.Client.connect')
-    @patch('temporalio.client.Client.start_workflow')
+    @patch("temporalio.client.Client.connect")
+    @patch("temporalio.client.Client.start_workflow")
     def test_task_submission(self, mock_start_workflow, mock_connect, temporal_backend):
         """Test submitting tasks for execution."""
         # Mock client connection
@@ -130,9 +133,11 @@ class TestTemporalBackendIntegration:
 
         assert task_id == "test-workflow-12345"
 
-    @patch('temporalio.client.Client.connect')
-    @patch('temporalio.client.Client.get_workflow_handle')
-    def test_task_result_retrieval_completed(self, mock_get_handle, mock_connect, temporal_backend):
+    @patch("temporalio.client.Client.connect")
+    @patch("temporalio.client.Client.get_workflow_handle")
+    def test_task_result_retrieval_completed(
+        self, mock_get_handle, mock_connect, temporal_backend
+    ):
         """Test retrieving result for completed task."""
         # Mock client
         mock_client = AsyncMock()
@@ -153,9 +158,11 @@ class TestTemporalBackendIntegration:
         assert result.status == "completed"
         assert result.result == 42
 
-    @patch('temporalio.client.Client.connect')
-    @patch('temporalio.client.Client.get_workflow_handle')
-    def test_task_result_retrieval_running(self, mock_get_handle, mock_connect, temporal_backend):
+    @patch("temporalio.client.Client.connect")
+    @patch("temporalio.client.Client.get_workflow_handle")
+    def test_task_result_retrieval_running(
+        self, mock_get_handle, mock_connect, temporal_backend
+    ):
         """Test retrieving result for running task."""
         # Mock client
         mock_client = AsyncMock()
@@ -175,9 +182,11 @@ class TestTemporalBackendIntegration:
         assert result.status == "running"
         assert result.result is None
 
-    @patch('temporalio.client.Client.connect')
-    @patch('temporalio.client.Client.get_workflow_handle')
-    def test_task_result_retrieval_failed(self, mock_get_handle, mock_connect, temporal_backend):
+    @patch("temporalio.client.Client.connect")
+    @patch("temporalio.client.Client.get_workflow_handle")
+    def test_task_result_retrieval_failed(
+        self, mock_get_handle, mock_connect, temporal_backend
+    ):
         """Test retrieving result for failed task."""
         # Mock client
         mock_client = AsyncMock()
@@ -203,7 +212,7 @@ class TestTemporalBackendIntegration:
         with pytest.raises(ValueError, match="Task 'nonexistent' not registered"):
             temporal_backend.submit("nonexistent", "data")
 
-    @patch('temporalio.client.Client.connect')
+    @patch("temporalio.client.Client.connect")
     def test_connection_check_success(self, mock_connect, temporal_backend):
         """Test successful connection check."""
         mock_client = AsyncMock()
@@ -211,7 +220,7 @@ class TestTemporalBackendIntegration:
 
         assert temporal_backend.is_connected()
 
-    @patch('temporalio.client.Client.connect')
+    @patch("temporalio.client.Client.connect")
     def test_connection_check_failure(self, mock_connect, temporal_backend):
         """Test failed connection check."""
         mock_connect.side_effect = Exception("Connection failed")
@@ -224,8 +233,8 @@ class TestTemporalBackendIntegration:
 class TestTemporalWorkerIntegration:
     """Integration tests that require Temporal worker process."""
 
-    @patch('temporalio.client.Client.connect')
-    @patch('temporalio.worker.Worker')
+    @patch("temporalio.client.Client.connect")
+    @patch("temporalio.worker.Worker")
     def test_worker_startup_simulation(self, mock_worker_class, mock_connect):
         """Test worker startup configuration (without actually starting)."""
         config = BackendConfig(
@@ -239,7 +248,7 @@ class TestTemporalWorkerIntegration:
             worker_config={
                 "max_concurrent_activities": 100,
                 "max_concurrent_workflow_tasks": 50,
-            }
+            },
         )
 
         # Mock client and worker
@@ -275,14 +284,14 @@ class TestTemporalWorkerIntegration:
                 "port": 7233,
                 "namespace": "default",
                 "task_queue": "async-test-queue",
-            }
+            },
         )
 
         try:
             backend = TemporalBackend(config)
 
             # Test that we can call async methods
-            with patch('temporalio.client.Client.connect') as mock_connect:
+            with patch("temporalio.client.Client.connect") as mock_connect:
                 mock_client = AsyncMock()
                 mock_connect.return_value = mock_client
 

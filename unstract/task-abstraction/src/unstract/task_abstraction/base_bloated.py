@@ -5,7 +5,8 @@ that works across Celery, Hatchet, and Temporal backends.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Optional, TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from .models import BackendConfig
@@ -59,14 +60,13 @@ class TaskBackend(ABC):
         Note: Persistence is handled by the backend's native mechanisms.
         Configure retries, DLQ, and state storage in your backend configuration.
         """
-        from .models import BackendConfig
 
         self.config = config
         self._tasks = {}
         self._workflows = {}
 
     @abstractmethod
-    def register_task(self, fn: Callable, name: Optional[str] = None) -> Callable:
+    def register_task(self, fn: Callable, name: str | None = None) -> Callable:
         """Register a function as a task.
 
         Args:
@@ -150,7 +150,9 @@ class TaskBackend(ABC):
         pass
 
     @abstractmethod
-    def _store_native_workflow_result(self, workflow_id: str, workflow_name: str, result_data: dict) -> None:
+    def _store_native_workflow_result(
+        self, workflow_id: str, workflow_name: str, result_data: dict
+    ) -> None:
         """Store workflow result using backend's native persistence mechanism.
 
         Args:
@@ -173,7 +175,6 @@ class TaskBackend(ABC):
             )
             backend.register_workflow(workflow_def)
         """
-        from .workflow import WorkflowDefinition
         self._workflows[workflow_def.name] = workflow_def
 
     def submit_workflow(self, name: str, initial_input: Any) -> str:
@@ -209,8 +210,9 @@ class TaskBackend(ABC):
             if result.is_completed:
                 print(result.final_result)
         """
-        from .workflow import WorkflowResult
         import logging
+
+        from .workflow import WorkflowResult
 
         logger = logging.getLogger(__name__)
 
@@ -219,10 +221,14 @@ class TaskBackend(ABC):
             try:
                 result = self.state_store.get_workflow_state(workflow_id)
                 if result:
-                    logger.debug(f"Retrieved workflow {workflow_id} from unified state store")
+                    logger.debug(
+                        f"Retrieved workflow {workflow_id} from unified state store"
+                    )
                     return result
             except Exception as e:
-                logger.warning(f"Failed to retrieve workflow {workflow_id} from unified store: {e}")
+                logger.warning(
+                    f"Failed to retrieve workflow {workflow_id} from unified store: {e}"
+                )
 
         # Fall back to backend's native persistence
         if self.persistence_config.use_native_persistence:
@@ -231,23 +237,25 @@ class TaskBackend(ABC):
                 logger.debug(f"Retrieved workflow {workflow_id} from native persistence")
                 return result
             except Exception as e:
-                logger.warning(f"Failed to retrieve workflow {workflow_id} from native persistence: {e}")
+                logger.warning(
+                    f"Failed to retrieve workflow {workflow_id} from native persistence: {e}"
+                )
 
         # Fallback: Check in-memory storage (current default implementation)
-        workflow_results = getattr(self, '_workflow_results', {})
+        workflow_results = getattr(self, "_workflow_results", {})
         if workflow_id in workflow_results:
             stored = workflow_results[workflow_id]
             result = WorkflowResult(
                 workflow_id=workflow_id,
-                workflow_name=stored.get('workflow_name', 'unknown'),
-                status=stored['status'],
-                steps_completed=stored.get('steps_completed', 0),
-                total_steps=stored.get('total_steps', 0)
+                workflow_name=stored.get("workflow_name", "unknown"),
+                status=stored["status"],
+                steps_completed=stored.get("steps_completed", 0),
+                total_steps=stored.get("total_steps", 0),
             )
-            if stored['status'] == 'completed':
-                result.final_result = stored.get('result')
-            elif stored['status'] == 'failed':
-                result.error = stored.get('error')
+            if stored["status"] == "completed":
+                result.final_result = stored.get("result")
+            elif stored["status"] == "failed":
+                result.error = stored.get("error")
             logger.debug(f"Retrieved workflow {workflow_id} from in-memory storage")
             return result
 
@@ -259,7 +267,7 @@ class TaskBackend(ABC):
             status="not_found",
             steps_completed=0,
             total_steps=0,
-            error="Workflow not found in any persistence layer"
+            error="Workflow not found in any persistence layer",
         )
 
     def _execute_linear_workflow(self, name: str, initial_input: Any) -> str:
@@ -269,7 +277,8 @@ class TaskBackend(ABC):
         with fallback to manual execution for backends without native support.
         """
         import uuid
-        from .workflow import WorkflowExecutor, WorkflowExecutionConfig
+
+        from .workflow import WorkflowExecutionConfig, WorkflowExecutor
 
         workflow_def = self._workflows[name]
         workflow_id = f"workflow-{uuid.uuid4()}"
@@ -282,11 +291,11 @@ class TaskBackend(ABC):
 
             # Store result using hybrid persistence
             result_data = {
-                'status': 'completed',
-                'result': final_result,
-                'workflow_name': workflow_def.name,
-                'steps_completed': len(workflow_def.steps),
-                'total_steps': len(workflow_def.steps)
+                "status": "completed",
+                "result": final_result,
+                "workflow_name": workflow_def.name,
+                "steps_completed": len(workflow_def.steps),
+                "total_steps": len(workflow_def.steps),
             }
             self._store_workflow_result(workflow_id, workflow_def.name, result_data)
 
@@ -294,18 +303,21 @@ class TaskBackend(ABC):
         except Exception as e:
             # Store error result using hybrid persistence
             error_data = {
-                'status': 'failed',
-                'error': str(e),
-                'workflow_name': workflow_def.name,
-                'steps_completed': 0,
-                'total_steps': len(workflow_def.steps)
+                "status": "failed",
+                "error": str(e),
+                "workflow_name": workflow_def.name,
+                "steps_completed": 0,
+                "total_steps": len(workflow_def.steps),
             }
             self._store_workflow_result(workflow_id, workflow_def.name, error_data)
             raise
 
-    def _store_workflow_result(self, workflow_id: str, workflow_name: str, result_data: dict) -> None:
+    def _store_workflow_result(
+        self, workflow_id: str, workflow_name: str, result_data: dict
+    ) -> None:
         """Store workflow result using hybrid persistence approach."""
         import logging
+
         logger = logging.getLogger(__name__)
 
         # Store in unified state store (if configured)
@@ -314,19 +326,25 @@ class TaskBackend(ABC):
                 self.state_store.store_workflow_state(workflow_id, result_data)
                 logger.debug(f"Stored workflow {workflow_id} in unified state store")
             except Exception as e:
-                logger.error(f"Failed to store workflow {workflow_id} in unified store: {e}")
+                logger.error(
+                    f"Failed to store workflow {workflow_id} in unified store: {e}"
+                )
 
         # Store in backend's native persistence (if enabled)
         if self.persistence_config.use_native_persistence:
             try:
-                self._store_native_workflow_result(workflow_id, workflow_name, result_data)
+                self._store_native_workflow_result(
+                    workflow_id, workflow_name, result_data
+                )
                 logger.debug(f"Stored workflow {workflow_id} in native persistence")
             except Exception as e:
-                logger.error(f"Failed to store workflow {workflow_id} in native persistence: {e}")
+                logger.error(
+                    f"Failed to store workflow {workflow_id} in native persistence: {e}"
+                )
 
         # Fallback: Store in memory (current default when no persistence configured)
         if not self.state_store and not self.persistence_config.use_native_persistence:
-            self._workflow_results = getattr(self, '_workflow_results', {})
+            self._workflow_results = getattr(self, "_workflow_results", {})
             self._workflow_results[workflow_id] = result_data
             logger.debug(f"Stored workflow {workflow_id} in in-memory storage")
 
@@ -340,7 +358,7 @@ class TaskBackend(ABC):
 
 
 # Decorator function for easier task registration
-def task(backend: TaskBackend, name: Optional[str] = None):
+def task(backend: TaskBackend, name: str | None = None):
     """Decorator for registering tasks with a backend.
 
     Args:
@@ -352,6 +370,8 @@ def task(backend: TaskBackend, name: Optional[str] = None):
         def my_task(x, y):
             return x + y
     """
+
     def decorator(fn: Callable) -> Callable:
         return backend.register_task(fn, name)
+
     return decorator
