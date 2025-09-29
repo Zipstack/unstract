@@ -13,6 +13,16 @@ from unstract.connectors.databases.exceptions_helper import ExceptionHelper
 
 logger = logging.getLogger(__name__)
 
+# MySQL/MariaDB connection error codes mapping
+CONNECTION_ERROR_MESSAGES = {
+    1045: "Authentication failed. Please check your username, password and SSL SETTINGS.",
+    2003: "Cannot connect to server. Please check the host, port, and network connectivity.",
+    1049: "Unknown database. Please verify the database name exists.",
+    2005: "Unknown host. Please check the host address.",
+    2006: "MySQL server is unavailable. Connection was lost.",
+    2013: "Lost connection to MySQL server during query.",
+}
+
 
 class MysqlHandler:
     @staticmethod
@@ -72,3 +82,30 @@ class MysqlHandler:
                 database=database,
                 table_name=table_name,
             ) from e
+
+    @staticmethod
+    def handle_connection_error(
+        e: MysqlError.OperationalError, host: str, port: int, ssl_enabled: bool
+    ) -> str:
+        """Handle MySQL/MariaDB connection errors with user-friendly messages.
+
+        Args:
+            e: The OperationalError from pymysql
+            host: Database host
+            port: Database port
+            ssl_enabled: Whether SSL is enabled
+
+        Returns:
+            str: User-friendly error message for UI display
+        """
+        error_code, original_message = e.args
+        user_message = CONNECTION_ERROR_MESSAGES.get(error_code, original_message)
+
+        ssl_context = ""
+        if ssl_enabled is not None:
+            ssl_context = f" (SSL {'enabled' if ssl_enabled else 'disabled'})"
+
+        return (
+            f"{user_message} Connection: '{host}:{port}{ssl_context}' \n"
+            f"```\n{original_message}\n```"
+        )
