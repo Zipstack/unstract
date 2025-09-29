@@ -1,13 +1,12 @@
 import datetime
+import json
 import logging
+import uuid
 from abc import ABC, abstractmethod
+from enum import Enum
 from typing import Any
 
-from workflow_manager.endpoint_v2.constants import TableColumns
-from workflow_manager.endpoint_v2.exceptions import UnstractDBException
-
 from unstract.connectors.base import UnstractConnector
-from unstract.connectors.databases.exceptions import UnstractDBConnectorException
 from unstract.connectors.enums import ConnectorMode
 from unstract.connectors.exceptions import ConnectorError
 
@@ -66,8 +65,37 @@ class UnstractDB(UnstractConnector, ABC):
         return ""
 
     @abstractmethod
-    def get_string_type(self) -> str:
-        """Child classes implement this to return the string type name for their DB."""
+    def get_engine(self) -> Any:
+        pass
+
+    def test_credentials(self) -> bool:
+        """To test credentials for a DB connector."""
+        try:
+            self.get_engine()
+        except Exception as e:
+            raise ConnectorError(f"Error while connecting to DB: {str(e)}") from e
+        return True
+
+    def execute(self, query: str) -> Any:
+        try:
+            with self.get_engine().cursor() as cursor:
+                cursor.execute(query)
+                return cursor.fetchall()
+        except Exception as e:
+            raise ConnectorError(str(e)) from e
+
+    # TO DO: Remove if needed
+    @abstractmethod
+    def sql_to_db_mapping(self, value: Any, column_name: str | None = None) -> str:
+        """Gets the python datatype of value and converts to DB datatype.
+
+        Args:
+            value (Any): python value of any datatype
+            column_name (str | None): name of the column being mapped
+
+        Returns:
+            str: database columntype
+        """
         pass
 
     @abstractmethod
@@ -88,43 +116,6 @@ class UnstractDB(UnstractConnector, ABC):
         pass
 
     @abstractmethod
-    def get_engine(self) -> Any:
-        pass
-
-    def test_credentials(self) -> bool:
-        """To test credentials for a DB connector."""
-        try:
-            self.get_engine()
-        except Exception as e:
-            raise ConnectorError(f"Error while connecting to DB: {str(e)}") from e
-        return True
-
-    def execute(self, query: str) -> Any:
-        try:
-            with self.get_engine().cursor() as cursor:
-                cursor.execute(query)
-                return cursor.fetchall()
-        except Exception as e:
-            raise ConnectorError(str(e)) from e
-
-    def sql_to_db_mapping(self, value: str) -> str:
-        """Gets the python datatype of value and converts python datatype
-        to corresponding DB datatype
-        Args:
-            value (str): python datatype
-
-        Returns:
-            str: database columntype
-        """
-        python_type = type(value)
-        mapping = {
-            str: "TEXT",
-            int: "INT",
-            float: "FLOAT",
-            datetime.datetime: "TIMESTAMP",
-        }
-        return mapping.get(python_type, "TEXT")
-
     def get_create_table_base_query(self, table: str) -> str:
         """Function to create a base create table sql query.
 
@@ -134,48 +125,54 @@ class UnstractDB(UnstractConnector, ABC):
         Returns:
             str: generates a create sql base query with the constant columns
         """
-        sql_query = (
-            f"CREATE TABLE IF NOT EXISTS {table} "
-            f"(id TEXT , "
-            f"created_by TEXT, created_at TIMESTAMP, "
-            f"metadata TEXT, "
-        )
-        return sql_query
 
-    def create_table_query(self, table: str, database_entry: dict[str, Any]) -> Any:
+    def create_table_query(
+        self, table: str, database_entry: dict[str, Any], permanent_columns: list[str]
+    ) -> Any:
         """Function to create a create table sql query.
 
         Args:
             table (str): db-connector table name
             database_entry (dict[str, Any]): a dictionary of column name and types
+            permanent_columns (list[str]): list of permanent column names to exclude
+                from dynamic column creation. These columns are already defined in the
+                base table schema (e.g., 'id', 'created_by', 'created_at', 'metadata',
+                'status', 'error_message', etc.) and should not be added again during
+                table creation to avoid duplication.
 
         Returns:
             Any: generates a create sql query for all the columns
         """
-        PERMANENT_COLUMNS = TableColumns.PERMANENT_COLUMNS
+        PERMANENT_COLUMNS = permanent_columns
 
         sql_query = ""
         create_table_query = self.get_create_table_base_query(table=table)
+        logger.info(f"Create table base query {create_table_query}")
+
         sql_query += create_table_query
 
         for key, val in database_entry.items():
             if key not in PERMANENT_COLUMNS:
-                sql_type = self.sql_to_db_mapping(val)
+                sql_type = self.sql_to_db_mapping(val, column_name=key)
                 sql_query += f"{key} {sql_type}, "
 
         return sql_query.rstrip(", ") + ")"
 
     @staticmethod
-    def get_sql_insert_query(table_name: str, sql_keys: list[str]) -> str:
+    def get_sql_insert_query(
+        table_name: str, sql_keys: list[str], sql_values: list[str] = None
+    ) -> str:
         """Function to generate parameterised insert sql query.
 
         Args:
             table_name (str): db-connector table name
             sql_keys (list[str]): column names
+            sql_values (list[str], optional): SQL values for database-specific handling
 
         Returns:
             str: returns a string with parameterised insert sql query
         """
+        # Base implementation ignores sql_values and returns parameterized query
         keys_str = ",".join(sql_keys)
         values_placeholder = ",".join(["%s" for _ in sql_keys])
         return f"INSERT INTO {table_name} ({keys_str}) VALUES ({values_placeholder})"
@@ -229,39 +226,115 @@ class UnstractDB(UnstractConnector, ABC):
             column_types[column_name] = data_type
         return column_types
 
-    def is_string_column(self, table_info: dict[str, str], column_name: str) -> bool:
-        """Check if the column is a string type specific to the DB connector.
+    def has_no_metadata(self, table_info: dict[str, str]) -> bool:
+        """Check if metadata field exists in table_info (case-insensitive).
 
         Args:
-            table_info (dict): column_name -> column_type
-            column_name (str): name of column to check
+            table_info: Dictionary containing table field names and their types
 
         Returns:
-            bool: True if column is a string type
+            bool: False if metadata exists, True if metadata does not exist
         """
-        column_type = table_info.get(column_name)
-        if column_type is None:
-            return False
+        logger.info("Checking if column 'metadata' exists in table_info")
+        metadata_exists = any(key.lower() == "metadata" for key in table_info.keys())
+        if metadata_exists:
+            logger.info(
+                "column 'metadata' exists for corresponding table. No migration needed"
+            )
+        return not metadata_exists
 
-        # Skip migration if *_v2 column already exists
-        if f"{column_name}_v2" in table_info:
-            return False
+    def migrate_table_to_v2(
+        self, table_name: str, column_name: str, engine: Any
+    ) -> dict[str, str]:
+        """Retruns the information schema of table after alteraring table
+        This will add column _v2 to the table and return the information schema
 
-        return column_type.lower() == self.get_string_type().lower()
+        Args:
+            table_name (str): _description_
+            column_name (str): _description_
+            engine (Any): _description_
 
-    def migrate_table_to_v2(self, table_name: str, column_name: str, engine: Any) -> None:
-        sql_query = self.prepare_multi_column_migration(
+
+        Returns:
+            dict[str, str]: _description_
+        """
+        sql_query_or_list = self.prepare_multi_column_migration(
             table_name=table_name, column_name=column_name
         )
+        logger.info(
+            "Running table migration for table %s by adding following columns %s",
+            table_name,
+            sql_query_or_list,
+        )
 
-        try:
+        if isinstance(sql_query_or_list, list):
+            for sql_query in sql_query_or_list:
+                self.execute_query(
+                    engine=engine,
+                    sql_query=sql_query,
+                    sql_values=None,
+                    table_name=table_name,
+                )
+        else:
             self.execute_query(
                 engine=engine,
-                sql_query=sql_query,
+                sql_query=sql_query_or_list,
                 sql_values=None,
                 table_name=table_name,
             )
-        except UnstractDBConnectorException as e:
-            raise UnstractDBException(detail=e.detail) from e
+        logger.info(
+            "successfully migrated table %s with: %s query",
+            table_name,
+            sql_query_or_list,
+        )
+        return self.get_information_schema(table_name=table_name)
 
-        logger.debug(f"successfully migrated table {table_name} with: {sql_query} query")
+    def get_sql_values_for_query(
+        self, values: dict[str, Any], column_types: dict[str, str]
+    ) -> dict[str, str]:
+        """Prepare SQL values for query execution.
+
+        Args:
+            values (dict[str, Any]): dictionary of columns and values
+            column_types (dict[str, str]): types of columns from database schema
+
+        Returns:
+            dict[str, str]: Dictionary of column names to SQL values for parameterized queries
+
+        Note:
+            This is the base implementation for standard databases.
+            Database-specific connectors can override this method for custom logic.
+        """
+        sql_values: dict[str, Any] = {}
+        for column in values:
+            value = values[column]
+            # Handle JSON and Enum types for standard databases
+            if isinstance(value, (dict, list)):
+                try:
+                    sql_values[column] = json.dumps(value)
+                except (TypeError, ValueError) as e:
+                    logger.error(
+                        f"Failed to serialize value to JSON for column {column}: {e}"
+                    )
+                    # Create a safe fallback error object
+                    fallback_value = {
+                        "error": "JSON serialization failed",
+                        "error_type": e.__class__.__name__,
+                        "error_message": str(e),
+                        "data_type": str(type(value)),
+                        "data_description": f"column_{column}",
+                        "timestamp": datetime.datetime.now().isoformat(),
+                    }
+                    sql_values[column] = json.dumps(fallback_value)
+            elif isinstance(value, Enum):
+                sql_values[column] = value.value
+            else:
+                sql_values[column] = f"{value}"
+
+        # If table has a column 'id', unstract inserts a unique value to it
+        # Oracle db has column 'ID' instead of 'id'
+        if any(key in column_types for key in ["id", "ID"]):
+            uuid_id = str(uuid.uuid4())
+            sql_values["id"] = f"{uuid_id}"
+
+        return sql_values
