@@ -6,7 +6,12 @@ from unstract.sdk1.adapters.enums import AdapterTypes
 
 
 class OCRAdapter(Adapter, ABC):
-    def __init__(self, name: str):
+    def __init__(self, name: str) -> None:
+        """Initialize OCR adapter.
+
+        Args:
+            name: Name of the OCR adapter.
+        """
         super().__init__(name)
         self.name = name
 

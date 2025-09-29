@@ -50,16 +50,17 @@ def register_adapters(adapters: dict[str, dict[str, "Any"]], adapter_type: str) 
             # IMPORTANT!
             #
             # We are introspecting adapter classes to retrieve id and metadata.
-            # However their `repr`` is DIFFERENT from their `type`, because `pydantic` is involved.
+            # However their `repr`` is DIFFERENT from their `type`, because
+            # `pydantic` is involved.
             # e.g. repr: <class 'unstract.sdk1.adapters.llm1.base.OpenAILLMAdapter'>
-            #      type: <class 'pydantic._internal._model_construction.ModelMetaclass'>
+            #      type: <class 'pydantic._internal._model_construction.ModelMetaclass'>  # noqa: E501
             #
             # This leads to following matrix for various introspection methods:
             #
-            # member type                 | hasattr(obj, "<member_name>") | "<member_name>" in obj.__dict__ | "<member_name>" in obj.__annotations__
-            # ----------------------------|-------------------------------|---------------------------------|---------------------------------------
-            # method    (e.g. `get_id`)   | True                          | True                            | False
-            # attribute (e.g. `metadata`) | False                         | False                           | True
+            # member type                 | hasattr(obj, "<member_name>") | "<member_name>" in obj.__dict__ | "<member_name>" in obj.__annotations__  # noqa: E501
+            # ----------------------------|-------------------------------|---------------------------------|---------------------------------------  # noqa: E501
+            # method    (e.g. `get_id`)   | True                          | True                            | False  # noqa: E501
+            # attribute (e.g. `metadata`) | False                         | False                           | True  # noqa: E501
             if hasattr(obj, Common.ADAPTER_ID_GETTER) and hasattr(
                 obj, Common.ADAPTER_METADATA_GETTER
             ):
@@ -118,6 +119,7 @@ class BaseAdapter(ABC):
 
 class BaseChatCompletionParameters(BaseModel):
     """Base parameters for all SDK v1 providers.
+
     See https://docs.litellm.ai/docs/completion/input#input-params-1
     """
 

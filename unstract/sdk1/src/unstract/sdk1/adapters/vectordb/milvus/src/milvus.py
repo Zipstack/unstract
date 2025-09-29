@@ -17,7 +17,12 @@ class Constants:
 
 
 class Milvus(VectorDBAdapter):
-    def __init__(self, settings: dict[str, Any]):
+    def __init__(self, settings: dict[str, Any]) -> None:
+        """Initialize Milvus adapter.
+
+        Args:
+            settings: Configuration settings for the Milvus adapter.
+        """
         self._config = settings
         self._client: MilvusClient | None = None
         self._collection_name: str = VectorDbConstants.DEFAULT_VECTOR_DB_NAME

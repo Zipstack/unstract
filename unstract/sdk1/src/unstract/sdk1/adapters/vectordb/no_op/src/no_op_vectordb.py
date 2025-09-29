@@ -14,7 +14,12 @@ from unstract.sdk1.adapters.vectordb.vectordb_adapter import VectorDBAdapter
 
 
 class NoOpVectorDB(VectorDBAdapter):
-    def __init__(self, settings: dict[str, Any]):
+    def __init__(self, settings: dict[str, Any]) -> None:
+        """Initialize NoOpVectorDB adapter.
+
+        Args:
+            settings: Configuration settings for the adapter.
+        """
         self._config = settings
         self._collection_name: str = VectorDbConstants.DEFAULT_VECTOR_DB_NAME
         self._vector_db_instance = self._get_vector_db_instance()

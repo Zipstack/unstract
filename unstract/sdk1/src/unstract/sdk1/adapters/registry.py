@@ -3,7 +3,12 @@ from typing import Any
 
 
 class AdapterRegistry(ABC):
-    def __init__(self, name: str):
+    def __init__(self, name: str) -> None:
+        """Initialize adapter registry.
+
+        Args:
+            name: Name of the adapter registry.
+        """
         self.name = name
 
     @staticmethod

@@ -45,7 +45,7 @@ class Adapterkit:
             raise RuntimeError(f"Couldn't obtain adapter for {adapter_id}")
 
     def get_adapter_by_id(
-        self, adapter_id: str, *args: "Any", **kwargs: "Any"
+        self, adapter_id: str, *args: object, **kwargs: object
     ) -> Adapter:
         """Instantiates and returns a adapter.
 
