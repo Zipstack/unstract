@@ -2,7 +2,6 @@ import logging
 from typing import Any
 
 from jsonschema import exceptions, validate
-
 from unstract.tool_registry.exceptions import InvalidSchemaInput
 
 logger = logging.getLogger(__name__)

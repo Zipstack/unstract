@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 from gcsfs import GCSFileSystem
-
 from unstract.connectors.exceptions import ConnectorError
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 

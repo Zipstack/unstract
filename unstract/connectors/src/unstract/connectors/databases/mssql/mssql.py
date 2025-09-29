@@ -6,7 +6,6 @@ from typing import Any
 import pymssql
 import pymssql._pymssql as PyMssql
 from pymssql import Connection  # type: ignore
-
 from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.exceptions import (
     ColumnMissingException,

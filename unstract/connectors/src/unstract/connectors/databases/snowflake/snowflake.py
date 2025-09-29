@@ -9,7 +9,6 @@ from typing import Any
 import snowflake.connector
 import snowflake.connector.errors as SnowflakeError
 from snowflake.connector.connection import SnowflakeConnection
-
 from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.exceptions import SnowflakeProgrammingException
 from unstract.connectors.databases.unstract_db import UnstractDB
