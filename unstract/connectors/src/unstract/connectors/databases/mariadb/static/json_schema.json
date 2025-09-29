@@ -44,8 +44,8 @@
     "sslEnabled": {
       "type": "boolean",
       "title": "Enable SSL",
-      "description": "Enable SSL connection to the database. Required for most cloud services like SkySQL. Disable for servers that already have SSL enabled by default.",
-      "default": true
+      "description": "Toggle TLS/SSL for the client connection. Enable if your server enforces TLS; disable if your environment requires plain connections.",
+      "default": false
     }
   }
 }
