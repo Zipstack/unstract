@@ -4,7 +4,6 @@ from typing import Any
 import pymysql
 import pymysql.err as MysqlError
 from pymysql.connections import Connection
-
 from unstract.connectors.databases.mysql_handler import MysqlHandler
 from unstract.connectors.databases.unstract_db import UnstractDB
 from unstract.connectors.exceptions import ConnectorError

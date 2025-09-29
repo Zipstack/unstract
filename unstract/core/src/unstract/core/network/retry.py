@@ -1,8 +1,7 @@
 import requests
 from requests.adapters import HTTPAdapter
-from urllib3.util import Retry
-
 from unstract.core.network.enums import HTTPMethod
+from urllib3.util import Retry
 
 
 def get_retry_session(

@@ -8,6 +8,7 @@ from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 from platform_settings_v2.platform_auth_service import PlatformAuthenticationService
 from tenant_account_v2.organization_member_service import OrganizationMemberService
+from unstract.flags.feature_flag import check_feature_flag_status
 
 from adapter_processor_v2.constants import AdapterKeys, AllowedDomains
 from adapter_processor_v2.exceptions import (
@@ -16,7 +17,6 @@ from adapter_processor_v2.exceptions import (
     InValidAdapterId,
     TestAdapterError,
 )
-from unstract.flags.feature_flag import check_feature_flag_status
 
 if check_feature_flag_status("sdk1"):
     from unstract.sdk1.adapters.adapterkit import Adapterkit

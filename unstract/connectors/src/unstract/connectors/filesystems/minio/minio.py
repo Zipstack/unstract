@@ -5,7 +5,6 @@ from email.utils import parsedate_to_datetime
 from typing import Any
 
 from s3fs.core import S3FileSystem
-
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
 from .exceptions import handle_s3fs_exception

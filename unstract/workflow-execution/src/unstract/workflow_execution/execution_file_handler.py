@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 from typing import Any
 
-from unstract.filesystem import FileStorageType, FileSystem
 from unstract.workflow_execution.constants import (
     MetaDataKey,
     ToolMetadataKey,
@@ -19,6 +18,8 @@ from unstract.workflow_execution.exceptions import (
     ToolMetadataNotFound,
 )
 from unstract.workflow_execution.tools_utils import ToolsUtils
+
+from unstract.filesystem import FileStorageType, FileSystem
 
 logger = logging.getLogger(__name__)
 
@@ -150,9 +151,7 @@ class ExecutionFileHandler:
         file_storage = file_system.get_file_storage()
         file_storage.json_dump(path=metadata_path, data=content)
 
-        logger.info(
-            f"metadata for {input_file_path} is " "added in to execution directory"
-        )
+        logger.info(f"metadata for {input_file_path} is added in to execution directory")
 
     def _get_file_execution_dir(self) -> str | None:
         """Get the directory path for a specific file execution.

@@ -4,7 +4,6 @@ from logging import Logger
 from typing import Any
 
 from flask import current_app as app
-
 from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.prompt_service.constants import DBTableV2
 from unstract.prompt_service.extensions import db, db_context
