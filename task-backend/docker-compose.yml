@@ -1,0 +1,148 @@
+# Task Backend Worker - Docker Compose for development and testing
+version: '3.8'
+
+services:
+  # Redis for Celery backend
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Task worker with Celery backend
+  worker-celery:
+    build: .
+    environment:
+      - TASK_BACKEND_TYPE=celery
+      - TASK_CELERY_BROKER_URL=redis://redis:6379/0
+      - TASK_CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - TASK_WORKER_NAME=celery-worker-1
+      - TASK_WORKER_CONCURRENCY=4
+      - TASK_LOG_LEVEL=INFO
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+
+  # Task worker with Hatchet backend (requires external Hatchet server)
+  worker-hatchet:
+    build: .
+    environment:
+      - TASK_BACKEND_TYPE=hatchet
+      - TASK_HATCHET_TOKEN=${HATCHET_TOKEN}
+      - TASK_HATCHET_SERVER_URL=${HATCHET_SERVER_URL:-https://app.hatchet.run}
+      - TASK_WORKER_NAME=hatchet-worker-1
+      - TASK_LOG_LEVEL=INFO
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    profiles:
+      - hatchet
+
+  # Temporal server for development
+  temporal:
+    image: temporalio/auto-setup:1.22
+    ports:
+      - "7233:7233"
+      - "8080:8080"  # Web UI
+    environment:
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - temporal_data:/etc/temporal
+    profiles:
+      - temporal
+
+  # PostgreSQL for Temporal
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=temporal
+      - POSTGRES_PASSWORD=temporal
+      - POSTGRES_DB=temporal
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - temporal
+
+  # Task worker with Temporal backend
+  worker-temporal:
+    build: .
+    environment:
+      - TASK_BACKEND_TYPE=temporal
+      - TASK_TEMPORAL_HOST=temporal
+      - TASK_TEMPORAL_PORT=7233
+      - TASK_TEMPORAL_NAMESPACE=default
+      - TASK_TEMPORAL_TASK_QUEUE=task-queue
+      - TASK_WORKER_NAME=temporal-worker-1
+      - TASK_LOG_LEVEL=INFO
+    depends_on:
+      temporal:
+        condition: service_started
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    profiles:
+      - temporal
+
+  # Monitoring and observability
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+    profiles:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    profiles:
+      - monitoring
+
+volumes:
+  redis_data:
+  postgres_data:
+  temporal_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  default:
+    name: task-backend-network
