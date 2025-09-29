@@ -360,7 +360,7 @@ class WorkerDestinationConnector:
             file_hash=file_ctx.file_hash,
             workflow_id=exec_ctx.workflow_id,
             execution_id=exec_ctx.execution_id,
-            result=result.tool_execution_result,
+            result=result.tool_execution_result if not result.has_hitl else None,
             file_execution_id=exec_ctx.file_execution_id,
             organization_id=exec_ctx.organization_id,
             error=file_ctx.execution_error,

@@ -166,7 +166,7 @@ class WorkerConfig:
         default_factory=lambda: int(os.getenv("CACHE_REDIS_PORT", "6379"))
     )
     cache_redis_db: int = field(
-        default_factory=lambda: int(os.getenv("CACHE_REDIS_DB", "1"))
+        default_factory=lambda: int(os.getenv("CACHE_REDIS_DB", "0"))
     )
     cache_redis_password: str = field(
         default_factory=lambda: os.getenv("CACHE_REDIS_PASSWORD", "")

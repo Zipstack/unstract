@@ -53,6 +53,7 @@ def get_pipeline_notifications(request, pipeline_id):
                     {
                         "id": str(notification.id),
                         "notification_type": notification.notification_type,
+                        "platform": notification.platform,
                         "url": notification.url,
                         "authorization_type": notification.authorization_type,
                         "authorization_key": notification.authorization_key,
@@ -90,6 +91,7 @@ def get_pipeline_notifications(request, pipeline_id):
                         {
                             "id": str(notification.id),
                             "notification_type": notification.notification_type,
+                            "platform": notification.platform,
                             "url": notification.url,
                             "authorization_type": notification.authorization_type,
                             "authorization_key": notification.authorization_key,
@@ -147,6 +149,7 @@ def get_api_notifications(request, api_id):
                 {
                     "id": str(notification.id),
                     "notification_type": notification.notification_type,
+                    "platform": notification.platform,
                     "url": notification.url,
                     "authorization_type": notification.authorization_type,
                     "authorization_key": notification.authorization_key,

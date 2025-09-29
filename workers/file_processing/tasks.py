@@ -58,6 +58,164 @@ logger = WorkerLogger.get_logger(__name__)
 APPLICATION_OCTET_STREAM = "application/octet-stream"
 
 
+def _calculate_manual_review_requirements(
+    file_batch_data: dict[str, Any], api_client: InternalAPIClient
+) -> dict[int, bool]:
+    """Calculate manual review requirements for Django compatibility task.
+
+    This function replicates the MRQ logic from @workers/general for files
+    coming from the Django backend that lack manual review flags.
+
+    Args:
+        file_batch_data: File batch data from Django backend
+        api_client: API client for backend communication
+
+    Returns:
+        Dictionary mapping file numbers to is_manualreview_required flags
+    """
+    try:
+        # Get basic info from batch data
+        files = file_batch_data.get("files", [])
+        file_data = file_batch_data.get("file_data", {})
+
+        if not files:
+            logger.info("No files found, skipping MRQ calculation")
+            return {}
+
+        # Check if Django backend already provides q_file_no_list
+        q_file_no_list = file_data.get("q_file_no_list", [])
+
+        if not q_file_no_list:
+            logger.info("No q_file_no_list found in file_data, skipping MRQ calculation")
+            return {}
+
+        # Use Django backend's pre-calculated q_file_no_list
+        logger.info(
+            f"Django compatibility: Using provided q_file_no_list with {len(q_file_no_list)} files "
+            f"selected from {len(files)} total files for manual review"
+        )
+
+        # Create mapping of file numbers to manual review requirements
+        mrq_flags = {}
+        for file_item in files:
+            # Handle different file item formats (tuple, list, dict)
+            if len(file_item) < 2:
+                continue
+
+            file_number = file_item[1].get("file_number")
+
+            if not file_number:
+                continue
+
+            is_manual_review_required = file_number in q_file_no_list
+            mrq_flags[file_number] = is_manual_review_required
+
+            logger.debug(
+                f"File #{file_number}: is_manualreview_required={is_manual_review_required}"
+            )
+
+        return mrq_flags
+
+    except Exception as e:
+        logger.error(f"Error calculating manual review requirements: {e}", exc_info=True)
+        # Return empty dict so files proceed without manual review flags
+        return {}
+
+
+def _enhance_batch_with_mrq_flags(
+    file_batch_data: dict[str, Any], mrq_flags: dict[int, bool]
+) -> None:
+    """Enhance file batch data with manual review flags.
+
+    Args:
+        file_batch_data: File batch data to enhance (modified in place)
+        mrq_flags: Dictionary mapping file numbers to is_manualreview_required flags
+    """
+    try:
+        files = file_batch_data.get("files", [])
+
+        if not files:
+            logger.warning(
+                "Django compatibility: No files found in batch data, skipping MRQ flag enhancement"
+            )
+            return
+
+        if not mrq_flags:
+            logger.info(
+                "Django compatibility: No MRQ flags provided, all files will proceed without manual review"
+            )
+            # Set all files to not require manual review
+            for file_item in files:
+                if isinstance(file_item, (tuple, list)) and len(file_item) >= 2:
+                    file_hash_dict = file_item[1]
+                    if isinstance(file_hash_dict, dict):
+                        file_hash_dict["is_manualreview_required"] = False
+                elif isinstance(file_item, dict):
+                    file_item["is_manualreview_required"] = False
+            return
+
+        manual_review_count = 0
+        total_files = len(files)
+
+        for file_item in files:
+            try:
+                # Handle different file item formats consistently with calculation function
+                if isinstance(file_item, (tuple, list)) and len(file_item) >= 2:
+                    # Format: (file_name, file_hash_dict)
+                    file_name, file_hash_dict = file_item[0], file_item[1]
+                    if isinstance(file_hash_dict, dict):
+                        file_number = file_hash_dict.get("file_number", 1)
+                        is_manual_review_required = mrq_flags.get(file_number, False)
+                        file_hash_dict["is_manualreview_required"] = (
+                            is_manual_review_required
+                        )
+
+                        if is_manual_review_required:
+                            manual_review_count += 1
+                            logger.debug(
+                                f"Django compatibility: File '{file_name}' #{file_number} marked for manual review"
+                            )
+                    else:
+                        logger.warning(
+                            f"Django compatibility: Invalid file hash dict format for file {file_name}"
+                        )
+
+                elif isinstance(file_item, dict):
+                    # Format: {file_name: "...", file_number: ...}
+                    file_number = file_item.get("file_number", 1)
+                    is_manual_review_required = mrq_flags.get(file_number, False)
+                    file_item["is_manualreview_required"] = is_manual_review_required
+
+                    if is_manual_review_required:
+                        manual_review_count += 1
+                        file_name = file_item.get("file_name", f"file_{file_number}")
+                        logger.debug(
+                            f"Django compatibility: File '{file_name}' #{file_number} marked for manual review"
+                        )
+                else:
+                    logger.warning(
+                        f"Django compatibility: Unknown file item format: {type(file_item)}, skipping MRQ flag enhancement"
+                    )
+
+            except Exception as file_error:
+                logger.warning(
+                    f"Django compatibility: Failed to enhance MRQ flag for file item {file_item}: {file_error}"
+                )
+                continue
+
+        logger.info(
+            f"Django compatibility: Enhanced {total_files} files with MRQ flags. "
+            f"{manual_review_count} files marked for manual review, "
+            f"{total_files - manual_review_count} files will proceed directly to destination."
+        )
+
+    except Exception as e:
+        logger.error(
+            f"Django compatibility: Failed to enhance batch with MRQ flags: {e}",
+            exc_info=True,
+        )
+
+
 def _process_file_batch_core(
     task_instance, file_batch_data: dict[str, Any]
 ) -> dict[str, Any]:
@@ -91,12 +249,6 @@ def _process_file_batch_core(
 
     # Step 5: Process individual files
     context = _process_individual_files(context)
-
-    # Step 6: Evaluate batch for manual review (skip - individual files already handled)
-    # Note: Manual review routing is handled at individual file level, batch evaluation is legacy
-    logger.info(
-        "Skipping batch manual review evaluation - individual files already processed correctly"
-    )
 
     # Step 7: Compile and return final result
     return _compile_batch_result(context)
@@ -1466,6 +1618,37 @@ def process_file_batch_django_compat(
         "Processing file batch via Django compatibility task name: "
         "workflow_manager.workflow_v2.file_execution_tasks.process_file_batch"
     )
+
+    # Django compatibility: Calculate and apply manual review requirements
+    # This replicates the MRQ logic that was originally in Django backend
+    try:
+        # Extract organization_id from Django backend data structure
+        # Django sends: {files: [...], file_data: {organization_id: "...", ...}}
+        file_data = file_batch_data.get("file_data", {})
+        organization_id = file_data.get("organization_id")
+
+        if not organization_id:
+            logger.warning(
+                "Django compatibility: No organization_id found in file_data, skipping MRQ calculation"
+            )
+        else:
+            # Create organization-scoped API client
+            api_client = create_api_client(organization_id)
+
+            # Calculate manual review requirements
+            mrq_flags = _calculate_manual_review_requirements(file_batch_data, api_client)
+
+            # Enhance batch data with MRQ flags
+            _enhance_batch_with_mrq_flags(file_batch_data, mrq_flags)
+
+            logger.info(
+                f"Django compatibility: Applied manual review flags to file batch for org {organization_id}"
+            )
+
+    except Exception as e:
+        logger.warning(f"Django compatibility: Failed to calculate MRQ flags: {e}")
+        raise
+        # Continue processing without MRQ flags rather than failing
 
     # Delegate to the core implementation (same as main task)
     return _process_file_batch_core(self, file_batch_data)

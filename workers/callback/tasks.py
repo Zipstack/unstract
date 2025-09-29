@@ -296,7 +296,9 @@ def _determine_execution_status_unified(
     # Step 3: Get expected file count from workflow execution details for timeout detection
     expected_files = 0
     try:
-        execution_response = api_client.get_workflow_execution(execution_id)
+        execution_response = api_client.get_workflow_execution(
+            execution_id, file_execution=False
+        )
         if execution_response.success:
             execution_data = execution_response.data
             expected_files = execution_data.get("total_files", 0)
@@ -659,13 +661,14 @@ def _extract_callback_parameters(
                 f"Fetching complete context from workflow execution {context.execution_id}"
             )
 
-            execution_response = api_client.get_workflow_execution(context.execution_id)
+            execution_response = api_client.get_workflow_execution(
+                context.execution_id, file_execution=False
+            )
 
             if not execution_response.success:
                 raise ValueError(
                     f"Failed to get workflow execution: {execution_response.error}"
                 )
-
             execution_data = execution_response.data
 
             # Extract nested structures from response (corrected paths)
@@ -692,7 +695,8 @@ def _extract_callback_parameters(
             temp_api_client = InternalAPIClient(temp_config)
             try:
                 execution_response = temp_api_client.get_workflow_execution(
-                    context.execution_id
+                    context.execution_id,
+                    file_execution=False,
                 )
 
                 if not execution_response.success:
@@ -725,6 +729,13 @@ def _extract_callback_parameters(
                 context.pipeline_id = kwargs.get("pipeline_id") or execution_info.get(
                     "pipeline_id"
                 )
+                if not context.pipeline_id:
+                    execution_response = api_client.get_workflow_execution(
+                        execution_id=context.execution_id,
+                        file_execution=False,
+                    )
+                    execution_info = execution_response.data.get("execution", {})
+                    context.pipeline_id = execution_info.get("pipeline_id")
             finally:
                 # Clean up temporary client
                 if hasattr(temp_api_client, "close"):
@@ -1238,7 +1249,6 @@ def _process_batch_callback_core(
             f"organization_id={context.organization_id}, api_client={context.api_client is not None}"
         )
         raise RuntimeError(f"Invalid context for execution {context.execution_id}")
-
     with log_context(
         task_id=context.task_id,
         execution_id=context.execution_id,
@@ -1260,7 +1270,6 @@ def _process_batch_callback_core(
                     organization_id=context.organization_id,
                 )
             )
-
             # Update workflow execution status using unified function
             execution_update_result = _update_execution_status_unified(
                 api_client=context.api_client,
@@ -1270,7 +1279,6 @@ def _process_batch_callback_core(
                 organization_id=context.organization_id,
                 error_message=None,
             )
-
             # Handle pipeline updates using unified function (non-API deployment)
             pipeline_result = _handle_pipeline_updates_unified(
                 context, execution_status, is_api_deployment=False
@@ -1285,7 +1293,6 @@ def _process_batch_callback_core(
 
             # Handle resource cleanup using existing function
             cleanup_result = _cleanup_execution_resources(context)
-
             callback_result = {
                 "status": "completed",
                 "execution_id": context.execution_id,
@@ -1306,7 +1313,6 @@ def _process_batch_callback_core(
                 f"Completed unified callback processing for execution {context.execution_id} "
                 f"with status {execution_status}"
             )
-
             # Handle notifications using unified function (non-critical)
             try:
                 notification_result = _handle_notifications_unified(
@@ -1431,7 +1437,9 @@ def process_batch_callback_api(
     api_client = create_api_client(organization_id)
     logger.info(f"Created organization-scoped API client: {organization_id}")
 
-    execution_response = api_client.get_workflow_execution(execution_id)
+    execution_response = api_client.get_workflow_execution(
+        execution_id, file_execution=False
+    )
     if not execution_response.success:
         raise Exception(f"Failed to get execution context: {execution_response.error}")
     execution_context = execution_response.data
@@ -1613,7 +1621,7 @@ def _publish_final_workflow_ui_logs(
 
         # Get execution data to extract cost information (with cost calculation)
         execution_response = context.api_client.get_workflow_execution(
-            context.execution_id, include_cost=True
+            context.execution_id, include_cost=True, file_execution=False
         )
         if not execution_response.success:
             logger.warning(
@@ -1687,7 +1695,7 @@ def _publish_final_workflow_ui_logs_api(
 
         # Get execution data to extract cost information (with cost calculation)
         execution_response = context.api_client.get_workflow_execution(
-            context.execution_id, include_cost=True
+            context.execution_id, include_cost=True, file_execution=False
         )
         if not execution_response.success:
             logger.warning(

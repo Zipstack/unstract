@@ -310,7 +310,7 @@ services:
     container_name: unstract-worker-file-processing-v2
     restart: unless-stopped
     # command: ["file-processing"]
-    command: [".venv/bin/celery", "-A", "worker", "worker", "--queues=file_processing,api_file_processing,file_processing_priority", "--loglevel=INFO", "--pool=prefork", "--concurrency=20", "--prefetch-multiplier=1", "--without-gossip", "--without-mingle", "--without-heartbeat"]
+    command: [".venv/bin/celery", "-A", "worker", "worker", "--queues=file_processing,api_file_processing,file_processing_priority", "--loglevel=INFO", "--pool=prefork", "--concurrency=4", "--prefetch-multiplier=1", "--without-gossip", "--without-mingle", "--without-heartbeat"]
     ports:
       - "8087:8082"
     env_file:

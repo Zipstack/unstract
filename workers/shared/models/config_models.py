@@ -4,6 +4,7 @@ Enhanced configuration dataclasses for type-safe, validated worker configuration
 These dataclasses complement the existing config.py patterns with stronger typing and validation.
 """
 
+import logging
 import os
 import sys
 from dataclasses import dataclass, field
@@ -14,6 +15,8 @@ from typing import Any
 # Import shared domain models from core
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../unstract/core/src"))
 from unstract.core import serialize_dataclass_to_dict
+
+logger = logging.getLogger(__name__)
 
 
 class CacheBackend(Enum):
@@ -413,7 +416,7 @@ class PluginRegistry:
 
             except Exception as e:
                 # Log error but continue loading other plugins
-                print(f"Error loading plugin config from {config_file}: {e}")
+                logger.exception(f"Error loading plugin config from {config_file}: {e}")
 
         return registry
 

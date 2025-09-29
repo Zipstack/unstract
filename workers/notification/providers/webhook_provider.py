@@ -1,8 +1,7 @@
 """Webhook Notification Provider
 
-This provider handles webhook notifications with identical behavior to the current
-backend implementation. It maintains full backward compatibility while providing
-a foundation for future notification types.
+Base webhook provider that handles webhook notifications. Provides the foundation for platform-specific
+webhook providers.
 """
 
 from typing import Any

@@ -111,6 +111,7 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
 
             # Check if cost data is requested (expensive operation)
             include_cost = request.GET.get("include_cost", "false").lower() == "true"
+            file_execution = request.GET.get("file_execution", "true").lower() == "true"
 
             # Build comprehensive context
             workflow_definition = {}
@@ -132,7 +133,9 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                 "source_config": self._get_source_config(execution),
                 "destination_config": self._get_destination_config(execution),
                 "organization_context": self._get_organization_context(execution),
-                "file_executions": list(execution.file_executions.values()),
+                "file_executions": list(execution.file_executions.values())
+                if file_execution
+                else [],
             }
 
             # Only calculate cost if explicitly requested (expensive database operation)

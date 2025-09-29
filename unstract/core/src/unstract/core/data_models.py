@@ -470,6 +470,9 @@ class NotificationStatus(Enum):
 
     SUCCESS = "SUCCESS"
     FAILURE = "FAILURE"
+    COMPLETED = "COMPLETED"
+    ERROR = "ERROR"
+    STOPPED = "STOPPED"
 
     def __str__(self):
         """Return enum value for Django CharField compatibility."""
@@ -583,9 +586,11 @@ class NotificationPayload:
         """
         # Map execution status to notification status
         if execution_status in [ExecutionStatus.COMPLETED]:
-            notification_status = NotificationStatus.SUCCESS
-        elif execution_status in [ExecutionStatus.ERROR, ExecutionStatus.STOPPED]:
-            notification_status = NotificationStatus.FAILURE
+            notification_status = NotificationStatus.COMPLETED
+        elif execution_status in [ExecutionStatus.ERROR]:
+            notification_status = NotificationStatus.ERROR
+        elif execution_status in [ExecutionStatus.STOPPED]:
+            notification_status = NotificationStatus.STOPPED
         else:
             # Don't send notifications for intermediate states like PENDING, EXECUTING
             raise ValueError(

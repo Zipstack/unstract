@@ -50,6 +50,7 @@ def send_notification_to_worker(
     auth_key: str | None,
     auth_header: str | None,
     max_retries: int = 0,
+    platform: str | None = None,
 ) -> bool:
     """Send a single notification to the notification worker queue.
 
@@ -60,6 +61,7 @@ def send_notification_to_worker(
         auth_key: Authorization key/token
         auth_header: Custom header name for CUSTOM_HEADER auth type
         max_retries: Maximum number of retry attempts
+        platform: Platform type from notification config (SLACK, API, etc.)
 
     Returns:
         True if task was successfully queued, False otherwise
@@ -82,6 +84,7 @@ def send_notification_to_worker(
             kwargs={
                 "max_retries": max_retries,
                 "retry_delay": 10,
+                "platform": platform,
             },
             queue="notifications",
         )
@@ -177,6 +180,7 @@ def trigger_pipeline_notifications(
                     auth_key=notification.get("authorization_key"),
                     auth_header=notification.get("authorization_header"),
                     max_retries=notification.get("max_retries", 0),
+                    platform=notification.get("platform"),
                 )
             else:
                 logger.debug(
@@ -255,6 +259,7 @@ def trigger_api_notifications(
                     auth_key=notification.get("authorization_key"),
                     auth_header=notification.get("authorization_header"),
                     max_retries=notification.get("max_retries", 0),
+                    platform=notification.get("platform"),
                 )
             else:
                 logger.debug(

@@ -1,25 +1,22 @@
 """Notification Worker Tasks
 
 This module contains Celery tasks for processing all types of notifications.
-It maintains full backward compatibility with existing webhook functionality
-while providing a foundation for future notification types.
+It uses the provider registry pattern for platform-specific notification handling
+while maintaining backward compatibility.
 """
 
 import os
 from typing import Any
 
 from celery import shared_task
+from notification.enums import PlatformType
 from notification.providers.base_provider import (
     DeliveryError,
     NotificationError,
     ValidationError,
 )
-from notification.providers.webhook_provider import (
-    EmailProvider,
-    PushProvider,
-    SMSProvider,
-    WebhookProvider,
-)
+from notification.providers.registry import create_provider_from_config
+from notification.providers.webhook_provider import WebhookProvider
 from notification.utils import (
     log_notification_attempt,
     log_notification_failure,
@@ -35,13 +32,36 @@ logger = WorkerLogger.get_logger(__name__)
 # Initialize worker configuration
 config = WorkerConfig.from_env("NOTIFICATION")
 
-# Provider registry - maps notification types to their providers
-NOTIFICATION_PROVIDERS = {
-    NotificationType.WEBHOOK.value: WebhookProvider,
-    NotificationType.EMAIL.value: EmailProvider,  # Future implementation
-    NotificationType.SMS.value: SMSProvider,  # Future implementation
-    NotificationType.PUSH.value: PushProvider,  # Future implementation
-}
+
+def _get_webhook_provider_for_url(url: str):
+    """Get webhook provider for backward compatibility.
+
+    For backward compatibility with legacy webhook tasks that don't provide platform info.
+    Always defaults to API provider since platform should come from notification configuration.
+
+    Args:
+        url: Webhook URL (used for logging only)
+
+    Returns:
+        API webhook provider instance
+    """
+    logger.debug(
+        f"Legacy webhook task called without platform info for URL: {url[:50]}..."
+    )
+
+    # Always use API provider for backward compatibility
+    # Platform detection should be done in backend and stored in database
+    try:
+        config = {
+            "notification_type": NotificationType.WEBHOOK.value,
+            "platform": PlatformType.API.value,
+        }
+        return create_provider_from_config(config)
+    except Exception as e:
+        logger.warning(
+            f"Failed to create API provider: {e}. Using fallback WebhookProvider"
+        )
+        return WebhookProvider()
 
 
 @shared_task(name="process_notification")
@@ -71,17 +91,24 @@ def process_notification(
     try:
         logger.info(f"Processing {notification_type} notification to {destination}")
 
-        # Get the appropriate provider
-        provider_class = NOTIFICATION_PROVIDERS.get(notification_type)
-        if not provider_class:
+        # Use the registry pattern with platform from config
+        if notification_type == NotificationType.WEBHOOK.value:
+            platform = kwargs.get("platform")
+            if platform:
+                config = {"notification_type": notification_type, "platform": platform}
+                provider = create_provider_from_config(config)
+                logger.debug(f"Selected provider: {provider.__class__.__name__}")
+            else:
+                # Backward compatibility: Default to API provider
+                logger.warning("No platform specified, using API provider")
+                provider = WebhookProvider()
+        else:
+            # For future notification types (EMAIL, SMS, etc.)
             raise NotificationError(
                 f"Unsupported notification type: {notification_type}",
                 provider="NotificationDispatcher",
                 destination=destination,
             )
-
-        # Initialize provider and send notification
-        provider = provider_class()
 
         log_notification_attempt(
             notification_type=notification_type,
@@ -146,6 +173,7 @@ def send_webhook_notification(
     timeout: int = 10,
     max_retries: int | None = None,
     retry_delay: int = 10,
+    platform: str | None = None,
 ) -> None:
     """Backward compatible webhook notification task.
 
@@ -160,6 +188,7 @@ def send_webhook_notification(
         timeout: The request timeout in seconds
         max_retries: The maximum number of retries allowed
         retry_delay: The delay between retries in seconds
+        platform: Platform type from notification config (SLACK, API, etc.)
 
     Returns:
         None (matches original behavior)
@@ -172,9 +201,19 @@ def send_webhook_notification(
             f"[{os.getpid()}] Processing webhook notification to {url} "
             f"(attempt {self.request.retries + 1})"
         )
+        logger.debug(f"Task received platform parameter: {platform}")
+        logger.debug(f"Task received payload type: {type(payload)}")
+        logger.debug(f"Task received headers: {headers}")
 
-        # Initialize webhook provider
-        webhook_provider = WebhookProvider()
+        # Use platform-specific provider if provided, otherwise default to API for backward compatibility
+        if platform:
+            config = {
+                "notification_type": NotificationType.WEBHOOK.value,
+                "platform": platform,
+            }
+            webhook_provider = create_provider_from_config(config)
+        else:
+            webhook_provider = _get_webhook_provider_for_url(url)
 
         # Prepare notification data in the format expected by WebhookProvider
         notification_data = {
@@ -184,6 +223,7 @@ def send_webhook_notification(
             "timeout": timeout,
             "max_retries": max_retries,
             "retry_delay": retry_delay,
+            "platform": platform,
         }
 
         # Send webhook notification
@@ -347,114 +387,15 @@ def priority_notification(notification_type: str, **kwargs: Any) -> dict[str, An
     return process_notification(notification_type, priority=True, **kwargs)
 
 
-# Future notification task implementations
-
-
-@shared_task(name="send_email_notification")
-def send_email_notification(
-    email: str,
-    subject: str,
-    body: str,
-    from_email: str | None = None,
-    reply_to: str | None = None,
-    attachments: list[dict[str, Any]] | None = None,
-    **kwargs: Any,
-) -> dict[str, Any]:
-    """Email notification task (future implementation).
-
-    This task will be routed to the email-specific queue when implemented.
-    """
-    logger.info(f"Email notification requested to {email}")
-
-    return process_notification(
-        NotificationType.EMAIL.value,
-        email=email,
-        subject=subject,
-        body=body,
-        from_email=from_email,
-        reply_to=reply_to,
-        attachments=attachments,
-        **kwargs,
-    )
-
-
-@shared_task(name="send_sms_notification")
-def send_sms_notification(
-    phone: str, message: str, sender_id: str | None = None, **kwargs: Any
-) -> dict[str, Any]:
-    """SMS notification task (future implementation).
-
-    This task will be routed to the SMS-specific queue when implemented.
-    """
-    logger.info(f"SMS notification requested to {phone}")
-
-    return process_notification(
-        NotificationType.SMS.value,
-        phone=phone,
-        message=message,
-        sender_id=sender_id,
-        **kwargs,
-    )
-
-
-@shared_task(name="send_push_notification")
-def send_push_notification(
-    device_token: str,
-    title: str,
-    body: str,
-    data: dict[str, Any] | None = None,
-    **kwargs: Any,
-) -> dict[str, Any]:
-    """Push notification task (future implementation).
-
-    This task will be routed to the main notifications queue.
-    """
-    logger.info(f"Push notification requested to device {device_token[:20]}...")
-
-    return process_notification(
-        NotificationType.PUSH.value,
-        device_token=device_token,
-        title=title,
-        body=body,
-        data=data,
-        **kwargs,
-    )
-
-
-# Health check task for monitoring
 @shared_task(name="notification_health_check")
 def notification_health_check() -> dict[str, Any]:
-    """Health check task for notification worker.
-
-    Returns:
-        Health status information
-    """
+    """Health check task for notification worker."""
     try:
-        # Check provider availability
-        providers_status = {}
-        for notification_type, provider_class in NOTIFICATION_PROVIDERS.items():
-            try:
-                logger.info(f"Checking provider availability for {notification_type}")
-                provider_class()
-                providers_status[notification_type] = "available"
-            except NotImplementedError:
-                providers_status[notification_type] = "not_implemented"
-            except Exception as e:
-                providers_status[notification_type] = f"error: {e}"
-
-        # Check worker configuration
         queue_name = os.getenv("NOTIFICATION_QUEUE_NAME", "notifications")
-
         return {
             "worker": "notification",
             "status": "healthy",
-            "providers": providers_status,
             "queue": queue_name,
-            "supported_types": list(NOTIFICATION_PROVIDERS.keys()),
-            "implemented_types": [
-                t for t, s in providers_status.items() if s == "available"
-            ],
         }
-
     except Exception as e:
         return {"worker": "notification", "status": "unhealthy", "error": str(e)}

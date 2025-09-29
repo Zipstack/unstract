@@ -104,6 +104,7 @@ class ExecutionAPIClient(BaseAPIClient):
         execution_id: str | uuid.UUID,
         organization_id: str | None = None,
         include_cost: bool = False,
+        file_execution: bool = True,
     ) -> ExecutionResponse:
         """Get workflow execution with context.
 
@@ -120,6 +121,8 @@ class ExecutionAPIClient(BaseAPIClient):
             url = self._build_url("workflow_execution", f"{str(execution_id)}/")
             if include_cost:
                 url += "?include_cost=true"
+            if file_execution:
+                url += "?file_execution=true"
 
             response = self.get(
                 url,
