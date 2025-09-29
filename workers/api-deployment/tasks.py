@@ -8,6 +8,7 @@ import time
 from typing import Any
 
 from shared.api import InternalAPIClient
+from shared.enums.status_enums import PipelineStatus
 from shared.enums.task_enums import TaskName
 from shared.infrastructure.config import WorkerConfig
 from shared.infrastructure.logging import (
@@ -445,7 +446,7 @@ def _run_workflow_api(
         if pipeline_id:
             api_client.update_pipeline_status(
                 pipeline_id=pipeline_id,
-                status=ExecutionStatus.COMPLETED.value,
+                status=PipelineStatus.SUCCESS.value,
             )
 
         return {

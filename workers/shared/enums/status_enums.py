@@ -36,6 +36,8 @@ class PipelineStatus(str, Enum):
     INPROGRESS = "INPROGRESS"
     YET_TO_START = "YET_TO_START"
     PARTIAL_SUCCESS = "PARTIAL_SUCCESS"
+    RESTARTING = "RESTARTING"
+    PAUSED = "PAUSED"
 
     def __str__(self):
         """Return enum value for API updates."""

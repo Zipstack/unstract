@@ -19,6 +19,7 @@ from shared.data.models import (
     WorkerTaskResponse,
     WorkflowExecutionStatusUpdate,
 )
+from shared.enums.status_enums import PipelineStatus
 from shared.enums.task_enums import TaskName
 from shared.infrastructure.logging import (
     WorkerLogger,
@@ -338,7 +339,7 @@ def async_execute_bin_general(
                         try:
                             api_client.update_pipeline_status(
                                 pipeline_id=pipeline_id,
-                                status=ExecutionStatus.FAILED.value,
+                                status=PipelineStatus.FAILURE.value,
                             )
                             logger.info(
                                 f"[exec:{execution_id}] [pipeline:{pipeline_id}] Pipeline status updated to FAILED after general workflow error"
@@ -676,7 +677,7 @@ def _execute_general_workflow(
                 try:
                     api_client.update_pipeline_status(
                         pipeline_id=pipeline_id,
-                        status=ExecutionStatus.COMPLETED.value,
+                        status=PipelineStatus.SUCCESS.value,
                     )
                 except Exception as pipeline_error:
                     logger.warning(f"Failed to update pipeline status: {pipeline_error}")
@@ -965,7 +966,7 @@ def _orchestrate_file_processing_general(
                 try:
                     api_client.update_pipeline_status(
                         pipeline_id=pipeline_id,
-                        status=ExecutionStatus.COMPLETED.value,
+                        status=PipelineStatus.SUCCESS.value,
                     )
                     logger.info(
                         f"[exec:{execution_id}] [pipeline:{pipeline_id}] Pipeline status updated to COMPLETED for zero-files execution"
@@ -979,7 +980,7 @@ def _orchestrate_file_processing_general(
                     try:
                         api_client.update_pipeline_status(
                             pipeline_id=pipeline_id,
-                            status=ExecutionStatus.FAILED.value,
+                            status=PipelineStatus.FAILURE.value,
                         )
                         logger.info(
                             f"[exec:{execution_id}] [pipeline:{pipeline_id}] Pipeline status updated to FAILED after error"
