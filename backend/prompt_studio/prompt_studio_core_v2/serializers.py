@@ -19,7 +19,12 @@ from prompt_studio.prompt_studio_output_manager_v2.output_manager_util import (
 )
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_v2.serializers import ToolStudioPromptSerializer
-from unstract.sdk.adapters.enums import AdapterTypes
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.adapters.enums import AdapterTypes
+else:
+    from unstract.sdk.adapters.enums import AdapterTypes
 
 from .models import CustomTool
 
