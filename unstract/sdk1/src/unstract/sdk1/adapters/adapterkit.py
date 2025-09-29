@@ -5,6 +5,7 @@ if TYPE_CHECKING:
     from typing import Any
 
 from singleton_decorator import singleton
+
 from unstract.sdk1.adapters import AdapterDict
 from unstract.sdk1.adapters.base import Adapter
 from unstract.sdk1.adapters.constants import Common
@@ -63,7 +64,7 @@ class Adapterkit:
 
     def get_adapters_list(self) -> list[dict[str, "Any"]]:
         adapters = []
-        for adapter_id, adapter_registry_metadata in self._adapters.items():
+        for _adapter_id, adapter_registry_metadata in self._adapters.items():
             m: Adapter = adapter_registry_metadata[Common.METADATA][Common.ADAPTER]
             _id = m.get_id()
             name = m.get_name()

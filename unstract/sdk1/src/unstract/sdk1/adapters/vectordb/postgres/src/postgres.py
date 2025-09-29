@@ -6,6 +6,7 @@ import psycopg2
 from llama_index.core.vector_stores.types import BasePydanticVectorStore
 from llama_index.vector_stores.postgres import PGVectorStore
 from psycopg2._psycopg import connection
+
 from unstract.sdk1.adapters.exceptions import AdapterError
 from unstract.sdk1.adapters.vectordb.constants import VectorDbConstants
 from unstract.sdk1.adapters.vectordb.helper import VectorDBHelper
@@ -23,7 +24,7 @@ class Constants:
 
 
 class Postgres(VectorDBAdapter):
-    def __init__(self, settings: dict[str, Any]):
+    def __init__(self, settings: dict[str, Any]) -> None:
         self._config = settings
         self._client: connection | None = None
         self._collection_name: str = VectorDbConstants.DEFAULT_VECTOR_DB_NAME

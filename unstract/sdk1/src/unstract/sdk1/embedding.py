@@ -6,6 +6,7 @@ from typing import Any
 import litellm
 from llama_index.core.embeddings import BaseEmbedding
 from pydantic import ValidationError
+
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.embedding1 import adapters
 from unstract.sdk1.constants import ToolEnv
@@ -29,11 +30,15 @@ class Embedding:
     def __init__(
         self,
         adapter_id: str = "",
-        adapter_metadata: dict[str, Any] = {},
+        adapter_metadata: dict[str, Any] = None,
         adapter_instance_id: str = "",
         tool: BaseTool = None,
-        kwargs: dict[str, Any] = {},
+        kwargs: dict[str, Any] = None,
     ) -> None:
+        if adapter_metadata is None:
+            adapter_metadata = {}
+        if kwargs is None:
+            kwargs = {}
         try:
             embedding_config = None
 
@@ -132,7 +137,7 @@ class EmbeddingCompat(BaseEmbedding):
         adapter_instance_id: str = "",
         tool: BaseTool = None,
         kwargs: dict[str, Any] = None,
-    ):
+    ) -> None:
         adapter_metadata = adapter_metadata or {}
         kwargs = kwargs or {}
         super().__init__(**kwargs)

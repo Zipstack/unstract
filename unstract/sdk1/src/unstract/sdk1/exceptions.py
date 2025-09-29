@@ -8,7 +8,7 @@ class SdkError(Exception):
         message: str = DEFAULT_MESSAGE,
         status_code: int | None = None,
         actual_err: Exception | None = None,
-    ):
+    ) -> None:
         super().__init__(message)
         # Make it user friendly wherever possible
         self.message = message
@@ -29,7 +29,7 @@ class SdkError(Exception):
 
 
 class IndexingError(SdkError):
-    def __init__(self, message: str = "", **kwargs):
+    def __init__(self, message: str = "", **kwargs: Any) -> None:
         if "404" in message:
             message = "Index not found. Please check vector DB settings."
         super().__init__(message, **kwargs)

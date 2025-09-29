@@ -3,6 +3,7 @@ from typing import Any
 
 import fsspec
 from fsspec import AbstractFileSystem
+
 from unstract.sdk1.exceptions import FileOperationError, FileStorageError
 from unstract.sdk1.file_storage.provider import FileStorageProvider
 
@@ -67,7 +68,7 @@ class FileStorageHelper:
             raise FileStorageError(str(e)) from e
 
 
-def skip_local_cache(func):
+def skip_local_cache(func: Any) -> Any:
     """Helper function/decorator for handling FileNotFound exception and making
     sure that the error is not because of stale cache.
 
@@ -78,7 +79,7 @@ def skip_local_cache(func):
         NA
     """
 
-    def wrapper(*args, **kwargs):
+    def wrapper(*args, **kwargs: Any) -> Any:
         try:
             return func(*args, **kwargs)
         except FileNotFoundError:
@@ -89,7 +90,7 @@ def skip_local_cache(func):
     return wrapper
 
 
-def _handle_file_not_found(func, *args, **kwargs):
+def _handle_file_not_found(func: Any, *args, **kwargs: Any) -> Any:
     """Helper function for handling FileNotFound exception and making sure that
     the error is not because of stale cache.
 

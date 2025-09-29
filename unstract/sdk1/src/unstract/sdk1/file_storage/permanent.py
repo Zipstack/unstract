@@ -3,6 +3,7 @@ from typing import Any
 
 import filetype
 import magic
+
 from unstract.sdk1.exceptions import FileOperationError, FileStorageError
 from unstract.sdk1.file_storage.constants import FileOperationParams
 from unstract.sdk1.file_storage.impl import FileStorage
@@ -24,7 +25,7 @@ class PermanentFileStorage(FileStorage):
         self,
         provider: FileStorageProvider,
         **storage_config: dict[str, Any],
-    ):
+    ) -> None:
         if provider.value not in self.SUPPORTED_FILE_STORAGE_TYPES:
             raise FileStorageError(
                 f"File storage provider `{provider.value}` is not "
@@ -42,7 +43,7 @@ class PermanentFileStorage(FileStorage):
         else:
             raise NotImplementedError(f"Provider {provider.value} is not implemented")
 
-    def _copy_on_read(self, path: str, legacy_storage_path: str):
+    def _copy_on_read(self, path: str, legacy_storage_path: str) -> None:
         """Copies the file to the remote storage lazily if not present already.
         Checks if the file is present in the Local File system. If yes, copies
         the file to the mentioned path using the remote file system. This is a

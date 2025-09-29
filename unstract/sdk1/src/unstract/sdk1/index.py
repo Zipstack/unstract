@@ -12,6 +12,7 @@ from llama_index.core.vector_stores import (
     VectorStoreQuery,
     VectorStoreQueryResult,
 )
+
 from unstract.sdk1.adapters.exceptions import AdapterError
 from unstract.sdk1.adapters.vectordb.no_op.src.no_op_custom_vectordb import (
     NoOpCustomVectorDB,
@@ -43,7 +44,7 @@ class Index:
         tool: BaseTool,
         run_id: str | None = None,
         capture_metrics: bool = False,
-    ):
+    ) -> None:
         # TODO: Inherit from StreamMixin and avoid using BaseTool
         self.tool = tool
         self._run_id = run_id
@@ -56,8 +57,10 @@ class Index:
         embedding_instance_id: str,
         vector_db_instance_id: str,
         doc_id: str,
-        usage_kwargs: dict[Any, Any] = {},
-    ):
+        usage_kwargs: dict[Any, Any] = None,
+    ) -> Any:
+        if usage_kwargs is None:
+            usage_kwargs = {}
         embedding = EmbeddingCompat(
             tool=self.tool,
             adapter_instance_id=embedding_instance_id,
@@ -124,9 +127,9 @@ class Index:
         file_path: str,
         output_file_path: str | None = None,
         enable_highlight: bool = False,
-        usage_kwargs: dict[Any, Any] = {},
+        usage_kwargs: dict[Any, Any] = None,
         process_text: Callable[[str], str] | None = None,
-        fs: FileStorage = FileStorage(FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
         tags: list[str] | None = None,
     ) -> str:
         """Extracts text from a document.
@@ -152,6 +155,10 @@ class Index:
         Raises:
             IndexingError: Errors during text extraction
         """
+        if usage_kwargs is None:
+            usage_kwargs = {}
+        if fs is None:
+            fs = FileStorage(FileStorageProvider.LOCAL)
         self.tool.stream_log("Extracting text from input file")
         extracted_text = ""
         x2text = X2Text(
@@ -216,9 +223,9 @@ class Index:
         file_hash: str | None = None,
         output_file_path: str | None = None,
         enable_highlight: bool = False,
-        usage_kwargs: dict[Any, Any] = {},
+        usage_kwargs: dict[Any, Any] = None,
         process_text: Callable[[str], str] | None = None,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
         tags: list[str] | None = None,
     ) -> str:
         """Indexes an individual file using the passed arguments.
@@ -246,6 +253,10 @@ class Index:
         Returns:
             str: A unique ID for the file and indexing arguments combination
         """
+        if usage_kwargs is None:
+            usage_kwargs = {}
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         doc_id = self.generate_index_key(
             vector_db=vector_db_instance_id,
             embedding=embedding_instance_id,
@@ -363,7 +374,7 @@ class Index:
         text_to_idx: str,
         doc_id: str,
         doc_id_found: bool,
-    ):
+    ) -> None:
         self.tool.stream_log("Indexing file...")
         full_text = [
             {
@@ -445,7 +456,7 @@ class Index:
         chunk_overlap: str,
         file_path: str | None = None,
         file_hash: str | None = None,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
     ) -> str:
         """Generates a unique ID useful for identifying files during indexing.
 
@@ -464,6 +475,8 @@ class Index:
         Returns:
             str: Key representing unique ID for a file
         """
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         if not file_path and not file_hash:
             raise ValueError("One of `file_path` or `file_hash` need to be provided")
 
@@ -488,8 +501,8 @@ class Index:
         hashed_index_key = ToolUtils.hash_str(json.dumps(index_key, sort_keys=True))
         return hashed_index_key
 
-    def get_metrics(self):
+    def get_metrics(self) -> dict[str, Any]:
         return self._metrics
 
-    def clear_metrics(self):
+    def clear_metrics(self) -> None:
         self._metrics = {}

@@ -17,7 +17,7 @@ class IndexingUtils:
         tool: BaseTool,
         file_path: str | None = None,
         file_hash: str | None = None,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
     ) -> str:
         """Generates a unique index key based on the provided configuration,
         file information, instance identifiers, and processing options.
@@ -28,6 +28,8 @@ class IndexingUtils:
         Returns:
             str: A unique index key used for indexing the document.
         """
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         if not file_path and not file_hash:
             raise ValueError("One of `file_path` or `file_hash` need to be provided")
 

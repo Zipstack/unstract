@@ -2,6 +2,7 @@ from typing import Any
 
 import requests
 from llama_index.core.callbacks import CBEventType, TokenCountingHandler
+
 from unstract.sdk1.constants import LogLevel, ToolEnv
 from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.tool.stream import StreamMixin
@@ -28,7 +29,7 @@ class Audit(StreamMixin):
         token_counter: TokenCountingHandler | TokenCounterCompat = None,
         model_name: str = "",
         event_type: CBEventType = None,
-        kwargs: dict[Any, Any] = {},
+        kwargs: dict[Any, Any] = None,
     ) -> None:
         """Pushes the usage data to the platform service.
 
@@ -56,6 +57,8 @@ class Audit(StreamMixin):
             requests.RequestException: If there is an error while pushing the
             usage details.
         """
+        if kwargs is None:
+            kwargs = {}
         platform_host = self.get_env_or_die(ToolEnv.PLATFORM_HOST)
         platform_port = self.get_env_or_die(ToolEnv.PLATFORM_PORT)
 
@@ -125,8 +128,10 @@ class Audit(StreamMixin):
         page_count: int,
         file_size: int,
         file_type: str,
-        kwargs: dict[Any, Any] = {},
+        kwargs: dict[Any, Any] = None,
     ) -> None:
+        if kwargs is None:
+            kwargs = {}
         platform_host = self.get_env_or_die(ToolEnv.PLATFORM_HOST)
         platform_port = self.get_env_or_die(ToolEnv.PLATFORM_PORT)
         run_id = kwargs.get("run_id", "")

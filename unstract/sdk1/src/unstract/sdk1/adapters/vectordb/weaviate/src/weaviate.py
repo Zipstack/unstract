@@ -5,12 +5,13 @@ from typing import Any
 import weaviate
 from llama_index.core.vector_stores.types import BasePydanticVectorStore
 from llama_index.vector_stores.weaviate import WeaviateVectorStore
+from weaviate.classes.init import Auth
+from weaviate.exceptions import UnexpectedStatusCodeException
+
 from unstract.sdk1.adapters.exceptions import AdapterError
 from unstract.sdk1.adapters.vectordb.constants import VectorDbConstants
 from unstract.sdk1.adapters.vectordb.helper import VectorDBHelper
 from unstract.sdk1.adapters.vectordb.vectordb_adapter import VectorDBAdapter
-from weaviate.classes.init import Auth
-from weaviate.exceptions import UnexpectedStatusCodeException
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,7 @@ class Constants:
 
 
 class Weaviate(VectorDBAdapter):
-    def __init__(self, settings: dict[str, Any]):
+    def __init__(self, settings: dict[str, Any]) -> None:
         self._config = settings
         self._client: weaviate.Client | None = None
         self._collection_name: str = VectorDbConstants.DEFAULT_VECTOR_DB_NAME

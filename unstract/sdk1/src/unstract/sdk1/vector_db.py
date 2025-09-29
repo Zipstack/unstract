@@ -11,6 +11,7 @@ from llama_index.core.vector_stores.types import (
     VectorStore,
     VectorStoreQueryResult,
 )
+
 from unstract.sdk1.adapters.vectordb import adapters
 from unstract.sdk1.adapters.vectordb.constants import VectorDbConstants
 from unstract.sdk1.adapters.vectordb.exceptions import parse_vector_db_err
@@ -35,7 +36,7 @@ class VectorDB:
         tool: BaseTool,
         adapter_instance_id: str | None = None,
         embedding: EmbeddingCompat | None = None,
-    ):
+    ) -> None:
         self._tool = tool
         self._adapter_instance_id = adapter_instance_id
         self._vector_db_instance = None
@@ -43,7 +44,7 @@ class VectorDB:
         self._embedding_dimension = VectorDB.DEFAULT_EMBEDDING_DIMENSION
         self._initialise(embedding)
 
-    def _initialise(self, embedding: EmbeddingCompat | None = None):
+    def _initialise(self, embedding: EmbeddingCompat | None = None) -> None:
         if embedding:
             self._embedding_instance = embedding._embedding_instance
             self._embedding_dimension = embedding._length
@@ -114,7 +115,7 @@ class VectorDB:
         chunk_size: int = 1024,
         chunk_overlap: int = 128,
         show_progress: bool = False,
-        **index_kwargs,
+        **index_kwargs: Any,
     ) -> IndexType:
         if not self._embedding_instance:
             raise VectorDBError(self.EMBEDDING_INSTANCE_ERROR)
@@ -146,7 +147,7 @@ class VectorDB:
     def get_storage_context(self) -> StorageContext:
         return StorageContext.from_defaults(vector_store=self._vector_db_instance)
 
-    def query(self, query) -> VectorStoreQueryResult:
+    def query(self, query: Any) -> VectorStoreQueryResult:
         try:
             return self._vector_db_instance.query(query=query)
         except Exception as e:
@@ -161,7 +162,7 @@ class VectorDB:
 
     def add(
         self,
-        ref_doc_id,
+        ref_doc_id: str,
         nodes: list[BaseNode],
     ) -> list[str]:
         if not self.vector_db_adapter_class:
@@ -171,7 +172,7 @@ class VectorDB:
             nodes=nodes,
         )
 
-    def close(self, **kwargs):
+    def close(self, **kwargs: Any) -> None:
         if not self.vector_db_adapter_class:
             raise VectorDBError("Vector DB is not initialised properly")
         self.vector_db_adapter_class.close()

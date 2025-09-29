@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class MetricsMixin:
     TIME_TAKEN_KEY = "time_taken(s)"
 
-    def __init__(self, run_id):
+    def __init__(self, run_id: str) -> None:
         """Initialize the MetricsMixin class.
 
         Args:
@@ -39,7 +39,7 @@ class MetricsMixin:
         # Set the start time immediately upon initialization
         self.set_start_time()
 
-    def set_start_time(self, ttl=86400):
+    def set_start_time(self, ttl: int = 86400) -> None:
         """Store the current timestamp in Redis when the instance is
         created.
         """

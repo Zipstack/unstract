@@ -6,6 +6,7 @@ from llama_index.core.callbacks import CallbackManager as LlamaIndexCallbackMana
 from llama_index.core.callbacks import TokenCountingHandler
 from llama_index.core.embeddings import BaseEmbedding
 from llama_index.core.llms import LLM
+
 from unstract.sdk1.usage_handler import UsageHandler
 
 logger = logging.getLogger(__name__)
@@ -24,7 +25,7 @@ class CallbackManager:
     def set_callback(
         platform_api_key: str,
         model: LLM | BaseEmbedding,
-        kwargs,
+        kwargs: dict[str, Any],
     ) -> None:
         """Sets the standard callback manager for LlamaIndex embedding. This is
         to be called explicitly to set the handlers which are invoked in the
@@ -56,7 +57,7 @@ class CallbackManager:
     def get_callback_manager(
         model: LLM | BaseEmbedding,
         platform_api_key: str,
-        kwargs,
+        kwargs: dict[str, Any],
     ) -> LlamaIndexCallbackManager:
         embedding = None
         handler_list = []
@@ -82,9 +83,7 @@ class CallbackManager:
     @staticmethod
     def get_tokenizer(
         model: BaseEmbedding | None,
-        fallback_tokenizer: Callable[[str], list] = tiktoken.encoding_for_model(
-            "gpt-3.5-turbo"
-        ).encode,
+        fallback_tokenizer: Callable[[str], list] | None = None,
     ) -> Callable[[str], list]:
         """Returns a tokenizer function based on the provided model.
 
@@ -98,6 +97,8 @@ class CallbackManager:
         Raises:
             OSError: If an error occurs while loading the tokenizer.
         """
+        if fallback_tokenizer is None:
+            fallback_tokenizer = tiktoken.encoding_for_model("gpt-3.5-turbo").encode
         try:
             if isinstance(model, BaseEmbedding):
                 model_name = model.model_name

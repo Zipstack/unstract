@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class NoOpX2Text(X2TextAdapter):
-    def __init__(self, settings: dict[str, Any]):
+    def __init__(self, settings: dict[str, Any]) -> None:
         super().__init__("NoOpX2Text")
         self.config = settings
 
@@ -37,9 +37,11 @@ class NoOpX2Text(X2TextAdapter):
         self,
         input_file_path: str,
         output_file_path: str | None = None,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
         **kwargs: dict[Any, Any],
     ) -> TextExtractionResult:
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         extracted_text: str = (
             "This is a No Op x2text adapter response."
             " This is a sample response and intended for testing \f"

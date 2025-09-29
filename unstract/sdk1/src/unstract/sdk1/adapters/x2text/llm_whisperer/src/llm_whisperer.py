@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 
 class LLMWhisperer(X2TextAdapter):
-    def __init__(self, settings: dict[str, Any]):
+    def __init__(self, settings: dict[str, Any]) -> None:
         super().__init__("LLMWhisperer")
         self.config = settings
 
@@ -303,9 +303,11 @@ class LLMWhisperer(X2TextAdapter):
     def _send_whisper_request(
         self,
         input_file_path: str,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
         enable_highlight: bool = False,
     ) -> requests.Response:
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         headers = self._get_request_headers()
         headers["Content-Type"] = "application/octet-stream"
         params = self._get_whisper_params(enable_highlight)
@@ -328,8 +330,10 @@ class LLMWhisperer(X2TextAdapter):
         self,
         output_file_path: str | None,
         response: requests.Response,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
     ) -> str:
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         output_json = {}
         if response.status_code == 200:
             output_json = response.json()
@@ -348,7 +352,7 @@ class LLMWhisperer(X2TextAdapter):
         self,
         output_json: dict,
         output_file_path: Path,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
     ) -> None:
         """Writes the extracted text and metadata to the specified output file
         and metadata file.
@@ -362,6 +366,8 @@ class LLMWhisperer(X2TextAdapter):
         Raises:
             ExtractorError: If there is an error while writing the output file.
         """
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         try:
             text_output = output_json.get("text", "")
             logger.info(f"Writing output to {output_file_path}")
@@ -403,7 +409,7 @@ class LLMWhisperer(X2TextAdapter):
         self,
         input_file_path: str,
         output_file_path: str | None = None,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
         **kwargs: dict[Any, Any],
     ) -> TextExtractionResult:
         """Used to extract text from documents.
@@ -417,6 +423,8 @@ class LLMWhisperer(X2TextAdapter):
         Returns:
             str: Extracted text
         """
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         response: requests.Response = self._send_whisper_request(
             input_file_path,
             fs,

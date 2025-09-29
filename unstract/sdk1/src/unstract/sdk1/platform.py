@@ -5,6 +5,7 @@ from typing import Any
 import requests
 from requests import ConnectionError, RequestException, Response
 from requests.exceptions import ConnectionError, HTTPError
+
 from unstract.sdk1.constants import (
     AdapterKeys,
     LogLevel,
@@ -96,9 +97,9 @@ class PlatformHelper:
         tool: BaseTool,
         adapter_instance_id: str,
     ) -> dict[str, Any]:
-        """Get Adapter
+        """Get adapter configuration from platform service.
             1. Get the adapter config from platform service
-            using the adapter_instance_id
+            using the adapter_instance_id.
 
         Args:
             adapter_instance_id (str): Adapter instance ID

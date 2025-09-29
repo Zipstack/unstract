@@ -5,6 +5,7 @@ import uuid
 
 from requests import Response
 from requests.exceptions import RequestException
+
 from unstract.sdk1.constants import Common, LogLevel, MimeType
 from unstract.sdk1.utils.metrics_mixin import MetricsMixin
 
@@ -33,7 +34,7 @@ class Utils:
 
     @staticmethod
     def pretty_file_size(num: float, suffix: str = "B") -> str:
-        """Gets the human readable size for a file,
+        """Gets the human readable size for a file.
 
         Args:
             num (int): Size in bytes to parse
@@ -96,7 +97,7 @@ class Utils:
 
 
 class TokenCounterCompat:
-    def __init__(self, prompt_tokens: int, completion_tokens: int, total_tokens: int):
+    def __init__(self, prompt_tokens: int, completion_tokens: int, total_tokens: int) -> None:
         self.prompt_llm_token_count = prompt_tokens
         self.completion_llm_token_count = completion_tokens
         self.total_llm_token_count = total_tokens
@@ -106,7 +107,7 @@ class TokenCounterCompat:
 class LLMResponseCompat:
     """Compatibility class to mimic llama-index CompletionResponse interface."""
 
-    def __init__(self, text):
+    def __init__(self, text: str) -> None:
         self.text = text
         # Add other CompletionResponse attributes for compatibility
         self.additional_kwargs = {}
@@ -124,16 +125,16 @@ PY_TO_UNSTRACT_LOG_LEVEL = {
 }
 
 
-def log_elapsed(operation):
+def log_elapsed(operation: str) -> Any:
     """Adds an elapsed time log.
 
     Args:
         operation (str): Operation being measured
     """
 
-    def decorator(func):
+    def decorator(func: Any) -> Any:
         @functools.wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args, **kwargs: Any) -> Any:
             start_time = time.time()
             try:
                 result = func(*args, **kwargs)
@@ -148,11 +149,11 @@ def log_elapsed(operation):
     return decorator
 
 
-def capture_metrics(func):
+def capture_metrics(func: Any) -> Any:
     """Decorator to capture metrics at the start and end of a function."""
 
     @functools.wraps(func)
-    def wrapper(self, *args, **kwargs):
+    def wrapper(self: Any, *args, **kwargs: Any) -> Any:
         # Ensure the required attributes exist; if not,
         # execute the function and return its result
         if not all(

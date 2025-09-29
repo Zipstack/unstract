@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from typing import Any
 
 from pydantic import BaseModel, Field
+
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.enums import AdapterTypes
 
@@ -164,7 +165,7 @@ class BaseEmbeddingParameters(BaseModel):
 
 
 class OpenAILLMParameters(BaseChatCompletionParameters):
-    """See https://docs.litellm.ai/docs/providers/openai/"""
+    """See https://docs.litellm.ai/docs/providers/openai/."""
 
     api_key: str
     api_base: str
@@ -227,7 +228,7 @@ class OpenAILLMParameters(BaseChatCompletionParameters):
 
 
 class AzureOpenAILLMParameters(BaseChatCompletionParameters):
-    """See https://docs.litellm.ai/docs/providers/azure/#completion---using-azure_ad_token-api_base-api_version"""
+    """See https://docs.litellm.ai/docs/providers/azure/#completion---using-azure_ad_token-api_base-api_version."""
 
     api_base: str
     api_version: str | None = None
@@ -299,7 +300,7 @@ class AzureOpenAILLMParameters(BaseChatCompletionParameters):
 
 
 class VertexAILLMParameters(BaseChatCompletionParameters):
-    """See https://docs.litellm.ai/docs/providers/vertex"""
+    """See https://docs.litellm.ai/docs/providers/vertex."""
 
     vertex_credentials: str
     vertex_project: str
@@ -383,7 +384,7 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
 
 
 class AWSBedrockLLMParameters(BaseChatCompletionParameters):
-    """See https://docs.litellm.ai/docs/providers/bedrock"""
+    """See https://docs.litellm.ai/docs/providers/bedrock."""
 
     aws_access_key_id: str | None
     aws_secret_access_key: str | None
@@ -457,7 +458,7 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
 
 
 class AnthropicLLMParameters(BaseChatCompletionParameters):
-    """See https://docs.litellm.ai/docs/providers/anthropic"""
+    """See https://docs.litellm.ai/docs/providers/anthropic."""
 
     api_key: str
 
@@ -521,7 +522,7 @@ class AnthropicLLMParameters(BaseChatCompletionParameters):
 
 
 class AnyscaleLLMParameters(BaseChatCompletionParameters):
-    """See https://docs.litellm.ai/docs/providers/anyscale"""
+    """See https://docs.litellm.ai/docs/providers/anyscale."""
 
     api_key: str
 
@@ -542,7 +543,7 @@ class AnyscaleLLMParameters(BaseChatCompletionParameters):
 
 
 class MistralLLMParameters(BaseChatCompletionParameters):
-    """See https://docs.litellm.ai/docs/providers/mistral"""
+    """See https://docs.litellm.ai/docs/providers/mistral."""
 
     api_key: str
 
@@ -563,7 +564,7 @@ class MistralLLMParameters(BaseChatCompletionParameters):
 
 
 class OllamaLLMParameters(BaseChatCompletionParameters):
-    """See https://docs.litellm.ai/docs/providers/ollama"""
+    """See https://docs.litellm.ai/docs/providers/ollama."""
 
     api_base: str
 
@@ -588,7 +589,7 @@ class OllamaLLMParameters(BaseChatCompletionParameters):
 
 
 class OpenAIEmbeddingParameters(BaseEmbeddingParameters):
-    """See https://docs.litellm.ai/docs/providers/openai"""
+    """See https://docs.litellm.ai/docs/providers/openai."""
 
     api_key: str
     api_base: str | None = None
@@ -609,7 +610,7 @@ class OpenAIEmbeddingParameters(BaseEmbeddingParameters):
 
 
 class AzureOpenAIEmbeddingParameters(BaseEmbeddingParameters):
-    """See https://docs.litellm.ai/docs/providers/azure"""
+    """See https://docs.litellm.ai/docs/providers/azure."""
 
     api_key: str
     api_base: str
@@ -649,7 +650,7 @@ class AzureOpenAIEmbeddingParameters(BaseEmbeddingParameters):
 
 
 class VertexAIEmbeddingParameters(BaseEmbeddingParameters):
-    """See https://docs.litellm.ai/docs/providers/vertex"""
+    """See https://docs.litellm.ai/docs/providers/vertex."""
 
     vertex_credentials: str
     vertex_project: str
@@ -681,7 +682,7 @@ class VertexAIEmbeddingParameters(BaseEmbeddingParameters):
 
 
 class AWSBedrockEmbeddingParameters(BaseEmbeddingParameters):
-    """See https://docs.litellm.ai/docs/providers/bedrock"""
+    """See https://docs.litellm.ai/docs/providers/bedrock."""
 
     aws_access_key_id: str | None
     aws_secret_access_key: str | None
@@ -706,7 +707,7 @@ class AWSBedrockEmbeddingParameters(BaseEmbeddingParameters):
 
 
 class OllamaEmbeddingParameters(BaseEmbeddingParameters):
-    """See https://docs.litellm.ai/docs/providers/ollama"""
+    """See https://docs.litellm.ai/docs/providers/ollama."""
 
     api_base: str
     embed_batch_size: int | None = 10

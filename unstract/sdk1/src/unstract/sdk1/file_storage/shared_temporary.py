@@ -14,7 +14,7 @@ class SharedTemporaryFileStorage(FileStorage):
         self,
         provider: FileStorageProvider,
         **storage_config: dict[str, Any],
-    ):
+    ) -> None:
         if provider.value not in self.SUPPORTED_FILE_STORAGE_TYPES:
             raise FileStorageError(
                 f"File storage provider is not supported in Shared Temporary mode. "

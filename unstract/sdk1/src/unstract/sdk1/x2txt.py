@@ -1,8 +1,8 @@
 import io
-from abc import ABCMeta
 from typing import Any
 
 import pdfplumber
+
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.x2text import adapters
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants
@@ -17,13 +17,15 @@ from unstract.sdk1.tool.base import BaseTool
 from unstract.sdk1.utils.tool import ToolUtils
 
 
-class X2Text(metaclass=ABCMeta):
+class X2Text:
     def __init__(
         self,
         tool: BaseTool,
         adapter_instance_id: str | None = None,
-        usage_kwargs: dict[Any, Any] = {},
-    ):
+        usage_kwargs: dict[Any, Any] = None,
+    ) -> None:
+        if usage_kwargs is None:
+            usage_kwargs = {}
         self._tool = tool
         self._x2text_adapters = adapters
         self._adapter_instance_id = adapter_instance_id
@@ -32,10 +34,10 @@ class X2Text(metaclass=ABCMeta):
         self._initialise()
 
     @property
-    def x2text_instance(self):
+    def x2text_instance(self) -> X2TextAdapter:
         return self._x2text_instance
 
-    def _initialise(self):
+    def _initialise(self) -> None:
         if self._adapter_instance_id:
             self._x2text_instance = self._get_x2text()
 
@@ -86,9 +88,11 @@ class X2Text(metaclass=ABCMeta):
         self,
         input_file_path: str,
         output_file_path: str | None = None,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
         **kwargs: dict[Any, Any],
     ) -> TextExtractionResult:
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         mime_type = fs.mime_type(input_file_path)
         text_extraction_result: TextExtractionResult = None
         if mime_type == MimeType.TEXT:
@@ -107,8 +111,10 @@ class X2Text(metaclass=ABCMeta):
         self,
         input_file_path: str,
         mime_type: str,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
     ) -> None:
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         file_size = ToolUtils.get_file_size(input_file_path, fs)
 
         if mime_type == MimeType.PDF:

@@ -9,6 +9,7 @@ from llama_index.core import (
 )
 from llama_index.core.llms import MockLLM
 from llama_index.core.vector_stores.types import BasePydanticVectorStore
+
 from unstract.sdk1.adapters.vectordb.constants import VectorDbConstants
 from unstract.sdk1.exceptions import VectorDBError
 
@@ -62,31 +63,31 @@ class VectorDBHelper:
         collection_name_prefix: str,
         embedding_dimension: int,
     ) -> str:
-        """Notes:
+        """Get collection name for vector database storage.
             This function constructs the collection / table name to store the
             documents in the vector db.
             If user supplies this field in the config metadata then system
             would pick that and append it as prefix to embedding type.
             If this does not come as user setting, then system looks for it
-            in the get_vector_db() argument and append it to embedding type
+            in the get_vector_db() argument and append it to embedding type.
             If it is not there in both places then system appends
             "unstract_vector_db" as prefix to embedding type.
             If embedding type is not passed in get_vector_db() as arg,
-            then system ignores appending that
+            then system ignores appending that.
         Args:
             collection_name_prefix (str): the prefix to be added. If this is
                     not passed in, then the default DEFAULT_VECTOR_DB_NAME
-                    will be picked up for prefixing
+                    will be picked up for prefixing.
             embedding_dimension (str): this will be suffixed.
                     If this value is not passed in,
-                    then only collection_name_prefix will be returned
-                Eg. collection_name_prefix -> mock_org
-                    embedding_dimension -> 1536
-                    return value -> mock_org_unstract_1536
+                    then only collection_name_prefix will be returned.
+                Eg. collection_name_prefix -> mock_org.
+                    embedding_dimension -> 1536.
+                    return value -> mock_org_unstract_1536.
 
-                    collection_name_prefix -> No value
-                    embedding_type -> No value
-                    return value -> unstract_vector_db
+                    collection_name_prefix -> No value.
+                    embedding_type -> No value.
+                    return value -> unstract_vector_db.
 
         """
         vector_db_collection_name: str = VectorDbConstants.DEFAULT_VECTOR_DB_NAME

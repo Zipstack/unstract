@@ -5,6 +5,7 @@ from typing import Any
 
 from httpx import ConnectError
 from llama_parse import LlamaParse
+
 from unstract.sdk1.adapters.exceptions import AdapterError
 from unstract.sdk1.adapters.x2text.dto import TextExtractionResult
 from unstract.sdk1.adapters.x2text.llama_parse.src.constants import LlamaParseConfig
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class LlamaParseAdapter(X2TextAdapter):
-    def __init__(self, settings: dict[str, Any]):
+    def __init__(self, settings: dict[str, Any]) -> None:
         super().__init__("LlamaParse")
         self.config = settings
 
@@ -40,8 +41,10 @@ class LlamaParseAdapter(X2TextAdapter):
     def _call_parser(
         self,
         input_file_path: str,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
     ) -> str:
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         parser = LlamaParse(
             api_key=self.config.get(LlamaParseConfig.API_KEY),
             base_url=self.config.get(LlamaParseConfig.BASE_URL),
@@ -96,9 +99,11 @@ class LlamaParseAdapter(X2TextAdapter):
         self,
         input_file_path: str,
         output_file_path: str | None = None,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
         **kwargs: dict[Any, Any],
     ) -> TextExtractionResult:
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         response_text = self._call_parser(input_file_path=input_file_path, fs=fs)
         if output_file_path:
             fs.write(

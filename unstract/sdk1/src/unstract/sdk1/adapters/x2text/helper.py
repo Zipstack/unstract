@@ -4,6 +4,7 @@ from typing import Any
 import requests
 from requests import Response
 from requests.exceptions import ConnectionError, HTTPError, Timeout
+
 from unstract.sdk1.adapters.exceptions import AdapterError
 from unstract.sdk1.adapters.utils import AdapterUtils
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants
@@ -20,7 +21,7 @@ class X2TextHelper:
     def parse_response(
         response: Response,
         out_file_path: str | None = None,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
     ) -> tuple[str, bool]:
         """Parses the response from a request.
 
@@ -35,6 +36,8 @@ class X2TextHelper:
         Returns:
             tuple[str, bool]: Response's content and status of parsing
         """
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         if not response.ok and not response.content:
             return "", False
         if isinstance(response.content, bytes):
@@ -64,8 +67,10 @@ class UnstructuredHelper:
         unstructured_adapter_config: dict[str, Any],
         input_file_path: str,
         output_file_path: str | None = None,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
     ) -> str:
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         try:
             response: Response
             local_storage = FileStorage(FileStorageProvider.LOCAL)

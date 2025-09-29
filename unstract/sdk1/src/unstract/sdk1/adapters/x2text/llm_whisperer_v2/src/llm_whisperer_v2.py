@@ -3,6 +3,7 @@ import os
 from typing import Any
 
 import requests
+
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants
 from unstract.sdk1.adapters.x2text.dto import (
     TextExtractionMetadata,
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 class LLMWhispererV2(X2TextAdapter):
-    def __init__(self, settings: dict[str, Any]):
+    def __init__(self, settings: dict[str, Any]) -> None:
         super().__init__("LLMWhispererV2")
         self.config = settings
 
@@ -55,7 +56,7 @@ class LLMWhispererV2(X2TextAdapter):
         self,
         input_file_path: str,
         output_file_path: str | None = None,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
         **kwargs: dict[Any, Any],
     ) -> TextExtractionResult:
         """Used to extract text from documents.
@@ -69,6 +70,8 @@ class LLMWhispererV2(X2TextAdapter):
         Returns:
             str: Extracted text
         """
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         enable_highlight = kwargs.get(X2TextConstants.ENABLE_HIGHLIGHT, False)
         extra_params = WhispererRequestParams(
             tag=kwargs.get(X2TextConstants.TAGS),

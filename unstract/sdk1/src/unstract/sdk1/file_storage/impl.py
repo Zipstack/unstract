@@ -8,6 +8,7 @@ import filetype
 import fsspec
 import magic
 import yaml
+
 from unstract.sdk1.exceptions import FileOperationError
 from unstract.sdk1.file_storage.constants import FileOperationParams, FileSeekPosition
 from unstract.sdk1.file_storage.helper import FileStorageHelper, skip_local_cache
@@ -23,7 +24,7 @@ class FileStorage(FileStorageInterface):
     fs: fsspec  # fsspec file system handle
     provider: FileStorageProvider
 
-    def __init__(self, provider: FileStorageProvider, **storage_config: dict[str, Any]):
+    def __init__(self, provider: FileStorageProvider, **storage_config: dict[str, Any]) -> None:
         self.fs = FileStorageHelper.file_storage_init(provider, **storage_config)
         self.provider = provider
 
@@ -105,7 +106,7 @@ class FileStorage(FileStorageInterface):
         with self.fs.open(path=path, mode="rb") as file_handle:
             return file_handle.seek(location, position)
 
-    def mkdir(self, path: str, create_parents: bool = True):
+    def mkdir(self, path: str, create_parents: bool = True) -> None:
         """Create a directory.
 
         Args:
@@ -148,7 +149,7 @@ class FileStorage(FileStorageInterface):
         return self.fs.ls(path)
 
     @skip_local_cache
-    def rm(self, path: str, recursive: bool = True):
+    def rm(self, path: str, recursive: bool = True) -> None:
         """Removes a file or directory mentioned in path.
 
         Args:
@@ -168,7 +169,7 @@ class FileStorage(FileStorageInterface):
         dest: str,
         recursive: bool = False,
         overwrite: bool = True,
-    ):
+    ) -> None:
         """Copies files from source(lpath) path to the destination(rpath) path.
 
         Args:
@@ -245,7 +246,7 @@ class FileStorage(FileStorageInterface):
         return mime_type
 
     @skip_local_cache
-    def download(self, from_path: str, to_path: str):
+    def download(self, from_path: str, to_path: str) -> None:
         """Downloads the file mentioned in from_path to to_path on the local
         system. The instance calling the method needs to be the FileStorage
         initialised with the remote file system.
@@ -261,7 +262,7 @@ class FileStorage(FileStorageInterface):
         self.fs.get(rpath=from_path, lpath=to_path)
 
     @skip_local_cache
-    def upload(self, from_path: str, to_path: str):
+    def upload(self, from_path: str, to_path: str) -> None:
         """Uploads the file mentioned in from_path (local system) to to_path
         (remote system). The instance calling the method needs to be the
         FileStorage initialised with the remote file system where the file
@@ -318,7 +319,7 @@ class FileStorage(FileStorageInterface):
         path: str,
         data: dict[str, Any],
         **kwargs: dict[Any, Any],  # type: ignore
-    ):
+    ) -> None:
         """Dumps data into the given file specified by path.
 
         Args:
@@ -337,7 +338,7 @@ class FileStorage(FileStorageInterface):
         path: str,
         data: dict[str, Any],
         **kwargs: dict[Any, Any],  # type: ignore
-    ):
+    ) -> None:
         """Dumps data into the given file specified by path.
 
         Args:
@@ -394,7 +395,7 @@ class FileStorage(FileStorageInterface):
             file_extension = file_type.EXTENSION
         return file_extension
 
-    def walk(self, path: str, max_depth=None, topdown=True):
+    def walk(self, path: str, max_depth: int | None = None, topdown: bool = True) -> Any:
         """Walks the dir in the path and returns the list of files/dirs.
 
         Args:

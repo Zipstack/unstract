@@ -9,6 +9,7 @@ import litellm
 # from litellm import get_supported_openai_params
 from litellm import get_max_tokens, token_counter
 from pydantic import ValidationError
+
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
 from unstract.sdk1.audit import Audit
@@ -44,14 +45,20 @@ class LLM:
     def __init__(
         self,
         adapter_id: str = "",
-        adapter_metadata: dict[str, Any] = {},
+        adapter_metadata: dict[str, Any] = None,
         adapter_instance_id: str = "",
         tool: BaseTool = None,
-        usage_kwargs: dict[str, Any] = {},
+        usage_kwargs: dict[str, Any] = None,
         system_prompt: str = "",
-        kwargs: dict[str, Any] = {},
+        kwargs: dict[str, Any] = None,
         capture_metrics: bool = False,
     ) -> None:
+        if adapter_metadata is None:
+            adapter_metadata = {}
+        if usage_kwargs is None:
+            usage_kwargs = {}
+        if kwargs is None:
+            kwargs = {}
         self._usage_kwargs = usage_kwargs
         self._capture_metrics = capture_metrics
         try:
@@ -294,15 +301,15 @@ class LLM:
         """
         return self.kwargs["model"]
 
-    def get_metrics(self):
+    def get_metrics(self) -> dict[str, Any]:
         return self._metrics
 
-    def get_usage_reason(self):
+    def get_usage_reason(self) -> Any:
         return self.platform_kwargs.get("llm_usage_reason")
 
     def _record_usage(
         self, model: str, messages: list[dict[str, str]], usage: Any, llm_api: str
-    ):
+    ) -> None:
         prompt_tokens = token_counter(model=model, messages=messages)
         all_tokens = TokenCounterCompat(
             prompt_tokens=usage.get("prompt_tokens", 0),

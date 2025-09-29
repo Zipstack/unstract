@@ -47,7 +47,7 @@ class ToolUtils:
     @staticmethod
     def load_json(
         file_to_load: str,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
     ) -> dict[str, Any]:
         """Loads and returns a JSON from a file.
 
@@ -57,6 +57,8 @@ class ToolUtils:
         Returns:
             dict[str, Any]: The JSON loaded from file
         """
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         file_contents: str = fs.read(path=file_to_load, mode="r", encoding="utf-8")
         loaded_json: dict[str, Any] = json.loads(file_contents)
         return loaded_json
@@ -65,7 +67,7 @@ class ToolUtils:
     def dump_json(
         json_to_dump: dict[str, Any],
         file_to_dump: str,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
     ) -> None:
         """Helps dump the JSON to a file.
 
@@ -73,6 +75,8 @@ class ToolUtils:
             json_to_dump (dict[str, Any]): Input JSON to dump
             file_to_dump (str): Path to the file to dump the JSON to
         """
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         compact_json = json.dumps(json_to_dump, separators=(", ", ":"))
         fs.write(path=file_to_dump, mode="w", data=compact_json)
 
@@ -93,7 +97,7 @@ class ToolUtils:
     @staticmethod
     def get_file_size(
         input_file: Path,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
     ) -> int:
         """Gets the file size in bytes for an input file.
 
@@ -103,6 +107,8 @@ class ToolUtils:
         Returns:
             str: MIME type of the file
         """
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         file_length = fs.size(path=input_file)
         return file_length
 
@@ -198,7 +204,9 @@ class ToolUtils:
     @staticmethod
     def get_workflow_filestorage(
         provider: FileStorageProvider,
-        credentials: dict[str, Any] = {},
+        credentials: dict[str, Any] = None,
     ) -> SharedTemporaryFileStorage:
         """Get the file storage for the workflow."""
+        if credentials is None:
+            credentials = {}
         return SharedTemporaryFileStorage(provider=provider, **credentials)

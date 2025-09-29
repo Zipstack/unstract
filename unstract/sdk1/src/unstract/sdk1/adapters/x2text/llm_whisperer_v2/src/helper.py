@@ -11,6 +11,7 @@ from unstract.llmwhisperer.client_v2 import (
     LLMWhispererClientException,
     LLMWhispererClientV2,
 )
+
 from unstract.sdk1.adapters.exceptions import ExtractorError
 from unstract.sdk1.adapters.utils import AdapterUtils
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants
@@ -240,8 +241,10 @@ class LLMWhispererHelper:
         input_file_path: str,
         config: dict[str, Any],
         extra_params: WhispererRequestParams,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
     ) -> requests.Response:
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         params = LLMWhispererHelper.get_whisperer_params(
             config=config, extra_params=extra_params
         )
@@ -302,8 +305,10 @@ class LLMWhispererHelper:
     def extract_text_from_response(
         output_file_path: str | None,
         response: dict[str, Any],
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
     ) -> str:
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         if not response:
             raise ExtractorError("Couldn't extract text from file", status_code=500)
         output_json = {}
@@ -320,7 +325,7 @@ class LLMWhispererHelper:
     def write_output_to_file(
         output_json: dict,
         output_file_path: Path,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
     ) -> None:
         """Write LLMW outputs to file.
 
@@ -337,6 +342,8 @@ class LLMWhispererHelper:
         Raises:
             ExtractorError: If there is an error while writing the output file.
         """
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         try:
             text_output = output_json.get("result_text", "")
             logger.info(f"Writing output to {output_file_path}")

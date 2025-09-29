@@ -3,6 +3,7 @@ from typing import Any
 from llama_index.core.callbacks import CBEventType, TokenCountingHandler
 from llama_index.core.callbacks.base_handler import BaseCallbackHandler
 from llama_index.core.embeddings import BaseEmbedding
+
 from unstract.sdk1.audit import Audit
 from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.tool.stream import StreamMixin
@@ -36,8 +37,10 @@ class UsageHandler(StreamMixin, BaseCallbackHandler):
         event_ends_to_ignore: list[CBEventType] | None = None,
         verbose: bool = False,
         log_level: LogLevel = LogLevel.INFO,
-        kwargs: dict[Any, Any] = {},
+        kwargs: dict[Any, Any] = None,
     ) -> None:
+        if kwargs is None:
+            kwargs = {}
         self.kwargs = kwargs.copy()
         self._verbose = verbose
         self.token_counter = token_counter
@@ -65,8 +68,10 @@ class UsageHandler(StreamMixin, BaseCallbackHandler):
         payload: dict[str, Any] | None = None,
         event_id: str = "",
         parent_id: str = "",
-        kwargs: dict[Any, Any] = {},
+        kwargs: dict[Any, Any] = None,
     ) -> str:
+        if kwargs is None:
+            kwargs = {}
         return event_id
 
     def on_event_end(
@@ -74,9 +79,11 @@ class UsageHandler(StreamMixin, BaseCallbackHandler):
         event_type: CBEventType,
         payload: dict[str, Any] | None = None,
         event_id: str = "",
-        kwargs: dict[Any, Any] = {},
+        kwargs: dict[Any, Any] = None,
     ) -> None:
         """Push the usage of Embedding to platform service."""
+        if kwargs is None:
+            kwargs = {}
         if (
             event_type == CBEventType.EMBEDDING
             and event_type not in self.event_ends_to_ignore

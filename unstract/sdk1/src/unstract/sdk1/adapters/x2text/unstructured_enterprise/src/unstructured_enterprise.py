@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class UnstructuredEnterprise(X2TextAdapter):
-    def __init__(self, settings: dict[str, Any]):
+    def __init__(self, settings: dict[str, Any]) -> None:
         super().__init__("UnstructuredIOEnterprise")
         self.config = settings
 
@@ -37,9 +37,11 @@ class UnstructuredEnterprise(X2TextAdapter):
         self,
         input_file_path: str,
         output_file_path: str | None = None,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
         **kwargs: dict[str, Any],
     ) -> TextExtractionResult:
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         extracted_text: str = UnstructuredHelper.process_document(
             self.config, input_file_path, output_file_path, fs
         )
