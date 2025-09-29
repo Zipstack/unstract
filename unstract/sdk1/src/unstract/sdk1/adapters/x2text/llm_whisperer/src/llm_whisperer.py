@@ -90,7 +90,7 @@ class LLMWhisperer(X2TextAdapter):
             Response: Response from the request
         """
         llm_whisperer_svc_url = (
-            f"{self.config.get(WhispererConfig.URL)}" f"/v1/{request_endpoint}"
+            f"{self.config.get(WhispererConfig.URL)}/v1/{request_endpoint}"
         )
         if not headers:
             headers = self._get_request_headers()
@@ -256,7 +256,7 @@ class LLMWhisperer(X2TextAdapter):
             # Exit with error if max poll count is reached
             if request_count >= MAX_POLLS:
                 raise ExtractorError(
-                    "Unable to extract text after attempting" f" {request_count} times"
+                    f"Unable to extract text after attempting {request_count} times"
                 )
             time.sleep(POLL_INTERVAL)
 

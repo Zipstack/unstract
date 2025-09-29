@@ -5,6 +5,7 @@ from typing import Any
 
 from httpx import ConnectError
 from llama_parse import LlamaParse
+
 from unstract.sdk1.adapters.exceptions import AdapterError
 from unstract.sdk1.adapters.x2text.dto import TextExtractionResult
 from unstract.sdk1.adapters.x2text.llama_parse.src.constants import LlamaParseConfig
@@ -81,7 +82,7 @@ class LlamaParseAdapter(X2TextAdapter):
         except ConnectError as connec_err:
             logger.error(f"Invalid Base URL given. : {connec_err}")
             raise AdapterError(
-                "Unable to connect to llama-parse`s service, " "please check the Base URL"
+                "Unable to connect to llama-parse`s service, please check the Base URL"
             )
         except Exception as exe:
             logger.error(

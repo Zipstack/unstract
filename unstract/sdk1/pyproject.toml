@@ -127,8 +127,6 @@ ignore = [
     "D103",   # Missing docstring in public function
     "D106",   # Missing docstring in public nested class
     "D417",   # Missing argument description in the docstring
-    "ANN101", # Missing type annotation for self
-    "ANN102", # Missing type annotation for cls
 ]
 
 [tool.ruff.format]
@@ -137,10 +135,10 @@ indent-style = "space"
 line-ending = "auto"
 docstring-code-format = true
 
-[tool.ruff.mccabe]
+[tool.ruff.lint.mccabe]
 max-complexity = 10
 
-[tool.ruff.pydocstyle]
+[tool.ruff.lint.pydocstyle]
 convention = "google"
 
 [tool.pycln]

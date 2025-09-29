@@ -8,6 +8,7 @@ import requests
 from filetype import filetype
 from google.auth.transport import requests as google_requests
 from google.oauth2.service_account import Credentials
+
 from unstract.sdk1.adapters.exceptions import AdapterError
 from unstract.sdk1.adapters.ocr.constants import FileType
 from unstract.sdk1.adapters.ocr.ocr_adapter import OCRAdapter
@@ -108,7 +109,7 @@ class GoogleDocumentAI(OCRAdapter):
         file_type_mime: str = file_type.MIME if file_type else FileType.TEXT_PLAIN
 
         if file_type_mime not in FileType.ALLOWED_TYPES:
-            logger.error("Input file type not supported: " f"{file_type_mime}")
+            logger.error(f"Input file type not supported: {file_type_mime}")
 
         logger.info(f"file: `{input_file_path} [{file_type_mime}]`\n\n")
 

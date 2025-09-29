@@ -3,6 +3,7 @@ from typing import Any
 
 import fsspec
 from fsspec import AbstractFileSystem
+
 from unstract.sdk1.exceptions import FileOperationError, FileStorageError
 from unstract.sdk1.file_storage.provider import FileStorageProvider
 
@@ -45,7 +46,7 @@ class FileStorageHelper:
             )
             raise FileStorageError(str(e)) from e
         except Exception as e:
-            logger.error(f"Error in initialising {provider.value} " f"file system {e}")
+            logger.error(f"Error in initialising {provider.value} file system {e}")
             raise FileStorageError(str(e)) from e
         return fs
 
@@ -62,8 +63,7 @@ class FileStorageHelper:
             return fs
         except Exception as e:
             logger.error(
-                f"Error in initialising {FileStorageProvider.GCS.value}"
-                f" file system {e}"
+                f"Error in initialising {FileStorageProvider.GCS.value} file system {e}"
             )
             raise FileStorageError(str(e)) from e
 

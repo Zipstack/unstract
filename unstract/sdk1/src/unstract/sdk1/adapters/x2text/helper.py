@@ -4,6 +4,7 @@ from typing import Any
 import requests
 from requests import Response
 from requests.exceptions import ConnectionError, HTTPError, Timeout
+
 from unstract.sdk1.adapters.exceptions import AdapterError
 from unstract.sdk1.adapters.utils import AdapterUtils
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants
@@ -119,7 +120,7 @@ class UnstructuredHelper:
             body["unstructured-api-key"] = api_key
 
         x2text_url = (
-            f"{x2text_service_url}:{x2text_service_port}" f"/api/v1/x2text/{request_type}"
+            f"{x2text_service_url}:{x2text_service_port}/api/v1/x2text/{request_type}"
         )
         # Add files only if the request is for process
         files = None
@@ -131,7 +132,7 @@ class UnstructuredHelper:
         except ConnectionError as e:
             logger.error(f"Adapter error: {e}")
             raise AdapterError(
-                "Unable to connect to unstructured-io's service, " "please check the URL"
+                "Unable to connect to unstructured-io's service, please check the URL"
             )
         except Timeout as e:
             msg = "Request to unstructured-io's service has timed out"

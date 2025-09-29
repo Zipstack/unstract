@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from jsonschema import Draft202012Validator, ValidationError, validators
+
 from unstract.sdk1.constants import MetadataKey, PropKey
 from unstract.sdk1.tool.base import BaseTool
 from unstract.sdk1.tool.mime_types import EXT_MIME_MAP
@@ -121,8 +122,7 @@ class ToolValidator:
         if file_size > max_size_in_bytes:
             source_name = self.tool.get_exec_metadata.get(MetadataKey.SOURCE_NAME)
             self.tool.stream_error_and_exit(
-                f"File {source_name} exceeds the maximum "
-                f"allowed size of {max_file_size}"
+                f"File {source_name} exceeds the maximum allowed size of {max_file_size}"
             )
 
     def _parse_size_string(self, size_string: str) -> int:
