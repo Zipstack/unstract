@@ -59,14 +59,14 @@ jobs:
         id: build-config
         run: |
           if [ "${{ github.event.inputs.service_name }}" == "tool-classifier" ]; then
-            echo "context=./tools/classifier" >> $GITHUB_OUTPUT
-            echo "dockerfile=" >> $GITHUB_OUTPUT
+            echo "context=." >> $GITHUB_OUTPUT
+            echo "dockerfile=./tools/classifier/Dockerfile" >> $GITHUB_OUTPUT
           elif [ "${{ github.event.inputs.service_name }}" == "tool-structure" ]; then
-            echo "context=./tools/structure" >> $GITHUB_OUTPUT
-            echo "dockerfile=" >> $GITHUB_OUTPUT
+            echo "context=." >> $GITHUB_OUTPUT
+            echo "dockerfile=./tools/structure/Dockerfile"" >> $GITHUB_OUTPUT
           elif [ "${{ github.event.inputs.service_name }}" == "tool-text-extractor" ]; then
-            echo "context=./tools/text_extractor" >> $GITHUB_OUTPUT
-            echo "dockerfile=" >> $GITHUB_OUTPUT
+            echo "context=." >> $GITHUB_OUTPUT
+            echo "dockerfile=./tools/text_extractor/Dockerfile" >> $GITHUB_OUTPUT
           elif [ "${{ github.event.inputs.service_name }}" == "tool-sidecar" ]; then
             echo "context=." >> $GITHUB_OUTPUT
             echo "dockerfile=docker/dockerfiles/tool-sidecar.Dockerfile" >> $GITHUB_OUTPUT
