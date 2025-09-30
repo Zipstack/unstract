@@ -16,6 +16,13 @@ class VectorDBAdapter(Adapter, ABC):
         name: str,
         vector_db_instance: VectorStore | BasePydanticVectorStore,
     ) -> None:
+        """Initialize the VectorDBAdapter base class.
+
+        Args:
+            name: Name identifier for the vector database adapter
+            vector_db_instance: The vector database instance (VectorStore or
+                BasePydanticVectorStore)
+        """
         super().__init__(name)
         self.name = name
         self._vector_db_instance: VectorStore | BasePydanticVectorStore = (
@@ -59,8 +66,7 @@ class VectorDBAdapter(Adapter, ABC):
     def get_vector_db_instance(
         self, vector_db_config: dict[str, Any]
     ) -> BasePydanticVectorStore | VectorStore:
-        """Instantiate the llama index VectorStore / BasePydanticVectorStore
-        class.
+        """Instantiate the llama index VectorStore / BasePydanticVectorStore class.
 
         Returns:
             BasePydanticVectorStore / VectorStore:

@@ -25,6 +25,12 @@ class Constants:
 
 class Postgres(VectorDBAdapter):
     def __init__(self, settings: dict[str, Any]) -> None:
+        """Initialize the Postgres vector database adapter.
+
+        Args:
+            settings: Configuration dictionary containing PostgreSQL connection parameters
+                     including host, port, database, user, password, and other settings.
+        """
         self._config = settings
         self._client: connection | None = None
         self._collection_name: str = VectorDbConstants.DEFAULT_VECTOR_DB_NAME
@@ -93,7 +99,7 @@ class Postgres(VectorDBAdapter):
 
             return vector_db
         except Exception as e:
-            raise AdapterError(str(e))
+            raise AdapterError(str(e)) from e
 
     def test_connection(self) -> bool:
         vector_db = self.get_vector_db_instance()

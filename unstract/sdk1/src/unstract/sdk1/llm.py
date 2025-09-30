@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 class LLM:
     """Unified LLM interface powered by LiteLLM.
+
     Internally invokes Unstract LLM adapters.
 
     Accepts either of the following pairs for init:
@@ -53,6 +54,18 @@ class LLM:
         kwargs: dict[str, Any] = None,
         capture_metrics: bool = False,
     ) -> None:
+        """Initialize the LLM interface.
+
+        Args:
+            adapter_id: Adapter identifier for LLM model
+            adapter_metadata: Configuration metadata for the adapter
+            adapter_instance_id: Instance identifier for the adapter
+            tool: BaseTool instance for tool-specific operations
+            usage_kwargs: Usage tracking parameters
+            system_prompt: System prompt for the LLM
+            kwargs: Additional keyword arguments for configuration
+            capture_metrics: Whether to capture performance metrics
+        """
         if adapter_metadata is None:
             adapter_metadata = {}
         if usage_kwargs is None:
@@ -87,10 +100,10 @@ class LLM:
 
             # Retrieve the adapter class.
             self.adapter = adapters[self._adapter_id][Common.MODULE]
-        except KeyError:
+        except KeyError as e:
             raise SdkError(
                 "LLM adapter not supported: " + adapter_id or adapter_instance_id
-            )
+            ) from e
 
         try:
             self.platform_kwargs = {**kwargs, **usage_kwargs}
@@ -101,12 +114,14 @@ class LLM:
             self.kwargs = self.adapter.validate(self._adapter_metadata)
 
             # REF: https://docs.litellm.ai/docs/completion/input#translated-openai-params
-            # supported = get_supported_openai_params(model=self.kwargs["model"], custom_llm_provider=self.provider)
+            # supported = get_supported_openai_params(model=self.kwargs["model"],
+            #     custom_llm_provider=self.provider)
             # for s in supported:
             #     if s not in self.kwargs:
-            #         logger.warning("Missing supported parameter for '%s': %s", self.adapter.get_provider(), s)
+            #         logger.warning("Missing supported parameter for '%s': %s",
+            #             self.adapter.get_provider(), s)
         except ValidationError as e:
-            raise SdkError("Invalid LLM adapter metadata: " + str(e))
+            raise SdkError("Invalid LLM adapter metadata: " + str(e)) from e
 
         self._system_prompt = system_prompt or self.SYSTEM_PROMPT
 
@@ -145,8 +160,7 @@ class LLM:
 
     @capture_metrics
     def complete(self, prompt: str, **kwargs: dict[str, Any]) -> dict[str, Any]:
-        """Return a standard chat completion dict and optionally captures metrics
-        if run ID is provided.
+        """Return a standard chat completion dict and optionally captures metrics if run ID is provided.
 
         Args:
             prompt   (str)   The input text prompt for generating the completion.

@@ -22,6 +22,12 @@ class Constants:
 
 class Qdrant(VectorDBAdapter):
     def __init__(self, settings: dict[str, Any]) -> None:
+        """Initialize the Qdrant vector database adapter.
+
+        Args:
+            settings: Configuration dictionary containing Qdrant connection parameters
+                     including URL, API key, and other settings.
+        """
         self._config = settings
         self._client: QdrantClient | None = None
         self._collection_name: str = VectorDbConstants.DEFAULT_VECTOR_DB_NAME

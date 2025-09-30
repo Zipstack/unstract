@@ -24,6 +24,13 @@ class X2Text:
         adapter_instance_id: str | None = None,
         usage_kwargs: dict[Any, Any] = None,
     ) -> None:
+        """Initialize the X2Text for text extraction operations.
+
+        Args:
+            tool: BaseTool instance for accessing tool-specific operations
+            adapter_instance_id: Optional adapter instance identifier for text extraction
+            usage_kwargs: Usage tracking parameters for monitoring operations
+        """
         if usage_kwargs is None:
             usage_kwargs = {}
         self._tool = tool

@@ -98,8 +98,8 @@ class PlatformHelper:
         adapter_instance_id: str,
     ) -> dict[str, Any]:
         """Get adapter configuration from platform service.
-            1. Get the adapter config from platform service
-            using the adapter_instance_id.
+
+        1. Get the adapter config from platform service using the adapter_instance_id.
 
         Args:
             adapter_instance_id (str): Adapter instance ID
@@ -131,10 +131,10 @@ class PlatformHelper:
                 f"'{adapter_type}', provider: '{provider}', name: '{adapter_name}'",
                 level=LogLevel.DEBUG,
             )
-        except ConnectionError:
+        except ConnectionError as e:
             raise SdkError(
                 "Unable to connect to platform service, please contact the admin."
-            )
+            ) from e
         except HTTPError as e:
             default_err = (
                 "Error while calling the platform service, please contact the admin."
@@ -142,7 +142,7 @@ class PlatformHelper:
             msg = Utils.get_msg_from_request_exc(
                 err=e, message_key="error", default_err=default_err
             )
-            raise SdkError(f"Error retrieving adapter. {msg}")
+            raise SdkError(f"Error retrieving adapter. {msg}") from e
         return adapter_data
 
     @classmethod

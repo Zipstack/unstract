@@ -1,3 +1,6 @@
+from typing import Any
+
+
 class SdkError(Exception):
     DEFAULT_MESSAGE = "Something went wrong"
     actual_err: Exception | None = None
@@ -9,6 +12,13 @@ class SdkError(Exception):
         status_code: int | None = None,
         actual_err: Exception | None = None,
     ) -> None:
+        """Initialize the SdkError exception.
+
+        Args:
+            message: Error message description
+            status_code: HTTP status code associated with the error
+            actual_err: The original exception that caused this error
+        """
         super().__init__(message)
         # Make it user friendly wherever possible
         self.message = message
@@ -22,7 +32,7 @@ class SdkError(Exception):
             if hasattr(actual_err, "status_code"):  # Most providers
                 self.status_code = actual_err.status_code
             elif hasattr(actual_err, "http_status"):  # Few providers like Mistral
-                self.status_code = resolve_err_status_code(actual_err.status)
+                self.status_code = actual_err.http_status
 
     def __str__(self) -> str:
         return self.message
@@ -30,6 +40,12 @@ class SdkError(Exception):
 
 class IndexingError(SdkError):
     def __init__(self, message: str = "", **kwargs: Any) -> None:
+        """Initialize the IndexingError exception.
+
+        Args:
+            message: Error message description
+            **kwargs: Additional keyword arguments passed to parent SdkError
+        """
         if "404" in message:
             message = "Index not found. Please check vector DB settings."
         super().__init__(message, **kwargs)

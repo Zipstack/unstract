@@ -10,9 +10,9 @@ from unstract.sdk1.tool.stream import StreamMixin
 
 
 class UsageHandler(StreamMixin, BaseCallbackHandler):
-    """UsageHandler class is a subclass of BaseCallbackHandler and is
-    responsible for handling usage events in the LLM or Embedding models. It
-    provides methods for starting and ending traces, as well as handling event
+    """UsageHandler class is a subclass of BaseCallbackHandler and is responsible for handling usage events in the LLM or Embedding models.
+
+    It provides methods for starting and ending traces, as well as handling event
     starts and ends.
 
     Attributes:
@@ -39,6 +39,18 @@ class UsageHandler(StreamMixin, BaseCallbackHandler):
         log_level: LogLevel = LogLevel.INFO,
         kwargs: dict[Any, Any] = None,
     ) -> None:
+        """Initialize the UsageHandler for tracking usage events in LLM/Embedding models.
+
+        Args:
+            platform_api_key: API key for platform service communication
+            token_counter: Token counting handler for tracking token usage
+            embed_model: Embedding model instance for embedding operations
+            event_starts_to_ignore: List of event types to ignore at start
+            event_ends_to_ignore: List of event types to ignore at end
+            verbose: Whether to enable verbose output
+            log_level: Logging level for output
+            kwargs: Additional keyword arguments for usage tracking
+        """
         if kwargs is None:
             kwargs = {}
         self.kwargs = kwargs.copy()

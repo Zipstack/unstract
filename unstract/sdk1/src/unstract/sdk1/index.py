@@ -45,6 +45,13 @@ class Index:
         run_id: str | None = None,
         capture_metrics: bool = False,
     ) -> None:
+        """Initialize the Index for document indexing and querying operations.
+
+        Args:
+            tool: BaseTool instance for accessing tool-specific operations
+            run_id: Optional run identifier for tracking operations
+            capture_metrics: Whether to capture performance metrics during operations
+        """
         # TODO: Inherit from StreamMixin and avoid using BaseTool
         self.tool = tool
         self._run_id = run_id
@@ -98,7 +105,7 @@ class Index:
                 )
                 raise VectorDBError(
                     f"Failed to construct query for {vector_db}: {e}", actual_err=e
-                )
+                ) from e
             try:
                 n: VectorStoreQueryResult = vector_db.query(query=q)
                 if len(n.nodes) > 0:
@@ -116,7 +123,7 @@ class Index:
                 )
                 raise VectorDBError(
                     f"Failed to execute query on {vector_db}: {e}", actual_err=e
-                )
+                ) from e
         finally:
             vector_db.close()
 

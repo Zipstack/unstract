@@ -18,6 +18,7 @@ from unstract.sdk1.utils.callback_manager import CallbackManager
 
 class Embedding:
     """Unified embedding interface powered by LiteLLM.
+
     Internally invokes Unstract embedding adapters.
 
     Accepts either of the following pairs for init:
@@ -35,6 +36,15 @@ class Embedding:
         tool: BaseTool = None,
         kwargs: dict[str, Any] = None,
     ) -> None:
+        """Initialize the Embedding interface.
+
+        Args:
+            adapter_id: Adapter identifier for embedding model
+            adapter_metadata: Configuration metadata for the adapter
+            adapter_instance_id: Instance identifier for the adapter
+            tool: BaseTool instance for tool-specific operations
+            kwargs: Additional keyword arguments for configuration
+        """
         if adapter_metadata is None:
             adapter_metadata = {}
         if kwargs is None:
@@ -68,16 +78,16 @@ class Embedding:
 
             # Retrieve the adapter class.
             self.adapter = adapters[self._adapter_id][Common.MODULE]
-        except KeyError:
+        except KeyError as e:
             raise SdkError(
                 "Embedding adapter not supported: " + adapter_id or adapter_instance_id
-            )
+            ) from e
 
         try:
             self.platform_kwargs: dict[str, Any] = kwargs
             self.kwargs: dict[str, Any] = self.adapter.validate(self._adapter_metadata)
         except ValidationError as e:
-            raise SdkError("Invalid embedding adapter metadata: " + str(e))
+            raise SdkError("Invalid embedding adapter metadata: " + str(e)) from e
 
         self._length = len(self.get_embedding(self._TEST_SNIPPET))
 
@@ -138,6 +148,15 @@ class EmbeddingCompat(BaseEmbedding):
         tool: BaseTool = None,
         kwargs: dict[str, Any] = None,
     ) -> None:
+        """Initialize the EmbeddingCompat wrapper for compatibility.
+
+        Args:
+            adapter_id: Adapter identifier for embedding model
+            adapter_metadata: Configuration metadata for the adapter
+            adapter_instance_id: Instance identifier for the adapter
+            tool: BaseTool instance for tool-specific operations
+            kwargs: Additional keyword arguments for configuration
+        """
         adapter_metadata = adapter_metadata or {}
         kwargs = kwargs or {}
         super().__init__(**kwargs)

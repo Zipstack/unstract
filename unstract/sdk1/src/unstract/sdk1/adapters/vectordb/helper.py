@@ -56,7 +56,7 @@ class VectorDBHelper:
 
         except Exception as e:
             logger.error(f"Error occured while testing adapter {e}")
-            raise VectorDBError(message=str(e), actual_err=e)
+            raise VectorDBError(message=str(e), actual_err=e) from e
 
     @staticmethod
     def get_collection_name(
@@ -64,6 +64,7 @@ class VectorDBHelper:
         embedding_dimension: int,
     ) -> str:
         """Get collection name for vector database storage.
+
             This function constructs the collection / table name to store the
             documents in the vector db.
             If user supplies this field in the config metadata then system
@@ -74,6 +75,7 @@ class VectorDBHelper:
             "unstract_vector_db" as prefix to embedding type.
             If embedding type is not passed in get_vector_db() as arg,
             then system ignores appending that.
+
         Args:
             collection_name_prefix (str): the prefix to be added. If this is
                     not passed in, then the default DEFAULT_VECTOR_DB_NAME

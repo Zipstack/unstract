@@ -10,8 +10,7 @@ from unstract.sdk1.utils.common import TokenCounterCompat
 
 
 class Audit(StreamMixin):
-    """The 'Audit' class is responsible for pushing usage data to the platform
-    service.
+    """The 'Audit' class is responsible for pushing usage data to the platform service.
 
     Methods:
         - push_usage_data: Pushes the usage data to the platform service.
@@ -21,6 +20,11 @@ class Audit(StreamMixin):
     """
 
     def __init__(self, log_level: LogLevel = LogLevel.INFO) -> None:
+        """Initialize the Audit class for tracking usage data.
+
+        Args:
+            log_level: Logging level for output control
+        """
         super().__init__(log_level)
 
     def push_usage_data(

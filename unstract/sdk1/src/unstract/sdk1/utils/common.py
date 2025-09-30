@@ -2,6 +2,7 @@ import functools
 import logging
 import time
 import uuid
+from typing import Any
 
 from requests import Response
 from requests.exceptions import RequestException
@@ -97,7 +98,16 @@ class Utils:
 
 
 class TokenCounterCompat:
-    def __init__(self, prompt_tokens: int, completion_tokens: int, total_tokens: int) -> None:
+    def __init__(
+        self, prompt_tokens: int, completion_tokens: int, total_tokens: int
+    ) -> None:
+        """Initialize the TokenCounterCompat for compatibility with token counting.
+
+        Args:
+            prompt_tokens: Number of tokens in the prompt
+            completion_tokens: Number of tokens in the completion
+            total_tokens: Total number of tokens used
+        """
         self.prompt_llm_token_count = prompt_tokens
         self.completion_llm_token_count = completion_tokens
         self.total_llm_token_count = total_tokens
@@ -108,6 +118,11 @@ class LLMResponseCompat:
     """Compatibility class to mimic llama-index CompletionResponse interface."""
 
     def __init__(self, text: str) -> None:
+        """Initialize the LLMResponseCompat for compatibility with LLM responses.
+
+        Args:
+            text: The response text from the LLM
+        """
         self.text = text
         # Add other CompletionResponse attributes for compatibility
         self.additional_kwargs = {}

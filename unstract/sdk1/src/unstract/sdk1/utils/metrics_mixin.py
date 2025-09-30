@@ -40,17 +40,14 @@ class MetricsMixin:
         self.set_start_time()
 
     def set_start_time(self, ttl: int = 86400) -> None:
-        """Store the current timestamp in Redis when the instance is
-        created.
-        """
+        """Store the current timestamp in Redis when the instance is created."""
         if self.redis_client is None:
             logger.error("Redis client is not initialized. Cannot set start time.")
             return
         self.redis_client.set(self.redis_key, time.time(), ex=ttl)
 
     def collect_metrics(self) -> dict[str, Any]:
-        """Calculate the time taken since the timestamp was set and delete the
-        Redis key.
+        """Calculate the time taken since the timestamp was set and delete the Redis key.
 
         Returns:
             dict: The calculated time taken and the associated run_id and op_id.

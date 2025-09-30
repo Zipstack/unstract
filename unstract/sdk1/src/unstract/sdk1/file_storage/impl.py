@@ -24,7 +24,15 @@ class FileStorage(FileStorageInterface):
     fs: fsspec  # fsspec file system handle
     provider: FileStorageProvider
 
-    def __init__(self, provider: FileStorageProvider, **storage_config: dict[str, Any]) -> None:
+    def __init__(
+        self, provider: FileStorageProvider, **storage_config: dict[str, Any]
+    ) -> None:
+        """Initialize the FileStorage implementation.
+
+        Args:
+            provider: File storage provider type (e.g., LOCAL, S3, etc.)
+            **storage_config: Additional configuration parameters for the storage provider
+        """
         self.fs = FileStorageHelper.file_storage_init(provider, **storage_config)
         self.provider = provider
 
@@ -90,8 +98,7 @@ class FileStorage(FileStorageInterface):
         location: int = 0,
         position: FileSeekPosition = FileSeekPosition.START,
     ) -> int:
-        """Place the file pointer to the mentioned location in the file
-        relative to the position.
+        """Place the file pointer to the mentioned location in the file relative to the position.
 
         Args:
             path (str): path of the file
@@ -230,8 +237,9 @@ class FileStorage(FileStorageInterface):
         path: str,
         read_length: int = FileOperationParams.READ_ENTIRE_LENGTH,
     ) -> str:
-        """Gets the file MIME type for an input file. Uses libmagic to perform
-        the same.
+        """Gets the file MIME type for an input file.
+
+        Uses libmagic to perform the same.
 
         Args:
             path (str): Path of the input file
@@ -247,9 +255,10 @@ class FileStorage(FileStorageInterface):
 
     @skip_local_cache
     def download(self, from_path: str, to_path: str) -> None:
-        """Downloads the file mentioned in from_path to to_path on the local
-        system. The instance calling the method needs to be the FileStorage
-        initialised with the remote file system.
+        """Downloads the file mentioned in from_path to to_path on the local system.
+
+        The instance calling the method needs to be the FileStorage initialised with
+        the remote file system.
 
         Args:
             from_path (str): Path of the file to be downloaded (remote)
@@ -263,10 +272,10 @@ class FileStorage(FileStorageInterface):
 
     @skip_local_cache
     def upload(self, from_path: str, to_path: str) -> None:
-        """Uploads the file mentioned in from_path (local system) to to_path
-        (remote system). The instance calling the method needs to be the
-        FileStorage initialised with the remote file system where the file
-        needs to be uploaded.
+        """Uploads the file mentioned in from_path (local system) to to_path (remote system).
+
+        The instance calling the method needs to be the FileStorage initialised with
+        the remote file system where the file needs to be uploaded.
 
         Args:
             from_path (str): Path of the file to be uploaded (local)
@@ -278,8 +287,7 @@ class FileStorage(FileStorageInterface):
         self.fs.put(from_path, to_path)
 
     def glob(self, path: str) -> list[str]:
-        """Lists files under path matching the pattern sepcified as part of
-        path in the argument.
+        """Lists files under path matching the pattern sepcified as part of path in the argument.
 
         Args:
             path (str): path to the directory where files matching the

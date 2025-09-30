@@ -14,8 +14,8 @@ class FileStorageUtils:
         destination_paths: list[str],
         chunk_size: int = 4096,
     ) -> None:
-        """Copy a file from a source storage to one or more paths in a
-        destination storage.
+        """Copy a file from a source storage to one or more paths in a destination
+        storage.
 
         This function reads the source file in chunks and writes each chunk to
         the specified destination paths. The function will continue until the

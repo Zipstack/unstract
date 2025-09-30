@@ -24,6 +24,12 @@ logger = logging.getLogger(__name__)
 
 class LLMWhispererV2(X2TextAdapter):
     def __init__(self, settings: dict[str, Any]) -> None:
+        """Initialize the LLMWhispererV2 text extraction adapter.
+
+        Args:
+            settings: Configuration dictionary containing LLMWhispererV2 API settings
+                     including API key, base URL, and other parameters.
+        """
         super().__init__("LLMWhispererV2")
         self.config = settings
 

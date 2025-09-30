@@ -34,6 +34,12 @@ logger = logging.getLogger(__name__)
 
 class LLMWhisperer(X2TextAdapter):
     def __init__(self, settings: dict[str, Any]) -> None:
+        """Initialize the LLMWhisperer text extraction adapter.
+
+        Args:
+            settings: Configuration dictionary containing LLMWhisperer API settings
+                     including API key, base URL, and other parameters.
+        """
         super().__init__("LLMWhisperer")
         self.config = settings
 
@@ -115,18 +121,18 @@ class LLMWhisperer(X2TextAdapter):
             logger.error(f"Adapter error: {e}")
             raise ExtractorError(
                 "Unable to connect to LLMWhisperer service, please check the URL"
-            )
+            ) from e
         except Timeout as e:
             msg = "Request to LLMWhisperer has timed out"
             logger.error(f"{msg}: {e}")
-            raise ExtractorError(msg)
+            raise ExtractorError(msg) from e
         except HTTPError as e:
             logger.error(f"Adapter error: {e}")
             default_err = "Error while calling the LLMWhisperer service"
             msg = AdapterUtils.get_msg_from_request_exc(
                 err=e, message_key="message", default_err=default_err
             )
-            raise ExtractorError(msg)
+            raise ExtractorError(msg) from e
         return response
 
     def _get_whisper_params(self, enable_highlight: bool = False) -> dict[str, Any]:
@@ -323,7 +329,7 @@ class LLMWhisperer(X2TextAdapter):
             )
         except OSError as e:
             logger.error(f"OS error while reading {input_file_path}: {e}")
-            raise ExtractorError(str(e))
+            raise ExtractorError(str(e)) from e
         return response
 
     def _extract_text_from_response(
@@ -354,8 +360,7 @@ class LLMWhisperer(X2TextAdapter):
         output_file_path: Path,
         fs: FileStorage | None = None,
     ) -> None:
-        """Writes the extracted text and metadata to the specified output file
-        and metadata file.
+        """Writes the extracted text and metadata to the specified output file and metadata file.
 
         Args:
             output_json (dict): The dictionary containing the extracted data,
@@ -403,7 +408,7 @@ class LLMWhisperer(X2TextAdapter):
 
         except Exception as e:
             logger.error(f"Error while writing {output_file_path}: {e}")
-            raise ExtractorError(str(e))
+            raise ExtractorError(str(e)) from e
 
     def process(
         self,

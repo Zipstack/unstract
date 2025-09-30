@@ -1,5 +1,6 @@
 import logging
 from collections.abc import Callable
+from typing import Any
 
 import tiktoken
 from llama_index.core.callbacks import CallbackManager as LlamaIndexCallbackManager
@@ -27,8 +28,9 @@ class CallbackManager:
         model: LLM | BaseEmbedding,
         kwargs: dict[str, Any],
     ) -> None:
-        """Sets the standard callback manager for LlamaIndex embedding. This is
-        to be called explicitly to set the handlers which are invoked in the
+        """Sets the standard callback manager for LlamaIndex embedding.
+
+        This is to be called explicitly to set the handlers which are invoked in the
         callback handling.
 
         Parameters:

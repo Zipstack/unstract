@@ -96,7 +96,7 @@ class UnstructuredHelper:
                 msg += f"and writing {output_file_path}"
             msg += f": {str(e)}"
             logger.error(msg)
-            raise AdapterError(str(e))
+            raise AdapterError(str(e)) from e
 
     @staticmethod
     def make_request(
@@ -137,16 +137,16 @@ class UnstructuredHelper:
             logger.error(f"Adapter error: {e}")
             raise AdapterError(
                 "Unable to connect to unstructured-io's service, please check the URL"
-            )
+            ) from e
         except Timeout as e:
             msg = "Request to unstructured-io's service has timed out"
             logger.error(f"{msg}: {e}")
-            raise AdapterError(msg)
+            raise AdapterError(msg) from e
         except HTTPError as e:
             logger.error(f"Adapter error: {e}")
             default_err = "Error while calling the unstructured-io service"
             msg = AdapterUtils.get_msg_from_request_exc(
                 err=e, message_key="detail", default_err=default_err
             )
-            raise AdapterError("unstructured-io: " + msg)
+            raise AdapterError("unstructured-io: " + msg) from e
         return response

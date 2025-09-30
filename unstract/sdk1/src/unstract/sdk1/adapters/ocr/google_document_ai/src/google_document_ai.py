@@ -146,7 +146,7 @@ class GoogleDocumentAI(OCRAdapter):
         except Exception as e:
             logger.error(f"Error while processing document {e}")
             if not isinstance(e, AdapterError):
-                raise AdapterError(str(e))
+                raise AdapterError(str(e)) from e
             else:
                 raise e
 
@@ -163,6 +163,6 @@ class GoogleDocumentAI(OCRAdapter):
         except Exception as e:
             logger.error(f"Error occured while testing adapter {e}")
             if not isinstance(e, AdapterError):
-                raise AdapterError(str(e))
+                raise AdapterError(str(e)) from e
             else:
                 raise e

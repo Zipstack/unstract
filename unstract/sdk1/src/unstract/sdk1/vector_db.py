@@ -37,6 +37,13 @@ class VectorDB:
         adapter_instance_id: str | None = None,
         embedding: EmbeddingCompat | None = None,
     ) -> None:
+        """Initialize the VectorDB for handling vector database operations.
+
+        Args:
+            tool: BaseTool instance for accessing tool-specific operations
+            adapter_instance_id: Optional adapter instance identifier for vector database
+            embedding: Optional embedding instance for vectorization operations
+        """
         self._tool = tool
         self._adapter_instance_id = adapter_instance_id
         self._vector_db_instance = None

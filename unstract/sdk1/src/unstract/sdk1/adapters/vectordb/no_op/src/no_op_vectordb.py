@@ -63,7 +63,7 @@ class NoOpVectorDB(VectorDBAdapter):
             self._client = vector_db.client
             return vector_db
         except Exception as e:
-            raise AdapterError(str(e))
+            raise AdapterError(str(e)) from e
 
     def test_connection(self) -> bool:
         time.sleep(self._config.get("wait_time"))

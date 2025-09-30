@@ -9,6 +9,11 @@ from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
 
 class X2TextAdapter(Adapter, ABC):
     def __init__(self, name: str) -> None:
+        """Initialize the X2TextAdapter base class.
+
+        Args:
+            name: Name identifier for the text extraction adapter.
+        """
         super().__init__(name)
         self.name = name
 

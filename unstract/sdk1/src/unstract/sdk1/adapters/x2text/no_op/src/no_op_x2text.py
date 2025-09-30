@@ -12,6 +12,12 @@ logger = logging.getLogger(__name__)
 
 class NoOpX2Text(X2TextAdapter):
     def __init__(self, settings: dict[str, Any]) -> None:
+        """Initialize the NoOpX2Text adapter for testing purposes.
+
+        Args:
+            settings: Configuration dictionary containing adapter settings
+                     including wait_time and other test parameters.
+        """
         super().__init__("NoOpX2Text")
         self.config = settings
 

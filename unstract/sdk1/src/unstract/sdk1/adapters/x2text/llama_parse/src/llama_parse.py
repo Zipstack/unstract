@@ -17,6 +17,12 @@ logger = logging.getLogger(__name__)
 
 class LlamaParseAdapter(X2TextAdapter):
     def __init__(self, settings: dict[str, Any]) -> None:
+        """Initialize the LlamaParse text extraction adapter.
+
+        Args:
+            settings: Configuration dictionary containing LlamaParse API settings
+                     including API key, base URL, and other parameters.
+        """
         super().__init__("LlamaParse")
         self.config = settings
 
@@ -74,7 +80,7 @@ class LlamaParseAdapter(X2TextAdapter):
                     )
                 except OSError as os_err:
                     logger.error("Exception raised while handling input file.")
-                    raise AdapterError(str(os_err))
+                    raise AdapterError(str(os_err)) from os_err
 
             file_bytes = fs.read(path=input_file_path, mode="rb")
             documents = parser.load_data(
@@ -85,12 +91,12 @@ class LlamaParseAdapter(X2TextAdapter):
             logger.error(f"Invalid Base URL given. : {connec_err}")
             raise AdapterError(
                 "Unable to connect to llama-parse`s service, please check the Base URL"
-            )
+            ) from connec_err
         except Exception as exe:
             logger.error(
                 "Seems like an invalid API Key or possible internal errors: {exe}"
             )
-            raise AdapterError(str(exe))
+            raise AdapterError(str(exe)) from exe
 
         response_text = documents[0].text
         return response_text  # type:ignore

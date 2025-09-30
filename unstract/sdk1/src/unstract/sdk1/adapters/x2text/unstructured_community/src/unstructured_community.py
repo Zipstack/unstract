@@ -12,6 +12,12 @@ logger = logging.getLogger(__name__)
 
 class UnstructuredCommunity(X2TextAdapter):
     def __init__(self, settings: dict[str, Any]) -> None:
+        """Initialize the UnstructuredCommunity text extraction adapter.
+
+        Args:
+            settings: Configuration dictionary containing Unstructured.io Community
+                     API settings and other parameters.
+        """
         super().__init__("UnstructuredIOCommunity")
         self.config = settings
 

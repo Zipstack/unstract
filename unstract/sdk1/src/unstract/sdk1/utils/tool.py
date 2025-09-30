@@ -82,8 +82,7 @@ class ToolUtils:
 
     @staticmethod
     def json_to_str(json_to_dump: dict[str, Any]) -> str:
-        """Helps convert the JSON to a string. Useful for dumping the JSON to a
-        file.
+        """Helps convert the JSON to a string. Useful for dumping the JSON to a file.
 
         Args:
             json_to_dump (dict[str, Any]): Input JSON to dump
@@ -117,8 +116,8 @@ class ToolUtils:
     def calculate_page_count(
         pages_string: str, max_page: int = 0, min_page: int = 1
     ) -> int:
-        """Calculates the total number of pages based on the input string of
-        page numbers or ranges.
+        """Calculates the total number of pages based on the input string of page
+        numbers or ranges.
 
         Parses the input 'pages_string' to extract individual page numbers or
         ranges separated by commas.
@@ -170,9 +169,7 @@ class ToolUtils:
     def get_filestorage_provider(
         var_name: str, default: str = "minio"
     ) -> FileStorageProvider:
-        """Retrieve the file storage provider based on an environment
-        variable.
-        """
+        """Retrieve the file storage provider based on an environment variable."""
         provider_name = os.environ.get(var_name, default).upper()
         try:
             # Attempt to map the provider name to an enum value, case-insensitively
@@ -185,21 +182,19 @@ class ToolUtils:
                 f"Invalid provider '{provider_name}'. Allowed providers: "
                 f"{allowed_providers}"
             )
-            raise FileStorageError(f"Invalid provider '{provider_name}'")
+            raise FileStorageError(f"Invalid provider '{provider_name}'") from None
 
     @staticmethod
     def get_filestorage_credentials(var_name: str) -> dict[str, Any]:
-        """Retrieve the file storage credentials based on an environment
-        variable.
-        """
+        """Retrieve the file storage credentials based on an environment variable."""
         credentials = os.environ.get(var_name, "{}")
         try:
             return json.loads(credentials)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
             raise ValueError(
                 "File storage credentials are not set properly. "
                 "Please check your settings."
-            )
+            ) from e
 
     @staticmethod
     def get_workflow_filestorage(

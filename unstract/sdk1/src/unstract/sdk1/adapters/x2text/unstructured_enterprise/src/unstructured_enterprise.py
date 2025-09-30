@@ -12,6 +12,12 @@ logger = logging.getLogger(__name__)
 
 class UnstructuredEnterprise(X2TextAdapter):
     def __init__(self, settings: dict[str, Any]) -> None:
+        """Initialize the UnstructuredEnterprise text extraction adapter.
+
+        Args:
+            settings: Configuration dictionary containing Unstructured.io Enterprise
+                     API settings and other parameters.
+        """
         super().__init__("UnstructuredIOEnterprise")
         self.config = settings
 

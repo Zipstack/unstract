@@ -6,7 +6,8 @@ class WhispererRequestParams:
     """DTO for LLM Whisperer API request parameters.
 
     Args:
-        tag (Optional[Union[str, List[str]]]): Tag value. Can be initialized with List[str] or str.
+        tag (Optional[Union[str, List[str]]]): Tag value. Can be initialized with
+            List[str] or str.
              Will be converted to str or None after initialization.
         enable_highlight (bool): Whether to enable highlighting. Defaults to False.
     """
