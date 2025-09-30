@@ -114,8 +114,10 @@ def trigger_pipeline_notifications(
     Uses API client to fetch notification configuration.
     """
     # Only send notifications for final states
-    if status not in ["SUCCESS", "FAILURE", "COMPLETED", "ERROR", "STOPPED"]:
-        logger.debug(f"Skipping notifications for non-final status: {status}")
+    try:
+        execution_status = ExecutionStatus(status)
+    except Exception as e:
+        logger.error(f"Error triggering pipeline notifications for {pipeline_id}: {e}")
         return
 
     try:
@@ -136,14 +138,6 @@ def trigger_pipeline_notifications(
         if not active_notifications:
             logger.info(f"No active notifications found for pipeline {pipeline_id}")
             return
-
-        # Normalize status for payload
-        normalized_status = "SUCCESS" if status in ["SUCCESS", "COMPLETED"] else "FAILURE"
-        execution_status = (
-            ExecutionStatus.COMPLETED
-            if normalized_status == "SUCCESS"
-            else ExecutionStatus.FAILED
-        )
 
         # Convert pipeline type string to WorkflowType enum
         if pipeline_type == "API":
@@ -205,8 +199,10 @@ def trigger_api_notifications(
     Uses API client to fetch notification configuration.
     """
     # Only send notifications for final states
-    if status not in ["SUCCESS", "FAILURE", "COMPLETED", "ERROR", "STOPPED"]:
-        logger.debug(f"Skipping notifications for non-final API status: {status}")
+    try:
+        execution_status = ExecutionStatus(status)
+    except Exception as e:
+        logger.error(f"Error triggering API notifications for {api_id}: {e}")
         return
 
     try:
@@ -225,14 +221,6 @@ def trigger_api_notifications(
         if not active_notifications:
             logger.info(f"No active notifications found for API {api_id}")
             return
-
-        # Normalize status for payload
-        normalized_status = "SUCCESS" if status in ["SUCCESS", "COMPLETED"] else "FAILURE"
-        execution_status = (
-            ExecutionStatus.COMPLETED
-            if normalized_status == "SUCCESS"
-            else ExecutionStatus.FAILED
-        )
 
         # Create notification payload using dataclass
         payload = NotificationPayload.from_execution_status(

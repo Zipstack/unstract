@@ -23,6 +23,7 @@ from shared.infrastructure import create_api_client
 from shared.infrastructure.context import StateStore
 from shared.infrastructure.logging import (
     WorkerLogger,
+    WorkerWorkflowLogger,
     log_context,
     monitor_performance,
     with_execution_context,
@@ -586,13 +587,6 @@ def _process_individual_files(context: WorkflowContextData) -> WorkflowContextDa
             f"File hash data for {file_name}: provider_file_uuid='{file_hash.provider_file_uuid}', file_path='{file_hash.file_path}'"
         )
 
-        # Create file hash object using FileHashData structure
-        # file_hash: FileHashData = _create_file_hash_from_dict(
-        #     file_name=file_name,
-        #     file_hash_dict=file_hash_dict,
-        #     file_data=file_data,
-        # )
-
         # CRITICAL FIX: Preserve original file_number from source, don't override with batch enumeration
         original_file_number = (
             file_hash_dict.get("file_number") if file_hash_dict else None
@@ -717,7 +711,7 @@ def _handle_file_processing_result(
     api_client: Any,
     workflow_id: str,
     execution_id: str,
-    workflow_logger: Any,
+    workflow_logger: WorkerWorkflowLogger,
     file_execution_id: str,
     celery_task_id: str,
     is_api_workflow: bool,
@@ -756,6 +750,19 @@ def _handle_file_processing_result(
 
     # Update batch execution time
     _update_batch_execution_time(result, file_execution_time)
+
+    # Log cost details for this file (regardless of success/failure, matches backend pattern)
+    if workflow_logger:
+        # Create file-specific logger for proper log routing to UI
+        file_logger = workflow_logger.create_file_logger(file_execution_id)
+
+        # Log cost using file-specific logger (ensures file_execution_id context)
+        file_logger.log_total_cost_per_file(
+            worker_logger=logger,
+            file_execution_id=file_execution_id,
+            file_name=file_name,
+            api_client=api_client,
+        )
 
     # Handle success or failure based on execution result
     if _has_execution_errors(file_execution_result):

@@ -17,7 +17,8 @@ ENV \
     OTEL_METRICS_EXPORTER=none \
     OTEL_LOGS_EXPORTER=none \
     # Enable context propagation
-    OTEL_PROPAGATORS="tracecontext"
+    OTEL_PROPAGATORS="tracecontext" \
+    PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 
 # Install system dependencies in one layer
 RUN apt-get update && \

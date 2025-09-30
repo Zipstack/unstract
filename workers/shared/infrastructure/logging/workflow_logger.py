@@ -19,6 +19,7 @@ Usage:
 """
 
 import logging
+from typing import TYPE_CHECKING
 
 from unstract.core.pubsub_helper import LogPublisher
 from unstract.workflow_execution.enums import (
@@ -29,6 +30,9 @@ from unstract.workflow_execution.enums import (
 )
 
 from .logger import WorkerLogger
+
+if TYPE_CHECKING:
+    from shared.api import InternalAPIClient
 
 # Get worker logger for internal logging
 logger = WorkerLogger.get_logger(__name__)
@@ -490,3 +494,64 @@ class WorkerWorkflowLogger:
             f"{successful_files} successfully executed and {failed_files} error(s)"
         )
         self.publish_log(summary_message, level=LogLevel.INFO)
+
+    def log_total_cost_per_file(
+        self,
+        worker_logger: logging.Logger,
+        file_execution_id: str,
+        file_name: str,
+        api_client: "InternalAPIClient",
+    ) -> None:
+        """Log total cost for a specific file execution.
+
+        This matches the backend's WorkflowLog.log_total_cost_per_file method
+        which uses UsageHelper.get_aggregated_token_count() directly.
+
+        Args:
+            worker_logger: Worker logger instance for console/file logging
+            file_execution_id: File execution ID to get cost data for (run_id)
+            file_name: Name of the file being executed
+            api_client: Internal API client for usage data retrieval
+        """
+        try:
+            # Use existing usage_client from InternalAPIClient (matches backend's UsageHelper.get_aggregated_token_count)
+            usage_response = api_client.usage_client.get_aggregated_token_count(
+                file_execution_id=file_execution_id,
+                organization_id=api_client.organization_id,
+            )
+
+            if not usage_response.is_success() or not usage_response.data:
+                # Handle no cost data - matches backend behavior (uses WARN level)
+                message = f"No cost data available for file '{file_name}'"
+                self.publish_log(message, level=LogLevel.ERROR)
+                worker_logger.warning(message)
+                return
+
+            # Extract cost from usage data (matches backend: cost_dict.get("cost_in_dollars"))
+            cost_in_dollars = usage_response.data.cost_in_dollars
+            if cost_in_dollars is None:
+                message = f"No cost data available for file '{file_name}'"
+                self.publish_log(message, level=LogLevel.ERROR)
+                worker_logger.warning(message)
+                return
+
+            # Round cost to 5 decimal places (matches backend implementation)
+            cost = round(cost_in_dollars or 0, 5)
+
+            # Log the total cost for the file (matches backend message format exactly)
+            message = f"Total cost for file '{file_name}' is '${cost}'"
+
+            # Send to WebSocket for UI display (matches backend: self.publish_log)
+            self.publish_log(message, level=LogLevel.INFO)
+
+            # Log to worker logger for debugging
+            worker_logger.info(message)
+
+        except Exception as e:
+            error_msg = f"Unable to get cost data for file '{file_name}' (execution: {file_execution_id}): {str(e)}"
+
+            # Send error to WebSocket for UI display
+            self.publish_log(error_msg, level=LogLevel.ERROR)
+
+            # Log to worker logger for debugging
+            worker_logger.warning(error_msg)
