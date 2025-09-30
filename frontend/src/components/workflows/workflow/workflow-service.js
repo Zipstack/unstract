@@ -58,16 +58,6 @@ function workflowService() {
       };
       return axiosPrivate(options);
     },
-    clearCache: (id) => {
-      options = {
-        url: `${path}/workflow/${id}/clear-cache/`,
-        method: "GET",
-        headers: {
-          "X-CSRFToken": csrfToken,
-        },
-      };
-      return axiosPrivate(options);
-    },
     clearFileMarkers: (id) => {
       options = {
         url: `${path}/workflow/${id}/clear-file-marker/`,

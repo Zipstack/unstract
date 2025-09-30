@@ -2,19 +2,20 @@ import { Modal } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
-import { sourceTypes } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
-import { useSessionStore } from "../../../store/session-store";
 import { AddSource } from "../add-source/AddSource";
 import { ListOfSources } from "../list-of-sources/ListOfSources";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
+import useRequestUrl from "../../../hooks/useRequestUrl";
 
 function AddSourceModal({
   open,
   setOpen,
   type,
+  isConnector,
+  connectorMode,
   addNewItem,
   editItemId,
   setEditItemId,
@@ -23,10 +24,10 @@ function AddSourceModal({
   const [metadata, setMetadata] = useState({});
   const [titles, setTitles] = useState({});
   const [selectedSourceName, setSelectedSourceName] = useState("");
-  const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+  const { getUrl } = useRequestUrl();
   const [isLoading, setIsLoading] = useState(false);
   const [sourcesList, setSourcesList] = useState([]);
 
@@ -39,12 +40,11 @@ function AddSourceModal({
   useEffect(() => {
     const addOrEdit = editItemId?.length ? "Edit" : "Add";
     setTitles({
-      input: addOrEdit + " Data Source",
-      output: addOrEdit + " Data Destination",
       llm: addOrEdit + " LLM",
       vector_db: addOrEdit + " Vector DB",
       embedding: addOrEdit + " Embedding",
       x2text: addOrEdit + " Text Extractor",
+      connectors: addOrEdit + " Connector",
     });
 
     if (editItemId?.length) {
@@ -61,9 +61,7 @@ function AddSourceModal({
       }, 500);
     }
 
-    if (type && type !== null) {
-      getListOfSources();
-    }
+    getListOfSources();
   }, [open]);
 
   useEffect(() => {
@@ -74,12 +72,11 @@ function AddSourceModal({
   }, [selectedSourceId]);
 
   const getSourceDetails = () => {
-    const isConnector = sourceTypes.connectors.includes(type);
-    let url = `/api/v1/unstract/${sessionDetails?.orgId}`;
+    let url;
     if (isConnector) {
-      url += `/connector/${editItemId}/`;
+      url = getUrl(`connector/${editItemId}/`);
     } else {
-      url += `/adapter/${editItemId}/`;
+      url = getUrl(`adapter/${editItemId}/`);
     }
 
     const requestOptions = {
@@ -111,13 +108,18 @@ function AddSourceModal({
   };
 
   const getListOfSources = () => {
-    let url = `/api/v1/unstract/${sessionDetails?.orgId}`;
-    if (type && sourceTypes.connectors.includes(type)) {
-      url += `/supported_connectors/?type=${type?.toUpperCase()}`;
+    let url;
+    if (isConnector) {
+      if (connectorMode) {
+        url = getUrl(`supported_connectors/?connector_mode=${connectorMode}`);
+      } else {
+        url = getUrl(`supported_connectors/`);
+      }
     } else {
-      url += `/supported_adapters/?adapter_type=${type?.toUpperCase()}`;
+      if (!type) return;
+      url = getUrl(`supported_adapters/?adapter_type=${type.toUpperCase()}`);
     }
-    // API to get the list of adapters.
+
     const requestOptions = {
       method: "GET",
       url,
@@ -152,7 +154,7 @@ function AddSourceModal({
         setMetadata(null);
       }}
       maskClosable={false}
-      title={titles[type]}
+      title={isConnector ? titles["connectors"] : titles[type]}
       width={selectedSourceId?.length ? 500 : 1100}
       centered
       footer={null}
@@ -164,6 +166,7 @@ function AddSourceModal({
           selectedSourceName={selectedSourceName}
           setOpen={setOpen}
           type={type}
+          isConnector={isConnector}
           addNewItem={addNewItem}
           editItemId={editItemId}
           metadata={metadata}
@@ -173,9 +176,10 @@ function AddSourceModal({
       ) : (
         <ListOfSources
           setSelectedSourceId={setSelectedSourceId}
-          open={open}
           sourcesList={sourcesList}
           type={type}
+          isConnector={isConnector}
+          connectorMode={connectorMode}
         />
       )}
     </Modal>
@@ -186,9 +190,15 @@ AddSourceModal.propTypes = {
   open: PropTypes.bool.isRequired,
   setOpen: PropTypes.func.isRequired,
   type: PropTypes.any,
+  isConnector: PropTypes.bool,
+  connectorMode: PropTypes.string,
   addNewItem: PropTypes.func.isRequired,
   editItemId: PropTypes.string,
   setEditItemId: PropTypes.func.isRequired,
+};
+
+AddSourceModal.defaultProps = {
+  isConnector: false,
 };
 
 export { AddSourceModal };

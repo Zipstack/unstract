@@ -81,7 +81,7 @@ class LlamaParseAdapter(X2TextAdapter):
         except ConnectError as connec_err:
             logger.error(f"Invalid Base URL given. : {connec_err}")
             raise AdapterError(
-                "Unable to connect to llama-parse`s service, " "please check the Base URL"
+                "Unable to connect to llama-parse`s service, please check the Base URL"
             )
         except Exception as exe:
             logger.error(

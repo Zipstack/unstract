@@ -31,7 +31,12 @@ class Constants:
 
 
 class GoogleDocumentAI(OCRAdapter):
-    def __init__(self, settings: dict[str, Any]):
+    def __init__(self, settings: dict[str, Any]) -> None:
+        """Initialize GoogleDocumentAI adapter.
+
+        Args:
+            settings: Configuration settings for the adapter.
+        """
         super().__init__("GoogleDocumentAI")
         self.config = settings
         google_service_account = self.config.get(Constants.CREDENTIALS)
@@ -93,15 +98,17 @@ class GoogleDocumentAI(OCRAdapter):
     def _get_input_file_type_mime(
         self,
         input_file_path: str,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
     ) -> str:
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         sample_contents = fs.read(path=input_file_path, mode="rb", length=100)
         file_type = filetype.guess(sample_contents)
 
         file_type_mime: str = file_type.MIME if file_type else FileType.TEXT_PLAIN
 
         if file_type_mime not in FileType.ALLOWED_TYPES:
-            logger.error("Input file type not supported: " f"{file_type_mime}")
+            logger.error(f"Input file type not supported: {file_type_mime}")
 
         logger.info(f"file: `{input_file_path} [{file_type_mime}]`\n\n")
 
@@ -111,10 +118,12 @@ class GoogleDocumentAI(OCRAdapter):
         self,
         input_file_path: str,
         output_file_path: str | None = None,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
     ) -> str:
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         try:
-            file_type_mime = self._get_input_file_type_mime(input_file_path)
+            file_type_mime = self._get_input_file_type_mime(input_file_path, fs)
             if fs.exists(input_file_path):
                 file_content_in_bytes = fs.read(path=input_file_path, mode="rb")
             else:

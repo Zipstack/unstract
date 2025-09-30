@@ -4,6 +4,7 @@ from uuid import UUID
 
 from account_v2.constants import Common
 from django.conf import settings
+from plugins.workflow_manager.workflow_v2.api_hub_usage_utils import APIHubUsageUtil
 from plugins.workflow_manager.workflow_v2.utils import WorkflowUtil
 from tool_instance_v2.constants import ToolInstanceKey
 from tool_instance_v2.models import ToolInstance
@@ -557,7 +558,7 @@ class FileExecutionTasks:
                 result=result,
                 workflow_file_execution=None,
                 error=error_msg,
-                is_api=destination.is_api,
+                is_api=destination.is_api if destination else False,
                 destination=destination,
             )
         except Exception as error:
@@ -578,7 +579,7 @@ class FileExecutionTasks:
                 result=result,
                 workflow_file_execution=workflow_file_execution,
                 error=error_msg,
-                is_api=destination.is_api,
+                is_api=destination.is_api if destination else False,
                 destination=destination,
             )
 
@@ -750,6 +751,7 @@ class FileExecutionTasks:
                 tags=workflow_execution.tag_names,
                 file_hash=file_hash,
                 llm_profile_id=file_data.llm_profile_id,
+                custom_data=file_data.custom_data,
             )
             file_hash.file_hash = content_hash
             workflow_file_exec.update(file_hash=content_hash)
@@ -882,6 +884,7 @@ class FileExecutionTasks:
                 file_data.workflow_id, ToolInstanceKey.STEP
             )
         )
+
         execution_service = cls._build_workflow_execution_service(
             organization_id=file_data.organization_id,
             workflow=workflow_execution.workflow,
@@ -917,7 +920,8 @@ class FileExecutionTasks:
                 )
                 # Log execution costs
                 execution_service.log_total_cost_per_file(
-                    run_id=str(workflow_file_execution.id), file_name=file_hash.file_name
+                    run_id=str(workflow_file_execution.id),
+                    file_name=file_hash.file_name,
                 )
             tool_execution_result = ToolExecutionResult(error=None, result=None)
             return tool_execution_result
@@ -992,21 +996,23 @@ class FileExecutionTasks:
                 file_path = file_hash.file_path if not destination.is_api else None
                 # Collect metadata from file history if available
                 file_history = FileHistoryHelper.get_file_history(
-                    workflow=workflow, cache_key=file_hash.file_hash, file_path=file_path
+                    workflow=workflow,
+                    cache_key=file_hash.file_hash,
+                    file_path=file_path,
                 )
             else:
                 file_history = None
 
-            if not processing_error:
-                # Process final output through destination
-                output_result = destination.handle_output(
-                    file_name=file_hash.file_name,
-                    file_hash=file_hash,
-                    file_history=file_history,
-                    workflow=workflow,
-                    input_file_path=file_hash.file_path,
-                    file_execution_id=file_execution_id,
-                )
+            # Process final output through destination (for both success and error cases)
+            output_result = destination.handle_output(
+                file_name=file_hash.file_name,
+                file_hash=file_hash,
+                file_history=file_history,
+                workflow=workflow,
+                input_file_path=file_hash.file_path,
+                file_execution_id=file_execution_id,
+                error=processing_error,
+            )
 
             if destination.is_api:
                 execution_metadata = destination.get_metadata(file_history)
@@ -1135,11 +1141,39 @@ class FileExecutionTasks:
                 api_result=final_result,
             )
 
+            # Track usage for API Hub deployments (graceful fallback for OSS)
+            try:
+                organization_id = None
+                if workflow_execution and workflow_execution.workflow:
+                    if (
+                        hasattr(workflow_execution.workflow, "organization")
+                        and workflow_execution.workflow.organization
+                    ):
+                        organization_id = (
+                            workflow_execution.workflow.organization.organization_id
+                        )
+
+                APIHubUsageUtil.track_api_hub_usage(
+                    workflow_execution_id=str(workflow_execution.id),
+                    workflow_file_execution_id=str(workflow_file_execution.id),
+                    organization_id=organization_id,
+                )
+            except Exception as e:
+                # Log but don't fail the main execution for usage tracking issues
+                logger.debug(f"Could not track API hub usage: {e}")
+
         if destination:
-            logger.info(
-                f"Deleting file execution directory for file: '{file_hash.file_name}'"
-            )
-            destination.delete_file_execution_directory()
+            try:
+                logger.info(
+                    f"Deleting file execution directory for file: '{file_hash.file_name}'"
+                )
+                destination.delete_file_execution_directory()
+            except Exception as cleanup_error:
+                logger.exception(
+                    f"[Execution ID: {workflow_execution.id}, File Execution ID: {workflow_file_execution.id}] "
+                    f"Failed to delete file execution directory for '{file_hash.file_name}': {cleanup_error}. "
+                    f"This is non-critical and needs to be cleaned up later."
+                )
 
         status = (
             FileExecutionStageStatus.SUCCESS

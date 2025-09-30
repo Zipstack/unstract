@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import os
 from typing import Any
 
 import litellm
-import os
 from llama_index.core.embeddings import BaseEmbedding
 from pydantic import ValidationError
 from unstract.sdk1.adapters.constants import Common
@@ -13,6 +13,7 @@ from unstract.sdk1.exceptions import SdkError
 from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.tool.base import BaseTool
 from unstract.sdk1.utils.callback_manager import CallbackManager
+
 
 class Embedding:
     """Unified embedding interface powered by LiteLLM.
@@ -158,7 +159,7 @@ class EmbeddingCompat(BaseEmbedding):
                 platform_api_key = self._embedding_instance._tool.get_env_or_die(
                     ToolEnv.PLATFORM_API_KEY
                 )
-            else: 
+            else:
                 platform_api_key = os.environ.get(ToolEnv.PLATFORM_API_KEY, "")
 
             CallbackManager.set_callback(

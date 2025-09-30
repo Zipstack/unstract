@@ -21,6 +21,7 @@ import { ToolIdePage } from "../pages/ToolIdePage.jsx";
 import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
 import { LogsPage } from "../pages/LogsPage.jsx";
 import { deploymentTypes } from "../helpers/GetStaticData.js";
+import ConnectorsPage from "../pages/ConnectorsPage.jsx";
 
 let RequirePlatformAdmin;
 let PlatformAdminPage;
@@ -163,6 +164,7 @@ function useMainAppRoutes() {
           element={<ToolsSettingsPage type="x2text" />}
         />
         <Route path="settings/ocr" element={<ToolsSettingsPage type="ocr" />} />
+        <Route path="settings/connectors" element={<ConnectorsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         {ManualReviewSettings && (
           <Route path="settings/review" element={<ManualReviewSettings />} />

@@ -74,8 +74,7 @@ class ToolCache(PlatformHelper):
             return None
         else:
             self.tool.stream_log(
-                f"Error while retrieving cached data for key: "
-                f"{key} / {response.reason}",
+                f"Error while retrieving cached data for key: {key} / {response.reason}",
                 level=LogLevel.ERROR,
             )
             return None
@@ -98,7 +97,7 @@ class ToolCache(PlatformHelper):
             return True
         else:
             self.tool.stream_log(
-                "Error while deleting cached data " f"for key: {key} / {response.reason}",
+                f"Error while deleting cached data for key: {key} / {response.reason}",
                 level=LogLevel.ERROR,
             )
             return False

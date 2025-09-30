@@ -32,7 +32,7 @@ class MetricsMixin:
                 decode_responses=True,
             )
         except Exception as e:
-            logger.error("Failed to initialize Redis client" f" for run_id={run_id}: {e}")
+            logger.error(f"Failed to initialize Redis client for run_id={run_id}: {e}")
 
         self.redis_key = f"metrics:{self.run_id}:{self.op_id}"
 

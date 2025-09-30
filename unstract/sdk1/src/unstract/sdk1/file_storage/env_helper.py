@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class EnvHelper:
     ENV_CONFIG_FORMAT = (
-        '{"provider": "gcs", ' '"credentials": {"token": "/path/to/google/creds.json"}}'
+        '{"provider": "gcs", "credentials": {"token": "/path/to/google/creds.json"}}'
     )
 
     @staticmethod

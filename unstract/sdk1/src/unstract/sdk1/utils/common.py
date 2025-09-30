@@ -105,7 +105,7 @@ class TokenCounterCompat:
 
 class LLMResponseCompat:
     """Compatibility class to mimic llama-index CompletionResponse interface."""
-    
+
     def __init__(self, text):
         self.text = text
         # Add other CompletionResponse attributes for compatibility

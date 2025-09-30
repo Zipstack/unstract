@@ -1,15 +1,36 @@
+import logging
 import os
+from enum import Enum
 from fnmatch import fnmatch
+from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class TableColumns:
     CREATED_BY = "created_by"
     CREATED_AT = "created_at"
-    PERMANENT_COLUMNS = ["created_by", "created_at"]
+    METADATA = "metadata"
+    ERROR_MESSAGE = "error_message"
+    STATUS = "status"
+    USER_FIELD_1 = "user_field_1"
+    USER_FIELD_2 = "user_field_2"
+    USER_FIELD_3 = "user_field_3"
+    PERMANENT_COLUMNS = [
+        "created_by",
+        "created_at",
+        "metadata",
+        "error_message",
+        "status",
+        "user_field_1",
+        "user_field_2",
+        "user_field_3",
+    ]
 
 
 class DBConnectionClass:
     SNOWFLAKE = "SnowflakeDB"
+    BIGQUERY = "BigQuery"
 
 
 class Snowflake:
@@ -47,6 +68,60 @@ class SourceKey:
     PROCESS_SUB_DIRECTORIES = "processSubDirectories"
     MAX_FILES = "maxFiles"
     FOLDERS = "folders"
+    FILE_PROCESSING_ORDER = "fileProcessingOrder"
+
+
+class FileProcessingOrder(str, Enum):
+    """File processing order for SourceKey.FILE_PROCESSING_ORDER.
+
+    Semantics:
+    - oldest_first: ascending last-modified time (mtime).
+    - newest_first: descending mtime.
+    - unordered: no explicit ordering (OS enumeration order; may be nondeterministic).
+    """
+
+    UNORDERED = "unordered"
+    OLDEST_FIRST = "oldest_first"  # FIFO
+    NEWEST_FIRST = "newest_first"  # LIFO
+
+    @classmethod
+    def values(cls) -> list[str]:
+        return [v.value for v in cls]
+
+    @classmethod
+    def from_value(
+        cls, value: Any, default: "FileProcessingOrder" = None
+    ) -> "FileProcessingOrder":
+        """Convert a value to FileProcessingOrder enum, with fallback to default.
+
+        Args:
+            value: The value to convert (can be string, enum, or None)
+            default: Default value if conversion fails (defaults to UNORDERED)
+
+        Returns:
+            FileProcessingOrder enum value
+        """
+        if default is None:
+            default = cls.UNORDERED
+
+        if not value:
+            return default
+
+        # Already an enum instance
+        if isinstance(value, cls):
+            return value
+
+        # Try to convert string to enum
+        if isinstance(value, str):
+            try:
+                return cls(value)
+            except ValueError:
+                logger.warning(
+                    f"Invalid file processing order '{value}', using {default.value}"
+                )
+                return default
+
+        return default
 
 
 class DestinationKey:
@@ -120,6 +195,7 @@ class FilePattern:
 
 class SourceConstant:
     MAX_RECURSIVE_DEPTH = 10
+    MAX_FILES_FOR_SORTING = 40000
 
 
 class ApiDeploymentResultStatus:

@@ -56,11 +56,13 @@ class DeploymentExecution(views.APIView):
     ) -> Response:
         api: APIDeployment = deployment_execution_dto.api
         api_key: str = deployment_execution_dto.api_key
+
         serializer = ExecutionRequestSerializer(
             data=request.data, context={"api": api, "api_key": api_key}
         )
         serializer.is_valid(raise_exception=True)
-        file_objs = serializer.validated_data.get(ApiExecution.FILES_FORM_DATA)
+        file_objs = serializer.validated_data.get(ApiExecution.FILES_FORM_DATA, [])
+        presigned_urls = serializer.validated_data.get(ApiExecution.PRESIGNED_URLS, [])
         timeout = serializer.validated_data.get(ApiExecution.TIMEOUT_FORM_DATA)
         include_metadata = serializer.validated_data.get(ApiExecution.INCLUDE_METADATA)
         include_metrics = serializer.validated_data.get(ApiExecution.INCLUDE_METRICS)
@@ -68,6 +70,10 @@ class DeploymentExecution(views.APIView):
         tag_names = serializer.validated_data.get(ApiExecution.TAGS)
         llm_profile_id = serializer.validated_data.get(ApiExecution.LLM_PROFILE_ID)
         hitl_queue_name = serializer.validated_data.get(ApiExecution.HITL_QUEUE_NAME)
+        custom_data = serializer.validated_data.get(ApiExecution.CUSTOM_DATA)
+
+        if presigned_urls:
+            DeploymentHelper.load_presigned_files(presigned_urls, file_objs)
 
         response = DeploymentHelper.execute_workflow(
             organization_name=org_name,
@@ -80,6 +86,8 @@ class DeploymentExecution(views.APIView):
             tag_names=tag_names,
             llm_profile_id=llm_profile_id,
             hitl_queue_name=hitl_queue_name,
+            custom_data=custom_data,
+            request_headers=dict(request.headers),
         )
         if "error" in response and response["error"]:
             logger.error("API deployment execution failed")
@@ -126,6 +134,7 @@ class DeploymentExecution(views.APIView):
                 )
             if not enable_highlight:
                 response.remove_result_metadata_keys(["highlight_data"])
+                response.remove_result_metadata_keys(["extracted_text"])
             if not include_metadata:
                 response.remove_result_metadata_keys()
             if not include_metrics:

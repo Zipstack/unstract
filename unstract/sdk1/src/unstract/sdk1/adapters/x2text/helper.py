@@ -119,7 +119,7 @@ class UnstructuredHelper:
             body["unstructured-api-key"] = api_key
 
         x2text_url = (
-            f"{x2text_service_url}:{x2text_service_port}" f"/api/v1/x2text/{request_type}"
+            f"{x2text_service_url}:{x2text_service_port}/api/v1/x2text/{request_type}"
         )
         # Add files only if the request is for process
         files = None
@@ -131,7 +131,7 @@ class UnstructuredHelper:
         except ConnectionError as e:
             logger.error(f"Adapter error: {e}")
             raise AdapterError(
-                "Unable to connect to unstructured-io's service, " "please check the URL"
+                "Unable to connect to unstructured-io's service, please check the URL"
             )
         except Timeout as e:
             msg = "Request to unstructured-io's service has timed out"

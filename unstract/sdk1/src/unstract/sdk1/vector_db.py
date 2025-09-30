@@ -82,9 +82,7 @@ class VectorDB:
 
             vector_db_adapter_id = vector_db_config.get(Common.ADAPTER_ID)
             if vector_db_adapter_id not in self.vector_db_adapters:
-                raise SdkError(
-                    f"VectorDB adapter not supported : " f"{vector_db_adapter_id}"
-                )
+                raise SdkError(f"VectorDB adapter not supported : {vector_db_adapter_id}")
 
             vector_db_adapter = self.vector_db_adapters[vector_db_adapter_id][
                 Common.METADATA

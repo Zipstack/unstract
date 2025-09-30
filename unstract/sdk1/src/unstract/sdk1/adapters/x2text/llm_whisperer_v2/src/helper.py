@@ -48,7 +48,7 @@ class LLMWhispererHelper:
     def test_connection_request(
         config: dict[str, Any], request_endpoint: str
     ) -> Response:
-        llm_whisperer_svc_url = f"{config.get(WhispererConfig.URL)}" f"/api/v2"
+        llm_whisperer_svc_url = f"{config.get(WhispererConfig.URL)}/api/v2"
         headers = LLMWhispererHelper.get_request_headers(config=config)
 
         try:
@@ -101,7 +101,7 @@ class LLMWhispererHelper:
         Returns:
             Response: Response from the request
         """
-        llm_whisperer_svc_url = f"{config.get(WhispererConfig.URL)}" f"/api/v2"
+        llm_whisperer_svc_url = f"{config.get(WhispererConfig.URL)}/api/v2"
         if not headers:
             headers = LLMWhispererHelper.get_request_headers(config=config)
 

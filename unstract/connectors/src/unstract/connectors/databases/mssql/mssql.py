@@ -1,3 +1,4 @@
+import datetime
 import logging
 import os
 from typing import Any
@@ -6,6 +7,7 @@ import pymssql
 import pymssql._pymssql as PyMssql
 from pymssql import Connection  # type: ignore
 
+from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.exceptions import (
     ColumnMissingException,
     InvalidSyntaxException,
@@ -57,6 +59,30 @@ class MSSQL(UnstractDB):
     def can_read() -> bool:
         return True
 
+    def sql_to_db_mapping(self, value: Any, column_name: str | None = None) -> str:
+        """Gets the python datatype of value and converts python datatype to
+        corresponding DB datatype.
+
+        Args:
+            value (str): python datatype
+            column_name (str | None): name of the column being mapped
+
+        Returns:
+            str: database columntype
+        """
+        data_type = type(value)
+
+        if data_type in (dict, list):
+            return str(DatabaseTypeConstants.MSSQL_NVARCHAR_MAX)
+
+        mapping = {
+            str: DatabaseTypeConstants.MSSQL_NVARCHAR_MAX,
+            int: DatabaseTypeConstants.MSSQL_INT,
+            float: DatabaseTypeConstants.MSSQL_FLOAT,
+            datetime.datetime: DatabaseTypeConstants.MSSQL_DATETIMEOFFSET,
+        }
+        return str(mapping.get(data_type, DatabaseTypeConstants.MSSQL_NVARCHAR_MAX))
+
     def get_engine(self) -> Connection:
         return pymssql.connect(  # type: ignore
             server=self.server,
@@ -97,11 +123,36 @@ class MSSQL(UnstractDB):
 
         sql_query = (
             f"{existence_check} "
-            f"CREATE TABLE {table} "
-            f"(id TEXT, "
-            f"created_by TEXT, created_at DATETIMEOFFSET, "
+            f" CREATE TABLE {table} "
+            f"(id NVARCHAR(MAX), "
+            f"created_by NVARCHAR(MAX), created_at DATETIMEOFFSET, "
+            f"metadata NVARCHAR(MAX), "
+            f"user_field_1 BIT DEFAULT 0, "
+            f"user_field_2 INT DEFAULT 0, "
+            f"user_field_3 NVARCHAR(MAX) DEFAULT NULL, "
+            f"status NVARCHAR(10) CHECK (status IN ('ERROR', 'SUCCESS')), "
+            f"error_message NVARCHAR(MAX), "
         )
         return sql_query
+
+    def prepare_multi_column_migration(
+        self, table_name: str, column_name: str
+    ) -> list[str]:
+        """Returns a list of ALTER TABLE statements for MSSQL column migration.
+
+        MSSQL doesn't support adding multiple columns in a single ALTER TABLE statement,
+        so we return a list of individual statements like Snowflake.
+        """
+        sql_statements = [
+            f"ALTER TABLE {table_name} ADD {column_name}_v2 NVARCHAR(MAX)",
+            f"ALTER TABLE {table_name} ADD metadata NVARCHAR(MAX)",
+            f"ALTER TABLE {table_name} ADD user_field_1 BIT DEFAULT 0",
+            f"ALTER TABLE {table_name} ADD user_field_2 INT DEFAULT 0",
+            f"ALTER TABLE {table_name} ADD user_field_3 NVARCHAR(MAX) DEFAULT NULL",
+            f"ALTER TABLE {table_name} ADD status NVARCHAR(10)",
+            f"ALTER TABLE {table_name} ADD error_message NVARCHAR(MAX)",
+        ]
+        return sql_statements
 
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any

@@ -1,6 +1,5 @@
 import json
 import logging
-import math
 import os
 import time
 import traceback
@@ -28,9 +27,7 @@ from utils.user_context import UserContext
 from backend.celery_service import app as celery_app
 from unstract.workflow_execution.enums import LogStage
 from workflow_manager.endpoint_v2.destination import DestinationConnector
-from workflow_manager.endpoint_v2.dto import (
-    FileHash,
-)
+from workflow_manager.endpoint_v2.dto import FileHash
 from workflow_manager.endpoint_v2.result_cache_utils import ResultCacheUtils
 from workflow_manager.endpoint_v2.source import SourceConnector
 from workflow_manager.execution.dto import ExecutionCache
@@ -42,11 +39,7 @@ from workflow_manager.workflow_v2.constants import (
     WorkflowExecutionKey,
     WorkflowMessages,
 )
-from workflow_manager.workflow_v2.dto import (
-    ExecutionResponse,
-    FileBatchData,
-    FileData,
-)
+from workflow_manager.workflow_v2.dto import ExecutionResponse, FileBatchData, FileData
 from workflow_manager.workflow_v2.enums import (
     ExecutionStatus,
     SchemaEntity,
@@ -71,6 +64,7 @@ logger = logging.getLogger(__name__)
 EXECUTION_EXCLUDED_PARAMS = {
     "llm_profile_id",
     "hitl_queue_name",
+    "custom_data",
 }
 
 
@@ -95,7 +89,8 @@ class WorkflowHelper:
     def get_file_batches(
         cls, input_files: dict[str, FileHash]
     ) -> list[list[tuple[str, FileHash]]]:
-        """_summary_
+        """Split input files into batches for parallel processing.
+        Distributes files as evenly as possible across the target number of batches.
 
         Args:
             input_files (dict[str, FileHash]): input files
@@ -112,20 +107,28 @@ class WorkflowHelper:
         BATCH_SIZE = Configuration.get_value_by_organization(
             config_key=ConfigKey.MAX_PARALLEL_FILE_BATCHES, organization=organization
         )  # Max number of batches
-
+        BATCH_SIZE = (
+            int(BATCH_SIZE)
+            if isinstance(BATCH_SIZE, int) or str(BATCH_SIZE).isdigit()
+            else 1
+        )
         file_items = list(json_serializable_files.items())
 
-        # Calculate how many items per batch
+        # Calculate distribution
         num_files = len(file_items)
+        # Target number of batches (can't exceed number of files)
         num_batches = min(BATCH_SIZE, num_files)
-        items_per_batch = math.ceil(num_files / num_batches)
+        # Guard against invalid batch sizes
+        if num_batches <= 0:
+            num_batches = 1
 
-        # Split into batches
-        batches = []
-        for start_index in range(0, len(file_items), items_per_batch):
-            end_index = start_index + items_per_batch
-            batch = file_items[start_index:end_index]
-            batches.append(batch)
+        # Round-robin distribution for maintaining order in case its sorted
+        batches = [[] for _ in range(num_batches)]
+        for i, file_item in enumerate(file_items):
+            batch_index = i % num_batches
+            batches[batch_index].append(file_item)
+        # Remove empties when num_files < num_batches
+        batches = [b for b in batches if b]
 
         return batches
 
@@ -145,6 +148,7 @@ class WorkflowHelper:
         execution_mode: tuple[str, str],
         use_file_history: bool,
         llm_profile_id: str | None,
+        custom_data: dict[str, Any] | None = None,
     ) -> str | None:
         total_files = len(input_files)
         workflow_log.publish_initial_workflow_logs(total_files=total_files)
@@ -178,6 +182,7 @@ class WorkflowHelper:
             else str(execution_mode)
         )
         result = None
+
         logger.info(
             f"Execution {workflow_execution.id} processing {total_files} files in {len(batches)} batches"
         )
@@ -196,6 +201,7 @@ class WorkflowHelper:
                 use_file_history=use_file_history,
                 q_file_no_list=list(q_file_no_list) if q_file_no_list else [],
                 llm_profile_id=llm_profile_id,
+                custom_data=custom_data,
             )
             batch_data = FileBatchData(files=batch, file_data=file_data)
 
@@ -238,10 +244,15 @@ class WorkflowHelper:
         tool_instances: list[ToolInstance],
     ) -> None:
         for tool in tool_instances:
+            # Ensure adapter IDs are resolved before validation
+            user = tool.workflow.created_by
+            migrated_metadata = ToolInstanceHelper.ensure_adapter_ids_in_metadata(
+                tool, user=user
+            )
             ToolInstanceHelper.validate_tool_settings(
-                user=tool.workflow.created_by,
+                user=user,
                 tool_uid=tool.tool_id,
-                tool_meta=tool.metadata,
+                tool_meta=migrated_metadata,
             )
 
     @staticmethod
@@ -257,6 +268,7 @@ class WorkflowHelper:
         use_file_history: bool = True,
         llm_profile_id: str | None = None,
         hitl_queue_name: str | None = None,
+        custom_data: dict[str, Any] | None = None,
     ) -> ExecutionResponse:
         tool_instances: list[ToolInstance] = (
             ToolInstanceHelper.get_tool_instances_by_workflow(
@@ -308,6 +320,7 @@ class WorkflowHelper:
                 use_file_history=use_file_history,
                 execution_mode=execution_mode,
                 llm_profile_id=llm_profile_id,
+                custom_data=custom_data,
             )
             api_results = []
             return ExecutionResponse(
@@ -426,6 +439,7 @@ class WorkflowHelper:
         use_file_history: bool = True,
         llm_profile_id: str | None = None,
         hitl_queue_name: str | None = None,
+        custom_data: dict[str, Any] | None = None,
     ) -> ExecutionResponse:
         """Adding a workflow to the queue for execution.
 
@@ -465,6 +479,7 @@ class WorkflowHelper:
                     "use_file_history": use_file_history,
                     "llm_profile_id": llm_profile_id,
                     "hitl_queue_name": hitl_queue_name,
+                    "custom_data": custom_data,
                 },
                 queue=queue,
             )
@@ -682,6 +697,7 @@ class WorkflowHelper:
                 use_file_history=use_file_history,
                 llm_profile_id=kwargs.get("llm_profile_id"),
                 hitl_queue_name=kwargs.get("hitl_queue_name"),
+                custom_data=kwargs.get("custom_data"),
             )
         except Exception as error:
             error_message = traceback.format_exc()
@@ -906,23 +922,6 @@ class WorkflowHelper:
             error=workflow_execution.error_message,
             mode=workflow_execution.execution_mode,
         )
-
-    # TODO: Access cache through a manager
-    @staticmethod
-    def clear_cache(workflow_id: str) -> dict[str, Any]:
-        """Function to clear cache with a specific pattern."""
-        response: dict[str, Any] = {}
-        try:
-            key_pattern = f"*:cache:{workflow_id}:*"
-            CacheService.clear_cache(key_pattern)
-            response["message"] = WorkflowMessages.CACHE_CLEAR_SUCCESS
-            response["status"] = 200
-            return response
-        except Exception as exc:
-            logger.error(f"Error occurred while clearing cache : {exc}")
-            response["message"] = WorkflowMessages.CACHE_CLEAR_FAILED
-            response["status"] = 400
-            return response
 
     @staticmethod
     def clear_file_marker(workflow_id: str) -> dict[str, Any]:

@@ -7,7 +7,12 @@ logger = logging.getLogger(__name__)
 
 
 class Adapter(ABC):
-    def __init__(self, name: str):
+    def __init__(self, name: str) -> None:
+        """Initialize the adapter with a name.
+
+        Args:
+            name: The name of the adapter.
+        """
         self.name = name
 
     @staticmethod

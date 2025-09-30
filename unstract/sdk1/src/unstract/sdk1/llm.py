@@ -90,7 +90,7 @@ class LLM:
 
             if self._adapter_instance_id:
                 self.platform_kwargs["adapter_instance_id"] = self._adapter_instance_id
-                
+
             self.kwargs = self.adapter.validate(self._adapter_metadata)
 
             # REF: https://docs.litellm.ai/docs/completion/input#translated-openai-params
@@ -149,8 +149,7 @@ class LLM:
             dict[str, Any]  : A dictionary containing the result of the completion,
                 any processed output, and the captured metrics (if applicable).
         """
-
-        litellm.drop_params = True # drop params that are not supported by the model
+        litellm.drop_params = True  # drop params that are not supported by the model
 
         messages: list[dict[str, str]] = [
             {"role": "system", "content": self._system_prompt},
@@ -179,10 +178,10 @@ class LLM:
         # NOTE:
         # The typecasting was required to stop the type checker from complaining.
         # Improvements in readability are definitely welcome.
-        extract_json: bool = cast(bool, kwargs.get("extract_json", False))
+        extract_json: bool = cast("bool", kwargs.get("extract_json", False))
         post_process_fn: Callable[[LLMResponseCompat, bool], dict[str, Any]] | None = (
             cast(
-                Callable[[LLMResponseCompat, bool], dict[str, Any]] | None,
+                "Callable[[LLMResponseCompat, bool], dict[str, Any]] | None",
                 kwargs.get("process_text", None),
             )
         )

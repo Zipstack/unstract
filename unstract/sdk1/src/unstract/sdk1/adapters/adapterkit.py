@@ -1,5 +1,8 @@
 import logging
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import Any
 
 from singleton_decorator import singleton
 from unstract.sdk1.adapters import AdapterDict
@@ -19,6 +22,7 @@ logger = logging.getLogger(__name__)
 @singleton
 class Adapterkit:
     def __init__(self) -> None:
+        """Initialize the Adapterkit with all available adapters."""
         self._adapters: AdapterDict = (
             embedding_adapters
             | llm_adapters
@@ -40,7 +44,9 @@ class Adapterkit:
         else:
             raise RuntimeError(f"Couldn't obtain adapter for {adapter_id}")
 
-    def get_adapter_by_id(self, adapter_id: str, *args: Any, **kwargs: Any) -> Adapter:
+    def get_adapter_by_id(
+        self, adapter_id: str, *args: object, **kwargs: object
+    ) -> Adapter:
         """Instantiates and returns a adapter.
 
         Args:
@@ -55,7 +61,7 @@ class Adapterkit:
         adapter_class: Adapter = self.get_adapter_class_by_adapter_id(adapter_id)
         return adapter_class(*args, **kwargs)
 
-    def get_adapters_list(self) -> list[dict[str, Any]]:
+    def get_adapters_list(self) -> list[dict[str, "Any"]]:
         adapters = []
         for adapter_id, adapter_registry_metadata in self._adapters.items():
             m: Adapter = adapter_registry_metadata[Common.METADATA][Common.ADAPTER]

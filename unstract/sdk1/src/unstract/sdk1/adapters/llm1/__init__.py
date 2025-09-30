@@ -20,7 +20,6 @@ __all__ = [
     "AnyscaleLLMAdapter",
     "AWSBedrockLLMAdapter",
     "AzureOpenAILLMAdapter",
-    "BedrockLLMAdapter",
     "OllamaLLMAdapter",
     "OpenAILLMAdapter",
     "VertexAILLMAdapter",
