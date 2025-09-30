@@ -1,5 +1,5 @@
 # Use a specific version of Python slim image
-FROM python:3.12.9-slim AS base
+FROM python:3.12-slim-trixie AS base
 
 ARG VERSION=dev
 LABEL maintainer="Zipstack Inc." \
@@ -22,9 +22,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Install system dependencies and create user in one layer
 RUN apt-get update \
     && apt-get --no-install-recommends install -y \
-       build-essential \
-       libmagic-dev \
-       git \
+    build-essential \
+    libmagic-dev \
+    git \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* \
     && adduser -u 5678 --disabled-password --gecos "" ${APP_USER} \
@@ -46,6 +46,7 @@ FROM base AS ext-dependencies
 COPY --chown=${APP_USER}:${APP_USER} ${BUILD_CONTEXT_PATH}/pyproject.toml ${BUILD_CONTEXT_PATH}/uv.lock ${BUILD_CONTEXT_PATH}/README.md ./
 
 # Copy local package dependencies
+COPY --chown=${APP_USER}:${APP_USER} ${BUILD_PACKAGES_PATH}/sdk1 /unstract/sdk1
 COPY --chown=${APP_USER}:${APP_USER} ${BUILD_PACKAGES_PATH}/core /unstract/core
 COPY --chown=${APP_USER}:${APP_USER} ${BUILD_PACKAGES_PATH}/flags /unstract/flags
 

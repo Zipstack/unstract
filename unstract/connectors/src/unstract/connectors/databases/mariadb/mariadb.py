@@ -2,10 +2,12 @@ import os
 from typing import Any
 
 import pymysql
+import pymysql.err as MysqlError
 from pymysql.connections import Connection
 
 from unstract.connectors.databases.mysql_handler import MysqlHandler
 from unstract.connectors.databases.unstract_db import UnstractDB
+from unstract.connectors.exceptions import ConnectorError
 
 
 class MariaDB(UnstractDB, MysqlHandler):
@@ -17,6 +19,7 @@ class MariaDB(UnstractDB, MysqlHandler):
         self.host = settings.get("host")
         self.port = settings.get("port", 3306)
         self.database = settings.get("database")
+        self.ssl_enabled = settings.get("sslEnabled", True)
 
     @staticmethod
     def get_id() -> str:
@@ -50,14 +53,24 @@ class MariaDB(UnstractDB, MysqlHandler):
         return True
 
     def get_engine(self) -> Connection:  # type: ignore[type-arg]
-        con = pymysql.connect(
-            host=self.host,
-            port=int(self.port),
-            database=self.database,
-            user=self.user,
-            password=self.password,
-        )
-        return con
+        connection_params = {
+            "host": self.host,
+            "port": int(self.port),
+            "database": self.database,
+            "user": self.user,
+            "password": self.password,
+        }
+
+        try:
+            if self.ssl_enabled:
+                connection_params.update({"ssl": {"ssl_disabled": False}})
+            con = pymysql.connect(**connection_params)
+            return con
+        except MysqlError.OperationalError as e:
+            error_msg = MysqlHandler.handle_connection_error(
+                e, self.host, self.port, self.ssl_enabled
+            )
+            raise ConnectorError(error_msg) from e
 
     def sql_to_db_mapping(self, value: Any, column_name: str | None = None) -> str:
         return str(MysqlHandler.sql_to_db_mapping(value=value, column_name=column_name))

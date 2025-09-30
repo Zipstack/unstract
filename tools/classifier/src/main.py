@@ -6,17 +6,32 @@ from helper import (
     ReservedBins,
 )
 
-from unstract.sdk.constants import (
-    LogLevel,
-    LogState,
-    MetadataKey,
-    ToolSettingsKey,
-    UsageKwargs,
-)
-from unstract.sdk.exceptions import SdkError
-from unstract.sdk.llm import LLM
-from unstract.sdk.tool.base import BaseTool
-from unstract.sdk.tool.entrypoint import ToolEntrypoint
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.constants import (
+        LogLevel,
+        LogState,
+        MetadataKey,
+        ToolSettingsKey,
+        UsageKwargs,
+    )
+    from unstract.sdk1.exceptions import SdkError
+    from unstract.sdk1.llm import LLM
+    from unstract.sdk1.tool.base import BaseTool
+    from unstract.sdk1.tool.entrypoint import ToolEntrypoint
+else:
+    from unstract.sdk.constants import (
+        LogLevel,
+        LogState,
+        MetadataKey,
+        ToolSettingsKey,
+        UsageKwargs,
+    )
+    from unstract.sdk.exceptions import SdkError
+    from unstract.sdk.llm import LLM
+    from unstract.sdk.tool.base import BaseTool
+    from unstract.sdk.tool.entrypoint import ToolEntrypoint
 
 
 class UnstractClassifier(BaseTool):
@@ -95,16 +110,30 @@ class UnstractClassifier(BaseTool):
         usage_kwargs[UsageKwargs.RUN_ID] = self.file_execution_id
 
         try:
-            llm = LLM(
-                tool=self,
-                adapter_instance_id=llm_adapter_instance_id,
-                usage_kwargs=usage_kwargs,
-            )
+            if check_feature_flag_status("sdk1"):
+                llm = LLM(
+                    adapter_instance_id=llm_adapter_instance_id,
+                    tool=self,
+                    kwargs=usage_kwargs,
+                )
+
+                max_tokens = llm.get_max_tokens(
+                    adapter_instance_id=llm_adapter_instance_id,
+                    tool=self,
+                    reserved_for_output=50 + 1000,
+                )
+            else:
+                llm = LLM(
+                    tool=self,
+                    adapter_instance_id=llm_adapter_instance_id,
+                    usage_kwargs=usage_kwargs,
+                )
+
+                max_tokens = llm.get_max_tokens(reserved_for_output=50 + 1000)
         except SdkError:
             self.helper.stream_error_and_exit("Unable to get llm instance")
             return
 
-        max_tokens = llm.get_max_tokens(reserved_for_output=50 + 1000)
         max_bytes = int(max_tokens * 1.3)
         self.stream_log(f"LLM Max tokens: {max_tokens} ==> Max bytes: {max_bytes}")
         limited_text = ""

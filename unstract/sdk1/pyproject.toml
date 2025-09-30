@@ -1,0 +1,190 @@
+[project]
+name = "unstract-sdk1"
+dynamic = ["version"]
+description = "SDK 1.x for writing Unstract Tools/Apps"
+readme = "README.md"
+urls = { Homepage = "https://unstract.com", "Release notes" = "https://github.com/Zipstack/unstract/releases", Source = "https://github.com/Zipstack/unstract/unstract/sdk1" }
+license = { text = "AGPL v3" }
+authors = [{ name = "Zipstack Inc", email = "devsupport@zipstack.com" }]
+keywords = ["unstract tools-development-kit apps development-kit sdk"]
+requires-python = ">=3.12, <3.13"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS :: MacOS X",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.9",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+dependencies = [
+    # # Specs and validation
+    "jsonschema",
+    "python-magic~=0.4.27",
+    "python-dotenv==1.0.1",
+    # # Adapter changes
+    "tiktoken~=0.9.0",
+    "litellm~=1.76.0",
+    "llama-index==0.13.2",
+    "llama-index-vector-stores-postgres==0.6.3",
+    "llama-index-vector-stores-milvus==0.9.0",
+    "llama-index-vector-stores-weaviate==1.4.0",
+    "llama-index-vector-stores-pinecone==0.7.0",
+    "llama-index-vector-stores-qdrant==0.7.1",
+    # # For Llama Parse X2Text
+    "llama-parse==0.5.19",
+    # # OCR
+    "filetype~=1.2.0",
+    # # Others
+    # # For singleton classes
+    "singleton-decorator~=1.0.0",
+    "httpx>=0.25.2",
+    "pdfplumber>=0.11.2",
+    "redis>=5.2.1",
+    "llmwhisperer-client>=2.2.1",
+]
+
+[dependency-groups]
+dev = [
+    "docutils~=0.20.1",
+    "mypy~=1.2.0",
+    "pre-commit~=3.3.1",
+    "yamllint>=1.35.1",
+    "ruff<1.0.0,>=0.2.2",
+    "pytest>=8.0.1",
+    "pycln>=2.5.0",
+]
+docs = ["lazydocs~=0.4.8"]
+test = [
+    "parameterized==0.9.0",
+    "pytest==8.3.3",
+    "pytest-mock==3.14.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/unstract/sdk1/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/unstract"]
+
+# === Development tool configurations ===
+
+[tool.ruff]
+line-length = 90
+target-version = "py312"
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle (formatting)
+    "F",   # Pyflakes (static analysis)
+    "I",   # isort (import sorting)
+    "B",   # bugbear (security/performance)
+    "W",   # warnings
+    "C90", # mccabe complexity
+    "N",   # pep8-naming
+    "D",   # pydocstyle
+    "UP",  # pyupgrade
+    "ANN", # flake8-annotations
+    "TCH", # flake8-type-checking
+    "PYI", # flake8-pyi
+]
+fixable = ["ALL"]
+ignore = [
+    "D100",   # Missing docstring in public module
+    "D101",   # Missing docstring in public class
+    "D102",   # Missing docstring in public method
+    "D104",   # Missing docstring in public package
+    "D103",   # Missing docstring in public function
+    "D106",   # Missing docstring in public nested class
+    "D417",   # Missing argument description in the docstring
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+docstring-code-format = true
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.pycln]
+all = true
+expand-stars = true
+no-gitignore = false
+verbose = true
+
+[tool.pyupgrade]
+keep-runtime-typing = true
+py39-plus = true
+keep-dict-typing = true
+
+
+[tool.pytest.ini_options]
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
+testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration (deselect with '-m \"not integration\"')",
+]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = false
+no_implicit_optional = true
+strict_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+allow_untyped_globals = false
+allow_redefinition = false
+local_partial_types = true
+implicit_reexport = true
+follow_imports = "silent"
+ignore_missing_imports = true
+pretty = true
+show_column_numbers = true
+show_error_codes = true
+exclude = ["venv", ".venv"]
+
+[tool.yamllint]
+relaxed = true

@@ -1,0 +1,30 @@
+{
+  "title": "Google Document AI OCR",
+  "type": "object",
+  "required": [
+    "adapter_name",
+    "url",
+    "credentials"
+  ],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this adapter instance. Example: google-document-ai-1"
+    },
+    "url": {
+      "type": "string",
+      "title": "URL",
+      "default": "",
+      "format": "uri",
+      "description": "The URL of the Google Document AI endpoint for the processor Example: https://{endpoint}/v1/projects/{project}/locations/{location}/processors/{processor}"
+    },
+    "credentials": {
+      "type": "string",
+      "title": "Google Service Account",
+      "deafult": "",
+      "description": "Service Account in JSON format"
+    }
+  }
+}

@@ -1,7 +1,12 @@
 from rest_framework.exceptions import APIException
 
 from adapter_processor_v2.constants import AdapterKeys
-from unstract.sdk.exceptions import SdkError
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.exceptions import SdkError
+else:
+    from unstract.sdk.exceptions import SdkError
 
 
 class IdIsMandatory(APIException):
