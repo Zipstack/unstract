@@ -23,6 +23,7 @@ let PaymentSuccessful;
 let SelectProduct;
 let UnstractSubscriptionEndPage;
 let CustomPlanCheckoutPage;
+let LlmWhispererCustomCheckoutPage;
 try {
   SimplePromptStudioHelper =
     require("../plugins/simple-prompt-studio/SimplePromptStudioHelper.jsx").SimplePromptStudioHelper;
@@ -46,6 +47,13 @@ let llmWhispererRouter;
 try {
   llmWhispererRouter =
     require("../plugins/routes/useLlmWhispererRoutes.js").useLlmWhispererRoutes;
+} catch (err) {
+  // Do nothing, Not-found Page will be triggered.
+}
+
+try {
+  LlmWhispererCustomCheckoutPage =
+    require("../plugins/llm-whisperer/pages/LlmWhispererCustomCheckoutPage.jsx").LlmWhispererCustomCheckoutPage;
 } catch (err) {
   // Do nothing, Not-found Page will be triggered.
 }
@@ -145,6 +153,12 @@ function Router() {
           <Route
             path="/subscription/custom"
             element={<CustomPlanCheckoutPage />}
+          />
+        )}
+        {LlmWhispererCustomCheckoutPage && (
+          <Route
+            path="/llm-whisperer/custom-checkout"
+            element={<LlmWhispererCustomCheckoutPage />}
           />
         )}
         <Route path="" element={<RequireAuth />}>
