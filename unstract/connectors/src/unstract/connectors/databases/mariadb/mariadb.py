@@ -2,10 +2,12 @@ import os
 from typing import Any
 
 import pymysql
+import pymysql.err as MysqlError
 from pymysql.connections import Connection
 
 from unstract.connectors.databases.mysql_handler import MysqlHandler
 from unstract.connectors.databases.unstract_db import UnstractDB
+from unstract.connectors.exceptions import ConnectorError
 
 
 class MariaDB(UnstractDB, MysqlHandler):
@@ -17,6 +19,7 @@ class MariaDB(UnstractDB, MysqlHandler):
         self.host = settings.get("host")
         self.port = settings.get("port", 3306)
         self.database = settings.get("database")
+        self.ssl_enabled = settings.get("sslEnabled", True)
 
     @staticmethod
     def get_id() -> str:
@@ -50,17 +53,27 @@ class MariaDB(UnstractDB, MysqlHandler):
         return True
 
     def get_engine(self) -> Connection:  # type: ignore[type-arg]
-        con = pymysql.connect(
-            host=self.host,
-            port=int(self.port),
-            database=self.database,
-            user=self.user,
-            password=self.password,
-        )
-        return con
+        connection_params = {
+            "host": self.host,
+            "port": int(self.port),
+            "database": self.database,
+            "user": self.user,
+            "password": self.password,
+        }
 
-    def sql_to_db_mapping(self, value: str) -> str:
-        return str(MysqlHandler.sql_to_db_mapping(value=value))
+        try:
+            if self.ssl_enabled:
+                connection_params.update({"ssl": {"ssl_disabled": False}})
+            con = pymysql.connect(**connection_params)
+            return con
+        except MysqlError.OperationalError as e:
+            error_msg = MysqlHandler.handle_connection_error(
+                e, self.host, self.port, self.ssl_enabled
+            )
+            raise ConnectorError(error_msg) from e
+
+    def sql_to_db_mapping(self, value: Any, column_name: str | None = None) -> str:
+        return str(MysqlHandler.sql_to_db_mapping(value=value, column_name=column_name))
 
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
@@ -74,3 +87,51 @@ class MariaDB(UnstractDB, MysqlHandler):
             host=self.host,
             table_name=table_name,
         )
+
+    def get_create_table_base_query(self, table: str) -> str:
+        """Function to create a base create table sql query with MySQL specific types.
+
+        Args:
+            table (str): db-connector table name
+
+        Returns:
+            str: generates a create sql base query with the constant columns
+        """
+        sql_query = (
+            f"CREATE TABLE IF NOT EXISTS {table} "
+            f"(id LONGTEXT, "
+            f"created_by LONGTEXT, created_at TIMESTAMP, "
+            f"metadata JSON, "
+            f"user_field_1 BOOLEAN DEFAULT FALSE, "
+            f"user_field_2 BIGINT DEFAULT 0, "
+            f"user_field_3 LONGTEXT DEFAULT NULL, "
+            f"status ENUM('ERROR', 'SUCCESS'), "
+            f"error_message LONGTEXT, "
+        )
+        return sql_query
+
+    def get_information_schema(self, table_name: str) -> dict[str, str]:
+        """Get information schema for MySQL database."""
+        query = (
+            "SELECT column_name, data_type FROM "
+            "information_schema.columns WHERE "
+            f"UPPER(table_name) = UPPER('{table_name}') AND table_schema = '{self.database}'"
+        )
+        results = self.execute(query=query)
+        column_types: dict[str, str] = self.get_db_column_types(
+            columns_with_types=results
+        )
+        return column_types
+
+    def prepare_multi_column_migration(self, table_name: str, column_name: str) -> str:
+        sql_query = (
+            f"ALTER TABLE {table_name} "
+            f"ADD COLUMN {column_name}_v2 JSON, "
+            f"ADD COLUMN metadata JSON, "
+            f"ADD COLUMN user_field_1 BOOLEAN DEFAULT FALSE, "
+            f"ADD COLUMN user_field_2 BIGINT DEFAULT 0, "
+            f"ADD COLUMN user_field_3 LONGTEXT DEFAULT NULL, "
+            f"ADD COLUMN status ENUM('ERROR', 'SUCCESS'), "
+            f"ADD COLUMN error_message LONGTEXT"
+        )
+        return sql_query

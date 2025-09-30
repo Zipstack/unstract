@@ -10,11 +10,20 @@ from constants import SettingsKeys  # type: ignore [attr-defined]
 from helpers import StructureToolHelper as STHelper
 from utils import json_to_markdown
 
-from unstract.sdk.constants import LogState, MetadataKey, ToolEnv, UsageKwargs
-from unstract.sdk.platform import PlatformHelper
-from unstract.sdk.prompt import PromptTool
-from unstract.sdk.tool.base import BaseTool
-from unstract.sdk.tool.entrypoint import ToolEntrypoint
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.constants import LogState, MetadataKey, ToolEnv, UsageKwargs
+    from unstract.sdk1.platform import PlatformHelper
+    from unstract.sdk1.prompt import PromptTool
+    from unstract.sdk1.tool.base import BaseTool
+    from unstract.sdk1.tool.entrypoint import ToolEntrypoint
+else:
+    from unstract.sdk.constants import LogState, MetadataKey, ToolEnv, UsageKwargs
+    from unstract.sdk.platform import PlatformHelper
+    from unstract.sdk.prompt import PromptTool
+    from unstract.sdk.tool.base import BaseTool
+    from unstract.sdk.tool.entrypoint import ToolEntrypoint
 
 logger = logging.getLogger(__name__)
 
@@ -219,6 +228,9 @@ class StructureTool(BaseTool):
             SettingsKeys.FILE_PATH: extracted_input_file,
             SettingsKeys.EXECUTION_SOURCE: SettingsKeys.TOOL,
         }
+
+        custom_data = self.get_exec_metadata.get(SettingsKeys.CUSTOM_DATA, {})
+        payload["custom_data"] = custom_data
         self.stream_log(f"Extracting document '{self.source_file_name}'")
         usage_kwargs: dict[Any, Any] = dict()
         usage_kwargs[UsageKwargs.RUN_ID] = self.file_execution_id

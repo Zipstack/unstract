@@ -1,0 +1,112 @@
+{
+  "title": "OpenAI LLM",
+  "type": "object",
+  "required": [
+    "adapter_name",
+    "api_key",
+    "api_base"
+  ],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this adapter instance. Example: openai-group-1"
+    },
+    "api_key": {
+      "type": "string",
+      "title": "API Key",
+      "format": "password",
+      "description": "Your OpenAI API key."
+    },
+    "model": {
+      "type": "string",
+      "title": "Model",
+      "default": "gpt-3.5-turbo",
+      "description": "The model to use for the API request. Refer to https://platform.openai.com/docs/models"
+    },
+    "api_base": {
+      "type": "string",
+      "format": "url",
+      "title": "API Base",
+      "default": "https://api.openai.com/v1",
+      "description": "Provide the OpenAI endpoint. Example: https://api.openai.com/v1"
+    },
+    "api_version": {
+      "type": "string",
+      "title": "API Version",
+      "default": "2023-05-15",
+      "description": "Provide the API version. Refer to the documentation provided by OpenAI. Example: 2023-05-15"
+    },
+    "max_tokens": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Maximum Output Tokens",
+      "description": "Maximum number of output tokens to limit LLM replies, leave it empty to use the maximum possible for the selected model."
+    },
+    "max_retries": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Max Retries",
+      "default": 5,
+      "description": "The maximum number of times to retry a request if it fails."
+    },
+    "timeout": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Timeout",
+      "default": 900,
+      "description": "Timeout in seconds"
+    },
+    "enable_reasoning": {
+      "type": "boolean",
+      "title": "Enable Reasoning",
+      "default": false,
+      "description": "Allow the model to apply extra reasoning for complex tasks. May slightly increase latency and cost, typically within 20–50% depending on the level selected. Only applicable for [O series models](https://platform.openai.com/docs/models#reasoning)."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "enable_reasoning": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reasoning_effort": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "default": "medium",
+            "title": "Reasoning Effort",
+            "description": "Sets the Reasoning Strength when Reasoning Effort is enabled"
+          }
+        },
+        "required": [
+          "reasoning_effort"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "enable_reasoning": {
+            "const": false
+          }
+        }
+      },
+      "then": {
+        "properties": {}
+      }
+    }
+  ]
+}

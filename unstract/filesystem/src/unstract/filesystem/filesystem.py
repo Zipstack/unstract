@@ -1,12 +1,17 @@
 import logging
 
 from unstract.filesystem.file_storage_types import FileStorageType
-from unstract.sdk.file_storage import EnvHelper, FileStorage
+from unstract.flags.feature_flag import check_feature_flag_status
 
 from .file_storage_config import (
     FILE_STORAGE_CREDENTIALS_TO_ENV_NAME_MAPPING,
     STORAGE_MAPPING,
 )
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.file_storage import EnvHelper, FileStorage
+else:
+    from unstract.sdk.file_storage import EnvHelper, FileStorage
 
 logger = logging.getLogger(__name__)
 

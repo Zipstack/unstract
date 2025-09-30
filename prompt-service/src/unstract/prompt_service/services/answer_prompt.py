@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 from flask import current_app as app
 
 from unstract.core.flask.exceptions import APIError
+from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.prompt_service.constants import ExecutionSource, FileStorageKeys, RunLevel
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.exceptions import RateLimitError
@@ -17,13 +18,23 @@ from unstract.prompt_service.utils.json_repair_helper import (
     repair_json_with_best_structure,
 )
 from unstract.prompt_service.utils.log import publish_log
-from unstract.sdk.constants import LogLevel
-from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError
-from unstract.sdk.exceptions import SdkError
-from unstract.sdk.file_storage import FileStorage, FileStorageProvider
-from unstract.sdk.file_storage.constants import StorageType
-from unstract.sdk.file_storage.env_helper import EnvHelper
-from unstract.sdk.llm import LLM
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.constants import LogLevel
+    from unstract.sdk1.exceptions import RateLimitError as SdkRateLimitError
+    from unstract.sdk1.exceptions import SdkError
+    from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
+    from unstract.sdk1.file_storage.constants import StorageType
+    from unstract.sdk1.file_storage.env_helper import EnvHelper
+    from unstract.sdk1.llm import LLM
+else:
+    from unstract.sdk.constants import LogLevel
+    from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError
+    from unstract.sdk.exceptions import SdkError
+    from unstract.sdk.file_storage import FileStorage, FileStorageProvider
+    from unstract.sdk.file_storage.constants import StorageType
+    from unstract.sdk.file_storage.env_helper import EnvHelper
+    from unstract.sdk.llm import LLM
 
 
 def _is_safe_public_url(url: str) -> bool:
@@ -317,7 +328,7 @@ class AnswerPromptService:
                         "prompt_key": prompt_key,
                         "doc_name": doc_name,
                     },
-                    LogLevel.WARNING,
+                    LogLevel.WARN,
                     RunLevel.RUN,
                     "Unable to parse JSON response from LLM, try using our"
                     " cloud / enterprise feature 'record' or 'table' type",
@@ -353,6 +364,7 @@ class AnswerPromptService:
                                 webhook_enabled=True,
                                 webhook_url=webhook_url,
                                 highlight_data=highlight_data,
+                                timeout=60,
                             )
                         except Exception as e:
                             app.logger.warning(

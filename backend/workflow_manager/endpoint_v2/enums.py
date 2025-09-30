@@ -1,6 +1,11 @@
 from enum import Enum
 
 
+class FileProcessingStatus(Enum):
+    SUCCESS = "SUCCESS"
+    ERROR = "ERROR"
+
+
 class AllowedFileTypes(Enum):
     PLAIN_TEXT = "text/plain"
     PDF = "application/pdf"

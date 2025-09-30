@@ -155,6 +155,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         tag_names: list[str] = [],
         llm_profile_id: str | None = None,
         hitl_queue_name: str | None = None,
+        custom_data: dict[str, Any] | None = None,
         request_headers=None,
     ) -> ReturnDict:
         """Execute workflow by api.
@@ -168,6 +169,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
             tag_names (list(str)): list of tag names
             llm_profile_id (str, optional): LLM profile ID for overriding tool settings
             hitl_queue_name (str, optional): Custom queue name for manual review
+            custom_data (dict[str, Any], optional): JSON data for custom_data variable replacement in prompts
 
         Returns:
             ReturnDict: execution status/ result
@@ -222,6 +224,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
             file_objs=file_objs,
             use_file_history=use_file_history,
         )
+
         try:
             result = WorkflowHelper.execute_workflow_async(
                 workflow_id=workflow_id,
@@ -233,6 +236,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 use_file_history=use_file_history,
                 llm_profile_id=llm_profile_id,
                 hitl_queue_name=hitl_queue_name,
+                custom_data=custom_data,
             )
             result.status_api = DeploymentHelper.construct_status_endpoint(
                 api_endpoint=api.api_endpoint, execution_id=execution_id
@@ -364,8 +368,8 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 f"Fetched file '{filename}' with MIME type '{content_type}' from presigned URL {sanitized_url}"
             )
 
-            # Return as an InMemoryUploadedFile
-            return InMemoryUploadedFile(
+            # Create InMemoryUploadedFile with proper stream management
+            uploaded_file = InMemoryUploadedFile(
                 file=file_stream,
                 field_name="file",
                 name=filename,
@@ -373,6 +377,11 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 size=downloaded,
                 charset=None,
             )
+
+            # Don't close file_stream here as InMemoryUploadedFile takes ownership
+            # The stream will be closed when uploaded_file.close() is called
+            file_stream = None
+            return uploaded_file
 
         except requests.RequestException as e:
             if (
@@ -408,7 +417,9 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 try:
                     file_stream.close()
                 except Exception as e:
-                    logger.warning(f"Failed to close file stream: {str(e)}")
+                    logger.warning(
+                        f"Failed to close file stream during cleanup for '{filename}': {str(e)}"
+                    )
 
     @staticmethod
     def load_presigned_files(
