@@ -63,7 +63,7 @@ jobs:
             echo "dockerfile=./tools/classifier/Dockerfile" >> $GITHUB_OUTPUT
           elif [ "${{ github.event.inputs.service_name }}" == "tool-structure" ]; then
             echo "context=." >> $GITHUB_OUTPUT
-            echo "dockerfile=./tools/structure/Dockerfile"" >> $GITHUB_OUTPUT
+            echo "dockerfile=./tools/structure/Dockerfile" >> $GITHUB_OUTPUT
           elif [ "${{ github.event.inputs.service_name }}" == "tool-text-extractor" ]; then
             echo "context=." >> $GITHUB_OUTPUT
             echo "dockerfile=./tools/text_extractor/Dockerfile" >> $GITHUB_OUTPUT
