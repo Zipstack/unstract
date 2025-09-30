@@ -1,22 +1,18 @@
 """Tests for UnstractAutoGenClient."""
 
+from unittest.mock import Mock
+
 import pytest
-from unittest.mock import AsyncMock, Mock, patch
-from typing import Any, Dict
-
 from autogen_core.models import (
-    UserMessage,
-    SystemMessage,
-    AssistantMessage,
-    RequestUsage,
     ModelInfo,
+    RequestUsage,
+    SystemMessage,
+    UserMessage,
 )
-
 from unstract.autogen_client import (
     UnstractAutoGenClient,
-    UnstractAutoGenError,
-    UnstractConfigurationError,
     UnstractCompletionError,
+    UnstractConfigurationError,
 )
 
 
@@ -60,7 +56,7 @@ class TestUnstractAutoGenClient:
             timeout=30.0,
             max_retries=5,
         )
-        
+
         assert client.llm_adapter == mock_adapter
         assert client._timeout == 30.0
         assert client._max_retries == 5
@@ -68,13 +64,20 @@ class TestUnstractAutoGenClient:
     def test_initialization_validation(self) -> None:
         """Test validation during initialization."""
         # Test that adapter must be provided
-        with pytest.raises(UnstractConfigurationError, match="llm_adapter must be provided"):
+        with pytest.raises(
+            UnstractConfigurationError, match="llm_adapter must be provided"
+        ):
             UnstractAutoGenClient(llm_adapter=None)
-        
+
         # Test that adapter must have completion method
         mock_adapter = Mock()
-        delattr(mock_adapter, 'completion') if hasattr(mock_adapter, 'completion') else None
-        with pytest.raises(UnstractConfigurationError, match="llm_adapter must have a 'completion' method"):
+        delattr(mock_adapter, "completion") if hasattr(
+            mock_adapter, "completion"
+        ) else None
+        with pytest.raises(
+            UnstractConfigurationError,
+            match="llm_adapter must have a 'completion' method",
+        ):
             UnstractAutoGenClient(llm_adapter=mock_adapter)
 
     def test_model_info_property(self, client: UnstractAutoGenClient) -> None:
@@ -87,7 +90,7 @@ class TestUnstractAutoGenClient:
     def test_capabilities(self, client: UnstractAutoGenClient) -> None:
         """Test capabilities method."""
         capabilities = client.capabilities()
-        
+
         expected_capabilities = {
             "chat": True,
             "stream": True,
@@ -96,27 +99,24 @@ class TestUnstractAutoGenClient:
             "vision": True,
             "json_output": True,
         }
-        
+
         assert capabilities == expected_capabilities
 
     @pytest.mark.asyncio
     async def test_create_completion(
-        self, 
-        client: UnstractAutoGenClient, 
-        mock_adapter: Mock,
-        mock_response: Mock
+        self, client: UnstractAutoGenClient, mock_adapter: Mock, mock_response: Mock
     ) -> None:
         """Test create completion method."""
         mock_adapter.completion.return_value = mock_response
-        
+
         messages = [UserMessage(content="Hello", source="user")]
         result = await client.create(messages)
-        
+
         assert result.content == "Test response"
         assert result.usage.prompt_tokens == 10
         assert result.usage.completion_tokens == 5
         assert result.finish_reason == "stop"
-        
+
         # Verify adapter was called with normalized messages
         mock_adapter.completion.assert_called_once()
         call_args = mock_adapter.completion.call_args[1]
@@ -126,26 +126,23 @@ class TestUnstractAutoGenClient:
 
     @pytest.mark.asyncio
     async def test_create_completion_with_mixed_messages(
-        self,
-        client: UnstractAutoGenClient,
-        mock_adapter: Mock,
-        mock_response: Mock
+        self, client: UnstractAutoGenClient, mock_adapter: Mock, mock_response: Mock
     ) -> None:
         """Test create completion with mixed message types."""
         mock_adapter.completion.return_value = mock_response
-        
+
         messages = [
             SystemMessage(content="You are helpful", source="system"),
             UserMessage(content="Hello", source="user"),
             {"role": "assistant", "content": "Hi there"},
         ]
-        
+
         result = await client.create(messages)
-        
+
         # Verify message normalization
         call_args = mock_adapter.completion.call_args[1]
         normalized_messages = call_args["messages"]
-        
+
         assert len(normalized_messages) == 3
         assert normalized_messages[0]["role"] == "system"
         assert normalized_messages[0]["content"] == "You are helpful"
@@ -156,28 +153,25 @@ class TestUnstractAutoGenClient:
 
     @pytest.mark.asyncio
     async def test_create_completion_error_handling(
-        self,
-        client: UnstractAutoGenClient,
-        mock_adapter: Mock
+        self, client: UnstractAutoGenClient, mock_adapter: Mock
     ) -> None:
         """Test error handling in create completion."""
         mock_adapter.completion.side_effect = Exception("Adapter failed")
-        
+
         messages = [UserMessage(content="Hello", source="user")]
-        
-        with pytest.raises(UnstractCompletionError, match="Unstract adapter completion failed"):
+
+        with pytest.raises(
+            UnstractCompletionError, match="Unstract adapter completion failed"
+        ):
             await client.create(messages)
 
     @pytest.mark.asyncio
-    async def test_closed_client_error(
-        self,
-        client: UnstractAutoGenClient
-    ) -> None:
+    async def test_closed_client_error(self, client: UnstractAutoGenClient) -> None:
         """Test that closed client raises error."""
         await client.close()
-        
+
         messages = [UserMessage(content="Hello", source="user")]
-        
+
         with pytest.raises(UnstractCompletionError, match="Client has been closed"):
             await client.create(messages)
 
@@ -187,7 +181,7 @@ class TestUnstractAutoGenClient:
             {"role": "user", "content": "Hello world"},
             {"role": "assistant", "content": "Hi there how are you"},
         ]
-        
+
         token_count = client.count_tokens(messages)
         assert token_count > 0
         assert token_count == 7  # "Hello world Hi there how are you" = 7 words
@@ -207,15 +201,12 @@ class TestUnstractAutoGenClient:
             max_tokens=1000,
             supports_streaming=True,
         )
-        
-        client = UnstractAutoGenClient(
-            llm_adapter=mock_adapter,
-            model_info=model_info
-        )
-        
+
+        client = UnstractAutoGenClient(llm_adapter=mock_adapter, model_info=model_info)
+
         # Set some usage
         client._last_usage = RequestUsage(prompt_tokens=100, completion_tokens=50)
-        
+
         remaining = client.remaining_tokens()
         assert remaining == 850  # 1000 - 100 - 50
 
@@ -229,26 +220,23 @@ class TestUnstractAutoGenClient:
 
     @pytest.mark.asyncio
     async def test_usage_accumulation(
-        self,
-        client: UnstractAutoGenClient,
-        mock_adapter: Mock,
-        mock_response: Mock
+        self, client: UnstractAutoGenClient, mock_adapter: Mock, mock_response: Mock
     ) -> None:
         """Test that usage accumulates across requests."""
         mock_adapter.completion.return_value = mock_response
-        
+
         # First request
         messages = [UserMessage(content="Hello", source="user")]
         await client.create(messages)
-        
+
         assert client.total_usage().prompt_tokens == 10
         assert client.total_usage().completion_tokens == 5
         assert client.actual_usage().prompt_tokens == 10
         assert client.actual_usage().completion_tokens == 5
-        
+
         # Second request
         await client.create(messages)
-        
+
         assert client.total_usage().prompt_tokens == 20  # Accumulated
         assert client.total_usage().completion_tokens == 10  # Accumulated
         assert client.actual_usage().prompt_tokens == 10  # Last request only
@@ -256,9 +244,7 @@ class TestUnstractAutoGenClient:
 
     @pytest.mark.asyncio
     async def test_create_stream_placeholder(
-        self,
-        client: UnstractAutoGenClient,
-        mock_adapter: Mock
+        self, client: UnstractAutoGenClient, mock_adapter: Mock
     ) -> None:
         """Test create_stream method (basic functionality)."""
         # Mock streaming response
@@ -269,11 +255,11 @@ class TestUnstractAutoGenClient:
         mock_chunks[1].choices = [Mock()]
         mock_chunks[1].choices[0].delta = Mock()
         mock_chunks[1].choices[0].delta.content = "world"
-        
+
         # Mock the streaming call to return the chunks
         def mock_streaming_completion(**kwargs):
             return iter(mock_chunks)
-        
+
         # Mock the final call for usage info
         final_response = Mock()
         final_response.usage = Mock()
@@ -281,26 +267,26 @@ class TestUnstractAutoGenClient:
         final_response.usage.completion_tokens = 2
         final_response.choices = [Mock()]
         final_response.choices[0].finish_reason = "stop"
-        
+
         def mock_completion(**kwargs):
             if kwargs.get("stream"):
                 return mock_streaming_completion(**kwargs)
             else:
                 return final_response
-        
+
         mock_adapter.completion.side_effect = mock_completion
-        
+
         messages = [UserMessage(content="Hi", source="user")]
-        
+
         chunks = []
         final_result = None
-        
+
         async for item in client.create_stream(messages):
             if isinstance(item, str):
                 chunks.append(item)
             else:
                 final_result = item
-        
+
         assert chunks == ["Hello ", "world"]
         assert final_result is not None
         assert final_result.content == "Hello world"

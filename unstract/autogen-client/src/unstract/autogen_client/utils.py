@@ -1,27 +1,34 @@
 """Utility functions for Unstract AutoGen Adapter."""
 
 import logging
-from typing import Any, Dict, List, Optional, Union
-from unstract.sdk1.utils.common import LLMResponseCompat
+from typing import Any
+
 from autogen_core.models import (
+    AssistantMessage,
+    FunctionExecutionResultMessage,
     RequestUsage,
     SystemMessage,
     UserMessage,
-    AssistantMessage,
-    FunctionExecutionResultMessage,
 )
+from unstract.sdk1.utils.common import LLMResponseCompat
 
 logger = logging.getLogger(__name__)
 
-_ALLOWED_FINISH_REASONS = {"stop", "length", "function_calls", "content_filter", "unknown"}
+_ALLOWED_FINISH_REASONS = {
+    "stop",
+    "length",
+    "function_calls",
+    "content_filter",
+    "unknown",
+}
 
 
-def normalize_finish_reason(raw: Optional[str]) -> str:
+def normalize_finish_reason(raw: str | None) -> str:
     """Normalize finish reason to standard values.
-    
+
     Args:
         raw: Raw finish reason from adapter response
-        
+
     Returns:
         Normalized finish reason (defaults to 'stop' if None)
     """
@@ -33,17 +40,23 @@ def normalize_finish_reason(raw: Optional[str]) -> str:
 
 
 def normalize_messages(
-    messages: List[Union[dict, SystemMessage, UserMessage, AssistantMessage, FunctionExecutionResultMessage]],
-) -> List[Dict[str, str]]:
+    messages: list[
+        dict
+        | SystemMessage
+        | UserMessage
+        | AssistantMessage
+        | FunctionExecutionResultMessage
+    ],
+) -> list[dict[str, str]]:
     """Normalize messages to standard format.
-    
+
     Args:
         messages: List of AutoGen message objects or dicts
-        
+
     Returns:
         List of message dictionaries
     """
-    out: List[Dict[str, str]] = []
+    out: list[dict[str, str]] = []
     for m in messages:
         if isinstance(m, dict):
             out.append(m)
@@ -62,17 +75,18 @@ def normalize_messages(
     return out
 
 
-def estimate_token_count(messages: List[Dict[str, str]]) -> int:
+def estimate_token_count(messages: list[dict[str, str]]) -> int:
     """Estimate token count for messages using simple word-based counting.
-    
+
     Args:
         messages: List of message dictionaries
-        
+
     Returns:
         Estimated token count
     """
     total_content = " ".join(
-        msg.get("content", "") for msg in messages
+        msg.get("content", "")
+        for msg in messages
         if isinstance(msg.get("content"), str)
     )
     return max(1, len(total_content.split()))
@@ -80,10 +94,10 @@ def estimate_token_count(messages: List[Dict[str, str]]) -> int:
 
 def extract_content(response: Any) -> str:
     """Extract content from adapter response.
-    
+
     Args:
         response: Response from Unstract LLM adapter
-        
+
     Returns:
         Response content string
     """
@@ -91,15 +105,17 @@ def extract_content(response: Any) -> str:
         # First, try SDK1 format: {"response": {"text": "content"}}
         if isinstance(response, dict) and "response" in response:
             sdk1_response = response["response"]
-            if isinstance(sdk1_response, LLMResponseCompat) and hasattr(sdk1_response, "text"):
+            if isinstance(sdk1_response, LLMResponseCompat) and hasattr(
+                sdk1_response, "text"
+            ):
                 return sdk1_response.text or ""
-        
+
         # Then try OpenAI-like format with choices
         if hasattr(response, "choices") and response.choices:
             choice = response.choices[0]
             if hasattr(choice, "message") and hasattr(choice.message, "content"):
                 return choice.message.content or ""
-        
+
         return ""
     except Exception as e:
         logger.warning(f"Failed to extract content: {str(e)}")
@@ -108,10 +124,10 @@ def extract_content(response: Any) -> str:
 
 def extract_usage(response: Any) -> RequestUsage:
     """Extract usage information from adapter response.
-    
+
     Args:
         response: Response from Unstract LLM adapter
-        
+
     Returns:
         RequestUsage object
     """
@@ -124,16 +140,16 @@ def extract_usage(response: Any) -> RequestUsage:
             )
     except Exception as e:
         logger.warning(f"Failed to extract usage: {str(e)}")
-    
+
     return RequestUsage(prompt_tokens=0, completion_tokens=0)
 
 
 def extract_finish_reason(response: Any) -> str:
     """Extract and normalize finish reason from adapter response.
-    
+
     Args:
         response: Response from Unstract LLM adapter
-        
+
     Returns:
         Normalized finish reason (defaults to 'stop')
     """
@@ -144,29 +160,29 @@ def extract_finish_reason(response: Any) -> str:
             return normalize_finish_reason(raw_reason)
     except Exception as e:
         logger.warning(f"Failed to extract finish reason: {e}")
-    
+
     return normalize_finish_reason(None)  # This will return 'stop'
 
 
 def validate_adapter(adapter: Any) -> bool:
     """Validate that an adapter has the required completion method.
-    
+
     Args:
         adapter: Adapter instance to validate
-        
+
     Returns:
         True if adapter is valid
-        
+
     Raises:
         ValueError: If adapter is invalid
     """
     if not adapter:
         raise ValueError("Adapter cannot be None")
-    
-    if not hasattr(adapter, 'completion'):
+
+    if not hasattr(adapter, "completion"):
         raise ValueError("Adapter must have a 'completion' method")
-    
+
     if not callable(adapter.completion):
         raise ValueError("Adapter 'completion' must be callable")
-    
+
     return True

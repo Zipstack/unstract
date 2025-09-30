@@ -1,23 +1,22 @@
 """Tests for utility functions."""
 
-import pytest
 from unittest.mock import Mock
 
+import pytest
 from autogen_core.models import (
-    UserMessage,
-    SystemMessage,
     AssistantMessage,
     FunctionExecutionResultMessage,
     RequestUsage,
+    SystemMessage,
+    UserMessage,
 )
-
 from unstract.autogen_client.utils import (
-    normalize_finish_reason,
-    normalize_messages,
     estimate_token_count,
     extract_content,
-    extract_usage,
     extract_finish_reason,
+    extract_usage,
+    normalize_finish_reason,
+    normalize_messages,
     validate_adapter,
 )
 
@@ -44,9 +43,9 @@ class TestUtils:
             FunctionExecutionResultMessage(content="Result", source="function"),
             {"role": "user", "content": "Already normalized"},
         ]
-        
+
         normalized = normalize_messages(messages)
-        
+
         assert len(normalized) == 5
         assert normalized[0] == {"role": "system", "content": "You are helpful"}
         assert normalized[1] == {"role": "user", "content": "Hello"}
@@ -56,13 +55,14 @@ class TestUtils:
 
     def test_normalize_messages_fallback(self) -> None:
         """Test message normalization with unknown type."""
+
         class CustomMessage:
             def __init__(self, content: str):
                 self.content = content
-        
+
         messages = [CustomMessage("Custom content")]
         normalized = normalize_messages(messages)
-        
+
         assert len(normalized) == 1
         assert normalized[0] == {"role": "user", "content": "Custom content"}
 
@@ -72,7 +72,7 @@ class TestUtils:
             {"role": "user", "content": "Hello world"},
             {"role": "assistant", "content": "Hi there how are you"},
         ]
-        
+
         count = estimate_token_count(messages)
         assert count == 7  # "Hello world Hi there how are you" = 7 words
 
@@ -82,7 +82,7 @@ class TestUtils:
             {"role": "user", "content": ""},
             {"role": "assistant"},  # No content key
         ]
-        
+
         count = estimate_token_count(messages)
         assert count == 1  # Minimum of 1
 
@@ -92,7 +92,7 @@ class TestUtils:
         response.choices = [Mock()]
         response.choices[0].message = Mock()
         response.choices[0].message.content = "Test content"
-        
+
         content = extract_content(response)
         assert content == "Test content"
 
@@ -102,7 +102,7 @@ class TestUtils:
         response.choices = [Mock()]
         response.choices[0].message = Mock()
         response.choices[0].message.content = None
-        
+
         content = extract_content(response)
         assert content == ""
 
@@ -110,7 +110,7 @@ class TestUtils:
         """Test content extraction with no choices."""
         response = Mock()
         response.choices = []
-        
+
         content = extract_content(response)
         assert content == ""
 
@@ -119,7 +119,7 @@ class TestUtils:
         response = Mock()
         response.choices = [Mock()]
         del response.choices[0].message
-        
+
         content = extract_content(response)
         assert content == ""
 
@@ -129,7 +129,7 @@ class TestUtils:
         response.usage = Mock()
         response.usage.prompt_tokens = 10
         response.usage.completion_tokens = 5
-        
+
         usage = extract_usage(response)
         assert isinstance(usage, RequestUsage)
         assert usage.prompt_tokens == 10
@@ -139,7 +139,7 @@ class TestUtils:
         """Test usage extraction with no usage."""
         response = Mock()
         del response.usage
-        
+
         usage = extract_usage(response)
         assert isinstance(usage, RequestUsage)
         assert usage.prompt_tokens == 0
@@ -150,7 +150,7 @@ class TestUtils:
         response = Mock()
         response.usage = Mock()
         # Missing prompt_tokens and completion_tokens
-        
+
         usage = extract_usage(response)
         assert isinstance(usage, RequestUsage)
         assert usage.prompt_tokens == 0
@@ -161,7 +161,7 @@ class TestUtils:
         response = Mock()
         response.choices = [Mock()]
         response.choices[0].finish_reason = "stop"
-        
+
         reason = extract_finish_reason(response)
         assert reason == "stop"
 
@@ -170,7 +170,7 @@ class TestUtils:
         response = Mock()
         response.choices = [Mock()]
         response.choices[0].finish_reason = "stop_sequence"
-        
+
         reason = extract_finish_reason(response)
         assert reason == "stop"
 
@@ -178,7 +178,7 @@ class TestUtils:
         """Test finish reason extraction with no choices."""
         response = Mock()
         response.choices = []
-        
+
         reason = extract_finish_reason(response)
         assert reason is None
 
@@ -186,7 +186,7 @@ class TestUtils:
         """Test successful adapter validation."""
         adapter = Mock()
         adapter.completion = Mock()
-        
+
         assert validate_adapter(adapter) is True
 
     def test_validate_adapter_none(self) -> None:
@@ -198,7 +198,7 @@ class TestUtils:
         """Test adapter validation without completion method."""
         adapter = Mock()
         del adapter.completion
-        
+
         with pytest.raises(ValueError, match="Adapter must have a 'completion' method"):
             validate_adapter(adapter)
 
@@ -206,6 +206,6 @@ class TestUtils:
         """Test adapter validation with non-callable completion."""
         adapter = Mock()
         adapter.completion = "not callable"
-        
+
         with pytest.raises(ValueError, match="Adapter 'completion' must be callable"):
             validate_adapter(adapter)

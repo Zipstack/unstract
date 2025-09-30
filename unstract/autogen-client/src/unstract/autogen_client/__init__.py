@@ -7,7 +7,11 @@ using Unstract LLM adapters as the backend for LLM interactions.
 __version__ = "0.1.0"
 
 from .client import UnstractAutoGenClient
-from .exceptions import UnstractAutoGenError, UnstractConfigurationError, UnstractCompletionError
+from .exceptions import (
+    UnstractAutoGenError,
+    UnstractCompletionError,
+    UnstractConfigurationError,
+)
 from .helper import (
     SimpleAutoGenAgent,
     create_simple_autogen_agent,
