@@ -28,10 +28,15 @@ from unstract.core.data_models import (
 
 # Import file execution tracking for proper recovery mechanism
 from unstract.core.file_execution_tracker import (
+    FileExecutionData,
     FileExecutionStage,
     FileExecutionStageData,
     FileExecutionStageStatus,
     FileExecutionStatusTracker,
+)
+from unstract.core.tool_execution_status import (
+    ToolExecutionData,
+    ToolExecutionTracker,
 )
 from unstract.core.worker_models import (
     FinalOutputResult,
@@ -156,34 +161,25 @@ class WorkerWorkflowExecutionService:
             if not tool_instances_data:
                 raise ValueError(f"No tool instances found for workflow {workflow_id}")
 
-            # Track initialization stage
+            # Initialize file execution tracker with complete metadata
             if workflow_file_execution_id:
-                try:
-                    tracker = FileExecutionStatusTracker()
-                    tracker.update_stage_status(
-                        execution_id=execution_id,
-                        file_execution_id=workflow_file_execution_id,
-                        stage_status=FileExecutionStageData(
-                            stage=FileExecutionStage.INITIALIZATION,
-                            status=FileExecutionStageStatus.IN_PROGRESS,
-                        ),
-                        file_hash=file_hash.file_hash,
-                    )
-                    logger.info(f"Tracked initialization stage for {file_name}")
-                except Exception as tracker_error:
-                    logger.warning(
-                        f"Failed to track initialization stage: {tracker_error}"
-                    )
-
+                self._initialize_file_execution_tracker(
+                    execution_id=execution_id,
+                    file_execution_id=workflow_file_execution_id,
+                    organization_id=organization_id,
+                    file_hash=file_hash,
+                )
+            pipeline_id = execution_context.get("execution", {}).get("pipeline_id")
             # Step 2: Execute Workflow
             execution_service = self._create_worker_execution_service(
                 organization_id=organization_id,
                 workflow_id=workflow_id,
-                workflow_info=execution_context.get("workflow", {}),
                 tool_instances_data=tool_instances_data,
                 execution_id=execution_id,
                 file_execution_id=workflow_file_execution_id,
                 is_api=is_api,
+                workflow_logger=workflow_logger,
+                pipeline_id=pipeline_id,
             )
 
             workflow_success = self._execute_workflow_with_service(
@@ -338,10 +334,143 @@ class WorkerWorkflowExecutionService:
                     )
                     logger.info(f"Tracked failed execution for {file_name}: {error_msg}")
 
+                # Clean up tool execution tracker (even on failure)
+                self._cleanup_tool_execution_tracker(
+                    execution_id=execution_id,
+                    file_execution_id=workflow_file_execution_id,
+                )
+
+                # Clean up file execution tracker (log data then delete)
+                self._cleanup_file_execution_tracker(
+                    execution_id=execution_id,
+                    file_execution_id=workflow_file_execution_id,
+                )
+
             except Exception as tracker_error:
                 logger.warning(f"Failed to track final completion stage: {tracker_error}")
 
         return result
+
+    def _initialize_file_execution_tracker(
+        self,
+        execution_id: str,
+        file_execution_id: str,
+        organization_id: str,
+        file_hash: FileHashData,
+    ) -> None:
+        """Initialize file execution tracker with complete metadata.
+
+        Matches Django backend initialization pattern with full FileExecutionData.
+        """
+        try:
+            tracker = FileExecutionStatusTracker()
+
+            # Check if tracker already exists (resume scenario)
+            if tracker.exists(execution_id, file_execution_id):
+                logger.info(
+                    f"File execution tracker already exists for execution_id: {execution_id}, "
+                    f"file_execution_id: {file_execution_id}"
+                )
+                return
+
+            # Create initial stage data
+            file_execution_stage_data = FileExecutionStageData(
+                stage=FileExecutionStage.INITIALIZATION,
+                status=FileExecutionStageStatus.IN_PROGRESS,
+            )
+
+            # Create complete FileExecutionData with metadata
+            file_execution_data = FileExecutionData(
+                execution_id=str(execution_id),
+                file_execution_id=str(file_execution_id),
+                organization_id=str(organization_id),
+                stage_status=file_execution_stage_data,
+                status_history=[],
+                file_hash=file_hash.to_serialized_json(),  # Match Django backend serialization format
+            )
+
+            # Initialize tracker with complete data
+            tracker.set_data(file_execution_data)
+            logger.info(
+                f"Initialized file execution tracker for execution_id: {execution_id}, "
+                f"file_execution_id: {file_execution_id}"
+            )
+
+        except Exception as e:
+            # Non-critical - log and continue
+            logger.warning(
+                f"Failed to initialize file execution tracker for {execution_id}/{file_execution_id}: {e}"
+            )
+
+    def _cleanup_file_execution_tracker(
+        self,
+        execution_id: str,
+        file_execution_id: str,
+    ) -> None:
+        """Clean up file execution tracker after processing completes.
+
+        Logs file execution data for debugging purposes before cleanup.
+        """
+        try:
+            tracker = FileExecutionStatusTracker()
+
+            # Get current file execution data for logging before cleanup
+            file_execution_data = tracker.get_data(execution_id, file_execution_id)
+
+            if file_execution_data:
+                # Log file execution data for debugging purposes
+                logger.info(
+                    f"File execution tracker data before cleanup - "
+                    f"execution_id: {execution_id}, file_execution_id: {file_execution_id}, "
+                    f"stage: {file_execution_data.stage_status.stage.value}, "
+                    f"status: {file_execution_data.stage_status.status.value}, "
+                    f"organization_id: {file_execution_data.organization_id}, "
+                    f"error: {file_execution_data.stage_status.error or 'None'}"
+                )
+
+                # Actually delete file execution tracker data from Redis
+                tracker.delete_data(execution_id, file_execution_id)
+                logger.info(
+                    f"Deleted file execution tracker for execution_id: {execution_id}, "
+                    f"file_execution_id: {file_execution_id}"
+                )
+            else:
+                logger.debug(
+                    f"No file execution tracker data found for execution_id: {execution_id}, "
+                    f"file_execution_id: {file_execution_id}"
+                )
+
+        except Exception as e:
+            # Non-critical - log and continue
+            logger.warning(
+                f"Failed to cleanup file execution tracker for {execution_id}/{file_execution_id}: {e}"
+            )
+
+    def _cleanup_tool_execution_tracker(
+        self,
+        execution_id: str,
+        file_execution_id: str,
+    ) -> None:
+        """Clean up tool execution tracker after file processing completes.
+
+        Matches Django backend cleanup pattern to prevent Redis memory leaks.
+        """
+        try:
+            tracker = ToolExecutionTracker()
+            tool_execution_data = ToolExecutionData(
+                execution_id=execution_id,
+                file_execution_id=file_execution_id,
+            )
+            tracker.delete_status(tool_execution_data=tool_execution_data)
+            logger.info(
+                f"Deleted tool execution tracker for execution_id: {execution_id}, "
+                f"file_execution_id: {file_execution_id}"
+            )
+        except Exception as e:
+            # Non-critical - log and continue
+            logger.warning(
+                f"Failed to cleanup tool execution tracker for {execution_id}/{file_execution_id}: {e}"
+            )
 
     def _get_workflow_execution_context(
         self, execution_id: str, workflow_id: str, organization_id: str
@@ -444,11 +573,12 @@ class WorkerWorkflowExecutionService:
         self,
         organization_id: str,
         workflow_id: str,
-        workflow_info: dict[str, Any],
         tool_instances_data: list[dict[str, Any]],
         execution_id: str,
         file_execution_id: str,
         is_api: bool = False,
+        workflow_logger: Any | None = None,
+        pipeline_id: str | None = None,
     ) -> WorkflowExecutionService:
         """Create WorkflowExecutionService following backend pattern."""
         # Convert tool instances data to ToolInstance DTOs
@@ -523,7 +653,24 @@ class WorkerWorkflowExecutionService:
         )
 
         # Set up messaging channel for logs
-        messaging_channel = f"workflow_execution_{execution_id}_{file_execution_id}"
+        # Get messaging channel from workflow_logger if available
+        # This ensures consistency with WorkflowLogger which uses:
+        # log_events_id (session) for UI workflows or pipeline_id for scheduled/API
+        if workflow_logger and hasattr(workflow_logger, "messaging_channel"):
+            messaging_channel = workflow_logger.messaging_channel
+            logger.info(
+                f"Using workflow_logger messaging channel: {messaging_channel} "
+                f"for execution {execution_id}, file {file_execution_id}"
+            )
+        else:
+            # Fallback: use execution_id if no workflow_logger available
+            # This shouldn't normally happen but provides safety
+            messaging_channel = str(pipeline_id) if pipeline_id else str(execution_id)
+            logger.warning(
+                f"No workflow_logger available, using pipeline_id or execution_id as messaging channel: {messaging_channel} "
+                f"for file {file_execution_id}"
+            )
+
         execution_service.set_messaging_channel(messaging_channel)
 
         return execution_service
