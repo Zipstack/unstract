@@ -224,6 +224,7 @@ class ExecutionRequestSerializer(TagParamsSerializer):
     presigned_urls = ListField(child=URLField(), required=False)
     llm_profile_id = CharField(required=False, allow_null=True, allow_blank=True)
     hitl_queue_name = CharField(required=False, allow_null=True, allow_blank=True)
+    hitl_packet_id = CharField(required=False, allow_null=True, allow_blank=True)
 
     def validate_hitl_queue_name(self, value: str | None) -> str | None:
         """Validate queue name format using enterprise validation if available."""

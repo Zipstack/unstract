@@ -10,5 +10,5 @@ class ApiExecution:
     TAGS: str = "tags"
     LLM_PROFILE_ID: str = "llm_profile_id"
     HITL_QUEUE_NAME: str = "hitl_queue_name"
-    PACKET_ID: str = "packet_id"
+    HITL_PACKET_ID: str = "hitl_packet_id"
     PRESIGNED_URLS: str = "presigned_urls"

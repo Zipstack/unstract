@@ -176,9 +176,6 @@ class DestinationConnector(BaseConnector):
             return True
 
         if self.packet_id:
-            logger.info(
-                f"API packet override: pushing to packet queue for file {file_name}"
-            )
             self._push_data_to_queue(
                 file_name=file_name,
                 workflow=workflow,
@@ -854,7 +851,10 @@ class DestinationConnector(BaseConnector):
             None
         """
         if not result:
-            return
+            if not self.packet_id:
+                return
+            # For packet processing, use a placeholder result if none available
+            result = json.dumps({"status": "pending", "message": "Awaiting processing"})
         connector: ConnectorInstance = self.source_endpoint.connector_instance
         # For API deployments, use workflow execution storage instead of connector
         if self.is_api:
@@ -892,10 +892,10 @@ class DestinationConnector(BaseConnector):
                 success = PacketQueueUtils.enqueue_to_packet(
                     packet_id=self.packet_id, queue_result=queue_result
                 )
-                if success:
-                    logger.info(f"Pushed {file_name} to packet {self.packet_id}")
-                else:
-                    logger.error(f"Failed to push {file_name} to packet {self.packet_id}")
+                if not success:
+                    error_msg = f"Failed to push {file_name} to packet {self.packet_id}"
+                    logger.error(error_msg)
+                    raise RuntimeError(error_msg)
                 return
 
             conn = QueueUtils.get_queue_inst()
@@ -954,10 +954,10 @@ class DestinationConnector(BaseConnector):
                 success = PacketQueueUtils.enqueue_to_packet(
                     packet_id=self.packet_id, queue_result=queue_result_obj
                 )
-                if success:
-                    logger.info(f"Pushed {file_name} to packet {self.packet_id}")
-                else:
-                    logger.error(f"Failed to push {file_name} to packet {self.packet_id}")
+                if not success:
+                    error_msg = f"Failed to push {file_name} to packet {self.packet_id}"
+                    logger.error(error_msg)
+                    raise RuntimeError(error_msg)
                 return
 
             conn = QueueUtils.get_queue_inst()
