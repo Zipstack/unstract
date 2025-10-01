@@ -1,10 +1,14 @@
-import logging
+from __future__ import annotations
 
-from requests import Response
-from requests.exceptions import RequestException
+import logging
+from typing import TYPE_CHECKING
 
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.constants import MimeType
+
+if TYPE_CHECKING:
+    from requests import Response
+    from requests.exceptions import RequestException
 
 logger = logging.getLogger(__name__)
 

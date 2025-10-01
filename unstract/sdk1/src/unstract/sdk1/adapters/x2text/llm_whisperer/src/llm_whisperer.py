@@ -76,9 +76,9 @@ class LLMWhisperer(X2TextAdapter):
         self,
         request_method: HTTPMethod,
         request_endpoint: str,
-        headers: dict[str, Any] | None = None,
-        params: dict[str, Any] | None = None,
-        data: Any | None = None,
+        headers: dict[str, object] | None = None,
+        params: dict[str, object] | None = None,
+        data: object | None = None,
     ) -> Response:
         """Makes a request to LLMWhisperer service.
 
@@ -230,16 +230,16 @@ class LLMWhisperer(X2TextAdapter):
         Returns:
             WhisperStatus: Status of the extraction
         """
-        POLL_INTERVAL = WhispererDefaults.POLL_INTERVAL
-        MAX_POLLS = WhispererDefaults.MAX_POLLS
+        poll_interval = WhispererDefaults.POLL_INTERVAL
+        max_polls = WhispererDefaults.MAX_POLLS
         request_count = 0
 
         # Check status in fixed intervals upto max poll count.
         while True:
             request_count += 1
             logger.info(
-                f"Checking status with interval: {POLL_INTERVAL}s"
-                f", request count: {request_count} [max: {MAX_POLLS}]"
+                f"Checking status with interval: {poll_interval}s"
+                f", request count: {request_count} [max: {max_polls}]"
             )
             status_response = self._make_request(
                 request_method=HTTPMethod.GET,
@@ -260,11 +260,11 @@ class LLMWhisperer(X2TextAdapter):
                 )
 
             # Exit with error if max poll count is reached
-            if request_count >= MAX_POLLS:
+            if request_count >= max_polls:
                 raise ExtractorError(
                     f"Unable to extract text after attempting {request_count} times"
                 )
-            time.sleep(POLL_INTERVAL)
+            time.sleep(poll_interval)
 
         return status
 
@@ -360,7 +360,8 @@ class LLMWhisperer(X2TextAdapter):
         output_file_path: Path,
         fs: FileStorage | None = None,
     ) -> None:
-        """Writes the extracted text and metadata to the specified output file and metadata file.
+        """Writes the extracted text and metadata to the specified output file and
+        metadata file.
 
         Args:
             output_json (dict): The dictionary containing the extracted data,

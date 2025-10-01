@@ -3,7 +3,6 @@ import logging
 import os
 from hashlib import md5, sha256
 from pathlib import Path
-from typing import Any
 
 from unstract.sdk1.exceptions import FileStorageError
 from unstract.sdk1.file_storage import (
@@ -19,7 +18,7 @@ class ToolUtils:
     """Class containing utility methods."""
 
     @staticmethod
-    def hash_str(string_to_hash: Any, hash_method: str = "sha256") -> str:
+    def hash_str(string_to_hash: object, hash_method: str = "sha256") -> str:
         """Computes the hash for a given input string.
 
         Useful to hash strings needed for caching and other purposes.
@@ -48,7 +47,7 @@ class ToolUtils:
     def load_json(
         file_to_load: str,
         fs: FileStorage | None = None,
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         """Loads and returns a JSON from a file.
 
         Args:
@@ -60,12 +59,12 @@ class ToolUtils:
         if fs is None:
             fs = FileStorage(provider=FileStorageProvider.LOCAL)
         file_contents: str = fs.read(path=file_to_load, mode="r", encoding="utf-8")
-        loaded_json: dict[str, Any] = json.loads(file_contents)
+        loaded_json: dict[str, object] = json.loads(file_contents)
         return loaded_json
 
     @staticmethod
     def dump_json(
-        json_to_dump: dict[str, Any],
+        json_to_dump: dict[str, object],
         file_to_dump: str,
         fs: FileStorage | None = None,
     ) -> None:
@@ -81,7 +80,7 @@ class ToolUtils:
         fs.write(path=file_to_dump, mode="w", data=compact_json)
 
     @staticmethod
-    def json_to_str(json_to_dump: dict[str, Any]) -> str:
+    def json_to_str(json_to_dump: dict[str, object]) -> str:
         """Helps convert the JSON to a string. Useful for dumping the JSON to a file.
 
         Args:
@@ -185,7 +184,7 @@ class ToolUtils:
             raise FileStorageError(f"Invalid provider '{provider_name}'") from None
 
     @staticmethod
-    def get_filestorage_credentials(var_name: str) -> dict[str, Any]:
+    def get_filestorage_credentials(var_name: str) -> dict[str, object]:
         """Retrieve the file storage credentials based on an environment variable."""
         credentials = os.environ.get(var_name, "{}")
         try:
@@ -199,7 +198,7 @@ class ToolUtils:
     @staticmethod
     def get_workflow_filestorage(
         provider: FileStorageProvider,
-        credentials: dict[str, Any] = None,
+        credentials: dict[str, object] = None,
     ) -> SharedTemporaryFileStorage:
         """Get the file storage for the workflow."""
         if credentials is None:

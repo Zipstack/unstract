@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import json
 import logging
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from llama_index.core import Document
 from llama_index.core.node_parser import SentenceSplitter
@@ -18,18 +20,19 @@ from unstract.sdk1.adapters.vectordb.no_op.src.no_op_custom_vectordb import (
     NoOpCustomVectorDB,
 )
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants
-from unstract.sdk1.adapters.x2text.dto import TextExtractionResult
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import LLMWhispererV2
 from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.embedding import EmbeddingCompat
 from unstract.sdk1.exceptions import IndexingError, SdkError, VectorDBError, X2TextError
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
 from unstract.sdk1.platform import PlatformHelper
-from unstract.sdk1.tool.base import BaseTool
 from unstract.sdk1.utils.common import capture_metrics, log_elapsed
 from unstract.sdk1.utils.tool import ToolUtils
 from unstract.sdk1.vector_db import VectorDB
 from unstract.sdk1.x2txt import X2Text
+
+if TYPE_CHECKING:
+    from unstract.sdk1.tool.base import BaseTool
 
 logger = logging.getLogger(__name__)
 
@@ -64,8 +67,8 @@ class Index:
         embedding_instance_id: str,
         vector_db_instance_id: str,
         doc_id: str,
-        usage_kwargs: dict[Any, Any] = None,
-    ) -> Any:
+        usage_kwargs: dict[object, object] = None,
+    ) -> object:
         if usage_kwargs is None:
             usage_kwargs = {}
         embedding = EmbeddingCompat(
@@ -175,7 +178,7 @@ class Index:
         )
         try:
             if enable_highlight and isinstance(x2text.x2text_instance, LLMWhispererV2):
-                process_response: TextExtractionResult = x2text.process(
+                process_response = x2text.process(
                     input_file_path=file_path,
                     output_file_path=output_file_path,
                     enable_highlight=enable_highlight,
@@ -187,7 +190,7 @@ class Index:
                 if hasattr(self.tool, "update_exec_metadata"):
                     self.tool.update_exec_metadata(metadata)
             else:
-                process_response: TextExtractionResult = x2text.process(
+                process_response = x2text.process(
                     input_file_path=file_path,
                     output_file_path=output_file_path,
                     tags=tags,

@@ -10,7 +10,8 @@ from unstract.sdk1.tool.stream import StreamMixin
 
 
 class UsageHandler(StreamMixin, BaseCallbackHandler):
-    """UsageHandler class is a subclass of BaseCallbackHandler and is responsible for handling usage events in the LLM or Embedding models.
+    """UsageHandler class is a subclass of BaseCallbackHandler and is responsible for
+    handling usage events in the LLM or Embedding models.
 
     It provides methods for starting and ending traces, as well as handling event
     starts and ends.

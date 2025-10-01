@@ -1,4 +1,3 @@
-from typing import Any
 
 
 class SdkError(Exception):
@@ -35,11 +34,12 @@ class SdkError(Exception):
                 self.status_code = actual_err.http_status
 
     def __str__(self) -> str:
+        """Return string representation of the SdkError."""
         return self.message
 
 
 class IndexingError(SdkError):
-    def __init__(self, message: str = "", **kwargs: Any) -> None:
+    def __init__(self, message: str = "", **kwargs: object) -> None:
         """Initialize the IndexingError exception.
 
         Args:

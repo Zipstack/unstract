@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from typing import Any
 
 import litellm
 from llama_index.core.embeddings import BaseEmbedding
@@ -12,8 +11,10 @@ from unstract.sdk1.adapters.embedding1 import adapters
 from unstract.sdk1.constants import ToolEnv
 from unstract.sdk1.exceptions import SdkError
 from unstract.sdk1.platform import PlatformHelper
-from unstract.sdk1.tool.base import BaseTool
 from unstract.sdk1.utils.callback_manager import CallbackManager
+
+if TYPE_CHECKING:
+    from unstract.sdk1.tool.base import BaseTool
 
 
 class Embedding:
@@ -31,10 +32,10 @@ class Embedding:
     def __init__(
         self,
         adapter_id: str = "",
-        adapter_metadata: dict[str, Any] = None,
+        adapter_metadata: dict[str, object] = None,
         adapter_instance_id: str = "",
-        tool: BaseTool = None,
-        kwargs: dict[str, Any] = None,
+        tool: BaseTool | None = None,
+        kwargs: dict[str, object] = None,
     ) -> None:
         """Initialize the Embedding interface.
 
@@ -84,8 +85,8 @@ class Embedding:
             ) from e
 
         try:
-            self.platform_kwargs: dict[str, Any] = kwargs
-            self.kwargs: dict[str, Any] = self.adapter.validate(self._adapter_metadata)
+            self.platform_kwargs: dict[str, object] = kwargs
+            self.kwargs: dict[str, object] = self.adapter.validate(self._adapter_metadata)
         except ValidationError as e:
             raise SdkError("Invalid embedding adapter metadata: " + str(e)) from e
 
@@ -143,10 +144,10 @@ class EmbeddingCompat(BaseEmbedding):
     def __init__(
         self,
         adapter_id: str = "",
-        adapter_metadata: dict[str, Any] = None,
+        adapter_metadata: dict[str, object] = None,
         adapter_instance_id: str = "",
-        tool: BaseTool = None,
-        kwargs: dict[str, Any] = None,
+        tool: BaseTool | None = None,
+        kwargs: dict[str, object] = None,
     ) -> None:
         """Initialize the EmbeddingCompat wrapper for compatibility.
 

@@ -2,7 +2,6 @@ import json
 import logging
 from datetime import datetime
 from hashlib import sha256
-from typing import Any
 
 import filetype
 import fsspec
@@ -25,7 +24,7 @@ class FileStorage(FileStorageInterface):
     provider: FileStorageProvider
 
     def __init__(
-        self, provider: FileStorageProvider, **storage_config: dict[str, Any]
+        self, provider: FileStorageProvider, **storage_config: dict[str, object]
     ) -> None:
         """Initialize the FileStorage implementation.
 
@@ -98,7 +97,8 @@ class FileStorage(FileStorageInterface):
         location: int = 0,
         position: FileSeekPosition = FileSeekPosition.START,
     ) -> int:
-        """Place the file pointer to the mentioned location in the file relative to the position.
+        """Place the file pointer to the mentioned location in the file relative to the
+        position.
 
         Args:
             path (str): path of the file
@@ -272,7 +272,8 @@ class FileStorage(FileStorageInterface):
 
     @skip_local_cache
     def upload(self, from_path: str, to_path: str) -> None:
-        """Uploads the file mentioned in from_path (local system) to to_path (remote system).
+        """Uploads the file mentioned in from_path (local system) to to_path (remote
+        system).
 
         The instance calling the method needs to be the FileStorage initialised with
         the remote file system where the file needs to be uploaded.
@@ -287,7 +288,8 @@ class FileStorage(FileStorageInterface):
         self.fs.put(from_path, to_path)
 
     def glob(self, path: str) -> list[str]:
-        """Lists files under path matching the pattern sepcified as part of path in the argument.
+        """Lists files under path matching the pattern sepcified as part of path in the
+        argument.
 
         Args:
             path (str): path to the directory where files matching the
@@ -325,8 +327,8 @@ class FileStorage(FileStorageInterface):
     def json_dump(
         self,
         path: str,
-        data: dict[str, Any],
-        **kwargs: dict[Any, Any],  # type: ignore
+        data: dict[str, object],
+        **kwargs: dict[object, object],  # type: ignore
     ) -> None:
         """Dumps data into the given file specified by path.
 
@@ -344,8 +346,8 @@ class FileStorage(FileStorageInterface):
     def yaml_dump(
         self,
         path: str,
-        data: dict[str, Any],
-        **kwargs: dict[Any, Any],  # type: ignore
+        data: dict[str, object],
+        **kwargs: dict[object, object],  # type: ignore
     ) -> None:
         """Dumps data into the given file specified by path.
 
@@ -361,16 +363,16 @@ class FileStorage(FileStorageInterface):
             raise FileOperationError(str(e)) from e
 
     @skip_local_cache
-    def json_load(self, path: str) -> dict[Any, Any]:
+    def json_load(self, path: str) -> dict[object, object]:
         with self.fs.open(path=path) as json_file:
-            data: dict[str, Any] = json.load(json_file)
+            data: dict[str, object] = json.load(json_file)
             return data
 
     @skip_local_cache
     def yaml_load(
         self,
         path: str,
-    ) -> dict[Any, Any]:
+    ) -> dict[object, object]:
         """Loads data from a file as yaml.
 
         Args:
@@ -380,7 +382,7 @@ class FileStorage(FileStorageInterface):
             dict[Any, Any]: Data loaded as yaml
         """
         with self.fs.open(path=path) as f:
-            data: dict[str, Any] = yaml.safe_load(f)
+            data: dict[str, object] = yaml.safe_load(f)
             return data
 
     def guess_extension(self, path: str) -> str:
@@ -403,7 +405,9 @@ class FileStorage(FileStorageInterface):
             file_extension = file_type.EXTENSION
         return file_extension
 
-    def walk(self, path: str, max_depth: int | None = None, topdown: bool = True) -> Any:
+    def walk(
+        self, path: str, max_depth: int | None = None, topdown: bool = True
+    ) -> object:
         """Walks the dir in the path and returns the list of files/dirs.
 
         Args:

@@ -2,7 +2,7 @@ import logging
 import os
 import re
 from collections.abc import Callable, Generator
-from typing import Any, cast
+from typing import cast
 
 import litellm
 
@@ -46,12 +46,12 @@ class LLM:
     def __init__(
         self,
         adapter_id: str = "",
-        adapter_metadata: dict[str, Any] = None,
+        adapter_metadata: dict[str, object] = None,
         adapter_instance_id: str = "",
         tool: BaseTool = None,
-        usage_kwargs: dict[str, Any] = None,
+        usage_kwargs: dict[str, object] = None,
         system_prompt: str = "",
-        kwargs: dict[str, Any] = None,
+        kwargs: dict[str, object] = None,
         capture_metrics: bool = False,
     ) -> None:
         """Initialize the LLM interface.
@@ -135,7 +135,7 @@ class LLM:
         # Metrics capture.
         self._run_id = self.platform_kwargs.get("run_id")
         self._capture_metrics = self.platform_kwargs.get("capture_metrics")
-        self._metrics: dict[str, Any] = {}
+        self._metrics: dict[str, object] = {}
 
     def test_connection(self) -> bool:
         """Test connection to the LLM provider."""
@@ -159,8 +159,9 @@ class LLM:
             raise e
 
     @capture_metrics
-    def complete(self, prompt: str, **kwargs: dict[str, Any]) -> dict[str, Any]:
-        """Return a standard chat completion dict and optionally captures metrics if run ID is provided.
+    def complete(self, prompt: str, **kwargs: dict[str, object]) -> dict[str, object]:
+        """Return a standard chat completion dict and optionally captures metrics if run
+        ID is provided.
 
         Args:
             prompt   (str)   The input text prompt for generating the completion.
@@ -185,7 +186,7 @@ class LLM:
         # if hasattr(self, "thinking_dict") and self.thinking_dict is not None:
         #     completion_kwargs["temperature"] = 1
 
-        response: dict[str, Any] = litellm.completion(
+        response: dict[str, object] = litellm.completion(
             messages=messages,
             **completion_kwargs,
         )
@@ -200,9 +201,9 @@ class LLM:
         # The typecasting was required to stop the type checker from complaining.
         # Improvements in readability are definitely welcome.
         extract_json: bool = cast("bool", kwargs.get("extract_json", False))
-        post_process_fn: Callable[[LLMResponseCompat, bool], dict[str, Any]] | None = (
+        post_process_fn: Callable[[LLMResponseCompat, bool], dict[str, object]] | None = (
             cast(
-                "Callable[[LLMResponseCompat, bool], dict[str, Any]] | None",
+                "Callable[[LLMResponseCompat, bool], dict[str, object]] | None",
                 kwargs.get("process_text", None),
             )
         )
@@ -217,8 +218,8 @@ class LLM:
     def stream_complete(
         self,
         prompt: str,
-        callback_manager: Any | None = None,
-        **kwargs: Any,
+        callback_manager: object | None = None,
+        **kwargs: object,
     ) -> Generator[str, None, None]:
         """Yield chunks of text as they arrive from the provider."""
         messages = [
@@ -251,7 +252,7 @@ class LLM:
 
             yield text
 
-    async def acomplete(self, prompt: str, **kwargs: Any) -> dict[str, Any]:
+    async def acomplete(self, prompt: str, **kwargs: object) -> dict[str, object]:
         """Asynchronous chat completion (wrapper around ``litellm.acompletion``)."""
         messages = [
             {"role": "system", "content": self._system_prompt},
@@ -278,7 +279,7 @@ class LLM:
 
     @classmethod
     def get_context_window_size(
-        cls, adapter_id: str, adapter_metadata: dict[str, Any]
+        cls, adapter_id: str, adapter_metadata: dict[str, object]
     ) -> int:
         """Returns the context window size of the LLM."""
         try:
@@ -315,14 +316,14 @@ class LLM:
         """
         return self.kwargs["model"]
 
-    def get_metrics(self) -> dict[str, Any]:
+    def get_metrics(self) -> dict[str, object]:
         return self._metrics
 
-    def get_usage_reason(self) -> Any:
+    def get_usage_reason(self) -> object:
         return self.platform_kwargs.get("llm_usage_reason")
 
     def _record_usage(
-        self, model: str, messages: list[dict[str, str]], usage: Any, llm_api: str
+        self, model: str, messages: list[dict[str, str]], usage: object, llm_api: str
     ) -> None:
         prompt_tokens = token_counter(model=model, messages=messages)
         all_tokens = TokenCounterCompat(
@@ -346,9 +347,9 @@ class LLM:
         self,
         response_text: str,
         extract_json: bool,
-        post_process_fn: Callable[[LLMResponseCompat, bool], dict[str, Any]] | None,
-    ) -> tuple[str, dict[str, Any]]:
-        post_processed_output: dict[str, Any] = {}
+        post_process_fn: Callable[[LLMResponseCompat, bool], dict[str, object]] | None,
+    ) -> tuple[str, dict[str, object]]:
+        post_processed_output: dict[str, object] = {}
 
         if extract_json:
             start = response_text.find(LLM.JSON_CONTENT_MARKER)

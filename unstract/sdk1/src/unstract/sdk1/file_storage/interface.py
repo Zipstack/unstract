@@ -127,5 +127,5 @@ class FileStorageInterface(ABC):
         pass
 
     @abstractmethod
-    def walk(self, path: str) -> Any:
+    def walk(self, path: str) -> object:
         pass

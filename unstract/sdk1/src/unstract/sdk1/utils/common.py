@@ -1,14 +1,17 @@
+from __future__ import annotations
+
 import functools
 import logging
 import time
 import uuid
-from typing import Any
-
-from requests import Response
-from requests.exceptions import RequestException
+from typing import TYPE_CHECKING
 
 from unstract.sdk1.constants import Common, LogLevel, MimeType
 from unstract.sdk1.utils.metrics_mixin import MetricsMixin
+
+if TYPE_CHECKING:
+    from requests import Response
+    from requests.exceptions import RequestException
 
 logger = logging.getLogger(__name__)
 
@@ -140,16 +143,16 @@ PY_TO_UNSTRACT_LOG_LEVEL = {
 }
 
 
-def log_elapsed(operation: str) -> Any:
+def log_elapsed(operation: str) -> object:
     """Adds an elapsed time log.
 
     Args:
         operation (str): Operation being measured
     """
 
-    def decorator(func: Any) -> Any:
+    def decorator(func: object) -> object:
         @functools.wraps(func)
-        def wrapper(*args, **kwargs: Any) -> Any:
+        def wrapper(*args: object, **kwargs: object) -> object:
             start_time = time.time()
             try:
                 result = func(*args, **kwargs)
@@ -164,11 +167,11 @@ def log_elapsed(operation: str) -> Any:
     return decorator
 
 
-def capture_metrics(func: Any) -> Any:
+def capture_metrics(func: object) -> object:
     """Decorator to capture metrics at the start and end of a function."""
 
     @functools.wraps(func)
-    def wrapper(self: Any, *args, **kwargs: Any) -> Any:
+    def wrapper(self: object, *args: object, **kwargs: object) -> object:
         # Ensure the required attributes exist; if not,
         # execute the function and return its result
         if not all(

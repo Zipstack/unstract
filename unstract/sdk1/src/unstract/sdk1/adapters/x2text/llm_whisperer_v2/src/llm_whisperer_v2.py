@@ -1,8 +1,8 @@
+from __future__ import annotations
+
 import logging
 import os
-from typing import Any
-
-import requests
+from typing import TYPE_CHECKING, Any
 
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants
 from unstract.sdk1.adapters.x2text.dto import (
@@ -18,6 +18,9 @@ from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.dto import (
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.helper import LLMWhispererHelper
 from unstract.sdk1.adapters.x2text.x2text_adapter import X2TextAdapter
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
+
+if TYPE_CHECKING:
+    import requests
 
 logger = logging.getLogger(__name__)
 

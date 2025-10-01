@@ -1,4 +1,3 @@
-from typing import Any
 
 import requests
 
@@ -55,7 +54,7 @@ class ToolCache(PlatformHelper):
             )
             return False
 
-    def get(self, key: str) -> Any | None:
+    def get(self, key: str) -> object | None:
         """Gets the value for a key in the cache.
 
         Args:

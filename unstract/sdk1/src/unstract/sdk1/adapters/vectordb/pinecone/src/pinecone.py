@@ -1,6 +1,5 @@
 import logging
 import os
-from typing import Any
 
 from llama_index.core.schema import BaseNode
 from llama_index.core.vector_stores.types import BasePydanticVectorStore
@@ -32,7 +31,7 @@ class Constants:
 
 
 class Pinecone(VectorDBAdapter):
-    def __init__(self, settings: dict[str, Any]) -> None:
+    def __init__(self, settings: dict[str, object]) -> None:
         """Initialize the Pinecone vector database adapter.
 
         Args:
@@ -123,11 +122,11 @@ class Pinecone(VectorDBAdapter):
             self._client.delete_index(self._collection_name)
         return test_result
 
-    def close(self, **kwargs: Any) -> None:
+    def close(self, **kwargs: object) -> None:
         # Close connection is not defined for this client
         pass
 
-    def delete(self, ref_doc_id: str, **delete_kwargs: dict[Any, Any]) -> None:
+    def delete(self, ref_doc_id: str, **delete_kwargs: dict[object, object]) -> None:
         specification = self._config.get(Constants.SPECIFICATION)
         if specification == Constants.SPEC_SERVERLESS:
             # To delete all records representing chunks of a single document,

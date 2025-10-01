@@ -1,5 +1,4 @@
 import time
-from typing import Any
 
 from llama_index.core.schema import TextNode
 from llama_index.core.vector_stores.types import VectorStore, VectorStoreQueryResult
@@ -20,7 +19,7 @@ class NoOpCustomVectorDB(VectorStore):
         self.wait_time = wait_time
         self.dim = dim
 
-    def query(self, query: Any, **kwargs: Any) -> VectorStoreQueryResult:
+    def query(self, query: object, **kwargs: object) -> VectorStoreQueryResult:
         """Query vector store."""
         node1 = TextNode(text="This is a dummy document.", id_="1")
         similarity_scores = [0.9]

@@ -17,6 +17,7 @@ class WhispererRequestParams:
     enable_highlight: bool = False
 
     def __post_init__(self) -> None:
+        """Post-initialization processing for LLMWhisperer V2 request data."""
         # TODO: Allow list of tags once it's supported in LLMW v2
         if isinstance(self.tag, list):
             self.tag = self.tag[0] if self.tag else None

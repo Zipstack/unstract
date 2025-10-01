@@ -1,16 +1,20 @@
+from __future__ import annotations
+
 import os
-from typing import Any
+from typing import TYPE_CHECKING
 from urllib.parse import quote_plus
 
 import psycopg2
-from llama_index.core.vector_stores.types import BasePydanticVectorStore
 from llama_index.vector_stores.postgres import PGVectorStore
-from psycopg2._psycopg import connection
 
 from unstract.sdk1.adapters.exceptions import AdapterError
 from unstract.sdk1.adapters.vectordb.constants import VectorDbConstants
 from unstract.sdk1.adapters.vectordb.helper import VectorDBHelper
 from unstract.sdk1.adapters.vectordb.vectordb_adapter import VectorDBAdapter
+
+if TYPE_CHECKING:
+    from llama_index.core.vector_stores.types import BasePydanticVectorStore
+    from psycopg2._psycopg import connection
 
 
 class Constants:
@@ -24,7 +28,7 @@ class Constants:
 
 
 class Postgres(VectorDBAdapter):
-    def __init__(self, settings: dict[str, Any]) -> None:
+    def __init__(self, settings: dict[str, object]) -> None:
         """Initialize the Postgres vector database adapter.
 
         Args:
@@ -115,6 +119,6 @@ class Postgres(VectorDBAdapter):
 
         return test_result
 
-    def close(self, **kwargs: Any) -> None:
+    def close(self, **kwargs: object) -> None:
         if self._client:
             self._client.close()

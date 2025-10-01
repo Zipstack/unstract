@@ -1,6 +1,5 @@
 import logging
 import os
-from typing import Any
 
 import weaviate
 from llama_index.core.vector_stores.types import BasePydanticVectorStore
@@ -22,7 +21,7 @@ class Constants:
 
 
 class Weaviate(VectorDBAdapter):
-    def __init__(self, settings: dict[str, Any]) -> None:
+    def __init__(self, settings: dict[str, object]) -> None:
         """Initialize the Weaviate vector database adapter.
 
         Args:
@@ -102,6 +101,6 @@ class Weaviate(VectorDBAdapter):
             self._client.collections.delete(self._collection_name)
         return test_result
 
-    def close(self, **kwargs: Any) -> None:
+    def close(self, **kwargs: object) -> None:
         if self._client:
             self._client.close(**kwargs)

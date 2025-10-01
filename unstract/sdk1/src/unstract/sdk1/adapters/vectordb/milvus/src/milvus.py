@@ -1,14 +1,18 @@
-import os
-from typing import Any
+from __future__ import annotations
 
-from llama_index.core.vector_stores.types import VectorStore
+import os
+from typing import TYPE_CHECKING
+
 from llama_index.vector_stores.milvus import MilvusVectorStore
-from pymilvus import MilvusClient
 
 from unstract.sdk1.adapters.exceptions import AdapterError
 from unstract.sdk1.adapters.vectordb.constants import VectorDbConstants
 from unstract.sdk1.adapters.vectordb.helper import VectorDBHelper
 from unstract.sdk1.adapters.vectordb.vectordb_adapter import VectorDBAdapter
+
+if TYPE_CHECKING:
+    from llama_index.core.vector_stores.types import VectorStore
+    from pymilvus import MilvusClient
 
 
 class Constants:
@@ -18,7 +22,7 @@ class Constants:
 
 
 class Milvus(VectorDBAdapter):
-    def __init__(self, settings: dict[str, Any]) -> None:
+    def __init__(self, settings: dict[str, object]) -> None:
         """Initialize Milvus adapter.
 
         Args:
@@ -81,6 +85,6 @@ class Milvus(VectorDBAdapter):
             self._client.drop_collection(self._collection_name)
         return test_result
 
-    def close(self, **kwargs: Any) -> None:
+    def close(self, **kwargs: object) -> None:
         if self._client:
             self._client.close()
