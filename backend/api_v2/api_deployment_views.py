@@ -71,6 +71,7 @@ class DeploymentExecution(views.APIView):
         llm_profile_id = serializer.validated_data.get(ApiExecution.LLM_PROFILE_ID)
         hitl_queue_name = serializer.validated_data.get(ApiExecution.HITL_QUEUE_NAME)
         hitl_packet_id = serializer.validated_data.get(ApiExecution.HITL_PACKET_ID)
+        custom_data = serializer.validated_data.get(ApiExecution.CUSTOM_DATA)
 
         if presigned_urls:
             DeploymentHelper.load_presigned_files(presigned_urls, file_objs)
@@ -87,6 +88,7 @@ class DeploymentExecution(views.APIView):
             llm_profile_id=llm_profile_id,
             hitl_queue_name=hitl_queue_name,
             hitl_packet_id=hitl_packet_id,
+            custom_data=custom_data,
             request_headers=dict(request.headers),
         )
         if "error" in response and response["error"]:

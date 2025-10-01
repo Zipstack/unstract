@@ -65,6 +65,7 @@ EXECUTION_EXCLUDED_PARAMS = {
     "llm_profile_id",
     "hitl_queue_name",
     "hitl_packet_id",
+    "custom_data",
 }
 
 
@@ -107,31 +108,28 @@ class WorkflowHelper:
         BATCH_SIZE = Configuration.get_value_by_organization(
             config_key=ConfigKey.MAX_PARALLEL_FILE_BATCHES, organization=organization
         )  # Max number of batches
+        BATCH_SIZE = (
+            int(BATCH_SIZE)
+            if isinstance(BATCH_SIZE, int) or str(BATCH_SIZE).isdigit()
+            else 1
+        )
         file_items = list(json_serializable_files.items())
 
         # Calculate distribution
         num_files = len(file_items)
         # Target number of batches (can't exceed number of files)
         num_batches = min(BATCH_SIZE, num_files)
+        # Guard against invalid batch sizes
+        if num_batches <= 0:
+            num_batches = 1
 
-        # Distribute files as evenly as possible
-        base_items_per_batch = num_files // num_batches
-        remainder = num_files % num_batches
-
-        # Create batches
-        batches = []
-        start_index = 0
-
-        for i in range(num_batches):
-            # First 'remainder' batches get one extra item
-            batch_size = base_items_per_batch + (1 if i < remainder else 0)
-
-            if start_index < len(file_items):
-                end_index = min(start_index + batch_size, len(file_items))
-                batch = file_items[start_index:end_index]
-                if batch:  # Only add non-empty batches
-                    batches.append(batch)
-                start_index = end_index
+        # Round-robin distribution for maintaining order in case its sorted
+        batches = [[] for _ in range(num_batches)]
+        for i, file_item in enumerate(file_items):
+            batch_index = i % num_batches
+            batches[batch_index].append(file_item)
+        # Remove empties when num_files < num_batches
+        batches = [b for b in batches if b]
 
         return batches
 
@@ -151,6 +149,7 @@ class WorkflowHelper:
         execution_mode: tuple[str, str],
         use_file_history: bool,
         llm_profile_id: str | None,
+        custom_data: dict[str, Any] | None = None,
     ) -> str | None:
         total_files = len(input_files)
         workflow_log.publish_initial_workflow_logs(total_files=total_files)
@@ -184,6 +183,7 @@ class WorkflowHelper:
             else str(execution_mode)
         )
         result = None
+
         logger.info(
             f"Execution {workflow_execution.id} processing {total_files} files in {len(batches)} batches"
         )
@@ -202,6 +202,7 @@ class WorkflowHelper:
                 use_file_history=use_file_history,
                 q_file_no_list=list(q_file_no_list) if q_file_no_list else [],
                 llm_profile_id=llm_profile_id,
+                custom_data=custom_data,
             )
             batch_data = FileBatchData(files=batch, file_data=file_data)
 
@@ -269,6 +270,7 @@ class WorkflowHelper:
         llm_profile_id: str | None = None,
         hitl_queue_name: str | None = None,
         packet_id: str | None = None,
+        custom_data: dict[str, Any] | None = None,
     ) -> ExecutionResponse:
         tool_instances: list[ToolInstance] = (
             ToolInstanceHelper.get_tool_instances_by_workflow(
@@ -321,6 +323,7 @@ class WorkflowHelper:
                 use_file_history=use_file_history,
                 execution_mode=execution_mode,
                 llm_profile_id=llm_profile_id,
+                custom_data=custom_data,
             )
             api_results = []
             return ExecutionResponse(
@@ -440,6 +443,7 @@ class WorkflowHelper:
         llm_profile_id: str | None = None,
         hitl_queue_name: str | None = None,
         hitl_packet_id: str | None = None,
+        custom_data: dict[str, Any] | None = None,
     ) -> ExecutionResponse:
         """Adding a workflow to the queue for execution.
 
@@ -481,6 +485,7 @@ class WorkflowHelper:
                     "llm_profile_id": llm_profile_id,
                     "hitl_queue_name": hitl_queue_name,
                     "hitl_packet_id": hitl_packet_id,
+                    "custom_data": custom_data,
                 },
                 queue=queue,
             )
@@ -700,6 +705,7 @@ class WorkflowHelper:
                 llm_profile_id=kwargs.get("llm_profile_id"),
                 hitl_queue_name=kwargs.get("hitl_queue_name"),
                 packet_id=hitl_packet_id_from_kwargs,
+                custom_data=kwargs.get("custom_data"),
             )
         except Exception as error:
             error_message = traceback.format_exc()

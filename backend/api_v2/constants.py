@@ -12,3 +12,4 @@ class ApiExecution:
     HITL_QUEUE_NAME: str = "hitl_queue_name"
     HITL_PACKET_ID: str = "hitl_packet_id"
     PRESIGNED_URLS: str = "presigned_urls"
+    CUSTOM_DATA: str = "custom_data"

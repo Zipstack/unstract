@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -124,6 +125,27 @@ class GoogleDriveFS(UnstractFileSystem):
             bool: True if the path is a directory, False otherwise.
         """
         return metadata.get("type") == "directory"
+
+    def extract_modified_date(self, metadata: dict[str, Any]) -> datetime | None:
+        """Extract the last modified date from Google Drive metadata.
+
+        Args:
+            metadata: File metadata dictionary from fsspec
+
+        Returns:
+            datetime object or None if not available
+        """
+        modified_time = metadata.get("modifiedTime") or metadata.get("modified")
+        if isinstance(modified_time, datetime):
+            return modified_time
+        elif isinstance(modified_time, str):
+            try:
+                return datetime.fromisoformat(modified_time.replace("Z", "+00:00"))
+            except ValueError:
+                logger.warning(f"[Google Drive] Invalid datetime format: {modified_time}")
+                return None
+        logger.debug(f"[Google Drive] No modified date found in metadata: {metadata}")
+        return None
 
     def test_credentials(self) -> bool:
         """To test credentials for Google Drive."""

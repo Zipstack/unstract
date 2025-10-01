@@ -60,11 +60,18 @@ class VariableReplacementHelper:
     @staticmethod
     def identify_variable_type(variable: str) -> VariableType:
         variable_type: VariableType
-        pattern = re.compile(VariableConstants.DYNAMIC_VARIABLE_URL_REGEX)
-        if re.findall(pattern, variable):
-            variable_type = VariableType.DYNAMIC
+
+        # Check for custom_data variable type first
+        custom_data_pattern = re.compile(VariableConstants.CUSTOM_DATA_VARIABLE_REGEX)
+        if re.findall(custom_data_pattern, variable):
+            variable_type = VariableType.CUSTOM_DATA
         else:
-            variable_type = VariableType.STATIC
+            # Check for dynamic variable type
+            dynamic_pattern = re.compile(VariableConstants.DYNAMIC_VARIABLE_URL_REGEX)
+            if re.findall(dynamic_pattern, variable):
+                variable_type = VariableType.DYNAMIC
+            else:
+                variable_type = VariableType.STATIC
         return variable_type
 
     @staticmethod
@@ -90,6 +97,61 @@ class VariableReplacementHelper:
             variable=static_variable_marker_string,
             value=formatted_api_response,
         )
+        return replaced_prompt
+
+    @staticmethod
+    def replace_custom_data_variable(
+        prompt: str, variable: str, custom_data: dict[str, Any]
+    ) -> str:
+        """Replace custom_data variable in prompt.
+
+        Args:
+            prompt: The prompt containing variables
+            variable: The variable to replace (e.g., "custom_data.name")
+            custom_data: The custom_data data dictionary
+
+        Returns:
+            prompt with variable replaced
+        """
+        if not custom_data:
+            error_msg = f"Custom data is empty. Unable to replace variable {variable}"
+            app.logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        # Extract the path from custom_data.path.to.value
+        custom_data_match = re.search(
+            VariableConstants.CUSTOM_DATA_VARIABLE_REGEX, variable
+        )
+        if not custom_data_match:
+            error_msg = f"Invalid custom_data variable format: {variable}"
+            app.logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        path_str = custom_data_match.group(1)
+        path_parts = path_str.split(".")
+
+        # Navigate through the nested dictionary
+        try:
+            value = custom_data
+            for part in path_parts:
+                value = value[part]
+        except (KeyError, TypeError) as e:
+            error_msg = (
+                f"Path {path_str} not found in custom_data for variable {variable}"
+            )
+            app.logger.error(error_msg)
+            raise ValueError(error_msg) from e
+
+        # Format the value and replace in prompt
+        formatted_value = VariableReplacementHelper.handle_json_and_str_types(value)
+        variable_marker_string = "".join(["{{", variable, "}}"])
+
+        replaced_prompt = VariableReplacementHelper.replace_generic_string_value(
+            prompt=prompt,
+            variable=variable_marker_string,
+            value=formatted_value,
+        )
+
         return replaced_prompt
 
     @staticmethod
