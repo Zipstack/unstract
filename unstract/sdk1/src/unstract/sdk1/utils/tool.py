@@ -115,12 +115,11 @@ class ToolUtils:
     def calculate_page_count(
         pages_string: str, max_page: int = 0, min_page: int = 1
     ) -> int:
-        """Calculates the total number of pages based on the input string of page
-        numbers or ranges.
+        """Calculate total page count from string of page numbers or ranges.
 
-
-        Parses the input 'pages_string' to extract individual page numbers or
-        ranges separated by commas.
+        Calculates the total number of pages based on the input string of page
+        numbers or ranges. Parses the input 'pages_string' to extract individual
+        page numbers or ranges separated by commas.
         Supports ranges like '1-5' or open-ended ranges like '4-'.
         The 'max_page' parameter defines the upper limit for page numbers.
         The 'min_page' parameter defines the lower limit for page numbers.

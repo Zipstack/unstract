@@ -160,9 +160,10 @@ class LLM:
 
     @capture_metrics
     def complete(self, prompt: str, **kwargs: dict[str, object]) -> dict[str, object]:
-        """Return a standard chat completion dict and optionally captures metrics if run
-        ID is provided.
+        """Return a standard chat completion dict with optional metrics capture.
 
+        Return a standard chat completion dict and optionally captures metrics if run
+        ID is provided.
 
         Args:
             prompt   (str)   The input text prompt for generating the completion.

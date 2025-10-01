@@ -127,6 +127,7 @@ ignore = [
     "D103",   # Missing docstring in public function
     "D106",   # Missing docstring in public nested class
     "D417",   # Missing argument description in the docstring
+    "C901",   # `__init__` is too complex (13 > 10)
 ]
 
 [tool.ruff.format]

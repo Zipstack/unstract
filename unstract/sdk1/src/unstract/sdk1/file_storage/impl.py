@@ -97,9 +97,10 @@ class FileStorage(FileStorageInterface):
         location: int = 0,
         position: FileSeekPosition = FileSeekPosition.START,
     ) -> int:
-        """Place the file pointer to the mentioned location in the file relative to the
-        position.
+        """Place file pointer at the specified location relative to position.
 
+        Place the file pointer to the mentioned location in the file relative to the
+        position.
 
         Args:
             path (str): path of the file
@@ -273,12 +274,11 @@ class FileStorage(FileStorageInterface):
 
     @skip_local_cache
     def upload(self, from_path: str, to_path: str) -> None:
-        """Uploads the file mentioned in from_path (local system) to to_path (remote
-        system).
+        """Upload file from local system to remote system.
 
-
-        The instance calling the method needs to be the FileStorage initialised with
-        the remote file system where the file needs to be uploaded.
+        Uploads the file mentioned in from_path (local system) to to_path (remote
+        system). The instance calling the method needs to be the FileStorage
+        initialised with the remote file system where the file needs to be uploaded.
 
         Args:
             from_path (str): Path of the file to be uploaded (local)
@@ -290,9 +290,10 @@ class FileStorage(FileStorageInterface):
         self.fs.put(from_path, to_path)
 
     def glob(self, path: str) -> list[str]:
-        """Lists files under path matching the pattern sepcified as part of path in the
-        argument.
+        """List files matching pattern in path.
 
+        Lists files under path matching the pattern sepcified as part of path in the
+        argument.
 
         Args:
             path (str): path to the directory where files matching the

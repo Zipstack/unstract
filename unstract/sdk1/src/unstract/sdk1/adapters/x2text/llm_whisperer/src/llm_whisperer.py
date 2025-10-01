@@ -360,9 +360,10 @@ class LLMWhisperer(X2TextAdapter):
         output_file_path: Path,
         fs: FileStorage | None = None,
     ) -> None:
-        """Writes the extracted text and metadata to the specified output file and
-        metadata file.
+        """Write extracted text and metadata to output files.
 
+        Writes the extracted text and metadata to the specified output file and
+        metadata file.
 
         Args:
             output_json (dict): The dictionary containing the extracted data,

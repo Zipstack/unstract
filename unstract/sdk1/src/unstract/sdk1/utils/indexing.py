@@ -19,9 +19,10 @@ class IndexingUtils:
         file_hash: str | None = None,
         fs: FileStorage | None = None,
     ) -> str:
-        """Generates a unique index key based on the provided configuration, file
-        information, instance identifiers, and processing options.
+        """Generate unique index key for document indexing.
 
+        Generates a unique index key based on the provided configuration, file
+        information, instance identifiers, and processing options.
 
         Args:
             fs (FileStorage, optional): File storage for remote storage.
