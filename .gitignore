@@ -625,7 +625,7 @@ backend/plugins/subscription/*
 # API Deployment Plugins
 backend/plugins/api/**
 
-# Notfication Plugin
+# Notification Plugin
 backend/plugins/notification/**
 
 # Configuration Plugin
