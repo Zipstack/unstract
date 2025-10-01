@@ -47,6 +47,11 @@ dependencies = [
     "llmwhisperer-client>=2.2.1",
 ]
 
+[project.optional-dependencies]
+aws = ["s3fs[boto3]", "boto3"]
+gcs = ["gcsfs"]
+azure = ["adlfs"]
+
 [dependency-groups]
 dev = [
     "docutils~=0.20.1",
