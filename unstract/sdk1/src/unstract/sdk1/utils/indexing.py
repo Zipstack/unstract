@@ -22,6 +22,7 @@ class IndexingUtils:
         """Generates a unique index key based on the provided configuration, file
         information, instance identifiers, and processing options.
 
+
         Args:
             fs (FileStorage, optional): File storage for remote storage.
 

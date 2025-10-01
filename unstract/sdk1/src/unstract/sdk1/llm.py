@@ -163,6 +163,7 @@ class LLM:
         """Return a standard chat completion dict and optionally captures metrics if run
         ID is provided.
 
+
         Args:
             prompt   (str)   The input text prompt for generating the completion.
             **kwargs (Any)   Additional arguments passed to the completion function.

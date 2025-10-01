@@ -363,6 +363,7 @@ class LLMWhisperer(X2TextAdapter):
         """Writes the extracted text and metadata to the specified output file and
         metadata file.
 
+
         Args:
             output_json (dict): The dictionary containing the extracted data,
                 with "text" as the key for the main content.

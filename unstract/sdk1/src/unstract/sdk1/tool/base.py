@@ -148,6 +148,7 @@ class BaseTool(ABC, StreamMixin):
         """Gets the absolute path to the input file that's meant for the tool being run
         (INFILE).
 
+
         Returns:
             str: Absolute path to the input file
         """
@@ -156,6 +157,7 @@ class BaseTool(ABC, StreamMixin):
     def get_output_dir(self) -> str:
         """Get the absolute path to the output folder where the tool needs to place its
         output file.
+
 
         This is where the tool writes its output files that need to be copied into the
         destination (COPY_TO_FOLDER path).

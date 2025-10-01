@@ -100,6 +100,7 @@ class FileStorage(FileStorageInterface):
         """Place the file pointer to the mentioned location in the file relative to the
         position.
 
+
         Args:
             path (str): path of the file
             location (int): Nth byte position. To be understood in relation to
@@ -275,6 +276,7 @@ class FileStorage(FileStorageInterface):
         """Uploads the file mentioned in from_path (local system) to to_path (remote
         system).
 
+
         The instance calling the method needs to be the FileStorage initialised with
         the remote file system where the file needs to be uploaded.
 
@@ -290,6 +292,7 @@ class FileStorage(FileStorageInterface):
     def glob(self, path: str) -> list[str]:
         """Lists files under path matching the pattern sepcified as part of path in the
         argument.
+
 
         Args:
             path (str): path to the directory where files matching the

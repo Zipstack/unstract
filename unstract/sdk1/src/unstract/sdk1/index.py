@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from llama_index.core import Document
@@ -32,6 +31,8 @@ from unstract.sdk1.vector_db import VectorDB
 from unstract.sdk1.x2txt import X2Text
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from unstract.sdk1.tool.base import BaseTool
 
 logger = logging.getLogger(__name__)

@@ -118,6 +118,7 @@ class ToolUtils:
         """Calculates the total number of pages based on the input string of page
         numbers or ranges.
 
+
         Parses the input 'pages_string' to extract individual page numbers or
         ranges separated by commas.
         Supports ranges like '1-5' or open-ended ranges like '4-'.

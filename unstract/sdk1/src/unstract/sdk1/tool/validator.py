@@ -49,8 +49,8 @@ DefaultsGeneratingValidator = extend_with_default(Draft202012Validator)
 
 
 class ToolValidator:
-    """Class to validate a tool and its configuration
-    before its executed with an input.
+    """Class to validate a tool and its configuration before its executed with an
+    input.
     """
 
     def __init__(self, tool: BaseTool) -> None:
@@ -114,7 +114,6 @@ class ToolValidator:
     def _validate_file_size(self, input_file: Path) -> None:
         """Validates the input file size against the max allowed size set in the tool's
         PROPERTIES.
-
 
         Raises:
             RuntimeError: File size exceeds max allowed size
