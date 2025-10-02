@@ -10,7 +10,6 @@ from llama_index.core.vector_stores.types import (
     VectorStore,
     VectorStoreQueryResult,
 )
-
 from unstract.sdk1.adapters.vectordb import adapters
 from unstract.sdk1.adapters.vectordb.constants import VectorDbConstants
 from unstract.sdk1.adapters.vectordb.exceptions import parse_vector_db_err

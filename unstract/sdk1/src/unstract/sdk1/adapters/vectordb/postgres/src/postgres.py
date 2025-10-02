@@ -6,7 +6,6 @@ from urllib.parse import quote_plus
 
 import psycopg2
 from llama_index.vector_stores.postgres import PGVectorStore
-
 from unstract.sdk1.adapters.exceptions import AdapterError
 from unstract.sdk1.adapters.vectordb.constants import VectorDbConstants
 from unstract.sdk1.adapters.vectordb.helper import VectorDBHelper

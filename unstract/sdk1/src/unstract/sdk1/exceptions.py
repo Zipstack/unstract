@@ -1,5 +1,3 @@
-
-
 class SdkError(Exception):
     DEFAULT_MESSAGE = "Something went wrong"
     actual_err: Exception | None = None
