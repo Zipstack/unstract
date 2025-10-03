@@ -351,8 +351,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             schema_type=schema_type, schema_entity=schema_entity
         )
         return Response(data=json_schema, status=status.HTTP_200_OK)
-      
-      
+
     @action(detail=True, methods=["get"], url_path="users")
     def list_of_shared_users(self, request: Request, pk: str) -> Response:
         """Get list of users with whom the workflow is shared."""
