@@ -6,6 +6,7 @@ import os
 from typing import Any
 
 from connector_v2.models import ConnectorInstance
+from pluggable_apps.feature_registry import FeatureRegistry
 from plugins.workflow_manager.workflow_v2.utils import WorkflowUtil
 from rest_framework.exceptions import APIException
 from usage_v2.helper import UsageHelper
@@ -70,6 +71,7 @@ class DestinationConnector(BaseConnector):
         use_file_history: bool,
         file_execution_id: str | None = None,
         hitl_queue_name: str | None = None,
+        packet_id: str | None = None,
     ) -> None:
         """Initialize a DestinationConnector object.
 
@@ -88,6 +90,7 @@ class DestinationConnector(BaseConnector):
         self.workflow_log = workflow_log
         self.use_file_history = use_file_history
         self.hitl_queue_name = hitl_queue_name
+        self.packet_id = packet_id
         self.workflow = workflow
 
     def _get_endpoint_for_workflow(
@@ -166,6 +169,19 @@ class DestinationConnector(BaseConnector):
         file_execution_id: str,
     ) -> bool:
         """Determines if HITL processing should be performed, returning True if data was pushed to the queue."""
+        # Check packet_id first - it takes precedence over hitl_queue_name
+        if self.packet_id:
+            logger.info(
+                f"API packet override: pushing to packet queue for file {file_name}"
+            )
+            self._push_data_to_queue(
+                file_name=file_name,
+                workflow=workflow,
+                input_file_path=input_file_path,
+                file_execution_id=file_execution_id,
+            )
+            return True
+
         # Check if API deployment requested HITL override
         if self.hitl_queue_name:
             logger.info(f"API HITL override: pushing to queue for file {file_name}")
@@ -175,7 +191,6 @@ class DestinationConnector(BaseConnector):
                 input_file_path=input_file_path,
                 file_execution_id=file_execution_id,
             )
-            logger.info(f"Successfully pushed {file_name} to HITL queue")
             return True
 
         # Skip HITL validation if we're using file_history and no execution result is available
@@ -753,6 +768,7 @@ class DestinationConnector(BaseConnector):
             execution_id=self.execution_id,
             use_file_history=self.use_file_history,
             hitl_queue_name=self.hitl_queue_name,
+            packet_id=self.packet_id,
         )
 
     @classmethod
@@ -781,6 +797,7 @@ class DestinationConnector(BaseConnector):
             use_file_history=config.use_file_history,
             file_execution_id=config.file_execution_id,
             hitl_queue_name=config.hitl_queue_name,
+            packet_id=config.packet_id,
         )
 
         return destination
@@ -840,7 +857,10 @@ class DestinationConnector(BaseConnector):
             None
         """
         if not result:
-            return
+            if not self.packet_id:
+                return
+            # For packet processing, use a placeholder result if none available
+            result = json.dumps({"status": "pending", "message": "Awaiting processing"})
         connector: ConnectorInstance = self.source_endpoint.connector_instance
         # For API deployments, use workflow execution storage instead of connector
         if self.is_api:
@@ -871,6 +891,28 @@ class DestinationConnector(BaseConnector):
             ).to_dict()
 
             queue_result_json = json.dumps(queue_result)
+
+            # Check if this is a packet-based execution
+            if self.packet_id:
+                if not FeatureRegistry.is_hitl_available():
+                    raise ValueError(
+                        "Packet-based HITL processing requires Unstract Enterprise. "
+                        "This feature is not available in the OSS version."
+                    )
+                # Route to packet queue instead of regular HITL queue
+                from pluggable_apps.manual_review_v2.packet_queue_utils import (
+                    PacketQueueUtils,
+                )
+
+                success = PacketQueueUtils.enqueue_to_packet(
+                    packet_id=self.packet_id, queue_result=queue_result
+                )
+                if not success:
+                    error_msg = f"Failed to push {file_name} to packet {self.packet_id}"
+                    logger.error(error_msg)
+                    raise RuntimeError(error_msg)
+                return
+
             conn = QueueUtils.get_queue_inst()
             conn.enqueue(queue_name=q_name, message=queue_result_json)
             logger.info(f"Pushed {file_name} to queue {q_name} with file content")
@@ -922,6 +964,27 @@ class DestinationConnector(BaseConnector):
                     f"Attempted to enqueue empty JSON with TTL for file {file_name}"
                 )
                 raise ValueError("Cannot enqueue empty JSON message")
+
+            # Check if this is a packet-based execution
+            if self.packet_id:
+                if not FeatureRegistry.is_hitl_available():
+                    raise ValueError(
+                        "Packet-based HITL processing requires Unstract Enterprise. "
+                        "This feature is not available in the OSS version."
+                    )
+                # Route to packet queue instead of regular HITL queue
+                from pluggable_apps.manual_review_v2.packet_queue_utils import (
+                    PacketQueueUtils,
+                )
+
+                success = PacketQueueUtils.enqueue_to_packet(
+                    packet_id=self.packet_id, queue_result=queue_result
+                )
+                if not success:
+                    error_msg = f"Failed to push {file_name} to packet {self.packet_id}"
+                    logger.error(error_msg)
+                    raise RuntimeError(error_msg)
+                return
 
             conn = QueueUtils.get_queue_inst()
 
