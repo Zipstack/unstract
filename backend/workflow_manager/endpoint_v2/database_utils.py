@@ -164,19 +164,22 @@ class DatabaseUtils:
                 FileProcessingStatus.ERROR if error else FileProcessingStatus.SUCCESS
             )
         if column_mode == ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN:
+            v2_col_name = f"{single_column_name}_v2"
+            has_v2_col = (
+                (table_info is None)
+                or any(k.lower() == v2_col_name.lower() for k in table_info)
+                if table_info
+                else True
+            )
             if isinstance(data, str):
                 wrapped_dict = {"result": data}
                 values[single_column_name] = wrapped_dict
-                if table_info and any(
-                    k.lower() == f"{single_column_name}_v2".lower() for k in table_info
-                ):
-                    values[f"{single_column_name}_v2"] = wrapped_dict
+                if has_v2_col:
+                    values[v2_col_name] = wrapped_dict
             else:
                 values[single_column_name] = data
-                if table_info and any(
-                    k.lower() == f"{single_column_name}_v2".lower() for k in table_info
-                ):
-                    values[f"{single_column_name}_v2"] = data
+                if has_v2_col:
+                    values[v2_col_name] = data
         values[file_path_name] = file_path
         values[execution_id_name] = execution_id
         logger.debug(f"database_utils.py get_columns_and_values  values: {values}")
@@ -248,8 +251,7 @@ class DatabaseUtils:
         sql = db_class.get_sql_insert_query(
             table_name=table_name, sql_keys=sql_keys, sql_values=sql_values
         )
-
-        logger.debug(f"inserting into table {table_name} with: {sql} query")
+        logger.debug(f"inserting into table_name: {table_name} with sql_query: {sql}")
         logger.debug(f"sql_values: {sql_values}")
 
         try:
@@ -287,8 +289,12 @@ class DatabaseUtils:
         Raises:
             e: _description_
         """
-        sql = db_class.create_table_query(table=table_name, database_entry=database_entry)
-        logger.debug(f"creating table {table_name} with: {sql} query")
+        sql = db_class.create_table_query(
+            table=table_name,
+            database_entry=database_entry,
+            permanent_columns=TableColumns.PERMANENT_COLUMNS,
+        )
+        logger.info(f"creating table {table_name} with: {sql} query")
 
         try:
             db_class.execute_query(
@@ -296,4 +302,35 @@ class DatabaseUtils:
             )
         except UnstractDBConnectorException as e:
             raise UnstractDBException(detail=e.detail) from e
-        logger.debug(f"successfully created table {table_name} with: {sql} query")
+        logger.info(f"successfully created table {table_name} with: {sql} query")
+
+    @staticmethod
+    def migrate_table_to_v2(
+        db_class: UnstractDB,
+        engine: Any,
+        table_name: str,
+        column_name: str,
+    ) -> dict[str, str]:
+        """Migrate table to v2 by adding _v2 columns.
+
+        Args:
+            db_class (UnstractDB): DB Connection class
+            engine (Any): Database engine
+            table_name (str): Name of the table to migrate
+            column_name (str): Base column name for v2 migration
+
+        Returns:
+            dict[str, str]: Updated table information schema
+
+        Raises:
+            UnstractDBException: If migration fails
+        """
+        try:
+            result: dict[str, str] = db_class.migrate_table_to_v2(
+                table_name=table_name,
+                column_name=column_name,
+                engine=engine,
+            )
+            return result
+        except UnstractDBConnectorException as e:
+            raise UnstractDBException(detail=e.detail) from e

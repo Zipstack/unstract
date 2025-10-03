@@ -2,13 +2,18 @@ from typing import Any
 
 from flask import current_app as app
 
+from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.constants import RunLevel, VariableType
 from unstract.prompt_service.helpers.variable_replacement import (
     VariableReplacementHelper,
 )
 from unstract.prompt_service.utils.log import publish_log
-from unstract.sdk.constants import LogLevel
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.constants import LogLevel
+else:
+    from unstract.sdk.constants import LogLevel
 
 
 class VariableReplacementService:
@@ -34,6 +39,7 @@ class VariableReplacementService:
         tool_id: str,
         prompt_name: str,
         doc_name: str,
+        custom_data: dict[str, Any] = None,
     ) -> str:
         """Replaces variables in prompt.
 
@@ -66,13 +72,17 @@ class VariableReplacementService:
         try:
             variable_map = prompt[PSKeys.VARIABLE_MAP]
             prompt_text = VariableReplacementService._execute_variable_replacement(
-                prompt_text=prompt[PSKeys.PROMPT], variable_map=variable_map
+                prompt_text=prompt[PSKeys.PROMPT],
+                variable_map=variable_map,
+                custom_data=custom_data,
             )
         except KeyError:
             # Executed incase of structured tool and
             # APIs where we do not set the variable map
             prompt_text = VariableReplacementService._execute_variable_replacement(
-                prompt_text=prompt_text, variable_map=structured_output
+                prompt_text=prompt_text,
+                variable_map=structured_output,
+                custom_data=custom_data,
             )
         finally:
             app.logger.info(
@@ -93,7 +103,9 @@ class VariableReplacementService:
 
     @staticmethod
     def _execute_variable_replacement(
-        prompt_text: str, variable_map: dict[str, Any]
+        prompt_text: str,
+        variable_map: dict[str, Any],
+        custom_data: dict[str, Any] = None,
     ) -> str:
         variables: list[str] = VariableReplacementHelper.extract_variables_from_prompt(
             prompt_text=prompt_text
@@ -109,10 +121,17 @@ class VariableReplacementService:
                     variable=variable,
                 )
 
-            if variable_type == VariableType.DYNAMIC:
+            elif variable_type == VariableType.DYNAMIC:
                 prompt_text = VariableReplacementHelper.replace_dynamic_variable(
                     prompt=prompt_text,
                     variable=variable,
                     structured_output=variable_map,
+                )
+
+            elif variable_type == VariableType.CUSTOM_DATA and custom_data:
+                prompt_text = VariableReplacementHelper.replace_custom_data_variable(
+                    prompt=prompt_text,
+                    variable=variable,
+                    custom_data=custom_data,
                 )
         return prompt_text

@@ -6,10 +6,7 @@ import uuid
 from enum import Enum
 from typing import Any
 
-import snowflake.connector
-import snowflake.connector.errors as SnowflakeError
-from snowflake.connector.connection import SnowflakeConnection
-
+from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.exceptions import SnowflakeProgrammingException
 from unstract.connectors.databases.unstract_db import UnstractDB
 from unstract.connectors.exceptions import ConnectorError
@@ -60,30 +57,37 @@ class SnowflakeDB(UnstractDB):
     def can_read() -> bool:
         return True
 
-    def sql_to_db_mapping(self, value: str) -> str:
+    def sql_to_db_mapping(self, value: Any, column_name: str | None = None) -> str:
         """Gets the python datatype of value and converts python datatype to
         corresponding DB datatype.
 
         Args:
-            value (str): python datatype
+            value (Any): python value of any datatype
+            column_name (str | None): name of the column being mapped
 
         Returns:
             str: database columntype
         """
-        python_type = type(value)
+        data_type = type(value)
+
+        if data_type in (dict, list):
+            if column_name and column_name.endswith("_v2"):
+                return str(DatabaseTypeConstants.SNOWFLAKE_VARIANT)
+            else:
+                return str(DatabaseTypeConstants.SNOWFLAKE_TEXT)
 
         mapping = {
-            str: "TEXT",
-            int: "INT",
-            float: "FLOAT",
-            datetime.datetime: "TIMESTAMP",
-            dict: "VARIANT",
-            list: "VARIANT",
+            str: DatabaseTypeConstants.SNOWFLAKE_TEXT,
+            int: DatabaseTypeConstants.SNOWFLAKE_INT,
+            float: DatabaseTypeConstants.SNOWFLAKE_FLOAT,
+            datetime.datetime: DatabaseTypeConstants.SNOWFLAKE_TIMESTAMP,
         }
-        return mapping.get(python_type, "TEXT")
+        return str(mapping.get(data_type, DatabaseTypeConstants.SNOWFLAKE_TEXT))
 
-    def get_engine(self) -> SnowflakeConnection:
-        con = snowflake.connector.connect(
+    def get_engine(self) -> Any:
+        from snowflake.connector import connect
+
+        con = connect(
             user=self.user,
             password=self.password,
             account=self.account,
@@ -128,6 +132,8 @@ class SnowflakeDB(UnstractDB):
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
     ) -> None:
+        import snowflake.connector.errors as SnowflakeError
+
         table_name = kwargs.get("table_name", None)
         logger.debug(f"Snowflake execute_query called with sql_query: {sql_query}")
         logger.debug(f"sql_values: {sql_values}")
@@ -163,6 +169,8 @@ class SnowflakeDB(UnstractDB):
             ) from e
 
     def get_information_schema(self, table_name: str) -> dict[str, str]:
+        import snowflake.connector.errors as SnowflakeError
+
         query = f"describe table {table_name}"
         column_types: dict[str, str] = {}
         try:

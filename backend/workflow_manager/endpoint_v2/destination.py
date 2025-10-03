@@ -38,9 +38,15 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 from backend.exceptions import UnstractFSException
 from unstract.connectors.exceptions import ConnectorError
 from unstract.filesystem import FileStorageType, FileSystem
-from unstract.sdk.constants import ToolExecKey
-from unstract.sdk.tool.mime_types import EXT_MIME_MAP
+from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.workflow_execution.constants import ToolOutputType
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.constants import ToolExecKey
+    from unstract.sdk1.tool.mime_types import EXT_MIME_MAP
+else:
+    from unstract.sdk.constants import ToolExecKey
+    from unstract.sdk.tool.mime_types import EXT_MIME_MAP
 
 logger = logging.getLogger(__name__)
 
@@ -382,19 +388,19 @@ class DestinationConnector(BaseConnector):
         )
 
         engine = db_class.get_engine()
-
         table_info = db_class.get_information_schema(table_name=table_name)
 
         logger.info(
-            f"destination connector engine: {engine} with table info: {table_info}"
+            f"destination connector table_name: {table_name} with table_info: {table_info}"
         )
 
         if table_info:
             if db_class.has_no_metadata(table_info=table_info):
-                table_info = db_class.migrate_table_to_v2(
+                table_info = DatabaseUtils.migrate_table_to_v2(
+                    db_class=db_class,
+                    engine=engine,
                     table_name=table_name,
                     column_name=single_column_name,
-                    engine=engine,
                 )
 
         values = DatabaseUtils.get_columns_and_values(
@@ -430,9 +436,7 @@ class DestinationConnector(BaseConnector):
                 table_name=table_name,
                 values=values,
             )
-            logger.info(
-                f"destination.py sql_columns_and_values: {sql_columns_and_values}"
-            )
+            logger.info("destination.py sql_columns_and_values", sql_columns_and_values)
             DatabaseUtils.execute_write_query(
                 db_class=db_class,
                 engine=engine,
@@ -928,11 +932,13 @@ class DestinationConnector(BaseConnector):
             q_name = self._get_review_queue_name()
             if meta_data:
                 whisper_hash = meta_data.get("whisper-hash")
+                extracted_text = meta_data.get("extracted_text")
             else:
                 whisper_hash = None
+                extracted_text = None
 
-            # Get extracted text from metadata (added by structure tool)
-            extracted_text = meta_data.get("extracted_text") if meta_data else None
+            # Get TTL from workflow settings
+            ttl_seconds = WorkflowUtil.get_hitl_ttl_seconds(workflow)
 
             # Create QueueResult with TTL metadata
             queue_result_obj = QueueResult(
@@ -944,8 +950,8 @@ class DestinationConnector(BaseConnector):
                 whisper_hash=whisper_hash,
                 file_execution_id=file_execution_id,
                 extracted_text=extracted_text,
+                ttl_seconds=ttl_seconds,
             )
-
             # Add TTL metadata based on HITLSettings
             queue_result_obj.ttl_seconds = WorkflowUtil.get_hitl_ttl_seconds(workflow)
 

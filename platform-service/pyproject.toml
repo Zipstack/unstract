@@ -11,18 +11,20 @@ dependencies = [
     "flask~=3.1.0",
     "peewee~=3.16",
     "psycopg2-binary~=2.9",
-    "python-dotenv~=1.0",
+    "python-dotenv~=1.0.1",
     "redis~=5.2.1",
     "cryptography>=41.0.7",
     "requests>=2.31.0",
-    "unstract-sdk[gcs, azure, aws]~=0.77.1", # Add version
+    "unstract-sdk[gcs, azure, aws]~=0.77.3", # Add version
     "unstract-flags",
     "unstract-core[flask]",
+    "unstract-sdk1"
 ]
 
 [tool.uv.sources]
 unstract-flags = { path = "../unstract/flags", editable = true }
 unstract-core = { path = "../unstract/core", editable = true }
+unstract-sdk1 = { path = "../unstract/sdk1", editable = true }
 
 [dependency-groups]
 test = ["pytest>=8.0.1"]

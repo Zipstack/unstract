@@ -3,10 +3,18 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from unstract.sdk.constants import LogState, UsageKwargs
-from unstract.sdk.tool.base import BaseTool
-from unstract.sdk.tool.entrypoint import ToolEntrypoint
-from unstract.sdk.x2txt import TextExtractionResult, X2Text
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.constants import LogState, UsageKwargs
+    from unstract.sdk1.tool.base import BaseTool
+    from unstract.sdk1.tool.entrypoint import ToolEntrypoint
+    from unstract.sdk1.x2txt import TextExtractionResult, X2Text
+else:
+    from unstract.sdk.constants import LogState, UsageKwargs
+    from unstract.sdk.tool.base import BaseTool
+    from unstract.sdk.tool.entrypoint import ToolEntrypoint
+    from unstract.sdk.x2txt import TextExtractionResult, X2Text
 
 
 class TextExtractor(BaseTool):

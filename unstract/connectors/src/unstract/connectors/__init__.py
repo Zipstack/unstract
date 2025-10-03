@@ -1,7 +1,10 @@
 import logging
 from logging import NullHandler
-from typing import Any
+
+from unstract.connectors.connection_types import ConnectionType
 
 logging.getLogger(__name__).addHandler(NullHandler())
 
-ConnectorDict = dict[str, dict[str, Any]]
+__all__ = [
+    "ConnectionType",
+]

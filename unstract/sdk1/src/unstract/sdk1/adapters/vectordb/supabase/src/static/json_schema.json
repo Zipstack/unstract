@@ -1,0 +1,45 @@
+{
+  "title": "Supabase Vector DB",
+  "type": "object",
+  "required": [
+    "adapter_name",
+    "database",
+    "host",
+    "port",
+    "user",
+    "password"
+  ],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this adapter instance. Example: supabase-vdb-1"
+    },
+    "database": {
+      "type": "string",
+      "title": "Database",
+      "description": "Provide a name for the database"
+    },
+    "host": {
+      "type": "string",
+      "title": "Host",
+      "default": "",
+      "description": "Example: db.<instance-id>.supabase.co"
+    },
+    "port": {
+      "type": "integer",
+      "title": "Port",
+      "default": 5432
+    },
+    "user": {
+      "type": "string",
+      "title": "User"
+    },
+    "password": {
+      "type": "string",
+      "title": "Password",
+      "format": "password"
+    }
+  }
+}

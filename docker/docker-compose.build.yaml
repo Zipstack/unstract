@@ -23,8 +23,18 @@ services:
   tool-structure:
     image: unstract/tool-structure:${VERSION}
     build:
-      dockerfile: ./Dockerfile
-      context: ../tools/structure/
+      dockerfile: tools/structure/Dockerfile
+      context: ..
+  tool-text_extractor:
+    image: unstract/tool-text_extractor:${VERSION}
+    build:
+      dockerfile: tools/text_extractor/Dockerfile
+      context: ..
+  tool-classifier:
+    image: unstract/tool-classifier:${VERSION}
+    build:
+      dockerfile: tools/classifier/Dockerfile
+      context: ..
   platform-service:
     image: unstract/platform-service:${VERSION}
     build:
@@ -40,3 +50,11 @@ services:
     build:
       dockerfile: docker/dockerfiles/x2text.Dockerfile
       context: ..
+  # Unified worker image (replaces all individual worker images)
+  worker-unified:
+    image: unstract/worker-unified:${VERSION}
+    build:
+      dockerfile: docker/dockerfiles/worker-unified.Dockerfile
+      context: ..
+      args:
+        MINIMAL_BUILD: ${MINIMAL_BUILD:-0}  # Set to 1 for faster dev builds
