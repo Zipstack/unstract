@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 
 from django.core.validators import RegexValidator
 from pipeline_v2.models import Pipeline
+from pluggable_apps.feature_registry import FeatureRegistry
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from rest_framework.serializers import (
     BooleanField,
@@ -250,18 +251,16 @@ class ExecutionRequestSerializer(TagParamsSerializer):
         if not value:
             return value
 
-        # Packet-based processing requires enterprise features
-        try:
-            # If import succeeds, enterprise features are available
-            return value
-        except (ModuleNotFoundError, ImportError):
-            # Fallback to error if enterprise features not available
+        # Check if HITL feature is available using FeatureRegistry
+        if not FeatureRegistry.is_hitl_available():
             raise ValidationError(
                 "Packet-based HITL processing requires Unstract Enterprise. "
                 "This advanced workflow feature is available in our enterprise version. "
                 "Learn more at https://docs.unstract.com/unstract/unstract_platform/features/workflows/hqr_deployment_workflows/ or "
                 "contact our sales team at https://unstract.com/contact/"
             )
+
+        return value
 
     files = ListField(
         child=FileField(),

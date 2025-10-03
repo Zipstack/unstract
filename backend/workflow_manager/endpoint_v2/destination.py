@@ -6,16 +6,7 @@ import os
 from typing import Any
 
 from connector_v2.models import ConnectorInstance
-
-# Import PacketQueueUtils conditionally to support OSS (where pluggable_apps doesn't exist)
-try:
-    from pluggable_apps.manual_review_v2.packet_queue_utils import PacketQueueUtils
-
-    PACKET_QUEUE_AVAILABLE = True
-except (ImportError, ModuleNotFoundError):
-    PacketQueueUtils = None
-    PACKET_QUEUE_AVAILABLE = False
-
+from pluggable_apps.feature_registry import FeatureRegistry
 from plugins.workflow_manager.workflow_v2.utils import WorkflowUtil
 from rest_framework.exceptions import APIException
 from usage_v2.helper import UsageHelper
@@ -899,12 +890,16 @@ class DestinationConnector(BaseConnector):
 
             # Check if this is a packet-based execution
             if self.packet_id:
-                if not PACKET_QUEUE_AVAILABLE:
+                if not FeatureRegistry.is_hitl_available():
                     raise ValueError(
                         "Packet-based HITL processing requires Unstract Enterprise. "
                         "This feature is not available in the OSS version."
                     )
                 # Route to packet queue instead of regular HITL queue
+                from pluggable_apps.manual_review_v2.packet_queue_utils import (
+                    PacketQueueUtils,
+                )
+
                 success = PacketQueueUtils.enqueue_to_packet(
                     packet_id=self.packet_id, queue_result=queue_result
                 )
@@ -966,12 +961,16 @@ class DestinationConnector(BaseConnector):
 
             # Check if this is a packet-based execution
             if self.packet_id:
-                if not PACKET_QUEUE_AVAILABLE:
+                if not FeatureRegistry.is_hitl_available():
                     raise ValueError(
                         "Packet-based HITL processing requires Unstract Enterprise. "
                         "This feature is not available in the OSS version."
                     )
                 # Route to packet queue instead of regular HITL queue
+                from pluggable_apps.manual_review_v2.packet_queue_utils import (
+                    PacketQueueUtils,
+                )
+
                 success = PacketQueueUtils.enqueue_to_packet(
                     packet_id=self.packet_id, queue_result=queue_result
                 )
