@@ -296,7 +296,7 @@ class UnstractRunner:
         settings_json = json.dumps(settings).replace("'", "\\'")
         # Prepare the tool execution command
         tool_cmd = (
-            f"opentelemetry-instrument python main.py --command RUN "
+            f"python main.py --command RUN "
             f"--settings '{settings_json}' --log-level DEBUG"
         )
 
