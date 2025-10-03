@@ -4,7 +4,6 @@ import os
 from typing import TYPE_CHECKING
 
 from llama_index.vector_stores.milvus import MilvusVectorStore
-
 from unstract.sdk1.adapters.exceptions import AdapterError
 from unstract.sdk1.adapters.vectordb.constants import VectorDbConstants
 from unstract.sdk1.adapters.vectordb.helper import VectorDBHelper

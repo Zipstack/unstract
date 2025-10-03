@@ -1,5 +1,4 @@
 import requests
-
 from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.tool.base import BaseTool

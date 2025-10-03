@@ -5,7 +5,6 @@ from typing import Any, ParamSpec, TypeVar
 
 import requests
 from requests import ConnectionError, RequestException, Response
-
 from unstract.sdk1.constants import MimeType, RequestHeader, ToolEnv
 from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.tool.base import BaseTool

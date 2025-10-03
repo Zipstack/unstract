@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 from urllib.parse import quote_plus
 
 from llama_index.vector_stores.supabase import SupabaseVectorStore
-
 from unstract.sdk1.adapters.exceptions import AdapterError
 from unstract.sdk1.adapters.vectordb.constants import VectorDbConstants
 from unstract.sdk1.adapters.vectordb.helper import VectorDBHelper

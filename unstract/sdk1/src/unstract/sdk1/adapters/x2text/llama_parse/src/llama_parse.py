@@ -5,7 +5,6 @@ from typing import Any
 
 from httpx import ConnectError
 from llama_parse import LlamaParse
-
 from unstract.sdk1.adapters.exceptions import AdapterError
 from unstract.sdk1.adapters.x2text.dto import TextExtractionResult
 from unstract.sdk1.adapters.x2text.llama_parse.src.constants import LlamaParseConfig
