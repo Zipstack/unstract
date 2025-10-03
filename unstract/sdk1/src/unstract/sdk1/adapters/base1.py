@@ -50,10 +50,10 @@ def register_adapters(adapters: dict[str, dict[str, "Any"]], adapter_type: str) 
             # IMPORTANT!
             #
             # We are introspecting adapter classes to retrieve id and metadata.
-            # However their `repr`` is DIFFERENT from their `type`, because
-            # `pydantic` is involved.
-            # e.g. repr: <class 'unstract.sdk1.adapters.llm1.base.OpenAILLMAdapter'>
-            #      type: <class 'pydantic._internal._model_construction.ModelMetaclass'>  # noqa: E501
+            # However their repr is DIFFERENT from their type, because
+            # pydantic is involved.
+            # e.g. repr - class unstract.sdk1.adapters.llm1.base.OpenAILLMAdapter
+            #      type - class pydantic._internal._model_construction.ModelMetaclass
             #
             # This leads to following matrix for various introspection methods:
             #
