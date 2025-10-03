@@ -634,6 +634,15 @@ backend/plugins/subscription/*
 # API Deployment Plugins
 backend/plugins/api/**
 
+# Notification Plugin
+backend/plugins/notification/**
+
+# Configuration Plugin
+backend/plugins/configuration/**
+
+# Verticals Usage Plugin
+backend/plugins/verticals_usage/**
+
 # BE pluggable-apps
 backend/pluggable_apps/*
 

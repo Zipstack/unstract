@@ -31,10 +31,10 @@ dependencies = [
     "drf-yasg==1.21.7", # For API docs
     "psycopg2-binary==2.9.9",
     "python-dotenv==1.0.1",
-    "python-magic==0.4.27",            # For file upload/download
-    "python-socketio==5.9.0",          # For log_events
-    "social-auth-app-django==5.3.0",   # For OAuth
-    "social-auth-core==4.4.2",         # For OAuth
+    "python-magic==0.4.27", # For file upload/download
+    "python-socketio==5.9.0", # For log_events
+    "social-auth-app-django==5.3.0", # For OAuth
+    "social-auth-core==4.4.2", # For OAuth
     # TODO: Temporarily removing the extra dependencies of aws and gcs from unstract-sdk
     # to resolve lock file. Will have to be re-looked into
     "unstract-sdk[azure]~=0.77.3",

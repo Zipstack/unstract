@@ -8,7 +8,7 @@ from django.db.models.query import QuerySet
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
-from permissions.permission import IsOwner
+from permissions.permission import IsOwner, IsOwnerOrSharedUser
 from pipeline_v2.models import Pipeline
 from pipeline_v2.pipeline_processor import PipelineProcessor
 from rest_framework import serializers, status, viewsets
@@ -19,6 +19,17 @@ from rest_framework.versioning import URLPathVersioning
 from rest_framework.views import APIView
 from utils.filtering import FilterHelper
 from utils.organization_utils import filter_queryset_by_organization, resolve_organization
+
+try:
+    from plugins.notification.constants import ResourceType
+    from plugins.notification.sharing_notification import SharingNotificationService
+
+    NOTIFICATION_PLUGIN_AVAILABLE = True
+    sharing_notification_service = SharingNotificationService()
+except ImportError:
+    NOTIFICATION_PLUGIN_AVAILABLE = False
+    sharing_notification_service = None
+
 
 from backend.constants import RequestKey
 from unstract.core.data_models import FileHistoryCreateRequest
@@ -49,6 +60,7 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 from workflow_manager.workflow_v2.serializers import (
     ExecuteWorkflowResponseSerializer,
     ExecuteWorkflowSerializer,
+    SharedUserListSerializer,
     WorkflowSerializer,
 )
 from workflow_manager.workflow_v2.workflow_helper import (
@@ -65,7 +77,12 @@ def make_execution_response(response: ExecutionResponse) -> Any:
 
 class WorkflowViewSet(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
-    permission_classes = [IsOwner]
+
+    def get_permissions(self) -> list[Any]:
+        if self.action in ["destroy", "partial_update", "update"]:
+            return [IsOwner()]
+
+        return [IsOwnerOrSharedUser()]
 
     def get_queryset(self) -> QuerySet:
         filter_args = FilterHelper.build_filter_args(
@@ -74,10 +91,11 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             WorkflowKey.WF_OWNER,
             WorkflowKey.WF_IS_ACTIVE,
         )
+        # Use for_user method to include shared workflows
         queryset = (
-            Workflow.objects.filter(created_by=self.request.user, **filter_args)
+            Workflow.objects.for_user(self.request.user).filter(**filter_args)
             if filter_args
-            else Workflow.objects.filter(created_by=self.request.user)
+            else Workflow.objects.for_user(self.request.user)
         )
         order_by = self.request.query_params.get("order_by")
         if order_by == "desc":
@@ -124,6 +142,55 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             logger.error(f"Error creating workflow endpoints: {e}")
             raise WorkflowGenerationError
         return workflow
+
+    def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        """Override partial_update to handle sharing notifications."""
+        # Get the workflow instance before update
+        workflow = self.get_object()
+
+        # Store current shared users for comparison
+        current_shared_users = set(workflow.shared_users.all())
+
+        # Perform the standard partial update
+        response = super().partial_update(request, *args, **kwargs)
+
+        # If update was successful and shared_users field was modified
+        if (
+            response.status_code == 200
+            and "shared_users" in request.data
+            and NOTIFICATION_PLUGIN_AVAILABLE
+        ):
+            try:
+                # Get updated workflow to compare shared users
+                workflow.refresh_from_db()
+                new_shared_users = set(workflow.shared_users.all())
+
+                # Find newly added users
+                newly_shared_users = new_shared_users - current_shared_users
+
+                if newly_shared_users:
+                    # Send notification to newly shared users
+                    sharing_notification_service.send_sharing_notification(
+                        resource_type=ResourceType.WORKFLOW.value,
+                        resource_name=workflow.workflow_name,
+                        resource_id=str(workflow.id),
+                        shared_by=request.user,
+                        shared_to=list(newly_shared_users),
+                        resource_instance=workflow,
+                    )
+
+                    logger.info(
+                        f"Sent sharing notifications for workflow {workflow.id} "
+                        f"to {len(newly_shared_users)} users"
+                    )
+
+            except Exception as e:
+                # Log error but don't fail the update operation
+                logger.exception(
+                    f"Failed to send sharing notification, continuing update though: {str(e)}"
+                )
+
+        return response
 
     def get_execution(self, request: Request, pk: str) -> Response:
         execution = WorkflowHelper.get_current_execution(pk)
@@ -284,6 +351,14 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             schema_type=schema_type, schema_entity=schema_entity
         )
         return Response(data=json_schema, status=status.HTTP_200_OK)
+      
+      
+    @action(detail=True, methods=["get"], url_path="users")
+    def list_of_shared_users(self, request: Request, pk: str) -> Response:
+        """Get list of users with whom the workflow is shared."""
+        workflow = self.get_object()
+        serializer = SharedUserListSerializer(workflow)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 # =============================================================================
