@@ -6,7 +6,16 @@ import os
 from typing import Any
 
 from connector_v2.models import ConnectorInstance
-from pluggable_apps.manual_review_v2.packet_queue_utils import PacketQueueUtils
+
+# Import PacketQueueUtils conditionally to support OSS (where pluggable_apps doesn't exist)
+try:
+    from pluggable_apps.manual_review_v2.packet_queue_utils import PacketQueueUtils
+
+    PACKET_QUEUE_AVAILABLE = True
+except (ImportError, ModuleNotFoundError):
+    PacketQueueUtils = None
+    PACKET_QUEUE_AVAILABLE = False
+
 from plugins.workflow_manager.workflow_v2.utils import WorkflowUtil
 from rest_framework.exceptions import APIException
 from usage_v2.helper import UsageHelper
@@ -163,6 +172,19 @@ class DestinationConnector(BaseConnector):
         file_execution_id: str,
     ) -> bool:
         """Determines if HITL processing should be performed, returning True if data was pushed to the queue."""
+        # Check packet_id first - it takes precedence over hitl_queue_name
+        if self.packet_id:
+            logger.info(
+                f"API packet override: pushing to packet queue for file {file_name}"
+            )
+            self._push_data_to_queue(
+                file_name=file_name,
+                workflow=workflow,
+                input_file_path=input_file_path,
+                file_execution_id=file_execution_id,
+            )
+            return True
+
         # Check if API deployment requested HITL override
         if self.hitl_queue_name:
             logger.info(f"API HITL override: pushing to queue for file {file_name}")
@@ -172,17 +194,6 @@ class DestinationConnector(BaseConnector):
                 input_file_path=input_file_path,
                 file_execution_id=file_execution_id,
             )
-            logger.info(f"Successfully pushed {file_name} to HITL queue")
-            return True
-
-        if self.packet_id:
-            self._push_data_to_queue(
-                file_name=file_name,
-                workflow=workflow,
-                input_file_path=input_file_path,
-                file_execution_id=file_execution_id,
-            )
-            logger.info(f"Successfully pushed {file_name} to packet queue")
             return True
 
         # Skip HITL validation if we're using file_history and no execution result is available
@@ -888,6 +899,11 @@ class DestinationConnector(BaseConnector):
 
             # Check if this is a packet-based execution
             if self.packet_id:
+                if not PACKET_QUEUE_AVAILABLE:
+                    raise ValueError(
+                        "Packet-based HITL processing requires Unstract Enterprise. "
+                        "This feature is not available in the OSS version."
+                    )
                 # Route to packet queue instead of regular HITL queue
                 success = PacketQueueUtils.enqueue_to_packet(
                     packet_id=self.packet_id, queue_result=queue_result
@@ -950,9 +966,14 @@ class DestinationConnector(BaseConnector):
 
             # Check if this is a packet-based execution
             if self.packet_id:
+                if not PACKET_QUEUE_AVAILABLE:
+                    raise ValueError(
+                        "Packet-based HITL processing requires Unstract Enterprise. "
+                        "This feature is not available in the OSS version."
+                    )
                 # Route to packet queue instead of regular HITL queue
                 success = PacketQueueUtils.enqueue_to_packet(
-                    packet_id=self.packet_id, queue_result=queue_result_obj
+                    packet_id=self.packet_id, queue_result=queue_result
                 )
                 if not success:
                     error_msg = f"Failed to push {file_name} to packet {self.packet_id}"

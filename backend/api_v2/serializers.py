@@ -245,6 +245,24 @@ class ExecutionRequestSerializer(TagParamsSerializer):
             )
         return value
 
+    def validate_hitl_packet_id(self, value: str | None) -> str | None:
+        """Validate packet ID format using enterprise validation if available."""
+        if not value:
+            return value
+
+        # Packet-based processing requires enterprise features
+        try:
+            # If import succeeds, enterprise features are available
+            return value
+        except (ModuleNotFoundError, ImportError):
+            # Fallback to error if enterprise features not available
+            raise ValidationError(
+                "Packet-based HITL processing requires Unstract Enterprise. "
+                "This advanced workflow feature is available in our enterprise version. "
+                "Learn more at https://docs.unstract.com/unstract/unstract_platform/features/workflows/hqr_deployment_workflows/ or "
+                "contact our sales team at https://unstract.com/contact/"
+            )
+
     files = ListField(
         child=FileField(),
         required=False,
