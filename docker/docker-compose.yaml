@@ -239,6 +239,313 @@ services:
     labels:
       - traefik.enable=false
 
+  # ====================================================================
+  # V2 DEDICATED WORKER SERVICES (opt-in with --workers-v2 flag)
+  # ====================================================================
+
+  worker-api-deployment-v2:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-api-deployment-v2
+    restart: unless-stopped
+    command: ["api-deployment"]
+    ports:
+      - "8085:8090"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+      - rabbitmq
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-api-deployment-v2
+      - WORKER_TYPE=api_deployment
+      - CELERY_QUEUES_API_DEPLOYMENT=${CELERY_QUEUES_API_DEPLOYMENT:-celery_api_deployments}
+      - CELERY_POOL=${WORKER_API_DEPLOYMENT_POOL:-threads}
+      - CELERY_PREFETCH_MULTIPLIER=${WORKER_API_DEPLOYMENT_PREFETCH_MULTIPLIER:-1}
+      - CELERY_CONCURRENCY=${WORKER_API_DEPLOYMENT_CONCURRENCY:-4}
+      - CELERY_EXTRA_ARGS=${WORKER_API_DEPLOYMENT_EXTRA_ARGS:-}
+      - WORKER_NAME=api-deployment-worker-v2
+      - API_DEPLOYMENT_METRICS_PORT=8090
+      - HEALTH_PORT=8090
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+    profiles:
+      - workers-v2
+
+  worker-callback-v2:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-callback-v2
+    restart: unless-stopped
+    command: ["callback"]
+    ports:
+      - "8086:8083"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+      - rabbitmq
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-callback-v2
+      - WORKER_TYPE=callback
+      - WORKER_NAME=callback-worker-v2
+      - CALLBACK_METRICS_PORT=8083
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+    profiles:
+      - workers-v2
+
+  worker-file-processing-v2:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-file-processing-v2
+    restart: unless-stopped
+    # command: ["file-processing"]
+    command: [".venv/bin/celery", "-A", "worker", "worker", "--queues=file_processing,api_file_processing,file_processing_priority", "--loglevel=INFO", "--pool=prefork", "--concurrency=4", "--prefetch-multiplier=1", "--without-gossip", "--without-mingle", "--without-heartbeat"]
+    ports:
+      - "8087:8082"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+      - rabbitmq
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-file-processing-v2
+      - WORKER_TYPE=file_processing
+      - WORKER_MODE=oss
+      - WORKER_NAME=file-processing-worker-v2
+      - FILE_PROCESSING_METRICS_PORT=8082
+      # OSS Configuration - Enterprise features disabled
+      - MANUAL_REVIEW_ENABLED=false
+      - ENTERPRISE_FEATURES_ENABLED=false
+      - PLUGIN_REGISTRY_MODE=oss
+      # Configurable Celery options
+      - CELERY_QUEUES_FILE_PROCESSING=${CELERY_QUEUES_FILE_PROCESSING:-file_processing,api_file_processing}
+      - CELERY_POOL=${WORKER_FILE_PROCESSING_POOL:-threads}
+      - CELERY_PREFETCH_MULTIPLIER=${WORKER_FILE_PROCESSING_PREFETCH_MULTIPLIER:-1}
+      - CELERY_CONCURRENCY=${WORKER_FILE_PROCESSING_CONCURRENCY:-4}
+      - CELERY_EXTRA_ARGS=${WORKER_FILE_PROCESSING_EXTRA_ARGS:-}
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+    profiles:
+      - workers-v2
+
+  worker-general-v2:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-general-v2
+    restart: unless-stopped
+    command: ["general"]
+    ports:
+      - "8088:8082"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+      - rabbitmq
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-general-v2
+      - WORKER_TYPE=general
+      - WORKER_NAME=general-worker-v2
+      - GENERAL_METRICS_PORT=8081
+      - HEALTH_PORT=8082
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+    profiles:
+      - workers-v2
+
+  worker-notification-v2:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-notification-v2
+    restart: unless-stopped
+    command: ["notification"]
+    ports:
+      - "8089:8085"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+      - rabbitmq
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-notification-v2
+      - WORKER_TYPE=notification
+      - WORKER_NAME=notification-worker-v2
+      - NOTIFICATION_METRICS_PORT=8085
+      - HEALTH_PORT=8085
+      # Notification specific configs
+      - NOTIFICATION_QUEUE_NAME=notifications
+      - WEBHOOK_QUEUE_NAME=notifications_webhook
+      - EMAIL_QUEUE_NAME=notifications_email
+      - SMS_QUEUE_NAME=notifications_sms
+      - PRIORITY_QUEUE_NAME=notifications_priority
+      # Configurable Celery options
+      - CELERY_QUEUES_NOTIFICATION=${CELERY_QUEUES_NOTIFICATION:-notifications,notifications_webhook,notifications_email,notifications_sms,notifications_priority}
+      - CELERY_POOL=${WORKER_NOTIFICATION_POOL:-prefork}
+      - CELERY_PREFETCH_MULTIPLIER=${WORKER_NOTIFICATION_PREFETCH_MULTIPLIER:-1}
+      - CELERY_CONCURRENCY=${WORKER_NOTIFICATION_CONCURRENCY:-4}
+      - CELERY_EXTRA_ARGS=${WORKER_NOTIFICATION_EXTRA_ARGS:-}
+      # Complete command override (if set, ignores all other options)
+      - CELERY_COMMAND_OVERRIDE=${WORKER_NOTIFICATION_COMMAND_OVERRIDE:-}
+      # Individual argument overrides
+      - CELERY_APP_MODULE=${WORKER_NOTIFICATION_APP_MODULE:-worker}
+      - CELERY_LOG_LEVEL=${WORKER_NOTIFICATION_LOG_LEVEL:-INFO}
+      - CELERY_HOSTNAME=${WORKER_NOTIFICATION_HOSTNAME:-}
+      - CELERY_MAX_TASKS_PER_CHILD=${WORKER_NOTIFICATION_MAX_TASKS_PER_CHILD:-}
+      - CELERY_TIME_LIMIT=${WORKER_NOTIFICATION_TIME_LIMIT:-}
+      - CELERY_SOFT_TIME_LIMIT=${WORKER_NOTIFICATION_SOFT_TIME_LIMIT:-}
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+    profiles:
+      - workers-v2
+
+  worker-log-consumer-v2:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-log-consumer-v2
+    restart: unless-stopped
+    command: ["log-consumer"]
+    ports:
+      - "8090:8084"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+      - rabbitmq
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-log-consumer-v2
+      - WORKER_TYPE=log_consumer
+      - WORKER_NAME=log-consumer-worker-v2
+      - LOG_CONSUMER_METRICS_PORT=8084
+      - HEALTH_PORT=8084
+      # Log consumer specific configs
+      - LOG_CONSUMER_QUEUE_NAME=celery_log_task_queue
+      # Multiple queue support - supports comma-separated queue names
+      - CELERY_QUEUES_LOG_CONSUMER=${CELERY_QUEUES_LOG_CONSUMER:-celery_log_task_queue,celery_periodic_logs}
+      - PERIODIC_LOGS_QUEUE_NAME=${PERIODIC_LOGS_QUEUE_NAME:-celery_periodic_logs}
+      # Log history configuration
+      - LOG_HISTORY_QUEUE_NAME=${LOG_HISTORY_QUEUE_NAME:-log_history_queue}
+      - LOGS_BATCH_LIMIT=${LOGS_BATCH_LIMIT:-100}
+      - ENABLE_LOG_HISTORY=${ENABLE_LOG_HISTORY:-true}
+      - CELERY_POOL=${WORKER_LOG_CONSUMER_POOL:-prefork}
+      - CELERY_PREFETCH_MULTIPLIER=${WORKER_LOG_CONSUMER_PREFETCH_MULTIPLIER:-1}
+      - CELERY_CONCURRENCY=${WORKER_LOG_CONSUMER_CONCURRENCY:-2}
+      - CELERY_EXTRA_ARGS=${WORKER_LOG_CONSUMER_EXTRA_ARGS:-}
+      # Complete command override (if set, ignores all other options)
+      - CELERY_COMMAND_OVERRIDE=${WORKER_LOG_CONSUMER_COMMAND_OVERRIDE:-}
+      # Individual argument overrides
+      - CELERY_APP_MODULE=${WORKER_LOG_CONSUMER_APP_MODULE:-worker}
+      - CELERY_LOG_LEVEL=${WORKER_LOG_CONSUMER_LOG_LEVEL:-INFO}
+      - CELERY_HOSTNAME=${WORKER_LOG_CONSUMER_HOSTNAME:-}
+      - CELERY_MAX_TASKS_PER_CHILD=${WORKER_LOG_CONSUMER_MAX_TASKS_PER_CHILD:-}
+      - CELERY_TIME_LIMIT=${WORKER_LOG_CONSUMER_TIME_LIMIT:-}
+      - CELERY_SOFT_TIME_LIMIT=${WORKER_LOG_CONSUMER_SOFT_TIME_LIMIT:-}
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+    profiles:
+      - workers-v2
+
+  worker-log-history-scheduler-v2:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-log-history-scheduler-v2
+    restart: unless-stopped
+    entrypoint: ["/bin/bash"]
+    command: ["/app/log_consumer/scheduler.sh"]
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+      - rabbitmq
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-log-history-scheduler-v2
+      # Scheduler interval in seconds
+      - LOG_HISTORY_CONSUMER_INTERVAL=${LOG_HISTORY_CONSUMER_INTERVAL:-5}
+      # Override example: TASK_TRIGGER_COMMAND=/custom/trigger/script.sh
+      - TASK_TRIGGER_COMMAND=${TASK_TRIGGER_COMMAND:-}
+    labels:
+      - traefik.enable=false
+    profiles:
+      - workers-v2
+
+  worker-scheduler-v2:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-scheduler-v2
+    restart: unless-stopped
+    command: ["scheduler"]
+    ports:
+      - "8091:8087"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+      - rabbitmq
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-scheduler-v2
+      - WORKER_TYPE=scheduler
+      - WORKER_NAME=scheduler-worker-v2
+      - SCHEDULER_METRICS_PORT=8087
+      - HEALTH_PORT=8087
+      # Scheduler specific configs
+      - SCHEDULER_QUEUE_NAME=scheduler
+      # Configurable Celery options
+      - CELERY_QUEUES_SCHEDULER=${CELERY_QUEUES_SCHEDULER:-scheduler}
+      - CELERY_POOL=${WORKER_SCHEDULER_POOL:-prefork}
+      - CELERY_PREFETCH_MULTIPLIER=${WORKER_SCHEDULER_PREFETCH_MULTIPLIER:-1}
+      - CELERY_CONCURRENCY=${WORKER_SCHEDULER_CONCURRENCY:-2}
+      - CELERY_EXTRA_ARGS=${WORKER_SCHEDULER_EXTRA_ARGS:-}
+      # Complete command override (if set, ignores all other options)
+      - CELERY_COMMAND_OVERRIDE=${WORKER_SCHEDULER_COMMAND_OVERRIDE:-}
+      # Individual argument overrides
+      - CELERY_APP_MODULE=${WORKER_SCHEDULER_APP_MODULE:-worker}
+      - CELERY_LOG_LEVEL=${WORKER_SCHEDULER_LOG_LEVEL:-INFO}
+      - CELERY_HOSTNAME=${WORKER_SCHEDULER_HOSTNAME:-}
+      - CELERY_MAX_TASKS_PER_CHILD=${WORKER_SCHEDULER_MAX_TASKS_PER_CHILD:-}
+      - CELERY_TIME_LIMIT=${WORKER_SCHEDULER_TIME_LIMIT:-}
+      - CELERY_SOFT_TIME_LIMIT=${WORKER_SCHEDULER_SOFT_TIME_LIMIT:-}
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+    profiles:
+      - workers-v2
+
 volumes:
   prompt_studio_data:
   unstract_data:

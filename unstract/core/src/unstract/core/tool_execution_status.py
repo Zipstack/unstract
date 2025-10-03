@@ -1,3 +1,4 @@
+import logging
 import os
 from dataclasses import dataclass
 from enum import Enum
@@ -8,6 +9,8 @@ from unstract.core.exceptions import (
     ToolExecutionStatusException,
     ToolExecutionValueException,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ToolExecutionStatus(Enum):
@@ -178,6 +181,11 @@ class ToolExecutionTracker:
             self.redis_client.delete(self.get_cache_key(tool_execution_data))
         except ToolExecutionValueException:
             return
+        except Exception as e:
+            logger.warning(
+                f"Failed to delete status for tool execution {tool_execution_data.execution_id}: {e}. "
+            )
+            return
 
     def update_ttl(
         self, tool_execution_data: ToolExecutionData, ttl_in_second: int
@@ -194,4 +202,9 @@ class ToolExecutionTracker:
                 self.get_cache_key(tool_execution_data), ttl_in_second
             )
         except ToolExecutionValueException:
+            return
+        except Exception as e:
+            logger.warning(
+                f"Failed to update TTL for tool execution {tool_execution_data.execution_id}: {e}. "
+            )
             return

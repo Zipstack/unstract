@@ -1,6 +1,14 @@
 # Created by https://www.toptal.com/developers/gitignore/api/windows,macos,linux,pycharm,pycharm+all,pycharm+iml,python,visualstudiocode,react,django
 # Edit at https://www.toptal.com/developers/gitignore?templates=windows,macos,linux,pycharm,pycharm+all,pycharm+iml,python,visualstudiocode,react,django
 
+# Development helper scripts
+*.sh
+# list Exceptional files with ! like !fix-and-test.sh
+!run-platform.sh
+!workers/run-worker.sh
+!workers/run-worker-docker.sh
+!workers/log_consumer/scheduler.sh
+
 ### Django ###
 *.log
 *.pot
@@ -622,6 +630,7 @@ backend/plugins/processor/*
 # Subscription Plugins
 backend/plugins/subscription/*
 
+
 # API Deployment Plugins
 backend/plugins/api/**
 
@@ -685,6 +694,7 @@ backend/requirements.txt
 backend/backend/*_urls.py
 !backend/backend/base_urls.py
 !backend/backend/public_urls.py
+!backend/backend/internal_base_urls.py
 # TODO: Remove after v2 migration is completed
 backend/backend/*_urls_v2.py
 !backend/backend/public_urls_v2.py
