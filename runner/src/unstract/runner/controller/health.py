@@ -1,6 +1,6 @@
 import logging
 
-from flask import Blueprint, Response, jsonify
+from flask import Blueprint
 
 logger = logging.getLogger(__name__)
 
@@ -9,7 +9,6 @@ health_bp = Blueprint("health", __name__)
 
 
 # Define a route to ping test
-@health_bp.route("/ping", methods=["GET"])
-def ping() -> Response:
-    logger.info("Ping request received")
-    return jsonify({"message": "pong!!!"})
+@health_bp.route("/health", methods=["GET"])
+def health_check() -> str:
+    return "OK"

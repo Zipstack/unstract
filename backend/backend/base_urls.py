@@ -23,4 +23,6 @@ urlpatterns = [
         include("pipeline_v2.public_api_urls"),
     ),
     path("", include("health.urls")),
+    # Internal API for worker communication
+    path("internal/", include("backend.internal_base_urls")),
 ]

@@ -24,6 +24,7 @@ DEPLOYMENT_ENDPOINT = settings.API_DEPLOYMENT_PATH_PREFIX + "/pipeline"
 
 class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
     api_endpoint = SerializerMethodField()
+    created_by_email = SerializerMethodField()
 
     class Meta:
         model = Pipeline
@@ -194,6 +195,10 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
             str: The API endpoint URL associated with the Pipeline instance.
         """
         return instance.api_endpoint
+
+    def get_created_by_email(self, obj):
+        """Get the creator's email address."""
+        return obj.created_by.email if obj.created_by else None
 
     def create(self, validated_data: dict[str, Any]) -> Any:
         # TODO: Deduce pipeline type based on WF?
