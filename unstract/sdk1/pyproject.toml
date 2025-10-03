@@ -120,6 +120,7 @@ select = [
 ]
 fixable = ["ALL"]
 ignore = [
+    "ANN101", # Missing type annotation for self
     "D100",   # Missing docstring in public module
     "D101",   # Missing docstring in public class
     "D102",   # Missing docstring in public method
