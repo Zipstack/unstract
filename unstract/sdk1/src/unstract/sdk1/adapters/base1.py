@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from typing import Any
 
 from pydantic import BaseModel, Field
+
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.enums import AdapterTypes
 
