@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -136,6 +137,7 @@ class ExecutionFileHandler:
             MetaDataKey.EXECUTION_ID: str(self.execution_id),
             MetaDataKey.FILE_EXECUTION_ID: str(file_execution_id),
             MetaDataKey.TAGS: tags,
+            MetaDataKey.WORKFLOW_START_TIME: time.time(),  # Capture workflow start time for accurate timing
         }
 
         # Add llm_profile_id to metadata if provided
@@ -238,3 +240,78 @@ class ExecutionFileHandler:
         if not self.file_execution_dir:
             return None
         return os.path.join(self.file_execution_dir, WorkflowFileType.METADATA_JSON)
+
+    def delete_file_execution_directory(self) -> None:
+        """Delete the file execution directory and all its contents.
+
+        This method cleans up temporary files created during workflow execution.
+        It's safe to call even if the directory doesn't exist.
+        """
+        if not self.file_execution_dir:
+            logger.debug("No file execution directory to delete")
+            return
+
+        try:
+            file_path = Path(self.file_execution_dir)
+            if file_path.exists() and file_path.is_dir():
+                import shutil
+
+                shutil.rmtree(file_path)
+                logger.debug(
+                    f"Deleted file execution directory: {self.file_execution_dir}"
+                )
+            else:
+                logger.debug(
+                    f"File execution directory does not exist: {self.file_execution_dir}"
+                )
+        except Exception as e:
+            logger.warning(
+                f"Failed to delete file execution directory {self.file_execution_dir}: {str(e)}"
+            )
+            # Don't raise exception as cleanup failure shouldn't stop execution
+
+    def update_execution_timing(self, execution_time: float) -> None:
+        """Update METADATA.json with correct workflow execution timing.
+
+        This method reads existing metadata and adds the total_elapsed_time field
+        with the actual workflow execution time measured by workers while preserving
+        tool_metadata written by individual tools.
+
+        Args:
+            execution_time (float): Total execution time in seconds from worker
+        """
+        if not self.metadata_file:
+            raise FileMetadataJsonNotFound()
+
+        try:
+            # Read current metadata (may have been updated by tool execution)
+            existing_metadata = self.get_workflow_metadata()
+
+            # Update with workflow execution timing - this should be the final total time
+            existing_metadata[MetaDataKey.TOTAL_ELAPSED_TIME] = execution_time
+
+            # Write back to file - this ensures our timing is the final update
+            file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+            file_storage = file_system.get_file_storage()
+            file_storage.json_dump(path=self.metadata_file, data=existing_metadata)
+
+            logger.info(
+                f"Updated metadata with execution time: {execution_time:.2f}s for {self.file_execution_id}"
+            )
+
+            # Log the current state for debugging
+            if MetaDataKey.TOOL_METADATA in existing_metadata:
+                tool_metadata = existing_metadata[MetaDataKey.TOOL_METADATA]
+                if (
+                    tool_metadata
+                    and isinstance(tool_metadata, list)
+                    and len(tool_metadata) > 0
+                ):
+                    tool_time = tool_metadata[-1].get("elapsed_time", 0)
+                    logger.info(
+                        f"TIMING: Tool internal time: {tool_time:.6f}s, Workflow total time: {execution_time:.3f}s"
+                    )
+
+        except Exception as e:
+            logger.error(f"Failed to update execution timing in metadata: {e}")
+            # Don't re-raise - timing update failure shouldn't stop execution

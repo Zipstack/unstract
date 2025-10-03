@@ -178,8 +178,8 @@ class LogPublisher:
         """
         try:
             logs_expiration = os.environ.get(
-                "LOGS_EXPIRATION_TIME_IN_SECOND", "86400"
-            )  # Defaults to 1 day
+                "LOGS_EXPIRATION_TIME_IN_SECOND", "3600"
+            )  # Defaults to 1 hour
             timestamp = payload.get("timestamp", round(time.time(), 6))
             redis_key = f"{event}:{timestamp}"
             log_data = json.dumps(payload)

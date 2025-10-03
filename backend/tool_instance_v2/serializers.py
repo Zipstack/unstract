@@ -63,7 +63,6 @@ class ToolInstanceSerializer(AuditSerializer):
             rep[TIKey.METADATA] = self._transform_adapter_ids_to_names_for_display(
                 metadata, tool_function
             )
-
         return rep
 
     def _transform_adapter_ids_to_names_for_display(
