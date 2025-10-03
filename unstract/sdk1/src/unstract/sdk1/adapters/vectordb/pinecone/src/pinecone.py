@@ -1,6 +1,5 @@
 import logging
 import os
-from typing import Any
 
 from llama_index.core.schema import BaseNode
 from llama_index.core.vector_stores.types import BasePydanticVectorStore
@@ -31,7 +30,13 @@ class Constants:
 
 
 class Pinecone(VectorDBAdapter):
-    def __init__(self, settings: dict[str, Any]):
+    def __init__(self, settings: dict[str, object]) -> None:
+        """Initialize the Pinecone vector database adapter.
+
+        Args:
+            settings: Configuration dictionary containing Pinecone connection parameters
+                     including API key, environment, and other settings.
+        """
         self._config = settings
         self._client: LLamaIndexPinecone | None = None
         self._collection_name: str = VectorDbConstants.DEFAULT_VECTOR_DB_NAME
@@ -106,7 +111,7 @@ class Pinecone(VectorDBAdapter):
             )
             return self.vector_db
         except Exception as e:
-            raise AdapterError(str(e))
+            raise AdapterError(str(e)) from e
 
     def test_connection(self) -> bool:
         vector_db = self.get_vector_db_instance()
@@ -116,11 +121,11 @@ class Pinecone(VectorDBAdapter):
             self._client.delete_index(self._collection_name)
         return test_result
 
-    def close(self, **kwargs: Any) -> None:
+    def close(self, **kwargs: object) -> None:
         # Close connection is not defined for this client
         pass
 
-    def delete(self, ref_doc_id: str, **delete_kwargs: dict[Any, Any]) -> None:
+    def delete(self, ref_doc_id: str, **delete_kwargs: dict[object, object]) -> None:
         specification = self._config.get(Constants.SPECIFICATION)
         if specification == Constants.SPEC_SERVERLESS:
             # To delete all records representing chunks of a single document,
@@ -133,7 +138,7 @@ class Pinecone(VectorDBAdapter):
                     logger.info(ids)
                     index.delete(ids=ids)
             except Exception as e:
-                raise AdapterError(str(e))
+                raise AdapterError(str(e)) from e
         elif specification == Constants.SPEC_POD:
             if self.vector_db.environment == "gcp-starter":  # type: ignore
                 raise AdapterError(

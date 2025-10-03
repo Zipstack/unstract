@@ -33,7 +33,13 @@ logger = logging.getLogger(__name__)
 
 
 class LLMWhisperer(X2TextAdapter):
-    def __init__(self, settings: dict[str, Any]):
+    def __init__(self, settings: dict[str, Any]) -> None:
+        """Initialize the LLMWhisperer text extraction adapter.
+
+        Args:
+            settings: Configuration dictionary containing LLMWhisperer API settings
+                     including API key, base URL, and other parameters.
+        """
         super().__init__("LLMWhisperer")
         self.config = settings
 
@@ -70,9 +76,9 @@ class LLMWhisperer(X2TextAdapter):
         self,
         request_method: HTTPMethod,
         request_endpoint: str,
-        headers: dict[str, Any] | None = None,
-        params: dict[str, Any] | None = None,
-        data: Any | None = None,
+        headers: dict[str, object] | None = None,
+        params: dict[str, object] | None = None,
+        data: object | None = None,
     ) -> Response:
         """Makes a request to LLMWhisperer service.
 
@@ -115,18 +121,18 @@ class LLMWhisperer(X2TextAdapter):
             logger.error(f"Adapter error: {e}")
             raise ExtractorError(
                 "Unable to connect to LLMWhisperer service, please check the URL"
-            )
+            ) from e
         except Timeout as e:
             msg = "Request to LLMWhisperer has timed out"
             logger.error(f"{msg}: {e}")
-            raise ExtractorError(msg)
+            raise ExtractorError(msg) from e
         except HTTPError as e:
             logger.error(f"Adapter error: {e}")
             default_err = "Error while calling the LLMWhisperer service"
             msg = AdapterUtils.get_msg_from_request_exc(
                 err=e, message_key="message", default_err=default_err
             )
-            raise ExtractorError(msg)
+            raise ExtractorError(msg) from e
         return response
 
     def _get_whisper_params(self, enable_highlight: bool = False) -> dict[str, Any]:
@@ -224,16 +230,16 @@ class LLMWhisperer(X2TextAdapter):
         Returns:
             WhisperStatus: Status of the extraction
         """
-        POLL_INTERVAL = WhispererDefaults.POLL_INTERVAL
-        MAX_POLLS = WhispererDefaults.MAX_POLLS
+        poll_interval = WhispererDefaults.POLL_INTERVAL
+        max_polls = WhispererDefaults.MAX_POLLS
         request_count = 0
 
         # Check status in fixed intervals upto max poll count.
         while True:
             request_count += 1
             logger.info(
-                f"Checking status with interval: {POLL_INTERVAL}s"
-                f", request count: {request_count} [max: {MAX_POLLS}]"
+                f"Checking status with interval: {poll_interval}s"
+                f", request count: {request_count} [max: {max_polls}]"
             )
             status_response = self._make_request(
                 request_method=HTTPMethod.GET,
@@ -254,11 +260,11 @@ class LLMWhisperer(X2TextAdapter):
                 )
 
             # Exit with error if max poll count is reached
-            if request_count >= MAX_POLLS:
+            if request_count >= max_polls:
                 raise ExtractorError(
                     f"Unable to extract text after attempting {request_count} times"
                 )
-            time.sleep(POLL_INTERVAL)
+            time.sleep(poll_interval)
 
         return status
 
@@ -303,9 +309,11 @@ class LLMWhisperer(X2TextAdapter):
     def _send_whisper_request(
         self,
         input_file_path: str,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
         enable_highlight: bool = False,
     ) -> requests.Response:
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         headers = self._get_request_headers()
         headers["Content-Type"] = "application/octet-stream"
         params = self._get_whisper_params(enable_highlight)
@@ -321,15 +329,17 @@ class LLMWhisperer(X2TextAdapter):
             )
         except OSError as e:
             logger.error(f"OS error while reading {input_file_path}: {e}")
-            raise ExtractorError(str(e))
+            raise ExtractorError(str(e)) from e
         return response
 
     def _extract_text_from_response(
         self,
         output_file_path: str | None,
         response: requests.Response,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
     ) -> str:
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         output_json = {}
         if response.status_code == 200:
             output_json = response.json()
@@ -348,10 +358,12 @@ class LLMWhisperer(X2TextAdapter):
         self,
         output_json: dict,
         output_file_path: Path,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
     ) -> None:
-        """Writes the extracted text and metadata to the specified output file
-        and metadata file.
+        """Write extracted text and metadata to output files.
+
+        Writes the extracted text and metadata to the specified output file and
+        metadata file.
 
         Args:
             output_json (dict): The dictionary containing the extracted data,
@@ -362,6 +374,8 @@ class LLMWhisperer(X2TextAdapter):
         Raises:
             ExtractorError: If there is an error while writing the output file.
         """
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         try:
             text_output = output_json.get("text", "")
             logger.info(f"Writing output to {output_file_path}")
@@ -397,13 +411,13 @@ class LLMWhisperer(X2TextAdapter):
 
         except Exception as e:
             logger.error(f"Error while writing {output_file_path}: {e}")
-            raise ExtractorError(str(e))
+            raise ExtractorError(str(e)) from e
 
     def process(
         self,
         input_file_path: str,
         output_file_path: str | None = None,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
         **kwargs: dict[Any, Any],
     ) -> TextExtractionResult:
         """Used to extract text from documents.
@@ -417,6 +431,8 @@ class LLMWhisperer(X2TextAdapter):
         Returns:
             str: Extracted text
         """
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         response: requests.Response = self._send_whisper_request(
             input_file_path,
             fs,

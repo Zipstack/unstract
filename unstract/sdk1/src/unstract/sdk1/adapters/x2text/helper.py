@@ -20,7 +20,7 @@ class X2TextHelper:
     def parse_response(
         response: Response,
         out_file_path: str | None = None,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
     ) -> tuple[str, bool]:
         """Parses the response from a request.
 
@@ -35,6 +35,8 @@ class X2TextHelper:
         Returns:
             tuple[str, bool]: Response's content and status of parsing
         """
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         if not response.ok and not response.content:
             return "", False
         if isinstance(response.content, bytes):
@@ -64,8 +66,10 @@ class UnstructuredHelper:
         unstructured_adapter_config: dict[str, Any],
         input_file_path: str,
         output_file_path: str | None = None,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
     ) -> str:
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         try:
             response: Response
             local_storage = FileStorage(FileStorageProvider.LOCAL)
@@ -91,7 +95,7 @@ class UnstructuredHelper:
                 msg += f"and writing {output_file_path}"
             msg += f": {str(e)}"
             logger.error(msg)
-            raise AdapterError(str(e))
+            raise AdapterError(str(e)) from e
 
     @staticmethod
     def make_request(
@@ -132,16 +136,16 @@ class UnstructuredHelper:
             logger.error(f"Adapter error: {e}")
             raise AdapterError(
                 "Unable to connect to unstructured-io's service, please check the URL"
-            )
+            ) from e
         except Timeout as e:
             msg = "Request to unstructured-io's service has timed out"
             logger.error(f"{msg}: {e}")
-            raise AdapterError(msg)
+            raise AdapterError(msg) from e
         except HTTPError as e:
             logger.error(f"Adapter error: {e}")
             default_err = "Error while calling the unstructured-io service"
             msg = AdapterUtils.get_msg_from_request_exc(
                 err=e, message_key="detail", default_err=default_err
             )
-            raise AdapterError("unstructured-io: " + msg)
+            raise AdapterError("unstructured-io: " + msg) from e
         return response

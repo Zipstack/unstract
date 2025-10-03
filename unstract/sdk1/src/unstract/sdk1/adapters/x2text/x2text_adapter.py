@@ -8,7 +8,12 @@ from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
 
 
 class X2TextAdapter(Adapter, ABC):
-    def __init__(self, name: str):
+    def __init__(self, name: str) -> None:
+        """Initialize the X2TextAdapter base class.
+
+        Args:
+            name: Name identifier for the text extraction adapter.
+        """
         super().__init__(name)
         self.name = name
 
@@ -39,9 +44,11 @@ class X2TextAdapter(Adapter, ABC):
         self,
         input_file_path: str,
         output_file_path: str | None = None,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
         **kwargs: dict[Any, Any],
     ) -> TextExtractionResult:
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         return TextExtractionResult(
             extracted_text="extracted text", extraction_metadata=None
         )

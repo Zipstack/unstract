@@ -9,10 +9,11 @@ from unstract.sdk1.tool.stream import StreamMixin
 
 
 class UsageHandler(StreamMixin, BaseCallbackHandler):
-    """UsageHandler class is a subclass of BaseCallbackHandler and is
-    responsible for handling usage events in the LLM or Embedding models. It
-    provides methods for starting and ending traces, as well as handling event
-    starts and ends.
+    """Handler for usage events in LLM or Embedding models.
+
+    UsageHandler class is a subclass of BaseCallbackHandler and is responsible for
+    handling usage events in the LLM or Embedding models. It provides methods for
+    starting and ending traces, as well as handling event starts and ends.
 
     Attributes:
         - token_counter (TokenCountingHandler): The token counter object used
@@ -36,8 +37,22 @@ class UsageHandler(StreamMixin, BaseCallbackHandler):
         event_ends_to_ignore: list[CBEventType] | None = None,
         verbose: bool = False,
         log_level: LogLevel = LogLevel.INFO,
-        kwargs: dict[Any, Any] = {},
+        kwargs: dict[Any, Any] = None,
     ) -> None:
+        """Initialize the UsageHandler for tracking usage events in LLM/Embedding models.
+
+        Args:
+            platform_api_key: API key for platform service communication
+            token_counter: Token counting handler for tracking token usage
+            embed_model: Embedding model instance for embedding operations
+            event_starts_to_ignore: List of event types to ignore at start
+            event_ends_to_ignore: List of event types to ignore at end
+            verbose: Whether to enable verbose output
+            log_level: Logging level for output
+            kwargs: Additional keyword arguments for usage tracking
+        """
+        if kwargs is None:
+            kwargs = {}
         self.kwargs = kwargs.copy()
         self._verbose = verbose
         self.token_counter = token_counter
@@ -65,8 +80,10 @@ class UsageHandler(StreamMixin, BaseCallbackHandler):
         payload: dict[str, Any] | None = None,
         event_id: str = "",
         parent_id: str = "",
-        kwargs: dict[Any, Any] = {},
+        kwargs: dict[Any, Any] = None,
     ) -> str:
+        if kwargs is None:
+            kwargs = {}
         return event_id
 
     def on_event_end(
@@ -74,9 +91,11 @@ class UsageHandler(StreamMixin, BaseCallbackHandler):
         event_type: CBEventType,
         payload: dict[str, Any] | None = None,
         event_id: str = "",
-        kwargs: dict[Any, Any] = {},
+        kwargs: dict[Any, Any] = None,
     ) -> None:
         """Push the usage of Embedding to platform service."""
+        if kwargs is None:
+            kwargs = {}
         if (
             event_type == CBEventType.EMBEDDING
             and event_type not in self.event_ends_to_ignore

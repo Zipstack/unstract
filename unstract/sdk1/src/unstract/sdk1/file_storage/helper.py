@@ -67,9 +67,10 @@ class FileStorageHelper:
             raise FileStorageError(str(e)) from e
 
 
-def skip_local_cache(func):
-    """Helper function/decorator for handling FileNotFound exception and making
-    sure that the error is not because of stale cache.
+def skip_local_cache(func: object) -> object:
+    """Helper function/decorator for handling FileNotFound exception.
+
+    Making sure that the error is not because of stale cache.
 
     Args:
         func: The original function that is called in the context
@@ -78,7 +79,7 @@ def skip_local_cache(func):
         NA
     """
 
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: object, **kwargs: object) -> object:
         try:
             return func(*args, **kwargs)
         except FileNotFoundError:
@@ -89,9 +90,10 @@ def skip_local_cache(func):
     return wrapper
 
 
-def _handle_file_not_found(func, *args, **kwargs):
-    """Helper function for handling FileNotFound exception and making sure that
-    the error is not because of stale cache.
+def _handle_file_not_found(func: object, *args: object, **kwargs: object) -> object:
+    """Helper function for handling FileNotFound exception.
+
+    Making sure that the error is not because of stale cache.
 
     Args:
         func: The original function that is called in the context

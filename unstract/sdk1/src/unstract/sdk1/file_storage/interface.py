@@ -39,7 +39,7 @@ class FileStorageInterface(ABC):
         pass
 
     @abstractmethod
-    def mkdir(self, path: str, create_parents: bool):
+    def mkdir(self, path: str, create_parents: bool) -> None:
         pass
 
     @abstractmethod
@@ -51,7 +51,7 @@ class FileStorageInterface(ABC):
         pass
 
     @abstractmethod
-    def rm(self, path: str, recursive: bool = True):
+    def rm(self, path: str, recursive: bool = True) -> None:
         pass
 
     @abstractmethod
@@ -61,7 +61,7 @@ class FileStorageInterface(ABC):
         rpath: str,
         recursive: bool = False,
         overwrite: bool = True,
-    ):
+    ) -> None:
         pass
 
     @abstractmethod
@@ -81,7 +81,7 @@ class FileStorageInterface(ABC):
         pass
 
     @abstractmethod
-    def download(self, from_path: str, to_path: str):
+    def download(self, from_path: str, to_path: str) -> None:
         pass
 
     @abstractmethod
@@ -98,7 +98,7 @@ class FileStorageInterface(ABC):
         path: str,
         data: dict[str, Any],
         **kwargs: dict[Any, Any],
-    ):
+    ) -> None:
         pass
 
     @abstractmethod
@@ -107,7 +107,7 @@ class FileStorageInterface(ABC):
         path: str,
         data: dict[str, Any],
         **kwargs: dict[Any, Any],
-    ):
+    ) -> None:
         pass
 
     @abstractmethod
@@ -126,5 +126,5 @@ class FileStorageInterface(ABC):
         pass
 
     @abstractmethod
-    def walk(self, path: str):
+    def walk(self, path: str) -> object:
         pass

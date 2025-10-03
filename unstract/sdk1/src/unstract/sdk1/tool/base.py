@@ -137,8 +137,7 @@ class BaseTool(ABC, StreamMixin):
         return str(file_path)
 
     def get_source_file(self) -> str:
-        """Gets the absolute path to the workflow execution's input file
-        (SOURCE).
+        """Gets the absolute path to the workflow execution's input file (SOURCE).
 
         Returns:
             str: Absolute path to the source file
@@ -146,8 +145,10 @@ class BaseTool(ABC, StreamMixin):
         return self._get_file_from_data_dir(ToolExecKey.SOURCE, raise_err=True)
 
     def get_input_file(self) -> str:
-        """Gets the absolute path to the input file that's meant for the tool
-        being run (INFILE).
+        """Get absolute path to the input file for the tool (INFILE).
+
+        Gets the absolute path to the input file that's meant for the tool being run
+        (INFILE).
 
         Returns:
             str: Absolute path to the input file
@@ -155,9 +156,11 @@ class BaseTool(ABC, StreamMixin):
         return self._get_file_from_data_dir(ToolExecKey.INFILE, raise_err=True)
 
     def get_output_dir(self) -> str:
-        """Get the absolute path to the output folder where the tool needs to
-        place its output file. This is where the tool writes its output files
-        that need to be copied into the destination (COPY_TO_FOLDER path).
+        """Get absolute path to the output folder for tool output files.
+
+        Get the absolute path to the output folder where the tool needs to place its
+        output file. This is where the tool writes its output files that need to be
+        copied into the destination (COPY_TO_FOLDER path).
 
         Returns:
             str: Absolute path to the output directory.
@@ -175,8 +178,9 @@ class BaseTool(ABC, StreamMixin):
         return self._exec_metadata
 
     def _get_exec_metadata(self) -> dict[str, Any]:
-        """Retrieve the contents from METADATA.json present in the data
-        directory. This file contains metadata for the tool execution.
+        """Retrieve the contents from METADATA.json present in the data directory.
+
+        This file contains metadata for the tool execution.
 
         Returns:
             dict[str, Any]: Contents of METADATA.json
@@ -234,8 +238,7 @@ class BaseTool(ABC, StreamMixin):
         self._write_exec_metadata(metadata=self._exec_metadata)
 
     def update_exec_metadata(self, metadata: dict[str, Any]) -> None:
-        """Helps update the execution metadata with the provided metadata
-        dictionary.
+        """Helps update the execution metadata with the provided metadata dictionary.
 
         This method iterates over the key-value pairs in the input metadata dictionary
         and updates the internal `_exec_metadata` dictionary of the tool instance

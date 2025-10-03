@@ -1,12 +1,17 @@
+from __future__ import annotations
+
 import functools
 import logging
 import time
 import uuid
+from typing import TYPE_CHECKING
 
-from requests import Response
-from requests.exceptions import RequestException
 from unstract.sdk1.constants import Common, LogLevel, MimeType
 from unstract.sdk1.utils.metrics_mixin import MetricsMixin
+
+if TYPE_CHECKING:
+    from requests import Response
+    from requests.exceptions import RequestException
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +38,7 @@ class Utils:
 
     @staticmethod
     def pretty_file_size(num: float, suffix: str = "B") -> str:
-        """Gets the human readable size for a file,
+        """Gets the human readable size for a file.
 
         Args:
             num (int): Size in bytes to parse
@@ -96,7 +101,16 @@ class Utils:
 
 
 class TokenCounterCompat:
-    def __init__(self, prompt_tokens: int, completion_tokens: int, total_tokens: int):
+    def __init__(
+        self, prompt_tokens: int, completion_tokens: int, total_tokens: int
+    ) -> None:
+        """Initialize the TokenCounterCompat for compatibility with token counting.
+
+        Args:
+            prompt_tokens: Number of tokens in the prompt
+            completion_tokens: Number of tokens in the completion
+            total_tokens: Total number of tokens used
+        """
         self.prompt_llm_token_count = prompt_tokens
         self.completion_llm_token_count = completion_tokens
         self.total_llm_token_count = total_tokens
@@ -106,7 +120,12 @@ class TokenCounterCompat:
 class LLMResponseCompat:
     """Compatibility class to mimic llama-index CompletionResponse interface."""
 
-    def __init__(self, text):
+    def __init__(self, text: str) -> None:
+        """Initialize the LLMResponseCompat for compatibility with LLM responses.
+
+        Args:
+            text: The response text from the LLM
+        """
         self.text = text
         # Add other CompletionResponse attributes for compatibility
         self.additional_kwargs = {}
@@ -124,16 +143,16 @@ PY_TO_UNSTRACT_LOG_LEVEL = {
 }
 
 
-def log_elapsed(operation):
+def log_elapsed(operation: str) -> object:
     """Adds an elapsed time log.
 
     Args:
         operation (str): Operation being measured
     """
 
-    def decorator(func):
+    def decorator(func: object) -> object:
         @functools.wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: object, **kwargs: object) -> object:
             start_time = time.time()
             try:
                 result = func(*args, **kwargs)
@@ -148,11 +167,11 @@ def log_elapsed(operation):
     return decorator
 
 
-def capture_metrics(func):
+def capture_metrics(func: object) -> object:
     """Decorator to capture metrics at the start and end of a function."""
 
     @functools.wraps(func)
-    def wrapper(self, *args, **kwargs):
+    def wrapper(self: object, *args: object, **kwargs: object) -> object:
         # Ensure the required attributes exist; if not,
         # execute the function and return its result
         if not all(

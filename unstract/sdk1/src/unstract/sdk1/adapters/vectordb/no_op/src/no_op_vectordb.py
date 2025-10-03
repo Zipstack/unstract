@@ -1,6 +1,5 @@
 import os
 import time
-from typing import Any
 
 from llama_index.core.schema import BaseNode
 from llama_index.core.vector_stores.types import VectorStore
@@ -14,7 +13,7 @@ from unstract.sdk1.adapters.vectordb.vectordb_adapter import VectorDBAdapter
 
 
 class NoOpVectorDB(VectorDBAdapter):
-    def __init__(self, settings: dict[str, Any]) -> None:
+    def __init__(self, settings: dict[str, object]) -> None:
         """Initialize NoOpVectorDB adapter.
 
         Args:
@@ -62,16 +61,16 @@ class NoOpVectorDB(VectorDBAdapter):
             self._client = vector_db.client
             return vector_db
         except Exception as e:
-            raise AdapterError(str(e))
+            raise AdapterError(str(e)) from e
 
     def test_connection(self) -> bool:
         time.sleep(self._config.get("wait_time"))
         return True
 
-    def close(self, **kwargs: Any) -> None:
+    def close(self, **kwargs: object) -> None:
         pass
 
-    def delete(self, ref_doc_id: str, **delete_kwargs: Any) -> None:
+    def delete(self, ref_doc_id: str, **delete_kwargs: object) -> None:
         pass
 
     def add(self, ref_doc_id: str, nodes: list[BaseNode]) -> list[str]:

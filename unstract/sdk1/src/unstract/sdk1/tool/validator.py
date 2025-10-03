@@ -1,7 +1,6 @@
 import re
 from json import JSONDecodeError
 from pathlib import Path
-from typing import Any
 
 from jsonschema import Draft202012Validator, ValidationError, validators
 from unstract.sdk1.constants import MetadataKey, PropKey
@@ -10,7 +9,7 @@ from unstract.sdk1.tool.mime_types import EXT_MIME_MAP
 from unstract.sdk1.utils.common import Utils
 
 
-def extend_with_default(validator_class: Any) -> Any:
+def extend_with_default(validator_class: object) -> object:
     """Extend a JSON schema validator class with a default value functionality.
 
     Parameters:
@@ -24,7 +23,9 @@ def extend_with_default(validator_class: Any) -> Any:
     """
     validate_properties = validator_class.VALIDATORS["properties"]
 
-    def set_defaults(validator: Any, properties: Any, instance: Any, schema: Any) -> Any:
+    def set_defaults(
+        validator: object, properties: object, instance: object, schema: object
+    ) -> object:
         for property_, subschema in properties.items():
             if "default" in subschema:
                 instance.setdefault(property_, subschema["default"])
@@ -47,16 +48,19 @@ DefaultsGeneratingValidator = extend_with_default(Draft202012Validator)
 
 
 class ToolValidator:
-    """Class to validate a tool and its configuration before its executed with
-    an input.
-    """
+    """Class to validate a tool and its configuration before its executed."""
 
     def __init__(self, tool: BaseTool) -> None:
+        """Initialize the ToolValidator for validating tool configuration and execution.
+
+        Args:
+            tool: BaseTool instance to validate
+        """
         self.tool = tool
         props = self.tool.properties
         self.restrictions = props.get(PropKey.RESTRICTIONS)
 
-    def validate_pre_execution(self, settings: dict[str, Any]) -> dict[str, Any]:
+    def validate_pre_execution(self, settings: dict[str, object]) -> dict[str, object]:
         """Performs validation before the tool executes on the input file.
 
         Args:
@@ -85,7 +89,9 @@ class ToolValidator:
         self._validate_file_size(input_file)
         self._validate_file_type(input_file)
 
-    def _validate_settings_and_fill_defaults(self, tool_settings: dict[str, Any]) -> None:
+    def _validate_settings_and_fill_defaults(
+        self, tool_settings: dict[str, object]
+    ) -> None:
         """Validates and obtains settings for a tool.
 
         Validation is done against the tool's settings based
@@ -103,8 +109,7 @@ class ToolValidator:
             self.tool.stream_error_and_exit(f"Invalid settings: {str(e)}")
 
     def _validate_file_size(self, input_file: Path) -> None:
-        """Validates the input file size against the max allowed size set in
-        the tool's PROPERTIES.
+        """Validates input file size against the max allowed size in tool's PROPERTIES.
 
         Raises:
             RuntimeError: File size exceeds max allowed size
@@ -154,8 +159,7 @@ class ToolValidator:
         return size_in_bytes
 
     def _validate_file_type(self, input_file: Path) -> None:
-        """Validate the input file type against the allowed types mentioned in
-        tool's PROPERTIES.
+        """Validate input file type against allowed types in tool's PROPERTIES.
 
         Args:
             input_file (Path): Path obj of input file to validate

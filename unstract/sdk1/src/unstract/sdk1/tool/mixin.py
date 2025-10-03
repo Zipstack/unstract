@@ -13,7 +13,7 @@ class ToolConfigHelper:
     @staticmethod
     def spec(
         spec_file: str = "config/spec.json",
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
     ) -> dict[str, Any]:
         """Returns the JSON schema for the tool settings.
 
@@ -24,12 +24,14 @@ class ToolConfigHelper:
         Returns:
             str: The JSON schema of the tool.
         """
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         return ToolUtils.load_json(spec_file, fs=fs)
 
     @staticmethod
     def properties(
         properties_file: str = "config/properties.json",
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
     ) -> dict[str, Any]:
         """Returns the properties of the tool.
 
@@ -40,12 +42,14 @@ class ToolConfigHelper:
         Returns:
             str: The properties of the tool.
         """
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         return ToolUtils.load_json(properties_file, fs)
 
     @staticmethod
     def variables(
         variables_file: str = "config/runtime_variables.json",
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
     ) -> dict[str, Any]:
         """Returns the JSON schema of the runtime variables.
 
@@ -56,6 +60,8 @@ class ToolConfigHelper:
         Returns:
             str: The JSON schema for the runtime variables.
         """
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         try:
             return ToolUtils.load_json(variables_file, fs)
         # Allow runtime variables definition to be optional
@@ -66,7 +72,7 @@ class ToolConfigHelper:
     @staticmethod
     def icon(
         icon_file: str = "config/icon.svg",
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
     ) -> str:
         """Returns the icon of the tool.
 
@@ -77,5 +83,7 @@ class ToolConfigHelper:
         Returns:
             str: The icon of the tool.
         """
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         icon = fs.read(path=icon_file, mode="rb", encoding="utf-8")
         return icon

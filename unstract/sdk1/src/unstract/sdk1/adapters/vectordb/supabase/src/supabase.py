@@ -1,14 +1,18 @@
+from __future__ import annotations
+
 import os
-from typing import Any
+from typing import TYPE_CHECKING
 from urllib.parse import quote_plus
 
-from llama_index.core.vector_stores.types import VectorStore
 from llama_index.vector_stores.supabase import SupabaseVectorStore
 from unstract.sdk1.adapters.exceptions import AdapterError
 from unstract.sdk1.adapters.vectordb.constants import VectorDbConstants
 from unstract.sdk1.adapters.vectordb.helper import VectorDBHelper
 from unstract.sdk1.adapters.vectordb.vectordb_adapter import VectorDBAdapter
-from vecs import Client
+
+if TYPE_CHECKING:
+    from llama_index.core.vector_stores.types import VectorStore
+    from vecs import Client
 
 
 class Constants:
@@ -21,7 +25,13 @@ class Constants:
 
 
 class Supabase(VectorDBAdapter):
-    def __init__(self, settings: dict[str, Any]):
+    def __init__(self, settings: dict[str, object]) -> None:
+        """Initialize the Supabase vector database adapter.
+
+        Args:
+            settings: Configuration dictionary containing Supabase connection parameters
+                     including host, port, database, user, password, and other settings.
+        """
         self._config = settings
         self._client: Client | None = None
         self._collection_name: str = VectorDbConstants.DEFAULT_VECTOR_DB_NAME
@@ -81,7 +91,7 @@ class Supabase(VectorDBAdapter):
                 self._client = vector_db.client
             return vector_db
         except Exception as e:
-            raise AdapterError(str(e))
+            raise AdapterError(str(e)) from e
 
     def test_connection(self) -> bool:
         vector_db = self.get_vector_db_instance()
@@ -91,6 +101,6 @@ class Supabase(VectorDBAdapter):
             self._client.delete_collection(self._collection_name)
         return test_result
 
-    def close(self, **kwargs: Any) -> None:
+    def close(self, **kwargs: object) -> None:
         if self._client:
             self._client.close()
