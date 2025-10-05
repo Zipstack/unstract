@@ -4,9 +4,9 @@ from collections import OrderedDict
 from typing import Any
 from urllib.parse import urlparse
 
+from django.apps import apps
 from django.core.validators import RegexValidator
 from pipeline_v2.models import Pipeline
-from pluggable_apps.feature_registry import FeatureRegistry
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from rest_framework.serializers import (
     BooleanField,
@@ -255,14 +255,16 @@ class ExecutionRequestSerializer(TagParamsSerializer):
         if not value:
             return value
 
-        # Check if HITL feature is available using FeatureRegistry
-        if not FeatureRegistry.is_hitl_available():
+        # Check if HITL feature is available
+        if not apps.is_installed("pluggable_apps.manual_review_v2"):
             raise ValidationError(
                 "Packet-based HITL processing requires Unstract Enterprise. "
                 "This advanced workflow feature is available in our enterprise version. "
                 "Learn more at https://docs.unstract.com/unstract/unstract_platform/features/workflows/hqr_deployment_workflows/ or "
                 "contact our sales team at https://unstract.com/contact/"
             )
+
+        return value
 
     def validate_custom_data(self, value):
         """Validate custom_data is a valid JSON object."""

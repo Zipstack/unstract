@@ -6,7 +6,7 @@ import os
 from typing import Any
 
 from connector_v2.models import ConnectorInstance
-from pluggable_apps.feature_registry import FeatureRegistry
+from django.apps import apps
 from plugins.workflow_manager.workflow_v2.utils import WorkflowUtil
 from rest_framework.exceptions import APIException
 from usage_v2.helper import UsageHelper
@@ -869,7 +869,12 @@ class DestinationConnector(BaseConnector):
             )
         else:
             self._push_to_queue_for_connector(
-                file_name, workflow, result, input_file_path, file_execution_id, meta_data
+                file_name,
+                workflow,
+                result,
+                input_file_path,
+                file_execution_id,
+                meta_data,
             )
 
     def _enqueue_to_packet_or_regular_queue(
@@ -890,7 +895,7 @@ class DestinationConnector(BaseConnector):
             ttl_seconds: TTL in seconds (optional, for regular queue)
         """
         if self.packet_id:
-            if not FeatureRegistry.is_hitl_available():
+            if not apps.is_installed("pluggable_apps.manual_review_v2"):
                 raise ValueError(
                     "Packet-based HITL processing requires Unstract Enterprise. "
                     "This feature is not available in the OSS version."
