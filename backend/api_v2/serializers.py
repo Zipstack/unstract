@@ -264,6 +264,20 @@ class ExecutionRequestSerializer(TagParamsSerializer):
                 "contact our sales team at https://unstract.com/contact/"
             )
 
+        # Validate packet ID format (alphanumeric string, typically 8-character hex)
+        value = value.strip()
+        if not value:
+            raise ValidationError("Packet ID cannot be empty or whitespace only.")
+
+        # Basic format validation: alphanumeric, reasonable length
+        if not re.match(r"^[a-zA-Z0-9_-]+$", value):
+            raise ValidationError(
+                "Invalid packet ID format. Packet ID must contain only letters, numbers, hyphens, or underscores."
+            )
+
+        if len(value) > 16:  # Reasonable max length
+            raise ValidationError("Packet ID is too long (maximum 100 characters).")
+
         return value
 
     def validate_custom_data(self, value):
