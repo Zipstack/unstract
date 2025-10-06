@@ -7,8 +7,6 @@ from enum import Enum
 from typing import Any
 
 import google.api_core.exceptions
-from google.cloud import bigquery
-from google.cloud.bigquery import Client
 
 from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.exceptions import (
@@ -28,6 +26,9 @@ BIG_QUERY_TABLE_SIZE = 3
 class BigQuery(UnstractDB):
     def __init__(self, settings: dict[str, Any]):
         super().__init__("BigQuery")
+        from google.cloud import bigquery
+
+        self.bigquery = bigquery
         self.json_credentials = json.loads(settings.get("json_credentials", "{}"))
         self.big_query_table_size = BIG_QUERY_TABLE_SIZE
 
@@ -62,8 +63,8 @@ class BigQuery(UnstractDB):
     def can_read() -> bool:
         return True
 
-    def get_engine(self) -> Client:
-        return bigquery.Client.from_service_account_info(  # type: ignore
+    def get_engine(self) -> Any:
+        return self.bigquery.Client.from_service_account_info(  # type: ignore
             info=self.json_credentials
         )
 
@@ -208,21 +209,23 @@ class BigQuery(UnstractDB):
                                 f"@`{key}`", f"PARSE_JSON(@`{key}`)"
                             )
                         query_parameters.append(
-                            bigquery.ScalarQueryParameter(key, "STRING", json_str)
+                            self.bigquery.ScalarQueryParameter(key, "STRING", json_str)
                         )
                     elif isinstance(value, (dict, list)):
                         # For dict/list values in STRING columns, serialize to JSON string
                         json_str = json.dumps(value) if value else None
                         query_parameters.append(
-                            bigquery.ScalarQueryParameter(key, "STRING", json_str)
+                            self.bigquery.ScalarQueryParameter(key, "STRING", json_str)
                         )
                     else:
                         # For other values, use STRING as before
                         query_parameters.append(
-                            bigquery.ScalarQueryParameter(key, "STRING", value)
+                            self.bigquery.ScalarQueryParameter(key, "STRING", value)
                         )
 
-                query_params = bigquery.QueryJobConfig(query_parameters=query_parameters)
+                query_params = self.bigquery.QueryJobConfig(
+                    query_parameters=query_parameters
+                )
                 query_job = engine.query(modified_sql, job_config=query_params)
             else:
                 query_job = engine.query(sql_query)

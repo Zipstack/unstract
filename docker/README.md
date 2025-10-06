@@ -30,6 +30,23 @@ VERSION=dev docker compose -f docker-compose.yaml --profile optional up -d
 
 Now access frontend at http://frontend.unstract.localhost
 
+## V2 Workers (Optional)
+
+V2 workers use a unified container architecture and are **disabled by default**.
+
+```bash
+# Default: Run with legacy workers only
+VERSION=dev docker compose -f docker-compose.yaml up -d
+
+# Enable V2 workers (unified container)
+VERSION=dev docker compose -f docker-compose.yaml --profile workers-v2 up -d
+
+# Or use the platform script
+./run-platform.sh --workers-v2
+```
+
+V2 workers available: `api-deployment`, `callback`, `file-processing`, `general`, `notification`, `log-consumer`, `scheduler`
+
 ## Overriding a service's config
 
 By making use of the [merge compose files](https://docs.docker.com/compose/how-tos/multiple-compose-files/merge/) feature its possible to override some configuration that's used by the services.

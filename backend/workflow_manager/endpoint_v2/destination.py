@@ -870,7 +870,6 @@ class DestinationConnector(BaseConnector):
             ).to_dict()
 
             queue_result_json = json.dumps(queue_result)
-
             # Get organization_id for proper HITL queue filtering
             organization_id = UserContext.get_organization_identifier()
             conn = QueueUtils.get_queue_inst(
@@ -902,11 +901,13 @@ class DestinationConnector(BaseConnector):
             q_name = self._get_review_queue_name()
             if meta_data:
                 whisper_hash = meta_data.get("whisper-hash")
+                extracted_text = meta_data.get("extracted_text")
             else:
                 whisper_hash = None
+                extracted_text = None
 
-            # Get extracted text from metadata (added by structure tool)
-            extracted_text = meta_data.get("extracted_text") if meta_data else None
+            # Get TTL from workflow settings
+            ttl_seconds = WorkflowUtil.get_hitl_ttl_seconds(workflow)
 
             # Create QueueResult with TTL metadata
             queue_result_obj = QueueResult(
@@ -918,6 +919,7 @@ class DestinationConnector(BaseConnector):
                 whisper_hash=whisper_hash,
                 file_execution_id=file_execution_id,
                 extracted_text=extracted_text,
+                ttl_seconds=ttl_seconds,
             )
             # Add TTL metadata based on HITLSettings
             queue_result_obj.ttl_seconds = WorkflowUtil.get_hitl_ttl_seconds(workflow)
