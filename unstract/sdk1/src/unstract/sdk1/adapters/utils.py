@@ -2,6 +2,7 @@ import logging
 
 from requests import Response
 from requests.exceptions import RequestException
+
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.constants import MimeType
 

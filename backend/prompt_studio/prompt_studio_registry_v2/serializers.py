@@ -1,9 +1,8 @@
 from typing import Any
 
 from account_v2.serializer import UserSerializer
-from rest_framework import serializers
-
 from backend.serializers import AuditSerializer
+from rest_framework import serializers
 
 from .models import PromptStudioRegistry
 
