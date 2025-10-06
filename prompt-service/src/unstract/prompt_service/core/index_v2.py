@@ -10,7 +10,6 @@ from llama_index.core.vector_stores import (
     VectorStoreQuery,
     VectorStoreQueryResult,
 )
-
 from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.prompt_service.dto import (
     ChunkingConfig,
