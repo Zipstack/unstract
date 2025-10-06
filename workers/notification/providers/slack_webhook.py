@@ -101,13 +101,13 @@ class SlackWebhook(WebhookProvider):
             # Format value based on type
             formatted_value = self._format_value(value)
 
-            # Create section block
+            # Create section block with inline format
             blocks.append(
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*{formatted_key}:*\n{formatted_value}",
+                        "text": f"*{formatted_key}:* {formatted_value}",
                     },
                 }
             )
@@ -179,8 +179,8 @@ class SlackWebhook(WebhookProvider):
             "Status": "Status",
             "Error": "Error",
             "Success": "Success",
-            "Execution Id": "Execution ID",
-            "Organization Id": "Organization ID",
+            "Execution Id": "Execution Id",
+            "Organization Id": "Organization Id",
         }
 
         return key_mapping.get(formatted, formatted)
