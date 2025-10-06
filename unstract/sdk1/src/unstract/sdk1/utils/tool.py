@@ -37,7 +37,7 @@ class ToolUtils:
                 return str(md5(string_to_hash).hexdigest())
             return str(md5(string_to_hash.encode()).hexdigest())
         elif hash_method == "sha256":
-            if isinstance(string_to_hash, (bytes, bytearray)):
+            if isinstance(string_to_hash, (bytes, bytearray)): # noqa: UP038
                 return str(sha256(string_to_hash).hexdigest())
             return str(sha256(string_to_hash.encode()).hexdigest())
         else:
