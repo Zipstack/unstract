@@ -9,6 +9,7 @@ import litellm
 # from litellm import get_supported_openai_params
 from litellm import get_max_tokens, token_counter
 from pydantic import ValidationError
+
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
 from unstract.sdk1.audit import Audit
@@ -42,7 +43,7 @@ class LLM:
     JSON_REGEX = re.compile(r"\[(?:.|\n)*\]|\{(?:.|\n)*\}")
     JSON_CONTENT_MARKER = os.environ.get("JSON_SELECTION_MARKER", "§§§")
 
-    def __init__(
+    def __init__( # noqa: C901
         self,
         adapter_id: str = "",
         adapter_metadata: dict[str, object] = None,
