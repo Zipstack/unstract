@@ -38,8 +38,6 @@ dependencies = [
     # TODO: Temporarily removing the extra dependencies of aws and gcs from unstract-sdk
     # to resolve lock file. Will have to be re-looked into
     "unstract-sdk[azure]~=0.77.3",
-    "gcsfs",
-    "s3fs",
     "azure-identity",
     "azure-mgmt-apimanagement",
     "croniter>=3.0.3",
@@ -50,7 +48,7 @@ dependencies = [
     "unstract-core",
     "unstract-filesystem",
     "unstract-flags",
-    "unstract-sdk1[azure]",
+    "unstract-sdk1[aws,gcs,azure]",
     "unstract-tool-registry",
     "unstract-tool-sandbox",
     "unstract-workflow-execution",
