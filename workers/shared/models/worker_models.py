@@ -313,7 +313,7 @@ class WorkerCeleryConfig:
     prefetch_multiplier: int = 1
     max_tasks_per_child: int = 1000
     task_acks_late: bool = True
-    task_reject_on_worker_lost: bool = True
+    task_reject_on_worker_lost: bool = False
 
     # Timeouts
     task_time_limit: int = 7200  # 2 hours
