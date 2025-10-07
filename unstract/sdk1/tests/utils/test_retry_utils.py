@@ -90,16 +90,24 @@ class TestCalculateDelay:
         max_delay = 60.0
 
         # Attempt 0: 1.0 * (2.0^0) = 1.0
-        assert calculate_delay(0, base_delay, multiplier, max_delay, jitter=False) == 1.0
+        assert calculate_delay(
+            0, base_delay, multiplier, max_delay, jitter=False
+        ) == pytest.approx(1.0)
 
         # Attempt 1: 1.0 * (2.0^1) = 2.0
-        assert calculate_delay(1, base_delay, multiplier, max_delay, jitter=False) == 2.0
+        assert calculate_delay(
+            1, base_delay, multiplier, max_delay, jitter=False
+        ) == pytest.approx(2.0)
 
         # Attempt 2: 1.0 * (2.0^2) = 4.0
-        assert calculate_delay(2, base_delay, multiplier, max_delay, jitter=False) == 4.0
+        assert calculate_delay(
+            2, base_delay, multiplier, max_delay, jitter=False
+        ) == pytest.approx(4.0)
 
         # Attempt 3: 1.0 * (2.0^3) = 8.0
-        assert calculate_delay(3, base_delay, multiplier, max_delay, jitter=False) == 8.0
+        assert calculate_delay(
+            3, base_delay, multiplier, max_delay, jitter=False
+        ) == pytest.approx(8.0)
 
     def test_exponential_backoff_with_jitter(self):
         """Test exponential backoff calculation with jitter."""
@@ -123,7 +131,7 @@ class TestCalculateDelay:
 
         # Attempt 10: 1.0 * (2.0^10) = 1024.0, but capped at 5.0
         delay = calculate_delay(10, base_delay, multiplier, max_delay, jitter=False)
-        assert delay == 5.0
+        assert delay == pytest.approx(5.0)
 
     def test_max_delay_cap_with_jitter(self):
         """Test that max_delay caps the delay even with jitter."""
