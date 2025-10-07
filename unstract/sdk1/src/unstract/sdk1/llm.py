@@ -101,7 +101,7 @@ class LLM:
             self.adapter = adapters[self._adapter_id][Common.MODULE]
         except KeyError as e:
             raise SdkError(
-                "LLM adapter not supported: " + adapter_id or adapter_instance_id
+                f"LLM adapter not supported: {adapter_id or adapter_instance_id}"
             ) from e
 
         try:

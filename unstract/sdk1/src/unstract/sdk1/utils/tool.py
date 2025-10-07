@@ -198,7 +198,7 @@ class ToolUtils:
     @staticmethod
     def get_workflow_filestorage(
         provider: FileStorageProvider,
-        credentials: dict[str, object] = None,
+        credentials: dict[str, object] | None = None,
     ) -> SharedTemporaryFileStorage:
         """Get the file storage for the workflow."""
         if credentials is None:
