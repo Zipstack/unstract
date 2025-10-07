@@ -3,8 +3,9 @@ import logging
 from typing import Any
 
 import requests
-from requests import ConnectionError, RequestException, Response
+from requests import RequestException, Response
 from requests.exceptions import ConnectionError, HTTPError
+
 from unstract.sdk1.constants import (
     AdapterKeys,
     LogLevel,
@@ -17,6 +18,7 @@ from unstract.sdk1.constants import (
 from unstract.sdk1.exceptions import SdkError
 from unstract.sdk1.tool.base import BaseTool
 from unstract.sdk1.utils.common import Utils
+from unstract.sdk1.utils.retry_utils import retry_platform_service_call
 
 logger = logging.getLogger(__name__)
 
@@ -91,14 +93,24 @@ class PlatformHelper:
             return False
 
     @classmethod
+    @retry_platform_service_call
     def _get_adapter_configuration(
         cls,
         tool: BaseTool,
         adapter_instance_id: str,
     ) -> dict[str, Any]:
-        """Get Adapter
-            1. Get the adapter config from platform service
-            using the adapter_instance_id
+        """Get Adapter.
+
+        Get the adapter config from platform service
+        using the adapter_instance_id. This method automatically
+        retries on connection errors with exponential backoff.
+
+        Retry behavior is configurable via environment variables:
+        - PLATFORM_SERVICE_MAX_RETRIES (default: 3)
+        - PLATFORM_SERVICE_MAX_TIME (default: 60s)
+        - PLATFORM_SERVICE_BASE_DELAY (default: 1.0s)
+        - PLATFORM_SERVICE_MULTIPLIER (default: 2.0)
+        - PLATFORM_SERVICE_JITTER (default: true)
 
         Args:
             adapter_instance_id (str): Adapter instance ID
@@ -130,10 +142,6 @@ class PlatformHelper:
                 f"'{adapter_type}', provider: '{provider}', name: '{adapter_name}'",
                 level=LogLevel.DEBUG,
             )
-        except ConnectionError:
-            raise SdkError(
-                "Unable to connect to platform service, please contact the admin."
-            )
         except HTTPError as e:
             default_err = (
                 "Error while calling the platform service, please contact the admin."
@@ -141,7 +149,7 @@ class PlatformHelper:
             msg = Utils.get_msg_from_request_exc(
                 err=e, message_key="error", default_err=default_err
             )
-            raise SdkError(f"Error retrieving adapter. {msg}")
+            raise SdkError(f"Error retrieving adapter. {msg}") from e
         return adapter_data
 
     @classmethod
@@ -174,7 +182,13 @@ class PlatformHelper:
             f"Retrieving config from DB for '{adapter_instance_id}'",
             level=LogLevel.DEBUG,
         )
-        return cls._get_adapter_configuration(tool, adapter_instance_id)
+
+        try:
+            return cls._get_adapter_configuration(tool, adapter_instance_id)
+        except ConnectionError as e:
+            raise SdkError(
+                "Unable to connect to platform service, please contact the admin."
+            ) from e
 
     def _get_headers(self, headers: dict[str, str] | None = None) -> dict[str, str]:
         """Get default headers for requests.
@@ -190,6 +204,7 @@ class PlatformHelper:
             request_headers.update(headers)
         return request_headers
 
+    @retry_platform_service_call
     def _call_service(
         self,
         url_path: str,
@@ -201,6 +216,14 @@ class PlatformHelper:
         """Talks to platform-service to make GET / POST calls.
 
         Only GET calls are made to platform-service though functionality exists.
+        This method automatically retries on connection errors with exponential backoff.
+
+        Retry behavior is configurable via environment variables:
+        - PLATFORM_SERVICE_MAX_RETRIES (default: 3)
+        - PLATFORM_SERVICE_MAX_TIME (default: 60s)
+        - PLATFORM_SERVICE_BASE_DELAY (default: 1.0s)
+        - PLATFORM_SERVICE_MULTIPLIER (default: 2.0)
+        - PLATFORM_SERVICE_JITTER (default: true)
 
         Args:
             url_path (str): URL path to the service endpoint
@@ -234,9 +257,13 @@ class PlatformHelper:
 
             response.raise_for_status()
         except ConnectionError as connect_err:
-            msg = "Unable to connect to platform service. Please contact admin."
-            msg += " \n" + str(connect_err)
-            self.tool.stream_error_and_exit(msg)
+            logger.exception("Connection error to platform service")
+            msg = (
+                "Unable to connect to platform service. Retrying with backoff, "
+                "please contact admin if retries ultimately fail."
+            )
+            self.tool.stream_log(msg, level=LogLevel.ERROR)
+            raise ConnectionError(msg) from connect_err
         except RequestException as e:
             # Extract error information from the response if available
             error_message = str(e)
