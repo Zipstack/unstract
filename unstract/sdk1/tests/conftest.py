@@ -1,20 +1,23 @@
 """Pytest configuration and fixtures for unstract-sdk1 tests."""
 
 import logging
+from collections.abc import Callable
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from _pytest.monkeypatch import MonkeyPatch
 
 
 @pytest.fixture
-def mock_logger():
+def mock_logger() -> MagicMock:
     """Create a mock logger for testing."""
     logger = MagicMock(spec=logging.Logger)
     return logger
 
 
 @pytest.fixture
-def clean_env(monkeypatch):
+def clean_env(monkeypatch: MonkeyPatch) -> MonkeyPatch:
     """Clean environment variables before each test."""
     # Remove any retry-related environment variables
     env_vars = [
@@ -35,10 +38,10 @@ def clean_env(monkeypatch):
 
 
 @pytest.fixture
-def set_env(monkeypatch):
+def set_env(monkeypatch: MonkeyPatch) -> Callable[..., None]:
     """Helper fixture to set environment variables."""
 
-    def _set_env(prefix: str, **kwargs):
+    def _set_env(prefix: str, **kwargs: Any) -> None:  # noqa: ANN401
         """Set environment variables with given prefix.
 
         Args:

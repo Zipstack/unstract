@@ -85,7 +85,7 @@ def calculate_delay(
     return min(delay, max_delay)
 
 
-def retry_with_exponential_backoff(
+def retry_with_exponential_backoff(  # noqa: C901
     max_retries: int,
     max_time: float,
     base_delay: float,
@@ -113,9 +113,9 @@ def retry_with_exponential_backoff(
         Decorator function
     """
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable) -> Callable:  # noqa: C901
         @wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
+        def wrapper(*args: Any, **kwargs: Any) -> Any:  # noqa: C901, ANN401
             start_time = time.time()
             last_exception = None
 

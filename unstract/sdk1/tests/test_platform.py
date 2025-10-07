@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+from _pytest.monkeypatch import MonkeyPatch
 from requests.exceptions import ConnectionError, HTTPError
 from unstract.sdk1.exceptions import SdkError
 from unstract.sdk1.platform import PlatformHelper
@@ -12,7 +13,7 @@ class TestPlatformHelperRetry:
     """Tests for PlatformHelper retry functionality."""
 
     @pytest.fixture
-    def mock_tool(self):
+    def mock_tool(self) -> MagicMock:
         """Create a mock tool for testing."""
         tool = MagicMock()
         tool.get_env_or_die.side_effect = lambda key: {
@@ -25,7 +26,7 @@ class TestPlatformHelperRetry:
         return tool
 
     @pytest.fixture
-    def platform_helper(self, mock_tool):
+    def platform_helper(self, mock_tool: MagicMock) -> PlatformHelper:
         """Create a PlatformHelper instance."""
         return PlatformHelper(
             tool=mock_tool,
@@ -42,8 +43,14 @@ class TestPlatformHelperRetry:
         ],
     )
     def test_success_on_first_attempt(
-        self, mock_tool, platform_helper, method_name, method_args, http_method, clean_env
-    ):
+        self,
+        mock_tool: MagicMock,
+        platform_helper: PlatformHelper,
+        method_name: str,
+        method_args: tuple[str, ...],
+        http_method: str,
+        clean_env: MonkeyPatch,
+    ) -> None:
         """Test successful calls on first attempt for various methods."""
         expected_data = {"adapter_id": "test", "config": {}}
 
@@ -55,11 +62,9 @@ class TestPlatformHelperRetry:
             mock_request.return_value = mock_response
 
             if method_name == "_get_adapter_configuration":
-                result = PlatformHelper._get_adapter_configuration(
-                    mock_tool, *method_args
-                )
+                PlatformHelper._get_adapter_configuration(mock_tool, *method_args)
             else:
-                result = getattr(platform_helper, method_name)(*method_args)
+                getattr(platform_helper, method_name)(*method_args)
 
             assert mock_request.call_count == 1
 
@@ -71,8 +76,13 @@ class TestPlatformHelperRetry:
         ],
     )
     def test_retry_on_connection_error(
-        self, mock_tool, platform_helper, method_name, method_args, clean_env
-    ):
+        self,
+        mock_tool: MagicMock,
+        platform_helper: PlatformHelper,
+        method_name: str,
+        method_args: tuple[str, ...],
+        clean_env: MonkeyPatch,
+    ) -> None:
         """Test methods retry on ConnectionError."""
         expected_data = {"result": "success"}
 
@@ -94,7 +104,9 @@ class TestPlatformHelperRetry:
             assert mock_get.call_count == 2
 
     @pytest.mark.slow
-    def test_max_retries_exceeded(self, mock_tool, clean_env):
+    def test_max_retries_exceeded(
+        self, mock_tool: MagicMock, clean_env: MonkeyPatch
+    ) -> None:
         """Test service call fails after exceeding max retries."""
         platform_helper = PlatformHelper(
             tool=mock_tool,
@@ -111,7 +123,9 @@ class TestPlatformHelperRetry:
             # Default: 3 retries + 1 initial = 4 attempts
             assert mock_get.call_count == 4
 
-    def test_non_retryable_http_error(self, mock_tool, clean_env):
+    def test_non_retryable_http_error(
+        self, mock_tool: MagicMock, clean_env: MonkeyPatch
+    ) -> None:
         """Test non-retryable HTTP errors (404, 400) don't trigger retry."""
         with patch("requests.get") as mock_get:
             mock_response = Mock()
@@ -129,7 +143,9 @@ class TestPlatformHelperRetry:
             assert mock_get.call_count == 1
 
     @pytest.mark.parametrize("status_code", [502, 503, 504])
-    def test_retryable_http_errors(self, mock_tool, status_code, clean_env):
+    def test_retryable_http_errors(
+        self, mock_tool: MagicMock, status_code: int, clean_env: MonkeyPatch
+    ) -> None:
         """Test retryable HTTP errors (502, 503, 504) trigger retry."""
         expected_data = {"adapter_id": "test", "config": {}}
 
@@ -157,7 +173,9 @@ class TestPlatformHelperRetry:
             assert result == expected_data
 
     @pytest.mark.slow
-    def test_connection_error_converted_to_sdk_error(self, mock_tool, clean_env):
+    def test_connection_error_converted_to_sdk_error(
+        self, mock_tool: MagicMock, clean_env: MonkeyPatch
+    ) -> None:
         """Test get_adapter_config wraps ConnectionError as SdkError."""
         with patch("requests.get") as mock_get:
             mock_get.side_effect = ConnectionError("Connection failed")
@@ -165,7 +183,9 @@ class TestPlatformHelperRetry:
             with pytest.raises(SdkError, match="Unable to connect to platform service"):
                 PlatformHelper.get_adapter_config(mock_tool, "test-adapter-id")
 
-    def test_post_method_retry(self, platform_helper, clean_env):
+    def test_post_method_retry(
+        self, platform_helper: PlatformHelper, clean_env: MonkeyPatch
+    ) -> None:
         """Test POST requests also support retry."""
         payload = {"key": "value"}
         expected_response = {"status": "OK"}
@@ -187,7 +207,7 @@ class TestPlatformHelperRetry:
             assert result == expected_response
             assert mock_post.call_count == 2
 
-    def test_retry_logging(self, mock_tool, clean_env):
+    def test_retry_logging(self, mock_tool: MagicMock, clean_env: MonkeyPatch) -> None:
         """Test that retry attempts are logged."""
         with patch("requests.get") as mock_get:
             mock_response = Mock()
