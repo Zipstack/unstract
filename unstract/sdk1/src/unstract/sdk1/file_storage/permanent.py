@@ -24,7 +24,14 @@ class PermanentFileStorage(FileStorage):
         self,
         provider: FileStorageProvider,
         **storage_config: dict[str, Any],
-    ):
+    ) -> None:
+        """Initialize the PermanentFileStorage with validation.
+
+        Args:
+            provider: File storage provider type that must be supported for permanent
+                storage
+            **storage_config: Additional configuration parameters for the storage provider
+        """
         if provider.value not in self.SUPPORTED_FILE_STORAGE_TYPES:
             raise FileStorageError(
                 f"File storage provider `{provider.value}` is not "
@@ -42,8 +49,9 @@ class PermanentFileStorage(FileStorage):
         else:
             raise NotImplementedError(f"Provider {provider.value} is not implemented")
 
-    def _copy_on_read(self, path: str, legacy_storage_path: str):
+    def _copy_on_read(self, path: str, legacy_storage_path: str) -> None:
         """Copies the file to the remote storage lazily if not present already.
+
         Checks if the file is present in the Local File system. If yes, copies
         the file to the mentioned path using the remote file system. This is a
         silent copy done on need basis.
@@ -109,8 +117,9 @@ class PermanentFileStorage(FileStorage):
         read_length: int = FileOperationParams.READ_ENTIRE_LENGTH,
         legacy_storage_path: str | None = None,
     ) -> str:
-        """Gets the file MIME type for an input file. Uses libmagic to perform
-        the same.
+        """Gets the file MIME type for an input file.
+
+        Uses libmagic to perform the same.
 
         Args:
             path (str): Path of the input file

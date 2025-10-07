@@ -14,7 +14,14 @@ class VectorDBAdapter(Adapter, ABC):
         self,
         name: str,
         vector_db_instance: VectorStore | BasePydanticVectorStore,
-    ):
+    ) -> None:
+        """Initialize the VectorDBAdapter base class.
+
+        Args:
+            name: Name identifier for the vector database adapter
+            vector_db_instance: The vector database instance (VectorStore or
+                BasePydanticVectorStore)
+        """
         super().__init__(name)
         self.name = name
         self._vector_db_instance: VectorStore | BasePydanticVectorStore = (
@@ -58,8 +65,7 @@ class VectorDBAdapter(Adapter, ABC):
     def get_vector_db_instance(
         self, vector_db_config: dict[str, Any]
     ) -> BasePydanticVectorStore | VectorStore:
-        """Instantiate the llama index VectorStore / BasePydanticVectorStore
-        class.
+        """Instantiate the llama index VectorStore / BasePydanticVectorStore class.
 
         Returns:
             BasePydanticVectorStore / VectorStore:
@@ -68,7 +74,7 @@ class VectorDBAdapter(Adapter, ABC):
         """
         return SimpleVectorStore()
 
-    def close(self, **kwargs: Any) -> None:
+    def close(self, **kwargs: object) -> None:
         """Closes the client connection.
 
         Returns:
@@ -78,7 +84,7 @@ class VectorDBAdapter(Adapter, ABC):
         # library methods invoked
         pass
 
-    def delete(self, ref_doc_id: str, **delete_kwargs: Any) -> None:
+    def delete(self, ref_doc_id: str, **delete_kwargs: object) -> None:
         """Delete the specified docs.
 
         Returns:

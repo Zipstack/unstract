@@ -1,5 +1,3 @@
-from typing import Any
-
 import requests
 from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.platform import PlatformHelper
@@ -14,7 +12,9 @@ class ToolCache(PlatformHelper):
     """
 
     def __init__(self, tool: BaseTool, platform_host: str, platform_port: int) -> None:
-        """Args:
+        """Initialize the ToolCache for tool-specific caching operations.
+
+        Args:
             tool (AbstractTool): Instance of AbstractTool
             platform_host (str): The host of the platform.
             platform_port (int): The port of the platform.
@@ -53,7 +53,7 @@ class ToolCache(PlatformHelper):
             )
             return False
 
-    def get(self, key: str) -> Any | None:
+    def get(self, key: str) -> str | None:
         """Gets the value for a key in the cache.
 
         Args:
