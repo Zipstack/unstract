@@ -143,6 +143,13 @@ class PlatformHelper:
                 level=LogLevel.DEBUG,
             )
         except HTTPError as e:
+            # Check if this is a retryable HTTP error (502, 503, 504)
+            # If so, re-raise it so the retry decorator can handle it
+            if hasattr(e, "response") and e.response is not None:
+                if e.response.status_code in (502, 503, 504):
+                    raise  # Re-raise to allow retry decorator to retry
+
+            # Non-retryable error - convert to SdkError
             default_err = (
                 "Error while calling the platform service, please contact the admin."
             )

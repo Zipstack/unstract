@@ -128,6 +128,34 @@ class TestPlatformHelperRetry:
             # Should not retry 404
             assert mock_get.call_count == 1
 
+    @pytest.mark.parametrize("status_code", [502, 503, 504])
+    def test_retryable_http_errors(self, mock_tool, status_code, clean_env):
+        """Test retryable HTTP errors (502, 503, 504) trigger retry."""
+        expected_data = {"adapter_id": "test", "config": {}}
+
+        with patch("requests.get") as mock_get:
+            # First attempt: retryable HTTP error
+            http_error = HTTPError()
+            error_response = Mock()
+            error_response.status_code = status_code
+            error_response.json.return_value = {"error": "Service unavailable"}
+            http_error.response = error_response
+
+            # Second attempt: success
+            success_response = Mock()
+            success_response.json.return_value = expected_data
+            success_response.raise_for_status = Mock()
+
+            mock_get.side_effect = [http_error, success_response]
+
+            result = PlatformHelper._get_adapter_configuration(
+                mock_tool, "test-adapter-id"
+            )
+
+            # Should retry and succeed
+            assert mock_get.call_count == 2
+            assert result == expected_data
+
     @pytest.mark.slow
     def test_connection_error_converted_to_sdk_error(self, mock_tool, clean_env):
         """Test get_adapter_config wraps ConnectionError as SdkError."""
