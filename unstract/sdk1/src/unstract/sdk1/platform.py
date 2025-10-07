@@ -1,11 +1,10 @@
 import json
 import logging
-from typing import Any
+from typing import Any, Self
 
 import requests
 from requests import RequestException, Response
 from requests.exceptions import ConnectionError, HTTPError
-
 from unstract.sdk1.constants import (
     AdapterKeys,
     LogLevel,
@@ -31,7 +30,7 @@ class PlatformHelper:
     """
 
     def __init__(
-        self,
+        self: Self,
         tool: BaseTool,
         platform_host: str,
         platform_port: str,
@@ -52,7 +51,11 @@ class PlatformHelper:
         self.request_id = request_id
 
     @classmethod
-    def get_platform_base_url(cls, platform_host: str, platform_port: str) -> str:
+    def get_platform_base_url(
+        cls: type[Self],
+        platform_host: str,
+        platform_port: str,
+    ) -> str:
         """Make base url from host and port.
 
         Args:
@@ -67,7 +70,7 @@ class PlatformHelper:
         return f"{platform_host}:{platform_port}"
 
     @classmethod
-    def is_public_adapter(cls, adapter_id: str) -> bool:
+    def is_public_adapter(cls: type[Self], adapter_id: str) -> bool:
         """Check if the given adapter_id is one of the public adapter keys.
 
         This method iterates over the attributes of the PublicAdapterKeys class
@@ -95,7 +98,7 @@ class PlatformHelper:
     @classmethod
     @retry_platform_service_call
     def _get_adapter_configuration(
-        cls,
+        cls: type[Self],
         tool: BaseTool,
         adapter_instance_id: str,
     ) -> dict[str, Any]:
@@ -161,7 +164,7 @@ class PlatformHelper:
 
     @classmethod
     def get_adapter_config(
-        cls, tool: BaseTool, adapter_instance_id: str
+        cls: type[Self], tool: BaseTool, adapter_instance_id: str
     ) -> dict[str, Any] | None:
         """Get adapter spec by the help of unstract DB tool.
 
@@ -197,7 +200,7 @@ class PlatformHelper:
                 "Unable to connect to platform service, please contact the admin."
             ) from e
 
-    def _get_headers(self, headers: dict[str, str] | None = None) -> dict[str, str]:
+    def _get_headers(self: Self, headers: dict[str, str] | None = None) -> dict[str, str]:
         """Get default headers for requests.
 
         Returns:
@@ -213,7 +216,7 @@ class PlatformHelper:
 
     @retry_platform_service_call
     def _call_service(
-        self,
+        self: Self,
         url_path: str,
         payload: dict[str, Any] | None = None,
         params: dict[str, str] | None = None,
@@ -286,7 +289,7 @@ class PlatformHelper:
             )
         return response.json()
 
-    def get_platform_details(self) -> dict[str, Any] | None:
+    def get_platform_details(self: Self) -> dict[str, Any] | None:
         """Obtains platform details associated with the platform key.
 
         Currently helps fetch organization ID related to the key.
@@ -303,7 +306,7 @@ class PlatformHelper:
         )
         return response.get("details")
 
-    def get_prompt_studio_tool(self, prompt_registry_id: str) -> dict[str, Any]:
+    def get_prompt_studio_tool(self: Self, prompt_registry_id: str) -> dict[str, Any]:
         """Get exported custom tool by the help of unstract DB tool.
 
         Args:
@@ -321,7 +324,7 @@ class PlatformHelper:
             method="GET",
         )
 
-    def get_llm_profile(self, llm_profile_id: str) -> dict[str, Any]:
+    def get_llm_profile(self: Self, llm_profile_id: str) -> dict[str, Any]:
         """Get llm profile by the help of unstract DB tool.
 
         Args:

@@ -1,8 +1,10 @@
 """Integration tests for prompt module with retry logic."""
 
+from typing import Any, Self
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+from pytest import MonkeyPatch
 from requests.exceptions import ConnectionError, Timeout
 from unstract.sdk1.prompt import PromptTool
 
@@ -11,7 +13,7 @@ class TestPromptToolRetry:
     """Tests for PromptTool retry functionality."""
 
     @pytest.fixture
-    def mock_tool(self):
+    def mock_tool(self: Self) -> MagicMock:
         """Create a mock tool for testing."""
         tool = MagicMock()
         tool.get_env_or_die.side_effect = lambda key: {
@@ -22,7 +24,7 @@ class TestPromptToolRetry:
         return tool
 
     @pytest.fixture
-    def prompt_tool(self, mock_tool):
+    def prompt_tool(self: Self, mock_tool: MagicMock) -> PromptTool:
         """Create a PromptTool instance."""
         return PromptTool(
             tool=mock_tool,
@@ -32,7 +34,9 @@ class TestPromptToolRetry:
             request_id="test-request-id",
         )
 
-    def test_success_on_first_attempt(self, prompt_tool, clean_env):
+    def test_success_on_first_attempt(
+        self: Self, prompt_tool: PromptTool, clean_env: MonkeyPatch
+    ) -> None:
         """Test successful service call on first attempt."""
         expected_response = {"result": "success"}
         payload = {"prompt": "test"}
@@ -55,7 +59,13 @@ class TestPromptToolRetry:
             ("Timeout", Timeout("Request timed out")),
         ],
     )
-    def test_retry_on_errors(self, prompt_tool, error_type, error_instance, clean_env):
+    def test_retry_on_errors(
+        self: Self,
+        prompt_tool: PromptTool,
+        error_type: str,
+        error_instance: Exception,
+        clean_env: MonkeyPatch,
+    ) -> None:
         """Test service retries on ConnectionError and Timeout."""
         expected_response = {"result": "success"}
         payload = {"prompt": "test"}
@@ -76,7 +86,9 @@ class TestPromptToolRetry:
             assert mock_post.call_count == 2
 
     @pytest.mark.slow
-    def test_max_retries_exceeded(self, mock_tool, clean_env):
+    def test_max_retries_exceeded(
+        self: Self, mock_tool: MagicMock, clean_env: MonkeyPatch
+    ) -> None:
         """Test service call fails after exceeding max retries."""
         prompt_tool = PromptTool(
             tool=mock_tool,
@@ -92,7 +104,7 @@ class TestPromptToolRetry:
             mock_post.side_effect = ConnectionError("Persistent failure")
 
             # Exception handled by decorator
-            with pytest.raises(Exception):
+            with pytest.raises(ConnectionError):
                 prompt_tool._call_service("answer-prompt", payload=payload)
 
             # Default: 3 retries + 1 initial = 4 attempts
@@ -107,7 +119,13 @@ class TestPromptToolRetry:
             ("summarize", {"text": "test"}),
         ],
     )
-    def test_wrapper_methods_retry(self, prompt_tool, method_name, payload, clean_env):
+    def test_wrapper_methods_retry(
+        self: Self,
+        prompt_tool: PromptTool,
+        method_name: str,
+        payload: dict[str, Any],
+        clean_env: MonkeyPatch,
+    ) -> None:
         """Test that wrapper methods inherit retry behavior."""
         expected_response = {
             "answers": ["result"],
@@ -131,7 +149,9 @@ class TestPromptToolRetry:
             assert mock_post.call_count == 2
 
     @pytest.mark.slow
-    def test_error_handling_with_retry(self, mock_tool, clean_env):
+    def test_error_handling_with_retry(
+        self: Self, mock_tool: MagicMock, clean_env: MonkeyPatch
+    ) -> None:
         """Test error handling decorator works with retry."""
         prompt_tool = PromptTool(
             tool=mock_tool,
