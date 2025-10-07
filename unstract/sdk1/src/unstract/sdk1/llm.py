@@ -1,7 +1,7 @@
 import logging
 import os
 import re
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Generator, Mapping
 from typing import cast
 
 import litellm
@@ -9,6 +9,7 @@ import litellm
 # from litellm import get_supported_openai_params
 from litellm import get_max_tokens, token_counter
 from pydantic import ValidationError
+
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
 from unstract.sdk1.audit import Audit
@@ -45,12 +46,12 @@ class LLM:
     def __init__(  # noqa: C901
         self,
         adapter_id: str = "",
-        adapter_metadata: dict[str, object] = None,
+        adapter_metadata: dict[str, object] | None = None,
         adapter_instance_id: str = "",
-        tool: BaseTool = None,
-        usage_kwargs: dict[str, object] = None,
+        tool: BaseTool | None = None,
+        usage_kwargs: dict[str, object] | None = None,
         system_prompt: str = "",
-        kwargs: dict[str, object] = None,
+        kwargs: dict[str, object] | None = None,
         capture_metrics: bool = False,
     ) -> None:
         """Initialize the LLM interface.
@@ -158,7 +159,7 @@ class LLM:
             raise e
 
     @capture_metrics
-    def complete(self, prompt: str, **kwargs: dict[str, object]) -> dict[str, object]:
+    def complete(self, prompt: str, **kwargs: object) -> dict[str, object]:
         """Return a standard chat completion dict with optional metrics capture.
 
         Return a standard chat completion dict and optionally captures metrics if run
@@ -324,13 +325,18 @@ class LLM:
         return self.platform_kwargs.get("llm_usage_reason")
 
     def _record_usage(
-        self, model: str, messages: list[dict[str, str]], usage: object, llm_api: str
+        self,
+        model: str,
+        messages: list[dict[str, str]],
+        usage: Mapping[str, int] | None,
+        llm_api: str,
     ) -> None:
         prompt_tokens = token_counter(model=model, messages=messages)
+        usage_data: Mapping[str, int] = usage or {}
         all_tokens = TokenCounterCompat(
-            prompt_tokens=usage.get("prompt_tokens", 0),
-            completion_tokens=usage.get("completion_tokens", 0),
-            total_tokens=usage.get("total_tokens", 0),
+            prompt_tokens=usage_data.get("prompt_tokens", 0),
+            completion_tokens=usage_data.get("completion_tokens", 0),
+            total_tokens=usage_data.get("total_tokens", 0),
         )
 
         logger.info(f"[sdk1][LLM][{model}][{llm_api}] Prompt Tokens: {prompt_tokens}")

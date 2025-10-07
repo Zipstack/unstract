@@ -18,6 +18,7 @@ class ToolUtils:
     """Class containing utility methods."""
 
     @staticmethod
+    # noqa: UP038
     def hash_str(string_to_hash: object, hash_method: str = "sha256") -> str:
         """Computes the hash for a given input string.
 
@@ -37,7 +38,7 @@ class ToolUtils:
                 return str(md5(string_to_hash).hexdigest())
             return str(md5(string_to_hash.encode()).hexdigest())
         elif hash_method == "sha256":
-            if isinstance(string_to_hash, (bytes, bytearray)):  # noqa: UP038
+            if isinstance(string_to_hash, (bytes, bytearray)):
                 return str(sha256(string_to_hash).hexdigest())
             return str(sha256(string_to_hash.encode()).hexdigest())
         else:

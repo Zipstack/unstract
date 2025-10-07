@@ -53,7 +53,7 @@ class ToolCache(PlatformHelper):
             )
             return False
 
-    def get(self, key: str) -> object | None:
+    def get(self, key: str) -> str | None:
         """Gets the value for a key in the cache.
 
         Args:
