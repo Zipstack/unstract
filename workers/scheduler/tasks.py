@@ -19,7 +19,10 @@ from shared.models.scheduler_models import (
     SchedulerExecutionResult,
     WorkflowExecutionRequest,
 )
+from shared.patterns.notification.helper import trigger_notification
 from shared.utils.api_client_singleton import get_singleton_api_client
+
+from unstract.core.data_models import NotificationPayload, NotificationSource
 
 # Import the exact backend logic to ensure consistency
 
@@ -27,6 +30,63 @@ logger = WorkerLogger.get_logger(__name__)
 
 # Initialize worker configuration
 config = WorkerConfig.from_env("SCHEDULER")
+
+
+def _send_pipeline_status_notification(
+    api_client,
+    pipeline_id: str,
+    pipeline_name: str,
+    pipeline_type: str,
+    status: str,
+    organization_id: str,
+    execution_id: str | None = None,
+) -> None:
+    """Send notification for pipeline status change.
+
+    Non-critical operation - logs warning on failure but doesn't raise.
+
+    Args:
+        api_client: Internal API client instance
+        pipeline_id: Pipeline identifier
+        pipeline_name: Pipeline name
+        pipeline_type: Pipeline type (ETL, TASK, etc.)
+        status: Pipeline status (INPROGRESS, SUCCESS, FAILURE)
+        organization_id: Organization context
+        execution_id: Optional execution identifier
+    """
+    # Validate execution status for notifications
+    try:
+        notification = NotificationPayload(
+            type=pipeline_type,
+            pipeline_id=pipeline_id,
+            pipeline_name=pipeline_name,
+            status=status,
+            execution_id=execution_id,
+            organization_id=organization_id,
+            _source=NotificationSource.SCHEDULED_EXECUTION,
+        )
+    except ValueError as e:
+        logger.warning(f"Cannot create notification payload: {e}")
+        return
+
+    logger.info(
+        f"Processing notification for {pipeline_type} {pipeline_id} with status {status}"
+    )
+
+    # Use proper notification configuration lookup based on workflow type
+    try:
+        # For ETL/TASK/other pipeline types
+        trigger_notification(
+            api_client=api_client,
+            pipeline_id=pipeline_id,
+            pipeline_name=pipeline_name,
+            notification_payload=notification,
+        )
+        logger.info(f"Notification sent successfully for {pipeline_type} {pipeline_id}")
+    except Exception as notification_error:
+        logger.warning(
+            f"Failed to send notification for {pipeline_type} {pipeline_id}: {notification_error}"
+        )
 
 
 def _execute_scheduled_workflow(
@@ -249,6 +309,17 @@ def execute_pipeline_task_v2(
             )
             logger.info(
                 f"Successfully updated pipeline {pipeline_id} status to {PipelineStatus.INPROGRESS}"
+            )
+
+            # Send INPROGRESS notification when scheduled execution starts
+            _send_pipeline_status_notification(
+                api_client=api_client,
+                pipeline_id=pipeline_id,
+                pipeline_name=pipeline_name_from_api,
+                pipeline_type=pipeline_data.pipeline_type,
+                status=PipelineStatus.INPROGRESS.value,
+                organization_id=organization_id,
+                execution_id=None,
             )
         except Exception as e:
             logger.warning(f"Failed to update pipeline status to INPROGRESS: {e}")
