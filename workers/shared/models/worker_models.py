@@ -395,7 +395,10 @@ class WorkerCeleryConfig:
                 int,  # Prevent memory leaks
             ),
             "task_reject_on_worker_lost": get_celery_setting(
-                "TASK_REJECT_ON_WORKER_LOST", self.worker_type, True, bool
+                "TASK_REJECT_ON_WORKER_LOST",
+                self.worker_type,
+                self.task_reject_on_worker_lost,
+                bool,
             ),
             "task_acks_on_failure_or_timeout": get_celery_setting(
                 "TASK_ACKS_ON_FAILURE_OR_TIMEOUT", self.worker_type, True, bool
