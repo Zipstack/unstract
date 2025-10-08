@@ -1,6 +1,5 @@
 import logging
 import os
-from typing import Any
 
 from llama_index.core.vector_stores.types import BasePydanticVectorStore
 from llama_index.vector_stores.qdrant import QdrantVectorStore
@@ -20,7 +19,13 @@ class Constants:
 
 
 class Qdrant(VectorDBAdapter):
-    def __init__(self, settings: dict[str, Any]):
+    def __init__(self, settings: dict[str, object]) -> None:
+        """Initialize the Qdrant vector database adapter.
+
+        Args:
+            settings: Configuration dictionary containing Qdrant connection parameters
+                     including URL, API key, and other settings.
+        """
         self._config = settings
         self._client: QdrantClient | None = None
         self._collection_name: str = VectorDbConstants.DEFAULT_VECTOR_DB_NAME
@@ -83,7 +88,7 @@ class Qdrant(VectorDBAdapter):
         except Exception as e:
             raise self.parse_vector_db_err(e) from e
 
-    def close(self, **kwargs: Any) -> None:
+    def close(self, **kwargs: object) -> None:
         if self._client:
             self._client.close(**kwargs)
 

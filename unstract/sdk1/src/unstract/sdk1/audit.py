@@ -9,8 +9,7 @@ from unstract.sdk1.utils.common import TokenCounterCompat
 
 
 class Audit(StreamMixin):
-    """The 'Audit' class is responsible for pushing usage data to the platform
-    service.
+    """The 'Audit' class is responsible for pushing usage data to the platform service.
 
     Methods:
         - push_usage_data: Pushes the usage data to the platform service.
@@ -20,6 +19,11 @@ class Audit(StreamMixin):
     """
 
     def __init__(self, log_level: LogLevel = LogLevel.INFO) -> None:
+        """Initialize the Audit class for tracking usage data.
+
+        Args:
+            log_level: Logging level for output control
+        """
         super().__init__(log_level)
 
     def push_usage_data(
@@ -28,7 +32,7 @@ class Audit(StreamMixin):
         token_counter: TokenCountingHandler | TokenCounterCompat = None,
         model_name: str = "",
         event_type: CBEventType = None,
-        kwargs: dict[Any, Any] = {},
+        kwargs: dict[Any, Any] = None,
     ) -> None:
         """Pushes the usage data to the platform service.
 
@@ -56,6 +60,8 @@ class Audit(StreamMixin):
             requests.RequestException: If there is an error while pushing the
             usage details.
         """
+        if kwargs is None:
+            kwargs = {}
         platform_host = self.get_env_or_die(ToolEnv.PLATFORM_HOST)
         platform_port = self.get_env_or_die(ToolEnv.PLATFORM_PORT)
 
@@ -125,8 +131,10 @@ class Audit(StreamMixin):
         page_count: int,
         file_size: int,
         file_type: str,
-        kwargs: dict[Any, Any] = {},
+        kwargs: dict[Any, Any] = None,
     ) -> None:
+        if kwargs is None:
+            kwargs = {}
         platform_host = self.get_env_or_die(ToolEnv.PLATFORM_HOST)
         platform_port = self.get_env_or_die(ToolEnv.PLATFORM_PORT)
         run_id = kwargs.get("run_id", "")
