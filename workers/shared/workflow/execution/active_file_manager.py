@@ -15,13 +15,12 @@ import os
 import time
 from typing import Any, Protocol
 
-from ...api.internal_client import InternalAPIClient
 from ...cache.cache_backends import RedisCacheBackend
 from ...infrastructure.logging import WorkerLogger
 
 # Constants for cache configuration
 DEFAULT_ACTIVE_FILE_CACHE_TTL = 300  # 5 minutes
-MAX_ACTIVE_FILE_CACHE_TTL = 3600  # 1 hour maximum
+MAX_ACTIVE_FILE_CACHE_TTL = 7200  # 2 hours maximum
 
 
 def get_active_file_cache_ttl() -> int:
@@ -60,190 +59,6 @@ class ActiveFileManager:
     API deployments have different concurrency patterns and should not use the file_active
     cache pattern. They handle duplicate processing through their own mechanisms.
     """
-
-    @staticmethod
-    def filter_and_cache_files(
-        source_files: dict[str, Any],
-        workflow_id: str,
-        execution_id: str,
-        api_client: Any,
-        logger_instance: LoggerProtocol | None = None,
-        final_files_to_process: dict[str, Any] | None = None,
-    ) -> tuple[dict[str, Any], int, dict[str, Any]]:
-        """Filter out active files and create cache entries for files to be processed.
-
-        This method performs three key operations:
-        1. Checks cache and database for files already being processed
-        2. Creates cache entries ONLY for files that will actually be processed (race condition prevention)
-        3. Filters the source_files dict to remove active files
-
-        Args:
-            source_files: Dictionary of source files to process
-            workflow_id: Workflow identifier
-            execution_id: Current execution identifier
-            api_client: API client for database checks
-            logger_instance: Optional logger override (uses module logger if None)
-            final_files_to_process: Optional dict of files that will actually be processed (after limits)
-                                    If provided, cache entries are created only for these files
-
-        Returns:
-            Tuple of (filtered_source_files, new_file_count, filtering_stats)
-
-        Example:
-            >>> files = {"file1": {"provider_file_uuid": "uuid1"}}
-            >>> filtered, count, stats = ActiveFileManager.filter_and_cache_files(
-            ...     source_files=files,
-            ...     workflow_id="workflow-123",
-            ...     execution_id="exec-456",
-            ...     api_client=client,
-            ... )
-            >>> print(f"Processing {count} files, stats: {stats}")
-        """
-        log = logger_instance or logger
-
-        if not source_files:
-            return (
-                source_files,
-                0,
-                {"original_count": 0, "filtered_count": 0, "skipped_files": []},
-            )
-
-        original_count = len(source_files)
-        filtering_stats = {
-            "original_count": original_count,
-            "cache_active": [],  # Files found active in cache
-            "db_active": [],  # Files found active in database
-            "processing_files": [],  # Files that will be processed
-            "cache_created": 0,  # Successfully created cache entries
-            "cache_errors": 0,  # Failed cache operations
-            "filtered_count": original_count,  # Will be updated if filtering occurs
-        }
-
-        try:
-            # Extract provider_file_uuids and file paths from source files for checking
-            provider_file_map = {}  # provider_uuid -> file_key mapping (for backward compatibility)
-            file_tracking_data = {}  # file_key -> {provider_uuid, file_path, file_data} mapping
-
-            for file_key, file_data in source_files.items():
-                provider_uuid = ActiveFileManager._extract_provider_uuid(file_data)
-                file_path = ActiveFileManager._extract_file_path(file_data)
-
-                if provider_uuid:
-                    # For backward compatibility with database checks
-                    provider_file_map[provider_uuid] = file_key
-                    # New tracking structure includes both provider_uuid and file_path
-                    file_tracking_data[file_key] = {
-                        "provider_uuid": provider_uuid,
-                        "file_path": file_path
-                        or file_key,  # fallback to file_key if no file_path
-                        "file_data": file_data,
-                    }
-
-            if not provider_file_map:
-                log.warning(
-                    "No provider_file_uuid found in source files, proceeding without filtering"
-                )
-                return source_files, original_count, filtering_stats
-
-            log.info(
-                f"Checking {len(provider_file_map)} files for active processing conflicts"
-            )
-            log.debug(f"Current execution_id: {execution_id}, workflow_id: {workflow_id}")
-
-            active_files_to_skip = set()
-
-            # STEP 1: Check active_file cache for OTHER executions
-            try:
-                cache_stats = ActiveFileManager._handle_cache_check(
-                    file_tracking_data=file_tracking_data,
-                    workflow_id=workflow_id,
-                    execution_id=execution_id,
-                    log=log,
-                )
-                active_files_to_skip.update(cache_stats["active_files"])
-                filtering_stats.update(cache_stats["stats"])
-
-            except Exception as cache_error:
-                log.warning(f"Active file cache operations failed: {cache_error}")
-
-            # STEP 2: Database check for files in PENDING/EXECUTING state (backend only reads cache, doesn't create)
-            try:
-                db_active_provider_uuids = ActiveFileManager._check_database_active_files(
-                    api_client=api_client,
-                    workflow_id=workflow_id,
-                    execution_id=execution_id,
-                    provider_file_map=provider_file_map,
-                    log=log,
-                )
-
-                if db_active_provider_uuids:
-                    # Convert provider UUIDs back to file keys for filtering
-                    db_active_file_keys = {
-                        provider_file_map[provider_uuid]
-                        for provider_uuid in db_active_provider_uuids
-                        if provider_uuid in provider_file_map
-                    }
-
-                    new_db_active = db_active_file_keys - active_files_to_skip
-                    active_files_to_skip.update(db_active_file_keys)
-                    filtering_stats["db_active"].extend(list(new_db_active))
-                    log.info(
-                        f"📊 Found {len(new_db_active)} additional files active in database"
-                    )
-
-            except Exception as db_error:
-                log.warning(f"Database file check failed: {db_error}")
-
-            # STEP 3: Filter source_files to remove active ones (now using file_keys directly)
-            if active_files_to_skip:
-                filtered_files, new_count = (
-                    ActiveFileManager._filter_source_files_by_keys(
-                        source_files=source_files,
-                        active_file_keys_to_skip=active_files_to_skip,
-                        log=log,
-                    )
-                )
-
-                filtering_stats["filtered_count"] = new_count
-                filtering_stats["skipped_files"] = list(active_files_to_skip)
-
-                log.info(
-                    f"🔄 Filtered files: {original_count} → {new_count} "
-                    f"(removed {len(active_files_to_skip)} active files)"
-                )
-
-                # STEP 4: Create cache entries only for files that will actually be processed
-                if final_files_to_process:
-                    ActiveFileManager._create_cache_entries_for_selected_files(
-                        final_files_to_process=final_files_to_process,
-                        file_tracking_data=file_tracking_data,
-                        workflow_id=workflow_id,
-                        execution_id=execution_id,
-                        log=log,
-                        filtering_stats=filtering_stats,
-                    )
-
-                return filtered_files, new_count, filtering_stats
-            else:
-                log.info("✅ No active files found - processing all files")
-
-                # Create cache entries for files that will actually be processed
-                if final_files_to_process:
-                    ActiveFileManager._create_cache_entries_for_selected_files(
-                        final_files_to_process=final_files_to_process,
-                        file_tracking_data=file_tracking_data,
-                        workflow_id=workflow_id,
-                        execution_id=execution_id,
-                        log=log,
-                        filtering_stats=filtering_stats,
-                    )
-
-                return source_files, original_count, filtering_stats
-
-        except Exception as filter_error:
-            log.warning(f"File filtering failed: {filter_error}")
-            filtering_stats["error"] = str(filter_error)
-            return source_files, original_count, filtering_stats
 
     @staticmethod
     def create_cache_entries(
@@ -603,7 +418,7 @@ class ActiveFileManager:
                         "workflow_id": workflow_id,
                         "provider_file_uuid": provider_uuid,
                         "file_path": file_path,
-                        "status": "EXECUTING",
+                        "status": "PENDING",
                         "created_at": time.time(),
                     }
 
@@ -719,7 +534,7 @@ class ActiveFileManager:
                 "workflow_id": workflow_id,
                 "provider_file_uuid": provider_uuid,
                 "file_path": file_path,  # Include file path in cache data
-                "status": "EXECUTING",
+                "status": "PENDING",
                 "created_at": time.time(),
             }
 
@@ -732,30 +547,6 @@ class ActiveFileManager:
                 f"Failed to create cache entry for {provider_uuid}: {cache_set_error}"
             )
             return False
-
-    @staticmethod
-    def _check_database_active_files(
-        api_client: InternalAPIClient,
-        workflow_id: str,
-        execution_id: str,
-        provider_file_map: dict[str, str],
-        log: LoggerProtocol,
-    ) -> set[str]:
-        """Check database for active files and return set of active provider UUIDs."""
-        active_files_response = api_client.check_files_active_processing(
-            workflow_id=workflow_id,
-            provider_file_uuids=list(provider_file_map.keys()),
-            current_execution_id=execution_id,
-        )
-
-        if active_files_response.success:
-            active_files_data = active_files_response.data
-            return {uuid for uuid, is_active in active_files_data.items() if is_active}
-        else:
-            log.warning(
-                f"Database active file check failed: {active_files_response.error}"
-            )
-            return set()
 
     @staticmethod
     def _filter_source_files_by_keys(
