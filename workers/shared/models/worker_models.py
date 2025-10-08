@@ -313,7 +313,7 @@ class WorkerCeleryConfig:
     prefetch_multiplier: int = 1
     max_tasks_per_child: int = 1000
     task_acks_late: bool = True
-    task_reject_on_worker_lost: bool = True
+    task_reject_on_worker_lost: bool = False
 
     # Timeouts
     task_time_limit: int = 7200  # 2 hours
@@ -395,7 +395,10 @@ class WorkerCeleryConfig:
                 int,  # Prevent memory leaks
             ),
             "task_reject_on_worker_lost": get_celery_setting(
-                "TASK_REJECT_ON_WORKER_LOST", self.worker_type, True, bool
+                "TASK_REJECT_ON_WORKER_LOST",
+                self.worker_type,
+                self.task_reject_on_worker_lost,
+                bool,
             ),
             "task_acks_on_failure_or_timeout": get_celery_setting(
                 "TASK_ACKS_ON_FAILURE_OR_TIMEOUT", self.worker_type, True, bool
