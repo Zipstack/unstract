@@ -61,6 +61,13 @@ function SettingsLayout({ children, activeKey }) {
 
   const currentActiveKey = getActiveKey();
 
+  const handleKeyDown = (event, path) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      navigate(path);
+    }
+  };
+
   return (
     <div className="settings-container">
       {isSidebarVisible && (
@@ -72,6 +79,9 @@ function SettingsLayout({ children, activeKey }) {
                 currentActiveKey === item.key ? "active" : ""
               }`}
               onClick={() => navigate(item.path)}
+              onKeyDown={(e) => handleKeyDown(e, item.path)}
+              role="button"
+              tabIndex={0}
             >
               {item.label}
             </div>
