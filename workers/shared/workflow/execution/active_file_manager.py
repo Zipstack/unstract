@@ -32,7 +32,9 @@ def get_active_file_cache_ttl() -> int:
     try:
         ttl = int(os.environ.get("ACTIVE_FILE_CACHE_TTL", DEFAULT_ACTIVE_FILE_CACHE_TTL))
         # Ensure TTL is within reasonable bounds
-        return min(max(ttl, 60), MAX_ACTIVE_FILE_CACHE_TTL)  # Between 1 minute and 1 hour
+        return min(
+            max(ttl, 60), MAX_ACTIVE_FILE_CACHE_TTL
+        )  # Between 1 minute and 2 hours
     except (ValueError, TypeError):
         return DEFAULT_ACTIVE_FILE_CACHE_TTL
 
