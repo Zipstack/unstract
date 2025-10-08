@@ -38,8 +38,8 @@ dependencies = [
     # TODO: Temporarily removing the extra dependencies of aws and gcs from unstract-sdk
     # to resolve lock file. Will have to be re-looked into
     "unstract-sdk[azure]~=0.77.3",
-    "azure-identity",
-    "azure-mgmt-apimanagement",
+    "azure-identity==1.16.0",
+    "azure-mgmt-apimanagement==3.0.0",
     "croniter>=3.0.3",
     "django-filter>=24.3",
     "httpx>=0.27.0",

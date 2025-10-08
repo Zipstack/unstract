@@ -310,33 +310,31 @@ wheels = [
 
 [[package]]
 name = "azure-identity"
-version = "1.25.0"
+version = "1.16.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "azure-core" },
     { name = "cryptography" },
     { name = "msal" },
     { name = "msal-extensions" },
-    { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4e/9e/4c9682a286c3c89e437579bd9f64f311020e5125c1321fd3a653166b5716/azure_identity-1.25.0.tar.gz", hash = "sha256:4177df34d684cddc026e6cf684e1abb57767aa9d84e7f2129b080ec45eee7733", size = 278507, upload-time = "2025-09-12T01:30:04.418Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/cd/f1/25cba0d1f4ba1f9b9c799c4755400a3e577adcb1470cf5760fcd730b88e1/azure-identity-1.16.0.tar.gz", hash = "sha256:6ff1d667cdcd81da1ceab42f80a0be63ca846629f518a922f7317a7e3c844e1b", size = 235619, upload-time = "2024-04-09T19:40:38.889Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/75/54/81683b6756676a22e037b209695b08008258e603f7e47c56834029c5922a/azure_identity-1.25.0-py3-none-any.whl", hash = "sha256:becaec086bbdf8d1a6aa4fb080c2772a0f824a97d50c29637ec8cc4933f1e82d", size = 190861, upload-time = "2025-09-12T01:30:06.474Z" },
+    { url = "https://files.pythonhosted.org/packages/0d/89/2ab156cfa44367e1449e87ff3be393732677b55ed35719cdc8c2f5dfc170/azure_identity-1.16.0-py3-none-any.whl", hash = "sha256:722fdb60b8fdd55fa44dc378b8072f4b419b56a5e54c0de391f644949f3a826f", size = 166115, upload-time = "2024-04-09T19:40:42.835Z" },
 ]
 
 [[package]]
 name = "azure-mgmt-apimanagement"
-version = "5.0.0"
+version = "3.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "azure-common" },
     { name = "azure-mgmt-core" },
-    { name = "isodate" },
-    { name = "typing-extensions" },
+    { name = "msrest" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/25/e4/3e536f0374bccb203886ef7aeb1148e063de6be31187034179ddcbf1adff/azure_mgmt_apimanagement-5.0.0.tar.gz", hash = "sha256:0ab7fe17e70fe3154cd840ff47d19d7a4610217003eaa7c21acf3511a6e57999", size = 625729, upload-time = "2025-04-22T06:24:05.364Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/39/91/b46486cd5e74e19028f4cde54aba6c2e150d92d13963b5f9944e5171eef9/azure-mgmt-apimanagement-3.0.0.zip", hash = "sha256:9262f54ed387eb083d8dae66d32a8df35647319b902bd498cdc376f50a12d154", size = 608703, upload-time = "2022-01-13T09:06:59.035Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5b/d8/1406ff959601b1a93fb662b1a76067ecef7094680efcdd75c007457f9efd/azure_mgmt_apimanagement-5.0.0-py3-none-any.whl", hash = "sha256:b88c42a392333b60722fb86f15d092dfc19a8d67510dccd15c217381dff4e6ec", size = 1150262, upload-time = "2025-04-22T06:24:07.012Z" },
+    { url = "https://files.pythonhosted.org/packages/fa/68/f63d843a6820f12d36a7080487e6b78bdd80984667b74025f87886ab758b/azure_mgmt_apimanagement-3.0.0-py3-none-any.whl", hash = "sha256:58a96261266c51c63a64113dbb0ad96cabbf3b6c32fb9b79c395462d01470964", size = 588216, upload-time = "2022-01-13T09:06:56.454Z" },
 ]
 
 [[package]]
@@ -2417,6 +2415,22 @@ wheels = [
 ]
 
 [[package]]
+name = "msrest"
+version = "0.7.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "azure-core" },
+    { name = "certifi" },
+    { name = "isodate" },
+    { name = "requests" },
+    { name = "requests-oauthlib" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/68/77/8397c8fb8fc257d8ea0fa66f8068e073278c65f05acb17dcb22a02bfdc42/msrest-0.7.1.zip", hash = "sha256:6e7661f46f3afd88b75667b7187a92829924446c7ea1d169be8c4bb7eeb788b9", size = 175332, upload-time = "2022-06-13T22:41:25.111Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/15/cf/f2966a2638144491f8696c27320d5219f48a072715075d168b31d3237720/msrest-0.7.1-py3-none-any.whl", hash = "sha256:21120a810e1233e5e6cc7fe40b474eeb4ec6f757a15d7cf86702c369f9567c32", size = 85384, upload-time = "2022-06-13T22:41:22.42Z" },
+]
+
+[[package]]
 name = "multidict"
 version = "6.6.4"
 source = { registry = "https://pypi.org/simple" }
@@ -4075,8 +4089,8 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "authlib", specifier = "==1.2.1" },
-    { name = "azure-identity" },
-    { name = "azure-mgmt-apimanagement" },
+    { name = "azure-identity", specifier = "==1.16.0" },
+    { name = "azure-mgmt-apimanagement", specifier = "==3.0.0" },
     { name = "boto3", specifier = "~=1.34.0" },
     { name = "celery", extras = ["amqp"], specifier = ">=5.3.4" },
     { name = "cron-descriptor", specifier = "==1.4.0" },
