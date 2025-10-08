@@ -9,8 +9,8 @@
 }
 
 .ds-card .cover-img {
-  height: 180px;
-  width: 90%;
+  height: 50%;
+  width: 50%;
   text-align: center;
   padding: 10px;
   background-color: transparent;
@@ -40,6 +40,9 @@
 
 .cover-container {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .cover-img {
