@@ -16,7 +16,10 @@
   background-color: transparent;
   display: flex;
   align-items: center;
+  justify-content: center;
   overflow: hidden;
+  position: relative;
+  z-index: 0;
 }
 
 .ds-card-name {
@@ -43,14 +46,6 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-}
-
-.cover-img {
-  position: relative;
-  z-index: 0;
-  align-items: center;
-  display: flex;
-  justify-content: center;
 }
 
 .ds-card.disabled {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import PropTypes from "prop-types";
 import "../settings/Settings.css";
@@ -7,7 +7,6 @@ import { useSessionStore } from "../../../store/session-store";
 function SettingsLayout({ children, activeKey }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const [isSidebarVisible, setIsSidebarVisible] = useState(true);
   const sidebarRef = useRef(null);
   const { sessionDetails } = useSessionStore();
 
@@ -34,28 +33,14 @@ function SettingsLayout({ children, activeKey }) {
     },
   ];
 
-  // Handle click outside to close sidebar
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (sidebarRef.current && !sidebarRef.current.contains(event.target)) {
-        setIsSidebarVisible(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, []);
-
   // Determine active key from route if not provided
   const getActiveKey = () => {
     if (activeKey) return activeKey;
     const path = location.pathname;
-    if (path.includes("platform")) return "platform";
-    if (path.includes("users")) return "users";
-    if (path.includes("triad")) return "triad";
-    if (path.includes("review")) return "review";
+    if (path.includes("/settings/platform")) return "platform";
+    if (path.includes("/users")) return "users";
+    if (path.includes("/settings/triad")) return "triad";
+    if (path.includes("/settings/review")) return "review";
     return "platform";
   };
 
@@ -70,24 +55,22 @@ function SettingsLayout({ children, activeKey }) {
 
   return (
     <div className="settings-container">
-      {isSidebarVisible && (
-        <div className="settings-sidebar" ref={sidebarRef}>
-          {settingsMenuItems.map((item) => (
-            <div
-              key={item.key}
-              className={`settings-menu-item ${
-                currentActiveKey === item.key ? "active" : ""
-              }`}
-              onClick={() => navigate(item.path)}
-              onKeyDown={(e) => handleKeyDown(e, item.path)}
-              role="button"
-              tabIndex={0}
-            >
-              {item.label}
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="settings-sidebar" ref={sidebarRef}>
+        {settingsMenuItems.map((item) => (
+          <div
+            key={item.key}
+            className={`settings-menu-item ${
+              currentActiveKey === item.key ? "active" : ""
+            }`}
+            onClick={() => navigate(item.path)}
+            onKeyDown={(e) => handleKeyDown(e, item.path)}
+            role="button"
+            tabIndex={0}
+          >
+            {item.label}
+          </div>
+        ))}
+      </div>
       <div className="settings-content">{children}</div>
     </div>
   );
