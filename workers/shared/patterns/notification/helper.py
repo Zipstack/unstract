@@ -99,6 +99,61 @@ def send_notification_to_worker(
         return False
 
 
+def trigger_notification(
+    api_client,
+    pipeline_id: str,
+    pipeline_name: str,
+    notification_payload: NotificationPayload,
+) -> None:
+    """Trigger notifications for pipeline status updates.
+
+    Called by callback worker after successful status update.
+    Uses API client to fetch notification configuration.
+    """
+    try:
+        # Fetch pipeline notifications via API
+        response_data = api_client._make_request(
+            method="GET",
+            endpoint=f"v1/webhook/pipeline/{pipeline_id}/notifications/",
+            timeout=10,
+        )
+
+        # _make_request already handles status codes and returns parsed data
+        # If we get here, the request was successful (status 200)
+        notifications_data = response_data.get("notifications", [])
+        active_notifications = [
+            n for n in notifications_data if n.get("is_active", False)
+        ]
+
+        if not active_notifications:
+            logger.info(f"No active notifications found for pipeline {pipeline_id}")
+            return
+
+        logger.info(
+            f"Sending {len(active_notifications)} notifications for pipeline {pipeline_name}"
+        )
+
+        # Send each notification
+        for notification in active_notifications:
+            if notification.get("notification_type") == "WEBHOOK":
+                send_notification_to_worker(
+                    url=notification["url"],
+                    payload=notification_payload,
+                    auth_type=notification.get("authorization_type", "NONE"),
+                    auth_key=notification.get("authorization_key"),
+                    auth_header=notification.get("authorization_header"),
+                    max_retries=notification.get("max_retries", 0),
+                    platform=notification.get("platform"),
+                )
+            else:
+                logger.debug(
+                    f"Skipping non-webhook notification type: {notification.get('notification_type')}"
+                )
+
+    except Exception as e:
+        logger.error(f"Error triggering pipeline notifications for {pipeline_id}: {e}")
+
+
 def trigger_pipeline_notifications(
     api_client,
     pipeline_id: str,
