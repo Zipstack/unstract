@@ -837,6 +837,43 @@ def _compile_batch_result(context: WorkflowContextData) -> dict[str, Any]:
 # These functions support the refactored file processing workflow
 
 
+def _cleanup_file_cache_entry(
+    file_hash: FileHashData,
+    workflow_id: str,
+    file_name: str,
+) -> None:
+    """Helper to cleanup active file cache entry after DB record creation attempt.
+
+    This should be called after attempting to create WorkflowFileExecution,
+    regardless of success or failure, to prevent stale cache entries from
+    blocking future executions.
+
+    Args:
+        file_hash: File hash data containing provider_file_uuid
+        workflow_id: Workflow ID for cache key
+        file_name: File name for logging
+    """
+    if not file_hash.provider_file_uuid:
+        return
+
+    try:
+        from shared.workflow.execution.active_file_manager import (
+            cleanup_active_file_cache,
+        )
+
+        cleanup_active_file_cache(
+            provider_file_uuids=[file_hash.provider_file_uuid],
+            workflow_id=workflow_id,
+            logger_instance=logger,
+        )
+        logger.debug(
+            f"Cleaned cache for {file_name} (UUID: {file_hash.provider_file_uuid})"
+        )
+    except Exception as cleanup_error:
+        logger.warning(f"Cache cleanup failed for {file_name}: {cleanup_error}")
+        # Don't raise - cache will expire anyway
+
+
 def _pre_create_file_executions(
     file_data: WorkerFileData,
     files: list[Any],
@@ -867,7 +904,7 @@ def _pre_create_file_executions(
 
     # Use the file history flag passed from execution parameters
     logger.info(
-        f"Using file history parameter for workflow {workflow_id} (type: {workflow_type}): use_file_history = {use_file_history}"
+        f"Using file history parameter for workflow {workflow_id}  execution {execution_id} (type: {workflow_type}): use_file_history = {use_file_history}"
     )
 
     for file_item in files:
@@ -935,6 +972,10 @@ def _pre_create_file_executions(
                 f"Failed to pre-create WorkflowFileExecution for '{file_name}': {str(e)}"
             )
             # Continue with other files even if one fails
+
+        finally:
+            # Always cleanup cache (success or failure) to prevent stale entries
+            _cleanup_file_cache_entry(file_hash, workflow_id, file_name)
 
     # File history deduplication now handled during individual file processing
 

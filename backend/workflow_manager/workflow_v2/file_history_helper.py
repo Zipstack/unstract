@@ -2,6 +2,7 @@ import logging
 from datetime import timedelta
 from typing import Any
 
+from django.conf import settings
 from django.db.models import Q
 from django.db.utils import IntegrityError
 from django.utils import timezone
@@ -335,9 +336,11 @@ class FileHistoryHelper:
         pattern = f"file_active:{workflow.id}:*"
 
         try:
-            CacheService.clear_cache_optimized(pattern)
+            # Workers store file_active:* cache in Redis DB (FILE_ACTIVE_CACHE_REDIS_DB)
+            DB = settings.FILE_ACTIVE_CACHE_REDIS_DB
+            CacheService.clear_cache_optimized(pattern, db=DB)
             logger.info(
-                f"Cleared Redis cache entries for workflow {workflow.id} with pattern: {pattern}"
+                f"Cleared Redis cache entries (DB {DB}) for workflow {workflow.id} with pattern: {pattern}"
             )
         except Exception as e:
             logger.warning(

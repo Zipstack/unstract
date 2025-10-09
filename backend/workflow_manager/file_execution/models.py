@@ -208,13 +208,6 @@ class WorkflowFileExecution(BaseModel):
                 fields=["workflow_execution", "provider_file_uuid", "file_path"],
                 name="unique_workflow_provider_uuid_path",
             ),
-            # CRITICAL FIX: Add constraint for API files where file_path is None
-            # This prevents duplicate entries for same file_hash
-            models.UniqueConstraint(
-                fields=["workflow_execution", "file_hash"],
-                condition=models.Q(file_path__isnull=True),
-                name="unique_workflow_api_file_hash",
-            ),
         ]
 
     @property
