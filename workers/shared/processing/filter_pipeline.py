@@ -12,6 +12,7 @@ from unstract.core.data_models import ExecutionStatus, FileHashData
 from ..api.internal_client import InternalAPIClient
 from ..cache.cache_backends import RedisCacheBackend
 from ..infrastructure.logging import WorkerLogger
+from ..workflow.execution.active_file_manager import ActiveFileManager
 
 logger = WorkerLogger.get_logger(__name__)
 
@@ -594,7 +595,7 @@ class ActiveFileFilter(FileFilter):
 
         logger.info(
             f"[ActiveFileFilter] {len(files)} → {len(filtered)} files "
-            f"({len(active_identifiers)} currently active)"
+            f"({len(active_identifiers)} currently active) for execution_id {execution_id}"
         )
 
         return filtered
@@ -634,12 +635,14 @@ class ActiveFileFilter(FileFilter):
                 uuid = data["uuid"]
                 file_path = data["path"]
 
-                # Create precise cache key instead of pattern matching
-                cache_key = f"file_active:{workflow_id}:{uuid}:{file_path}"
+                # Create precise cache key using same hashing logic as ActiveFileManager
+                cache_key = ActiveFileManager._create_cache_key(
+                    workflow_id, uuid, file_path
+                )
                 cached_data = cache.get(cache_key)
 
                 if cached_data and isinstance(cached_data, dict):
-                    cached_exec_id = cached_data.get("execution_id")
+                    cached_exec_id = cached_data.get("data", {}).get("execution_id")
                     if cached_exec_id and cached_exec_id != execution_id:
                         active_identifiers.add(identifier)
                         logger.debug(
@@ -648,52 +651,72 @@ class ActiveFileFilter(FileFilter):
         except Exception as e:
             logger.warning(f"[ActiveFileFilter] Cache check failed: {e}")
 
-        # 2. Check database for active files (single batch API call)
+        logger.info(
+            f"[ActiveFileFilter] found {len(active_identifiers)} from cache for execution {execution_id}"
+        )
+        # 2. Check database for active files (only files not found in cache)
         try:
-            # Prepare composite file information for the API call
-            files_for_api = []
-            for identifier in identifiers_to_check:
-                data = file_identifiers[identifier]
-                files_for_api.append({"uuid": data["uuid"], "path": data["path"]})
+            # Filter out files already found active in cache to reduce DB query size
+            remaining_identifiers = [
+                identifier
+                for identifier in identifiers_to_check
+                if identifier not in active_identifiers
+            ]
 
-            response = api_client.check_files_active_processing(
-                workflow_id=workflow_id,
-                files=files_for_api,
-                current_execution_id=execution_id,
-            )
+            if not remaining_identifiers:
+                logger.info(
+                    f"[ActiveFileFilter] All files already checked via cache, skipping database check for execution_id {execution_id}"
+                )
+            else:
+                logger.info(
+                    f"[ActiveFileFilter] Checking {len(remaining_identifiers)} remaining files in database "
+                    f"({len(active_identifiers)} already found in cache) for execution_id {execution_id}"
+                )
 
-            if response.success and response.data:
-                # Backend returns: {"active_files": {uuid: [exec_data]}, "active_uuids": [uuid1, uuid2], "active_identifiers": ["uuid:path"]}
-                # Use the new composite identifiers if available, fallback to legacy format
-                active_composite_ids = response.data.get("active_identifiers", [])
-                if active_composite_ids:
-                    # New path-aware format
-                    logger.debug(
-                        f"[ActiveFileFilter] Backend reported {len(active_composite_ids)} active identifiers: {active_composite_ids}"
-                    )
-                    for composite_id in active_composite_ids:
-                        if composite_id in identifiers_to_check:
-                            active_identifiers.add(composite_id)
-                            logger.debug(
-                                f"[ActiveFileFilter] File {composite_id} active in database"
-                            )
-                else:
-                    # Fallback to legacy format
-                    active_uuids = response.data.get("active_uuids", [])
-                    logger.debug(
-                        f"[ActiveFileFilter] Backend reported {len(active_uuids)} active UUIDs (legacy): {active_uuids}"
-                    )
+                # Prepare composite file information for the API call
+                files_for_api = []
+                for identifier in remaining_identifiers:
+                    data = file_identifiers[identifier]
+                    files_for_api.append({"uuid": data["uuid"], "path": data["path"]})
 
-                    # Map back to identifiers
-                    for identifier in identifiers_to_check:
-                        data = file_identifiers[identifier]
-                        uuid = data["uuid"]
+                response = api_client.check_files_active_processing(
+                    workflow_id=workflow_id,
+                    files=files_for_api,
+                    current_execution_id=execution_id,
+                )
 
-                        if uuid in active_uuids:
-                            active_identifiers.add(identifier)
-                            logger.debug(
-                                f"[ActiveFileFilter] File {identifier} active in database (legacy mapping)"
-                            )
+                if response.success and response.data:
+                    # Backend returns: {"active_files": {uuid: [exec_data]}, "active_uuids": [uuid1, uuid2], "active_identifiers": ["uuid:path"]}
+                    # Use the new composite identifiers if available, fallback to legacy format
+                    active_composite_ids = response.data.get("active_identifiers", [])
+                    if active_composite_ids:
+                        # New path-aware format
+                        logger.debug(
+                            f"[ActiveFileFilter] Backend reported {len(active_composite_ids)} active identifiers: {active_composite_ids}"
+                        )
+                        for composite_id in active_composite_ids:
+                            if composite_id in remaining_identifiers:
+                                active_identifiers.add(composite_id)
+                                logger.debug(
+                                    f"[ActiveFileFilter] File {composite_id} active in database"
+                                )
+                    else:
+                        # Fallback to legacy format
+                        active_uuids = response.data.get("active_uuids", [])
+                        logger.debug(
+                            f"[ActiveFileFilter] Backend reported {len(active_uuids)} active UUIDs (legacy): {active_uuids}"
+                        )
+
+                        # Map back to identifiers
+                        for identifier in remaining_identifiers:
+                            data = file_identifiers[identifier]
+                            uuid = data["uuid"]
+
+                            if uuid in active_uuids:
+                                active_identifiers.add(identifier)
+                                logger.debug(
+                                    f"[ActiveFileFilter] File {identifier} active in database (legacy mapping)"
+                                )
         except Exception as e:
             logger.warning(f"[ActiveFileFilter] Database check failed: {e}")
 

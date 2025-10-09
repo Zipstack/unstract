@@ -160,6 +160,10 @@ FILE_EXECUTION_TRACKER_COMPLETED_TTL_IN_SECOND = int(
     os.environ.get("FILE_EXECUTION_TRACKER_COMPLETED_TTL_IN_SECOND", 60 * 10)
 )  # 10 minutes
 
+FILE_ACTIVE_CACHE_REDIS_DB = int(
+    os.environ.get("FILE_ACTIVE_CACHE_REDIS_DB", 0)
+)  # Redis DB for active file cache tracking
+
 INSTANT_WF_POLLING_TIMEOUT = int(
     os.environ.get("INSTANT_WF_POLLING_TIMEOUT", "300")
 )  # 5 minutes
