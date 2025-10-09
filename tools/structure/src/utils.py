@@ -1,5 +1,7 @@
 from typing import Any
+
 from json_repair import repair_json
+
 
 def json_to_markdown(data: Any, level: int = 0, parent_key: str = "") -> str:
     markdown = ""
