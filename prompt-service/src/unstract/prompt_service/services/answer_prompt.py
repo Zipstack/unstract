@@ -276,7 +276,9 @@ class AnswerPromptService:
                 # Check if the result is a valid dict (schema object)
                 if isinstance(schema_data, dict) and schema_data:
                     has_valid_schema = True
-                    app.logger.info("Valid schema detected in prompt, using Smart Table Extractor")
+                    app.logger.info(
+                        "Valid schema detected in prompt, using Smart Table Extractor"
+                    )
             except Exception as e:
                 app.logger.debug(f"Prompt does not contain valid schema: {e}")
 

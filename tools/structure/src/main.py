@@ -130,7 +130,7 @@ class StructureTool(BaseTool):
         """
         # Check if input file is an Excel file
         file_ext = Path(input_file).suffix.lower()
-        if file_ext not in ['.xlsx', '.xls']:
+        if file_ext not in [".xlsx", ".xls"]:
             return False
 
         # Check if any output has table_settings with valid JSON prompt
