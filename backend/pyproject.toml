@@ -35,11 +35,7 @@ dependencies = [
     "python-socketio==5.9.0", # For log_events
     "social-auth-app-django==5.3.0", # For OAuth
     "social-auth-core==4.4.2", # For OAuth
-    # TODO: Temporarily removing the extra dependencies of aws and gcs from unstract-sdk
-    # to resolve lock file. Will have to be re-looked into
-    "unstract-sdk[azure]~=0.78.0",
-    "gcsfs==2024.10.0",
-    "s3fs==2024.10.0",
+    "unstract-sdk[aws,gcs,azure]~=0.78.0",
     "azure-identity==1.16.0",
     "azure-mgmt-apimanagement==3.0.0",
     "croniter>=3.0.3",
@@ -50,7 +46,7 @@ dependencies = [
     "unstract-core",
     "unstract-filesystem",
     "unstract-flags",
-    "unstract-sdk1",
+    "unstract-sdk1[aws,gcs,azure]",
     "unstract-tool-registry",
     "unstract-tool-sandbox",
     "unstract-workflow-execution",
