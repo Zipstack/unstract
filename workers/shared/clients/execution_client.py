@@ -445,8 +445,6 @@ class ExecutionAPIClient(BaseAPIClient):
             ExecutionStatus.STOPPED.value: PipelineStatus.FAILURE.value,
             ExecutionStatus.EXECUTING.value: PipelineStatus.INPROGRESS.value,
             ExecutionStatus.PENDING.value: PipelineStatus.YET_TO_START.value,
-            ExecutionStatus.QUEUED.value: PipelineStatus.INPROGRESS.value,
-            ExecutionStatus.CANCELED.value: PipelineStatus.FAILURE.value,
         }
 
         # Map to pipeline status if it's an execution status, otherwise use as-is

@@ -135,8 +135,6 @@ class StatusMappings:
         ExecutionStatus.STOPPED: PipelineStatus.FAILURE,
         ExecutionStatus.EXECUTING: PipelineStatus.INPROGRESS,
         ExecutionStatus.PENDING: PipelineStatus.YET_TO_START,
-        ExecutionStatus.QUEUED: PipelineStatus.YET_TO_START,  # Legacy compatibility
-        ExecutionStatus.CANCELED: PipelineStatus.FAILURE,  # Legacy compatibility
     }
 
     PIPELINE_TO_EXECUTION = {

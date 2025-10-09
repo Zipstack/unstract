@@ -120,8 +120,6 @@ def _map_execution_status_to_pipeline_status(execution_status: str) -> str:
         ExecutionStatus.EXECUTING.value: PipelineStatus.INPROGRESS.value,
         ExecutionStatus.PENDING.value: PipelineStatus.YET_TO_START.value,
         ExecutionStatus.STOPPED.value: PipelineStatus.FAILURE.value,
-        ExecutionStatus.QUEUED.value: PipelineStatus.INPROGRESS.value,
-        ExecutionStatus.CANCELED.value: PipelineStatus.FAILURE.value,
         # Legacy status values for backward compatibility
         "SUCCESS": PipelineStatus.SUCCESS.value,  # Legacy alias for COMPLETED
         "FAILED": PipelineStatus.FAILURE.value,  # Legacy alias for ERROR
