@@ -4053,7 +4053,7 @@ dependencies = [
     { name = "unstract-core" },
     { name = "unstract-filesystem" },
     { name = "unstract-flags" },
-    { name = "unstract-sdk", extra = ["azure"] },
+    { name = "unstract-sdk", extra = ["aws", "azure", "gcs"] },
     { name = "unstract-sdk1", extra = ["aws", "azure", "gcs"] },
     { name = "unstract-tool-registry" },
     { name = "unstract-tool-sandbox" },
@@ -4121,7 +4121,7 @@ requires-dist = [
     { name = "unstract-core", editable = "../unstract/core" },
     { name = "unstract-filesystem", editable = "../unstract/filesystem" },
     { name = "unstract-flags", editable = "../unstract/flags" },
-    { name = "unstract-sdk", extras = ["azure"], specifier = "~=0.77.3" },
+    { name = "unstract-sdk", extras = ["aws", "gcs", "azure"], specifier = "~=0.78.0" },
     { name = "unstract-sdk1", extras = ["aws", "gcs", "azure"], editable = "../unstract/sdk1" },
     { name = "unstract-tool-registry", editable = "../unstract/tool-registry" },
     { name = "unstract-tool-sandbox", editable = "../unstract/tool-sandbox" },
@@ -4231,7 +4231,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "unstract-sdk", specifier = "~=0.77.1" }]
+requires-dist = [{ name = "unstract-sdk", specifier = "~=0.78.0" }]
 
 [[package]]
 name = "unstract-flags"
@@ -4250,7 +4250,7 @@ requires-dist = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.77.3"
+version = "0.78.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filetype" },
@@ -4289,14 +4289,21 @@ dependencies = [
     { name = "tiktoken" },
     { name = "transformers" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c5/e8/f7e1045fee076c75c42bb27b4fa5a077836cfa8fd3fd580f6c6193fa19dc/unstract_sdk-0.77.3.tar.gz", hash = "sha256:378c19129a91e861b7235e92411ef72792c6c851320cb7897b380d08d3489c9d", size = 2375843 }
+sdist = { url = "https://files.pythonhosted.org/packages/7b/b9/ca49124e2548e7baa57c00dab2300d59a1dac13ccc6b0d08e5c81f3f7b94/unstract_sdk-0.78.0.tar.gz", hash = "sha256:35cf15acd946996be3871b35aec099b9fb03d30e96893dd5f34991a8aa2535a0", size = 2364734 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d5/84/d596295fce3a713b1953a4fd7be3be1d788920e5633e28fbea7c7331b68a/unstract_sdk-0.77.3-py3-none-any.whl", hash = "sha256:74e83cbb68eef98fbaecfc83e0cfd2228e5958506e1b51a65fae0d891027aaee", size = 266640 },
+    { url = "https://files.pythonhosted.org/packages/ac/23/2f0f9cf0f4e489a4be8133622e968f8a7dd639f0f582252625ca3a22a749/unstract_sdk-0.78.0-py3-none-any.whl", hash = "sha256:ecaf24386c1eaefa47e6c06d1f978ca26406cc8cfffcbe9d96197fa1b2fba826", size = 270348 },
 ]
 
 [package.optional-dependencies]
+aws = [
+    { name = "boto3" },
+    { name = "s3fs", extra = ["boto3"] },
+]
 azure = [
     { name = "adlfs" },
+]
+gcs = [
+    { name = "gcsfs" },
 ]
 
 [[package]]
@@ -4400,7 +4407,7 @@ requires-dist = [
     { name = "jsonschema", specifier = ">=4.18.6,<5.0" },
     { name = "pyyaml", specifier = "~=6.0.1" },
     { name = "unstract-flags", editable = "../unstract/flags" },
-    { name = "unstract-sdk", specifier = "~=0.77.1" },
+    { name = "unstract-sdk", specifier = "~=0.78.0" },
     { name = "unstract-tool-sandbox", editable = "../unstract/tool-sandbox" },
 ]
 
