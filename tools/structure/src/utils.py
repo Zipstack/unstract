@@ -36,7 +36,7 @@ def json_to_markdown(data: Any, level: int = 0, parent_key: str = "") -> str:
 def repair_json_with_best_structure(json_str: str) -> Any:
     """Repair JSON string (structure-tool variant)."""
     parsed_as_is = repair_json(json_str=json_str, return_objects=True, ensure_ascii=False)
-    parsed_with_wrap = repair_json("[" + json_str, return_objects=True, ensure_ascii=False)
+    parsed_with_wrap = repair_json("[" + json_str+ "]", return_objects=True, ensure_ascii=False)
 
     if all(isinstance(x, str) for x in (parsed_as_is, parsed_with_wrap)):
         return parsed_as_is
