@@ -6,3 +6,4 @@
 unstract-sdk[aws]~=0.77.3
 -e file:/unstract/sdk1
 -e file:/unstract/flags
+json-repair>=0.25.0
