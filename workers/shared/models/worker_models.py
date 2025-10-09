@@ -495,7 +495,7 @@ class WorkerCeleryConfig:
         if self.worker_type in chord_workers:
             # Chord retry interval - defaults to Celery standard (1 second)
             config["result_chord_retry_interval"] = get_celery_setting(
-                "RESULT_CHORD_RETRY_INTERVAL", self.worker_type, 1, int
+                "RESULT_CHORD_RETRY_INTERVAL", self.worker_type, 1, float
             )
 
     def to_cli_args(self) -> list[str]:
