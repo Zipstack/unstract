@@ -940,7 +940,7 @@ class InternalAPIClient(CachedAPIClientMixin):
         mime_type: str = "",
         provider_file_uuid: str | None = None,
         fs_metadata: dict[str, Any] | None = None,
-        status: str = "QUEUED",
+        status: str | ExecutionStatus = ExecutionStatus.PENDING,
     ) -> dict[str, Any]:
         """Create WorkflowFileExecution record via internal API with complete metadata."""
         return self.file_client.create_workflow_file_execution(

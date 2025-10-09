@@ -355,10 +355,6 @@ class ExecutionStatus(Enum):
     STOPPED = "STOPPED"  # Added to match backend
     ERROR = "ERROR"  # Changed from FAILED to match backend
 
-    # Keep legacy statuses for backward compatibility during transition
-    QUEUED = "QUEUED"  # Legacy - consider deprecated
-    CANCELED = "CANCELED"  # Legacy - maps to STOPPED
-
     def __str__(self):
         """Return enum value for Django CharField compatibility.
 
@@ -373,9 +369,9 @@ class ExecutionStatus(Enum):
         return f"ExecutionStatus.{self.name}"
 
 
-# Add Django-compatible choices attribute after class definition
+# Add Django-compatible choices attribute with human-readable labels
 ExecutionStatus.choices = tuple(
-    (status.value, status.value) for status in ExecutionStatus
+    (status.value, status.name.replace("_", " ").title()) for status in ExecutionStatus
 )
 
 
