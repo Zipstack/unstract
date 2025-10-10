@@ -37,7 +37,7 @@ sio = socketio.Server(
     async_mode="threading",
     logger=False,
     engineio_logger=False,
-    client_manager=socketio.KombuManager(url=socket_io_manager_url),
+    client_manager=socketio.KombuManager(url=socket_io_manager_url, write_only=True),
 )
 
 

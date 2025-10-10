@@ -485,24 +485,27 @@ def _refactored_pre_create_file_executions(
 
     # CRITICAL: Pre-create all WorkflowFileExecution records to prevent duplicates
     # This matches the backend's _pre_create_file_executions pattern for ALL workflow types
-    pre_created_file_executions: dict[str, PreCreatedFileData] = (
-        _pre_create_file_executions(
-            file_data=file_data,
-            files=files,
-            workflow_id=workflow_id,
-            execution_id=execution_id,
-            api_client=api_client,
-            workflow_type=workflow_type,
-            is_api=is_api_workflow,
-            use_file_history=context.get_setting("use_file_history", True),
-        )
+    # Includes double safeguard: database check for active files
+    workflow_logger = context.metadata.get("workflow_logger")
+    pre_created_file_executions, skipped_files = _pre_create_file_executions(
+        file_data=file_data,
+        files=files,
+        workflow_id=workflow_id,
+        execution_id=execution_id,
+        api_client=api_client,
+        workflow_type=workflow_type,
+        is_api=is_api_workflow,
+        use_file_history=context.get_setting("use_file_history", True),
+        workflow_logger=workflow_logger,
     )
     logger.info(
-        f"Pre-created {len(pre_created_file_executions)} WorkflowFileExecution records for {workflow_type} workflow"
+        f"Pre-created {len(pre_created_file_executions)} WorkflowFileExecution records for {workflow_type} workflow "
+        f"(skipped {len(skipped_files)} duplicates)"
     )
 
     # Add to metadata
     context.pre_created_file_executions = pre_created_file_executions
+    context.metadata["skipped_files"] = skipped_files
 
     return context
 
@@ -524,6 +527,7 @@ def _process_individual_files(context: WorkflowContextData) -> WorkflowContextDa
     api_client = context.organization_context.api_client
     workflow_execution = context.metadata["workflow_execution"]
     pre_created_file_executions = context.pre_created_file_executions
+    skipped_files = context.metadata.get("skipped_files", [])
     result = context.metadata["result"]
     successful_files_for_manual_review = context.metadata[
         "successful_files_for_manual_review"
@@ -558,8 +562,24 @@ def _process_individual_files(context: WorkflowContextData) -> WorkflowContextDa
         pre_created_file_execution = pre_created_file_executions.get(file_name)
 
         if not pre_created_file_execution:
+            # Check if this file was intentionally skipped as a duplicate
+            # Construct identifier from file_hash_dict to match skipped_files format
+            provider_uuid = file_hash_dict.get("provider_file_uuid")
+            file_path = file_hash_dict.get("file_path")
+            if provider_uuid and file_path:
+                file_identifier = f"{provider_uuid}:{file_path}"
+                if file_identifier in skipped_files:
+                    # File was already handled in pre-creation (marked as ERROR in DB, logged to UI)
+                    # Just count it as a failure and move on
+                    logger.debug(
+                        f"File '{file_name}' (identifier: {file_identifier}) was skipped as duplicate - already counted as ERROR"
+                    )
+                    result.increment_failure()
+                    continue
+
+            # Truly missing - this is an error condition
             logger.error(
-                f"No pre-created WorkflowFileExecution found for file '{file_name}' - skipping"
+                f"No pre-created WorkflowFileExecution found for file '{file_name}' - unexpected error"
             )
             result.increment_failure()
             continue
@@ -801,6 +821,7 @@ def _compile_batch_result(context: WorkflowContextData) -> dict[str, Any]:
     """
     result = context.metadata["result"]
     workflow_logger = context.metadata.get("workflow_logger")
+    skipped_files = context.metadata.get("skipped_files", [])
 
     # Send execution completion summary to UI
     if workflow_logger:
@@ -810,11 +831,22 @@ def _compile_batch_result(context: WorkflowContextData) -> dict[str, Any]:
             total_time=result.execution_time,
         )
 
-    logger.info(
-        f"Function tasks.process_file_batch completed successfully. "
-        f"Batch execution time: {result.execution_time:.2f}s for "
-        f"{result.successful_files + result.failed_files} files"
-    )
+    # Log batch completion summary
+    # Note: Skipped duplicate files are marked as ERROR in database and counted in failed_files
+    if skipped_files:
+        logger.info(
+            f"Function tasks.process_file_batch completed. "
+            f"Successful: {result.successful_files} files, "
+            f"Failed: {result.failed_files} files "
+            f"(including {len(skipped_files)} duplicate(s) marked as ERROR). "
+            f"Batch execution time: {result.execution_time:.2f}s"
+        )
+    else:
+        logger.info(
+            f"Function tasks.process_file_batch completed successfully. "
+            f"Batch execution time: {result.execution_time:.2f}s for "
+            f"{result.successful_files + result.failed_files} files"
+        )
 
     # CRITICAL: Clean up StateStore to prevent data leaks between tasks
     try:
@@ -824,10 +856,12 @@ def _compile_batch_result(context: WorkflowContextData) -> dict[str, Any]:
         logger.warning(f"Failed to cleanup StateStore context: {cleanup_error}")
 
     # Return the final result matching Django backend format
+    # Note: Skipped duplicate files are in database as ERROR status, not counted separately
     return {
         "successful_files": result.successful_files,
-        "failed_files": result.failed_files,
+        "failed_files": result.failed_files,  # Includes duplicates marked as ERROR
         "total_files": result.successful_files + result.failed_files,
+        "skipped_duplicates": len(skipped_files),  # For informational purposes
         "execution_time": result.execution_time,
         "organization_id": context.organization_context.organization_id,
     }
@@ -874,6 +908,112 @@ def _cleanup_file_cache_entry(
         # Don't raise - cache will expire anyway
 
 
+def _check_file_already_active(
+    file_hash: FileHashData,
+    workflow_id: str,
+    execution_id: str,
+    api_client: InternalAPIClient,
+    file_name: str,
+) -> bool:
+    """Check if file is already being processed (Redis-first with DB fallback).
+
+    This provides a secondary check at the file_processing worker level to catch
+    any files that slipped through the general worker's filter due to race conditions.
+
+    OPTIMIZATION: Checks Redis cache first (fastest path, highest hit rate since general
+    worker just added the file), then falls back to database if Redis check fails or
+    returns no result.
+
+    Args:
+        file_hash: File hash data containing provider_file_uuid and file_path
+        workflow_id: Workflow ID
+        execution_id: Current execution ID to exclude
+        api_client: Internal API client
+        file_name: File name for logging
+
+    Returns:
+        True if file is already active in a different execution, False otherwise
+    """
+    # Only check files with provider_file_uuid (files from external sources)
+    if not file_hash.provider_file_uuid:
+        return False
+
+    # STEP 1: Check Redis cache first (fastest path, most likely to find duplicates)
+    try:
+        from shared.cache.cache_backends import RedisCacheBackend
+        from shared.workflow.execution.active_file_manager import ActiveFileManager
+
+        cache = RedisCacheBackend()
+        if cache.available:
+            # Construct cache key using ActiveFileManager method for consistency
+            cache_key = ActiveFileManager._create_cache_key(
+                workflow_id,
+                file_hash.provider_file_uuid,
+                file_hash.file_path,
+            )
+            cached_data = cache.get(cache_key)
+
+            if cached_data and isinstance(cached_data, dict):
+                # Extract execution_id from cache wrapper structure
+                cached_execution_id = cached_data.get("data", {}).get("execution_id")
+
+                if cached_execution_id and cached_execution_id != execution_id:
+                    # Found in Redis - different execution is processing this file
+                    logger.warning(
+                        f"DUPLICATE DETECTED: File '{file_name}' (UUID: {file_hash.provider_file_uuid}) "
+                        f"is already being processed by execution {cached_execution_id} (Redis cache check)"
+                    )
+                    return True
+                elif cached_execution_id == execution_id:
+                    # Same execution - not a duplicate
+                    logger.debug(
+                        f"File '{file_name}' found in Redis cache for same execution {execution_id}"
+                    )
+                    return False
+                # If no execution_id or invalid data, fall through to DB check
+
+            # Cache miss - fall through to DB check
+            logger.info(
+                f"File '{file_name}' not found in Redis cache, falling back to DB check for execution {execution_id}"
+            )
+
+    except Exception as redis_error:
+        # Redis check failed, fall back to DB
+        logger.warning(
+            f"Redis check failed for '{file_name}': {redis_error}. Falling back to DB check"
+        )
+
+    # STEP 2: DB fallback (if Redis unavailable, cache miss, or invalid data)
+    try:
+        response = api_client.check_files_active_processing(
+            workflow_id=workflow_id,
+            files=[{"uuid": file_hash.provider_file_uuid, "path": file_hash.file_path}],
+            current_execution_id=execution_id,
+        )
+        if response.success and response.data:
+            # Check if this specific file is in active_identifiers
+            active_identifiers = response.data.get("active_identifiers", [])
+
+            file_identifier = f"{file_hash.provider_file_uuid}:{file_hash.file_path}"
+
+            if file_identifier in active_identifiers:
+                logger.warning(
+                    f"DUPLICATE DETECTED: File '{file_name}' (UUID: {file_hash.provider_file_uuid}) "
+                    f"is already being processed in another execution (DB check)"
+                )
+                return True
+
+        return False
+
+    except Exception as e:
+        logger.warning(
+            f"DB check failed for '{file_name}': {e}. "
+            f"Proceeding with file processing (fail-safe)"
+        )
+        # Fail-safe: if both checks fail, allow processing
+        return False
+
+
 def _pre_create_file_executions(
     file_data: WorkerFileData,
     files: list[Any],
@@ -883,24 +1023,33 @@ def _pre_create_file_executions(
     workflow_type: str,
     is_api: bool = False,
     use_file_history: bool = True,
-) -> dict[str, Any]:
+    workflow_logger: WorkerWorkflowLogger | None = None,
+) -> tuple[dict[str, Any], list[str]]:
     """Pre-create WorkflowFileExecution records with PENDING status to prevent race conditions.
 
     This matches the backend's _pre_create_file_executions pattern for ALL workflow types
     and includes file history deduplication for ETL workflows.
 
+    Includes double safeguard: checks database for duplicate active files before creating records.
+
     Args:
+        file_data: File data context
         files: List of file items (can be tuples, lists, or dicts)
         workflow_id: Workflow ID
         execution_id: Workflow execution ID
         api_client: Internal API client
         workflow_type: Workflow type (API/ETL/TASK)
         is_api: Whether this is an API workflow
+        use_file_history: Whether to use file history
+        workflow_logger: Workflow logger for UI logging (optional)
 
     Returns:
-        Dict mapping file names to {'id': str, 'object': WorkflowFileExecutionData}
+        Tuple of (pre_created_data dict, skipped_files list)
+        - pre_created_data: Dict mapping file names to PreCreatedFileData
+        - skipped_files: List of file identifiers (uuid:path) that were skipped (already active)
     """
     pre_created_data: dict[str, PreCreatedFileData] = {}
+    skipped_files: list[str] = []  # List of identifiers (uuid:path), not file names
 
     # Use the file history flag passed from execution parameters
     logger.info(
@@ -934,7 +1083,18 @@ def _pre_create_file_executions(
         # Convert to dict for API
         file_hash_dict_for_api = file_hash.to_dict()
 
+        # DOUBLE SAFEGUARD: Check if file is already being processed (Redis-first with DB fallback)
+        # This catches race conditions that slipped through general worker's filter
+        is_duplicate = _check_file_already_active(
+            file_hash=file_hash,
+            workflow_id=workflow_id,
+            execution_id=execution_id,
+            api_client=api_client,
+            file_name=file_name,
+        )
+
         try:
+            # Create WorkflowFileExecution record for ALL files (including duplicates for audit trail)
             # Create WorkflowFileExecution record for ALL workflow types
             # CRITICAL FIX: For use_file_history=False, force create fresh records to prevent
             # reusing completed records from previous executions
@@ -945,27 +1105,76 @@ def _pre_create_file_executions(
                 force_create=not use_file_history,  # Force create when file history is disabled
             )
 
-            # PROGRESSIVE STATUS UPDATE: Set initial status to PENDING (FIXED)
-            # This ensures file executions start with PENDING status before processing begins
-            try:
-                api_client.file_client.update_file_execution_status(
-                    file_execution_id=workflow_file_execution.id,
-                    status=ExecutionStatus.PENDING.value,
+            # Handle duplicate files vs normal files differently
+            if is_duplicate:
+                # DUPLICATE DETECTED: Mark as ERROR with explanation for audit trail
+                error_message = (
+                    "File skipped - already being processed in another execution "
+                    "(duplicate prevention safeguard)"
                 )
-            except Exception as status_error:
-                logger.warning(
-                    f"Failed to set initial PENDING status for file {file_name}: {status_error}"
-                )
-                # Don't fail the entire creation if status update fails
 
-            pre_created_data[file_name] = PreCreatedFileData(
-                id=str(workflow_file_execution.id),
-                object=workflow_file_execution,
-                file_hash=file_hash,
-            )
-            logger.info(
-                f"Pre-created WorkflowFileExecution {workflow_file_execution.id} for {workflow_type} file '{file_name}'"
-            )
+                try:
+                    api_client.file_client.update_file_execution_status(
+                        file_execution_id=workflow_file_execution.id,
+                        status=ExecutionStatus.ERROR.value,
+                        error_message=error_message,
+                    )
+                    logger.warning(
+                        f"DUPLICATE: File '{file_name}' marked as ERROR - {error_message}"
+                    )
+
+                    # Log to UI with error context
+                    if workflow_logger:
+                        from shared.infrastructure.logging.helpers import (
+                            log_file_processing_error,
+                        )
+
+                        log_file_processing_error(
+                            workflow_logger,
+                            str(workflow_file_execution.id),
+                            file_name,
+                            f"⏭️  {error_message}",
+                        )
+
+                    # Track as skipped using stable identifier (uuid:path), not just file_name
+                    # This prevents misclassification when different files share the same display name
+                    file_identifier = (
+                        f"{file_hash.provider_file_uuid}:{file_hash.file_path}"
+                    )
+                    skipped_files.append(file_identifier)
+
+                except Exception as status_error:
+                    logger.error(
+                        f"Failed to mark duplicate file '{file_name}' as ERROR: {status_error}"
+                    )
+
+                # Don't add to pre_created_data - file won't be processed
+                logger.info(
+                    f"Created WorkflowFileExecution {workflow_file_execution.id} for duplicate file '{file_name}' (marked as ERROR)"
+                )
+
+            else:
+                # NORMAL FILE: Set initial status to PENDING for processing
+                try:
+                    api_client.file_client.update_file_execution_status(
+                        file_execution_id=workflow_file_execution.id,
+                        status=ExecutionStatus.PENDING.value,
+                    )
+                except Exception as status_error:
+                    logger.warning(
+                        f"Failed to set initial PENDING status for file {file_name}: {status_error}"
+                    )
+                    # Don't fail the entire creation if status update fails
+
+                # Add to pre_created_data for processing
+                pre_created_data[file_name] = PreCreatedFileData(
+                    id=str(workflow_file_execution.id),
+                    object=workflow_file_execution,
+                    file_hash=file_hash,
+                )
+                logger.info(
+                    f"Pre-created WorkflowFileExecution {workflow_file_execution.id} for {workflow_type} file '{file_name}'"
+                )
 
         except Exception as e:
             logger.error(
@@ -979,7 +1188,25 @@ def _pre_create_file_executions(
 
     # File history deduplication now handled during individual file processing
 
-    return pre_created_data
+    # Log summary if files were skipped
+    if skipped_files:
+        logger.warning(
+            f"Skipped {len(skipped_files)} duplicate file(s) already being processed: {skipped_files}"
+        )
+        if workflow_logger:
+            from shared.infrastructure.logging.helpers import log_file_info
+
+            log_file_info(
+                workflow_logger,
+                None,
+                f"⏭️  Total {len(skipped_files)} duplicate file(s) skipped (already active in other executions)",
+            )
+
+    logger.info(
+        f"Pre-created {len(pre_created_data)} file execution(s), skipped {len(skipped_files)} duplicate(s)"
+    )
+
+    return pre_created_data, skipped_files
 
 
 def _create_file_hash_from_dict(
