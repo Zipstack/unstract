@@ -264,6 +264,69 @@ class AnswerPromptService:
         prompt: str,
     ) -> dict[str, Any]:
         table_settings = output[PSKeys.TABLE_SETTINGS]
+
+        # Check if prompt has valid schema data using json_repair
+        has_valid_schema = False
+        schema_data = None
+
+        if prompt and isinstance(prompt, str):
+            try:
+                # Try to repair and parse the prompt as JSON
+                schema_data = repair_json_with_best_structure(prompt)
+                # Check if the result is a valid dict (schema object)
+                if isinstance(schema_data, dict) and schema_data:
+                    has_valid_schema = True
+                    app.logger.info(
+                        "Valid schema detected in prompt, using Smart Table Extractor"
+                    )
+            except Exception as e:
+                app.logger.debug(f"Prompt does not contain valid schema: {e}")
+
+        # If we have a valid schema, use the smart table extractor
+        if has_valid_schema:
+            smart_table_plugin: dict[str, Any] = PluginManager().get_plugin(
+                "smart-table-extractor"
+            )
+
+            if smart_table_plugin:
+                fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
+                if execution_source == ExecutionSource.IDE.value:
+                    fs_instance = EnvHelper.get_storage(
+                        storage_type=StorageType.PERMANENT,
+                        env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+                    )
+                if execution_source == ExecutionSource.TOOL.value:
+                    fs_instance = EnvHelper.get_storage(
+                        storage_type=StorageType.SHARED_TEMPORARY,
+                        env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
+                    )
+
+                try:
+                    # Get the input file from table settings
+                    input_file = table_settings.get("input_file")
+
+                    # Run the smart table extractor
+                    result = smart_table_plugin["entrypoint_cls"].run(
+                        llm=llm,
+                        table_settings=table_settings,
+                        fs_instance=fs_instance,
+                        prompt=prompt,
+                        input_file=input_file,
+                    )
+
+                    # Extract the data from the result
+                    answer = result.get("data", [])
+                    structured_output[output[PSKeys.NAME]] = answer
+
+                    # We do not support summary and eval for table.
+                    # Hence returning the result
+                    return structured_output
+                except Exception as e:
+                    app.logger.error(f"Smart Table Extractor failed: {e}")
+                    # Fall back to regular table extractor
+                    app.logger.info("Falling back to regular table extractor")
+
+        # Use regular table extractor (original code)
         table_extractor: dict[str, Any] = PluginManager().get_plugin("table-extractor")
         if not table_extractor:
             raise APIError(
