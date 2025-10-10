@@ -3,7 +3,6 @@ import logging
 import os
 from hashlib import md5, sha256
 from pathlib import Path
-from typing import Any
 
 from unstract.sdk1.exceptions import FileStorageError
 from unstract.sdk1.file_storage import (
@@ -19,7 +18,7 @@ class ToolUtils:
     """Class containing utility methods."""
 
     @staticmethod
-    def hash_str(string_to_hash: Any, hash_method: str = "sha256") -> str:
+    def hash_str(string_to_hash: object, hash_method: str = "sha256") -> str:
         """Computes the hash for a given input string.
 
         Useful to hash strings needed for caching and other purposes.
@@ -38,7 +37,7 @@ class ToolUtils:
                 return str(md5(string_to_hash).hexdigest())
             return str(md5(string_to_hash.encode()).hexdigest())
         elif hash_method == "sha256":
-            if isinstance(string_to_hash, (bytes, bytearray)):
+            if isinstance(string_to_hash, (bytes, bytearray)):  # noqa: UP038
                 return str(sha256(string_to_hash).hexdigest())
             return str(sha256(string_to_hash.encode()).hexdigest())
         else:
@@ -47,8 +46,8 @@ class ToolUtils:
     @staticmethod
     def load_json(
         file_to_load: str,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
-    ) -> dict[str, Any]:
+        fs: FileStorage | None = None,
+    ) -> dict[str, object]:
         """Loads and returns a JSON from a file.
 
         Args:
@@ -57,15 +56,17 @@ class ToolUtils:
         Returns:
             dict[str, Any]: The JSON loaded from file
         """
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         file_contents: str = fs.read(path=file_to_load, mode="r", encoding="utf-8")
-        loaded_json: dict[str, Any] = json.loads(file_contents)
+        loaded_json: dict[str, object] = json.loads(file_contents)
         return loaded_json
 
     @staticmethod
     def dump_json(
-        json_to_dump: dict[str, Any],
+        json_to_dump: dict[str, object],
         file_to_dump: str,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
     ) -> None:
         """Helps dump the JSON to a file.
 
@@ -73,13 +74,14 @@ class ToolUtils:
             json_to_dump (dict[str, Any]): Input JSON to dump
             file_to_dump (str): Path to the file to dump the JSON to
         """
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         compact_json = json.dumps(json_to_dump, separators=(", ", ":"))
         fs.write(path=file_to_dump, mode="w", data=compact_json)
 
     @staticmethod
-    def json_to_str(json_to_dump: dict[str, Any]) -> str:
-        """Helps convert the JSON to a string. Useful for dumping the JSON to a
-        file.
+    def json_to_str(json_to_dump: dict[str, object]) -> str:
+        """Helps convert the JSON to a string. Useful for dumping the JSON to a file.
 
         Args:
             json_to_dump (dict[str, Any]): Input JSON to dump
@@ -93,7 +95,7 @@ class ToolUtils:
     @staticmethod
     def get_file_size(
         input_file: Path,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
     ) -> int:
         """Gets the file size in bytes for an input file.
 
@@ -103,6 +105,8 @@ class ToolUtils:
         Returns:
             str: MIME type of the file
         """
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         file_length = fs.size(path=input_file)
         return file_length
 
@@ -111,11 +115,11 @@ class ToolUtils:
     def calculate_page_count(
         pages_string: str, max_page: int = 0, min_page: int = 1
     ) -> int:
-        """Calculates the total number of pages based on the input string of
-        page numbers or ranges.
+        """Calculate total page count from string of page numbers or ranges.
 
-        Parses the input 'pages_string' to extract individual page numbers or
-        ranges separated by commas.
+        Calculates the total number of pages based on the input string of page
+        numbers or ranges. Parses the input 'pages_string' to extract individual
+        page numbers or ranges separated by commas.
         Supports ranges like '1-5' or open-ended ranges like '4-'.
         The 'max_page' parameter defines the upper limit for page numbers.
         The 'min_page' parameter defines the lower limit for page numbers.
@@ -164,9 +168,7 @@ class ToolUtils:
     def get_filestorage_provider(
         var_name: str, default: str = "minio"
     ) -> FileStorageProvider:
-        """Retrieve the file storage provider based on an environment
-        variable.
-        """
+        """Retrieve the file storage provider based on an environment variable."""
         provider_name = os.environ.get(var_name, default).upper()
         try:
             # Attempt to map the provider name to an enum value, case-insensitively
@@ -179,26 +181,26 @@ class ToolUtils:
                 f"Invalid provider '{provider_name}'. Allowed providers: "
                 f"{allowed_providers}"
             )
-            raise FileStorageError(f"Invalid provider '{provider_name}'")
+            raise FileStorageError(f"Invalid provider '{provider_name}'") from None
 
     @staticmethod
-    def get_filestorage_credentials(var_name: str) -> dict[str, Any]:
-        """Retrieve the file storage credentials based on an environment
-        variable.
-        """
+    def get_filestorage_credentials(var_name: str) -> dict[str, object]:
+        """Retrieve the file storage credentials based on an environment variable."""
         credentials = os.environ.get(var_name, "{}")
         try:
             return json.loads(credentials)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
             raise ValueError(
                 "File storage credentials are not set properly. "
                 "Please check your settings."
-            )
+            ) from e
 
     @staticmethod
     def get_workflow_filestorage(
         provider: FileStorageProvider,
-        credentials: dict[str, Any] = {},
+        credentials: dict[str, object] | None = None,
     ) -> SharedTemporaryFileStorage:
         """Get the file storage for the workflow."""
+        if credentials is None:
+            credentials = {}
         return SharedTemporaryFileStorage(provider=provider, **credentials)

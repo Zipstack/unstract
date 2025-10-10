@@ -17,7 +17,6 @@ from shared.api import InternalAPIClient
 from shared.data.models import (
     CallbackTaskData,
     WorkerTaskResponse,
-    WorkflowExecutionStatusUpdate,
 )
 from shared.enums.status_enums import PipelineStatus
 from shared.enums.task_enums import TaskName
@@ -270,24 +269,14 @@ def async_execute_bin_general(
                 **kwargs,
             )
 
-            # Calculate execution time
+            # Calculate orchestration time (not total execution time - callback worker calculates that)
             execution_time = execution_result.get("execution_time", 0)
 
-            # Update execution status to completed
-            # Only include total_files if we have files to avoid overwriting with 0
-            update_request = WorkflowExecutionStatusUpdate(
-                execution_id=execution_id,
-                status=ExecutionStatus.COMPLETED.value,
-                execution_time=execution_time,
-                total_files=len(hash_values_of_files) if hash_values_of_files else None,
-            )
-
-            api_client.update_workflow_execution_status(**update_request.to_dict())
-
+            # Status remains EXECUTING - callback worker will set COMPLETED/ERROR after all files finish
             # Cache cleanup handled by callback worker
 
             logger.info(
-                f"Successfully completed general workflow execution {execution_id}"
+                f"Successfully orchestrated general workflow execution {execution_id} (files processing asynchronously)"
             )
 
             response = WorkerTaskResponse.success_response(

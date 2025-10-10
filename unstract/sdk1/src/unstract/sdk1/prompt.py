@@ -9,6 +9,7 @@ from unstract.sdk1.constants import MimeType, RequestHeader, ToolEnv
 from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.tool.base import BaseTool
 from unstract.sdk1.utils.common import log_elapsed
+from unstract.sdk1.utils.retry_utils import retry_prompt_service_call
 
 logger = logging.getLogger(__name__)
 
@@ -187,6 +188,7 @@ class PromptTool:
             request_headers.update(headers)
         return request_headers
 
+    @retry_prompt_service_call
     def _call_service(
         self,
         url_path: str,
@@ -198,6 +200,14 @@ class PromptTool:
         """Communicates to prompt service to fetch response for the prompt.
 
         Only POST calls are made to prompt-service though functionality exists.
+        This method automatically retries on connection errors with exponential backoff.
+
+        Retry behavior is configurable via environment variables:
+        - PROMPT_SERVICE_MAX_RETRIES (default: 3)
+        - PROMPT_SERVICE_MAX_TIME (default: 60s)
+        - PROMPT_SERVICE_BASE_DELAY (default: 1.0s)
+        - PROMPT_SERVICE_MULTIPLIER (default: 2.0)
+        - PROMPT_SERVICE_JITTER (default: true)
 
         Args:
             url_path (str): URL path to the service endpoint

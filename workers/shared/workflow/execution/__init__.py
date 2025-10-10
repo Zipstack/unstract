@@ -6,7 +6,6 @@ services, orchestrators, and execution context management.
 
 from .active_file_manager import ActiveFileManager
 from .context import WorkerExecutionContext
-from .file_management_utils import FileManagementUtils
 from .orchestration_utils import WorkflowOrchestrationUtils
 from .service import WorkerWorkflowExecutionService
 
@@ -15,5 +14,4 @@ __all__ = [
     "WorkflowOrchestrationUtils",
     "WorkerWorkflowExecutionService",
     "ActiveFileManager",
-    "FileManagementUtils",
 ]

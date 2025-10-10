@@ -355,10 +355,6 @@ class ExecutionStatus(Enum):
     STOPPED = "STOPPED"  # Added to match backend
     ERROR = "ERROR"  # Changed from FAILED to match backend
 
-    # Keep legacy statuses for backward compatibility during transition
-    QUEUED = "QUEUED"  # Legacy - consider deprecated
-    CANCELED = "CANCELED"  # Legacy - maps to STOPPED
-
     def __str__(self):
         """Return enum value for Django CharField compatibility.
 
@@ -373,9 +369,9 @@ class ExecutionStatus(Enum):
         return f"ExecutionStatus.{self.name}"
 
 
-# Add Django-compatible choices attribute after class definition
+# Add Django-compatible choices attribute with human-readable labels
 ExecutionStatus.choices = tuple(
-    (status.value, status.value) for status in ExecutionStatus
+    (status.value, status.name.replace("_", " ").title()) for status in ExecutionStatus
 )
 
 
@@ -473,6 +469,7 @@ class NotificationStatus(Enum):
     COMPLETED = "COMPLETED"
     ERROR = "ERROR"
     STOPPED = "STOPPED"
+    INPROGRESS = "INPROGRESS"
 
     def __str__(self):
         """Return enum value for Django CharField compatibility."""
@@ -487,6 +484,7 @@ class NotificationSource(Enum):
     PIPELINE_COMPLETION = "pipeline-completion"
     API_EXECUTION = "api-execution"
     MANUAL_TRIGGER = "manual-trigger"
+    SCHEDULED_EXECUTION = "scheduled-execution"
 
     def __str__(self):
         """Return enum value for Django CharField compatibility."""
@@ -586,7 +584,11 @@ class NotificationPayload:
         """
         # Map execution status to notification status
         if execution_status in [ExecutionStatus.COMPLETED]:
-            notification_status = NotificationStatus.COMPLETED
+            if workflow_type in [WorkflowType.API]:
+                notification_status = NotificationStatus.COMPLETED
+            else:
+                # For Backward compatibility
+                notification_status = NotificationStatus.SUCCESS
         elif execution_status in [ExecutionStatus.ERROR]:
             notification_status = NotificationStatus.ERROR
         elif execution_status in [ExecutionStatus.STOPPED]:

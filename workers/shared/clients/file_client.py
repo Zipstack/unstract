@@ -127,7 +127,8 @@ class FileAPIClient(BaseAPIClient):
         logger.info(
             f"FileHashData debug: file_name='{file_hash_data.file_name}', "
             f"has_hash={file_hash_data.has_hash()}, "
-            f"source_connection_type='{getattr(file_hash_data, 'source_connection_type', None)}'"
+            f"source_connection_type='{getattr(file_hash_data, 'source_connection_type', None)}', "
+            f"execution_id='{execution_id}'"
         )
 
         # CRITICAL FIX: For API files with pre-calculated hash, skip hash computation
@@ -219,11 +220,12 @@ class FileAPIClient(BaseAPIClient):
         data = create_request.to_dict()
 
         logger.info(
-            f"Creating workflow file execution with file_hash: {file_hash_data.file_name}"
+            f"Creating workflow file execution: '{execution_id}' with file_name: {file_hash_data.file_name}"
         )
         logger.info(
             f"FileHashData key identifiers: provider_file_uuid='{file_hash_data.provider_file_uuid}', "
-            f"file_path='{file_hash_data.file_path}', file_hash='{file_hash_data.file_hash}'"
+            f"file_path='{file_hash_data.file_path}', file_hash='{file_hash_data.file_hash}', "
+            f"execution='{execution_id}'."
         )
         logger.debug(f"FileHashData: {file_hash_data.to_dict()}")
 

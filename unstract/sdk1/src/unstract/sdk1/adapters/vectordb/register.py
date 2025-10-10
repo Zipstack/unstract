@@ -1,11 +1,15 @@
+from __future__ import annotations
+
 import logging
 import os
 from importlib import import_module
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.registry import AdapterRegistry
-from unstract.sdk1.adapters.vectordb.vectordb_adapter import VectorDBAdapter
+
+if TYPE_CHECKING:
+    from unstract.sdk1.adapters.vectordb.vectordb_adapter import VectorDBAdapter
 
 logger = logging.getLogger(__name__)
 
