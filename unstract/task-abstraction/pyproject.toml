@@ -1,0 +1,93 @@
+# [build-system]
+# requires = ["hatchling"]
+# build-backend = "hatchling.build"
+
+[project]
+name = "unstract-task-abstraction"
+version = "0.1.0"
+description = "Task queue abstraction layer for Unstract platform"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+    { name = "Unstract Team" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "pydantic>=2.5.0",
+    "typing-extensions>=4.8.0",
+    "asyncio-mqtt>=0.16.0",  # For async support
+    # Using standard Python logging (following Unstract library patterns)
+]
+
+[project.optional-dependencies]
+hatchet = [
+    "hatchet-sdk>=1.0.0",
+]
+celery = [
+    "celery>=5.3.0",
+    "kombu>=5.3.0",
+]
+temporal = [
+    "temporalio>=1.0.0",
+]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.1",
+    "pytest-mock>=3.11.1",
+    "pytest-cov>=4.1.0",      # Coverage reporting
+    "pytest-xdist>=3.3.0",    # Parallel test execution
+    "ruff>=0.1.0",
+    "mypy>=1.7.0",
+    "pre-commit>=3.5.0",      # Pre-commit hooks
+    "redis>=5.0.0",           # For testing Redis-based backends
+    "fakeredis>=2.20.0",      # In-memory Redis for tests
+]
+all = [
+    "unstract-task-abstraction[hatchet,celery,temporal]",
+]
+
+[project.urls]
+Homepage = "https://unstract.com"
+Repository = "https://github.com/Zipstack/unstract"
+Documentation = "https://docs.unstract.com"
+
+# [tool.hatch.build.targets.wheel]
+# packages = ["src"]
+
+[tool.ruff]
+line-length = 90
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long, handled by formatter
+    "B008",  # do not perform function calls in argument defaults
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]  # Allow unused imports in __init__.py
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
