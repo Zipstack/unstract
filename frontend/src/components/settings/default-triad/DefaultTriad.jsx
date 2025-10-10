@@ -13,6 +13,7 @@ import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper.jsx";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import "./DefaultTriad.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
+import { SettingsLayout } from "../settings-layout/SettingsLayout.jsx";
 
 const { Option } = Select;
 
@@ -173,7 +174,7 @@ function DefaultTriad() {
   };
 
   return (
-    <>
+    <SettingsLayout activeKey="triad">
       <div className="plt-set-head">
         <Button size="small" type="text" onClick={() => navigate(-1)}>
           <ArrowLeftOutlined />
@@ -221,7 +222,7 @@ function DefaultTriad() {
           )}
         </IslandLayout>
       </div>
-    </>
+    </SettingsLayout>
   );
 }
 

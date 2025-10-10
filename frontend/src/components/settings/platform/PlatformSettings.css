@@ -1,8 +1,8 @@
 /* Styles for PlatformSettings */
 
 .plt-set-layout {
-    height: 100%;
-    background-color: var(--page-bg-2);
+    height: calc(100vh - 60px);
+    background-color: #ffffff;
 }
 
 .plt-set-layout-2 {
