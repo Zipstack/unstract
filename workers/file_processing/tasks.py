@@ -563,19 +563,25 @@ def _process_individual_files(context: WorkflowContextData) -> WorkflowContextDa
 
         if not pre_created_file_execution:
             # Check if this file was intentionally skipped as a duplicate
-            if file_name in skipped_files:
-                # File was already handled in pre-creation (marked as ERROR in DB, logged to UI)
-                # Just count it as a failure and move on
-                logger.debug(
-                    f"File '{file_name}' was skipped as duplicate - already counted as ERROR"
-                )
-                result.increment_failure()
-            else:
-                # Truly missing - this is an error condition
-                logger.error(
-                    f"No pre-created WorkflowFileExecution found for file '{file_name}' - unexpected error"
-                )
-                result.increment_failure()
+            # Construct identifier from file_hash_dict to match skipped_files format
+            provider_uuid = file_hash_dict.get("provider_file_uuid")
+            file_path = file_hash_dict.get("file_path")
+            if provider_uuid and file_path:
+                file_identifier = f"{provider_uuid}:{file_path}"
+                if file_identifier in skipped_files:
+                    # File was already handled in pre-creation (marked as ERROR in DB, logged to UI)
+                    # Just count it as a failure and move on
+                    logger.debug(
+                        f"File '{file_name}' (identifier: {file_identifier}) was skipped as duplicate - already counted as ERROR"
+                    )
+                    result.increment_failure()
+                    continue
+
+            # Truly missing - this is an error condition
+            logger.error(
+                f"No pre-created WorkflowFileExecution found for file '{file_name}' - unexpected error"
+            )
+            result.increment_failure()
             continue
 
         file_hash: FileHashData = pre_created_file_execution.file_hash
@@ -902,19 +908,21 @@ def _cleanup_file_cache_entry(
         # Don't raise - cache will expire anyway
 
 
-def _check_file_already_active_in_db(
+def _check_file_already_active(
     file_hash: FileHashData,
     workflow_id: str,
     execution_id: str,
     api_client: InternalAPIClient,
     file_name: str,
 ) -> bool:
-    """Check if file is already being processed in database (double safeguard).
+    """Check if file is already being processed (Redis-first with DB fallback).
 
     This provides a secondary check at the file_processing worker level to catch
     any files that slipped through the general worker's filter due to race conditions.
 
-    NOTE: Only checks database, NOT Redis cache (file was just added to Redis by general worker).
+    OPTIMIZATION: Checks Redis cache first (fastest path, highest hit rate since general
+    worker just added the file), then falls back to database if Redis check fails or
+    returns no result.
 
     Args:
         file_hash: File hash data containing provider_file_uuid and file_path
@@ -930,22 +938,67 @@ def _check_file_already_active_in_db(
     if not file_hash.provider_file_uuid:
         return False
 
+    # STEP 1: Check Redis cache first (fastest path, most likely to find duplicates)
     try:
-        # Check database using existing API (same as general worker but DB-only)
+        from shared.cache.cache_backends import RedisCacheBackend
+        from shared.workflow.execution.active_file_manager import ActiveFileManager
+
+        cache = RedisCacheBackend()
+        if cache.available:
+            # Construct cache key using ActiveFileManager method for consistency
+            cache_key = ActiveFileManager._create_cache_key(
+                workflow_id,
+                file_hash.provider_file_uuid,
+                file_hash.file_path,
+            )
+            cached_data = cache.get(cache_key)
+
+            if cached_data and isinstance(cached_data, dict):
+                # Extract execution_id from cache wrapper structure
+                cached_execution_id = cached_data.get("data", {}).get("execution_id")
+
+                if cached_execution_id and cached_execution_id != execution_id:
+                    # Found in Redis - different execution is processing this file
+                    logger.warning(
+                        f"DUPLICATE DETECTED: File '{file_name}' (UUID: {file_hash.provider_file_uuid}) "
+                        f"is already being processed by execution {cached_execution_id} (Redis cache check)"
+                    )
+                    return True
+                elif cached_execution_id == execution_id:
+                    # Same execution - not a duplicate
+                    logger.debug(
+                        f"File '{file_name}' found in Redis cache for same execution {execution_id}"
+                    )
+                    return False
+                # If no execution_id or invalid data, fall through to DB check
+
+            # Cache miss - fall through to DB check
+            logger.info(
+                f"File '{file_name}' not found in Redis cache, falling back to DB check for execution {execution_id}"
+            )
+
+    except Exception as redis_error:
+        # Redis check failed, fall back to DB
+        logger.warning(
+            f"Redis check failed for '{file_name}': {redis_error}. Falling back to DB check"
+        )
+
+    # STEP 2: DB fallback (if Redis unavailable, cache miss, or invalid data)
+    try:
         response = api_client.check_files_active_processing(
             workflow_id=workflow_id,
             files=[{"uuid": file_hash.provider_file_uuid, "path": file_hash.file_path}],
             current_execution_id=execution_id,
         )
-
         if response.success and response.data:
             # Check if this specific file is in active_identifiers
             active_identifiers = response.data.get("active_identifiers", [])
+
             file_identifier = f"{file_hash.provider_file_uuid}:{file_hash.file_path}"
 
             if file_identifier in active_identifiers:
                 logger.warning(
-                    f"🚨 DUPLICATE DETECTED: File '{file_name}' (UUID: {file_hash.provider_file_uuid}) "
+                    f"DUPLICATE DETECTED: File '{file_name}' (UUID: {file_hash.provider_file_uuid}) "
                     f"is already being processed in another execution (DB check)"
                 )
                 return True
@@ -954,10 +1007,10 @@ def _check_file_already_active_in_db(
 
     except Exception as e:
         logger.warning(
-            f"Failed to check if file '{file_name}' is active in DB: {e}. "
+            f"DB check failed for '{file_name}': {e}. "
             f"Proceeding with file processing (fail-safe)"
         )
-        # Fail-safe: if check fails, allow processing
+        # Fail-safe: if both checks fail, allow processing
         return False
 
 
@@ -993,10 +1046,10 @@ def _pre_create_file_executions(
     Returns:
         Tuple of (pre_created_data dict, skipped_files list)
         - pre_created_data: Dict mapping file names to PreCreatedFileData
-        - skipped_files: List of file names that were skipped (already active)
+        - skipped_files: List of file identifiers (uuid:path) that were skipped (already active)
     """
     pre_created_data: dict[str, PreCreatedFileData] = {}
-    skipped_files: list[str] = []
+    skipped_files: list[str] = []  # List of identifiers (uuid:path), not file names
 
     # Use the file history flag passed from execution parameters
     logger.info(
@@ -1030,9 +1083,9 @@ def _pre_create_file_executions(
         # Convert to dict for API
         file_hash_dict_for_api = file_hash.to_dict()
 
-        # DOUBLE SAFEGUARD: Check if file is already being processed in database
+        # DOUBLE SAFEGUARD: Check if file is already being processed (Redis-first with DB fallback)
         # This catches race conditions that slipped through general worker's filter
-        is_duplicate = _check_file_already_active_in_db(
+        is_duplicate = _check_file_already_active(
             file_hash=file_hash,
             workflow_id=workflow_id,
             execution_id=execution_id,
@@ -1067,7 +1120,7 @@ def _pre_create_file_executions(
                         error_message=error_message,
                     )
                     logger.warning(
-                        f"⏭️  DUPLICATE: File '{file_name}' marked as ERROR - {error_message}"
+                        f"DUPLICATE: File '{file_name}' marked as ERROR - {error_message}"
                     )
 
                     # Log to UI with error context
@@ -1083,8 +1136,12 @@ def _pre_create_file_executions(
                             f"⏭️  {error_message}",
                         )
 
-                    # Track as skipped (will be counted as failed)
-                    skipped_files.append(file_name)
+                    # Track as skipped using stable identifier (uuid:path), not just file_name
+                    # This prevents misclassification when different files share the same display name
+                    file_identifier = (
+                        f"{file_hash.provider_file_uuid}:{file_hash.file_path}"
+                    )
+                    skipped_files.append(file_identifier)
 
                 except Exception as status_error:
                     logger.error(
@@ -1134,7 +1191,7 @@ def _pre_create_file_executions(
     # Log summary if files were skipped
     if skipped_files:
         logger.warning(
-            f"⏭️  Skipped {len(skipped_files)} duplicate file(s) already being processed: {skipped_files}"
+            f"Skipped {len(skipped_files)} duplicate file(s) already being processed: {skipped_files}"
         )
         if workflow_logger:
             from shared.infrastructure.logging.helpers import log_file_info
