@@ -658,7 +658,7 @@ def _fetch_pipeline_name_from_api(
             )
             return None
     except Exception as e:
-        logger.warning(
+        logger.exception(
             f"Error fetching pipeline name for {pipeline_id}: {e}. "
             f"Will use 'Unknown API' or 'Unknown Pipeline' in notifications."
         )
