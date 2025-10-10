@@ -979,7 +979,7 @@ def _check_file_already_active(
 
     except Exception as redis_error:
         # Redis check failed, fall back to DB
-        logger.warning(
+        logger.exception(
             f"Redis check failed for '{file_name}': {redis_error}. Falling back to DB check"
         )
 
@@ -1177,7 +1177,7 @@ def _pre_create_file_executions(
                 )
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Failed to pre-create WorkflowFileExecution for '{file_name}': {str(e)}"
             )
             # Continue with other files even if one fails
@@ -1523,8 +1523,8 @@ def process_file_batch_api(
             logger.info(f"Successfully processed API file batch {batch_id}")
             return batch_result
 
-        except Exception as e:
-            logger.error(f"API file batch processing failed for {batch_id}: {e}")
+        except Exception:
+            logger.exception(f"API file batch processing failed for {batch_id}")
             raise
 
 
@@ -1642,7 +1642,7 @@ def _process_single_file_api(
 
     except Exception as e:
         processing_time = time.time() - start_time
-        logger.error(
+        logger.exception(
             f"Failed to process file {file_name} after {processing_time:.2f}s: {e}"
         )
 
@@ -1653,8 +1653,8 @@ def _process_single_file_api(
                 status=ExecutionStatus.ERROR.value,
                 error_message=str(e),
             )
-        except Exception as update_error:
-            logger.error(f"Failed to update file execution status: {update_error}")
+        except Exception:
+            logger.exception("Failed to update file execution status")
 
         return {
             "file_execution_id": file_execution_id,
@@ -1779,8 +1779,8 @@ def _call_runner_service(
                     f"Runner service call failed after {retry_count} attempts: {e}"
                 )
                 raise
-        except Exception as e:
-            logger.error(f"Unexpected error calling runner service: {e}")
+        except Exception:
+            logger.exception("Unexpected error calling runner service")
             raise
 
     raise Exception(f"Failed to call runner service after {retry_count} attempts")
