@@ -620,6 +620,51 @@ def _handle_notifications_unified(
         }
 
 
+def _fetch_pipeline_name_from_api(
+    pipeline_id: str,
+    api_client: InternalAPIClient,
+) -> str | None:
+    """Fetch actual pipeline name from Pipeline/APIDeployment models.
+
+    Args:
+        pipeline_id: Pipeline or API deployment ID
+        api_client: API client instance
+
+    Returns:
+        Pipeline name from API, or None if fetch failed
+    """
+    try:
+        from shared.models.pipeline_models import PipelineApiResponse
+
+        logger.info(
+            f"Fetching pipeline data for pipeline_id={pipeline_id} to get correct pipeline name"
+        )
+        pipeline_response = api_client.get_pipeline_data(
+            pipeline_id=pipeline_id, check_active=False
+        )
+
+        if pipeline_response.success:
+            # Parse response using type-safe dataclass
+            pipeline_api_data = PipelineApiResponse.from_dict(pipeline_response.data)
+            pipeline_name = pipeline_api_data.pipeline.pipeline_name
+
+            logger.info(
+                f"Fetched pipeline name from API: '{pipeline_name}' for pipeline_id={pipeline_id}"
+            )
+            return pipeline_name
+        else:
+            logger.warning(
+                f"Could not fetch pipeline data for {pipeline_id}: {pipeline_response.error}"
+            )
+            return None
+    except Exception as e:
+        logger.warning(
+            f"Error fetching pipeline name for {pipeline_id}: {e}. "
+            f"Will use 'Unknown API' or 'Unknown Pipeline' in notifications."
+        )
+        return None
+
+
 def _extract_callback_parameters(
     task_instance, results: list, kwargs: dict[str, Any]
 ) -> CallbackContext:
@@ -748,37 +793,40 @@ def _extract_callback_parameters(
         # Use existing API detection from source_config (no additional API calls needed)
         is_api_deployment = source_config.get("is_api", False)
 
+        # Fetch actual pipeline name from Pipeline/APIDeployment models
+        pipeline_name_from_api = None
+        if context.pipeline_id:
+            pipeline_name_from_api = _fetch_pipeline_name_from_api(
+                context.pipeline_id, api_client
+            )
+
         if is_api_deployment:
             # This is an API deployment
+            # Use fetched pipeline name if available, otherwise use "Unknown API"
+            resolved_pipeline_name = pipeline_name_from_api or "Unknown API"
             context.pipeline_data = {
                 "is_api": True,
                 "resolved_pipeline_type": "API",
-                "resolved_pipeline_name": workflow_definition.get(
-                    "workflow_name", "Unknown API"
-                ),
+                "resolved_pipeline_name": resolved_pipeline_name,
             }
             context.pipeline_type = "API"
-            context.pipeline_name = workflow_definition.get(
-                "workflow_name", "Unknown API"
-            )
+            context.pipeline_name = resolved_pipeline_name
             logger.info(
-                f"Detected API deployment from source_config: {context.pipeline_id}"
+                f"Detected API deployment from source_config: {context.pipeline_id}, pipeline_name='{resolved_pipeline_name}'"
             )
         else:
             # This is ETL/TASK/APP workflow
+            # Use fetched pipeline name if available, otherwise use "Unknown Pipeline"
+            resolved_pipeline_name = pipeline_name_from_api or "Unknown Pipeline"
             context.pipeline_data = {
                 "is_api": False,
                 "resolved_pipeline_type": "ETL",
-                "resolved_pipeline_name": workflow_definition.get(
-                    "workflow_name", "Unknown Workflow"
-                ),
+                "resolved_pipeline_name": resolved_pipeline_name,
             }
             context.pipeline_type = "ETL"
-            context.pipeline_name = workflow_definition.get(
-                "workflow_name", "Unknown Workflow"
-            )
+            context.pipeline_name = resolved_pipeline_name
             logger.info(
-                f"Detected ETL workflow from source_config: {context.pipeline_id}"
+                f"Detected ETL workflow from source_config: {context.pipeline_id}, pipeline_name='{resolved_pipeline_name}'"
             )
 
         logger.info(
