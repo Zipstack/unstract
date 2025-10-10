@@ -4,7 +4,7 @@
   "required": [
     "adapter_name",
     "unstract_key",
-    "url"
+    "use_platform_bridge"
   ],
   "properties": {
     "adapter_name": {
@@ -13,12 +13,18 @@
       "default": "llm-whisperer-v2",
       "description": "Provide a unique name for this adapter instance. Example: LLMWhisperer 1"
     },
+    "use_platform_bridge": {
+      "type": "boolean",
+      "title": "Use Platform LLMWhisperer Bridge",
+      "default": true,
+      "description": "Use the platform's built-in LLMWhisperer bridge service for better performance and lower costs. Disable this to use your own external LLMWhisperer service."
+    },
     "url": {
       "type": "string",
       "title": "URL",
       "format": "uri",
-      "default": "https://llmwhisperer-api.us-central.unstract.com",
-      "description": "Provide the base URL of the LLMWhisperer service based on your region, can be obtained from the [Unstract developer portal](https://us-central.unstract.com/landing?selectedProduct=llm-whisperer)."
+      "default": "",
+      "description": "LLMWhisperer service URL (automatically configured when using platform bridge). Only required when using an external service."
     },
     "unstract_key": {
       "type": "string",
@@ -141,5 +147,34 @@
       "median_filter_size",
       "gaussian_blur_radius"
     ]
+  },
+  "dependencies": {
+    "use_platform_bridge": {
+      "oneOf": [
+        {
+          "properties": {
+            "use_platform_bridge": {
+              "const": true
+            },
+            "url": {
+              "readOnly": true
+            }
+          }
+        },
+        {
+          "properties": {
+            "use_platform_bridge": {
+              "const": false
+            },
+            "url": {
+              "readOnly": false
+            }
+          },
+          "required": [
+            "url"
+          ]
+        }
+      ]
+    }
   }
 }
