@@ -78,12 +78,12 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             log_events_id = StateStore.get(Common.LOG_EVENTS_ID)
             self.execution_log_id = log_events_id if log_events_id else pipeline_id
             self.execution_mode = mode
-            self.execution_method: tuple[str, str] = (
+            self.execution_method = (
                 WorkflowExecution.Method.SCHEDULED
                 if scheduled
                 else WorkflowExecution.Method.DIRECT
             )
-            self.execution_type: tuple[str, str] = (
+            self.execution_type = (
                 WorkflowExecution.Type.STEP
                 if single_step
                 else WorkflowExecution.Type.COMPLETE
@@ -94,7 +94,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
                 execution_mode=mode,
                 execution_method=self.execution_method,
                 execution_type=self.execution_type,
-                status=ExecutionStatus.EXECUTING,
+                status=ExecutionStatus.EXECUTING.value,
                 execution_log_id=self.execution_log_id,
             )
             workflow_execution.save()
@@ -140,12 +140,12 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         if existing_execution:
             return existing_execution
 
-        execution_method: tuple[str, str] = (
+        execution_method = (
             WorkflowExecution.Method.SCHEDULED
             if scheduled
             else WorkflowExecution.Method.DIRECT
         )
-        execution_type: tuple[str, str] = (
+        execution_type = (
             WorkflowExecution.Type.STEP
             if single_step
             else WorkflowExecution.Type.COMPLETE
@@ -159,7 +159,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             execution_mode=mode,
             execution_method=execution_method,
             execution_type=execution_type,
-            status=ExecutionStatus.PENDING,
+            status=ExecutionStatus.PENDING.value,
             execution_log_id=execution_log_id,
             total_files=total_files,
         )
@@ -396,7 +396,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
     def update_execution_err(execution_id: str, err_msg: str = "") -> WorkflowExecution:
         try:
             execution = WorkflowExecution.objects.get(pk=execution_id)
-            execution.status = ExecutionStatus.ERROR
+            execution.status = ExecutionStatus.ERROR.value
             execution.error_message = err_msg[:EXECUTION_ERROR_LENGTH]
             execution.save()
             return execution

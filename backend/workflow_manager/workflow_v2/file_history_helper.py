@@ -2,9 +2,11 @@ import logging
 from datetime import timedelta
 from typing import Any
 
+from django.conf import settings
 from django.db.models import Q
 from django.db.utils import IntegrityError
 from django.utils import timezone
+from utils.cache_service import CacheService
 
 from workflow_manager.endpoint_v2.dto import FileHash
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
@@ -245,8 +247,8 @@ class FileHistoryHelper:
         metadata: str | None,
         error: str | None = None,
         is_api: bool = False,
-    ) -> None:
-        """Create a new file history record.
+    ) -> FileHistory:
+        """Create a new file history record or return existing one.
 
         Args:
             file_hash (FileHash): The file hash for the file.
@@ -255,35 +257,92 @@ class FileHistoryHelper:
             result (Any): The result from the execution.
             metadata (str | None): The metadata from the execution.
             error (str | None): The error from the execution.
-            is_api (bool): Whether this is an API call.
-        """
-        try:
-            file_path = file_hash.file_path if not is_api else None
+            is_api (bool): Whether this is for API workflow (affects file_path handling).
 
-            FileHistory.objects.create(
+        Returns:
+            FileHistory: Either newly created or existing file history record.
+        """
+        file_path = file_hash.file_path if not is_api else None
+
+        # Prepare data for creation
+        create_data = {
+            "workflow": workflow,
+            "cache_key": file_hash.file_hash,
+            "provider_file_uuid": file_hash.provider_file_uuid,
+            "status": status,
+            "result": str(result),
+            "metadata": str(metadata) if metadata else "",
+            "error": str(error) if error else "",
+            "file_path": file_path,
+        }
+
+        try:
+            # Try to create the file history record
+            file_history = FileHistory.objects.create(**create_data)
+            logger.info(
+                f"Created new FileHistory record - "
+                f"file_name='{file_hash.file_name}', file_path='{file_hash.file_path}', "
+                f"file_hash='{file_hash.file_hash[:16] if file_hash.file_hash else 'None'}', "
+                f"workflow={workflow}"
+            )
+            return file_history
+
+        except IntegrityError as e:
+            # Race condition detected - another worker created the record
+            # Try to retrieve the existing record
+            logger.info(
+                f"FileHistory constraint violation (expected in concurrent environment) - "
+                f"file_name='{file_hash.file_name}', file_path='{file_hash.file_path}', "
+                f"file_hash='{file_hash.file_hash[:16] if file_hash.file_hash else 'None'}', "
+                f"workflow={workflow}. Error: {str(e)}"
+            )
+
+            # Use the existing get_file_history method to retrieve the record
+            existing_record = FileHistoryHelper.get_file_history(
                 workflow=workflow,
                 cache_key=file_hash.file_hash,
                 provider_file_uuid=file_hash.provider_file_uuid,
-                status=status,
-                result=str(result),
-                metadata=str(metadata) if metadata else "",
-                error=str(error) if error else "",
                 file_path=file_path,
             )
-        except IntegrityError as e:
-            # TODO: Need to find why duplicate insert is coming
-            logger.warning(
-                f"Trying to insert duplication data for filename {file_hash.file_name} "
-                f"for workflow {workflow}. Error: {str(e)} with metadata {metadata}",
-            )
+
+            if existing_record:
+                logger.info(
+                    f"Retrieved existing FileHistory record after constraint violation - "
+                    f"ID: {existing_record.id}, workflow={workflow}"
+                )
+                return existing_record
+            else:
+                # This should rarely happen, but if we can't find the existing record,
+                # log the issue and re-raise the original exception
+                logger.error(
+                    f"Failed to retrieve existing FileHistory record after constraint violation - "
+                    f"file_name='{file_hash.file_name}', workflow={workflow}"
+                )
 
     @staticmethod
     def clear_history_for_workflow(
         workflow: Workflow,
     ) -> None:
-        """Clear all file history records associated with a workflow.
+        """Clear all file history records and Redis caches associated with a workflow.
 
         Args:
             workflow (Workflow): The workflow to clear the history for.
         """
+        # Clear database records
         FileHistory.objects.filter(workflow=workflow).delete()
+        logger.info(f"Cleared database records for workflow {workflow.id}")
+
+        # Clear Redis caches for file_active entries
+        pattern = f"file_active:{workflow.id}:*"
+
+        try:
+            # Workers store file_active:* cache in Redis DB (FILE_ACTIVE_CACHE_REDIS_DB)
+            DB = settings.FILE_ACTIVE_CACHE_REDIS_DB
+            CacheService.clear_cache_optimized(pattern, db=DB)
+            logger.info(
+                f"Cleared Redis cache entries (DB {DB}) for workflow {workflow.id} with pattern: {pattern}"
+            )
+        except Exception as e:
+            logger.warning(
+                f"Failed to clear Redis caches for workflow {workflow.id}: {str(e)}"
+            )

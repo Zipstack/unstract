@@ -1,6 +1,5 @@
 import logging
 from collections.abc import Sequence
-from typing import Any
 
 from llama_index.core import StorageContext, VectorStoreIndex
 from llama_index.core.indices.base import IndexType
@@ -35,7 +34,14 @@ class VectorDB:
         tool: BaseTool,
         adapter_instance_id: str | None = None,
         embedding: EmbeddingCompat | None = None,
-    ):
+    ) -> None:
+        """Initialize the VectorDB for handling vector database operations.
+
+        Args:
+            tool: BaseTool instance for accessing tool-specific operations
+            adapter_instance_id: Optional adapter instance identifier for vector database
+            embedding: Optional embedding instance for vectorization operations
+        """
         self._tool = tool
         self._adapter_instance_id = adapter_instance_id
         self._vector_db_instance = None
@@ -43,7 +49,7 @@ class VectorDB:
         self._embedding_dimension = VectorDB.DEFAULT_EMBEDDING_DIMENSION
         self._initialise(embedding)
 
-    def _initialise(self, embedding: EmbeddingCompat | None = None):
+    def _initialise(self, embedding: EmbeddingCompat | None = None) -> None:
         if embedding:
             self._embedding_instance = embedding._embedding_instance
             self._embedding_dimension = embedding._length
@@ -114,7 +120,7 @@ class VectorDB:
         chunk_size: int = 1024,
         chunk_overlap: int = 128,
         show_progress: bool = False,
-        **index_kwargs,
+        **index_kwargs: object,
     ) -> IndexType:
         if not self._embedding_instance:
             raise VectorDBError(self.EMBEDDING_INSTANCE_ERROR)
@@ -134,7 +140,7 @@ class VectorDB:
             **index_kwargs,
         )
 
-    def get_vector_store_index(self, **kwargs: Any) -> VectorStoreIndex:
+    def get_vector_store_index(self, **kwargs: object) -> VectorStoreIndex:
         if not self._embedding_instance:
             raise VectorDBError(self.EMBEDDING_INSTANCE_ERROR)
         return VectorStoreIndex.from_vector_store(
@@ -146,13 +152,13 @@ class VectorDB:
     def get_storage_context(self) -> StorageContext:
         return StorageContext.from_defaults(vector_store=self._vector_db_instance)
 
-    def query(self, query) -> VectorStoreQueryResult:
+    def query(self, query: object) -> VectorStoreQueryResult:
         try:
             return self._vector_db_instance.query(query=query)
         except Exception as e:
             raise parse_vector_db_err(e, self.vector_db_adapter_class) from e
 
-    def delete(self, ref_doc_id: str, **delete_kwargs: Any) -> None:
+    def delete(self, ref_doc_id: str, **delete_kwargs: object) -> None:
         if not self.vector_db_adapter_class:
             raise VectorDBError("Vector DB is not initialised properly")
         self.vector_db_adapter_class.delete(
@@ -161,7 +167,7 @@ class VectorDB:
 
     def add(
         self,
-        ref_doc_id,
+        ref_doc_id: str,
         nodes: list[BaseNode],
     ) -> list[str]:
         if not self.vector_db_adapter_class:
@@ -171,7 +177,7 @@ class VectorDB:
             nodes=nodes,
         )
 
-    def close(self, **kwargs):
+    def close(self, **kwargs: object) -> None:
         if not self.vector_db_adapter_class:
             raise VectorDBError("Vector DB is not initialised properly")
         self.vector_db_adapter_class.close()

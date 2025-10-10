@@ -47,6 +47,11 @@ dependencies = [
     "llmwhisperer-client>=2.2.1",
 ]
 
+[project.optional-dependencies]
+aws = ["s3fs[boto3]~=2024.10.0", "boto3~=1.34.131"]
+gcs = ["gcsfs~=2024.10.0"]
+azure = ["adlfs~=2024.7.0"]
+
 [dependency-groups]
 dev = [
     "docutils~=0.20.1",
@@ -62,6 +67,8 @@ test = [
     "parameterized==0.9.0",
     "pytest==8.3.3",
     "pytest-mock==3.14.0",
+    "pytest-cov>=6.0.0",
+    "pytest-md-report>=0.6.2",
 ]
 
 [build-system]
@@ -120,6 +127,8 @@ select = [
 ]
 fixable = ["ALL"]
 ignore = [
+    "ANN101", # Missing type annotation for self
+    "ANN102", # Missing type annotation for cls
     "D100",   # Missing docstring in public module
     "D101",   # Missing docstring in public class
     "D102",   # Missing docstring in public method

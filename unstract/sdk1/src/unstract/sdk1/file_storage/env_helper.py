@@ -19,9 +19,9 @@ class EnvHelper:
 
     @staticmethod
     def get_storage(storage_type: StorageType, env_name: str) -> FileStorage:
-        """Helper function for clients to pick up remote storage configuration
-        from env, initialise the file storage for the same and return the
-        instance.
+        """Helper function for clients to pick up remote storage configuration from env.
+
+        Initialise the file storage for the same and return the instance.
 
         Args:
             storage_type: Permanent / Temporary file storage

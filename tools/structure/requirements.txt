@@ -3,6 +3,6 @@
 # Required for all unstract tools
 # aws alone is needed here
 # because tools use transient temporary storage.
-unstract-sdk[aws]~=0.77.3
+unstract-sdk[aws]~=0.78.0
 -e file:/unstract/sdk1
 -e file:/unstract/flags

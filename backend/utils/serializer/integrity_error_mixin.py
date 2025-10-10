@@ -1,5 +1,9 @@
+import logging
+
 from django.db import IntegrityError
 from rest_framework.exceptions import ValidationError
+
+logger = logging.getLogger(__name__)
 
 
 class IntegrityErrorMixin:
@@ -30,7 +34,7 @@ class IntegrityErrorMixin:
                 field = field_error_message_map.get("field")
                 message = field_error_message_map.get("message")
                 raise ValidationError({field: message})
-
+        logger.exception("IntegrityError: %s", error)
         # Default message if the error doesn't match any known unique constraints
         raise ValidationError(
             {"detail": "An error occurred while saving. Please try again."}
