@@ -1,0 +1,15 @@
+# Dependencies for the digraph_generation module
+
+# Core dependencies
+celery>=5.3.0
+
+# Autogen dependencies - REQUIRED for this implementation
+autogen-agentchat>=0.2.0
+pyautogen>=0.2.0
+
+# Optional dependencies for enhanced functionality
+typing-extensions>=4.0.0
+
+# Development dependencies (optional)
+# pytest>=7.0.0
+# pytest-mock>=3.10.0
