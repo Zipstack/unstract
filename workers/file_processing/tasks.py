@@ -1523,8 +1523,8 @@ def process_file_batch_api(
             logger.info(f"Successfully processed API file batch {batch_id}")
             return batch_result
 
-        except Exception as e:
-            logger.exception(f"API file batch processing failed for {batch_id}: {e}")
+        except Exception:
+            logger.exception(f"API file batch processing failed for {batch_id}")
             raise
 
 
@@ -1653,8 +1653,8 @@ def _process_single_file_api(
                 status=ExecutionStatus.ERROR.value,
                 error_message=str(e),
             )
-        except Exception as update_error:
-            logger.exception(f"Failed to update file execution status: {update_error}")
+        except Exception:
+            logger.exception("Failed to update file execution status")
 
         return {
             "file_execution_id": file_execution_id,
@@ -1779,8 +1779,8 @@ def _call_runner_service(
                     f"Runner service call failed after {retry_count} attempts: {e}"
                 )
                 raise
-        except Exception as e:
-            logger.exception(f"Unexpected error calling runner service: {e}")
+        except Exception:
+            logger.exception("Unexpected error calling runner service")
             raise
 
     raise Exception(f"Failed to call runner service after {retry_count} attempts")

@@ -657,9 +657,9 @@ def _fetch_pipeline_name_from_api(
                 f"Could not fetch pipeline data for {pipeline_id}: {pipeline_response.error}"
             )
             return None
-    except Exception as e:
+    except Exception:
         logger.exception(
-            f"Error fetching pipeline name for {pipeline_id}: {e}. "
+            f"Error fetching pipeline name for {pipeline_id}."
             f"Will use 'Unknown API' or 'Unknown Pipeline' in notifications."
         )
         return None
@@ -837,7 +837,7 @@ def _extract_callback_parameters(
         )
 
     except Exception as e:
-        logger.exception(f"Failed to fetch workflow execution context: {e}")
+        logger.exception("Failed to fetch workflow execution context")
         raise ValueError(f"Could not get execution context: {e}")
 
     # 4. Validate required context is now available
@@ -1011,7 +1011,7 @@ def _cleanup_directory(
             )
 
     except Exception as e:
-        logger.exception(f"Directory cleanup failed for {cleanup_type}: {e}")
+        logger.exception(f"Directory cleanup failed for {cleanup_type}")
         return _create_cleanup_result(cleanup_type=cleanup_type, status="failed", error=e)
 
 
