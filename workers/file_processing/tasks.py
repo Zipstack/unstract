@@ -979,7 +979,7 @@ def _check_file_already_active(
 
     except Exception as redis_error:
         # Redis check failed, fall back to DB
-        logger.warning(
+        logger.exception(
             f"Redis check failed for '{file_name}': {redis_error}. Falling back to DB check"
         )
 
@@ -1177,7 +1177,7 @@ def _pre_create_file_executions(
                 )
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Failed to pre-create WorkflowFileExecution for '{file_name}': {str(e)}"
             )
             # Continue with other files even if one fails
@@ -1524,7 +1524,7 @@ def process_file_batch_api(
             return batch_result
 
         except Exception as e:
-            logger.error(f"API file batch processing failed for {batch_id}: {e}")
+            logger.exception(f"API file batch processing failed for {batch_id}: {e}")
             raise
 
 
@@ -1642,7 +1642,7 @@ def _process_single_file_api(
 
     except Exception as e:
         processing_time = time.time() - start_time
-        logger.error(
+        logger.exception(
             f"Failed to process file {file_name} after {processing_time:.2f}s: {e}"
         )
 
@@ -1654,7 +1654,7 @@ def _process_single_file_api(
                 error_message=str(e),
             )
         except Exception as update_error:
-            logger.error(f"Failed to update file execution status: {update_error}")
+            logger.exception(f"Failed to update file execution status: {update_error}")
 
         return {
             "file_execution_id": file_execution_id,
@@ -1780,7 +1780,7 @@ def _call_runner_service(
                 )
                 raise
         except Exception as e:
-            logger.error(f"Unexpected error calling runner service: {e}")
+            logger.exception(f"Unexpected error calling runner service: {e}")
             raise
 
     raise Exception(f"Failed to call runner service after {retry_count} attempts")

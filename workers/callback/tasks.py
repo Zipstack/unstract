@@ -837,7 +837,7 @@ def _extract_callback_parameters(
         )
 
     except Exception as e:
-        logger.error(f"Failed to fetch workflow execution context: {e}")
+        logger.exception(f"Failed to fetch workflow execution context: {e}")
         raise ValueError(f"Could not get execution context: {e}")
 
     # 4. Validate required context is now available
@@ -991,7 +991,7 @@ def _cleanup_directory(
                 )
 
             except Exception as cleanup_error:
-                logger.error(
+                logger.exception(
                     f"Failed to clean {cleanup_type} execution directory: {cleanup_error}"
                 )
                 return _create_cleanup_result(
@@ -1011,7 +1011,7 @@ def _cleanup_directory(
             )
 
     except Exception as e:
-        logger.error(f"Directory cleanup failed for {cleanup_type}: {e}")
+        logger.exception(f"Directory cleanup failed for {cleanup_type}: {e}")
         return _create_cleanup_result(cleanup_type=cleanup_type, status="failed", error=e)
 
 
