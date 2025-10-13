@@ -390,6 +390,15 @@ function Agency() {
     return tool?.name || toolId;
   };
 
+  // Check if current user is the workflow owner
+  const isWorkflowOwner = () => {
+    if (!details?.created_by || !sessionDetails?.id) {
+      return false;
+    }
+    // Convert both to strings for comparison to handle type differences
+    return String(details.created_by) === String(sessionDetails.id);
+  };
+
   // Initialize selected tool from existing tool instances on page load
   const initializeSelectedTool = () => {
     if (details?.tool_instances?.length > 0) {
@@ -1147,6 +1156,7 @@ function Agency() {
                             type="link"
                             onClick={() => setShowToolSelectionSidebar(true)}
                             size="small"
+                            disabled={!isWorkflowOwner()}
                           >
                             Change Prompt Studio project
                           </Button>
@@ -1164,7 +1174,7 @@ function Agency() {
                     <Button
                       type="primary"
                       onClick={() => setShowSidebar(!showSidebar)}
-                      disabled={!selectedTool}
+                      disabled={!selectedTool || !isWorkflowOwner()}
                     >
                       Configure Settings
                     </Button>
