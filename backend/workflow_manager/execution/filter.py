@@ -1,5 +1,5 @@
 from api_v2.models import APIDeployment
-from django.db.models import QuerySet
+from django.db.models import Exists, OuterRef, QuerySet
 from django_filters import rest_framework as filters
 from pipeline_v2.models import Pipeline
 from utils.date import DateRangePresets, DateTimeProcessor
@@ -42,8 +42,6 @@ class ExecutionFilter(filters.FilterSet):
         so we use EXISTS subqueries to check entity type without fetching all IDs.
         This is more efficient than values_list() for large datasets.
         """
-        from django.db.models import Exists, OuterRef
-
         if value == ExecutionEntity.API.value:
             # Filter for API deployments using EXISTS for efficiency
             return queryset.filter(
