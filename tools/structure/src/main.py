@@ -142,7 +142,7 @@ class StructureTool(BaseTool):
                         # Try to parse the prompt as JSON
                         schema_data = repair_json_with_best_structure(prompt)
                         # If it's a valid dict (schema object), skip extraction
-                        if isinstance(schema_data, dict) and schema_data:
+                        if schema_data and isinstance(schema_data, dict):
                             return True
                     except Exception as e:
                         logger.warning(
@@ -306,7 +306,11 @@ class StructureTool(BaseTool):
             )
             payload[SettingsKeys.FILE_HASH] = summarize_file_hash
             payload[SettingsKeys.FILE_PATH] = summarize_file_path
-        elif not is_single_pass_enabled and not skip_extraction_and_indexing:
+        elif skip_extraction_and_indexing:
+            # Use source file directly for Excel with valid JSON
+            payload[SettingsKeys.FILE_PATH] = input_file
+            pass
+        elif not is_single_pass_enabled:
             # Track seen parameter combinations to avoid duplicate indexing
             seen_params = set()
 
