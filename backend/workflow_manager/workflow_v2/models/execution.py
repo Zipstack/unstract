@@ -29,7 +29,10 @@ class WorkflowExecutionManager(models.Manager):
 
     def for_user(self, user) -> QuerySet:
         """Filter user's workflow executions.
-        Show those belonging to workflows created by the specified user.
+        Show those belonging to workflows that the user can access:
+        - Workflows created by the user
+        - Workflows shared with the user
+        - Workflows shared with the entire organization
 
         Args:
             user: The user to filter executions for
@@ -37,8 +40,12 @@ class WorkflowExecutionManager(models.Manager):
         Returns:
             QuerySet of executions that the user has permission to access
         """
-        # Return executions where the workflow's created_by matches the user
-        return self.filter(workflow__created_by=user)
+        from django.db.models import Q
+
+        return self.filter(
+            Q(workflow__created_by=user)  # Owned by user
+            | Q(workflow__shared_users=user)  # Shared with user
+        ).distinct()
 
     def clean_invalid_workflows(self):
         """Remove execution records with invalid workflow references.
