@@ -45,6 +45,10 @@ from shared.workflow.execution import (
 )
 from shared.workflow.execution.tool_validation import validate_workflow_tool_instances
 
+# File management handled by StreamingFileDiscovery
+# Import from local worker module (avoid circular import)
+from worker import app, config
+
 # Import shared data models for type safety
 from unstract.core.data_models import (
     ExecutionStatus,
@@ -55,10 +59,6 @@ from unstract.core.data_models import (
 
 # Import common workflow utilities
 from unstract.core.workflow_utils import WorkflowTypeDetector
-
-# File management handled by StreamingFileDiscovery
-# Import from local worker module (avoid circular import)
-from worker import app, config
 
 logger = WorkerLogger.get_logger(__name__)
 

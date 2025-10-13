@@ -40,6 +40,9 @@ from shared.models.execution_models import (
 )
 from shared.processing.files.processor import FileProcessor
 
+# Import manual review service with WorkflowUtil access
+from worker import app
+
 from unstract.core.data_models import (
     ExecutionStatus,
     FileBatchData,
@@ -49,9 +52,6 @@ from unstract.core.data_models import (
     WorkerFileData,
 )
 from unstract.core.worker_models import FileProcessingResult
-
-# Import manual review service with WorkflowUtil access
-from worker import app
 
 logger = WorkerLogger.get_logger(__name__)
 
