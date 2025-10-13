@@ -45,10 +45,6 @@ from shared.workflow.execution import (
 )
 from shared.workflow.execution.tool_validation import validate_workflow_tool_instances
 
-# File management handled by StreamingFileDiscovery
-# Import from local worker module (avoid circular import)
-from worker import app, config
-
 # Import shared data models for type safety
 from unstract.core.data_models import (
     ExecutionStatus,
@@ -59,6 +55,10 @@ from unstract.core.data_models import (
 
 # Import common workflow utilities
 from unstract.core.workflow_utils import WorkflowTypeDetector
+
+# File management handled by StreamingFileDiscovery
+# Import from local worker module (avoid circular import)
+from worker import app, config
 
 logger = WorkerLogger.get_logger(__name__)
 
@@ -827,6 +827,7 @@ def _orchestrate_file_processing_general(
         )
 
         hitl_queue_name = kwargs.get("hitl_queue_name")
+        hitl_packet_id = kwargs.get("hitl_packet_id")
         llm_profile_id = kwargs.get("llm_profile_id")
         custom_data = kwargs.get("custom_data")
 
@@ -842,6 +843,7 @@ def _orchestrate_file_processing_general(
             q_file_no_list=[],
             manual_review_config={},
             hitl_queue_name=hitl_queue_name,
+            hitl_packet_id=hitl_packet_id,
             llm_profile_id=llm_profile_id,
             custom_data=custom_data,
         )

@@ -40,9 +40,6 @@ from shared.models.execution_models import (
 )
 from shared.processing.files.processor import FileProcessor
 
-# Import manual review service with WorkflowUtil access
-from worker import app
-
 from unstract.core.data_models import (
     ExecutionStatus,
     FileBatchData,
@@ -52,6 +49,9 @@ from unstract.core.data_models import (
     WorkerFileData,
 )
 from unstract.core.worker_models import FileProcessingResult
+
+# Import manual review service with WorkflowUtil access
+from worker import app
 
 logger = WorkerLogger.get_logger(__name__)
 
@@ -1054,6 +1054,15 @@ def _create_file_hash_from_dict(
         file_hash.is_manualreview_required = True  # Override manual review flag for HITL
         logger.info(
             f"Applied HITL queue name '{file_data.hitl_queue_name}' to file {file_name}"
+        )
+
+    if file_data and file_data.hitl_packet_id:
+        file_hash.hitl_packet_id = file_data.hitl_packet_id
+        file_hash.is_manualreview_required = (
+            True  # Override manual review flag for packet processing
+        )
+        logger.info(
+            f"Applied HITL packet ID '{file_data.hitl_packet_id}' to file {file_name}"
         )
 
     return file_hash

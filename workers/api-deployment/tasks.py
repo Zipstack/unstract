@@ -22,9 +22,9 @@ from shared.patterns.retry.utils import retry
 from shared.processing.files import FileProcessingUtils
 from shared.workflow.execution import WorkerExecutionContext, WorkflowOrchestrationUtils
 from shared.workflow.execution.tool_validation import validate_workflow_tool_instances
-from worker import app
 
 from unstract.core.data_models import ExecutionStatus, FileHashData, WorkerFileData
+from worker import app
 
 logger = WorkerLogger.get_logger(__name__)
 
@@ -838,6 +838,7 @@ def _create_file_data(
         f"No manual review rules configured for API deployment workflow {workflow_id}"
     )
     hitl_queue_name = kwargs.get("hitl_queue_name")
+    hitl_packet_id = kwargs.get("hitl_packet_id")
     llm_profile_id = kwargs.get("llm_profile_id")
     custom_data = kwargs.get("custom_data")
 
@@ -852,8 +853,9 @@ def _create_file_data(
         single_step=False,
         q_file_no_list=_calculate_q_file_no_list_api(manual_review_config, total_files),
         hitl_queue_name=hitl_queue_name,
+        hitl_packet_id=hitl_packet_id,
         manual_review_config=manual_review_config,
-        is_manualreview_required=bool(hitl_queue_name),
+        is_manualreview_required=bool(hitl_queue_name or hitl_packet_id),
         llm_profile_id=llm_profile_id,
         custom_data=custom_data,
     )

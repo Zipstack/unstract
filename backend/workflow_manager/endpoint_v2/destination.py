@@ -6,7 +6,6 @@ import os
 from typing import Any
 
 from connector_v2.models import ConnectorInstance
-from django.apps import apps
 from plugins.workflow_manager.workflow_v2.utils import WorkflowUtil
 from rest_framework.exceptions import APIException
 from usage_v2.helper import UsageHelper
@@ -894,18 +893,12 @@ class DestinationConnector(BaseConnector):
             q_name: Queue name for regular queue
             ttl_seconds: TTL in seconds (optional, for regular queue)
         """
-        if self.packet_id:
-            if not apps.is_installed("pluggable_apps.manual_review_v2"):
-                raise ValueError(
-                    "Packet-based HITL processing requires Unstract Enterprise. "
-                    "This feature is not available in the OSS version."
-                )
-            # Route to packet queue
-            from pluggable_apps.manual_review_v2.packet_queue_utils import (
-                PacketQueueUtils,
-            )
+        # Get queue instance
+        conn = QueueUtils.get_queue_inst()
 
-            success = PacketQueueUtils.enqueue_to_packet(
+        if self.packet_id:
+            # Route to packet queue
+            success = conn.enqueue_to_packet(
                 packet_id=self.packet_id, queue_result=queue_result
             )
             if not success:
@@ -915,7 +908,6 @@ class DestinationConnector(BaseConnector):
             return
 
         # Route to regular queue
-        conn = QueueUtils.get_queue_inst()
         if ttl_seconds:
             conn.enqueue_with_ttl(
                 queue_name=q_name, message=queue_result_json, ttl_seconds=ttl_seconds
