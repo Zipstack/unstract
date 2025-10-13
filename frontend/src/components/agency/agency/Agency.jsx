@@ -1119,6 +1119,7 @@ function Agency() {
                 connType={sourceTypes.connectors[0]}
                 endpointDetails={source}
                 message={sourceMsg}
+                isWorkflowOwner={isWorkflowOwner()}
               />
             </Col>
 
@@ -1137,6 +1138,7 @@ function Agency() {
                 connType={sourceTypes.connectors[1]}
                 endpointDetails={destination}
                 message={destinationMsg}
+                isWorkflowOwner={isWorkflowOwner()}
               />
             </Col>
             <Col span={12}>
