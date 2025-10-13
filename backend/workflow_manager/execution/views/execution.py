@@ -38,7 +38,6 @@ class ExecutionViewSet(viewsets.ReadOnlyModelViewSet):
     ordering_fields = ["created_at", "execution_time"]
     ordering = ["-created_at"]
     filterset_class = ExecutionFilter
-    queryset = WorkflowExecution.objects.all()
 
     def get_queryset(self):
         # Use the custom manager method to filter executions for the current user
