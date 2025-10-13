@@ -289,7 +289,9 @@ class AnswerPromptService:
             )
 
             if smart_table_plugin:
-                fs_instance = AnswerPromptService._get_file_storage_instance(execution_source)
+                fs_instance = AnswerPromptService._get_file_storage_instance(
+                    execution_source
+                )
 
                 try:
                     # Get the input file from table settings
@@ -345,15 +347,15 @@ class AnswerPromptService:
         fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
         if execution_source == ExecutionSource.IDE.value:
             fs_instance = EnvHelper.get_storage(
-                        storage_type=StorageType.PERMANENT,
-                        env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
-                    )
+                storage_type=StorageType.PERMANENT,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+            )
         if execution_source == ExecutionSource.TOOL.value:
             fs_instance = EnvHelper.get_storage(
-                        storage_type=StorageType.SHARED_TEMPORARY,
-                        env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
-                    )
-            
+                storage_type=StorageType.SHARED_TEMPORARY,
+                env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
+            )
+
         return fs_instance
 
     @staticmethod
