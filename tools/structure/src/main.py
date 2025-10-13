@@ -8,7 +8,7 @@ from typing import Any
 
 from constants import SettingsKeys  # type: ignore [attr-defined]
 from helpers import StructureToolHelper as STHelper
-from utils import json_to_markdown, repair_json_with_best_structure
+from utils import json_to_markdown
 
 from unstract.flags.feature_flag import check_feature_flag_status
 
@@ -115,42 +115,6 @@ class StructureTool(BaseTool):
                     changes.append(change_desc)
                     self.stream_log(f"Overrode {change_desc}")
         return changes
-
-    def _should_skip_extraction_for_smart_table(
-        self, input_file: str, outputs: list[dict[str, Any]]
-    ) -> bool:
-        """Check if extraction and indexing should be skipped for smart table extraction.
-
-        Args:
-            input_file: Path to the input file
-            outputs: List of output configurations
-
-        Returns:
-            True if extraction/indexing should be skipped, False otherwise
-        """
-        # Check if input file is an Excel file
-        file_ext = Path(input_file).suffix.lower()
-        if file_ext not in [".xlsx", ".xls"]:
-            return False
-
-        # Check if any output has table_settings with valid JSON prompt
-        for output in outputs:
-            if SettingsKeys.TABLE_SETTINGS in output:
-                prompt = output.get(SettingsKeys.PROMPTX, "")
-                if prompt and isinstance(prompt, str):
-                    try:
-                        # Try to parse the prompt as JSON
-                        schema_data = repair_json_with_best_structure(prompt)
-                        # If it's a valid dict (schema object), skip extraction
-                        if schema_data and isinstance(schema_data, dict):
-                            return True
-                    except Exception as e:
-                        logger.warning(
-                            "Failed to parse prompt as JSON for smart table extraction: %s",
-                            str(e),
-                        )
-                        continue
-        return False
 
     def validate(self, input_file: str, settings: dict[str, Any]) -> None:
         enable_challenge: bool = settings.get(SettingsKeys.ENABLE_CHALLENGE, False)
@@ -267,33 +231,21 @@ class StructureTool(BaseTool):
 
         custom_data = self.get_exec_metadata.get(SettingsKeys.CUSTOM_DATA, {})
         payload["custom_data"] = custom_data
-
-        # Check if we should skip extraction and indexing for Excel table extraction with valid JSON
-        skip_extraction_and_indexing = self._should_skip_extraction_for_smart_table(
-            input_file, outputs
-        )
-
-        extracted_text = ""
+        self.stream_log(f"Extracting document '{self.source_file_name}'")
         usage_kwargs: dict[Any, Any] = dict()
-        if skip_extraction_and_indexing:
-            self.stream_log(
-                "Skipping extraction and indexing for Excel table with valid JSON schema"
-            )
-        else:
-            self.stream_log(f"Extracting document '{self.source_file_name}'")
-            usage_kwargs[UsageKwargs.RUN_ID] = self.file_execution_id
-            usage_kwargs[UsageKwargs.FILE_NAME] = self.source_file_name
-            usage_kwargs[UsageKwargs.EXECUTION_ID] = self.execution_id
-            extracted_text = STHelper.dynamic_extraction(
-                file_path=input_file,
-                enable_highlight=is_highlight_enabled,
-                usage_kwargs=usage_kwargs,
-                run_id=self.file_execution_id,
-                tool_settings=tool_settings,
-                extract_file_path=tool_data_dir / SettingsKeys.EXTRACT,
-                tool=self,
-                execution_run_data_folder=str(execution_run_data_folder),
-            )
+        usage_kwargs[UsageKwargs.RUN_ID] = self.file_execution_id
+        usage_kwargs[UsageKwargs.FILE_NAME] = self.source_file_name
+        usage_kwargs[UsageKwargs.EXECUTION_ID] = self.execution_id
+        extracted_text = STHelper.dynamic_extraction(
+            file_path=input_file,
+            enable_highlight=is_highlight_enabled,
+            usage_kwargs=usage_kwargs,
+            run_id=self.file_execution_id,
+            tool_settings=tool_settings,
+            extract_file_path=tool_data_dir / SettingsKeys.EXTRACT,
+            tool=self,
+            execution_run_data_folder=str(execution_run_data_folder),
+        )
 
         index_metrics = {}
         if is_summarization_enabled:
@@ -306,10 +258,6 @@ class StructureTool(BaseTool):
             )
             payload[SettingsKeys.FILE_HASH] = summarize_file_hash
             payload[SettingsKeys.FILE_PATH] = summarize_file_path
-        elif skip_extraction_and_indexing:
-            # Use source file directly for Excel with valid JSON
-            payload[SettingsKeys.FILE_PATH] = input_file
-            pass
         elif not is_single_pass_enabled:
             # Track seen parameter combinations to avoid duplicate indexing
             seen_params = set()
@@ -378,11 +326,7 @@ class StructureTool(BaseTool):
                     is_directory_mode: bool = table_settings.get(
                         SettingsKeys.IS_DIRECTORY_MODE, False
                     )
-                    # Use source file directly for Excel with valid JSON, otherwise use extracted file
-                    if skip_extraction_and_indexing:
-                        table_settings[SettingsKeys.INPUT_FILE] = input_file
-                    else:
-                        table_settings[SettingsKeys.INPUT_FILE] = extracted_input_file
+                    table_settings[SettingsKeys.INPUT_FILE] = extracted_input_file
                     table_settings[SettingsKeys.IS_DIRECTORY_MODE] = is_directory_mode
                     self.stream_log(f"Performing table extraction with: {table_settings}")
                     output.update({SettingsKeys.TABLE_SETTINGS: table_settings})
