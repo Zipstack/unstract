@@ -373,6 +373,23 @@ function Agency() {
     }
   };
 
+  // Get tool name from tool ID
+  const getToolName = (toolId) => {
+    if (!toolId) return null;
+
+    // First check if we have the name in tool_instances (from backend)
+    const toolInstance = details?.tool_instances?.find(
+      (instance) => instance.tool_id === toolId
+    );
+    if (toolInstance?.name) {
+      return toolInstance.name;
+    }
+
+    // Fallback to exportedTools if not in tool_instances
+    const tool = exportedTools.find((t) => t.function_name === toolId);
+    return tool?.name || toolId;
+  };
+
   // Initialize selected tool from existing tool instances on page load
   const initializeSelectedTool = () => {
     if (details?.tool_instances?.length > 0) {
@@ -1124,9 +1141,7 @@ function Agency() {
                       {selectedTool ? (
                         <div className="selected-tool-info">
                           <span className="selected-tool-name">
-                            {exportedTools.find(
-                              (t) => t.function_name === selectedTool
-                            )?.name || selectedTool}
+                            {getToolName(selectedTool)}
                           </span>
                           <Button
                             type="link"
