@@ -274,13 +274,13 @@ class StructureTool(BaseTool):
         )
 
         extracted_text = ""
+        usage_kwargs: dict[Any, Any] = dict()
         if skip_extraction_and_indexing:
             self.stream_log(
                 "Skipping extraction and indexing for Excel table with valid JSON schema"
             )
         else:
             self.stream_log(f"Extracting document '{self.source_file_name}'")
-            usage_kwargs: dict[Any, Any] = dict()
             usage_kwargs[UsageKwargs.RUN_ID] = self.file_execution_id
             usage_kwargs[UsageKwargs.FILE_NAME] = self.source_file_name
             usage_kwargs[UsageKwargs.EXECUTION_ID] = self.execution_id
