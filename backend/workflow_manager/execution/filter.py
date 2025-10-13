@@ -6,7 +6,7 @@ from utils.date import DateRangePresets, DateTimeProcessor
 
 from workflow_manager.execution.enum import ExecutionEntity
 from workflow_manager.workflow_v2.enums import ExecutionStatus
-from workflow_manager.workflow_v2.models import Workflow, WorkflowExecution
+from workflow_manager.workflow_v2.models import WorkflowExecution
 
 
 class ExecutionFilter(filters.FilterSet):
@@ -36,27 +36,42 @@ class ExecutionFilter(filters.FilterSet):
     def filter_execution_entity(
         self, queryset: QuerySet, name: str, value: str
     ) -> QuerySet:
+        """Filter executions by entity type efficiently.
+
+        The queryset is already filtered by user permissions via get_queryset(),
+        so we use EXISTS subqueries to check entity type without fetching all IDs.
+        This is more efficient than values_list() for large datasets.
+        """
+        from django.db.models import Exists, OuterRef
+
         if value == ExecutionEntity.API.value:
+            # Filter for API deployments using EXISTS for efficiency
             return queryset.filter(
-                pipeline_id__in=APIDeployment.objects.values_list("id", flat=True)
+                Exists(APIDeployment.objects.filter(id=OuterRef("pipeline_id")))
             )
         elif value == ExecutionEntity.ETL.value:
+            # Filter for ETL pipelines using EXISTS
             return queryset.filter(
-                pipeline_id__in=Pipeline.objects.filter(
-                    pipeline_type=Pipeline.PipelineType.ETL
-                ).values_list("id", flat=True)
+                Exists(
+                    Pipeline.objects.filter(
+                        id=OuterRef("pipeline_id"),
+                        pipeline_type=Pipeline.PipelineType.ETL,
+                    )
+                )
             )
         elif value == ExecutionEntity.TASK.value:
+            # Filter for TASK pipelines using EXISTS
             return queryset.filter(
-                pipeline_id__in=Pipeline.objects.filter(
-                    pipeline_type=Pipeline.PipelineType.TASK
-                ).values_list("id", flat=True)
+                Exists(
+                    Pipeline.objects.filter(
+                        id=OuterRef("pipeline_id"),
+                        pipeline_type=Pipeline.PipelineType.TASK,
+                    )
+                )
             )
         elif value == ExecutionEntity.WORKFLOW.value:
-            return queryset.filter(
-                pipeline_id=None,
-                workflow_id__in=Workflow.objects.values_list("id", flat=True),
-            )
+            # Filter for workflow-level executions (no pipeline)
+            return queryset.filter(pipeline_id__isnull=True)
         return queryset
 
     def filter_by_date_range(self, queryset: QuerySet, name: str, value: str) -> QuerySet:
