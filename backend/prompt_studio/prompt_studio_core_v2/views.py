@@ -17,6 +17,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from tool_instance_v2.models import ToolInstance
+from unstract.flags.feature_flag import check_feature_flag_status
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
@@ -62,7 +63,6 @@ from prompt_studio.prompt_studio_registry_v2.serializers import (
 from prompt_studio.prompt_studio_v2.constants import ToolStudioPromptErrors
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_v2.serializers import ToolStudioPromptSerializer
-from unstract.flags.feature_flag import check_feature_flag_status
 
 if check_feature_flag_status("sdk1"):
     from unstract.sdk1.utils.common import Utils as CommonUtils
