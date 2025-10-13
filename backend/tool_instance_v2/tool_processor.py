@@ -8,9 +8,9 @@ from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from prompt_studio.prompt_studio_registry_v2.prompt_studio_registry_helper import (
     PromptStudioRegistryHelper,
 )
+from unstract.flags.feature_flag import check_feature_flag_status
 
 from tool_instance_v2.exceptions import ToolDoesNotExist
-from unstract.flags.feature_flag import check_feature_flag_status
 
 if check_feature_flag_status("sdk1"):
     from unstract.sdk1.constants import AdapterTypes

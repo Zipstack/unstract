@@ -67,7 +67,6 @@ class FliptClient(BaseClient):
             return response.match
         except grpc.RpcError as e:
             logger.warning(
-                f"Error evaluating feature flag '{flag_key}' for "
-                f"{namespace_key} : {e}"
+                f"Error evaluating feature flag '{flag_key}' for {namespace_key} : {e}"
             )
             return False

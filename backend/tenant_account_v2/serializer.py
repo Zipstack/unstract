@@ -92,7 +92,7 @@ class RemoveUserFromOrganizationSerializer(serializers.Serializer):
     )
 
     def get_user_emails(self, validated_data: dict[str, list[str] | None]) -> list[str]:
-        return cast(list[str], validated_data.get(Common.USER_EMAILS, []))
+        return cast("list[str]", validated_data.get(Common.USER_EMAILS, []))
 
 
 class ChangeUserRoleRequestSerializer(serializers.Serializer):
