@@ -29,10 +29,10 @@ class WorkflowExecutionManager(models.Manager):
 
     def for_user(self, user) -> QuerySet:
         """Filter user's workflow executions.
-        Show those belonging to workflows that the user can access:
-        - Workflows created by the user
-        - Workflows shared with the user
-        - Workflows shared with the entire organization
+         """Filter user's workflow executions.
+         Show those belonging to workflows that the user can access:
+         - Workflows created by the user
+         - Workflows shared with the user
 
         Args:
             user: The user to filter executions for
