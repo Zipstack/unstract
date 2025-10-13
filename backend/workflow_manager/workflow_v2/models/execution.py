@@ -5,7 +5,7 @@ from datetime import timedelta
 from api_v2.models import APIDeployment
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
-from django.db.models import QuerySet, Sum
+from django.db.models import Q, QuerySet, Sum
 from pipeline_v2.models import Pipeline
 from tags.models import Tag
 from usage_v2.constants import UsageKeys
@@ -29,10 +29,9 @@ class WorkflowExecutionManager(models.Manager):
 
     def for_user(self, user) -> QuerySet:
         """Filter user's workflow executions.
-         """Filter user's workflow executions.
-         Show those belonging to workflows that the user can access:
-         - Workflows created by the user
-         - Workflows shared with the user
+            Show those belonging to workflows that the user can access:
+            - Workflows created by the user
+            - Workflows shared with the user
 
         Args:
             user: The user to filter executions for
@@ -40,8 +39,6 @@ class WorkflowExecutionManager(models.Manager):
         Returns:
             QuerySet of executions that the user has permission to access
         """
-        from django.db.models import Q
-
         return self.filter(
             Q(workflow__created_by=user)  # Owned by user
             | Q(workflow__shared_users=user)  # Shared with user
