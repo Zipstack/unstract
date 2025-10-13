@@ -289,17 +289,7 @@ class AnswerPromptService:
             )
 
             if smart_table_plugin:
-                fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
-                if execution_source == ExecutionSource.IDE.value:
-                    fs_instance = EnvHelper.get_storage(
-                        storage_type=StorageType.PERMANENT,
-                        env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
-                    )
-                if execution_source == ExecutionSource.TOOL.value:
-                    fs_instance = EnvHelper.get_storage(
-                        storage_type=StorageType.SHARED_TEMPORARY,
-                        env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
-                    )
+                fs_instance = AnswerPromptService._get_file_storage_instance(execution_source)
 
                 try:
                     # Get the input file from table settings
@@ -333,17 +323,8 @@ class AnswerPromptService:
                 "Unable to extract table details. "
                 "Please contact admin to resolve this issue."
             )
-        fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
-        if execution_source == ExecutionSource.IDE.value:
-            fs_instance = EnvHelper.get_storage(
-                storage_type=StorageType.PERMANENT,
-                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
-            )
-        if execution_source == ExecutionSource.TOOL.value:
-            fs_instance = EnvHelper.get_storage(
-                storage_type=StorageType.SHARED_TEMPORARY,
-                env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
-            )
+        fs_instance = AnswerPromptService._get_file_storage_instance(execution_source)
+
         try:
             answer = table_extractor["entrypoint_cls"].run_table_extraction(
                 llm=llm,
@@ -358,6 +339,22 @@ class AnswerPromptService:
         except table_extractor["exception_cls"] as e:
             msg = f"Couldn't extract table. {e}"
             raise APIError(message=msg)
+
+    @staticmethod
+    def _get_file_storage_instance(execution_source) -> FileStorage:
+        fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
+        if execution_source == ExecutionSource.IDE.value:
+            fs_instance = EnvHelper.get_storage(
+                        storage_type=StorageType.PERMANENT,
+                        env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+                    )
+        if execution_source == ExecutionSource.TOOL.value:
+            fs_instance = EnvHelper.get_storage(
+                        storage_type=StorageType.SHARED_TEMPORARY,
+                        env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
+                    )
+            
+        return fs_instance
 
     @staticmethod
     def handle_json(

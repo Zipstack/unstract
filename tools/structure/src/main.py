@@ -144,8 +144,12 @@ class StructureTool(BaseTool):
                         # If it's a valid dict (schema object), skip extraction
                         if isinstance(schema_data, dict) and schema_data:
                             return True
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to parse prompt as JSON for smart table extraction: %s",
+                            str(e),
+                        )
+                        continue
         return False
 
     def validate(self, input_file: str, settings: dict[str, Any]) -> None:
