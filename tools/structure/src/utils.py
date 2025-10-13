@@ -1,5 +1,7 @@
 from typing import Any
 
+from json_repair import repair_json
+
 
 def json_to_markdown(data: Any, level: int = 0, parent_key: str = "") -> str:
     markdown = ""
@@ -29,3 +31,30 @@ def json_to_markdown(data: Any, level: int = 0, parent_key: str = "") -> str:
         markdown += f"{indent}- {data}\n"
 
     return markdown
+
+
+def repair_json_with_best_structure(json_str: str) -> Any:
+    """Repair JSON string (structure-tool variant)."""
+    parsed_as_is = repair_json(json_str=json_str, return_objects=True, ensure_ascii=False)
+    parsed_with_wrap = repair_json(
+        "[" + json_str + "]", return_objects=True, ensure_ascii=False
+    )
+
+    if all(isinstance(x, str) for x in (parsed_as_is, parsed_with_wrap)):
+        return parsed_as_is
+
+    if isinstance(parsed_as_is, str):
+        return parsed_with_wrap
+    if isinstance(parsed_with_wrap, str):
+        return parsed_as_is
+
+    if isinstance(parsed_with_wrap, list) and len(parsed_with_wrap) == 1:
+        if parsed_with_wrap[0] == parsed_as_is:
+            return parsed_as_is
+
+    if isinstance(parsed_as_is, (dict, list)):
+        if isinstance(parsed_with_wrap, list) and len(parsed_with_wrap) > 1:
+            return parsed_with_wrap
+        return parsed_as_is
+
+    return parsed_with_wrap
