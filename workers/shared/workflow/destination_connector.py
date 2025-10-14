@@ -700,6 +700,24 @@ class WorkerDestinationConnector:
         except Exception as e:
             self._handle_destination_error(exec_ctx, file_ctx, e)
             raise
+        finally:
+            # Release lock after destination processing completes
+            # Critical section (stage set + data extraction + destination write) is done
+            # File history and stage updates don't need the lock (protected by stage checks)
+            try:
+                tracker = FileExecutionStatusTracker()
+                lock_key = tracker.get_destination_lock_key(
+                    exec_ctx.execution_id, exec_ctx.file_execution_id
+                )
+                tracker.redis_client.delete(lock_key)
+                logger.info(
+                    f"Released destination lock for '{file_ctx.file_name}' "
+                    f"after destination processing (lock_key={lock_key})"
+                )
+            except Exception as lock_error:
+                logger.warning(
+                    f"Failed to release destination lock for '{file_ctx.file_name}': {lock_error}"
+                )
 
         # Log success
         self._log_processing_success(exec_ctx, file_ctx, result.has_hitl)

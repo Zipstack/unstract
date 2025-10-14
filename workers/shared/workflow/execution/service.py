@@ -273,37 +273,6 @@ class WorkerWorkflowExecutionService:
                 f"TIMING: Destination processing END for {file_name} at {destination_end_time:.6f} (took {destination_end_time - destination_start_time:.3f}s)"
             )
 
-            # Only clean up lock if we actually processed (not a duplicate skip)
-            # CRITICAL: Do not delete lock if we skipped due to duplicate - another worker might hold it!
-            if (
-                workflow_file_execution_id
-                and destination_result
-                and getattr(
-                    destination_result, "processed", True
-                )  # Only cleanup if we actually processed
-            ):
-                try:
-                    tracker = FileExecutionStatusTracker()
-                    lock_key = tracker.get_destination_lock_key(
-                        execution_id, workflow_file_execution_id
-                    )
-                    tracker.redis_client.delete(lock_key)
-                    logger.debug(
-                        f"Cleaned up destination lock for '{file_name}' (lock_key={lock_key})"
-                    )
-                except Exception as lock_cleanup_error:
-                    logger.warning(
-                        f"Failed to clean up destination lock: {lock_cleanup_error}"
-                    )
-            elif (
-                workflow_file_execution_id
-                and destination_result
-                and not getattr(destination_result, "processed", True)
-            ):
-                logger.info(
-                    f"Skipping lock cleanup for '{file_name}' - duplicate detected, lock held by another worker"
-                )
-
         # Step 4: Build Final Result
         final_time = time.time()
         execution_time = final_time - start_time
