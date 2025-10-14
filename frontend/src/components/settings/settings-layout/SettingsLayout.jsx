@@ -11,6 +11,11 @@ function SettingsLayout({ children, activeKey }) {
   const sidebarRef = useRef(null);
   const { sessionDetails } = useSessionStore();
 
+  // Guard against missing orgName
+  if (!sessionDetails?.orgName) {
+    return null;
+  }
+
   const settingsMenuItems = [
     {
       key: "platform",
@@ -29,7 +34,7 @@ function SettingsLayout({ children, activeKey }) {
     },
     {
       key: "review",
-      label: "Human In the Loop  Settings",
+      label: "Human In the Loop Settings",
       path: `/${sessionDetails?.orgName}/settings/review`,
     },
   ];
@@ -77,7 +82,7 @@ function SettingsLayout({ children, activeKey }) {
   return (
     <div className="settings-container">
       {isSidebarVisible && (
-        <div className="settings-sidebar" ref={sidebarRef}>
+        <nav className="settings-sidebar" ref={sidebarRef} aria-label="Settings navigation">
           {settingsMenuItems.map((item) => (
             <div
               key={item.key}
@@ -88,13 +93,15 @@ function SettingsLayout({ children, activeKey }) {
               onKeyDown={(e) => handleKeyDown(e, item.path)}
               role="button"
               tabIndex={0}
+              aria-label={item.label}
+              aria-current={currentActiveKey === item.key ? "page" : undefined}
             >
               {item.label}
             </div>
           ))}
-        </div>
+        </nav>
       )}
-      <div className="settings-content">{children}</div>
+      <main className="settings-content" role="main">{children}</main>
     </div>
   );
 }
