@@ -78,6 +78,48 @@ class WorkerDatabaseUtils:
     """Worker-compatible database utilities following production patterns."""
 
     @staticmethod
+    def _sanitize_floats_for_database(data: Any, precision: int = 6) -> Any:
+        """Recursively sanitize float values for database JSON compatibility.
+
+        BigQuery's PARSE_JSON() requires floats that can "round-trip" through
+        string representation. This function normalizes floats to ensure they
+        serialize cleanly for all database types (BigQuery, PostgreSQL, MySQL, etc.).
+
+        Args:
+            data: The data structure to sanitize (dict, list, or primitive)
+            precision: Number of decimal places to preserve (default: 6)
+
+        Returns:
+            Sanitized data with normalized float values
+
+        Example:
+            >>> _sanitize_floats_for_database({"time": 22.770092, "count": 5})
+            {'time': 22.770092, 'count': 5}
+        """
+        import math
+
+        if isinstance(data, float):
+            # Handle special float values that databases don't support in JSON
+            if math.isnan(data) or math.isinf(data):
+                return None
+            # Normalize float representation using string formatting
+            # This ensures clean binary representation that BigQuery accepts
+            return float(f"{data:.{precision}f}")
+        elif isinstance(data, dict):
+            return {
+                k: WorkerDatabaseUtils._sanitize_floats_for_database(v, precision)
+                for k, v in data.items()
+            }
+        elif isinstance(data, list):
+            return [
+                WorkerDatabaseUtils._sanitize_floats_for_database(item, precision)
+                for item in data
+            ]
+        else:
+            # Return other types unchanged (int, str, bool, None, etc.)
+            return data
+
+    @staticmethod
     def get_sql_values_for_query(
         conn_cls: Any,
         values: dict[str, Any],
@@ -292,7 +334,11 @@ class WorkerDatabaseUtils:
         # Add metadata with safe JSON serialization
         if metadata and has_metadata_col:
             try:
-                values[TableColumns.METADATA] = json.dumps(metadata)
+                # Sanitize floats for database JSON compatibility (BigQuery, PostgreSQL, etc.)
+                sanitized_metadata = WorkerDatabaseUtils._sanitize_floats_for_database(
+                    metadata
+                )
+                values[TableColumns.METADATA] = json.dumps(sanitized_metadata)
             except (TypeError, ValueError) as e:
                 logger.error(f"Failed to serialize metadata to JSON: {e}")
                 # Create a safe fallback error object
