@@ -20,6 +20,7 @@ class FileExecutionStage(Enum):
     INITIALIZATION = "INITIALIZATION"
     TOOL_EXECUTION = "TOOL_EXECUTION"
     FINALIZATION = "FINALIZATION"
+    DESTINATION_PROCESSING = "DESTINATION_PROCESSING"
     COMPLETED = "COMPLETED"
 
     @property
@@ -42,8 +43,9 @@ class FileExecutionStage(Enum):
 FILE_EXECUTION_STAGE_ORDER = {
     FileExecutionStage.INITIALIZATION: 0,
     FileExecutionStage.TOOL_EXECUTION: 1,
-    FileExecutionStage.FINALIZATION: 2,
-    FileExecutionStage.COMPLETED: 3,
+    FileExecutionStage.DESTINATION_PROCESSING: 2,
+    FileExecutionStage.FINALIZATION: 3,
+    FileExecutionStage.COMPLETED: 4,
 }
 
 

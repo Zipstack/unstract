@@ -5,6 +5,7 @@ from unstract/workflow-execution, enabling workers to execute workflows
 directly using the ToolSandbox and runner services.
 """
 
+import os
 import time
 from typing import Any
 
@@ -207,22 +208,6 @@ class WorkerWorkflowExecutionService:
         # - Writing to filesystem/database
         # - Routing to manual review
         # - Creating file history
-        # Track finalization stage before destination processing
-        if workflow_file_execution_id:
-            try:
-                tracker = FileExecutionStatusTracker()
-                tracker.update_stage_status(
-                    execution_id=execution_id,
-                    file_execution_id=workflow_file_execution_id,
-                    stage_status=FileExecutionStageData(
-                        stage=FileExecutionStage.FINALIZATION,
-                        status=FileExecutionStageStatus.IN_PROGRESS,
-                    ),
-                )
-                logger.info(f"Tracked finalization stage for {file_name}")
-            except Exception as tracker_error:
-                logger.warning(f"Failed to track finalization stage: {tracker_error}")
-
         destination_result = None
         destination_start_time = time.time()
         logger.info(
@@ -244,6 +229,26 @@ class WorkerWorkflowExecutionService:
                 execution_error=execution_error,
             )
             logger.info(f"Destination processing completed for {file_name}")
+
+            # Mark destination processing as successful
+            if workflow_file_execution_id and workflow_success:
+                try:
+                    tracker = FileExecutionStatusTracker()
+                    tracker.update_stage_status(
+                        execution_id=execution_id,
+                        file_execution_id=workflow_file_execution_id,
+                        stage_status=FileExecutionStageData(
+                            stage=FileExecutionStage.DESTINATION_PROCESSING,
+                            status=FileExecutionStageStatus.SUCCESS,
+                        ),
+                    )
+                    logger.info(
+                        f"Marked destination processing as successful for {file_name}"
+                    )
+                except Exception as tracker_error:
+                    logger.warning(
+                        f"Failed to mark destination processing success: {tracker_error}"
+                    )
 
         except Exception as dest_error:
             logger.error(
@@ -306,7 +311,25 @@ class WorkerWorkflowExecutionService:
                     destination_result and not destination_result.error
                 )
 
+                # Stage flow: DESTINATION_PROCESSING(2) → FINALIZATION(3) → COMPLETED(4)
                 if overall_success:
+                    # Mark finalization as successful
+                    tracker.update_stage_status(
+                        execution_id=execution_id,
+                        file_execution_id=workflow_file_execution_id,
+                        stage_status=FileExecutionStageData(
+                            stage=FileExecutionStage.FINALIZATION,
+                            status=FileExecutionStageStatus.SUCCESS,
+                        ),
+                    )
+                    logger.info(f"Marked finalization as successful for {file_name}")
+
+                    # Use shorter TTL for COMPLETED stage to optimize Redis memory
+                    completed_ttl = int(
+                        os.environ.get(
+                            "FILE_EXECUTION_TRACKER_COMPLETED_TTL_IN_SECOND", 300
+                        )
+                    )
                     tracker.update_stage_status(
                         execution_id=execution_id,
                         file_execution_id=workflow_file_execution_id,
@@ -314,6 +337,7 @@ class WorkerWorkflowExecutionService:
                             stage=FileExecutionStage.COMPLETED,
                             status=FileExecutionStageStatus.SUCCESS,
                         ),
+                        ttl_in_second=completed_ttl,
                     )
                     logger.info(f"Tracked successful completion for {file_name}")
                 else:
@@ -336,12 +360,6 @@ class WorkerWorkflowExecutionService:
 
                 # Clean up tool execution tracker (even on failure)
                 self._cleanup_tool_execution_tracker(
-                    execution_id=execution_id,
-                    file_execution_id=workflow_file_execution_id,
-                )
-
-                # Clean up file execution tracker (log data then delete)
-                self._cleanup_file_execution_tracker(
                     execution_id=execution_id,
                     file_execution_id=workflow_file_execution_id,
                 )
@@ -400,50 +418,6 @@ class WorkerWorkflowExecutionService:
             # Non-critical - log and continue
             logger.warning(
                 f"Failed to initialize file execution tracker for {execution_id}/{file_execution_id}: {e}"
-            )
-
-    def _cleanup_file_execution_tracker(
-        self,
-        execution_id: str,
-        file_execution_id: str,
-    ) -> None:
-        """Clean up file execution tracker after processing completes.
-
-        Logs file execution data for debugging purposes before cleanup.
-        """
-        try:
-            tracker = FileExecutionStatusTracker()
-
-            # Get current file execution data for logging before cleanup
-            file_execution_data = tracker.get_data(execution_id, file_execution_id)
-
-            if file_execution_data:
-                # Log file execution data for debugging purposes
-                logger.info(
-                    f"File execution tracker data before cleanup - "
-                    f"execution_id: {execution_id}, file_execution_id: {file_execution_id}, "
-                    f"stage: {file_execution_data.stage_status.stage.value}, "
-                    f"status: {file_execution_data.stage_status.status.value}, "
-                    f"organization_id: {file_execution_data.organization_id}, "
-                    f"error: {file_execution_data.stage_status.error or 'None'}"
-                )
-
-                # Actually delete file execution tracker data from Redis
-                tracker.delete_data(execution_id, file_execution_id)
-                logger.info(
-                    f"Deleted file execution tracker for execution_id: {execution_id}, "
-                    f"file_execution_id: {file_execution_id}"
-                )
-            else:
-                logger.debug(
-                    f"No file execution tracker data found for execution_id: {execution_id}, "
-                    f"file_execution_id: {file_execution_id}"
-                )
-
-        except Exception as e:
-            # Non-critical - log and continue
-            logger.warning(
-                f"Failed to cleanup file execution tracker for {execution_id}/{file_execution_id}: {e}"
             )
 
     def _cleanup_tool_execution_tracker(
