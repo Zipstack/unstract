@@ -6,6 +6,7 @@ of backend/workflow_manager/endpoint_v2/database_utils.py without Django depende
 
 import datetime
 import json
+import math
 from typing import Any
 
 from shared.enums.status_enums import FileProcessingStatus
@@ -96,8 +97,6 @@ class WorkerDatabaseUtils:
             >>> _sanitize_floats_for_database({"time": 22.770092, "count": 5})
             {'time': 22.770092, 'count': 5}
         """
-        import math
-
         if isinstance(data, float):
             # Handle special float values that databases don't support in JSON
             if math.isnan(data) or math.isinf(data):
