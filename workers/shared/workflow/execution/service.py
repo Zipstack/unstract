@@ -250,6 +250,7 @@ class WorkerWorkflowExecutionService:
                     logger.info(
                         f"Marked destination processing as successful for {file_name}"
                     )
+
                 except Exception as tracker_error:
                     logger.warning(
                         f"Failed to mark destination processing success: {tracker_error}"
@@ -268,6 +269,22 @@ class WorkerWorkflowExecutionService:
             logger.info(
                 f"TIMING: Destination processing END for {file_name} at {destination_end_time:.6f} (took {destination_end_time - destination_start_time:.3f}s)"
             )
+
+            # Always clean up the destination processing lock, whether success or failure
+            if workflow_file_execution_id:
+                try:
+                    tracker = FileExecutionStatusTracker()
+                    lock_key = tracker.get_destination_lock_key(
+                        execution_id, workflow_file_execution_id
+                    )
+                    tracker.redis_client.delete(lock_key)
+                    logger.debug(
+                        f"Cleaned up destination lock for '{file_name}' (lock_key={lock_key})"
+                    )
+                except Exception as lock_cleanup_error:
+                    logger.warning(
+                        f"Failed to clean up destination lock: {lock_cleanup_error}"
+                    )
 
         # Step 4: Build Final Result
         final_time = time.time()

@@ -190,6 +190,10 @@ class FileExecutionStatusTracker:
     def get_cache_key(self, execution_id: str, file_execution_id: str) -> str:
         return f"file_execution:{execution_id}:{file_execution_id}"
 
+    def get_destination_lock_key(self, execution_id: str, file_execution_id: str) -> str:
+        """Get the Redis key for destination processing lock."""
+        return f"file_execution:{execution_id}:{file_execution_id}:destination_lock"
+
     def set_data(self, data: FileExecutionData, ttl_in_second: int | None = None) -> None:
         data.validate()
         key = self.get_cache_key(data.execution_id, data.file_execution_id)
