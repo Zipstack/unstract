@@ -429,7 +429,7 @@ class WorkerDestinationConnector:
             # If Redis fails or other unexpected error, log but allow processing to continue
             # This ensures graceful degradation if tracking system is unavailable
             logger.exception(
-                f"Failed to check/acquire destination lock for file '{file_ctx.file_name}': {str(e)}. "
+                f"Failed to check/acquire destination lock for file '{file_ctx.file_name}': {e}. "
                 f"Allowing processing to continue (graceful degradation)."
             )
             return True  # Allow processing on infrastructure failure
