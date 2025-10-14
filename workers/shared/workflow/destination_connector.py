@@ -414,11 +414,11 @@ class WorkerDestinationConnector:
                 )
                 return True  # Lock acquired and stage set successfully
 
-            except FileExecutionStageException as stage_error:
+            except FileExecutionStageException:
                 # Stage transition failed (shouldn't happen after lock acquired, but handle it)
-                logger.error(
+                logger.exception(
                     f"Failed to set DESTINATION_PROCESSING stage after lock acquisition "
-                    f"for file '{file_ctx.file_name}': {str(stage_error)}. "
+                    f"for file '{file_ctx.file_name}'. "
                     f"Releasing lock."
                 )
                 # Release the lock since we failed to set the stage
@@ -658,7 +658,7 @@ class WorkerDestinationConnector:
         execution_id: str = None,
         organization_id: str = None,
         execution_error: str = None,
-    ) -> HandleOutputResult:
+    ) -> HandleOutputResult | None:
         """Handle the output based on the connection type.
 
         This refactored version uses clean architecture with context objects
