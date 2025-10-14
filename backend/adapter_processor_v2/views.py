@@ -374,7 +374,7 @@ class AdapterInstanceViewSet(ModelViewSet):
                         resource_instance=adapter,
                     )
             except Exception as e:
-                logger.error(f"Failed to send sharing notification: {e}")
+                logger.exception(f"Failed to send sharing notification: {e}")
 
         return response
 
