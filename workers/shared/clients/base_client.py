@@ -169,9 +169,8 @@ class BaseAPIClient:
             }
         )
 
-        # Organization context header
-        if self.organization_id:
-            self.session.headers["X-Organization-ID"] = self.organization_id
+        # NOTE: X-Organization-ID is NOT set on session headers to prevent pollution
+        # in shared session scenarios. It's set per-request in _make_request() instead.
 
     def _serialize_data(self, data: Any) -> Any:
         """Recursively serialize data to JSON-compatible format.
@@ -494,7 +493,12 @@ class BaseAPIClient:
 
     # Organization context management
     def set_organization_context(self, org_id: str):
-        """Set organization context for subsequent requests with caching optimization."""
+        """Set organization context for subsequent requests with caching optimization.
+
+        NOTE: Organization ID is stored in instance variables only, not in session headers.
+        This prevents context pollution in shared session scenarios. The X-Organization-ID
+        header is set per-request in _make_request() method.
+        """
         # Performance optimization: Skip redundant context setting
         if (
             hasattr(self, "_cached_org_id")
@@ -506,19 +510,19 @@ class BaseAPIClient:
         if org_id is None or str(org_id).lower() == "none":
             self.organization_id = None
             self._cached_org_id = None
-            if "X-Organization-ID" in self.session.headers:
-                del self.session.headers["X-Organization-ID"]
             return
 
         self.organization_id = org_id
         self._cached_org_id = org_id  # Cache for future calls
-        self.session.headers["X-Organization-ID"] = org_id
 
     def clear_organization_context(self):
-        """Clear organization context."""
+        """Clear organization context.
+
+        NOTE: Only clears instance variables. Session headers are not modified
+        because organization context is set per-request, not on the session.
+        """
         self.organization_id = None
-        if "X-Organization-ID" in self.session.headers:
-            del self.session.headers["X-Organization-ID"]
+        self._cached_org_id = None  # Clear cache as well
         logger.debug("Cleared organization context")
 
     # Health check
