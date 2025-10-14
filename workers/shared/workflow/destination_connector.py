@@ -674,23 +674,22 @@ class WorkerDestinationConnector:
         if self.hitl_queue_name:
             logger.debug(f"HITL queue configured: {self.hitl_queue_name}")
 
-        # Extract processing data
-        result = self._extract_processing_data(exec_ctx, file_ctx)
-
-        # Check if destination already processed and atomically acquire lock
+        # Check if destination already processed and atomically acquire lock FIRST
         # This prevents duplicate insertions during warm shutdown scenarios
+        # IMPORTANT: Check lock BEFORE extracting data to avoid unnecessary work
         lock_acquired = self._check_and_acquire_destination_lock(exec_ctx, file_ctx)
         if not lock_acquired:
-            # Duplicate detected or another worker has the lock - skip processing
+            # Duplicate detected or another worker has the lock - abort ALL processing
             logger.info(
-                f"Skipping destination processing for file '{file_ctx.file_name}' - "
-                f"already processed or being processed by another worker"
+                f"Duplicate detected for file '{file_ctx.file_name}' - "
+                f"aborting ALL processing (lock not acquired, already processed or being processed by another worker)"
             )
-            return HandleOutputResult(
-                output=result.tool_execution_result,
-                metadata=result.metadata,
-                connection_type=self.connection_type,
-            )
+            # Return None to signal to caller that this is a duplicate skip
+            # Caller should not create file history, update stages, or clean up locks
+            return None
+
+        # Only extract data if lock was acquired (not a duplicate)
+        result = self._extract_processing_data(exec_ctx, file_ctx)
 
         # Check and handle HITL if needed
         result.has_hitl = self._check_and_handle_hitl(exec_ctx, file_ctx, result)

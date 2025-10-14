@@ -230,12 +230,15 @@ class WorkerWorkflowExecutionService:
             )
             logger.info(f"Destination processing completed for {file_name}")
 
-            # Mark destination processing as successful - only if workflow succeeded AND no destination errors
+            # Mark destination processing as successful - only if workflow succeeded AND no destination errors AND actually processed (not duplicate)
             if (
                 workflow_file_execution_id
                 and workflow_success
                 and destination_result
                 and not destination_result.error
+                and getattr(
+                    destination_result, "processed", True
+                )  # Only update if actually processed (not a duplicate skip)
             ):
                 try:
                     tracker = FileExecutionStatusTracker()
@@ -270,8 +273,15 @@ class WorkerWorkflowExecutionService:
                 f"TIMING: Destination processing END for {file_name} at {destination_end_time:.6f} (took {destination_end_time - destination_start_time:.3f}s)"
             )
 
-            # Always clean up the destination processing lock, whether success or failure
-            if workflow_file_execution_id:
+            # Only clean up lock if we actually processed (not a duplicate skip)
+            # CRITICAL: Do not delete lock if we skipped due to duplicate - another worker might hold it!
+            if (
+                workflow_file_execution_id
+                and destination_result
+                and getattr(
+                    destination_result, "processed", True
+                )  # Only cleanup if we actually processed
+            ):
                 try:
                     tracker = FileExecutionStatusTracker()
                     lock_key = tracker.get_destination_lock_key(
@@ -285,6 +295,14 @@ class WorkerWorkflowExecutionService:
                     logger.warning(
                         f"Failed to clean up destination lock: {lock_cleanup_error}"
                     )
+            elif (
+                workflow_file_execution_id
+                and destination_result
+                and not getattr(destination_result, "processed", True)
+            ):
+                logger.info(
+                    f"Skipping lock cleanup for '{file_name}' - duplicate detected, lock held by another worker"
+                )
 
         # Step 4: Build Final Result
         final_time = time.time()
@@ -330,7 +348,15 @@ class WorkerWorkflowExecutionService:
             try:
                 tracker = FileExecutionStatusTracker()
                 overall_success = workflow_success and (
-                    destination_result and not destination_result.error
+                    destination_result
+                    and not destination_result.error
+                    and getattr(destination_result, "processed", True)
+                )
+
+                # Check if this was a duplicate skip (processed=False)
+                # For duplicate skips, we don't update any stages to avoid interfering with active worker
+                is_duplicate_skip = destination_result and not getattr(
+                    destination_result, "processed", True
                 )
 
                 # Stage flow: DESTINATION_PROCESSING(2) → FINALIZATION(3) → COMPLETED(4)
@@ -362,8 +388,8 @@ class WorkerWorkflowExecutionService:
                         ttl_in_second=completed_ttl,
                     )
                     logger.info(f"Tracked successful completion for {file_name}")
-                else:
-                    # Track failure on finalization stage
+                elif not is_duplicate_skip:
+                    # Track failure on finalization stage (only for actual failures, not duplicate skips)
                     error_msg = execution_error or (
                         destination_result.error
                         if destination_result
@@ -379,12 +405,23 @@ class WorkerWorkflowExecutionService:
                         ),
                     )
                     logger.info(f"Tracked failed execution for {file_name}: {error_msg}")
+                else:
+                    # Duplicate skip - don't update any stages to avoid interfering with active worker
+                    logger.info(
+                        f"Skipping finalization stage update for '{file_name}' - duplicate detected, stages managed by active worker"
+                    )
 
-                # Clean up tool execution tracker (even on failure)
-                self._cleanup_tool_execution_tracker(
-                    execution_id=execution_id,
-                    file_execution_id=workflow_file_execution_id,
-                )
+                # Clean up tool execution tracker only if we actually processed (not duplicate)
+                # For duplicate skips, the active worker will clean up its own tracker when it finishes
+                if not is_duplicate_skip:
+                    self._cleanup_tool_execution_tracker(
+                        execution_id=execution_id,
+                        file_execution_id=workflow_file_execution_id,
+                    )
+                else:
+                    logger.info(
+                        f"Skipping tool execution tracker cleanup for '{file_name}' - duplicate detected, tracker managed by active worker"
+                    )
 
             except Exception as tracker_error:
                 logger.warning(f"Failed to track final completion stage: {tracker_error}")
@@ -1147,6 +1184,21 @@ class WorkerWorkflowExecutionService:
                     organization_id=organization_id,
                     execution_error=execution_error,
                 )
+
+                # Check if handle_output returned None (duplicate detected)
+                if handle_output_result is None:
+                    logger.info(
+                        f"Duplicate detected for {file_hash.file_name} - "
+                        f"skipping file history and all downstream processing"
+                    )
+                    # Return special result to indicate duplicate (not an error, not processed)
+                    return FinalOutputResult(
+                        output=None,
+                        metadata=None,
+                        error=None,  # Not an error - just a duplicate skip
+                        processed=False,  # Indicates this was skipped due to duplicate
+                    )
+
                 output_result = handle_output_result.output
                 metadata = handle_output_result.metadata
                 source_connection_type = workflow.source_config.connection_type
