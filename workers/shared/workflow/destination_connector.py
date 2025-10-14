@@ -33,6 +33,13 @@ from unstract.connectors.connectorkit import Connectorkit
 from unstract.connectors.exceptions import ConnectorError
 from unstract.core.data_models import ConnectionType as CoreConnectionType
 from unstract.core.data_models import FileHashData
+from unstract.core.exceptions import FileExecutionStageException
+from unstract.core.file_execution_tracker import (
+    FileExecutionStage,
+    FileExecutionStageData,
+    FileExecutionStageStatus,
+    FileExecutionStatusTracker,
+)
 from unstract.filesystem import FileStorageType, FileSystem
 from unstract.sdk.constants import ToolExecKey
 from unstract.sdk.tool.mime_types import EXT_MIME_MAP
@@ -304,6 +311,87 @@ class WorkerDestinationConnector:
 
         return ProcessingResult(tool_execution_result=tool_result, metadata=metadata)
 
+    def _check_and_acquire_destination_lock(
+        self, exec_ctx: ExecutionContext, file_ctx: FileContext
+    ) -> bool:
+        """Check if destination already processed and atomically acquire lock.
+
+        Returns:
+            bool: True if lock acquired successfully, False if already processed (duplicate)
+
+        This method provides duplicate prevention using FileExecutionStatusTracker:
+        1. Check if DESTINATION_PROCESSING or COMPLETED stage already exists
+        2. If yes, this is a duplicate attempt (e.g., from worker restart) -> skip
+        3. If no, atomically set DESTINATION_PROCESSING stage (acts as distributed lock)
+        4. If FileExecutionStageException raised, another worker has the lock -> skip
+        """
+        try:
+            tracker = FileExecutionStatusTracker()
+
+            # Check if destination already processed
+            existing_data = tracker.get_data(
+                exec_ctx.execution_id, exec_ctx.file_execution_id
+            )
+
+            if existing_data:
+                current_stage = existing_data.stage_status.stage
+                if current_stage in [
+                    FileExecutionStage.DESTINATION_PROCESSING,
+                    FileExecutionStage.COMPLETED,
+                ]:
+                    logger.warning(
+                        f"Destination already processed for file '{file_ctx.file_name}' "
+                        f"at stage {current_stage.value}. Skipping duplicate processing."
+                    )
+                    log_file_info(
+                        exec_ctx.workflow_log,
+                        exec_ctx.file_execution_id,
+                        f"File '{file_ctx.file_name}' destination already processed - skipping duplicate",
+                    )
+                    return False  # Duplicate detected
+
+            # Atomically acquire lock by setting DESTINATION_PROCESSING stage
+            # This prevents race conditions - first worker to set this stage wins
+            try:
+                logger.info(
+                    f"Acquiring destination processing lock for file '{file_ctx.file_name}'"
+                )
+                tracker.update_stage_status(
+                    exec_ctx.execution_id,
+                    exec_ctx.file_execution_id,
+                    FileExecutionStageData(
+                        stage=FileExecutionStage.DESTINATION_PROCESSING,
+                        status=FileExecutionStageStatus.IN_PROGRESS,
+                    ),
+                )
+                logger.info(
+                    f"Successfully acquired destination processing lock for file '{file_ctx.file_name}'"
+                )
+                return True  # Lock acquired successfully
+
+            except FileExecutionStageException as stage_error:
+                # Another worker already acquired the lock (stage validation failed)
+                logger.warning(
+                    f"Race condition detected: Another worker acquired destination lock "
+                    f"for file '{file_ctx.file_name}'. Skipping duplicate processing. "
+                    f"Error: {str(stage_error)}"
+                )
+                log_file_info(
+                    exec_ctx.workflow_log,
+                    exec_ctx.file_execution_id,
+                    f"File '{file_ctx.file_name}' destination lock acquired by another worker - skipping duplicate",
+                )
+                return False  # Another worker has the lock
+
+        except Exception as e:
+            # If Redis fails or other unexpected error, log but allow processing to continue
+            # This ensures graceful degradation if tracking system is unavailable
+            logger.error(
+                f"Failed to check/acquire destination lock for file '{file_ctx.file_name}': {str(e)}. "
+                f"Allowing processing to continue (graceful degradation)."
+            )
+            return True  # Allow processing on infrastructure failure
+
     def _check_and_handle_hitl(
         self, exec_ctx: ExecutionContext, file_ctx: FileContext, result: ProcessingResult
     ) -> bool:
@@ -546,6 +634,21 @@ class WorkerDestinationConnector:
 
         # Extract processing data
         result = self._extract_processing_data(exec_ctx, file_ctx)
+
+        # Check if destination already processed and atomically acquire lock
+        # This prevents duplicate insertions during warm shutdown scenarios
+        lock_acquired = self._check_and_acquire_destination_lock(exec_ctx, file_ctx)
+        if not lock_acquired:
+            # Duplicate detected or another worker has the lock - skip processing
+            logger.info(
+                f"Skipping destination processing for file '{file_ctx.file_name}' - "
+                f"already processed or being processed by another worker"
+            )
+            return HandleOutputResult(
+                output=result.tool_execution_result,
+                metadata=result.metadata,
+                connection_type=self.connection_type,
+            )
 
         # Check and handle HITL if needed
         result.has_hitl = self._check_and_handle_hitl(exec_ctx, file_ctx, result)
