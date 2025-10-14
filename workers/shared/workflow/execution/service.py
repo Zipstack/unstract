@@ -230,8 +230,13 @@ class WorkerWorkflowExecutionService:
             )
             logger.info(f"Destination processing completed for {file_name}")
 
-            # Mark destination processing as successful
-            if workflow_file_execution_id and workflow_success:
+            # Mark destination processing as successful - only if workflow succeeded AND no destination errors
+            if (
+                workflow_file_execution_id
+                and workflow_success
+                and destination_result
+                and not destination_result.error
+            ):
                 try:
                     tracker = FileExecutionStatusTracker()
                     tracker.update_stage_status(
