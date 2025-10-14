@@ -9,7 +9,11 @@ function Settings() {
 
   useEffect(() => {
     // Redirect to platform settings if on base settings page
-    if ((location.pathname.endsWith("/settings") || location.pathname.endsWith("/settings/")) && sessionDetails?.orgName) {
+    if (
+      (location.pathname.endsWith("/settings") ||
+        location.pathname.endsWith("/settings/")) &&
+      sessionDetails?.orgName
+    ) {
       navigate(`/${sessionDetails?.orgName}/settings/platform`, {
         replace: true,
       });

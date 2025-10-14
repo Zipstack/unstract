@@ -237,8 +237,12 @@ function PlatformSettings() {
     <SettingsLayout activeKey="platform">
       <div>
         <div className="plt-set-head">
-          <Button size="small" type="text">
-            <ArrowLeftOutlined onClick={() => navigate(-1)} />
+          <Button
+            size="small"
+            type="text"
+            onClick={() => navigate(`/${sessionDetails?.orgName}/tools`)}
+          >
+            <ArrowLeftOutlined />
           </Button>
           <Typography.Text className="plt-set-head-typo">
             Platform Settings
