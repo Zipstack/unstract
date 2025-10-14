@@ -11,7 +11,27 @@ function SettingsLayout({ children, activeKey }) {
   const sidebarRef = useRef(null);
   const { sessionDetails } = useSessionStore();
 
-  // Guard against missing orgName
+  // Show sidebar when route changes (navigating to a new settings page)
+  // location.key changes even when navigating to the same path
+  useEffect(() => {
+    setIsSidebarVisible(true);
+  }, [location.pathname, location.key]);
+
+  // Handle click outside to close sidebar
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (sidebarRef.current && !sidebarRef.current.contains(event.target)) {
+        setIsSidebarVisible(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  // Guard against missing orgName - check AFTER all hooks
   if (!sessionDetails?.orgName) {
     return null;
   }
@@ -39,26 +59,6 @@ function SettingsLayout({ children, activeKey }) {
     },
   ];
 
-  // Show sidebar when route changes (navigating to a new settings page)
-  // location.key changes even when navigating to the same path
-  useEffect(() => {
-    setIsSidebarVisible(true);
-  }, [location.pathname, location.key]);
-
-  // Handle click outside to close sidebar
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (sidebarRef.current && !sidebarRef.current.contains(event.target)) {
-        setIsSidebarVisible(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, []);
-
   // Determine active key from route if not provided
   const getActiveKey = () => {
     if (activeKey) return activeKey;
@@ -72,32 +72,23 @@ function SettingsLayout({ children, activeKey }) {
 
   const currentActiveKey = getActiveKey();
 
-  const handleKeyDown = (event, path) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      navigate(path);
-    }
-  };
-
   return (
     <div className="settings-container">
       {isSidebarVisible && (
         <nav className="settings-sidebar" ref={sidebarRef} aria-label="Settings navigation">
           {settingsMenuItems.map((item) => (
-            <div
+            <button
               key={item.key}
+              type="button"
               className={`settings-menu-item ${
                 currentActiveKey === item.key ? "active" : ""
               }`}
               onClick={() => navigate(item.path)}
-              onKeyDown={(e) => handleKeyDown(e, item.path)}
-              role="button"
-              tabIndex={0}
               aria-label={item.label}
               aria-current={currentActiveKey === item.key ? "page" : undefined}
             >
               {item.label}
-            </div>
+            </button>
           ))}
         </nav>
       )}
