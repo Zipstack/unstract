@@ -352,9 +352,13 @@ class WorkerDestinationConnector:
 
             # Atomically acquire lock by setting DESTINATION_PROCESSING stage
             # This prevents race conditions - first worker to set this stage wins
+            # Use shorter TTL for lock to prevent deadlock if worker crashes (10 min default)
+            LOCK_TTL = int(
+                os.environ.get("DESTINATION_PROCESSING_LOCK_TTL_IN_SECOND", 600)
+            )
             try:
                 logger.info(
-                    f"Acquiring destination processing lock for file '{file_ctx.file_name}'"
+                    f"Acquiring destination processing lock for file '{file_ctx.file_name}' with TTL {LOCK_TTL}s"
                 )
                 tracker.update_stage_status(
                     exec_ctx.execution_id,
@@ -363,6 +367,7 @@ class WorkerDestinationConnector:
                         stage=FileExecutionStage.DESTINATION_PROCESSING,
                         status=FileExecutionStageStatus.IN_PROGRESS,
                     ),
+                    ttl_in_second=LOCK_TTL,
                 )
                 logger.info(
                     f"Successfully acquired destination processing lock for file '{file_ctx.file_name}'"
