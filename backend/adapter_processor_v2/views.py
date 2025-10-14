@@ -289,9 +289,12 @@ class AdapterInstanceViewSet(ModelViewSet):
     def partial_update(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
+        # Store current shared users before update (for email notifications)
+        adapter = self.get_object()
+        current_shared_users = set(adapter.shared_users.all())
+
         if AdapterKeys.SHARED_USERS in request.data:
             # find the deleted users
-            adapter = self.get_object()
             shared_users = {
                 int(user_id) for user_id in request.data.get("shared_users", {})
             }
@@ -333,7 +336,47 @@ class AdapterInstanceViewSet(ModelViewSet):
                     )
                     continue
 
-        return super().partial_update(request, *args, **kwargs)
+        # Perform the update
+        response = super().partial_update(request, *args, **kwargs)
+
+        # Send email notifications to newly shared users
+        if response.status_code == 200 and AdapterKeys.SHARED_USERS in request.data:
+            try:
+                from plugins.notification.constants import ResourceType
+                from plugins.notification.sharing_notification import (
+                    SharingNotificationService,
+                )
+
+                adapter.refresh_from_db()
+                new_shared_users = set(adapter.shared_users.all())
+                newly_shared_users = new_shared_users - current_shared_users
+
+                if newly_shared_users:
+                    # Map adapter type to specific resource type
+                    adapter_type_to_resource = {
+                        "LLM": ResourceType.LLM.value,
+                        "EMBEDDING": ResourceType.EMBEDDING.value,
+                        "VECTOR_DB": ResourceType.VECTOR_DB.value,
+                        "X2TEXT": ResourceType.X2TEXT.value,
+                    }
+
+                    resource_type = adapter_type_to_resource.get(
+                        adapter.adapter_type, ResourceType.LLM.value
+                    )
+
+                    notification_service = SharingNotificationService()
+                    notification_service.send_sharing_notification(
+                        resource_type=resource_type,
+                        resource_name=adapter.adapter_name,
+                        resource_id=str(adapter.id),
+                        shared_by=request.user,
+                        shared_to=list(newly_shared_users),
+                        resource_instance=adapter,
+                    )
+            except Exception as e:
+                logger.error(f"Failed to send sharing notification: {e}")
+
+        return response
 
     @action(detail=True, methods=["get"])
     def list_of_shared_users(self, request: HttpRequest, pk: Any = None) -> Response:
