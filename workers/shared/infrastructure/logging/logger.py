@@ -35,10 +35,12 @@ class RequestIDFilter(logging.Filter):
     """Filter to inject request_id into log records.
 
     Adopts the proven pattern from unstract/core/flask/logging.py for consistency.
+    Normalizes missing or falsy values (None, empty string, etc.) to "-" for
+    consistent log formatting.
     """
 
     def filter(self, record):
-        if not hasattr(record, "request_id"):
+        if not getattr(record, "request_id", None):
             record.request_id = "-"
         return True
 
@@ -47,11 +49,13 @@ class OTelFieldFilter(logging.Filter):
     """Filter to inject OpenTelemetry fields into log records.
 
     Adopts the proven pattern from unstract/core/flask/logging.py for consistency.
+    Normalizes missing or falsy values (None, empty string, etc.) to "-" for
+    consistent log formatting.
     """
 
     def filter(self, record):
         for attr in ["otelTraceID", "otelSpanID"]:
-            if not hasattr(record, attr):
+            if not getattr(record, attr, None):
                 setattr(record, attr, "-")
         return True
 
