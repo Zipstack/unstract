@@ -51,5 +51,5 @@ class EnvVars:
 
     # Logging configuration
     LOG_LEVEL = "LOG_LEVEL"
-    LOG_FORMAT = "LOG_FORMAT"
     LOG_FILE = "LOG_FILE"
+    # Note: LOG_FORMAT removed - format is now hardcoded (not configurable)

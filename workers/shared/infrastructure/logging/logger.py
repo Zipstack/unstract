@@ -4,12 +4,10 @@ Provides structured logging, performance monitoring, and metrics collection for 
 """
 
 import functools
-import json
 import logging
 import os
 import sys
 import time
-import traceback
 from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
@@ -33,112 +31,29 @@ class LogContext:
     request_id: str | None = None
 
 
-class WorkerFieldFilter(logging.Filter):
-    """Filter to add missing fields for worker logging."""
+class RequestIDFilter(logging.Filter):
+    """Filter to inject request_id into log records.
+
+    Adopts the proven pattern from unstract/core/flask/logging.py for consistency.
+    """
 
     def filter(self, record):
-        # Add missing fields with default values to match Django backend
-        for attr in ["request_id", "otelTraceID", "otelSpanID"]:
-            if not hasattr(record, attr):
-                setattr(record, attr, "-")
+        if not hasattr(record, "request_id"):
+            record.request_id = "-"
         return True
 
 
-class DjangoStyleFormatter(logging.Formatter):
-    """Custom formatter to match Django backend logging format exactly."""
+class OTelFieldFilter(logging.Filter):
+    """Filter to inject OpenTelemetry fields into log records.
 
-    def __init__(self, include_context: bool = True):
-        """Initialize formatter.
+    Adopts the proven pattern from unstract/core/flask/logging.py for consistency.
+    """
 
-        Args:
-            include_context: Whether to include thread-local context in logs
-        """
-        # Use Django backend's exact format
-        format_string = (
-            "%(levelname)s : [%(asctime)s]"
-            "{module:%(module)s process:%(process)d "
-            "thread:%(thread)d request_id:%(request_id)s "
-            "trace_id:%(otelTraceID)s span_id:%(otelSpanID)s} :- %(message)s"
-        )
-        super().__init__(fmt=format_string)
-        self.include_context = include_context
-
-
-class StructuredFormatter(logging.Formatter):
-    """Custom formatter for structured JSON logging."""
-
-    def __init__(self, include_context: bool = True):
-        """Initialize formatter.
-
-        Args:
-            include_context: Whether to include thread-local context in logs
-        """
-        super().__init__()
-        self.include_context = include_context
-
-    def format(self, record: logging.LogRecord) -> str:
-        """Format log record as structured JSON."""
-        # Base log entry
-        log_entry = {
-            "timestamp": datetime.now(UTC).isoformat() + "Z",
-            "level": record.levelname,
-            "logger": record.name,
-            "message": record.getMessage(),
-            "module": record.module,
-            "function": record.funcName,
-            "line": record.lineno,
-            "process": record.process,
-            "thread": record.thread,
-        }
-
-        # Add exception information if present
-        if record.exc_info:
-            log_entry["exception"] = {
-                "type": record.exc_info[0].__name__,
-                "message": str(record.exc_info[1]),
-                "traceback": traceback.format_exception(*record.exc_info),
-            }
-
-        # Add extra fields from log record
-        extra_fields = {}
-        for key, value in record.__dict__.items():
-            if key not in {
-                "name",
-                "msg",
-                "args",
-                "levelname",
-                "levelno",
-                "pathname",
-                "filename",
-                "module",
-                "lineno",
-                "funcName",
-                "created",
-                "msecs",
-                "relativeCreated",
-                "thread",
-                "threadName",
-                "processName",
-                "process",
-                "getMessage",
-                "exc_info",
-                "exc_text",
-                "stack_info",
-            }:
-                extra_fields[key] = value
-
-        if extra_fields:
-            log_entry["extra"] = extra_fields
-
-        # Add context information if available and enabled
-        if self.include_context and hasattr(_context, "log_context"):
-            context_dict = asdict(_context.log_context)
-            # Only include non-None values
-            context_dict = {k: v for k, v in context_dict.items() if v is not None}
-            if context_dict:
-                log_entry["context"] = context_dict
-
-        return json.dumps(log_entry, default=str)
+    def filter(self, record):
+        for attr in ["otelTraceID", "otelSpanID"]:
+            if not hasattr(record, attr):
+                setattr(record, attr, "-")
+        return True
 
 
 class WorkerLogger:
@@ -151,15 +66,16 @@ class WorkerLogger:
     def configure(
         cls,
         log_level: str = "INFO",
-        log_format: str = "structured",
         log_file: str | None = None,
         worker_name: str | None = None,
     ):
         """Configure global logging settings.
 
+        Uses a single standardized format matching the Django backend.
+        Filters ensure required fields are always present to prevent KeyError/SIGSEGV.
+
         Args:
             log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-            log_format: Log format ('structured' for JSON, 'simple' for text)
             log_file: Optional log file path
             worker_name: Worker name for context
         """
@@ -173,23 +89,22 @@ class WorkerLogger:
         # Clear existing handlers
         root_logger.handlers.clear()
 
-        # Choose formatter
-        if log_format.lower() == "structured":
-            formatter = StructuredFormatter()
-        elif log_format.lower() == "django":
-            formatter = DjangoStyleFormatter()
-        else:
-            formatter = logging.Formatter(
-                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-            )
+        # Use single standardized format (same as Django backend)
+        formatter = logging.Formatter(
+            "%(levelname)s : [%(asctime)s]"
+            "{module:%(module)s process:%(process)d "
+            "thread:%(thread)d request_id:%(request_id)s "
+            "trace_id:%(otelTraceID)s span_id:%(otelSpanID)s} :- %(message)s"
+        )
 
         # Console handler
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setFormatter(formatter)
 
-        # Add filter for Django-style format to ensure required fields are present
-        if log_format.lower() == "django":
-            console_handler.addFilter(WorkerFieldFilter())
+        # ALWAYS add filters to ensure required fields are present
+        # This prevents KeyError/ValueError that cause SIGSEGV
+        console_handler.addFilter(RequestIDFilter())
+        console_handler.addFilter(OTelFieldFilter())
 
         root_logger.addHandler(console_handler)
 
@@ -198,9 +113,9 @@ class WorkerLogger:
             file_handler = logging.FileHandler(log_file)
             file_handler.setFormatter(formatter)
 
-            # Add filter for Django-style format to ensure required fields are present
-            if log_format.lower() == "django":
-                file_handler.addFilter(WorkerFieldFilter())
+            # Add filters to file handler as well
+            file_handler.addFilter(RequestIDFilter())
+            file_handler.addFilter(OTelFieldFilter())
 
             root_logger.addHandler(file_handler)
 
@@ -259,9 +174,6 @@ class WorkerLogger:
         # Configure logging with registry settings
         cls.configure(
             log_level=os.getenv("LOG_LEVEL", logging_config.get("log_level", "INFO")),
-            log_format=os.getenv(
-                "LOG_FORMAT", logging_config.get("log_format", "structured")
-            ),
             worker_name=worker_type.to_worker_name(),
         )
 
