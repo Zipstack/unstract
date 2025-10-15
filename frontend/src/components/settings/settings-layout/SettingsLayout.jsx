@@ -75,7 +75,11 @@ function SettingsLayout({ children, activeKey }) {
   return (
     <div className="settings-container">
       {isSidebarVisible && (
-        <nav className="settings-sidebar" ref={sidebarRef} aria-label="Settings navigation">
+        <nav
+          className="settings-sidebar"
+          ref={sidebarRef}
+          aria-label="Settings navigation"
+        >
           {settingsMenuItems.map((item) => (
             <button
               key={item.key}
@@ -92,7 +96,9 @@ function SettingsLayout({ children, activeKey }) {
           ))}
         </nav>
       )}
-      <main className="settings-content" role="main">{children}</main>
+      <main className="settings-content" role="main">
+        {children}
+      </main>
     </div>
   );
 }
