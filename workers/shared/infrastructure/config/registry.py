@@ -139,34 +139,29 @@ class WorkerRegistry:
     # See shared/models/worker_models.py:get_celery_setting() for hierarchical config
     # Use environment variables like CALLBACK_TASK_TIME_LIMIT=3600 or CELERY_TASK_TIME_LIMIT=300
 
-    # Logging configurations - All workers use Django format for consistency
+    # Logging configurations
+    # Note: Log format is hardcoded (no longer configurable) - see logger.py
+    # All workers use the same standardized format matching Django backend
     _LOGGING_CONFIGS: dict[WorkerType, dict] = {
         WorkerType.API_DEPLOYMENT: {
-            "log_format": "django",
             "log_level": "INFO",
         },
         WorkerType.GENERAL: {
-            "log_format": "django",
             "log_level": "INFO",
         },
         WorkerType.FILE_PROCESSING: {
-            "log_format": "django",
             "log_level": "INFO",
         },
         WorkerType.CALLBACK: {
-            "log_format": "django",
             "log_level": "INFO",
         },
         WorkerType.NOTIFICATION: {
-            "log_format": "django",
             "log_level": "INFO",
         },
         WorkerType.LOG_CONSUMER: {
-            "log_format": "django",
             "log_level": "INFO",
         },
         WorkerType.SCHEDULER: {
-            "log_format": "django",
             "log_level": "INFO",
         },
     }
@@ -256,12 +251,12 @@ class WorkerRegistry:
             worker_type: Type of worker
 
         Returns:
-            Logging configuration dict
+            Logging configuration dict with log_level
+            Note: log_format is no longer configurable - hardcoded in logger.py
         """
         return cls._LOGGING_CONFIGS.get(
             worker_type,
             {
-                "log_format": "structured",
                 "log_level": "INFO",
             },
         )
