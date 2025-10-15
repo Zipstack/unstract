@@ -217,12 +217,14 @@ class FinalOutputResult:
     output: Any | None
     metadata: dict[str, Any] | None
     error: str | None
+    processed: bool = True  # False if duplicate detected and skipped
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "output": self.output,
             "metadata": self.metadata,
             "error": self.error,
+            "processed": self.processed,
         }
 
     @classmethod
@@ -231,6 +233,7 @@ class FinalOutputResult:
             output=data.get("output"),
             metadata=data.get("metadata"),
             error=data.get("error"),
+            processed=data.get("processed", True),
         )
 
 
