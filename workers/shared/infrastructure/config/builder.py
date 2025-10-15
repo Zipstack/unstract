@@ -120,42 +120,22 @@ class WorkerBuilder:
 
     @staticmethod
     def _configure_celery_loggers(log_level: str) -> None:
-        """Configure Celery's built-in loggers and root logger to use consistent formatting.
+        """Configure Celery's built-in loggers to propagate to root logger.
 
-        Uses a single standardized format matching the Django backend.
-        Filters ensure required fields are always present to prevent KeyError/SIGSEGV.
+        Sets log levels for Celery-specific loggers and enables propagation so they
+        forward log records to the root logger's handlers. Root logger is already
+        configured by WorkerLogger.configure() with proper filters to prevent
+        KeyError/SIGSEGV.
+
+        This approach avoids clearing root logger handlers (which would drop handlers
+        from external libraries like OpenTelemetry) and prevents duplicate log output.
 
         Args:
             log_level: Log level to set
         """
-        from ..logging.logger import OTelFieldFilter, RequestIDFilter
-
-        # Use single standardized format (same as Django backend)
-        formatter = logging.Formatter(
-            "%(levelname)s : [%(asctime)s]"
-            "{module:%(module)s process:%(process)d "
-            "thread:%(thread)d request_id:%(request_id)s "
-            "trace_id:%(otelTraceID)s span_id:%(otelSpanID)s} :- %(message)s"
-        )
-
-        # CRITICAL: Configure root logger to catch ALL loggers
-        root_logger = logging.getLogger()
-        root_logger.setLevel(getattr(logging, log_level.upper()))
-
-        # Clear all existing handlers on root logger
-        root_logger.handlers.clear()
-
-        # Add our custom handler to root logger
-        root_handler = logging.StreamHandler()
-        root_handler.setFormatter(formatter)
-
-        # ALWAYS add filters to prevent KeyError/ValueError that cause SIGSEGV
-        root_handler.addFilter(RequestIDFilter())
-        root_handler.addFilter(OTelFieldFilter())
-
-        root_logger.addHandler(root_handler)
-
-        # Configure specific Celery loggers for extra assurance
+        # Configure specific Celery loggers to propagate to root
+        # Root logger is already configured by WorkerLogger.configure() with proper
+        # filters and handlers. We just need to set log levels and enable propagation.
         celery_loggers = [
             "celery",
             "celery.worker",
@@ -181,21 +161,9 @@ class WorkerBuilder:
             celery_logger = logging.getLogger(logger_name)
             celery_logger.setLevel(getattr(logging, log_level.upper()))
 
-            # Remove existing handlers to avoid duplication
-            celery_logger.handlers.clear()
-
-            # Add our custom handler with consistent formatting
-            handler = logging.StreamHandler()
-            handler.setFormatter(formatter)
-
-            # ALWAYS add filters to prevent KeyError/ValueError
-            handler.addFilter(RequestIDFilter())
-            handler.addFilter(OTelFieldFilter())
-
-            celery_logger.addHandler(handler)
-
-            # Disable propagation to avoid duplicate logs (each logger has its own handler)
-            celery_logger.propagate = False
+            # Enable propagation so logs flow to root logger's handler
+            # Root logger already has filters to prevent KeyError/ValueError
+            celery_logger.propagate = True
 
     @staticmethod
     def setup_health_monitoring(
