@@ -380,6 +380,21 @@ class WorkflowExecutionProcessor:
                 f"✓ Workflow execution completed successfully for {context.file_name}"
             )
 
+            # Check if this was a duplicate skip (destination not processed due to duplicate detection)
+            destination_processed = (
+                execution_result.metadata.destination_processed
+                if execution_result.metadata
+                else False
+            )
+            destination_error = (
+                execution_result.metadata.destination_error
+                if execution_result.metadata
+                else None
+            )
+
+            # Duplicate detection: destination not processed AND no error
+            is_duplicate = not destination_processed and not destination_error
+
             return FileProcessingResult(
                 file_name=context.file_name,
                 file_execution_id=context.workflow_file_execution_id,
@@ -390,12 +405,9 @@ class WorkflowExecutionProcessor:
                 if execution_result.metadata
                 else {},
                 execution_time=context.get_processing_duration(),
-                destination_processed=execution_result.metadata.destination_processed
-                if execution_result.metadata
-                else True,
-                destination_error=execution_result.metadata.destination_error
-                if execution_result.metadata
-                else None,
+                destination_processed=destination_processed,
+                destination_error=destination_error,
+                is_duplicate_skip=is_duplicate,
             )
 
         except Exception as execution_error:
@@ -597,37 +609,49 @@ class FileProcessor:
                 # Check if destination processing failed
                 destination_error = workflow_result.destination_error
                 destination_processed = workflow_result.destination_processed
+                is_duplicate_skip = getattr(workflow_result, "is_duplicate_skip", False)
 
                 if destination_error or not destination_processed:
-                    # Log destination failure
-                    error_msg = destination_error or "Destination processing failed"
-                    log_file_error(
-                        workflow_logger,
-                        workflow_file_execution_id,
-                        f"❌ File '{context.file_name}' destination processing failed: {error_msg}",
-                    )
-
-                    # Update file execution status to ERROR
-                    logger.info(
-                        f"Updating file execution status to ERROR for {context.workflow_file_execution_id} due to destination failure"
-                    )
-                    try:
-                        context.api_client.update_file_execution_status(
-                            file_execution_id=context.workflow_file_execution_id,
-                            status=ExecutionStatus.ERROR.value,
-                            error_message=error_msg,
+                    # Skip UI error log and DB updates for duplicates (internal race condition, not user error)
+                    if not is_duplicate_skip:
+                        # Log destination failure to UI
+                        error_msg = destination_error or "Destination processing failed"
+                        log_file_error(
+                            workflow_logger,
+                            workflow_file_execution_id,
+                            f"❌ File '{context.file_name}' destination processing failed: {error_msg}",
                         )
+
+                        # Update file execution status to ERROR
                         logger.info(
-                            f"Updated file execution {context.workflow_file_execution_id} status to ERROR"
+                            f"Updating file execution status to ERROR for {context.workflow_file_execution_id} due to destination failure"
                         )
-                    except Exception as status_error:
-                        logger.error(
-                            f"Failed to update file execution status: {status_error}"
-                        )
+                        try:
+                            context.api_client.update_file_execution_status(
+                                file_execution_id=context.workflow_file_execution_id,
+                                status=ExecutionStatus.ERROR.value,
+                                error_message=error_msg,
+                            )
+                            logger.info(
+                                f"Updated file execution {context.workflow_file_execution_id} status to ERROR"
+                            )
+                        except Exception as status_error:
+                            logger.error(
+                                f"Failed to update file execution status: {status_error}"
+                            )
 
-                    # Update workflow result since destination failed
-                    workflow_result.success = False
-                    workflow_result.error = error_msg
+                        # Update workflow result since destination failed
+                        workflow_result.success = False
+                        workflow_result.error = error_msg
+                    else:
+                        # Debug log for duplicate detection (internal use only)
+                        logger.info(
+                            f"DUPLICATE SKIP: File '{context.file_name}' identified as duplicate in processor. "
+                            f"destination_processed=False, destination_error=None, "
+                            f"file_execution_id={context.workflow_file_execution_id}. "
+                            f"Skipping UI error log and status updates - this is an internal race condition, not a user-facing error. "
+                            f"First worker will handle all status updates."
+                        )
                 else:
                     log_file_info(
                         workflow_logger,

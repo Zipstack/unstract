@@ -528,13 +528,19 @@ class WorkerWorkflowExecutionService:
             final_error = destination_result.error
 
         # Build metadata
+        # CRITICAL: Check destination_result.processed (not just existence) to detect duplicate skips
+        # destination_result.processed=False means duplicate was detected and skipped
         metadata = WorkflowExecutionMetadata(
             workflow_id=workflow_id,
             execution_id=execution_id,
             execution_time=execution_time,
             tool_count=tool_count,
             workflow_executed=workflow_success,
-            destination_processed=destination_result is not None,
+            destination_processed=(
+                getattr(destination_result, "processed", True)
+                if destination_result
+                else False
+            ),
             destination_error=destination_result.error if destination_result else None,
         )
 
@@ -1156,9 +1162,13 @@ class WorkerWorkflowExecutionService:
 
                 # Check if handle_output returned None (duplicate detected)
                 if handle_output_result is None:
+                    # Enhanced debug log with full context for internal debugging
                     logger.info(
-                        f"Duplicate detected for {file_hash.file_name} - "
-                        f"skipping file history and all downstream processing"
+                        f"DUPLICATE SKIP: File '{file_hash.file_name}' duplicate detected at destination phase. "
+                        f"execution_id={execution_id}, file_execution_id={workflow_file_execution_id}, "
+                        f"workflow_id={workflow_id}. "
+                        f"Returning FinalOutputResult with processed=False, no file history will be created. "
+                        f"This is an internal race condition, not an error."
                     )
                     # Return special result to indicate duplicate (not an error, not processed)
                     return FinalOutputResult(

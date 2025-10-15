@@ -786,6 +786,9 @@ class FileProcessingResult:
     destination_processed: bool = True
     destination_error: str | None = None
 
+    # Duplicate detection indicator
+    is_duplicate_skip: bool = False  # True when file skipped due to duplicate detection
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for backward compatibility."""
         return serialize_dataclass_to_dict(self)
@@ -807,6 +810,7 @@ class FileProcessingResult:
             review_result=data.get("review_result"),
             destination_processed=data.get("destination_processed", True),
             destination_error=data.get("destination_error"),
+            is_duplicate_skip=data.get("is_duplicate_skip", False),
         )
 
     def is_successful(self) -> bool:
