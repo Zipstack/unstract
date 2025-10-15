@@ -250,7 +250,9 @@ class BigQuery(UnstractDB):
                         # Sanitize floats before serialization to ensure clean JSON for PARSE_JSON
                         sanitized_value = BigQuery._sanitize_for_bigquery(value)
                         json_str = (
-                            json.dumps(sanitized_value) if sanitized_value else None
+                            json.dumps(sanitized_value)
+                            if sanitized_value is not None
+                            else None
                         )
                         if json_str:
                             # Replace @`key` with PARSE_JSON(@`key`) in the SQL query
@@ -265,7 +267,9 @@ class BigQuery(UnstractDB):
                         # Sanitize floats before serialization to ensure clean JSON
                         sanitized_value = BigQuery._sanitize_for_bigquery(value)
                         json_str = (
-                            json.dumps(sanitized_value) if sanitized_value else None
+                            json.dumps(sanitized_value)
+                            if sanitized_value is not None
+                            else None
                         )
                         query_parameters.append(
                             self.bigquery.ScalarQueryParameter(key, "STRING", json_str)
