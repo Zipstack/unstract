@@ -66,11 +66,11 @@ class TestBigQuerySanitization(unittest.TestCase):
         # Unix timestamp with high precision
         timestamp = 1760509016.282637
         result = BigQuery._sanitize_for_bigquery(timestamp)
-        
+
         # Should limit to 15 total significant figures
         # 1760509016 has 10 digits, so 5 decimal places remain
         self.assertAlmostEqual(result, 1760509016.28264, places=5)
-        
+
         # Verify it's different from original (precision reduced)
         self.assertNotEqual(result, timestamp)
 
@@ -78,7 +78,7 @@ class TestBigQuerySanitization(unittest.TestCase):
         """Test that small numbers retain full precision."""
         small_number = 0.001228
         result = BigQuery._sanitize_for_bigquery(small_number)
-        
+
         # Small numbers should be unchanged (only 4 significant figures)
         self.assertEqual(result, small_number)
 
@@ -87,7 +87,7 @@ class TestBigQuerySanitization(unittest.TestCase):
         # Number with 16+ significant figures
         value = 12345.67890123456789
         result = BigQuery._sanitize_for_bigquery(value)
-        
+
         # Should limit to 15 significant figures total
         # 12345 has 5 digits, so 10 decimal places remain
         self.assertAlmostEqual(result, 12345.6789012346, places=10)
@@ -96,7 +96,7 @@ class TestBigQuerySanitization(unittest.TestCase):
         """Test that very large numbers are handled correctly."""
         large_value = 9.87654321098765e15
         result = BigQuery._sanitize_for_bigquery(large_value)
-        
+
         # Should limit to 15 significant figures
         self.assertIsInstance(result, float)
         self.assertNotEqual(result, float('inf'))
@@ -106,7 +106,7 @@ class TestBigQuerySanitization(unittest.TestCase):
         """Test that very small numbers preserve precision."""
         small_value = 1.23456789e-10
         result = BigQuery._sanitize_for_bigquery(small_value)
-        
+
         # Should preserve precision for small numbers
         self.assertAlmostEqual(result, small_value, places=15)
 
@@ -114,7 +114,7 @@ class TestBigQuerySanitization(unittest.TestCase):
         """Test that negative numbers are handled correctly."""
         negative = -123.456789012345678
         result = BigQuery._sanitize_for_bigquery(negative)
-        
+
         # Should limit precision but preserve sign
         self.assertLess(result, 0)
         self.assertAlmostEqual(result, -123.456789012346, places=12)
@@ -129,7 +129,7 @@ class TestBigQuerySanitization(unittest.TestCase):
             "normal": 42.0
         }
         result = BigQuery._sanitize_for_bigquery(data)
-        
+
         self.assertIsInstance(result, dict)
         self.assertAlmostEqual(result["timestamp"], 1760509016.28264, places=5)
         self.assertEqual(result["cost"], 0.001228)
@@ -148,7 +148,7 @@ class TestBigQuerySanitization(unittest.TestCase):
             }
         }
         result = BigQuery._sanitize_for_bigquery(data)
-        
+
         self.assertIsInstance(result["outer"]["inner"]["value"], float)
         self.assertIsNone(result["outer"]["inner"]["special"])
 
@@ -156,7 +156,7 @@ class TestBigQuerySanitization(unittest.TestCase):
         """Test sanitization of lists containing floats."""
         data = [1760509016.282637, 0.001228, float('nan'), float('inf'), 42.0]
         result = BigQuery._sanitize_for_bigquery(data)
-        
+
         self.assertIsInstance(result, list)
         self.assertEqual(len(result), 5)
         self.assertAlmostEqual(result[0], 1760509016.28264, places=5)
@@ -169,7 +169,7 @@ class TestBigQuerySanitization(unittest.TestCase):
         """Test sanitization of nested lists."""
         data = [[1.234567890123456789, float('nan')], [float('inf'), 0.001]]
         result = BigQuery._sanitize_for_bigquery(data)
-        
+
         self.assertIsInstance(result, list)
         self.assertIsInstance(result[0], list)
         self.assertIsNone(result[0][1])
@@ -188,7 +188,7 @@ class TestBigQuerySanitization(unittest.TestCase):
             }
         }
         result = BigQuery._sanitize_for_bigquery(data)
-        
+
         self.assertIsInstance(result, dict)
         self.assertIsInstance(result["items"], list)
         self.assertAlmostEqual(result["items"][0]["value"], 1760509016.28264, places=5)
@@ -252,22 +252,22 @@ class TestBigQuerySanitization(unittest.TestCase):
             }
         }
         result = BigQuery._sanitize_for_bigquery(data)
-        
+
         # Verify structure is preserved
         self.assertIn("execution_metadata", result)
         self.assertIn("metrics", result)
         self.assertIn("costs", result)
-        
+
         # Verify timestamps are limited
         self.assertAlmostEqual(
             result["execution_metadata"]["start_time"],
             1760509016.28264,
             places=5
         )
-        
+
         # Verify small numbers are preserved
         self.assertEqual(result["costs"]["compute"], 0.001228)
-        
+
         # Verify NaN is converted to None
         self.assertIsNone(result["metrics"][2]["value"])
 
@@ -280,7 +280,7 @@ class TestBigQuerySanitization(unittest.TestCase):
             (1e100, 1e100),  # Very large number (within float range)
             (-123.456, -123.456),  # Negative decimal
         ]
-        
+
         for input_val, expected in test_cases:
             with self.subTest(input=input_val):
                 result = BigQuery._sanitize_for_bigquery(input_val)
@@ -298,14 +298,14 @@ class TestBigQuerySanitization(unittest.TestCase):
             "key4": [1, 2, 3]
         }
         result = BigQuery._sanitize_for_bigquery(data)
-        
+
         self.assertEqual(set(result.keys()), set(data.keys()))
 
     def test_sanitize_maintains_list_order(self):
         """Test that list order is maintained during sanitization."""
         data = [1.111, 2.222, 3.333, float('nan'), 5.555]
         result = BigQuery._sanitize_for_bigquery(data)
-        
+
         self.assertEqual(len(result), len(data))
         self.assertAlmostEqual(result[0], 1.111, places=3)
         self.assertAlmostEqual(result[1], 2.222, places=3)

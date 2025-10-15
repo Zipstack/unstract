@@ -19,7 +19,7 @@ class TestWorkerDatabaseUtilsFloatSanitization(unittest.TestCase):
             "value": float('nan'),
             "timestamp": 1760509016.282637
         }
-        
+
         values = WorkerDatabaseUtils.get_columns_and_values(
             column_mode_str=ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN,
             data={"result": "test"},
@@ -27,7 +27,7 @@ class TestWorkerDatabaseUtilsFloatSanitization(unittest.TestCase):
             execution_id="exec123",
             metadata=metadata
         )
-        
+
         metadata_json = json.loads(values[TableColumns.METADATA])
         self.assertIsNone(metadata_json["value"])
         self.assertEqual(metadata_json["timestamp"], 1760509016.282637)
@@ -39,7 +39,7 @@ class TestWorkerDatabaseUtilsFloatSanitization(unittest.TestCase):
             "neg_inf": float('-inf'),
             "normal": 42.0
         }
-        
+
         values = WorkerDatabaseUtils.get_columns_and_values(
             column_mode_str=ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN,
             data={"result": "test"},
@@ -47,7 +47,7 @@ class TestWorkerDatabaseUtilsFloatSanitization(unittest.TestCase):
             execution_id="exec123",
             metadata=metadata
         )
-        
+
         metadata_json = json.loads(values[TableColumns.METADATA])
         self.assertIsNone(metadata_json["pos_inf"])
         self.assertIsNone(metadata_json["neg_inf"])
@@ -59,14 +59,14 @@ class TestWorkerDatabaseUtilsFloatSanitization(unittest.TestCase):
             "value": float('nan'),
             "count": 5
         }
-        
+
         values = WorkerDatabaseUtils.get_columns_and_values(
             column_mode_str=ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN,
             data=data,
             file_path="/test/path",
             execution_id="exec123"
         )
-        
+
         self.assertIsNone(values["data"]["value"])
         self.assertEqual(values["data"]["count"], 5)
 
@@ -76,14 +76,14 @@ class TestWorkerDatabaseUtilsFloatSanitization(unittest.TestCase):
             "timestamp": 1760509016.282637123456789,
             "cost": 0.001228
         }
-        
+
         values = WorkerDatabaseUtils.get_columns_and_values(
             column_mode_str=ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN,
             data=data,
             file_path="/test/path",
             execution_id="exec123"
         )
-        
+
         self.assertEqual(values["data"]["timestamp"], 1760509016.282637123456789)
         self.assertEqual(values["data"]["cost"], 0.001228)
 
@@ -93,14 +93,14 @@ class TestWorkerDatabaseUtilsFloatSanitization(unittest.TestCase):
             "value": float('inf'),
             "normal": 123.456
         }
-        
+
         values = WorkerDatabaseUtils.get_columns_and_values(
             column_mode_str=ColumnModes.SPLIT_JSON_INTO_COLUMNS,
             data=data,
             file_path="/test/path",
             execution_id="exec123"
         )
-        
+
         self.assertIsNone(values["value"])
         self.assertEqual(values["normal"], 123.456)
 
@@ -114,28 +114,28 @@ class TestWorkerDatabaseUtilsFloatSanitization(unittest.TestCase):
                 }
             }
         }
-        
+
         values = WorkerDatabaseUtils.get_columns_and_values(
             column_mode_str=ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN,
             data=data,
             file_path="/test/path",
             execution_id="exec123"
         )
-        
+
         self.assertIsNone(values["data"]["outer"]["inner"]["nan_value"])
         self.assertEqual(values["data"]["outer"]["inner"]["valid"], 42.0)
 
     def test_list_data_with_special_floats(self):
         """Test sanitization of list data with special floats."""
         data = [1.23, float('nan'), float('inf'), 4.56]
-        
+
         values = WorkerDatabaseUtils.get_columns_and_values(
             column_mode_str=ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN,
             data=data,
             file_path="/test/path",
             execution_id="exec123"
         )
-        
+
         result_list = values["data"]
         self.assertEqual(result_list[0], 1.23)
         self.assertIsNone(result_list[1])
@@ -145,14 +145,14 @@ class TestWorkerDatabaseUtilsFloatSanitization(unittest.TestCase):
     def test_string_data_wrapped_properly(self):
         """Test that string data is wrapped correctly."""
         data = "simple string"
-        
+
         values = WorkerDatabaseUtils.get_columns_and_values(
             column_mode_str=ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN,
             data=data,
             file_path="/test/path",
             execution_id="exec123"
         )
-        
+
         self.assertEqual(values["data"], {"result": "simple string"})
 
     def test_none_data_handling(self):
@@ -163,7 +163,7 @@ class TestWorkerDatabaseUtilsFloatSanitization(unittest.TestCase):
             file_path="/test/path",
             execution_id="exec123"
         )
-        
+
         self.assertNotIn("data", values)
 
     def test_error_status_set_when_error_provided(self):
@@ -175,7 +175,7 @@ class TestWorkerDatabaseUtilsFloatSanitization(unittest.TestCase):
             execution_id="exec123",
             error="Test error message"
         )
-        
+
         self.assertEqual(values[TableColumns.ERROR_MESSAGE], "Test error message")
         self.assertEqual(values[TableColumns.STATUS], FileProcessingStatus.ERROR)
 
@@ -187,7 +187,7 @@ class TestWorkerDatabaseUtilsFloatSanitization(unittest.TestCase):
             file_path="/test/path",
             execution_id="exec123"
         )
-        
+
         self.assertEqual(values[TableColumns.STATUS], FileProcessingStatus.SUCCESS)
 
     def test_agent_name_included_when_requested(self):
@@ -200,7 +200,7 @@ class TestWorkerDatabaseUtilsFloatSanitization(unittest.TestCase):
             include_agent=True,
             agent_name="TEST_AGENT"
         )
-        
+
         self.assertEqual(values[TableColumns.CREATED_BY], "TEST_AGENT")
 
     def test_timestamp_included_when_requested(self):
@@ -214,7 +214,7 @@ class TestWorkerDatabaseUtilsFloatSanitization(unittest.TestCase):
             include_timestamp=True
         )
         after = datetime.datetime.now()
-        
+
         self.assertIn(TableColumns.CREATED_AT, values)
         timestamp = values[TableColumns.CREATED_AT]
         self.assertGreaterEqual(timestamp, before)
@@ -231,7 +231,7 @@ class TestWorkerDatabaseUtilsFloatSanitization(unittest.TestCase):
             execution_id_name="custom_execution_id",
             single_column_name="custom_data"
         )
-        
+
         self.assertEqual(values["custom_file_path"], "/custom/path")
         self.assertEqual(values["custom_execution_id"], "custom_id")
         self.assertIn("custom_data", values)
@@ -244,7 +244,7 @@ class TestWorkerDatabaseUtilsFloatSanitization(unittest.TestCase):
             "memory_usage": float('nan'),
             "retry_count": 3
         }
-        
+
         data = {
             "extracted_data": {
                 "field1": "value1",
@@ -253,7 +253,7 @@ class TestWorkerDatabaseUtilsFloatSanitization(unittest.TestCase):
             },
             "confidence_scores": [0.95, 0.87, float('nan'), 0.92]
         }
-        
+
         values = WorkerDatabaseUtils.get_columns_and_values(
             column_mode_str=ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN,
             data=data,
@@ -263,14 +263,14 @@ class TestWorkerDatabaseUtilsFloatSanitization(unittest.TestCase):
             include_agent=True,
             include_timestamp=True
         )
-        
+
         metadata_json = json.loads(values[TableColumns.METADATA])
         self.assertIsNone(metadata_json["memory_usage"])
         self.assertEqual(metadata_json["execution_time"], 1760509016.282637)
-        
+
         self.assertIsNone(values["data"]["extracted_data"]["field3"])
         self.assertIsNone(values["data"]["confidence_scores"][2])
-        
+
         self.assertEqual(values["data"]["extracted_data"]["field1"], "value1")
         self.assertEqual(values["file_path"], "/documents/doc1.pdf")
 
@@ -282,7 +282,7 @@ class TestCreateSafeErrorJson(unittest.TestCase):
         """Test that error JSON contains all required details."""
         error = TypeError("Cannot serialize object")
         result = WorkerDatabaseUtils._create_safe_error_json("test_data", error)
-        
+
         self.assertEqual(result["error"], "JSON serialization failed")
         self.assertEqual(result["error_type"], "TypeError")
         self.assertEqual(result["error_message"], "Cannot serialize object")

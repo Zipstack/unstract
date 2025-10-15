@@ -58,7 +58,7 @@ class TestSanitizeFloatsForDatabase(unittest.TestCase):
             "name": "test"
         }
         result = sanitize_floats_for_database(data)
-        
+
         self.assertEqual(result["valid"], 42.5)
         self.assertIsNone(result["invalid"])
         self.assertEqual(result["name"], "test")
@@ -71,7 +71,7 @@ class TestSanitizeFloatsForDatabase(unittest.TestCase):
             "normal": 123.456
         }
         result = sanitize_floats_for_database(data)
-        
+
         self.assertIsNone(result["pos_inf"])
         self.assertIsNone(result["neg_inf"])
         self.assertEqual(result["normal"], 123.456)
@@ -88,7 +88,7 @@ class TestSanitizeFloatsForDatabase(unittest.TestCase):
             }
         }
         result = sanitize_floats_for_database(data)
-        
+
         self.assertEqual(result["level1"]["level2"]["valid"], 1.23)
         self.assertIsNone(result["level1"]["level2"]["invalid"])
         self.assertIsNone(result["level1"]["inf"])
@@ -97,7 +97,7 @@ class TestSanitizeFloatsForDatabase(unittest.TestCase):
         """Test sanitization of list with special float values."""
         data = [1.23, float('nan'), 4.56, float('inf'), float('-inf')]
         result = sanitize_floats_for_database(data)
-        
+
         self.assertEqual(len(result), 5)
         self.assertEqual(result[0], 1.23)
         self.assertIsNone(result[1])
@@ -112,7 +112,7 @@ class TestSanitizeFloatsForDatabase(unittest.TestCase):
             [float('inf'), 4.56]
         ]
         result = sanitize_floats_for_database(data)
-        
+
         self.assertEqual(result[0][0], 1.23)
         self.assertIsNone(result[0][1])
         self.assertIsNone(result[1][0])
@@ -131,7 +131,7 @@ class TestSanitizeFloatsForDatabase(unittest.TestCase):
             }
         }
         result = sanitize_floats_for_database(data)
-        
+
         self.assertEqual(result["items"][0]["value"], 1.23)
         self.assertIsNone(result["items"][1]["value"])
         self.assertEqual(result["summary"]["total"], 100.0)
@@ -199,7 +199,7 @@ class TestSanitizeFloatsForDatabase(unittest.TestCase):
             }
         }
         result = sanitize_floats_for_database(metadata)
-        
+
         self.assertEqual(result["execution"]["start_time"], 1760509016.282637)
         self.assertEqual(result["metrics"]["success_rate"], 0.987654321)
         self.assertIsNone(result["metrics"]["error_rate"])
