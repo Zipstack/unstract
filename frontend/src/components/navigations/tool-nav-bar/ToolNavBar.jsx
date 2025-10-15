@@ -36,7 +36,7 @@ function ToolNavBar({
           <Typography
             style={{
               fontWeight: 600,
-              fontSize: "18px",
+              fontSize: "16px",
               display: "inline",
               lineHeight: "24px",
             }}
