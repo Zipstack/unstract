@@ -20,6 +20,18 @@ if [ ${#REPORTS[@]} -eq 0 ]; then
     exit 0
 fi
 
+# Function to strip LaTeX formatting from pytest-md-report output
+# Converts $$\textcolor{...}{\tt{VALUE}}$$ to just VALUE
+strip_latex() {
+    local text="$1"
+    # Extract content between \tt{ and }}
+    if [[ "$text" =~ \\tt\{([^}]+)\} ]]; then
+        echo "${BASH_REMATCH[1]}"
+    else
+        echo "$text"
+    fi
+}
+
 # Function to extract test counts from pytest-md-report markdown table
 extract_test_counts() {
     local report_file=$1
@@ -28,21 +40,21 @@ extract_test_counts() {
     local total=0
 
     # Find the header row to determine column positions
-    local header_line=$(grep -E '^\|\s*(filepath|file)' "$report_file" | head -1)
+    local header_line=$(grep -E '^\|.*filepath' "$report_file" | head -1)
 
     if [ -z "$header_line" ]; then
         echo "0:0:0"
         return
     fi
 
-    # Extract column names and find positions
+    # Extract column names and find positions (strip LaTeX from headers)
     IFS='|' read -ra headers <<< "$header_line"
     local passed_col=-1
     local failed_col=-1
     local subtotal_col=-1
 
     for i in "${!headers[@]}"; do
-        local col=$(echo "${headers[$i]}" | tr -d ' ' | tr '[:upper:]' '[:lower:]')
+        local col=$(strip_latex "${headers[$i]}" | tr -d ' ' | tr '[:upper:]' '[:lower:]')
         case "$col" in
             passed) passed_col=$i ;;
             failed) failed_col=$i ;;
@@ -50,8 +62,8 @@ extract_test_counts() {
         esac
     done
 
-    # Find the TOTAL row (handles both "TOTAL" and "**TOTAL**" bold markdown)
-    local total_line=$(grep -E '^\|\s*\*?\*?TOTAL' "$report_file" | head -1)
+    # Find the TOTAL row (TOTAL appears in first column, not as SUBTOTAL in header)
+    local total_line=$(grep -E '^\|.*\\tt\{TOTAL\}' "$report_file" | head -1)
 
     if [ -z "$total_line" ]; then
         echo "0:0:0"
@@ -61,19 +73,22 @@ extract_test_counts() {
     # Parse the TOTAL row values
     IFS='|' read -ra values <<< "$total_line"
 
-    # Extract passed count
+    # Extract passed count (strip LaTeX and get number)
     if [ "$passed_col" -ge 0 ] && [ "$passed_col" -lt "${#values[@]}" ]; then
-        passed=$(echo "${values[$passed_col]}" | tr -d ' ' | grep -oE '[0-9]+' | head -1 || echo "0")
+        local clean_value=$(strip_latex "${values[$passed_col]}")
+        passed=$(echo "$clean_value" | tr -d ' ' | grep -oE '[0-9]+' | head -1 || echo "0")
     fi
 
-    # Extract failed count
+    # Extract failed count (strip LaTeX and get number)
     if [ "$failed_col" -ge 0 ] && [ "$failed_col" -lt "${#values[@]}" ]; then
-        failed=$(echo "${values[$failed_col]}" | tr -d ' ' | grep -oE '[0-9]+' | head -1 || echo "0")
+        local clean_value=$(strip_latex "${values[$failed_col]}")
+        failed=$(echo "$clean_value" | tr -d ' ' | grep -oE '[0-9]+' | head -1 || echo "0")
     fi
 
-    # Extract total from SUBTOTAL column, or calculate it
+    # Extract total from SUBTOTAL column (strip LaTeX and get number)
     if [ "$subtotal_col" -ge 0 ] && [ "$subtotal_col" -lt "${#values[@]}" ]; then
-        total=$(echo "${values[$subtotal_col]}" | tr -d ' ' | grep -oE '[0-9]+' | head -1 || echo "0")
+        local clean_value=$(strip_latex "${values[$subtotal_col]}")
+        total=$(echo "$clean_value" | tr -d ' ' | grep -oE '[0-9]+' | head -1 || echo "0")
     fi
 
     # If total is still 0, calculate from passed + failed
