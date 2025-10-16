@@ -633,10 +633,8 @@ class FileProcessor:
                             logger.info(
                                 f"Updated file execution {context.workflow_file_execution_id} status to ERROR"
                             )
-                        except Exception as status_error:
-                            logger.error(
-                                f"Failed to update file execution status: {status_error}"
-                            )
+                        except Exception:
+                            logger.exception("Failed to update file execution status")
 
                         # Update workflow result since destination failed
                         workflow_result.success = False
@@ -661,7 +659,7 @@ class FileProcessor:
             return workflow_result
 
         except Exception as e:
-            logger.error(f"File processing failed for {context.file_name}: {e}")
+            logger.exception(f"File processing failed for {context.file_name}")
 
             # Send file processing error log to UI
             log_file_processing_error(
