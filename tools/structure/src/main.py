@@ -128,7 +128,6 @@ class StructureTool(BaseTool):
         Returns:
             True if extraction/indexing should be skipped, False otherwise
         """
-        
         # Check if any output has table_settings with valid JSON prompt
         for output in outputs:
             if SettingsKeys.TABLE_SETTINGS in output:
