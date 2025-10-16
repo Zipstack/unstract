@@ -760,6 +760,21 @@ def _handle_file_processing_result(
         )
         return
 
+    # CRITICAL: Handle duplicate skip - no DB updates, silent skip
+    # When is_duplicate_skip=True, another worker is already processing this file
+    # We should skip ALL processing and not update any database status or counters
+    if getattr(file_execution_result, "is_duplicate_skip", False):
+        # Enhanced debug log with full context for internal debugging
+        logger.info(
+            f"DUPLICATE SKIP: File '{file_name}' skipped as duplicate - another worker is processing it. "
+            f"execution_id={execution_id}, workflow_id={workflow_id}, "
+            f"file_execution_id={file_execution_id}, celery_task_id={celery_task_id}. "
+            f"No DB status updates, no counter increments - silent skip to avoid interfering with active worker. "
+            f"First worker will handle all status updates and counter increments."
+        )
+        # Exit early without any DB updates - the first worker will handle all updates
+        return
+
     # Calculate execution time
     file_execution_time = _calculate_execution_time(file_name, file_start_time)
 

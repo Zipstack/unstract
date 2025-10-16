@@ -343,15 +343,14 @@ class WorkerDestinationConnector:
                     FileExecutionStage.FINALIZATION,
                     FileExecutionStage.COMPLETED,
                 ]:
+                    # Enhanced debug log with full context for internal debugging
                     logger.warning(
-                        f"Destination already processed for file '{file_ctx.file_name}' "
-                        f"at stage {current_stage.value}. Skipping duplicate processing."
+                        f"DUPLICATE DETECTION: File '{file_ctx.file_name}' destination already at stage "
+                        f"{current_stage.value}. execution_id={exec_ctx.execution_id}, "
+                        f"file_execution_id={exec_ctx.file_execution_id}, worker_pid={os.getpid()}. "
+                        f"Skipping duplicate processing - another worker completed this already."
                     )
-                    log_file_info(
-                        exec_ctx.workflow_log,
-                        exec_ctx.file_execution_id,
-                        f"File '{file_ctx.file_name}' destination already processed - skipping duplicate",
-                    )
+                    # UI log removed - duplication is internal detail, not user-facing error
                     return False  # Duplicate detected
 
             # Atomically acquire lock using Redis SET NX
@@ -381,16 +380,14 @@ class WorkerDestinationConnector:
             )
 
             if not lock_acquired:
-                # Another worker already has the lock
+                # Enhanced debug log with full context for internal debugging
                 logger.warning(
-                    f"Lock acquisition failed for file '{file_ctx.file_name}': "
-                    f"Another worker holds the lock. Skipping duplicate processing."
+                    f"DUPLICATE DETECTION: Lock acquisition failed for file '{file_ctx.file_name}'. "
+                    f"execution_id={exec_ctx.execution_id}, file_execution_id={exec_ctx.file_execution_id}, "
+                    f"lock_key={lock_key}, worker_pid={os.getpid()}. "
+                    f"Another worker holds the lock - skipping duplicate processing."
                 )
-                log_file_info(
-                    exec_ctx.workflow_log,
-                    exec_ctx.file_execution_id,
-                    f"File '{file_ctx.file_name}' destination lock held by another worker - skipping duplicate",
-                )
+                # UI log removed - duplication is internal detail, not user-facing error
                 return False
 
             # Lock acquired successfully - now set DESTINATION_PROCESSING stage
