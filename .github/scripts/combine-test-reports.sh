@@ -20,29 +20,63 @@ if [ ${#REPORTS[@]} -eq 0 ]; then
     exit 0
 fi
 
-# Function to extract test counts from a report
+# Function to extract test counts from pytest-md-report markdown table
 extract_test_counts() {
     local report_file=$1
     local passed=0
     local failed=0
     local total=0
 
-    # Try to find "Passed:" or "passed:" patterns (handles markdown formatting)
-    if grep -qiE '(passed|✅.*passed)' "$report_file"; then
-        passed=$(grep -iE '(passed|✅.*passed)' "$report_file" | grep -oE '[0-9]+' | head -1 || echo "0")
+    # Find the header row to determine column positions
+    local header_line=$(grep -E '^\|\s*(filepath|file)' "$report_file" | head -1)
+
+    if [ -z "$header_line" ]; then
+        echo "0:0:0"
+        return
     fi
 
-    # Try to find "Failed:" or "failed:" patterns (handles markdown formatting)
-    if grep -qiE '(failed|❌.*failed)' "$report_file"; then
-        failed=$(grep -iE '(failed|❌.*failed)' "$report_file" | grep -oE '[0-9]+' | head -1 || echo "0")
+    # Extract column names and find positions
+    IFS='|' read -ra headers <<< "$header_line"
+    local passed_col=-1
+    local failed_col=-1
+    local subtotal_col=-1
+
+    for i in "${!headers[@]}"; do
+        local col=$(echo "${headers[$i]}" | tr -d ' ' | tr '[:upper:]' '[:lower:]')
+        case "$col" in
+            passed) passed_col=$i ;;
+            failed) failed_col=$i ;;
+            subtotal|sub) subtotal_col=$i ;;
+        esac
+    done
+
+    # Find the TOTAL row (handles both "TOTAL" and "**TOTAL**" bold markdown)
+    local total_line=$(grep -E '^\|\s*\*?\*?TOTAL' "$report_file" | head -1)
+
+    if [ -z "$total_line" ]; then
+        echo "0:0:0"
+        return
     fi
 
-    # Try to find "Total" patterns (handles markdown formatting with ** and -)
-    if grep -qiE '(total.*tests?|tests?.*total)' "$report_file"; then
-        total=$(grep -iE '(total.*tests?|tests?.*total)' "$report_file" | grep -oE '[0-9]+' | head -1 || echo "0")
+    # Parse the TOTAL row values
+    IFS='|' read -ra values <<< "$total_line"
+
+    # Extract passed count
+    if [ "$passed_col" -ge 0 ] && [ "$passed_col" -lt "${#values[@]}" ]; then
+        passed=$(echo "${values[$passed_col]}" | tr -d ' ' | grep -oE '[0-9]+' | head -1 || echo "0")
     fi
 
-    # If total not found, calculate from passed + failed
+    # Extract failed count
+    if [ "$failed_col" -ge 0 ] && [ "$failed_col" -lt "${#values[@]}" ]; then
+        failed=$(echo "${values[$failed_col]}" | tr -d ' ' | grep -oE '[0-9]+' | head -1 || echo "0")
+    fi
+
+    # Extract total from SUBTOTAL column, or calculate it
+    if [ "$subtotal_col" -ge 0 ] && [ "$subtotal_col" -lt "${#values[@]}" ]; then
+        total=$(echo "${values[$subtotal_col]}" | tr -d ' ' | grep -oE '[0-9]+' | head -1 || echo "0")
+    fi
+
+    # If total is still 0, calculate from passed + failed
     if [ "$total" -eq 0 ]; then
         total=$((passed + failed))
     fi
