@@ -358,10 +358,8 @@ class WorkflowExecutionProcessor:
                     logger.info(
                         f"Updated file execution {context.workflow_file_execution_id} status to ERROR"
                     )
-                except Exception as status_error:
-                    logger.error(
-                        f"Failed to update file execution status: {status_error}"
-                    )
+                except Exception:
+                    logger.exception("Failed to update file execution status")
 
                 return FileProcessingResult(
                     file_name=context.file_name,
