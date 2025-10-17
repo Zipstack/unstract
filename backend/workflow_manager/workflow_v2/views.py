@@ -8,7 +8,7 @@ from django.db.models.query import QuerySet
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
-from permissions.permission import IsOwner, IsOwnerOrSharedUser
+from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from pipeline_v2.models import Pipeline
 from pipeline_v2.pipeline_processor import PipelineProcessor
 from rest_framework import serializers, status, viewsets
@@ -82,7 +82,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         if self.action in ["destroy", "partial_update", "update"]:
             return [IsOwner()]
 
-        return [IsOwnerOrSharedUser()]
+        return [IsOwnerOrSharedUserOrSharedToOrg()]
 
     def get_queryset(self) -> QuerySet:
         filter_args = FilterHelper.build_filter_args(

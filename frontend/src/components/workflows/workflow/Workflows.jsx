@@ -347,6 +347,7 @@ function Workflows() {
               loading={shareLoading}
               allUsers={allUsers}
               onApply={onShare}
+              isSharableToOrg={true}
             />
           )}
         </div>

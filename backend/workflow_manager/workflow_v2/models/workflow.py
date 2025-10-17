@@ -25,6 +25,7 @@ class WorkflowModelManager(DefaultOrganizationManagerMixin, models.Manager):
         return self.filter(
             Q(created_by=user)  # Owned by user
             | Q(shared_users=user)  # Shared with user
+            | Q(shared_to_org=True)  # Shared to entire organization
         ).distinct()
 
 
