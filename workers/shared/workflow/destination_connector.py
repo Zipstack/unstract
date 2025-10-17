@@ -16,6 +16,7 @@ import base64
 import json
 import os
 import time
+import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -33,6 +34,13 @@ from unstract.connectors.connectorkit import Connectorkit
 from unstract.connectors.exceptions import ConnectorError
 from unstract.core.data_models import ConnectionType as CoreConnectionType
 from unstract.core.data_models import FileHashData
+from unstract.core.exceptions import FileExecutionStageException
+from unstract.core.file_execution_tracker import (
+    FileExecutionStage,
+    FileExecutionStageData,
+    FileExecutionStageStatus,
+    FileExecutionStatusTracker,
+)
 from unstract.filesystem import FileStorageType, FileSystem
 from unstract.sdk.constants import ToolExecKey
 from unstract.sdk.tool.mime_types import EXT_MIME_MAP
@@ -304,6 +312,125 @@ class WorkerDestinationConnector:
 
         return ProcessingResult(tool_execution_result=tool_result, metadata=metadata)
 
+    def _check_and_acquire_destination_lock(
+        self, exec_ctx: ExecutionContext, file_ctx: FileContext
+    ) -> bool:
+        """Check if destination already processed and atomically acquire lock using Redis SET NX.
+
+        Returns:
+            bool: True if lock acquired successfully, False if already processed (duplicate)
+
+        This method provides duplicate prevention using Redis SET NX for atomic lock:
+        1. Check if DESTINATION_PROCESSING, FINALIZATION, or COMPLETED stage already exists
+        2. If yes, this is a duplicate attempt (e.g., from worker restart) -> skip
+        3. If no, atomically acquire lock using Redis SET ... NX (single atomic operation)
+        4. If lock acquisition succeeds, set DESTINATION_PROCESSING stage with longer TTL
+        5. If lock acquisition fails, another worker has the lock -> skip
+        """
+        try:
+            tracker = FileExecutionStatusTracker()
+
+            # Check if destination already processed or in progress
+            existing_data = tracker.get_data(
+                exec_ctx.execution_id, exec_ctx.file_execution_id
+            )
+
+            if existing_data:
+                current_stage = existing_data.stage_status.stage
+                # Check for DESTINATION_PROCESSING, FINALIZATION, or COMPLETED
+                if current_stage in [
+                    FileExecutionStage.DESTINATION_PROCESSING,
+                    FileExecutionStage.FINALIZATION,
+                    FileExecutionStage.COMPLETED,
+                ]:
+                    # Enhanced debug log with full context for internal debugging
+                    logger.warning(
+                        f"DUPLICATE DETECTION: File '{file_ctx.file_name}' destination already at stage "
+                        f"{current_stage.value}. execution_id={exec_ctx.execution_id}, "
+                        f"file_execution_id={exec_ctx.file_execution_id}, worker_pid={os.getpid()}. "
+                        f"Skipping duplicate processing - another worker completed this already."
+                    )
+                    # UI log removed - duplication is internal detail, not user-facing error
+                    return False  # Duplicate detected
+
+            # Atomically acquire lock using Redis SET NX
+            # Use helper method for consistent lock key format
+            lock_key = tracker.get_destination_lock_key(
+                exec_ctx.execution_id, exec_ctx.file_execution_id
+            )
+            lock_token = str(uuid.uuid4())  # Unique token for debugging
+
+            # Get TTL values from environment
+            LOCK_TTL = int(
+                os.environ.get("DESTINATION_PROCESSING_LOCK_TTL_IN_SECOND", 120)
+            )
+            STAGE_TTL = int(
+                os.environ.get("DESTINATION_PROCESSING_STAGE_TTL_IN_SECOND", 600)
+            )
+
+            logger.info(
+                f"Attempting to acquire destination lock for file '{file_ctx.file_name}' "
+                f"(lock_key={lock_key}, lock_ttl={LOCK_TTL}s, stage_ttl={STAGE_TTL}s)"
+            )
+
+            # Use Redis SET NX (Set if Not eXists) for true atomic lock acquisition
+            # Returns True if key was set (lock acquired), False if key already exists
+            lock_acquired = tracker.redis_client.set(
+                lock_key, lock_token, nx=True, ex=LOCK_TTL
+            )
+
+            if not lock_acquired:
+                # Enhanced debug log with full context for internal debugging
+                logger.warning(
+                    f"DUPLICATE DETECTION: Lock acquisition failed for file '{file_ctx.file_name}'. "
+                    f"execution_id={exec_ctx.execution_id}, file_execution_id={exec_ctx.file_execution_id}, "
+                    f"lock_key={lock_key}, worker_pid={os.getpid()}. "
+                    f"Another worker holds the lock - skipping duplicate processing."
+                )
+                # UI log removed - duplication is internal detail, not user-facing error
+                return False
+
+            # Lock acquired successfully - now set DESTINATION_PROCESSING stage
+            logger.info(
+                f"Lock acquired successfully for file '{file_ctx.file_name}' (token={lock_token})"
+            )
+
+            try:
+                tracker.update_stage_status(
+                    exec_ctx.execution_id,
+                    exec_ctx.file_execution_id,
+                    FileExecutionStageData(
+                        stage=FileExecutionStage.DESTINATION_PROCESSING,
+                        status=FileExecutionStageStatus.IN_PROGRESS,
+                    ),
+                    ttl_in_second=STAGE_TTL,  # Use longer TTL for stage tracker
+                )
+                logger.info(
+                    f"Successfully set DESTINATION_PROCESSING stage for file '{file_ctx.file_name}' "
+                    f"with stage TTL {STAGE_TTL}s"
+                )
+                return True  # Lock acquired and stage set successfully
+
+            except FileExecutionStageException:
+                # Stage transition failed (shouldn't happen after lock acquired, but handle it)
+                logger.exception(
+                    f"Failed to set DESTINATION_PROCESSING stage after lock acquisition "
+                    f"for file '{file_ctx.file_name}'. "
+                    f"Releasing lock."
+                )
+                # Release the lock since we failed to set the stage
+                tracker.redis_client.delete(lock_key)
+                return False
+
+        except Exception as e:
+            # If Redis fails or other unexpected error, log but allow processing to continue
+            # This ensures graceful degradation if tracking system is unavailable
+            logger.exception(
+                f"Failed to check/acquire destination lock for file '{file_ctx.file_name}': {e}. "
+                f"Allowing processing to continue (graceful degradation)."
+            )
+            return True  # Allow processing on infrastructure failure
+
     def _check_and_handle_hitl(
         self, exec_ctx: ExecutionContext, file_ctx: FileContext, result: ProcessingResult
     ) -> bool:
@@ -528,7 +655,7 @@ class WorkerDestinationConnector:
         execution_id: str = None,
         organization_id: str = None,
         execution_error: str = None,
-    ) -> HandleOutputResult:
+    ) -> HandleOutputResult | None:
         """Handle the output based on the connection type.
 
         This refactored version uses clean architecture with context objects
@@ -544,7 +671,21 @@ class WorkerDestinationConnector:
         if self.hitl_queue_name:
             logger.debug(f"HITL queue configured: {self.hitl_queue_name}")
 
-        # Extract processing data
+        # Check if destination already processed and atomically acquire lock FIRST
+        # This prevents duplicate insertions during warm shutdown scenarios
+        # IMPORTANT: Check lock BEFORE extracting data to avoid unnecessary work
+        lock_acquired = self._check_and_acquire_destination_lock(exec_ctx, file_ctx)
+        if not lock_acquired:
+            # Duplicate detected or another worker has the lock - abort ALL processing
+            logger.info(
+                f"Duplicate detected for file '{file_ctx.file_name}' - "
+                f"aborting ALL processing (lock not acquired, already processed or being processed by another worker)"
+            )
+            # Return None to signal to caller that this is a duplicate skip
+            # Caller should not create file history, update stages, or clean up locks
+            return None
+
+        # Only extract data if lock was acquired (not a duplicate)
         result = self._extract_processing_data(exec_ctx, file_ctx)
 
         # Check and handle HITL if needed
@@ -556,6 +697,24 @@ class WorkerDestinationConnector:
         except Exception as e:
             self._handle_destination_error(exec_ctx, file_ctx, e)
             raise
+        finally:
+            # Release lock after destination processing completes
+            # Critical section (stage set + data extraction + destination write) is done
+            # File history and stage updates don't need the lock (protected by stage checks)
+            try:
+                tracker = FileExecutionStatusTracker()
+                lock_key = tracker.get_destination_lock_key(
+                    exec_ctx.execution_id, exec_ctx.file_execution_id
+                )
+                tracker.redis_client.delete(lock_key)
+                logger.info(
+                    f"Released destination lock for '{file_ctx.file_name}' "
+                    f"after destination processing (lock_key={lock_key})"
+                )
+            except Exception as lock_error:
+                logger.warning(
+                    f"Failed to release destination lock for '{file_ctx.file_name}': {lock_error}"
+                )
 
         # Log success
         self._log_processing_success(exec_ctx, file_ctx, result.has_hitl)

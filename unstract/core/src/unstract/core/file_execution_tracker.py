@@ -20,6 +20,7 @@ class FileExecutionStage(Enum):
     INITIALIZATION = "INITIALIZATION"
     TOOL_EXECUTION = "TOOL_EXECUTION"
     FINALIZATION = "FINALIZATION"
+    DESTINATION_PROCESSING = "DESTINATION_PROCESSING"
     COMPLETED = "COMPLETED"
 
     @property
@@ -42,8 +43,9 @@ class FileExecutionStage(Enum):
 FILE_EXECUTION_STAGE_ORDER = {
     FileExecutionStage.INITIALIZATION: 0,
     FileExecutionStage.TOOL_EXECUTION: 1,
-    FileExecutionStage.FINALIZATION: 2,
-    FileExecutionStage.COMPLETED: 3,
+    FileExecutionStage.DESTINATION_PROCESSING: 2,
+    FileExecutionStage.FINALIZATION: 3,
+    FileExecutionStage.COMPLETED: 4,
 }
 
 
@@ -187,6 +189,10 @@ class FileExecutionStatusTracker:
 
     def get_cache_key(self, execution_id: str, file_execution_id: str) -> str:
         return f"file_execution:{execution_id}:{file_execution_id}"
+
+    def get_destination_lock_key(self, execution_id: str, file_execution_id: str) -> str:
+        """Get the Redis key for destination processing lock."""
+        return f"file_execution:{execution_id}:{file_execution_id}:destination_lock"
 
     def set_data(self, data: FileExecutionData, ttl_in_second: int | None = None) -> None:
         data.validate()
