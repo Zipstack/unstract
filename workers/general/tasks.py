@@ -442,7 +442,7 @@ def _process_file_batches_general(
         )
 
         logger.info(
-            f"Created file batch {batch_response.get('batch_id')} with {batch_response.get('total_files')} files"
+            f"Created file batch {batch_response.batch_id} with {batch_response.total_files} files"
         )
 
         return [batch_response]
