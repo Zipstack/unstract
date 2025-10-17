@@ -166,6 +166,7 @@ function SharePermission({
                 checked={shareWithEveryone}
                 onChange={(e) => handleShareWithEveryone(e.target.checked)}
                 className="share-per-checkbox"
+                disabled={!permissionEdit}
               >
                 Share with everyone in current org
               </Checkbox>
