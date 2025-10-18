@@ -1,5 +1,13 @@
 # Docker Commands
 
+## Container Runtime Support
+
+This project supports both **Docker** and **Podman**. See [CONTAINER_RUNTIME.md](CONTAINER_RUNTIME.md) for detailed information.
+
+**Quick Start**:
+- **Docker**: Use `docker compose` commands as shown below
+- **Podman**: Use `podman-compose` commands AND enable the socket: `systemctl --user enable --now podman.socket`
+
 ## Docker Build
 
 ```bash

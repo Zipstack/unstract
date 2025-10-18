@@ -57,7 +57,6 @@ services:
       - ./workflow_data:/data
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
 
-
   # Celery worker for managing logs and periodic tasks
   worker-logging:
     image: unstract/backend:${VERSION}
@@ -153,8 +152,8 @@ services:
       - ../backend/.env
       - ./essentials.env
     depends_on:
-        - db
-        - rabbitmq
+      - db
+      - rabbitmq
     environment:
       - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-celery-beat
@@ -165,7 +164,7 @@ services:
     container_name: unstract-frontend
     restart: unless-stopped
     ports:
-      - "3000:80"
+      - "3000:8080"
     depends_on:
       - backend
       - reverse-proxy
@@ -174,6 +173,7 @@ services:
     labels:
       - traefik.enable=true
       - traefik.http.routers.frontend.rule=Host(`frontend.unstract.localhost`)  && !PathPrefix(`/api/v1`, `/deployment`)
+      - traefik.http.services.frontend.loadbalancer.server.port=8080
 
   platform-service:
     image: unstract/platform-service:${VERSION}
@@ -231,8 +231,10 @@ services:
       - ../runner/.env
     volumes:
       - ./workflow_data:/data
-      # Docker socket bind mount to spawn tool containers
-      - /var/run/docker.sock:/var/run/docker.sock
+      # Universal socket mount - works with both Docker and Podman
+      # Podman rootless: /run/user/$UID/podman/podman.sock
+      # Docker: /var/run/docker.sock
+      - ${DOCKER_SOCKET:-${XDG_RUNTIME_DIR:-/run/user/1000}/podman/podman.sock}:/var/run/docker.sock
     depends_on:
       - redis
       - rabbitmq
@@ -310,7 +312,21 @@ services:
     container_name: unstract-worker-file-processing-v2
     restart: unless-stopped
     # command: ["file-processing"]
-    command: [".venv/bin/celery", "-A", "worker", "worker", "--queues=file_processing,api_file_processing,file_processing_priority", "--loglevel=INFO", "--pool=prefork", "--concurrency=4", "--prefetch-multiplier=1", "--without-gossip", "--without-mingle", "--without-heartbeat"]
+    command:
+      [
+        ".venv/bin/celery",
+        "-A",
+        "worker",
+        "worker",
+        "--queues=file_processing,api_file_processing,file_processing_priority",
+        "--loglevel=INFO",
+        "--pool=prefork",
+        "--concurrency=4",
+        "--prefetch-multiplier=1",
+        "--without-gossip",
+        "--without-mingle",
+        "--without-heartbeat",
+      ]
     ports:
       - "8087:8082"
     env_file:
