@@ -89,6 +89,7 @@
     "prettier": "^2.8.8",
     "prettier-quick": "^0.0.5",
     "vite": "^6.0.5",
+    "vite-plugin-svgr": "^4.5.0",
     "vitest": "^2.1.8"
   },
   "engines": {
