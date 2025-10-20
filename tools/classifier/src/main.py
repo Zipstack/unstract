@@ -5,7 +5,6 @@ from helper import (
     ClassifierHelper,  # type: ignore
     ReservedBins,
 )
-
 from unstract.flags.feature_flag import check_feature_flag_status
 
 if check_feature_flag_status("sdk1"):
