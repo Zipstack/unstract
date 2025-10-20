@@ -23,7 +23,7 @@ CMD ["npm", "start"]
 ### FOR PRODUCTION ###
 # Builder stage for production build
 FROM base AS builder
-ENV REACT_APP_BACKEND_URL=""
+ENV VITE_BACKEND_URL=""
 
 # Copy package files and install dependencies
 COPY ${BUILD_CONTEXT_PATH}/package.json ${BUILD_CONTEXT_PATH}/package-lock.json ./
@@ -32,7 +32,7 @@ RUN npm install --ignore-scripts
 # Copy the rest of the application files
 COPY ${BUILD_CONTEXT_PATH}/ .
 
-# Build the React app
+# Build with Vite
 RUN npm run build
 
 # Production stage
@@ -49,6 +49,9 @@ COPY --from=builder /app/nginx.conf /etc/nginx/nginx.conf
 RUN mkdir -p /usr/share/nginx/html/config && \
     chown nginx:nginx /usr/share/nginx/html/config && \
     chmod 755 /usr/share/nginx/html/config
+
+# Inject runtime config script into index.html
+RUN sed -i 's|</head>|    <script src="/config/runtime-config.js"></script>\n  </head>|' /usr/share/nginx/html/index.html
 
 # Copy the environment script
 COPY ../frontend/generate-runtime-config.sh /docker-entrypoint.d/40-env.sh

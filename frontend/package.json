@@ -47,7 +47,6 @@
     "react-js-cron": "^5.0.1",
     "react-product-fruits": "^2.2.6",
     "react-router-dom": "^6.11.2",
-    "react-scripts": "5.0.1",
     "react-social-login-buttons": "^3.9.1",
     "remark-gfm": "^3.0.1",
     "remarkable": "^2.0.1",
@@ -56,22 +55,17 @@
     "zustand": "^4.3.8"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject",
+    "dev": "vite",
+    "start": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "prettier": "prettier --check src/",
     "prettier:fix": "prettier --write src/",
     "lint:all": "npm run lint:fix && npm run prettier:fix",
     "lint:changed": "(git diff --name-only --diff-filter=ACMR; git ls-files --others --exclude-standard) | grep '\\.jsx\\?$' | sed 's|^frontend/||' | sort -u | xargs -r sh -c 'eslint --fix \"$@\" && prettier --write \"$@\"' _ || echo 'No JS/JSX files changed'"
-  },
-  "eslintConfig": {
-    "extends": [
-      "react-app",
-      "react-app/jest"
-    ]
   },
   "browserslist": {
     "production": [
@@ -86,7 +80,7 @@
     ]
   },
   "devDependencies": {
-    "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
+    "@vitejs/plugin-react": "^4.3.4",
     "eslint": "^8.41.0",
     "eslint-config-google": "^0.14.0",
     "eslint-config-prettier": "^8.8.0",
@@ -94,7 +88,8 @@
     "eslint-plugin-react": "^7.32.2",
     "prettier": "^2.8.8",
     "prettier-quick": "^0.0.5",
-    "webpack": "^5.84.0"
+    "vite": "^6.0.5",
+    "vitest": "^2.1.8"
   },
   "engines": {
     "node": ">=16.0.0 <20",

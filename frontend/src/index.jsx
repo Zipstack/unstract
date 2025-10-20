@@ -9,7 +9,7 @@ import { SocketProvider } from "./helpers/SocketContext.js";
 import "./index.css";
 import config from "./config.js";
 
-const enablePosthog = process.env.REACT_APP_ENABLE_POSTHOG;
+const enablePosthog = import.meta.env.VITE_ENABLE_POSTHOG;
 if (enablePosthog !== "false") {
   // Define the PostHog API key and host URL
   const API_KEY = "phc_PTafesyRuRB5hceRILaNPeyu2IDuzPshyjIPYGvgoBd"; // gitleaks:allow
