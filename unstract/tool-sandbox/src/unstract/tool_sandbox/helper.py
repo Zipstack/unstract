@@ -23,7 +23,7 @@ from unstract.core.tool_execution_status import (
     ToolExecutionStatus,
     ToolExecutionTracker,
 )
-from unstract.core.utilities import UnstractUtils
+from unstract.core.utilities import UnstractUtils, _safe_get_env_int
 from unstract.tool_sandbox.constants import UnstractRunner
 from unstract.tool_sandbox.dto import (
     RunnerContainerRunResponse,
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 # Polling grace period to tolerate NOT_FOUND status during container startup
 # During this period, NOT_FOUND status doesn't immediately mean container failed
-POLL_NOT_FOUND_GRACE_PERIOD = int(os.getenv("POLL_NOT_FOUND_GRACE_PERIOD", 40))
+POLL_NOT_FOUND_GRACE_PERIOD = _safe_get_env_int("POLL_NOT_FOUND_GRACE_PERIOD", 40, logger)
 
 COMPLETED_FINAL_STATUSES = {
     ContainerStatus.EXITED.value,
@@ -173,12 +173,23 @@ class ToolSandboxHelper:
                     )
                     # Fall through to existing completion handling below
             elif not_found_first_seen is not None:
-                # Status changed from NOT_FOUND to something else - reset grace period tracking
-                logger.info(
-                    f"Status changed from NOT_FOUND to {status.get('status')} - "
-                    f"resetting grace period tracking for execution_id: {self.execution_id}, file_execution_id: {file_execution_id}"
-                )
-                not_found_first_seen = None
+                # Grace period was active, check if status actually changed
+                if status is None:
+                    # Transient fetch failure - don't reset grace period
+                    logger.warning(
+                        f"Transient status fetch failure during grace period for "
+                        f"execution_id: {self.execution_id}, file_execution_id: {file_execution_id}"
+                    )
+                    time.sleep(interval_seconds)
+                    continue
+                else:
+                    # Status changed from NOT_FOUND to something else
+                    new_status = status.get("status", "UNKNOWN")
+                    logger.info(
+                        f"Status changed from NOT_FOUND to {new_status} - "
+                        f"resetting grace period tracking for execution_id: {self.execution_id}, file_execution_id: {file_execution_id}"
+                    )
+                    not_found_first_seen = None
 
             if status and status.get("status") in COMPLETED_FINAL_STATUSES:
                 error = self._handle_tool_execution_status(

@@ -310,8 +310,10 @@ class FileExecutionStatusTracker:
         if not data:
             return None
 
-        stage_status_dict = json.loads(data.get(FileExecutionField.STAGE_STATUS, {}))
-        status_history_list = json.loads(data.get(FileExecutionField.STATUS_HISTORY, []))
+        stage_status_raw = data.get(FileExecutionField.STAGE_STATUS) or "{}"
+        status_history_raw = data.get(FileExecutionField.STATUS_HISTORY) or "[]"
+        stage_status_dict = json.loads(stage_status_raw)
+        status_history_list = json.loads(status_history_raw)
         return FileExecutionData(
             execution_id=execution_id,
             organization_id=data.get(FileExecutionField.ORGANIZATION_ID),

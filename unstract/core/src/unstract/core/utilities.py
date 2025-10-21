@@ -144,20 +144,21 @@ def retry_on_redis_error(
     connection issues like network timeouts or temporary connection loss.
 
     Args:
-        max_retries (int | None): Number of retry attempts. If None, reads from
-            REDIS_RETRY_MAX_ATTEMPTS env var (default: 5)
+        max_retries (int | None): Number of retries after initial attempt. If None, reads from
+            REDIS_RETRY_MAX_ATTEMPTS env var (default: 4, total attempts: 5)
         backoff_factor (float | None): Exponential backoff multiplier in seconds. If None,
             reads from REDIS_RETRY_BACKOFF_FACTOR env var (default: 0.5)
-            With defaults (5 retries, 0.5s backoff):
+            With defaults (4 retries after initial, 0.5s backoff = 5 total attempts):
+            - Initial attempt (no delay)
             - 1st retry: 0.5s delay  (cumulative: 0.5s)
             - 2nd retry: 1.0s delay  (cumulative: 1.5s)
             - 3rd retry: 2.0s delay  (cumulative: 3.5s)
             - 4th retry: 4.0s delay  (cumulative: 7.5s)
-            Total: 7.5 seconds retry window
+            Total: 5 attempts over 7.5 seconds
         retry_logger: Logger instance for warnings (optional, uses module logger if None)
 
     Environment Variables:
-        REDIS_RETRY_MAX_ATTEMPTS (int): Maximum retry attempts (default: 5)
+        REDIS_RETRY_MAX_ATTEMPTS (int): Retries after initial attempt (default: 4, total attempts: 5)
         REDIS_RETRY_BACKOFF_FACTOR (float): Exponential backoff multiplier (default: 0.5)
 
     Retries on:
@@ -185,7 +186,7 @@ def retry_on_redis_error(
     """
     # Read from env vars if not explicitly provided, with validation
     if max_retries is None:
-        max_retries = _safe_get_env_int("REDIS_RETRY_MAX_ATTEMPTS", 5, retry_logger)
+        max_retries = _safe_get_env_int("REDIS_RETRY_MAX_ATTEMPTS", 4, retry_logger)
     if backoff_factor is None:
         backoff_factor = _safe_get_env_float(
             "REDIS_RETRY_BACKOFF_FACTOR", 0.5, retry_logger
@@ -195,14 +196,14 @@ def retry_on_redis_error(
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             log = retry_logger or logger
-            for attempt in range(max_retries):
+            for attempt in range(max_retries + 1):  # Initial attempt + N retries
                 try:
                     return func(*args, **kwargs)
                 except (RedisConnectionError, RedisTimeoutError) as e:
-                    if attempt == max_retries - 1:
+                    if attempt == max_retries:  # Last retry exhausted
                         # Final attempt failed, re-raise the exception
                         log.exception(
-                            f"Redis operation {func.__name__} failed after {max_retries} retries: {e}"
+                            f"Redis operation {func.__name__} failed after {max_retries + 1} total attempts"
                         )
                         raise
                     # Calculate exponential backoff delay
