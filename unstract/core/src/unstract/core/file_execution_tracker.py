@@ -12,6 +12,7 @@ from unstract.core.exceptions import (
     FileExecutionTrackerNotFound,
     FileExecutionTrackerValueException,
 )
+from unstract.core.utilities import retry_on_redis_error
 
 logger = logging.getLogger(__name__)
 
@@ -286,10 +287,15 @@ class FileExecutionStatusTracker:
             pipe.expire(key, self.CACHE_TTL_IN_SECOND)
             pipe.execute()
 
+    @retry_on_redis_error(retry_logger=logger)
     def get_data(
         self, execution_id: str, file_execution_id: str
     ) -> FileExecutionData | None:
         """Get the status of a file execution.
+
+        This method includes automatic retry logic for transient Redis connection errors.
+        Retry behavior is configurable via REDIS_RETRY_MAX_ATTEMPTS and
+        REDIS_RETRY_BACKOFF_FACTOR environment variables (defaults: 5 retries, 0.5s backoff).
 
         Args:
             execution_id (str): Execution id of the file execution

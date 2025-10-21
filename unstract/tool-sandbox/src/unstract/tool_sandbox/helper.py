@@ -566,32 +566,36 @@ class ToolSandboxHelper:
                 tool_execution_data
             )
             if not tool_execution_status_data:
-                logger.warning(
-                    f"Execution ID: {execution_id}, docker "
-                    f"container: {container_name} - failed to fetch execution status"
+                error_msg = (
+                    f"Container {container_name} failed to write execution status data. "
+                    f"Container may have crashed during startup or tool execution failed before writing status."
                 )
-                return error
+                logger.error(
+                    f"Execution ID: {execution_id}, file execution ID: {file_execution_id}, docker container: {container_name} - "
+                    f"failed to fetch execution status. {error_msg}"
+                )
+                return error_msg
             status = tool_execution_status_data.status
             error = tool_execution_status_data.error
             if status == ToolExecutionStatus.FAILED:
                 logger.error(
-                    f"Execution ID: {execution_id}, docker "
+                    f"Execution ID: {execution_id}, file execution ID: {file_execution_id}, docker "
                     f"container: {container_name} - tool run failed. Error: {error}"
                 )
             elif status == ToolExecutionStatus.SUCCESS:
                 logger.info(
-                    f"Execution ID: {execution_id}, docker "
+                    f"Execution ID: {execution_id}, file execution ID: {file_execution_id}, docker "
                     f"container: {container_name} - tool execution completed successfully"
                 )
             else:
                 logger.warning(
-                    f"Execution ID: {execution_id}, docker "
+                    f"Execution ID: {execution_id}, file execution ID: {file_execution_id}, docker "
                     f"container: {container_name} - unexpected tool status: {status}"
                 )
             return error
         except Exception as error:
             logger.error(
-                f"Execution ID: {execution_id}, docker "
+                f"Execution ID: {execution_id}, file execution ID: {file_execution_id}, docker "
                 f"container: {container_name} - failed to fetch execution status. Error: {error}",
                 exc_info=True,
             )
