@@ -131,7 +131,7 @@ class StructureTool(BaseTool):
         # Check if any output has table_settings with valid JSON prompt
         for output in outputs:
             if SettingsKeys.TABLE_SETTINGS in output:
-                prompt = output.get(SettingsKeys.PROMPTX, "")
+                prompt = output.get(SettingsKeys.PROMPT, "")
                 if prompt and isinstance(prompt, str):
                     try:
                         # Try to parse the prompt as JSON
