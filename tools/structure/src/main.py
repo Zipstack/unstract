@@ -375,6 +375,7 @@ class StructureTool(BaseTool):
                     )
                     # Use source file directly for Excel with valid JSON, otherwise use extracted file
                     if skip_extraction_and_indexing:
+                        table_settings[SettingsKeys.INPUT_FILE] = input_file
                         payload[SettingsKeys.FILE_PATH] = input_file
                     else:
                         table_settings[SettingsKeys.INPUT_FILE] = extracted_input_file
