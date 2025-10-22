@@ -14,7 +14,7 @@
 
 .logs-handle {
   height: 40px;
-  background-color: #eee;
+  background-color: #fff;
   border-bottom: 1px solid #ccc;
   cursor: ns-resize;
   user-select: none;
@@ -36,7 +36,7 @@
 
 .tool-logs-table .ant-table {
   font-family: Consolas, "Courier New", monospace;
-  font-size: 12px !important;
+  font-size: 14px !important;
   background-color: #fff;
 }
 
@@ -50,6 +50,6 @@
 }
 
 .display-logs-md {
-  font-size: 12px;
+  font-size: 14px;
   padding-left: 5px;
 }

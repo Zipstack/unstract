@@ -41,9 +41,10 @@ function DataSourceCard({ srcDetails, setSelectedSourceId, type }) {
         <div className="cover-img">
           <Image
             src={srcDetails?.icon}
-            width="80%"
-            height="auto"
+            width="50%"
+            height="50%"
             preview={false}
+            style={{ objectFit: "contain" }}
           />
         </div>
         <div className="ds-card-name display-flex-center">

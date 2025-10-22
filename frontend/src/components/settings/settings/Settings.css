@@ -1,23 +1,52 @@
 /* Styles for Settings */
 
-.settings-bg-col {
-    background-color: var(--page-bg-2);
+.settings-container {
+    position: relative;
     height: 100%;
+    background-color: var(--page-bg-2);
 }
 
-.settings-layout {
-    padding: 20px;
+.settings-sidebar {
+    position: fixed;
+    left: 75px;
+    bottom: 60px;
+    width: 200px;
+    background-color: #fff;
+    border-radius: 4px;
+    padding: 0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
 }
 
-.settings-head {
-    margin-bottom: 8px;
-}
-
-.settings-head-typo {
-    font-size: 18px;
-    font-weight: 600;
-}
-
-.settings-plt-typo {
+.settings-menu-item {
+    padding: 12px 16px;
     font-size: 14px;
+    cursor: pointer;
+    color: #000;
+    transition: all 0.2s;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.settings-menu-item:first-child {
+    border-radius: 4px 4px 0 0;
+}
+
+.settings-menu-item:last-child {
+    border-bottom: none;
+    border-radius: 0 0 4px 4px;
+}
+
+.settings-menu-item:hover {
+    background-color: #f5f5f5;
+}
+
+.settings-menu-item.active {
+    background-color: #e6f7ff;
+    color: #1890ff;
+    font-weight: 500;
+}
+
+.settings-content {
+    height: 100%;
+    overflow: auto;
 }
