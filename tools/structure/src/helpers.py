@@ -5,7 +5,6 @@ from typing import Any
 
 from constants import IndexingConstants as IKeys
 from constants import SettingsKeys  # type: ignore [attr-defined]
-
 from unstract.flags.feature_flag import check_feature_flag_status
 
 if check_feature_flag_status("sdk1"):
