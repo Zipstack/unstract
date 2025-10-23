@@ -170,21 +170,28 @@ function ToolSettings({ type }) {
       });
   };
 
-  const onShare = (userIds, adapter) => {
+  const onShare = (userIds, adapter, shareWithEveryone) => {
     const requestOptions = {
       method: "PATCH",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${adapter?.id}/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
-      data: { shared_users: userIds },
+      data: {
+        shared_users: userIds,
+        shared_to_org: shareWithEveryone || false,
+      },
     };
     axiosPrivate(requestOptions)
       .then((response) => {
         setOpenSharePermissionModal(false);
+        setAlertDetails({
+          type: "success",
+          content: "Sharing settings updated successfully",
+        });
       })
       .catch((err) => {
-        setAlertDetails(handleException(err, "Failed to load"));
+        setAlertDetails(handleException(err, "Failed to update sharing"));
       });
   };
 
@@ -255,6 +262,7 @@ function ToolSettings({ type }) {
         loading={isShareLoading}
         allUsers={userList}
         onApply={onShare}
+        isSharableToOrg={true}
       />
     </div>
   );
