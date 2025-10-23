@@ -19,6 +19,11 @@ from unstract.connectors.gcs_helper import GCSHelper
 logging.getLogger("gdrive").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
+# Module-level cache for client secrets to avoid repeated Secret Manager calls
+# Secret Manager uses gRPC which is not fork-safe, so we cache the result
+_client_secrets_cache = None
+_client_secrets_lock = threading.Lock()
+
 
 class GoogleDriveFS(UnstractFileSystem):
     # Settings dict should contain the following:
@@ -29,16 +34,32 @@ class GoogleDriveFS(UnstractFileSystem):
     # }
     def __init__(self, settings: dict[str, Any]):
         super().__init__("GoogleDrive")
-        try:
-            self.client_secrets = json.loads(
-                GCSHelper().get_secret("google_drive_client_secret")
-            )
-        except GoogleApiException.PermissionDenied as e:
-            user_message = "Permission denied. Please check your credentials. "
-            raise FSAccessDeniedError(
-                user_message,
-                treat_as_user_message=True,
-            ) from e
+
+        # Use module-level cache to avoid repeated Secret Manager calls
+        # Secret Manager uses gRPC which is not fork-safe
+        global _client_secrets_cache
+        if _client_secrets_cache is None:
+            with _client_secrets_lock:
+                # Double-check pattern
+                if _client_secrets_cache is None:
+                    logger.info(
+                        "Loading Google Drive client secrets from Secret Manager "
+                        "(one-time per process)"
+                    )
+                    try:
+                        _client_secrets_cache = json.loads(
+                            GCSHelper().get_secret("google_drive_client_secret")
+                        )
+                    except GoogleApiException.PermissionDenied as e:
+                        user_message = (
+                            "Permission denied. Please check your credentials. "
+                        )
+                        raise FSAccessDeniedError(
+                            user_message,
+                            treat_as_user_message=True,
+                        ) from e
+
+        self.client_secrets = _client_secrets_cache
         self.oauth2_credentials = {
             "client_id": self.client_secrets["web"]["client_id"],
             "client_secret": self.client_secrets["web"]["client_secret"],
