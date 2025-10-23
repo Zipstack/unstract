@@ -131,7 +131,7 @@ class StructureTool(BaseTool):
         # Check if any output has table_settings with valid JSON prompt
         for output in outputs:
             if SettingsKeys.TABLE_SETTINGS in output:
-                prompt = output.get(SettingsKeys.PROMPTX, "")
+                prompt = output.get(SettingsKeys.PROMPT, "")
                 if prompt and isinstance(prompt, str):
                     try:
                         # Try to parse the prompt as JSON
@@ -376,6 +376,7 @@ class StructureTool(BaseTool):
                     # Use source file directly for Excel with valid JSON, otherwise use extracted file
                     if skip_extraction_and_indexing:
                         table_settings[SettingsKeys.INPUT_FILE] = input_file
+                        payload[SettingsKeys.FILE_PATH] = input_file
                     else:
                         table_settings[SettingsKeys.INPUT_FILE] = extracted_input_file
                     table_settings[SettingsKeys.IS_DIRECTORY_MODE] = is_directory_mode
