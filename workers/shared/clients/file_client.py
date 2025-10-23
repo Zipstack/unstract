@@ -48,6 +48,10 @@ except ImportError:
         def from_dict(cls, data):
             return cls(**data)
 
+        def has_hash(self):
+            # Mock implementation - check if file_hash attribute exists and is non-empty
+            return bool(getattr(self, "file_hash", None))
+
         def ensure_hash(self):
             # Mock implementation - no hash computation needed for testing
             pass

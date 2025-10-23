@@ -1632,6 +1632,32 @@ def _process_single_file_api(
 
     logger.info(f"Processing file: {file_name} (execution: {file_execution_id})")
 
+    # RACE CONDITION PROTECTION: Check if already completed before updating to EXECUTING
+    try:
+        workflow_file_execution = api_client.get_workflow_file_execution(
+            file_execution_id
+        )
+        if workflow_file_execution.status == ExecutionStatus.COMPLETED.value:
+            logger.info(
+                f"API path: File '{file_name}' already COMPLETED by another worker. "
+                f"Skipping processing for execution_id: {execution_id}, "
+                f"file_execution_id: {file_execution_id}"
+            )
+            return {
+                "file_execution_id": file_execution_id,
+                "file_name": file_name,
+                "status": "completed",
+                "processing_time": 0.0,
+                "result_data": getattr(workflow_file_execution, "result", None),
+                "metadata": getattr(workflow_file_execution, "metadata", None) or {},
+                "skipped": "already_completed",
+            }
+    except Exception as e:
+        logger.exception(
+            f"API path: Failed to validate completion status for {file_execution_id}: {e}. "
+            "Proceeding with processing."
+        )
+
     # Update file execution status to EXECUTING when processing starts (using common method)
     api_client.update_file_status_to_executing(file_execution_id, file_name)
 
