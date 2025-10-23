@@ -440,14 +440,18 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             if execution.workflow and hasattr(execution.workflow, "organization"):
                 org = execution.workflow.organization
                 return {
-                    "organization_id": str(org.id),
-                    "organization_name": org.display_name,
+                    "organization_id": str(
+                        org.organization_id
+                    ),  # organization identifier
+                    "organization_uuid": str(org.id),  # organization uuid
+                    "organization_name": org.display_name,  # organization name
                     "settings": {},  # Add organization-specific settings if needed
                 }
             else:
                 logger.warning(f"No organization found for execution {execution.id}")
                 return {
                     "organization_id": None,
+                    "organization_uuid": None,
                     "organization_name": "Unknown",
                     "settings": {},
                 }
@@ -457,6 +461,7 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             )
             return {
                 "organization_id": None,
+                "organization_uuid": None,
                 "organization_name": "Unknown",
                 "settings": {},
             }
