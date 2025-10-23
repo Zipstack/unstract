@@ -313,18 +313,25 @@ function ListOfTools() {
       });
   };
 
-  const onShare = (userIds, adapter) => {
+  const onShare = (userIds, adapter, shareWithEveryone) => {
     const requestOptions = {
       method: "PATCH",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${adapter?.tool_id}`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
-      data: { shared_users: userIds },
+      data: {
+        shared_users: userIds,
+        shared_to_org: shareWithEveryone || false,
+      },
     };
     axiosPrivate(requestOptions)
       .then((response) => {
         setOpenSharePermissionModal(false);
+        setAlertDetails({
+          type: "success",
+          content: "Sharing settings updated successfully",
+        });
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to load"));
@@ -384,6 +391,7 @@ function ListOfTools() {
         loading={isShareLoading}
         allUsers={allUserList}
         onApply={onShare}
+        isSharableToOrg={true}
       />
     </>
   );
