@@ -160,6 +160,29 @@ class ToolSandboxHelper:
                 ).total_seconds()
 
                 if not_found_duration < POLL_NOT_FOUND_GRACE_PERIOD:
+                    # RACE CONDITION OPTIMIZATION: Check if another worker completed this file
+                    # This avoids waiting full grace period when work is already done
+                    tracker = FileExecutionStatusTracker()
+                    current_tracker_data = tracker.get_data(
+                        self.execution_id, file_execution_id
+                    )
+                    if (
+                        current_tracker_data
+                        and current_tracker_data.stage_status.stage
+                        == FileExecutionStage.COMPLETED
+                    ):
+                        logger.warning(
+                            f"File execution COMPLETED by another worker during NOT_FOUND grace period - "
+                            f"duplicate run detected after {not_found_duration:.1f}s for execution_id: {self.execution_id}, file_execution_id: {file_execution_id}"
+                        )
+                        # Break with ERROR to stop further processing (destination, finalization)
+                        # This is not a real error - the file was successfully processed by another worker
+                        response = self._create_run_response(
+                            status=RunnerContainerRunStatus.ERROR,
+                            error="File already completed by another worker (duplicate run avoided)",
+                        )
+                        break
+
                     logger.debug(
                         f"Within polling grace period ({not_found_duration:.1f}s/{POLL_NOT_FOUND_GRACE_PERIOD}s) - "
                         f"continuing poll for execution_id: {self.execution_id}, file_execution_id: {file_execution_id}"
@@ -300,11 +323,6 @@ class ToolSandboxHelper:
                     file_execution_data=file_execution_data,
                 )
                 self._update_stage_status_for_tool_execution(file_execution_id, response)
-                self._update_stage_status(
-                    status=FileExecutionStageStatus.IN_PROGRESS,
-                    stage=FileExecutionStage.FINALIZATION,
-                    file_execution_id=file_execution_id,
-                )
             elif stage.is_before(FileExecutionStage.TOOL_EXECUTION):
                 self._update_stage_status(
                     status=FileExecutionStageStatus.SUCCESS,
@@ -319,11 +337,6 @@ class ToolSandboxHelper:
                     retry_count=retry_count,
                 )
                 self._update_stage_status_for_tool_execution(file_execution_id, response)
-                self._update_stage_status(
-                    status=FileExecutionStageStatus.IN_PROGRESS,
-                    stage=FileExecutionStage.FINALIZATION,
-                    file_execution_id=file_execution_id,
-                )
             else:
                 logger.warning(
                     f"File execution data stage {file_execution_data.stage_status.stage} is after tool execution for execution_id: {self.execution_id} and file_execution_id: {file_execution_id}"
