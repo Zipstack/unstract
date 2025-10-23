@@ -182,23 +182,34 @@ class WorkflowFileExecutionHandler:
         )
 
         # RACE CONDITION FIX: Fetch fresh status from DB instead of using cached object
-        # This prevents late-arriving workers from checking stale data and overwriting COMPLETED status
+        # This prevents late-arriving workers from checking stale data and overwriting terminal status
         workflow_file_execution = context.api_client.get_workflow_file_execution(
             context.workflow_file_execution_id
         )
 
-        # Check if file execution is already completed
-        if workflow_file_execution.status == ExecutionStatus.COMPLETED.value:
+        # Check if file execution is already in terminal state (COMPLETED or ERROR)
+        if workflow_file_execution.status in [
+            ExecutionStatus.COMPLETED.value,
+            ExecutionStatus.ERROR.value,
+        ]:
             logger.info(
-                f"File already completed. Skipping execution for execution_id: {context.execution_id}, "
+                f"File already in terminal state: {workflow_file_execution.status}. "
+                f"Skipping execution for execution_id: {context.execution_id}, "
                 f"file_execution_id: {workflow_file_execution.id}"
             )
 
+            # Return appropriate result based on terminal status
             return FileProcessingResult(
                 file_name=context.file_name,
                 file_execution_id=workflow_file_execution.id,
-                success=True,
-                error=None,
+                success=(
+                    workflow_file_execution.status == ExecutionStatus.COMPLETED.value
+                ),
+                error=(
+                    getattr(workflow_file_execution, "execution_error", None)
+                    if workflow_file_execution.status == ExecutionStatus.ERROR.value
+                    else None
+                ),
                 result=getattr(workflow_file_execution, "result", None),
                 metadata=getattr(workflow_file_execution, "metadata", None) or {},
             )

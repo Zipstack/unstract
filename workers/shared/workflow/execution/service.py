@@ -94,6 +94,11 @@ class WorkerWorkflowExecutionService:
         destination_start_time = start_time
         destination_end_time = start_time
 
+        # Configure TTL for COMPLETED stage (shorter TTL to optimize Redis memory)
+        completed_ttl = int(
+            os.environ.get("FILE_EXECUTION_TRACKER_COMPLETED_TTL_IN_SECOND", 300)
+        )
+
         try:
             logger.info(f"Executing workflow {workflow_id} for file {file_name}")
 
@@ -409,13 +414,6 @@ class WorkerWorkflowExecutionService:
                         ),
                     )
                     logger.info(f"Marked finalization as successful for {file_name}")
-
-                    # Use shorter TTL for COMPLETED stage to optimize Redis memory
-                    completed_ttl = int(
-                        os.environ.get(
-                            "FILE_EXECUTION_TRACKER_COMPLETED_TTL_IN_SECOND", 300
-                        )
-                    )
                     tracker.update_stage_status(
                         execution_id=execution_id,
                         file_execution_id=workflow_file_execution_id,
@@ -441,6 +439,17 @@ class WorkerWorkflowExecutionService:
                             status=FileExecutionStageStatus.FAILED,
                             error=error_msg,
                         ),
+                    )
+                    # Set COMPLETED:FAILED to mark file as done (prevents duplicate processing)
+                    tracker.update_stage_status(
+                        execution_id=execution_id,
+                        file_execution_id=workflow_file_execution_id,
+                        stage_status=FileExecutionStageData(
+                            stage=FileExecutionStage.COMPLETED,
+                            status=FileExecutionStageStatus.FAILED,
+                            error=error_msg,
+                        ),
+                        ttl_in_second=completed_ttl,
                     )
                     logger.info(f"Tracked failed execution for {file_name}: {error_msg}")
                 else:
