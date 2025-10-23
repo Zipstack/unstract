@@ -82,10 +82,10 @@ services:
       # The Web UI (enabled by --api.insecure=true)
       - "8080:8080"
     volumes:
-      # Universal socket mount - works with both Docker and Podman
-      # Podman rootless: /run/user/$UID/podman/podman.sock
-      # Docker: /var/run/docker.sock
-      - ${DOCKER_SOCKET:-${XDG_RUNTIME_DIR:-/run/user/1000}/podman/podman.sock}:/var/run/docker.sock
+      # Socket mount for container runtime (defaults to Docker)
+      # Docker: /var/run/docker.sock (default)
+      # Podman: Set DOCKER_SOCKET=${XDG_RUNTIME_DIR}/podman/podman.sock
+      - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
       # Proxy overrides for components run directly in Docker host
       - ./proxy_overrides.yaml:/proxy_overrides.yaml
     # Since any proxy overrides need to point to Docker host for relevant routes.

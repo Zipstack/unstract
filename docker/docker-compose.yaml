@@ -231,10 +231,10 @@ services:
       - ../runner/.env
     volumes:
       - ./workflow_data:/data
-      # Universal socket mount - works with both Docker and Podman
-      # Podman rootless: /run/user/$UID/podman/podman.sock
-      # Docker: /var/run/docker.sock
-      - ${DOCKER_SOCKET:-${XDG_RUNTIME_DIR:-/run/user/1000}/podman/podman.sock}:/var/run/docker.sock
+      # Socket mount for container runtime (defaults to Docker)
+      # Docker: /var/run/docker.sock (default)
+      # Podman: Set DOCKER_SOCKET=${XDG_RUNTIME_DIR}/podman/podman.sock
+      - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
     depends_on:
       - redis
       - rabbitmq
@@ -311,22 +311,8 @@ services:
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-file-processing-v2
     restart: unless-stopped
-    # command: ["file-processing"]
-    command:
-      [
-        ".venv/bin/celery",
-        "-A",
-        "worker",
-        "worker",
-        "--queues=file_processing,api_file_processing,file_processing_priority",
-        "--loglevel=INFO",
-        "--pool=prefork",
-        "--concurrency=4",
-        "--prefetch-multiplier=1",
-        "--without-gossip",
-        "--without-mingle",
-        "--without-heartbeat",
-      ]
+    entrypoint: .venv/bin/celery
+    command: "-A worker worker --queues=file_processing,api_file_processing,file_processing_priority --loglevel=INFO --pool=prefork --concurrency=4 --prefetch-multiplier=1 --without-gossip --without-mingle --without-heartbeat"
     ports:
       - "8087:8082"
     env_file:

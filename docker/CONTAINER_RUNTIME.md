@@ -1,22 +1,22 @@
 # Container Runtime Support (Docker & Podman)
 
-The Unstract docker-compose configuration supports both **Docker** and **Podman** automatically.
+The Unstract docker-compose configuration supports both **Docker** (default) and **Podman**.
 
-## Automatic Detection
+## Socket Detection
 
-By default, the configuration will automatically detect and use the appropriate socket:
-- **Podman rootless**: `/run/user/$UID/podman/podman.sock`
-- **Docker**: `/var/run/docker.sock`
+The configuration defaults to Docker and supports Podman via environment variable:
+- **Docker**: Default (`/var/run/docker.sock`) - no configuration needed
+- **Podman**: Set `DOCKER_SOCKET=${XDG_RUNTIME_DIR}/podman/podman.sock`
 
 ## Using Docker
 
-Just run docker-compose commands normally:
+Docker works out of the box with no additional configuration:
 
 ```bash
 VERSION=main docker-compose -f docker-compose.yaml up -d
 ```
 
-No environment variables needed - Docker socket at `/var/run/docker.sock` will be used automatically.
+The Docker socket at `/var/run/docker.sock` is used automatically.
 
 ## Using Podman
 
@@ -36,13 +36,16 @@ No environment variables needed - Docker socket at `/var/run/docker.sock` will b
 
 ### Run with Podman
 
+Set the `DOCKER_SOCKET` environment variable to point to Podman socket, then run podman-compose:
+
 ```bash
+export DOCKER_SOCKET=${XDG_RUNTIME_DIR}/podman/podman.sock
 VERSION=main podman-compose -f docker-compose.yaml up -d
 ```
 
-The Podman socket will be automatically detected via `$XDG_RUNTIME_DIR/podman/podman.sock`.
+**Note**: The `DOCKER_SOCKET` environment variable must be set to use Podman instead of the default Docker socket.
 
-## Manual Override
+## Custom Socket Path
 
 If you need to specify a custom socket path, set the `DOCKER_SOCKET` environment variable:
 
@@ -51,7 +54,7 @@ If you need to specify a custom socket path, set the `DOCKER_SOCKET` environment
 export DOCKER_SOCKET=/custom/path/docker.sock
 VERSION=main docker-compose -f docker-compose.yaml up -d
 
-# Example: Custom Podman socket location
+# Example: Alternative Podman socket location
 export DOCKER_SOCKET=/run/user/$(id -u)/podman/podman.sock
 VERSION=main podman-compose -f docker-compose.yaml up -d
 ```
@@ -114,12 +117,13 @@ This is the Traefik HTTP port for Podman rootless compatibility.
 
 ## Socket Path Priority
 
-The configuration uses this priority order:
+The configuration uses this simple priority:
 
-1. `$DOCKER_SOCKET` - if explicitly set
-2. `$XDG_RUNTIME_DIR/podman/podman.sock` - for Podman rootless
-3. `/run/user/1000/podman/podman.sock` - fallback for Podman
-4. Falls back to default compose behavior (typically `/var/run/docker.sock`)
+1. `$DOCKER_SOCKET` - if explicitly set (use this for Podman or custom paths)
+2. `/var/run/docker.sock` - default (Docker standard socket)
+
+**Docker**: No configuration needed - uses default socket
+**Podman**: Set `export DOCKER_SOCKET=${XDG_RUNTIME_DIR}/podman/podman.sock`
 
 ## Technical Details
 
@@ -127,17 +131,16 @@ The docker-compose files use this volume mount configuration:
 
 ```yaml
 volumes:
-  - ${DOCKER_SOCKET:-${XDG_RUNTIME_DIR:-/run/user/1000}/podman/podman.sock}:/var/run/docker.sock
+  - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
 ```
 
 This means:
-- If `DOCKER_SOCKET` is set → use that
-- Else if `XDG_RUNTIME_DIR` is set → use `$XDG_RUNTIME_DIR/podman/podman.sock`
-- Else → use `/run/user/1000/podman/podman.sock`
+- If `DOCKER_SOCKET` is set → use that path (for Podman or custom Docker socket)
+- Else → use `/var/run/docker.sock` (Docker default)
 
-For Docker, you can set:
+**For Podman users:**
 ```bash
-export DOCKER_SOCKET=/var/run/docker.sock
+export DOCKER_SOCKET=${XDG_RUNTIME_DIR}/podman/podman.sock
 ```
 
-But it's usually not necessary since Docker Compose will use `/var/run/docker.sock` by default when the variable is unset.
+This overrides the default Docker socket with the Podman socket path.
