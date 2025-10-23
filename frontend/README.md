@@ -323,7 +323,7 @@ server: {
   },
   hmr: {
     port: 3000,
-    clientPort: Number(process.env.WDS_SOCKET_PORT) || 3000,
+    clientPort: env.WDS_SOCKET_PORT ? Number(env.WDS_SOCKET_PORT) : 3000,
   },
 }
 ```
