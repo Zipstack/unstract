@@ -1,3 +1,4 @@
+name: ${COMPOSE_PROJECT_NAME:-unstract}
 include:
   - docker-compose-dev-essentials.yaml
 
