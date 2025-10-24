@@ -7,7 +7,7 @@ Inherits from RedisClient for basic Redis functionality.
 import logging
 from typing import Any
 
-from .redis_client import RedisClient
+from unstract.core.cache.redis_client import RedisClient
 
 logger = logging.getLogger(__name__)
 
