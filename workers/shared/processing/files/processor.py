@@ -181,21 +181,35 @@ class WorkflowFileExecutionHandler:
             f"Using pre-created workflow file execution: {context.workflow_file_execution_id}"
         )
 
-        # workflow_file_execution_object is guaranteed to be truthy (validated above)
-        workflow_file_execution = context.workflow_file_execution_object
+        # RACE CONDITION FIX: Fetch fresh status from DB instead of using cached object
+        # This prevents late-arriving workers from checking stale data and overwriting terminal status
+        workflow_file_execution = context.api_client.get_workflow_file_execution(
+            context.workflow_file_execution_id
+        )
 
-        # Check if file execution is already completed
-        if workflow_file_execution.status == ExecutionStatus.COMPLETED.value:
+        # Check if file execution is already in terminal state (COMPLETED or ERROR)
+        if workflow_file_execution.status in [
+            ExecutionStatus.COMPLETED.value,
+            ExecutionStatus.ERROR.value,
+        ]:
             logger.info(
-                f"File already completed. Skipping execution for execution_id: {context.execution_id}, "
+                f"File already in terminal state: {workflow_file_execution.status}. "
+                f"Skipping execution for execution_id: {context.execution_id}, "
                 f"file_execution_id: {workflow_file_execution.id}"
             )
 
+            # Return appropriate result based on terminal status
             return FileProcessingResult(
                 file_name=context.file_name,
                 file_execution_id=workflow_file_execution.id,
-                success=True,
-                error=None,
+                success=(
+                    workflow_file_execution.status == ExecutionStatus.COMPLETED.value
+                ),
+                error=(
+                    getattr(workflow_file_execution, "execution_error", None)
+                    if workflow_file_execution.status == ExecutionStatus.ERROR.value
+                    else None
+                ),
                 result=getattr(workflow_file_execution, "result", None),
                 metadata=getattr(workflow_file_execution, "metadata", None) or {},
             )
@@ -358,10 +372,8 @@ class WorkflowExecutionProcessor:
                     logger.info(
                         f"Updated file execution {context.workflow_file_execution_id} status to ERROR"
                     )
-                except Exception as status_error:
-                    logger.error(
-                        f"Failed to update file execution status: {status_error}"
-                    )
+                except Exception:
+                    logger.exception("Failed to update file execution status")
 
                 return FileProcessingResult(
                     file_name=context.file_name,
@@ -380,6 +392,21 @@ class WorkflowExecutionProcessor:
                 f"✓ Workflow execution completed successfully for {context.file_name}"
             )
 
+            # Check if this was a duplicate skip (destination not processed due to duplicate detection)
+            destination_processed = (
+                execution_result.metadata.destination_processed
+                if execution_result.metadata
+                else False
+            )
+            destination_error = (
+                execution_result.metadata.destination_error
+                if execution_result.metadata
+                else None
+            )
+
+            # Duplicate detection: destination not processed AND no error
+            is_duplicate = not destination_processed and not destination_error
+
             return FileProcessingResult(
                 file_name=context.file_name,
                 file_execution_id=context.workflow_file_execution_id,
@@ -390,12 +417,9 @@ class WorkflowExecutionProcessor:
                 if execution_result.metadata
                 else {},
                 execution_time=context.get_processing_duration(),
-                destination_processed=execution_result.metadata.destination_processed
-                if execution_result.metadata
-                else True,
-                destination_error=execution_result.metadata.destination_error
-                if execution_result.metadata
-                else None,
+                destination_processed=destination_processed,
+                destination_error=destination_error,
+                is_duplicate_skip=is_duplicate,
             )
 
         except Exception as execution_error:
@@ -491,7 +515,29 @@ class FileProcessor:
             f"🚀 Starting processing for file '{context.file_name}' ({current_file_idx + 1}/{total_files})",
         )
 
+        # RACE CONDITION FIX: Validate file execution status BEFORE updating to EXECUTING
+        # This prevents late-arriving workers from overwriting COMPLETED status
+        log_file_info(
+            workflow_logger,
+            workflow_file_execution_id,
+            f"✅ Validating execution status for '{context.file_name}'",
+        )
+
+        completed_result = WorkflowFileExecutionHandler.validate_workflow_file_execution(
+            context
+        )
+        if completed_result:
+            logger.info(f"File already completed: {context.file_name}")
+            log_file_processing_success(
+                workflow_logger, workflow_file_execution_id, context.file_name
+            )
+            # Return early with duplicate skip flag to signal no further processing needed
+            completed_result.is_duplicate_skip = True
+            return completed_result
+
         # Update file execution status to EXECUTING when processing starts (using common method)
+        # This only happens if validation passed (file not already completed)
+        # Note: Redis-based race condition checks happen at TOOL_EXECUTION and DESTINATION_PROCESSING stages
         context.api_client.update_file_status_to_executing(
             context.workflow_file_execution_id, context.file_name
         )
@@ -543,31 +589,15 @@ class FileProcessor:
 
                 return cached_result
 
-            # Step 2: Validate workflow file execution
-            log_file_info(
-                workflow_logger,
-                workflow_file_execution_id,
-                f"✅ Validating execution status for '{context.file_name}'",
-            )
-
-            completed_result = (
-                WorkflowFileExecutionHandler.validate_workflow_file_execution(context)
-            )
-            if completed_result:
-                logger.info(f"File already completed: {context.file_name}")
-                log_file_processing_success(
-                    workflow_logger, workflow_file_execution_id, context.file_name
-                )
-                return completed_result
-
-            # Step 3: Check file history (if enabled)
+            # Step 2: Check file history (if enabled)
+            # Note: Validation already done before status update to prevent race conditions
             log_file_info(
                 workflow_logger,
                 workflow_file_execution_id,
                 f"📜 Checking processing history for '{context.file_name}'",
             )
 
-            # Step 4: Execute workflow processing (always run tools first)
+            # Step 3: Execute workflow processing (always run tools first)
             log_file_info(
                 workflow_logger,
                 workflow_file_execution_id,
@@ -597,37 +627,47 @@ class FileProcessor:
                 # Check if destination processing failed
                 destination_error = workflow_result.destination_error
                 destination_processed = workflow_result.destination_processed
+                is_duplicate_skip = getattr(workflow_result, "is_duplicate_skip", False)
 
                 if destination_error or not destination_processed:
-                    # Log destination failure
-                    error_msg = destination_error or "Destination processing failed"
-                    log_file_error(
-                        workflow_logger,
-                        workflow_file_execution_id,
-                        f"❌ File '{context.file_name}' destination processing failed: {error_msg}",
-                    )
-
-                    # Update file execution status to ERROR
-                    logger.info(
-                        f"Updating file execution status to ERROR for {context.workflow_file_execution_id} due to destination failure"
-                    )
-                    try:
-                        context.api_client.update_file_execution_status(
-                            file_execution_id=context.workflow_file_execution_id,
-                            status=ExecutionStatus.ERROR.value,
-                            error_message=error_msg,
+                    # Skip UI error log and DB updates for duplicates (internal race condition, not user error)
+                    if not is_duplicate_skip:
+                        # Log destination failure to UI
+                        error_msg = destination_error or "Destination processing failed"
+                        log_file_error(
+                            workflow_logger,
+                            workflow_file_execution_id,
+                            f"❌ File '{context.file_name}' destination processing failed: {error_msg}",
                         )
+
+                        # Update file execution status to ERROR
                         logger.info(
-                            f"Updated file execution {context.workflow_file_execution_id} status to ERROR"
+                            f"Updating file execution status to ERROR for {context.workflow_file_execution_id} due to destination failure"
                         )
-                    except Exception as status_error:
-                        logger.error(
-                            f"Failed to update file execution status: {status_error}"
-                        )
+                        try:
+                            context.api_client.update_file_execution_status(
+                                file_execution_id=context.workflow_file_execution_id,
+                                status=ExecutionStatus.ERROR.value,
+                                error_message=error_msg,
+                            )
+                            logger.info(
+                                f"Updated file execution {context.workflow_file_execution_id} status to ERROR"
+                            )
+                        except Exception:
+                            logger.exception("Failed to update file execution status")
 
-                    # Update workflow result since destination failed
-                    workflow_result.success = False
-                    workflow_result.error = error_msg
+                        # Update workflow result since destination failed
+                        workflow_result.success = False
+                        workflow_result.error = error_msg
+                    else:
+                        # Debug log for duplicate detection (internal use only)
+                        logger.info(
+                            f"DUPLICATE SKIP: File '{context.file_name}' identified as duplicate in processor. "
+                            f"destination_processed=False, destination_error=None, "
+                            f"file_execution_id={context.workflow_file_execution_id}. "
+                            f"Skipping UI error log and status updates - this is an internal race condition, not a user-facing error. "
+                            f"First worker will handle all status updates."
+                        )
                 else:
                     log_file_info(
                         workflow_logger,
@@ -639,7 +679,7 @@ class FileProcessor:
             return workflow_result
 
         except Exception as e:
-            logger.error(f"File processing failed for {context.file_name}: {e}")
+            logger.exception(f"File processing failed for {context.file_name}")
 
             # Send file processing error log to UI
             log_file_processing_error(

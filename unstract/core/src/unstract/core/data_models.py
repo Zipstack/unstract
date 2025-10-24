@@ -861,10 +861,10 @@ class WorkflowFileExecutionData:
     id: str | uuid.UUID
     workflow_execution_id: str | uuid.UUID
     file_name: str
-    file_path: str
     file_size: int
     file_hash: str
     status: str = ExecutionStatus.PENDING.value
+    file_path: str | None = None
     provider_file_uuid: str | None = None
     mime_type: str = ""
     fs_metadata: dict[str, Any] = field(default_factory=dict)
@@ -883,8 +883,7 @@ class WorkflowFileExecutionData:
         # Validate required fields
         if not self.file_name:
             raise ValueError("file_name is required")
-        if not self.file_path:
-            raise ValueError("file_path is required")
+        # file_path is optional - None for API workflows or when fetching status only
         # file_hash can be empty initially - gets populated during file processing with SHA256 hash
 
     def to_dict(self) -> dict[str, Any]:
@@ -904,7 +903,7 @@ class WorkflowFileExecutionData:
             id=data["id"],
             workflow_execution_id=data["workflow_execution_id"],
             file_name=data["file_name"],
-            file_path=data["file_path"],
+            file_path=data.get("file_path"),
             file_size=data.get("file_size", 0),
             file_hash=data["file_hash"],
             status=data.get("status", ExecutionStatus.PENDING.value),

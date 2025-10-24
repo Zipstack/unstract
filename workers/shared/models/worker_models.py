@@ -366,6 +366,9 @@ class WorkerCeleryConfig:
             # Connection settings
             "broker_url": broker_url,
             "result_backend": result_backend,
+            "broker_heartbeat": get_celery_setting(
+                "BROKER_HEARTBEAT", self.worker_type, 30, int
+            ),
             # Task routing
             "task_routes": self.task_routing.to_celery_config(),
             # Serialization (configurable from env)

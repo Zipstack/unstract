@@ -14,6 +14,7 @@ from shared.enums.status_enums import FileProcessingStatus
 from unstract.connectors.databases import connectors as db_connectors
 from unstract.connectors.databases.exceptions import UnstractDBConnectorException
 from unstract.connectors.databases.unstract_db import UnstractDB
+from unstract.connectors.databases.utils import sanitize_floats_for_database
 from unstract.connectors.exceptions import ConnectorError
 
 from ..logging import WorkerLogger
@@ -292,7 +293,9 @@ class WorkerDatabaseUtils:
         # Add metadata with safe JSON serialization
         if metadata and has_metadata_col:
             try:
-                values[TableColumns.METADATA] = json.dumps(metadata)
+                # Sanitize floats for database JSON compatibility (BigQuery, PostgreSQL, etc.)
+                sanitized_metadata = sanitize_floats_for_database(metadata)
+                values[TableColumns.METADATA] = json.dumps(sanitized_metadata)
             except (TypeError, ValueError) as e:
                 logger.error(f"Failed to serialize metadata to JSON: {e}")
                 # Create a safe fallback error object
@@ -358,9 +361,11 @@ class WorkerDatabaseUtils:
             if has_v2_col:
                 values[v2_col_name] = wrapped_dict
         else:
-            values[single_column_name] = data
+            # Sanitize floats for database JSON compatibility
+            sanitized_data = sanitize_floats_for_database(data)
+            values[single_column_name] = sanitized_data
             if has_v2_col:
-                values[v2_col_name] = data
+                values[v2_col_name] = sanitized_data
 
     @staticmethod
     def _process_split_column_mode(
@@ -368,12 +373,16 @@ class WorkerDatabaseUtils:
     ) -> None:
         """Process data for split column mode."""
         if isinstance(data, dict):
-            values.update(data)
+            # Sanitize floats for database JSON compatibility
+            sanitized_data = sanitize_floats_for_database(data)
+            values.update(sanitized_data)
         elif isinstance(data, str):
             values[single_column_name] = data
         else:
             try:
-                values[single_column_name] = json.dumps(data)
+                # Sanitize floats for database JSON compatibility before serialization
+                sanitized_data = sanitize_floats_for_database(data)
+                values[single_column_name] = json.dumps(sanitized_data)
             except (TypeError, ValueError) as e:
                 logger.error(
                     f"Failed to serialize data to JSON in split column mode: {e}"

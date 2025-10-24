@@ -330,7 +330,7 @@ class InternalAPIClient(CachedAPIClientMixin):
             request_data = {
                 "workflow_id": str(workflow_id),
                 "statuses": ["PENDING", "EXECUTING"],
-                "exclude_execution_id": str(current_execution_id)
+                "current_execution_id": str(current_execution_id)
                 if current_execution_id
                 else None,
             }
