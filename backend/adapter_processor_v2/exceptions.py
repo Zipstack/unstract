@@ -1,7 +1,7 @@
 from rest_framework.exceptions import APIException
+from unstract.flags.feature_flag import check_feature_flag_status
 
 from adapter_processor_v2.constants import AdapterKeys
-from unstract.flags.feature_flag import check_feature_flag_status
 
 if check_feature_flag_status("sdk1"):
     from unstract.sdk1.exceptions import SdkError
