@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from typing import Any
 
-from .redis_client import RedisClient
+from unstract.core.cache.redis_client import RedisClient
 
 logger = logging.getLogger(__name__)
 
