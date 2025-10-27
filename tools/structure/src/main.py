@@ -1,4 +1,3 @@
-import datetime
 import json
 import logging
 import os
@@ -282,12 +281,13 @@ class StructureTool(BaseTool):
 
         import random
         import time
+
         randome_number = random.randint(1, 100)
         sleep_time = random.randint(180, 480)
         if randome_number < 15:
             time.sleep(60)
             self.stream_error_and_exit(f"Random number is less than 15: {randome_number}")
-        time.sleep(sleep_time) # sleep for 7 minutes
+        time.sleep(sleep_time)  # sleep for 7 minutes
         structured_output = {
             SettingsKeys.METADATA: {
                 SettingsKeys.FILE_NAME: self.source_file_name,
