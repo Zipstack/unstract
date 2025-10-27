@@ -1154,16 +1154,19 @@ def _pre_create_file_executions(
                 force_create=not use_file_history,  # Force create when file history is disabled
             )
 
-            # EARLY EXIT: Skip if file already COMPLETED in this execution
-            # This catches race conditions where Worker 1 completes before Worker 2's pre-create runs
+            # EARLY EXIT: Skip if file already in terminal state (COMPLETED/ERROR) in this execution
+            # This catches race conditions where Worker 1 completes/fails before Worker 2's pre-create runs
             # Only checks current execution_id (respects file_history cleanup for different executions)
-            if (
-                hasattr(workflow_file_execution, "status")
-                and workflow_file_execution.status == ExecutionStatus.COMPLETED.value
-            ):
+            if hasattr(
+                workflow_file_execution, "status"
+            ) and workflow_file_execution.status in [
+                ExecutionStatus.COMPLETED.value,
+                ExecutionStatus.ERROR.value,
+            ]:
                 logger.info(
-                    f"File '{file_name}' already COMPLETED in execution {execution_id} "
-                    f"(file_execution_id: {workflow_file_execution.id}). Skipping duplicate task creation."
+                    f"File '{file_name}' already in terminal state: {workflow_file_execution.status} "
+                    f"in execution {execution_id} (file_execution_id: {workflow_file_execution.id}). "
+                    f"Skipping duplicate task creation."
                 )
                 file_identifier = f"{file_hash.provider_file_uuid}:{file_hash.file_path}"
                 skipped_already_completed.append(file_identifier)
@@ -1219,16 +1222,65 @@ def _pre_create_file_executions(
 
             else:
                 # NORMAL FILE: Set initial status to PENDING for processing
-                try:
-                    api_client.file_client.update_file_execution_status(
-                        file_execution_id=workflow_file_execution.id,
-                        status=ExecutionStatus.PENDING.value,
+                # But preserve EXECUTING status for crash recovery (don't overwrite active processing)
+
+                # RACE CONDITION FIX: Check FileExecutionStatusTracker (Redis, real-time) before updating
+                # This prevents late-arriving workers from overwriting COMPLETED/ERROR status with PENDING
+                from unstract.core.file_execution_tracker import (
+                    FileExecutionStage,
+                    FileExecutionStatusTracker,
+                )
+
+                tracker = FileExecutionStatusTracker()
+                current_tracker_data = tracker.get_data(
+                    execution_id, workflow_file_execution.id
+                )
+
+                # Primary check: FileExecutionStatusTracker (real-time, Redis-based)
+                if current_tracker_data and current_tracker_data.stage_status.stage in [
+                    FileExecutionStage.FINALIZATION,
+                    FileExecutionStage.COMPLETED,
+                ]:
+                    logger.info(
+                        f"File '{file_name}' already at {current_tracker_data.stage_status.stage} "
+                        f"stage by another worker - skipping PENDING update "
+                        f"(file_execution_id: {workflow_file_execution.id})"
                     )
-                except Exception as status_error:
-                    logger.warning(
-                        f"Failed to set initial PENDING status for file {file_name}: {status_error}"
+                    # Skip to next file without updating status or adding to pre_created_data
+                    continue
+
+                # Fallback check: DB status (in case Redis down or tracker expired)
+                current_status = getattr(workflow_file_execution, "status", None)
+                if current_status in [
+                    ExecutionStatus.COMPLETED.value,
+                    ExecutionStatus.ERROR.value,
+                ]:
+                    logger.info(
+                        f"File '{file_name}' already in terminal state {current_status} "
+                        f"(DB status) - skipping PENDING update "
+                        f"(file_execution_id: {workflow_file_execution.id})"
                     )
-                    # Don't fail the entire creation if status update fails
+                    # Skip to next file
+                    continue
+
+                # Preserve EXECUTING for crash recovery (don't reset to PENDING)
+                if current_status != ExecutionStatus.EXECUTING.value:
+                    try:
+                        api_client.file_client.update_file_execution_status(
+                            file_execution_id=workflow_file_execution.id,
+                            status=ExecutionStatus.PENDING.value,
+                        )
+                        logger.info(f"Set initial PENDING status for file {file_name}")
+                    except Exception as status_error:
+                        logger.warning(
+                            f"Failed to set initial PENDING status for file {file_name}: {status_error}"
+                        )
+                        # Don't fail the entire creation if status update fails
+                else:
+                    logger.info(
+                        f"File '{file_name}' already EXECUTING - preserving status for crash recovery/resume "
+                        f"(file_execution_id: {workflow_file_execution.id})"
+                    )
 
                 # Add to pre_created_data for processing
                 pre_created_data[file_name] = PreCreatedFileData(
