@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from shared.enums.worker_enums import WorkerType
 from shared.infrastructure import initialize_worker_infrastructure
 from shared.infrastructure.config.builder import WorkerBuilder
+from shared.models.worker_models import get_celery_setting
 
 # Determine worker type from environment FIRST
 WORKER_TYPE = os.environ.get("WORKER_TYPE", "general")
@@ -63,20 +64,34 @@ class HeartbeatKeeper(bootsteps.StartStopStep):
 
     requires = {"celery.worker.components:Pool"}
 
-    def __init__(self, worker, **kwargs):
+    def __init__(self, worker, worker_type, **kwargs):
         self.worker = worker
+        self.worker_type = worker_type
         self.heartbeat_thread = None
         self.should_stop = threading.Event()
         self._shutdown_in_progress = False
 
     def start(self, worker):
         """Start heartbeat keeper thread - remains dormant until warm shutdown"""
-        # Get configuration for display
-        broker_heartbeat = int(os.environ.get("CELERY_BROKER_HEARTBEAT", "10"))
-        shutdown_interval = int(
-            os.environ.get(
-                "HEARTBEAT_KEEPER_SHUTDOWN_INTERVAL", str(max(1, broker_heartbeat // 5))
-            )
+        # Load all configuration once and store as instance variables
+        # Read broker_heartbeat from actual Celery configuration (single source of truth)
+        self.broker_heartbeat = self.worker.app.conf.broker_heartbeat
+
+        # Get HeartbeatKeeper-specific configuration using hierarchical config system
+        self.shutdown_interval = get_celery_setting(
+            "HEARTBEAT_KEEPER_SHUTDOWN_INTERVAL",
+            self.worker_type,
+            max(1, self.broker_heartbeat // 5),
+            int,
+        )
+        self.normal_check_interval = get_celery_setting(
+            "HEARTBEAT_KEEPER_CHECK_INTERVAL",
+            self.worker_type,
+            self.broker_heartbeat,
+            int,
+        )
+        self.max_shutdown_errors = get_celery_setting(
+            "HEARTBEAT_KEEPER_MAX_ERRORS", self.worker_type, 10, int
         )
 
         logger.info(
@@ -86,7 +101,7 @@ class HeartbeatKeeper(bootsteps.StartStopStep):
             "HeartbeatKeeper: Will remain dormant during normal operation - Celery handles heartbeats"
         )
         logger.info(
-            f"HeartbeatKeeper: Will activate during warm shutdown (interval: {shutdown_interval}s, broker timeout: {broker_heartbeat}s)"
+            f"HeartbeatKeeper: Will activate during warm shutdown (interval: {self.shutdown_interval}s, broker timeout: {self.broker_heartbeat}s)"
         )
 
         self.heartbeat_thread = threading.Thread(
@@ -114,30 +129,11 @@ class HeartbeatKeeper(bootsteps.StartStopStep):
 
     def _heartbeat_loop(self):
         """Maintain heartbeats ONLY during warm shutdown - dormant during normal operation"""
-        # Get RabbitMQ heartbeat interval from environment (default 10 seconds)
-        broker_heartbeat = int(os.environ.get("CELERY_BROKER_HEARTBEAT", "10"))
-
-        # Shutdown interval should be less than half of broker heartbeat timeout
-        # to ensure we send heartbeats frequently enough during shutdown
-        shutdown_interval = int(
-            os.environ.get(
-                "HEARTBEAT_KEEPER_SHUTDOWN_INTERVAL",
-                str(
-                    max(1, broker_heartbeat // 5)
-                ),  # Default to 1/5 of broker heartbeat (e.g., 2s for 10s heartbeat)
-            )
-        )
-
-        # Normal check interval - how often to check if shutdown started
-        normal_check_interval = int(
-            os.environ.get(
-                "HEARTBEAT_KEEPER_CHECK_INTERVAL",
-                str(broker_heartbeat),  # Default to same as broker heartbeat
-            )
-        )
-
-        # Maximum consecutive errors before logging connection closed
-        max_shutdown_errors = int(os.environ.get("HEARTBEAT_KEEPER_MAX_ERRORS", "10"))
+        # Use configuration loaded in start() - no re-reading needed
+        broker_heartbeat = self.broker_heartbeat
+        shutdown_interval = self.shutdown_interval
+        normal_check_interval = self.normal_check_interval
+        max_shutdown_errors = self.max_shutdown_errors
 
         consecutive_shutdown_errors = 0
         last_heartbeat = time.time()
@@ -219,6 +215,24 @@ class HeartbeatKeeper(bootsteps.StartStopStep):
 # ============= END OF HEARTBEATKEEPER CLASS =============
 
 
+# ============= WORKER-TYPE-AWARE HEARTBEATKEEPER =============
+class WorkerTypeAwareHeartbeatKeeper(HeartbeatKeeper):
+    """HeartbeatKeeper with worker_type from module context.
+
+    This wrapper class captures the worker_type from the module-level variable
+    and passes it to HeartbeatKeeper's __init__. This allows Celery's bootstep
+    system to instantiate it with just (worker, **kwargs) while still providing
+    the worker_type needed for configuration.
+    """
+
+    def __init__(self, worker, **kwargs):
+        # worker_type is captured from module scope via closure
+        super().__init__(worker, worker_type, **kwargs)
+
+
+# ============= END OF WORKER-TYPE-AWARE HEARTBEATKEEPER =============
+
+
 logger.info("🚀 Unified Worker Entry Point - Using WorkerBuilder System")
 logger.info(f"📋 Worker Type: {WORKER_TYPE}")
 logger.info(f"🐳 Running from: {os.getcwd()}")
@@ -232,13 +246,14 @@ app, config = WorkerBuilder.build_celery_app(worker_type)
 
 # ============= REGISTER HEARTBEATKEEPER HERE =============
 # Check if HeartbeatKeeper should be enabled (default: enabled)
-heartbeat_keeper_enabled = (
-    os.environ.get("HEARTBEAT_KEEPER_ENABLED", "true").lower() == "true"
+# Uses hierarchical config system: CLI args > worker-specific > global > default
+heartbeat_keeper_enabled = get_celery_setting(
+    "HEARTBEAT_KEEPER_ENABLED", worker_type, True, bool
 )
 
 if heartbeat_keeper_enabled:
-    # Register the HeartbeatKeeper bootstep
-    app.steps["worker"].add(HeartbeatKeeper)
+    # Register the HeartbeatKeeper bootstep (class defined at module level)
+    app.steps["worker"].add(WorkerTypeAwareHeartbeatKeeper)
     logger.info(
         "✅ HeartbeatKeeper registered (dormant until warm shutdown) to prevent task duplication"
     )
