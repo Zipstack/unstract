@@ -6,13 +6,13 @@ from account_v2.models import User
 from django.db import models
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
+from unstract.flags.feature_flag import check_feature_flag_status
 from utils.models.base_model import BaseModel
 from utils.user_context import UserContext
 
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2.prompt_ide_base_tool import PromptIdeBaseTool
 from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManager
-from unstract.flags.feature_flag import check_feature_flag_status
 
 if check_feature_flag_status("sdk1"):
     from unstract.sdk1.constants import LogLevel

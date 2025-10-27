@@ -5,7 +5,6 @@ from llama_index.core.query_engine import RouterQueryEngine
 from llama_index.core.selectors import LLMSingleSelector
 from llama_index.core.tools import QueryEngineTool, ToolMetadata
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
-
 from unstract.prompt_service.core.retrievers.base_retriever import BaseRetriever
 from unstract.prompt_service.exceptions import RetrievalError
 

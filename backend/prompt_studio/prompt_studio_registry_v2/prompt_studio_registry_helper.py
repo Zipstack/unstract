@@ -5,6 +5,7 @@ from account_v2.models import User
 from adapter_processor_v2.models import AdapterInstance
 from django.conf import settings
 from django.db import IntegrityError
+from unstract.tool_registry.dto import Properties, Spec, Tool
 
 from prompt_studio.modifier_loader import ModifierConfig
 from prompt_studio.modifier_loader import load_plugins as load_modifier_plugins
@@ -15,7 +16,6 @@ from prompt_studio.prompt_studio_output_manager_v2.models import (
     PromptStudioOutputManager,
 )
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
-from unstract.tool_registry.dto import Properties, Spec, Tool
 
 from .constants import JsonSchemaKey, PromptStudioRegistryKeys
 from .exceptions import (
