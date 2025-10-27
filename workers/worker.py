@@ -127,89 +127,175 @@ class HeartbeatKeeper(bootsteps.StartStopStep):
         if self.heartbeat_thread and self.heartbeat_thread.is_alive():
             self.heartbeat_thread.join(timeout=1)  # Short timeout since daemon thread
 
+    def _is_connection_ready(self) -> tuple[bool, any]:
+        """Check if worker connection is available and ready for heartbeat.
+
+        Returns:
+            tuple: (is_ready, consumer_or_none)
+        """
+        if not hasattr(self.worker, "consumer") or not self.worker.consumer:
+            return (False, None)
+
+        consumer = self.worker.consumer
+        if not consumer.connection or not consumer.connection.connected:
+            return (False, None)
+
+        return (True, consumer)
+
+    def _send_heartbeat_with_error_handling(
+        self, consumer: any, consecutive_errors: int, last_heartbeat: float
+    ) -> tuple[int, float]:
+        """Send heartbeat and handle errors.
+
+        Args:
+            consumer: Celery consumer instance
+            consecutive_errors: Current count of consecutive errors
+            last_heartbeat: Timestamp of last successful heartbeat
+
+        Returns:
+            tuple: (updated_consecutive_errors, updated_last_heartbeat)
+        """
+        current_time = time.time()
+        elapsed = current_time - last_heartbeat
+
+        try:
+            # Use heartbeat_check with rate=0 to force immediate send without validation
+            consumer.connection.heartbeat_check(rate=0)
+            logger.info(
+                f"HeartbeatKeeper: Heartbeat sent during shutdown (elapsed: {elapsed:.1f}s)"
+            )
+            return (0, current_time)  # Reset errors on success, update timestamp
+
+        except Exception as hb_error:
+            consecutive_errors += 1
+            # During shutdown, we expect some errors - log but continue
+            if "Too many heartbeats missed" in str(hb_error):
+                logger.warning(
+                    f"HeartbeatKeeper: Connection degraded during shutdown "
+                    f"(attempt {consecutive_errors}), continuing..."
+                )
+            else:
+                logger.warning(
+                    f"HeartbeatKeeper: Heartbeat error during shutdown: {hb_error}"
+                )
+
+            # Don't break the loop during shutdown - keep trying
+            if consecutive_errors > self.max_shutdown_errors:
+                logger.info(
+                    "HeartbeatKeeper: Connection appears closed, but will continue attempts"
+                )
+
+            return (consecutive_errors, last_heartbeat)  # Keep old timestamp on error
+
+    def _attempt_shutdown_heartbeat(
+        self, consecutive_errors: int, last_heartbeat: float
+    ) -> tuple[int, float]:
+        """Attempt to send heartbeat during shutdown with full error handling.
+
+        Args:
+            consecutive_errors: Current count of consecutive errors
+            last_heartbeat: Timestamp of last successful heartbeat
+
+        Returns:
+            tuple: (updated_consecutive_errors, updated_last_heartbeat)
+        """
+        try:
+            is_ready, consumer = self._is_connection_ready()
+            if not is_ready:
+                return (consecutive_errors, last_heartbeat)
+
+            return self._send_heartbeat_with_error_handling(
+                consumer, consecutive_errors, last_heartbeat
+            )
+
+        except OSError as conn_error:
+            logger.info(
+                f"HeartbeatKeeper: Expected connection issue during shutdown: {conn_error}"
+            )
+        except Exception as e:
+            logger.debug(f"HeartbeatKeeper: Error during shutdown (continuing): {e}")
+
+        return (consecutive_errors, last_heartbeat)
+
+    def _wait_in_standby_mode(self, logged_standby: bool) -> tuple[bool, bool]:
+        """Handle standby mode during normal operation.
+
+        Args:
+            logged_standby: Whether we've already logged standby status
+
+        Returns:
+            tuple: (should_continue_loop, updated_logged_standby)
+        """
+        if not logged_standby:
+            logger.info(
+                "HeartbeatKeeper: In standby mode - Celery's heartbeat thread is active"
+            )
+            logged_standby = True
+
+        # Wait and check periodically if shutdown has started
+        self.should_stop.wait(self.normal_check_interval)
+        return (True, logged_standby)
+
+    def _handle_shutdown_transition(
+        self, logged_standby: bool, last_heartbeat: float
+    ) -> tuple[bool, float]:
+        """Handle transition from standby to active shutdown mode.
+
+        Args:
+            logged_standby: Whether we're currently in logged standby state
+            last_heartbeat: Current last heartbeat timestamp
+
+        Returns:
+            tuple: (updated_logged_standby, updated_last_heartbeat)
+        """
+        if logged_standby:
+            logger.warning(
+                "HeartbeatKeeper: Taking over heartbeat duties from Celery during warm shutdown"
+            )
+            logged_standby = False
+            last_heartbeat = time.time()  # Reset timer when we start
+
+        return (logged_standby, last_heartbeat)
+
     def _heartbeat_loop(self):
         """Maintain heartbeats ONLY during warm shutdown - dormant during normal operation"""
-        # Use configuration loaded in start() - no re-reading needed
-        broker_heartbeat = self.broker_heartbeat
-        shutdown_interval = self.shutdown_interval
-        normal_check_interval = self.normal_check_interval
-        max_shutdown_errors = self.max_shutdown_errors
-
+        # Initialize state variables
         consecutive_shutdown_errors = 0
         last_heartbeat = time.time()
         logged_standby = False
 
         # Log the configuration on startup (debug level to avoid noise)
         logger.debug(
-            f"HeartbeatKeeper config: shutdown_interval={shutdown_interval}s, "
-            f"check_interval={normal_check_interval}s, "
-            f"broker_heartbeat={broker_heartbeat}s, "
-            f"max_errors={max_shutdown_errors}"
+            f"HeartbeatKeeper config: shutdown_interval={self.shutdown_interval}s, "
+            f"check_interval={self.normal_check_interval}s, "
+            f"broker_heartbeat={self.broker_heartbeat}s, "
+            f"max_errors={self.max_shutdown_errors}"
         )
 
         while not self.should_stop.is_set():
             # During normal operation - just sleep, let Celery handle heartbeats
             if not self._shutdown_in_progress:
-                if not logged_standby:
-                    logger.info(
-                        "HeartbeatKeeper: In standby mode - Celery's heartbeat thread is active"
-                    )
-                    logged_standby = True
-                # Just wait and check periodically if shutdown has started
-                self.should_stop.wait(normal_check_interval)
-                continue
-
-            # Shutdown detected - take over heartbeat duties from Celery
-            if logged_standby:
-                logger.warning(
-                    "HeartbeatKeeper: Taking over heartbeat duties from Celery during warm shutdown"
+                should_continue, logged_standby = self._wait_in_standby_mode(
+                    logged_standby
                 )
-                logged_standby = False
-                last_heartbeat = time.time()  # Reset timer when we start
+                if should_continue:
+                    continue
+
+            # Handle transition from standby to active shutdown mode
+            logged_standby, last_heartbeat = self._handle_shutdown_transition(
+                logged_standby, last_heartbeat
+            )
 
             # Active heartbeat sending during shutdown
-            try:
-                if hasattr(self.worker, "consumer") and self.worker.consumer:
-                    consumer = self.worker.consumer
-                    if consumer.connection and consumer.connection.connected:
-                        current_time = time.time()
-                        elapsed = current_time - last_heartbeat
-
-                        try:
-                            # Use heartbeat_check with rate=0 to force immediate send without validation
-                            consumer.connection.heartbeat_check(rate=0)
-                            logger.info(
-                                f"HeartbeatKeeper: Heartbeat sent during shutdown (elapsed: {elapsed:.1f}s)"
-                            )
-                            consecutive_shutdown_errors = 0
-                            last_heartbeat = current_time
-
-                        except Exception as hb_error:
-                            consecutive_shutdown_errors += 1
-                            # During shutdown, we expect some errors - log but continue
-                            if "Too many heartbeats missed" in str(hb_error):
-                                logger.warning(
-                                    f"HeartbeatKeeper: Connection degraded during shutdown (attempt {consecutive_shutdown_errors}), continuing..."
-                                )
-                            else:
-                                logger.warning(
-                                    f"HeartbeatKeeper: Heartbeat error during shutdown: {hb_error}"
-                                )
-                            # Don't break the loop during shutdown - keep trying
-                            if consecutive_shutdown_errors > max_shutdown_errors:
-                                logger.info(
-                                    "HeartbeatKeeper: Connection appears closed, but will continue attempts"
-                                )
-
-            except (ConnectionError, OSError) as conn_error:
-                logger.debug(
-                    f"HeartbeatKeeper: Expected connection issue during shutdown: {conn_error}"
-                )
-            except Exception as e:
-                logger.debug(f"HeartbeatKeeper: Error during shutdown (continuing): {e}")
+            (
+                consecutive_shutdown_errors,
+                last_heartbeat,
+            ) = self._attempt_shutdown_heartbeat(
+                consecutive_shutdown_errors, last_heartbeat
+            )
 
             # Short wait during shutdown for frequent heartbeats
-            self.should_stop.wait(shutdown_interval)
+            self.should_stop.wait(self.shutdown_interval)
 
 
 # ============= END OF HEARTBEATKEEPER CLASS =============
