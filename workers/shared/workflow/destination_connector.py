@@ -16,6 +16,7 @@ import base64
 import json
 import os
 import time
+import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -33,6 +34,13 @@ from unstract.connectors.connectorkit import Connectorkit
 from unstract.connectors.exceptions import ConnectorError
 from unstract.core.data_models import ConnectionType as CoreConnectionType
 from unstract.core.data_models import FileHashData
+from unstract.core.exceptions import FileExecutionStageException
+from unstract.core.file_execution_tracker import (
+    FileExecutionStage,
+    FileExecutionStageData,
+    FileExecutionStageStatus,
+    FileExecutionStatusTracker,
+)
 from unstract.filesystem import FileStorageType, FileSystem
 from unstract.sdk.constants import ToolExecKey
 from unstract.sdk.tool.mime_types import EXT_MIME_MAP
@@ -304,6 +312,133 @@ class WorkerDestinationConnector:
 
         return ProcessingResult(tool_execution_result=tool_result, metadata=metadata)
 
+    def _check_and_acquire_destination_lock(
+        self, exec_ctx: ExecutionContext, file_ctx: FileContext
+    ) -> bool:
+        """Check if destination already processed and atomically acquire lock using Redis SET NX.
+
+        Returns:
+            bool: True if lock acquired successfully, False if already processed (duplicate)
+
+        This method provides duplicate prevention using Redis SET NX for atomic lock:
+        1. Check if DESTINATION_PROCESSING, FINALIZATION, or COMPLETED stage already exists
+        2. If yes, this is a duplicate attempt (e.g., from worker restart) -> skip
+        3. If no, atomically acquire lock using Redis SET ... NX (single atomic operation)
+        4. If lock acquisition succeeds, set DESTINATION_PROCESSING stage with longer TTL
+        5. If lock acquisition fails, another worker has the lock -> skip
+        """
+        try:
+            tracker = FileExecutionStatusTracker()
+
+            # Get TTL values from environment
+            LOCK_TTL = int(
+                os.environ.get("DESTINATION_PROCESSING_LOCK_TTL_IN_SECOND", 120)
+            )
+            STAGE_TTL = int(
+                os.environ.get("DESTINATION_PROCESSING_STAGE_TTL_IN_SECOND", 600)
+            )
+
+            # Get lock key for atomic operations
+            lock_key = tracker.get_destination_lock_key(
+                exec_ctx.execution_id, exec_ctx.file_execution_id
+            )
+            lock_token = str(uuid.uuid4())  # Unique token for debugging
+
+            # STEP 1: Try to acquire lock atomically (SOURCE OF TRUTH)
+            # This is atomic - if lock exists, another worker is processing
+            logger.info(
+                f"Attempting to acquire destination lock for file '{file_ctx.file_name}' "
+                f"(lock_key={lock_key}, lock_ttl={LOCK_TTL}s, stage_ttl={STAGE_TTL}s)"
+            )
+
+            lock_acquired = tracker.redis_client.set(
+                lock_key, lock_token, nx=True, ex=LOCK_TTL
+            )
+
+            # STEP 2: If lock acquisition failed, another worker is processing - WAIT
+            if not lock_acquired:
+                logger.info(
+                    f"Lock already held by another worker for file '{file_ctx.file_name}'. "
+                    f"Waiting for lock release to prevent premature chord cleanup (max {LOCK_TTL}s)..."
+                )
+
+                wait_start = time.time()
+                max_wait = min(LOCK_TTL, 120)  # Wait up to lock TTL or 120s
+
+                # Poll until lock released or timeout
+                while time.time() - wait_start < max_wait:
+                    # Check if lock released
+                    if not tracker.redis_client.exists(lock_key):
+                        wait_duration = time.time() - wait_start
+                        # Lock released BEFORE timeout → Other worker finished (success or error) → Skip
+                        logger.info(
+                            f"Lock released for '{file_ctx.file_name}' after {wait_duration:.1f}s - "
+                            f"other worker completed processing. Skipping as duplicate."
+                        )
+                        return False  # Skip immediately
+
+                    time.sleep(2)  # Poll every 2 seconds
+
+                # STEP 3: After wait, try to acquire lock again
+                lock_acquired = tracker.redis_client.set(
+                    lock_key, lock_token, nx=True, ex=LOCK_TTL
+                )
+
+                if not lock_acquired:
+                    # Still can't acquire lock (timeout or another worker grabbed it)
+                    if tracker.redis_client.exists(lock_key):
+                        logger.warning(
+                            f"Lock still held after {max_wait}s timeout for '{file_ctx.file_name}'. "
+                            f"Another worker may have acquired it. Skipping as duplicate."
+                        )
+                    else:
+                        logger.warning(
+                            f"Failed to acquire lock for '{file_ctx.file_name}' after wait. "
+                            f"Another worker may have grabbed it first. Skipping as duplicate."
+                        )
+                    return False  # Skip
+
+            # Lock acquired successfully - now set DESTINATION_PROCESSING stage
+            logger.info(
+                f"Lock acquired successfully for file '{file_ctx.file_name}' (token={lock_token})"
+            )
+
+            try:
+                tracker.update_stage_status(
+                    exec_ctx.execution_id,
+                    exec_ctx.file_execution_id,
+                    FileExecutionStageData(
+                        stage=FileExecutionStage.DESTINATION_PROCESSING,
+                        status=FileExecutionStageStatus.IN_PROGRESS,
+                    ),
+                    ttl_in_second=STAGE_TTL,  # Use longer TTL for stage tracker
+                )
+                logger.info(
+                    f"Successfully set DESTINATION_PROCESSING stage for file '{file_ctx.file_name}' "
+                    f"with stage TTL {STAGE_TTL}s"
+                )
+                return True  # Lock acquired and stage set successfully
+
+            except FileExecutionStageException:
+                # Stage transition failed (shouldn't happen after lock acquired, but handle it)
+                logger.exception(
+                    f"Failed to set DESTINATION_PROCESSING stage after lock acquisition "
+                    f"for file '{file_ctx.file_name}'. "
+                    f"Releasing lock."
+                )
+                # Release the lock since we failed to set the stage
+                tracker.redis_client.delete(lock_key)
+                return False
+
+        except Exception as e:
+            # If Redis fails or other unexpected error, log but allow processing to continue
+            # This ensures graceful degradation if tracking system is unavailable
+            logger.exception(
+                f"Failed to check/acquire destination lock for file '{file_ctx.file_name}': {e}. "
+                f"Allowing processing to continue (graceful degradation)."
+            )
+            return True  # Allow processing on infrastructure failure
+
     def _check_and_handle_hitl(
         self, exec_ctx: ExecutionContext, file_ctx: FileContext, result: ProcessingResult
     ) -> bool:
@@ -528,7 +663,7 @@ class WorkerDestinationConnector:
         execution_id: str = None,
         organization_id: str = None,
         execution_error: str = None,
-    ) -> HandleOutputResult:
+    ) -> HandleOutputResult | None:
         """Handle the output based on the connection type.
 
         This refactored version uses clean architecture with context objects
@@ -544,7 +679,21 @@ class WorkerDestinationConnector:
         if self.hitl_queue_name:
             logger.debug(f"HITL queue configured: {self.hitl_queue_name}")
 
-        # Extract processing data
+        # Check if destination already processed and atomically acquire lock FIRST
+        # This prevents duplicate insertions during warm shutdown scenarios
+        # IMPORTANT: Check lock BEFORE extracting data to avoid unnecessary work
+        lock_acquired = self._check_and_acquire_destination_lock(exec_ctx, file_ctx)
+        if not lock_acquired:
+            # Duplicate detected or another worker has the lock - abort ALL processing
+            logger.info(
+                f"Duplicate detected for file '{file_ctx.file_name}' - "
+                f"aborting ALL processing (lock not acquired, already processed or being processed by another worker)"
+            )
+            # Return None to signal to caller that this is a duplicate skip
+            # Caller should not create file history, update stages, or clean up locks
+            return None
+
+        # Only extract data if lock was acquired (not a duplicate)
         result = self._extract_processing_data(exec_ctx, file_ctx)
 
         # Check and handle HITL if needed
@@ -556,6 +705,24 @@ class WorkerDestinationConnector:
         except Exception as e:
             self._handle_destination_error(exec_ctx, file_ctx, e)
             raise
+        finally:
+            # Release lock after destination processing completes
+            # Critical section (stage set + data extraction + destination write) is done
+            # File history and stage updates don't need the lock (protected by stage checks)
+            try:
+                tracker = FileExecutionStatusTracker()
+                lock_key = tracker.get_destination_lock_key(
+                    exec_ctx.execution_id, exec_ctx.file_execution_id
+                )
+                tracker.redis_client.delete(lock_key)
+                logger.info(
+                    f"Released destination lock for '{file_ctx.file_name}' "
+                    f"after destination processing (lock_key={lock_key})"
+                )
+            except Exception as lock_error:
+                logger.warning(
+                    f"Failed to release destination lock for '{file_ctx.file_name}': {lock_error}"
+                )
 
         # Log success
         self._log_processing_success(exec_ctx, file_ctx, result.has_hitl)

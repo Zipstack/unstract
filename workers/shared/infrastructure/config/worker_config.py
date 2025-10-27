@@ -212,8 +212,8 @@ class WorkerConfig:
 
     # Logging Configuration
     log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
-    log_format: str = field(default_factory=lambda: os.getenv("LOG_FORMAT", "structured"))
     log_file: str | None = field(default_factory=lambda: os.getenv("LOG_FILE"))
+    # Note: log_format removed - we now use a single standardized format everywhere
 
     # Circuit Breaker Settings
     circuit_breaker_failure_threshold: int = field(
@@ -557,8 +557,9 @@ class WorkerConfig:
             == "true",
             "worker_send_task_events": True,
             "task_send_sent_event": True,
-            "worker_log_format": "[%(asctime)s: %(levelname)s/%(processName)s] %(message)s",
-            "worker_task_log_format": "[%(asctime)s: %(levelname)s/%(processName)s][%(task_name)s(%(task_id)s)] %(message)s",
+            # Note: worker_log_format and worker_task_log_format are not set here
+            # to prevent conflicts. Logging is configured via WorkerBuilder.setup_logging()
+            # which uses the proven pattern from unstract/core/flask/logging.py
         }
 
     def __repr__(self) -> str:
