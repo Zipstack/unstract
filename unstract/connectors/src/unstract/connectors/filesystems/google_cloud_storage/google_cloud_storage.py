@@ -2,6 +2,7 @@ import base64
 import json
 import logging
 import os
+import threading
 from datetime import UTC, datetime
 from typing import Any
 
@@ -23,26 +24,17 @@ class GoogleCloudStorageFS(UnstractFileSystem):
             ConnectorError: Error raised when connection initialization fails
         """
         super().__init__("GoogleCloudStorage")
-        project_id = settings.get("project_id", "")
-        json_credentials_str = settings.get("json_credentials", "{}")
-        try:
-            from gcsfs import GCSFileSystem
 
-            json_credentials = json.loads(json_credentials_str)
-            self.gcs_fs = GCSFileSystem(
-                token=json_credentials,
-                project=project_id,
-                cache_timeout=0,
-                use_listings_cache=False,
-            )
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse JSON credentials: {str(e)}")
-            error_msg = (
-                "Failed to connect to Google Cloud Storage. \n"
-                "GCS credentials are not in proper JSON format. \n"
-                f"Error: \n```\n{str(e)}\n```"
-            )
-            raise ConnectorError(error_msg) from e
+        # Store connection settings WITHOUT creating GCSFileSystem
+        # GCSFileSystem uses gRPC which is NOT fork-safe!
+        # The filesystem will be created lazily in get_fsspec_fs() AFTER fork
+        self._project_id = settings.get("project_id", "")
+        self._json_credentials_str = settings.get("json_credentials", "{}")
+
+        # Lazy initialization - create GCS client only when needed (after fork)
+        # This prevents SIGSEGV crashes in Celery ForkPoolWorker processes from gRPC calls
+        self._gcs_fs = None
+        self._gcs_fs_lock = threading.Lock()
 
     @staticmethod
     def get_id() -> str:
@@ -84,7 +76,53 @@ class GoogleCloudStorageFS(UnstractFileSystem):
         return True
 
     def get_fsspec_fs(self) -> AbstractFileSystem:
-        return self.gcs_fs
+        """Get GCS filesystem with lazy initialization (fork-safe).
+
+        This method creates the GCS filesystem client on first access,
+        ensuring it's created AFTER Celery fork to avoid SIGSEGV crashes.
+
+        GCSFileSystem uses gRPC for Google Cloud API communication. Creating it
+        in __init__ causes it to be created in the parent process before fork(),
+        resulting in stale gRPC connections in child processes that trigger
+        segmentation faults when the child tries to use the filesystem.
+
+        The lazy initialization pattern ensures that gRPC-based Google Cloud
+        clients are created in the child process after fork(), not in the
+        parent process before fork().
+
+        Returns:
+            GCSFileSystem: The initialized Google Cloud Storage filesystem client
+
+        Raises:
+            ConnectorError: If GCS credentials are invalid or connection fails
+        """
+        if self._gcs_fs is None:
+            with self._gcs_fs_lock:
+                # Double-check pattern for thread safety
+                if self._gcs_fs is None:
+                    logger.info("Initializing GCS client (lazy init after fork)")
+                    try:
+                        from gcsfs import GCSFileSystem
+
+                        # Parse credentials and create GCS filesystem AFTER fork
+                        json_credentials = json.loads(self._json_credentials_str)
+                        self._gcs_fs = GCSFileSystem(
+                            token=json_credentials,
+                            project=self._project_id,
+                            cache_timeout=0,
+                            use_listings_cache=False,
+                        )
+                        logger.info("GCS client initialized successfully")
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Failed to parse JSON credentials: {str(e)}")
+                        error_msg = (
+                            "Failed to connect to Google Cloud Storage. \n"
+                            "GCS credentials are not in proper JSON format. \n"
+                            f"Error: \n```\n{str(e)}\n```"
+                        )
+                        raise ConnectorError(error_msg) from e
+
+        return self._gcs_fs
 
     def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> str | None:
         """Extracts a unique file hash from metadata.
