@@ -5,7 +5,6 @@ Handles workflow execution related endpoints for internal services.
 import logging
 import uuid
 
-from django.core.cache import cache
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -441,14 +440,18 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             if execution.workflow and hasattr(execution.workflow, "organization"):
                 org = execution.workflow.organization
                 return {
-                    "organization_id": str(org.id),
-                    "organization_name": org.display_name,
+                    "organization_id": str(
+                        org.organization_id
+                    ),  # organization identifier
+                    "organization_uuid": str(org.id),  # organization uuid
+                    "organization_name": org.display_name,  # organization name
                     "settings": {},  # Add organization-specific settings if needed
                 }
             else:
                 logger.warning(f"No organization found for execution {execution.id}")
                 return {
                     "organization_id": None,
+                    "organization_uuid": None,
                     "organization_name": "Unknown",
                     "settings": {},
                 }
@@ -458,6 +461,7 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             )
             return {
                 "organization_id": None,
+                "organization_uuid": None,
                 "organization_name": "Unknown",
                 "settings": {},
             }
@@ -731,10 +735,10 @@ class WorkflowFileExecutionCheckActiveAPIView(APIView):
             # Check for files in PENDING or EXECUTING state in other workflow executions
             active_files = {}  # {uuid: [execution_data]} - legacy format
             active_identifiers = set()  # Composite identifiers for new format
-            cache_hits = 0
             db_queries = 0
 
-            # Step 1: Check cache for all files and separate files that need database queries
+            # Prepare all files for database check
+            # Note: Workers already check cache before calling this API, so no need to check again
             files_needing_db_check = []
 
             for file_data in files:
@@ -744,42 +748,7 @@ class WorkflowFileExecutionCheckActiveAPIView(APIView):
                     f"{provider_uuid}:{file_path}" if file_path else provider_uuid
                 )
 
-                # 1. Check completion cache first (highest priority)
-                completion_key = f"file_completed:{workflow_id}:{provider_uuid}"
-                completion_data = cache.get(completion_key)
-
-                if completion_data:
-                    logger.debug(
-                        f"File {provider_uuid} found in completion cache, skipping"
-                    )
-                    continue  # Skip - recently completed
-
-                # 2. Check active processing cache (path-aware)
-                cached_active = None
-
-                if file_path is not None:
-                    # Use precise path-aware cache key
-                    active_key = f"file_active:{workflow_id}:{provider_uuid}:{file_path}"
-                    cached_active = cache.get(active_key)
-                    if cached_active:
-                        logger.debug(
-                            f"File {provider_uuid}:{file_path} found in path-aware cache"
-                        )
-                else:
-                    # No file path available, skip cache check for files without path
-                    cached_active = None
-
-                if cached_active:
-                    # Verify it's not the current execution
-                    if cached_active.get("execution_id") != current_execution_id:
-                        # Track in both formats
-                        active_files[provider_uuid] = [cached_active]
-                        active_identifiers.add(composite_id)
-                        cache_hits += 1
-                        logger.debug(f"File {composite_id} found in active cache")
-                        continue
-
-                # File needs database check - add to batch
+                # All files need database check
                 files_needing_db_check.append(
                     {
                         "uuid": provider_uuid,
@@ -788,7 +757,7 @@ class WorkflowFileExecutionCheckActiveAPIView(APIView):
                     }
                 )
 
-            # Step 2: Bulk database queries for all files that need database check
+            # Bulk database query for all files
             if files_needing_db_check:
                 logger.info(
                     f"[ActiveCheck] Performing bulk database check for {len(files_needing_db_check)} files"
@@ -804,7 +773,7 @@ class WorkflowFileExecutionCheckActiveAPIView(APIView):
 
             logger.info(
                 f"[ActiveCheck] Active check complete: {len(active_files)}/{len(files)} files active "
-                f"(cache_hits: {cache_hits}, db_queries: {db_queries})"
+                f"(db_queries: {db_queries})"
             )
 
             # Log final active identifiers for debugging
@@ -827,11 +796,7 @@ class WorkflowFileExecutionCheckActiveAPIView(APIView):
                     "total_checked": len(files),
                     "total_active": len(active_files),
                     "cache_stats": {
-                        "cache_hits": cache_hits,
                         "db_queries": db_queries,
-                        "cache_hit_rate": f"{(cache_hits / len(files) * 100):.1f}%"
-                        if files
-                        else "0.0%",
                     },
                 }
             )

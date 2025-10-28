@@ -151,13 +151,6 @@ class FileHistoryStatus(Enum):
         return self.value
 
 
-# Legacy compatibility mappings
-LEGACY_STATUS_MAPPING = {
-    "INPROGRESS": "EXECUTING",
-    "FAILED": "ERROR",
-    "CANCELED": "STOPPED",
-}
-
 LEGACY_CONNECTION_TYPES = {
     "APPDEPLOYMENT": "API",
     "FILESYSTEM": "FILESYSTEM",

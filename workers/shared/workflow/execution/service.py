@@ -5,6 +5,7 @@ from unstract/workflow-execution, enabling workers to execute workflows
 directly using the ToolSandbox and runner services.
 """
 
+import os
 import time
 from typing import Any
 
@@ -93,6 +94,11 @@ class WorkerWorkflowExecutionService:
         destination_start_time = start_time
         destination_end_time = start_time
 
+        # Configure TTL for COMPLETED stage (shorter TTL to optimize Redis memory)
+        completed_ttl = int(
+            os.environ.get("FILE_EXECUTION_TRACKER_COMPLETED_TTL_IN_SECOND", 300)
+        )
+
         try:
             logger.info(f"Executing workflow {workflow_id} for file {file_name}")
 
@@ -124,16 +130,16 @@ class WorkerWorkflowExecutionService:
                                 error=None,
                                 result="Already completed",
                                 metadata=WorkflowExecutionMetadata(
-                                    total_execution_time=0,
-                                    workflow_success=True,
-                                    execution_error=None,
-                                    tool_instances_data=[],
-                                    destination_result=FinalOutputResult(
-                                        output="Already completed",
-                                        metadata={},
-                                        error=None,
-                                        processed=True,
-                                    ),
+                                    workflow_id=workflow_id,
+                                    execution_id=execution_id,
+                                    execution_time=0.0,
+                                    tool_count=0,
+                                    workflow_executed=True,
+                                    destination_processed=False,
+                                    destination_error=None,
+                                    workflow_type=None,
+                                    cached=False,
+                                    cache_key=None,
                                 ),
                                 execution_time=0,
                             )
@@ -200,6 +206,71 @@ class WorkerWorkflowExecutionService:
             execution_error = str(e)
             workflow_success = False
 
+        # Step 2.5: Check for duplicate execution BEFORE destination processing
+        # This prevents DB overwrites and duplicate processing when multiple workers
+        # pick up the same file from the queue (race condition)
+        skip_destination_processing = False
+        if workflow_file_execution_id:
+            try:
+                tracker = FileExecutionStatusTracker()
+                existing_data = tracker.get_data(execution_id, workflow_file_execution_id)
+
+                if existing_data:
+                    current_stage = existing_data.stage_status.stage
+                    current_status = existing_data.stage_status.status
+
+                    # Case 1: COMPLETED stage - Full duplicate, skip everything
+                    if current_stage == FileExecutionStage.COMPLETED:
+                        logger.info(
+                            f"DUPLICATE SKIP: File {file_name} already at COMPLETED stage. "
+                            f"Another worker completed this file. Skipping all processing and DB updates."
+                        )
+                        return WorkflowExecutionResult(
+                            file_name=file_name,
+                            file_execution_id=workflow_file_execution_id,
+                            success=True,
+                            error=None,
+                            result="Duplicate - already completed by another worker",
+                            metadata=WorkflowExecutionMetadata(
+                                workflow_id=workflow_id,
+                                execution_id=execution_id,
+                                execution_time=0.0,
+                                tool_count=0,
+                                workflow_executed=True,
+                                destination_processed=False,
+                                destination_error=None,
+                                workflow_type=None,
+                                cached=False,
+                                cache_key=None,
+                            ),
+                            execution_time=0,
+                        )
+
+                    # Case 2: DESTINATION_PROCESSING with SUCCESS - Resume to finalization
+                    if (
+                        current_stage == FileExecutionStage.DESTINATION_PROCESSING
+                        and current_status == FileExecutionStageStatus.SUCCESS
+                    ):
+                        logger.info(
+                            f"File {file_name} destination already processed successfully. "
+                            f"Skipping destination processing, using existing data."
+                        )
+                        # Skip destination processing, use existing result
+                        destination_result = FinalOutputResult(
+                            output="Destination already processed",
+                            metadata={},
+                            error=existing_data.error,  # Preserve any error from first worker
+                            processed=False,  # Not processed by THIS worker
+                        )
+                        # Set flag to skip destination call below
+                        skip_destination_processing = True
+
+            except Exception as tracker_check_error:
+                logger.warning(
+                    f"Failed to check for duplicate execution: {tracker_check_error}"
+                )
+                # Continue with normal processing if check fails
+
         # Step 3: Process Output - Let destination handle EVERYTHING
         # This includes:
         # - Extracting tool results via get_tool_execution_result_from_execution_context
@@ -207,57 +278,74 @@ class WorkerWorkflowExecutionService:
         # - Writing to filesystem/database
         # - Routing to manual review
         # - Creating file history
-        # Track finalization stage before destination processing
-        if workflow_file_execution_id:
-            try:
-                tracker = FileExecutionStatusTracker()
-                tracker.update_stage_status(
-                    execution_id=execution_id,
-                    file_execution_id=workflow_file_execution_id,
-                    stage_status=FileExecutionStageData(
-                        stage=FileExecutionStage.FINALIZATION,
-                        status=FileExecutionStageStatus.IN_PROGRESS,
-                    ),
-                )
-                logger.info(f"Tracked finalization stage for {file_name}")
-            except Exception as tracker_error:
-                logger.warning(f"Failed to track finalization stage: {tracker_error}")
-
-        destination_result = None
+        if not skip_destination_processing:
+            destination_result = None
         destination_start_time = time.time()
-        logger.info(
-            f"TIMING: Destination processing START for {file_name} at {destination_start_time:.6f}"
-        )
 
-        try:
-            destination_result = self._handle_destination_processing(
-                file_processing_context=file_processing_context,
-                workflow=workflow_context,
-                workflow_id=workflow_id,
-                execution_id=execution_id,
-                is_success=workflow_success,
-                workflow_file_execution_id=workflow_file_execution_id,
-                organization_id=organization_id,
-                workflow_logger=workflow_logger,
-                use_file_history=use_file_history,
-                is_api=is_api,
-                execution_error=execution_error,
-            )
-            logger.info(f"Destination processing completed for {file_name}")
-
-        except Exception as dest_error:
-            logger.error(
-                f"Destination processing failed for {file_name}: {dest_error}",
-                exc_info=True,
-            )
-            destination_result = FinalOutputResult(
-                output=None, metadata=None, error=str(dest_error)
-            )
-        finally:
-            destination_end_time = time.time()
+        if not skip_destination_processing:
             logger.info(
-                f"TIMING: Destination processing END for {file_name} at {destination_end_time:.6f} (took {destination_end_time - destination_start_time:.3f}s)"
+                f"TIMING: Destination processing START for {file_name} at {destination_start_time:.6f}"
             )
+
+        if not skip_destination_processing:
+            try:
+                destination_result = self._handle_destination_processing(
+                    file_processing_context=file_processing_context,
+                    workflow=workflow_context,
+                    workflow_id=workflow_id,
+                    execution_id=execution_id,
+                    is_success=workflow_success,
+                    workflow_file_execution_id=workflow_file_execution_id,
+                    organization_id=organization_id,
+                    workflow_logger=workflow_logger,
+                    use_file_history=use_file_history,
+                    is_api=is_api,
+                    execution_error=execution_error,
+                )
+                logger.info(f"Destination processing completed for {file_name}")
+
+                # Mark destination processing as successful - only if workflow succeeded AND no destination errors AND actually processed (not duplicate)
+                if (
+                    workflow_file_execution_id
+                    and workflow_success
+                    and destination_result
+                    and not destination_result.error
+                    and getattr(
+                        destination_result, "processed", True
+                    )  # Only update if actually processed (not a duplicate skip)
+                ):
+                    try:
+                        tracker = FileExecutionStatusTracker()
+                        tracker.update_stage_status(
+                            execution_id=execution_id,
+                            file_execution_id=workflow_file_execution_id,
+                            stage_status=FileExecutionStageData(
+                                stage=FileExecutionStage.DESTINATION_PROCESSING,
+                                status=FileExecutionStageStatus.SUCCESS,
+                            ),
+                        )
+                        logger.info(
+                            f"Marked destination processing as successful for {file_name}"
+                        )
+
+                    except Exception as tracker_error:
+                        logger.warning(
+                            f"Failed to mark destination processing success: {tracker_error}"
+                        )
+
+            except Exception as dest_error:
+                logger.error(
+                    f"Destination processing failed for {file_name}: {dest_error}",
+                    exc_info=True,
+                )
+                destination_result = FinalOutputResult(
+                    output=None, metadata=None, error=str(dest_error)
+                )
+            finally:
+                destination_end_time = time.time()
+                logger.info(
+                    f"TIMING: Destination processing END for {file_name} at {destination_end_time:.6f} (took {destination_end_time - destination_start_time:.3f}s)"
+                )
 
         # Step 4: Build Final Result
         final_time = time.time()
@@ -303,10 +391,29 @@ class WorkerWorkflowExecutionService:
             try:
                 tracker = FileExecutionStatusTracker()
                 overall_success = workflow_success and (
-                    destination_result and not destination_result.error
+                    destination_result
+                    and not destination_result.error
+                    and getattr(destination_result, "processed", True)
                 )
 
+                # Check if this was a duplicate skip (processed=False)
+                # For duplicate skips, we don't update any stages to avoid interfering with active worker
+                is_duplicate_skip = destination_result and not getattr(
+                    destination_result, "processed", True
+                )
+
+                # Stage flow: DESTINATION_PROCESSING(2) → FINALIZATION(3) → COMPLETED(4)
                 if overall_success:
+                    # Mark finalization as successful
+                    tracker.update_stage_status(
+                        execution_id=execution_id,
+                        file_execution_id=workflow_file_execution_id,
+                        stage_status=FileExecutionStageData(
+                            stage=FileExecutionStage.FINALIZATION,
+                            status=FileExecutionStageStatus.SUCCESS,
+                        ),
+                    )
+                    logger.info(f"Marked finalization as successful for {file_name}")
                     tracker.update_stage_status(
                         execution_id=execution_id,
                         file_execution_id=workflow_file_execution_id,
@@ -314,10 +421,11 @@ class WorkerWorkflowExecutionService:
                             stage=FileExecutionStage.COMPLETED,
                             status=FileExecutionStageStatus.SUCCESS,
                         ),
+                        ttl_in_second=completed_ttl,
                     )
                     logger.info(f"Tracked successful completion for {file_name}")
-                else:
-                    # Track failure on finalization stage
+                elif not is_duplicate_skip:
+                    # Track failure on finalization stage (only for actual failures, not duplicate skips)
                     error_msg = execution_error or (
                         destination_result.error
                         if destination_result
@@ -332,19 +440,35 @@ class WorkerWorkflowExecutionService:
                             error=error_msg,
                         ),
                     )
+                    # Set COMPLETED:FAILED to mark file as done (prevents duplicate processing)
+                    tracker.update_stage_status(
+                        execution_id=execution_id,
+                        file_execution_id=workflow_file_execution_id,
+                        stage_status=FileExecutionStageData(
+                            stage=FileExecutionStage.COMPLETED,
+                            status=FileExecutionStageStatus.FAILED,
+                            error=error_msg,
+                        ),
+                        ttl_in_second=completed_ttl,
+                    )
                     logger.info(f"Tracked failed execution for {file_name}: {error_msg}")
+                else:
+                    # Duplicate skip - don't update any stages to avoid interfering with active worker
+                    logger.info(
+                        f"Skipping finalization stage update for '{file_name}' - duplicate detected, stages managed by active worker"
+                    )
 
-                # Clean up tool execution tracker (even on failure)
-                self._cleanup_tool_execution_tracker(
-                    execution_id=execution_id,
-                    file_execution_id=workflow_file_execution_id,
-                )
-
-                # Clean up file execution tracker (log data then delete)
-                self._cleanup_file_execution_tracker(
-                    execution_id=execution_id,
-                    file_execution_id=workflow_file_execution_id,
-                )
+                # Clean up tool execution tracker only if we actually processed (not duplicate)
+                # For duplicate skips, the active worker will clean up its own tracker when it finishes
+                if not is_duplicate_skip:
+                    self._cleanup_tool_execution_tracker(
+                        execution_id=execution_id,
+                        file_execution_id=workflow_file_execution_id,
+                    )
+                else:
+                    logger.info(
+                        f"Skipping tool execution tracker cleanup for '{file_name}' - duplicate detected, tracker managed by active worker"
+                    )
 
             except Exception as tracker_error:
                 logger.warning(f"Failed to track final completion stage: {tracker_error}")
@@ -400,50 +524,6 @@ class WorkerWorkflowExecutionService:
             # Non-critical - log and continue
             logger.warning(
                 f"Failed to initialize file execution tracker for {execution_id}/{file_execution_id}: {e}"
-            )
-
-    def _cleanup_file_execution_tracker(
-        self,
-        execution_id: str,
-        file_execution_id: str,
-    ) -> None:
-        """Clean up file execution tracker after processing completes.
-
-        Logs file execution data for debugging purposes before cleanup.
-        """
-        try:
-            tracker = FileExecutionStatusTracker()
-
-            # Get current file execution data for logging before cleanup
-            file_execution_data = tracker.get_data(execution_id, file_execution_id)
-
-            if file_execution_data:
-                # Log file execution data for debugging purposes
-                logger.info(
-                    f"File execution tracker data before cleanup - "
-                    f"execution_id: {execution_id}, file_execution_id: {file_execution_id}, "
-                    f"stage: {file_execution_data.stage_status.stage.value}, "
-                    f"status: {file_execution_data.stage_status.status.value}, "
-                    f"organization_id: {file_execution_data.organization_id}, "
-                    f"error: {file_execution_data.stage_status.error or 'None'}"
-                )
-
-                # Actually delete file execution tracker data from Redis
-                tracker.delete_data(execution_id, file_execution_id)
-                logger.info(
-                    f"Deleted file execution tracker for execution_id: {execution_id}, "
-                    f"file_execution_id: {file_execution_id}"
-                )
-            else:
-                logger.debug(
-                    f"No file execution tracker data found for execution_id: {execution_id}, "
-                    f"file_execution_id: {file_execution_id}"
-                )
-
-        except Exception as e:
-            # Non-critical - log and continue
-            logger.warning(
-                f"Failed to cleanup file execution tracker for {execution_id}/{file_execution_id}: {e}"
             )
 
     def _cleanup_tool_execution_tracker(
@@ -526,13 +606,19 @@ class WorkerWorkflowExecutionService:
             final_error = destination_result.error
 
         # Build metadata
+        # CRITICAL: Check destination_result.processed (not just existence) to detect duplicate skips
+        # destination_result.processed=False means duplicate was detected and skipped
         metadata = WorkflowExecutionMetadata(
             workflow_id=workflow_id,
             execution_id=execution_id,
             execution_time=execution_time,
             tool_count=tool_count,
             workflow_executed=workflow_success,
-            destination_processed=destination_result is not None,
+            destination_processed=(
+                getattr(destination_result, "processed", True)
+                if destination_result
+                else False
+            ),
             destination_error=destination_result.error if destination_result else None,
         )
 
@@ -691,13 +777,68 @@ class WorkerWorkflowExecutionService:
                 return False
 
             # Step 2: Prepare input file and metadata
-            self._prepare_workflow_input_file(
+            computed_hash = self._prepare_workflow_input_file(
                 execution_service=execution_service,
                 file_processing_context=file_processing_context,
                 workflow_id=workflow_id,
                 execution_id=execution_id,
                 workflow_file_execution_id=workflow_file_execution_id,
             )
+
+            # Update file_hash object with computed hash if empty
+            # This handles the race condition where Worker 2 retrieves the hash from
+            # Worker 1's metadata instead of computing it fresh
+            if computed_hash and not file_processing_context.file_hash.file_hash:
+                logger.info(
+                    f"Updating file_hash with computed hash: {computed_hash[:16]}... "
+                    f"for {file_name}"
+                )
+                file_processing_context.file_hash.file_hash = computed_hash
+
+            # Step 2.5: Check if tool execution already completed (race condition handling)
+            # This prevents Worker 2 from re-running the tool when Worker 1's container
+            # already completed, which would cause output file conflicts and MIME type errors
+            if workflow_file_execution_id:
+                try:
+                    tracker = FileExecutionStatusTracker()
+                    existing_data = tracker.get_data(
+                        execution_id, workflow_file_execution_id
+                    )
+
+                    if existing_data:
+                        current_stage = existing_data.stage_status.stage
+                        current_status = existing_data.stage_status.status
+
+                        # If tool execution already completed successfully, skip re-running
+                        if (
+                            current_stage == FileExecutionStage.TOOL_EXECUTION
+                            and current_status == FileExecutionStageStatus.SUCCESS
+                        ):
+                            logger.info(
+                                f"Tool execution already completed successfully for {file_name}. "
+                                f"Skipping duplicate tool run (race condition detected). "
+                                f"Will proceed to destination processing with existing output."
+                            )
+                            return True  # Workflow considered successful, proceed to destination
+
+                        # Also skip if we're past tool execution stage
+                        if current_stage in [
+                            FileExecutionStage.DESTINATION_PROCESSING,
+                            FileExecutionStage.FINALIZATION,
+                            FileExecutionStage.COMPLETED,
+                        ]:
+                            logger.info(
+                                f"File {file_name} already at stage {current_stage}. "
+                                f"Skipping tool execution (duplicate worker detected)."
+                            )
+                            return True  # Proceed to next stage
+
+                except Exception:
+                    logger.exception(
+                        f"Failed to check tool execution status for {file_name}. "
+                        f"Proceeding with tool execution."
+                    )
+                    # Continue with normal execution if check fails
 
             # Step 3: Build and execute workflow
             self._build_and_execute_workflow(execution_service, file_name)
@@ -765,27 +906,38 @@ class WorkerWorkflowExecutionService:
 
             logger.info(f"Copying source file {file_path} to execution directory")
 
-            # Determine connection type and copy file
-            connection_type = self._determine_connection_type(source_connection_type)
+            # Check if files already exist (race condition handling)
+            files_exist, existing_hash = self._check_existing_input_files(
+                infile_path,
+                source_file_path,
+                file_handler,
+                file_path,
+            )
 
-            if connection_type.is_api:
-                computed_hash = self._copy_api_file(
-                    file_path=file_path,
-                    infile_path=infile_path,
-                    source_file_path=source_file_path,
-                    file_processing_context=file_processing_context,
-                )
-
+            if files_exist:
+                # Files already copied by another worker - use existing hash
+                computed_hash = existing_hash
             else:
-                computed_hash = self._copy_filesystem_file(
-                    file_path=file_path,
-                    infile_path=infile_path,
-                    source_file_path=source_file_path,
-                    file_processing_context=file_processing_context,
-                    source_connector_id=source_connector_id,
-                    source_config_connector_settings=source_config_connector_settings,
-                    connector_metadata=connector_metadata,
-                )
+                # Files don't exist - proceed with normal copy
+                connection_type = self._determine_connection_type(source_connection_type)
+
+                if connection_type.is_api:
+                    computed_hash = self._copy_api_file(
+                        file_path=file_path,
+                        infile_path=infile_path,
+                        source_file_path=source_file_path,
+                        file_processing_context=file_processing_context,
+                    )
+                else:
+                    computed_hash = self._copy_filesystem_file(
+                        file_path=file_path,
+                        infile_path=infile_path,
+                        source_file_path=source_file_path,
+                        file_processing_context=file_processing_context,
+                        source_connector_id=source_connector_id,
+                        source_config_connector_settings=source_config_connector_settings,
+                        connector_metadata=connector_metadata,
+                    )
 
             # Create initial METADATA.json file
             # Extract tag names from workflow execution context
@@ -1001,6 +1153,86 @@ class WorkerWorkflowExecutionService:
         file_processing_context.file_hash.file_hash = computed_hash
         return computed_hash
 
+    def _check_existing_input_files(
+        self,
+        infile_path: str,
+        source_file_path: str,
+        file_handler,
+        file_path: str,
+    ) -> tuple[bool, str | None]:
+        """Check if input files already exist and retrieve source hash.
+
+        This handles the race condition where Worker 2 picks up a task after Worker 1
+        has already copied files. Since metadata is created BEFORE tool execution,
+        if metadata doesn't exist, the tool hasn't run yet and files are safe to re-copy.
+
+        Args:
+            infile_path: Path to the infile (tool output location)
+            source_file_path: Path to the source file copy
+            file_handler: ExecutionFileHandler instance for metadata access
+            file_path: Original source file path (for logging)
+
+        Returns:
+            tuple: (files_exist: bool, source_hash: str | None)
+                - files_exist: True if both infile and source exist with metadata
+                - source_hash: Retrieved hash from metadata, or None if should re-copy
+        """
+        from unstract.filesystem import FileStorageType, FileSystem
+
+        workflow_file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+        workflow_file_storage = workflow_file_system.get_file_storage()
+
+        # Check if both files exist
+        if not (
+            workflow_file_storage.exists(infile_path)
+            and workflow_file_storage.exists(source_file_path)
+        ):
+            return False, None
+
+        # Files exist - check if metadata exists too
+        logger.info(
+            f"Input files already exist for {file_path}. "
+            f"Checking metadata for hash (duplicate worker detected)."
+        )
+
+        # Try to retrieve source_hash from metadata
+        try:
+            existing_metadata = file_handler.get_workflow_metadata()
+            source_hash = existing_metadata.get("source_hash")
+
+            if not source_hash:
+                # This should never happen - source_hash is always set when metadata is created
+                raise ValueError("source_hash not found in metadata (unexpected)")
+
+            logger.info(
+                f"Retrieved source_hash from existing metadata: {source_hash}. "
+                f"Skipping file copy to preserve existing workflow state."
+            )
+            return True, source_hash
+
+        except FileNotFoundError as error:
+            # Metadata doesn't exist - Other Worker was killed before creating it
+            # Since metadata is created BEFORE tool execution:
+            # - Tool hasn't run yet
+            # - infile still contains original source (PDF)
+            # - Safe to re-copy
+            logger.warning(
+                f"Files exist but metadata not found: {error}. "
+                f"Other Worker likely killed between file copy and metadata creation. "
+                f"Tool hasn't executed yet (metadata created first). "
+                f"Safe to re-copy files."
+            )
+            return False, None
+
+        except Exception as error:
+            # Unexpected error (corruption, S3 connection, permissions, etc.)
+            # Fail safely - better to crash than risk overwriting tool output
+            logger.error(
+                f"Unexpected error reading metadata: {error}. "
+                f"Cannot determine if tool has executed. Failing safely."
+            )
+            raise
+
     def _resolve_connector_config(
         self,
         source_connector_id: str | None,
@@ -1157,6 +1389,25 @@ class WorkerWorkflowExecutionService:
                     organization_id=organization_id,
                     execution_error=execution_error,
                 )
+
+                # Check if handle_output returned None (duplicate detected)
+                if handle_output_result is None:
+                    # Enhanced debug log with full context for internal debugging
+                    logger.info(
+                        f"DUPLICATE SKIP: File '{file_hash.file_name}' duplicate detected at destination phase. "
+                        f"execution_id={execution_id}, file_execution_id={workflow_file_execution_id}, "
+                        f"workflow_id={workflow_id}. "
+                        f"Returning FinalOutputResult with processed=False, no file history will be created. "
+                        f"This is an internal race condition, not an error."
+                    )
+                    # Return special result to indicate duplicate (not an error, not processed)
+                    return FinalOutputResult(
+                        output=None,
+                        metadata=None,
+                        error=None,  # Not an error - just a duplicate skip
+                        processed=False,  # Indicates this was skipped due to duplicate
+                    )
+
                 output_result = handle_output_result.output
                 metadata = handle_output_result.metadata
                 source_connection_type = workflow.source_config.connection_type

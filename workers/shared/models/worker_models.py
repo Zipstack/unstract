@@ -366,6 +366,9 @@ class WorkerCeleryConfig:
             # Connection settings
             "broker_url": broker_url,
             "result_backend": result_backend,
+            "broker_heartbeat": get_celery_setting(
+                "BROKER_HEARTBEAT", self.worker_type, 30, int
+            ),
             # Task routing
             "task_routes": self.task_routing.to_celery_config(),
             # Serialization (configurable from env)
@@ -495,7 +498,7 @@ class WorkerCeleryConfig:
         if self.worker_type in chord_workers:
             # Chord retry interval - defaults to Celery standard (1 second)
             config["result_chord_retry_interval"] = get_celery_setting(
-                "RESULT_CHORD_RETRY_INTERVAL", self.worker_type, 1, int
+                "RESULT_CHORD_RETRY_INTERVAL", self.worker_type, 1, float
             )
 
     def to_cli_args(self) -> list[str]:

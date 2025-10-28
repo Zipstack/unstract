@@ -135,8 +135,6 @@ class StatusMappings:
         ExecutionStatus.STOPPED: PipelineStatus.FAILURE,
         ExecutionStatus.EXECUTING: PipelineStatus.INPROGRESS,
         ExecutionStatus.PENDING: PipelineStatus.YET_TO_START,
-        ExecutionStatus.QUEUED: PipelineStatus.YET_TO_START,  # Legacy compatibility
-        ExecutionStatus.CANCELED: PipelineStatus.FAILURE,  # Legacy compatibility
     }
 
     PIPELINE_TO_EXECUTION = {
@@ -219,12 +217,14 @@ class FinalOutputResult:
     output: Any | None
     metadata: dict[str, Any] | None
     error: str | None
+    processed: bool = True  # False if duplicate detected and skipped
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "output": self.output,
             "metadata": self.metadata,
             "error": self.error,
+            "processed": self.processed,
         }
 
     @classmethod
@@ -233,6 +233,7 @@ class FinalOutputResult:
             output=data.get("output"),
             metadata=data.get("metadata"),
             error=data.get("error"),
+            processed=data.get("processed", True),
         )
 
 
@@ -785,6 +786,9 @@ class FileProcessingResult:
     destination_processed: bool = True
     destination_error: str | None = None
 
+    # Duplicate detection indicator
+    is_duplicate_skip: bool = False  # True when file skipped due to duplicate detection
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for backward compatibility."""
         return serialize_dataclass_to_dict(self)
@@ -806,6 +810,7 @@ class FileProcessingResult:
             review_result=data.get("review_result"),
             destination_processed=data.get("destination_processed", True),
             destination_error=data.get("destination_error"),
+            is_duplicate_skip=data.get("is_duplicate_skip", False),
         )
 
     def is_successful(self) -> bool:

@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any
+from typing import Any, Self
 
 import requests
 from requests import RequestException, Response
@@ -17,6 +17,7 @@ from unstract.sdk1.constants import (
 from unstract.sdk1.exceptions import SdkError
 from unstract.sdk1.tool.base import BaseTool
 from unstract.sdk1.utils.common import Utils
+from unstract.sdk1.utils.retry_utils import retry_platform_service_call
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ class PlatformHelper:
     """
 
     def __init__(
-        self,
+        self: Self,
         tool: BaseTool,
         platform_host: str,
         platform_port: str,
@@ -50,7 +51,11 @@ class PlatformHelper:
         self.request_id = request_id
 
     @classmethod
-    def get_platform_base_url(cls, platform_host: str, platform_port: str) -> str:
+    def get_platform_base_url(
+        cls: type[Self],
+        platform_host: str,
+        platform_port: str,
+    ) -> str:
         """Make base url from host and port.
 
         Args:
@@ -65,7 +70,7 @@ class PlatformHelper:
         return f"{platform_host}:{platform_port}"
 
     @classmethod
-    def is_public_adapter(cls, adapter_id: str) -> bool:
+    def is_public_adapter(cls: type[Self], adapter_id: str) -> bool:
         """Check if the given adapter_id is one of the public adapter keys.
 
         This method iterates over the attributes of the PublicAdapterKeys class
@@ -91,14 +96,24 @@ class PlatformHelper:
             return False
 
     @classmethod
+    @retry_platform_service_call
     def _get_adapter_configuration(
-        cls,
+        cls: type[Self],
         tool: BaseTool,
         adapter_instance_id: str,
     ) -> dict[str, Any]:
-        """Get adapter configuration from platform service.
+        """Get Adapter.
 
-        1. Get the adapter config from platform service using the adapter_instance_id.
+        Get the adapter config from platform service
+        using the adapter_instance_id. This method automatically
+        retries on connection errors with exponential backoff.
+
+        Retry behavior is configurable via environment variables:
+        - PLATFORM_SERVICE_MAX_RETRIES (default: 3)
+        - PLATFORM_SERVICE_MAX_TIME (default: 60s)
+        - PLATFORM_SERVICE_BASE_DELAY (default: 1.0s)
+        - PLATFORM_SERVICE_MULTIPLIER (default: 2.0)
+        - PLATFORM_SERVICE_JITTER (default: true)
 
         Args:
             adapter_instance_id (str): Adapter instance ID
@@ -130,11 +145,14 @@ class PlatformHelper:
                 f"'{adapter_type}', provider: '{provider}', name: '{adapter_name}'",
                 level=LogLevel.DEBUG,
             )
-        except ConnectionError as e:
-            raise SdkError(
-                "Unable to connect to platform service, please contact the admin."
-            ) from e
         except HTTPError as e:
+            # Check if this is a retryable HTTP error (502, 503, 504)
+            # If so, re-raise it so the retry decorator can handle it
+            if hasattr(e, "response") and e.response is not None:
+                if e.response.status_code in (502, 503, 504):
+                    raise  # Re-raise to allow retry decorator to retry
+
+            # Non-retryable error - convert to SdkError
             default_err = (
                 "Error while calling the platform service, please contact the admin."
             )
@@ -146,7 +164,7 @@ class PlatformHelper:
 
     @classmethod
     def get_adapter_config(
-        cls, tool: BaseTool, adapter_instance_id: str
+        cls: type[Self], tool: BaseTool, adapter_instance_id: str
     ) -> dict[str, Any] | None:
         """Get adapter spec by the help of unstract DB tool.
 
@@ -174,9 +192,15 @@ class PlatformHelper:
             f"Retrieving config from DB for '{adapter_instance_id}'",
             level=LogLevel.DEBUG,
         )
-        return cls._get_adapter_configuration(tool, adapter_instance_id)
 
-    def _get_headers(self, headers: dict[str, str] | None = None) -> dict[str, str]:
+        try:
+            return cls._get_adapter_configuration(tool, adapter_instance_id)
+        except ConnectionError as e:
+            raise SdkError(
+                "Unable to connect to platform service, please contact the admin."
+            ) from e
+
+    def _get_headers(self: Self, headers: dict[str, str] | None = None) -> dict[str, str]:
         """Get default headers for requests.
 
         Returns:
@@ -190,8 +214,9 @@ class PlatformHelper:
             request_headers.update(headers)
         return request_headers
 
+    @retry_platform_service_call
     def _call_service(
-        self,
+        self: Self,
         url_path: str,
         payload: dict[str, Any] | None = None,
         params: dict[str, str] | None = None,
@@ -201,6 +226,14 @@ class PlatformHelper:
         """Talks to platform-service to make GET / POST calls.
 
         Only GET calls are made to platform-service though functionality exists.
+        This method automatically retries on connection errors with exponential backoff.
+
+        Retry behavior is configurable via environment variables:
+        - PLATFORM_SERVICE_MAX_RETRIES (default: 3)
+        - PLATFORM_SERVICE_MAX_TIME (default: 60s)
+        - PLATFORM_SERVICE_BASE_DELAY (default: 1.0s)
+        - PLATFORM_SERVICE_MULTIPLIER (default: 2.0)
+        - PLATFORM_SERVICE_JITTER (default: true)
 
         Args:
             url_path (str): URL path to the service endpoint
@@ -234,9 +267,13 @@ class PlatformHelper:
 
             response.raise_for_status()
         except ConnectionError as connect_err:
-            msg = "Unable to connect to platform service. Please contact admin."
-            msg += " \n" + str(connect_err)
-            self.tool.stream_error_and_exit(msg)
+            logger.exception("Connection error to platform service")
+            msg = (
+                "Unable to connect to platform service. Retrying with backoff, "
+                "please contact admin if retries ultimately fail."
+            )
+            self.tool.stream_log(msg, level=LogLevel.ERROR)
+            raise ConnectionError(msg) from connect_err
         except RequestException as e:
             # Extract error information from the response if available
             error_message = str(e)
@@ -252,7 +289,7 @@ class PlatformHelper:
             )
         return response.json()
 
-    def get_platform_details(self) -> dict[str, Any] | None:
+    def get_platform_details(self: Self) -> dict[str, Any] | None:
         """Obtains platform details associated with the platform key.
 
         Currently helps fetch organization ID related to the key.
@@ -269,7 +306,7 @@ class PlatformHelper:
         )
         return response.get("details")
 
-    def get_prompt_studio_tool(self, prompt_registry_id: str) -> dict[str, Any]:
+    def get_prompt_studio_tool(self: Self, prompt_registry_id: str) -> dict[str, Any]:
         """Get exported custom tool by the help of unstract DB tool.
 
         Args:
@@ -287,7 +324,7 @@ class PlatformHelper:
             method="GET",
         )
 
-    def get_llm_profile(self, llm_profile_id: str) -> dict[str, Any]:
+    def get_llm_profile(self: Self, llm_profile_id: str) -> dict[str, Any]:
         """Get llm profile by the help of unstract DB tool.
 
         Args:
