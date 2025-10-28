@@ -166,20 +166,27 @@ class ToolSandboxHelper:
                     current_tracker_data = tracker.get_data(
                         self.execution_id, file_execution_id
                     )
+                    # Check if already at FINALIZATION or COMPLETED (tool execution done)
                     if (
                         current_tracker_data
                         and current_tracker_data.stage_status.stage
-                        == FileExecutionStage.COMPLETED
+                        in [
+                            FileExecutionStage.FINALIZATION,
+                            FileExecutionStage.COMPLETED,
+                        ]
                     ):
+                        stage = current_tracker_data.stage_status.stage
+                        status = current_tracker_data.stage_status.status
                         logger.warning(
-                            f"File execution COMPLETED by another worker during NOT_FOUND grace period - "
-                            f"duplicate run detected after {not_found_duration:.1f}s for execution_id: {self.execution_id}, file_execution_id: {file_execution_id}"
+                            f"File execution already at {stage}:{status} by another worker "
+                            f"during NOT_FOUND grace period - duplicate run detected after {not_found_duration:.1f}s "
+                            f"for execution_id: {self.execution_id}, file_execution_id: {file_execution_id}"
                         )
                         # Break with ERROR to stop further processing (destination, finalization)
-                        # This is not a real error - the file was successfully processed by another worker
+                        # This is not a real error - the file was already processed by another worker
                         response = self._create_run_response(
                             status=RunnerContainerRunStatus.ERROR,
-                            error="File already completed by another worker (duplicate run avoided)",
+                            error=f"File already processed by another worker (stage: {stage}:{status}, duplicate run avoided)",
                         )
                         break
 
