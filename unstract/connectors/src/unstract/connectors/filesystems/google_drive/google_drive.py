@@ -19,11 +19,6 @@ from unstract.connectors.gcs_helper import GCSHelper
 logging.getLogger("gdrive").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
-# Module-level cache for client secrets to avoid repeated Secret Manager calls
-# Secret Manager uses gRPC which is not fork-safe, so we cache the result
-_client_secrets_cache = None
-_client_secrets_lock = threading.Lock()
-
 
 class GoogleDriveFS(UnstractFileSystem):
     # Settings dict should contain the following:
@@ -35,46 +30,22 @@ class GoogleDriveFS(UnstractFileSystem):
     def __init__(self, settings: dict[str, Any]):
         super().__init__("GoogleDrive")
 
-        # Use module-level cache to avoid repeated Secret Manager calls
-        # Secret Manager uses gRPC which is not fork-safe
-        global _client_secrets_cache
-        if _client_secrets_cache is None:
-            with _client_secrets_lock:
-                # Double-check pattern
-                if _client_secrets_cache is None:
-                    logger.info(
-                        "Loading Google Drive client secrets from Secret Manager "
-                        "(one-time per process)"
-                    )
-                    try:
-                        _client_secrets_cache = json.loads(
-                            GCSHelper().get_secret("google_drive_client_secret")
-                        )
-                    except GoogleApiException.PermissionDenied as e:
-                        user_message = (
-                            "Permission denied. Please check your credentials. "
-                        )
-                        raise FSAccessDeniedError(
-                            user_message,
-                            treat_as_user_message=True,
-                        ) from e
-
-        self.client_secrets = _client_secrets_cache
-        self.oauth2_credentials = {
-            "client_id": self.client_secrets["web"]["client_id"],
-            "client_secret": self.client_secrets["web"]["client_secret"],
-            "token_uri": self.client_secrets["web"]["token_uri"],
-            "user_agent": None,
-            "invalid": False,
+        # Store OAuth settings WITHOUT loading secrets from Secret Manager
+        # Secret Manager uses gRPC which is NOT fork-safe!
+        # Secrets will be loaded lazily in get_fsspec_fs() AFTER fork
+        self._oauth_settings = {
             "access_token": settings["access_token"],
             "refresh_token": settings["refresh_token"],
             GDriveConstants.TOKEN_EXPIRY: settings[GDriveConstants.TOKEN_EXPIRY],
         }
+
         # Store settings file path for lazy initialization
         self._settings_file = f"{os.path.dirname(__file__)}/static/settings.yaml"
 
-        # Lazy initialization - create client only when needed (after fork)
-        # This prevents SIGSEGV crashes in Celery ForkPoolWorker processes
+        # Lazy initialization - create client secrets and drive client only when needed (after fork)
+        # This prevents SIGSEGV crashes in Celery ForkPoolWorker processes from gRPC calls
+        self._client_secrets = None
+        self._client_secrets_lock = threading.Lock()
         self._drive = None
         self._drive_lock = threading.Lock()
 
@@ -117,15 +88,58 @@ class GoogleDriveFS(UnstractFileSystem):
     def can_read() -> bool:
         return True
 
+    def _get_client_secrets(self) -> dict[str, Any]:
+        """Get client secrets with lazy initialization (fork-safe).
+
+        This method loads secrets from Google Cloud Secret Manager on first access,
+        ensuring the gRPC call happens AFTER Celery fork to avoid SIGSEGV crashes.
+
+        Secret Manager uses gRPC which is not fork-safe. Loading secrets in __init__
+        causes them to be loaded in the parent process before fork(), resulting in
+        stale gRPC connections in child processes that trigger segmentation faults.
+
+        Returns:
+            dict: Client secrets configuration from Secret Manager
+
+        Raises:
+            FSAccessDeniedError: If permission denied accessing Secret Manager
+        """
+        if self._client_secrets is None:
+            with self._client_secrets_lock:
+                # Double-check pattern for thread safety
+                if self._client_secrets is None:
+                    logger.info(
+                        "Loading Google Drive client secrets from Secret Manager "
+                        "(lazy init after fork)"
+                    )
+                    try:
+                        # This gRPC call happens AFTER fork in child process
+                        self._client_secrets = json.loads(
+                            GCSHelper().get_secret("google_drive_client_secret")
+                        )
+                        logger.info("Google Drive client secrets loaded successfully")
+                    except GoogleApiException.PermissionDenied as e:
+                        user_message = (
+                            "Permission denied accessing Google Drive secrets. "
+                            "Please check your credentials."
+                        )
+                        raise FSAccessDeniedError(
+                            user_message,
+                            treat_as_user_message=True,
+                        ) from e
+
+        return self._client_secrets
+
     def get_fsspec_fs(self) -> GDriveFileSystem:
         """Get GDrive filesystem with lazy initialization (fork-safe).
 
         This method creates the Google Drive API client on first access,
         ensuring it's created AFTER Celery fork to avoid SIGSEGV crashes.
 
-        The lazy initialization pattern ensures that gRPC-based Google API
-        clients are created in the child process after fork(), not in the
-        parent process before fork.
+        The lazy initialization pattern ensures that:
+        1. Secret Manager gRPC calls happen in child process (after fork)
+        2. Google Drive API client is created in child process (after fork)
+        3. No stale gRPC connections exist from parent process
 
         Returns:
             GDriveFileSystem: The initialized Google Drive filesystem client
@@ -135,12 +149,27 @@ class GoogleDriveFS(UnstractFileSystem):
                 # Double-check pattern for thread safety
                 if self._drive is None:
                     logger.info("Initializing Google Drive client (lazy init after fork)")
+
+                    # Load client secrets AFTER fork (gRPC call)
+                    client_secrets = self._get_client_secrets()
+
+                    # Build OAuth2 credentials with secrets loaded after fork
+                    oauth2_credentials = {
+                        "client_id": client_secrets["web"]["client_id"],
+                        "client_secret": client_secrets["web"]["client_secret"],
+                        "token_uri": client_secrets["web"]["token_uri"],
+                        "user_agent": None,
+                        "invalid": False,
+                        **self._oauth_settings,  # Add access token, refresh token, expiry
+                    }
+
+                    # Create Google Auth and Drive filesystem
                     gauth = GoogleAuth(
                         settings_file=self._settings_file,
-                        settings={"client_config": self.client_secrets["web"]},
+                        settings={"client_config": client_secrets["web"]},
                     )
                     gauth.credentials = OAuth2Credentials.from_json(
-                        json_data=json.dumps(self.oauth2_credentials)
+                        json_data=json.dumps(oauth2_credentials)
                     )
                     self._drive = GDriveFileSystem(path="root", google_auth=gauth)
                     logger.info("Google Drive client initialized successfully")
