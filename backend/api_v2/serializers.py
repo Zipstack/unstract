@@ -4,6 +4,7 @@ from collections import OrderedDict
 from typing import Any
 from urllib.parse import urlparse
 
+from django.apps import apps
 from django.core.validators import RegexValidator
 from pipeline_v2.models import Pipeline
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
@@ -227,6 +228,7 @@ class ExecutionRequestSerializer(TagParamsSerializer):
     presigned_urls = ListField(child=URLField(), required=False)
     llm_profile_id = CharField(required=False, allow_null=True, allow_blank=True)
     hitl_queue_name = CharField(required=False, allow_null=True, allow_blank=True)
+    hitl_packet_id = CharField(required=False, allow_null=True, allow_blank=True)
     custom_data = JSONField(required=False, allow_null=True)
 
     def validate_hitl_queue_name(self, value: str | None) -> str | None:
@@ -246,6 +248,36 @@ class ExecutionRequestSerializer(TagParamsSerializer):
                 "Learn more at https://docs.unstract.com/unstract/unstract_platform/features/workflows/hqr_deployment_workflows/ or "
                 "contact our sales team at https://unstract.com/contact/"
             )
+        return value
+
+    def validate_hitl_packet_id(self, value: str | None) -> str | None:
+        """Validate packet ID format using enterprise validation if available."""
+        if not value:
+            return value
+
+        # Check if HITL feature is available
+        if not apps.is_installed("pluggable_apps.manual_review_v2"):
+            raise ValidationError(
+                "Packet-based HITL processing requires Unstract Enterprise. "
+                "This advanced workflow feature is available in our enterprise version. "
+                "Learn more at https://docs.unstract.com/unstract/unstract_platform/features/workflows/hqr_deployment_workflows/ or "
+                "contact our sales team at https://unstract.com/contact/"
+            )
+
+        # Validate packet ID format (alphanumeric string, typically 8-character hex)
+        value = value.strip()
+        if not value:
+            raise ValidationError("Packet ID cannot be empty or whitespace only.")
+
+        # Basic format validation: alphanumeric, reasonable length
+        if not re.match(r"^[a-zA-Z0-9_-]+$", value):
+            raise ValidationError(
+                "Invalid packet ID format. Packet ID must contain only letters, numbers, hyphens, or underscores."
+            )
+
+        if len(value) > 16:  # Reasonable max length
+            raise ValidationError("Packet ID is too long (maximum 100 characters).")
+
         return value
 
     def validate_custom_data(self, value):
