@@ -330,37 +330,6 @@ class WorkerDestinationConnector:
         try:
             tracker = FileExecutionStatusTracker()
 
-            # Check if destination already processed or in progress
-            existing_data = tracker.get_data(
-                exec_ctx.execution_id, exec_ctx.file_execution_id
-            )
-
-            if existing_data:
-                current_stage = existing_data.stage_status.stage
-                # Check for DESTINATION_PROCESSING, FINALIZATION, or COMPLETED
-                if current_stage in [
-                    FileExecutionStage.DESTINATION_PROCESSING,
-                    FileExecutionStage.FINALIZATION,
-                    FileExecutionStage.COMPLETED,
-                ]:
-                    logger.warning(
-                        f"Destination already processed for file '{file_ctx.file_name}' "
-                        f"at stage {current_stage.value}. Skipping duplicate processing."
-                    )
-                    log_file_info(
-                        exec_ctx.workflow_log,
-                        exec_ctx.file_execution_id,
-                        f"File '{file_ctx.file_name}' destination already processed - skipping duplicate",
-                    )
-                    return False  # Duplicate detected
-
-            # Atomically acquire lock using Redis SET NX
-            # Use helper method for consistent lock key format
-            lock_key = tracker.get_destination_lock_key(
-                exec_ctx.execution_id, exec_ctx.file_execution_id
-            )
-            lock_token = str(uuid.uuid4())  # Unique token for debugging
-
             # Get TTL values from environment
             LOCK_TTL = int(
                 os.environ.get("DESTINATION_PROCESSING_LOCK_TTL_IN_SECOND", 120)
@@ -369,29 +338,65 @@ class WorkerDestinationConnector:
                 os.environ.get("DESTINATION_PROCESSING_STAGE_TTL_IN_SECOND", 600)
             )
 
+            # Get lock key for atomic operations
+            lock_key = tracker.get_destination_lock_key(
+                exec_ctx.execution_id, exec_ctx.file_execution_id
+            )
+            lock_token = str(uuid.uuid4())  # Unique token for debugging
+
+            # STEP 1: Try to acquire lock atomically (SOURCE OF TRUTH)
+            # This is atomic - if lock exists, another worker is processing
             logger.info(
                 f"Attempting to acquire destination lock for file '{file_ctx.file_name}' "
                 f"(lock_key={lock_key}, lock_ttl={LOCK_TTL}s, stage_ttl={STAGE_TTL}s)"
             )
 
-            # Use Redis SET NX (Set if Not eXists) for true atomic lock acquisition
-            # Returns True if key was set (lock acquired), False if key already exists
             lock_acquired = tracker.redis_client.set(
                 lock_key, lock_token, nx=True, ex=LOCK_TTL
             )
 
+            # STEP 2: If lock acquisition failed, another worker is processing - WAIT
             if not lock_acquired:
-                # Another worker already has the lock
-                logger.warning(
-                    f"Lock acquisition failed for file '{file_ctx.file_name}': "
-                    f"Another worker holds the lock. Skipping duplicate processing."
+                logger.info(
+                    f"Lock already held by another worker for file '{file_ctx.file_name}'. "
+                    f"Waiting for lock release to prevent premature chord cleanup (max {LOCK_TTL}s)..."
                 )
-                log_file_info(
-                    exec_ctx.workflow_log,
-                    exec_ctx.file_execution_id,
-                    f"File '{file_ctx.file_name}' destination lock held by another worker - skipping duplicate",
+
+                wait_start = time.time()
+                max_wait = min(LOCK_TTL, 120)  # Wait up to lock TTL or 120s
+
+                # Poll until lock released or timeout
+                while time.time() - wait_start < max_wait:
+                    # Check if lock released
+                    if not tracker.redis_client.exists(lock_key):
+                        wait_duration = time.time() - wait_start
+                        # Lock released BEFORE timeout → Other worker finished (success or error) → Skip
+                        logger.info(
+                            f"Lock released for '{file_ctx.file_name}' after {wait_duration:.1f}s - "
+                            f"other worker completed processing. Skipping as duplicate."
+                        )
+                        return False  # Skip immediately
+
+                    time.sleep(2)  # Poll every 2 seconds
+
+                # STEP 3: After wait, try to acquire lock again
+                lock_acquired = tracker.redis_client.set(
+                    lock_key, lock_token, nx=True, ex=LOCK_TTL
                 )
-                return False
+
+                if not lock_acquired:
+                    # Still can't acquire lock (timeout or another worker grabbed it)
+                    if tracker.redis_client.exists(lock_key):
+                        logger.warning(
+                            f"Lock still held after {max_wait}s timeout for '{file_ctx.file_name}'. "
+                            f"Another worker may have acquired it. Skipping as duplicate."
+                        )
+                    else:
+                        logger.warning(
+                            f"Failed to acquire lock for '{file_ctx.file_name}' after wait. "
+                            f"Another worker may have grabbed it first. Skipping as duplicate."
+                        )
+                    return False  # Skip
 
             # Lock acquired successfully - now set DESTINATION_PROCESSING stage
             logger.info(

@@ -70,29 +70,15 @@ class WorkerBuilder:
             result_backend=config.celery_result_backend,
         )
 
-        # Add Django-style log format configuration to override Celery's default formats
-        logging_config = WorkerRegistry.get_logging_config(worker_type)
-        log_format = os.getenv("LOG_FORMAT", logging_config.get("log_format", "django"))
-
-        if log_format.lower() == "django":
-            # Use Django-style format for both worker and task logs
-            django_log_format = (
-                "%(levelname)s : [%(asctime)s]"
-                "{module:%(module)s process:%(process)d "
-                "thread:%(thread)d request_id:%(request_id)s "
-                "trace_id:%(otelTraceID)s span_id:%(otelSpanID)s} :- %(message)s"
-            )
-
-            # Override Celery's default log formats
-            celery_config.update(
-                {
-                    "worker_log_format": django_log_format,
-                    "worker_task_log_format": f"[%(task_name)s(%(task_id)s)] {django_log_format}",
-                    # Disable Celery's default logging setup to prevent conflicts
-                    "worker_hijack_root_logger": False,
-                    "worker_log_color": False,
-                }
-            )
+        # Prevent Celery from hijacking our logging configuration
+        # Our root logger (configured in WorkerBuilder.setup_logging) has the proper
+        # filters to prevent KeyError on missing fields
+        celery_config.update(
+            {
+                "worker_hijack_root_logger": False,  # Use our root logger config
+                "worker_log_color": False,  # Disable colors for consistency
+            }
+        )
 
         # Apply any additional overrides
         if override_config:
@@ -119,66 +105,37 @@ class WorkerBuilder:
             Configured logger instance
         """
         logging_config = WorkerRegistry.get_logging_config(worker_type)
-
-        # Determine log format from environment or config
-        log_format = os.getenv("LOG_FORMAT", logging_config.get("log_format", "django"))
         log_level = os.getenv("LOG_LEVEL", logging_config.get("log_level", "INFO"))
 
         # Configure worker logging
         WorkerLogger.configure(
             log_level=log_level,
-            log_format=log_format,
             worker_name=worker_type.to_worker_name(),
         )
 
         # Configure Celery's built-in loggers to use the same format
-        WorkerBuilder._configure_celery_loggers(log_format, log_level)
+        WorkerBuilder._configure_celery_loggers(log_level)
 
         return WorkerLogger.get_logger(worker_type.to_worker_name())
 
     @staticmethod
-    def _configure_celery_loggers(log_format: str, log_level: str) -> None:
-        """Configure Celery's built-in loggers and root logger to use consistent formatting.
+    def _configure_celery_loggers(log_level: str) -> None:
+        """Configure Celery's built-in loggers to propagate to root logger.
 
-        This ensures that ALL loggers (including task execution loggers) use the same format
-        as the rest of the application, eliminating mixed log formats completely.
+        Sets log levels for Celery-specific loggers and enables propagation so they
+        forward log records to the root logger's handlers. Root logger is already
+        configured by WorkerLogger.configure() with proper filters to prevent
+        KeyError/SIGSEGV.
+
+        This approach avoids clearing root logger handlers (which would drop handlers
+        from external libraries like OpenTelemetry) and prevents duplicate log output.
 
         Args:
-            log_format: Log format to use ('django' or 'structured')
             log_level: Log level to set
         """
-        from ..logging.logger import (
-            DjangoStyleFormatter,
-            StructuredFormatter,
-            WorkerFieldFilter,
-        )
-
-        # Choose the appropriate formatter
-        if log_format.lower() == "django":
-            formatter = DjangoStyleFormatter()
-        elif log_format.lower() == "structured":
-            formatter = StructuredFormatter()
-        else:
-            formatter = DjangoStyleFormatter()  # Default to Django format
-
-        # CRITICAL: Configure root logger to catch ALL loggers
-        root_logger = logging.getLogger()
-        root_logger.setLevel(getattr(logging, log_level.upper()))
-
-        # Clear all existing handlers on root logger
-        root_logger.handlers.clear()
-
-        # Add our custom handler to root logger
-        root_handler = logging.StreamHandler()
-        root_handler.setFormatter(formatter)
-
-        # Add field filter for Django format to ensure required fields
-        if log_format.lower() == "django":
-            root_handler.addFilter(WorkerFieldFilter())
-
-        root_logger.addHandler(root_handler)
-
-        # Configure specific Celery loggers for extra assurance
+        # Configure specific Celery loggers to propagate to root
+        # Root logger is already configured by WorkerLogger.configure() with proper
+        # filters and handlers. We just need to set log levels and enable propagation.
         celery_loggers = [
             "celery",
             "celery.worker",
@@ -204,21 +161,9 @@ class WorkerBuilder:
             celery_logger = logging.getLogger(logger_name)
             celery_logger.setLevel(getattr(logging, log_level.upper()))
 
-            # Remove existing handlers to avoid duplication
-            celery_logger.handlers.clear()
-
-            # Add our custom handler with consistent formatting
-            handler = logging.StreamHandler()
-            handler.setFormatter(formatter)
-
-            # Add field filter for Django format to ensure required fields
-            if log_format.lower() == "django":
-                handler.addFilter(WorkerFieldFilter())
-
-            celery_logger.addHandler(handler)
-
-            # Disable propagation to avoid duplicate logs (each logger has its own handler)
-            celery_logger.propagate = False
+            # Enable propagation so logs flow to root logger's handler
+            # Root logger already has filters to prevent KeyError/ValueError
+            celery_logger.propagate = True
 
     @staticmethod
     def setup_health_monitoring(
