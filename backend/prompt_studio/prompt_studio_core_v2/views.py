@@ -10,7 +10,7 @@ from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
 from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
-from permissions.permission import IsOwner, IsOwnerOrSharedUser
+from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
@@ -94,7 +94,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         if self.action == "destroy":
             return [IsOwner()]
 
-        return [IsOwnerOrSharedUser()]
+        return [IsOwnerOrSharedUserOrSharedToOrg()]
 
     def get_queryset(self) -> QuerySet | None:
         return CustomTool.objects.for_user(self.request.user)
@@ -153,7 +153,46 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
     def partial_update(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
-        return super().partial_update(request, *args, **kwargs)
+        # Store current shared users before update for email notifications
+        custom_tool = self.get_object()
+        current_shared_users = set(custom_tool.shared_users.all())
+
+        # Perform the update
+        response = super().partial_update(request, *args, **kwargs)
+
+        # Send email notifications to newly shared users
+        if response.status_code == 200 and "shared_users" in request.data:
+            from plugins.notification.constants import ResourceType
+            from plugins.notification.sharing_notification import (
+                SharingNotificationService,
+            )
+
+            # Refresh the object to get updated shared_users
+            custom_tool.refresh_from_db()
+            updated_shared_users = set(custom_tool.shared_users.all())
+
+            # Find newly added users (not previously shared)
+            newly_shared_users = updated_shared_users - current_shared_users
+
+            if newly_shared_users:
+                notification_service = SharingNotificationService()
+                try:
+                    notification_service.send_sharing_notification(
+                        resource_type=ResourceType.TEXT_EXTRACTOR.value,
+                        resource_name=custom_tool.tool_name,
+                        resource_id=str(custom_tool.tool_id),
+                        shared_by=request.user,
+                        shared_to=list(newly_shared_users),
+                        resource_instance=custom_tool,
+                    )
+                except Exception as e:
+                    # Log error but don't fail the request
+                    logger.exception(
+                        f"Failed to send sharing notification for "
+                        f"custom tool {custom_tool.tool_id}: {str(e)}"
+                    )
+
+        return response
 
     @action(detail=True, methods=["get"])
     def get_select_choices(self, request: HttpRequest) -> Response:
