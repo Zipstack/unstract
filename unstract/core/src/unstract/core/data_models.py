@@ -685,6 +685,7 @@ class FileHashData:
     use_file_history: bool = False  # Whether to create file history entries for this file
     is_manualreview_required: bool = False  # Whether this file requires manual review
     hitl_queue_name: str | None = None  # HITL queue name for API deployments
+    hitl_packet_id: str | None = None  # HITL packet ID for packet-based HITL processing
 
     def __post_init__(self):
         """Validate required fields."""
@@ -1383,6 +1384,7 @@ class WorkerFileData:
     source_config: dict[str, Any] = field(default_factory=dict)
     destination_config: dict[str, Any] = field(default_factory=dict)
     hitl_queue_name: str | None = field(default=None)
+    hitl_packet_id: str | None = field(default=None)
     manual_review_config: dict[str, Any] = field(
         default_factory=lambda: {
             "review_required": False,
