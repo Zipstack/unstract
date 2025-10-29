@@ -13,8 +13,24 @@ from unstract.connectors.filesystems.unstract_file_system import UnstractFileSys
 
 logger = logging.getLogger(__name__)
 
+# Global lock for thread-safe Google Cloud Storage initialization
+# Prevents deadlock when multiple threads simultaneously create GCS clients
+# (GCSFileSystem uses gRPC which has internal locks)
+_GCS_INIT_LOCK = threading.Lock()
+
 
 class GoogleCloudStorageFS(UnstractFileSystem):
+    """Fork-safe and thread-safe Google Cloud Storage filesystem connector.
+
+    IMPORTANT: This class ensures safety across ALL Celery pool types:
+    - Thread pool: Global lock prevents gRPC deadlock
+    - Prefork pool: Lazy initialization prevents SIGSEGV
+    - Gevent pool: threading.Lock is gevent-compatible
+
+    GCS filesystem client is NOT created in __init__ to avoid creating
+    gRPC connections before fork, which would cause SIGSEGV in child processes.
+    """
+
     def __init__(self, settings: dict[str, Any]):
         """Initializing gcs
 
@@ -34,7 +50,6 @@ class GoogleCloudStorageFS(UnstractFileSystem):
         # Lazy initialization - create GCS client only when needed (after fork)
         # This prevents SIGSEGV crashes in Celery ForkPoolWorker processes from gRPC calls
         self._gcs_fs = None
-        self._gcs_fs_lock = threading.Lock()
 
     @staticmethod
     def get_id() -> str:
@@ -76,7 +91,7 @@ class GoogleCloudStorageFS(UnstractFileSystem):
         return True
 
     def get_fsspec_fs(self) -> AbstractFileSystem:
-        """Get GCS filesystem with lazy initialization (fork-safe).
+        """Get GCS filesystem with lazy initialization (fork-safe and thread-safe).
 
         This method creates the GCS filesystem client on first access,
         ensuring it's created AFTER Celery fork to avoid SIGSEGV crashes.
@@ -90,6 +105,9 @@ class GoogleCloudStorageFS(UnstractFileSystem):
         clients are created in the child process after fork(), not in the
         parent process before fork().
 
+        Thread-safe: Uses global lock to prevent gRPC deadlock when multiple
+        threads create GCS clients simultaneously.
+
         Returns:
             GCSFileSystem: The initialized Google Cloud Storage filesystem client
 
@@ -97,7 +115,9 @@ class GoogleCloudStorageFS(UnstractFileSystem):
             ConnectorError: If GCS credentials are invalid or connection fails
         """
         if self._gcs_fs is None:
-            with self._gcs_fs_lock:
+            # Use global lock to serialize GCS client creation
+            # This prevents deadlock when multiple threads hit this simultaneously
+            with _GCS_INIT_LOCK:
                 # Double-check pattern for thread safety
                 if self._gcs_fs is None:
                     logger.info("Initializing GCS client (lazy init after fork)")
