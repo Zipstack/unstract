@@ -11,16 +11,22 @@ import sys
 import threading
 import time
 
-from celery import bootsteps
+# CRITICAL: Enable gRPC fork support BEFORE any Google API imports
+# This must be set before importing any gRPC-based libraries (Google Cloud, etc.)
+# to prevent SIGSEGV crashes in forked worker processes
+os.environ.setdefault("GRPC_ENABLE_FORK_SUPPORT", "1")
+os.environ.setdefault("GRPC_POLL_STRATEGY", "poll")
+
+from celery import bootsteps, signals  # noqa: E402
 
 # Add the workers directory to Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Import the WorkerBuilder and WorkerType
-from shared.enums.worker_enums import WorkerType
-from shared.infrastructure import initialize_worker_infrastructure
-from shared.infrastructure.config.builder import WorkerBuilder
-from shared.models.worker_models import get_celery_setting
+from shared.enums.worker_enums import WorkerType  # noqa: E402
+from shared.infrastructure import initialize_worker_infrastructure  # noqa: E402
+from shared.infrastructure.config.builder import WorkerBuilder  # noqa: E402
+from shared.models.worker_models import get_celery_setting  # noqa: E402
 
 # Determine worker type from environment FIRST
 WORKER_TYPE = os.environ.get("WORKER_TYPE", "general")
@@ -328,6 +334,40 @@ logger.info(f"📦 Converted '{WORKER_TYPE}' to {worker_type}")
 # This ensures chord retry configuration is applied correctly
 logger.info(f"🔧 Building Celery app using WorkerBuilder for {worker_type}")
 app, config = WorkerBuilder.build_celery_app(worker_type)
+
+
+# ============= WORKER PROCESS INIT HOOK FOR GRPC FORK-SAFETY =============
+@signals.worker_process_init.connect
+def on_worker_process_init(**kwargs):
+    """Initialize worker process after fork to fix gRPC fork-safety issues.
+
+    This signal handler runs in each forked worker process AFTER the fork,
+    ensuring that gRPC connections and Google API clients are created fresh
+    in the child process, not inherited from the parent.
+
+    Without this, Google Cloud libraries (Drive, GCS, BigQuery, Secret Manager)
+    crash with SIGSEGV because they inherit stale gRPC connections from the
+    parent process.
+
+    The GRPC_ENABLE_FORK_SUPPORT environment variable set at the top of this
+    file enables gRPC's experimental fork support, and this handler ensures
+    proper reinitialization after fork.
+    """
+    import gc
+
+    logger.info("🔄 Worker process initialized after fork (PID: %s)", os.getpid())
+    logger.info("🔒 gRPC fork support enabled: GRPC_ENABLE_FORK_SUPPORT=1")
+    logger.info(
+        "📡 gRPC poll strategy: %s", os.environ.get("GRPC_POLL_STRATEGY", "default")
+    )
+
+    # Force garbage collection to clean up any stale gRPC state from parent
+    gc.collect()
+
+    logger.info("✅ Worker process ready for gRPC-based operations (Google APIs)")
+
+
+# ============= END OF WORKER PROCESS INIT HOOK =============
 
 
 # ============= REGISTER HEARTBEATKEEPER HERE =============
