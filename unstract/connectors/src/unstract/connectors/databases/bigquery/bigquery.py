@@ -6,8 +6,9 @@ import uuid
 from enum import Enum
 from typing import Any
 
-import google.api_core.exceptions
-
+# DO NOT import Google API libraries at module level!
+# These imports initialize gRPC state before Celery fork, causing SIGSEGV.
+# Import them INSIDE methods where they're used (after fork).
 from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.exceptions import (
     BigQueryForbiddenException,
@@ -229,6 +230,9 @@ class BigQuery(UnstractDB):
             BigQueryNotFoundException: raised due to unavailable resource
             ColumnMissingException: raised due to missing columns in table query
         """
+        # Import INSIDE method to avoid module-level gRPC initialization
+        import google.api_core.exceptions
+
         table_name = kwargs.get("table_name", None)
         if table_name is None:
             raise ValueError("Please enter a valid table_name to to create/insert table")

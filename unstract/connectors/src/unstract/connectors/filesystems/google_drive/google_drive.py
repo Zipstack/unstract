@@ -6,21 +6,41 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import google.api_core.exceptions as GoogleApiException
-from oauth2client.client import OAuth2Credentials
-from pydrive2.auth import GoogleAuth
-from pydrive2.fs import GDriveFileSystem
-
 from unstract.connectors.exceptions import ConnectorError, FSAccessDeniedError
 from unstract.connectors.filesystems.google_drive.constants import GDriveConstants
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 from unstract.connectors.gcs_helper import GCSHelper
 
+# DO NOT import Google API libraries at module level!
+# These imports initialize gRPC state before Celery fork, causing SIGSEGV.
+# Import them INSIDE methods where they're used (after fork).
+# Previously caused crashes:
+#   import google.api_core.exceptions
+#   from oauth2client.client import OAuth2Credentials
+#   from pydrive2.auth import GoogleAuth
+#   from pydrive2.fs import GDriveFileSystem
+
 logging.getLogger("gdrive").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
+# Global lock for thread-safe Google API initialization
+# Prevents deadlock when multiple threads simultaneously create gRPC clients
+# (Secret Manager, Google Drive clients use gRPC which has internal locks)
+_GOOGLE_DRIVE_INIT_LOCK = threading.Lock()
+
 
 class GoogleDriveFS(UnstractFileSystem):
+    """Fork-safe and thread-safe Google Drive filesystem connector.
+
+    IMPORTANT: This class ensures safety across ALL Celery pool types:
+    - Thread pool: Global lock prevents gRPC deadlock
+    - Prefork pool: Lazy initialization prevents SIGSEGV
+    - Gevent pool: threading.Lock is gevent-compatible
+
+    Credentials and clients are NOT created in __init__ to avoid creating
+    gRPC connections before fork, which would cause SIGSEGV in child processes.
+    """
+
     # Settings dict should contain the following:
     # {
     #   "access_token": "<access_token>",
@@ -108,6 +128,9 @@ class GoogleDriveFS(UnstractFileSystem):
             with self._client_secrets_lock:
                 # Double-check pattern for thread safety
                 if self._client_secrets is None:
+                    # Import INSIDE method to avoid module-level gRPC initialization
+                    import google.api_core.exceptions as GoogleApiException
+
                     logger.info(
                         "Loading Google Drive client secrets from Secret Manager "
                         "(lazy init after fork)"
@@ -130,8 +153,8 @@ class GoogleDriveFS(UnstractFileSystem):
 
         return self._client_secrets
 
-    def get_fsspec_fs(self) -> GDriveFileSystem:
-        """Get GDrive filesystem with lazy initialization (fork-safe).
+    def get_fsspec_fs(self) -> Any:
+        """Get GDrive filesystem with lazy initialization (fork-safe and thread-safe).
 
         This method creates the Google Drive API client on first access,
         ensuring it's created AFTER Celery fork to avoid SIGSEGV crashes.
@@ -141,13 +164,23 @@ class GoogleDriveFS(UnstractFileSystem):
         2. Google Drive API client is created in child process (after fork)
         3. No stale gRPC connections exist from parent process
 
+        Thread-safe: Uses global lock to prevent gRPC deadlock when multiple
+        threads create Google Drive clients simultaneously.
+
         Returns:
             GDriveFileSystem: The initialized Google Drive filesystem client
         """
         if self._drive is None:
-            with self._drive_lock:
+            # Use global lock to serialize Google Drive client creation
+            # This prevents deadlock when multiple threads hit this simultaneously
+            with _GOOGLE_DRIVE_INIT_LOCK:
                 # Double-check pattern for thread safety
                 if self._drive is None:
+                    # Import INSIDE method to avoid module-level gRPC initialization
+                    from oauth2client.client import OAuth2Credentials
+                    from pydrive2.auth import GoogleAuth
+                    from pydrive2.fs import GDriveFileSystem
+
                     logger.info("Initializing Google Drive client (lazy init after fork)")
 
                     # Load client secrets AFTER fork (gRPC call)
