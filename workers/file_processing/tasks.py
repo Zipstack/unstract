@@ -1454,6 +1454,15 @@ def _create_file_hash_from_dict(
             f"Applied HITL queue name '{file_data.hitl_queue_name}' to file {file_name}"
         )
 
+    if file_data and file_data.hitl_packet_id:
+        file_hash.hitl_packet_id = file_data.hitl_packet_id
+        file_hash.is_manualreview_required = (
+            True  # Override manual review flag for packet processing
+        )
+        logger.info(
+            f"Applied HITL packet ID '{file_data.hitl_packet_id}' to file {file_name}"
+        )
+
     return file_hash
 
 
