@@ -81,7 +81,8 @@ class HeartbeatKeeper(bootsteps.StartStopStep):
         """Start heartbeat keeper thread - remains dormant until warm shutdown"""
         # Load all configuration once and store as instance variables
         # Read broker_heartbeat from actual Celery configuration (single source of truth)
-        self.broker_heartbeat = self.worker.app.conf.broker_heartbeat
+        # Default to 10 seconds if None (Celery's default is None)
+        self.broker_heartbeat = self.worker.app.conf.broker_heartbeat or 10
 
         # Get HeartbeatKeeper-specific configuration using hierarchical config system
         self.shutdown_interval = get_celery_setting(
