@@ -7,9 +7,6 @@
 !apps.py
 
 # TODO: Make these as proper plugins
-!authentication/
 !authentication/auth_sample
-!api/
-!api/dto/
 !api/dto/__init__.py
 !workflow_manager
