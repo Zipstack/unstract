@@ -16,6 +16,7 @@ from rest_framework.request import Request
 from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.local_context import StateStore
+from utils.subscription_usage_decorator import track_subscription_usage_if_available
 
 from prompt_studio.modifier_loader import ModifierConfig
 from prompt_studio.modifier_loader import load_plugins as load_modifier_plugins
@@ -328,6 +329,7 @@ class PromptStudioHelper:
         return prompt_instances
 
     @staticmethod
+    @track_subscription_usage_if_available(file_execution_id_param="run_id")
     def index_document(
         tool_id: str,
         file_name: str,
@@ -523,6 +525,7 @@ class PromptStudioHelper:
             return summarize_file_path
 
     @staticmethod
+    @track_subscription_usage_if_available(file_execution_id_param="run_id")
     def prompt_responder(
         tool_id: str,
         org_id: str,
