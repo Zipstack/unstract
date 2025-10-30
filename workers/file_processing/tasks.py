@@ -487,7 +487,11 @@ def _refactored_pre_create_file_executions(
     # This matches the backend's _pre_create_file_executions pattern for ALL workflow types
     # Includes double safeguard: database check for active files
     workflow_logger = context.metadata.get("workflow_logger")
-    pre_created_file_executions, skipped_files = _pre_create_file_executions(
+    (
+        pre_created_file_executions,
+        skipped_already_completed,
+        skipped_active_duplicate,
+    ) = _pre_create_file_executions(
         file_data=file_data,
         files=files,
         workflow_id=workflow_id,
@@ -500,12 +504,13 @@ def _refactored_pre_create_file_executions(
     )
     logger.info(
         f"Pre-created {len(pre_created_file_executions)} WorkflowFileExecution records for {workflow_type} workflow "
-        f"(skipped {len(skipped_files)} duplicates)"
+        f"(skipped {len(skipped_already_completed)} already completed, {len(skipped_active_duplicate)} active duplicates)"
     )
 
     # Add to metadata
     context.pre_created_file_executions = pre_created_file_executions
-    context.metadata["skipped_files"] = skipped_files
+    context.metadata["skipped_already_completed"] = skipped_already_completed
+    context.metadata["skipped_active_duplicate"] = skipped_active_duplicate
 
     return context
 
@@ -527,7 +532,8 @@ def _process_individual_files(context: WorkflowContextData) -> WorkflowContextDa
     api_client = context.organization_context.api_client
     workflow_execution = context.metadata["workflow_execution"]
     pre_created_file_executions = context.pre_created_file_executions
-    skipped_files = context.metadata.get("skipped_files", [])
+    skipped_already_completed = context.metadata.get("skipped_already_completed", [])
+    skipped_active_duplicate = context.metadata.get("skipped_active_duplicate", [])
     result = context.metadata["result"]
     successful_files_for_manual_review = context.metadata[
         "successful_files_for_manual_review"
@@ -568,12 +574,20 @@ def _process_individual_files(context: WorkflowContextData) -> WorkflowContextDa
             file_path = file_hash_dict.get("file_path")
             if provider_uuid and file_path:
                 file_identifier = f"{provider_uuid}:{file_path}"
-                if file_identifier in skipped_files:
-                    # File was already handled in pre-creation (marked as ERROR in DB, logged to UI)
-                    # Just count it as a failure and move on
-                    logger.debug(
-                        f"File '{file_name}' (identifier: {file_identifier}) was skipped as duplicate - already counted as ERROR"
+                # Check both skip lists and handle differently
+                if file_identifier in skipped_already_completed:
+                    # File already COMPLETED in this execution - duplicate prevention worked
+                    logger.info(
+                        f"File '{file_name}' already completed in this execution - skipping (not a failure)"
                     )
+                    # Don't increment failure - file is done, duplicate prevention worked
+                    continue
+                elif file_identifier in skipped_active_duplicate:
+                    # File ACTIVE in different execution - user error (concurrent submission)
+                    logger.info(
+                        f"File '{file_name}' active in another execution - marked as ERROR (counted as failure)"
+                    )
+                    # Increment failure - this IS a user error (submitting same file to multiple executions)
                     result.increment_failure()
                     continue
 
@@ -710,6 +724,7 @@ def _process_individual_files(context: WorkflowContextData) -> WorkflowContextDa
             context.metadata.get(
                 "is_api_workflow", False
             ),  # Pass existing API workflow detection
+            skipped_already_completed,  # Pass list to track duplicate skips
         )
 
     # Update metadata with results
@@ -735,6 +750,7 @@ def _handle_file_processing_result(
     file_execution_id: str,
     celery_task_id: str,
     is_api_workflow: bool,
+    skipped_already_completed: list,
 ) -> None:
     """Handle the result of individual file processing.
 
@@ -752,6 +768,7 @@ def _handle_file_processing_result(
         file_execution_id: File execution ID
         celery_task_id: Celery task ID for queue detection
         is_api_workflow: Whether this is an API workflow (from existing detection)
+        skipped_already_completed: List to track files skipped as already completed
     """
     # Handle null execution result
     if file_execution_result is None:
@@ -769,9 +786,16 @@ def _handle_file_processing_result(
             f"DUPLICATE SKIP: File '{file_name}' skipped as duplicate - another worker is processing it. "
             f"execution_id={execution_id}, workflow_id={workflow_id}, "
             f"file_execution_id={file_execution_id}, celery_task_id={celery_task_id}. "
-            f"No DB status updates, no counter increments - silent skip to avoid interfering with active worker. "
+            f"No DB status updates, but counting in skipped_already_completed for accurate total_files. "
             f"First worker will handle all status updates and counter increments."
         )
+        # Add to skipped_already_completed so it's counted in total_files
+        file_identifier = f"{file_hash.provider_file_uuid}:{file_hash.file_path}"
+        if file_identifier not in skipped_already_completed:
+            skipped_already_completed.append(file_identifier)
+            logger.debug(
+                f"Added {file_name} to skipped_already_completed for total_files count"
+            )
         # Exit early without any DB updates - the first worker will handle all updates
         return
 
@@ -836,7 +860,9 @@ def _compile_batch_result(context: WorkflowContextData) -> dict[str, Any]:
     """
     result = context.metadata["result"]
     workflow_logger = context.metadata.get("workflow_logger")
-    skipped_files = context.metadata.get("skipped_files", [])
+    skipped_already_completed = context.metadata.get("skipped_already_completed", [])
+    skipped_active_duplicate = context.metadata.get("skipped_active_duplicate", [])
+    total_skipped = len(skipped_already_completed) + len(skipped_active_duplicate)
 
     # Send execution completion summary to UI
     if workflow_logger:
@@ -847,13 +873,14 @@ def _compile_batch_result(context: WorkflowContextData) -> dict[str, Any]:
         )
 
     # Log batch completion summary
-    # Note: Skipped duplicate files are marked as ERROR in database and counted in failed_files
-    if skipped_files:
+    # Note: Only active duplicates counted in failed_files; already-completed not counted
+    if total_skipped > 0:
         logger.info(
             f"Function tasks.process_file_batch completed. "
             f"Successful: {result.successful_files} files, "
-            f"Failed: {result.failed_files} files "
-            f"(including {len(skipped_files)} duplicate(s) marked as ERROR). "
+            f"Failed: {result.failed_files} files, "
+            f"Already completed: {len(skipped_already_completed)}, "
+            f"Active duplicates: {len(skipped_active_duplicate)}. "
             f"Batch execution time: {result.execution_time:.2f}s"
         )
     else:
@@ -871,12 +898,17 @@ def _compile_batch_result(context: WorkflowContextData) -> dict[str, Any]:
         logger.warning(f"Failed to cleanup StateStore context: {cleanup_error}")
 
     # Return the final result matching Django backend format
-    # Note: Skipped duplicate files are in database as ERROR status, not counted separately
+    # Note: Only active duplicates count as failures; already-completed do not
     return {
         "successful_files": result.successful_files,
-        "failed_files": result.failed_files,  # Includes duplicates marked as ERROR
-        "total_files": result.successful_files + result.failed_files,
-        "skipped_duplicates": len(skipped_files),  # For informational purposes
+        "failed_files": result.failed_files,  # Includes active duplicates (user error)
+        "total_files": result.successful_files
+        + result.failed_files
+        + len(skipped_already_completed),  # Include all files in batch
+        "skipped_already_completed": len(skipped_already_completed),  # Not a failure
+        "skipped_active_duplicate": len(
+            skipped_active_duplicate
+        ),  # IS a failure (counted above)
         "execution_time": result.execution_time,
         "organization_id": context.organization_context.organization_id,
     }
@@ -1039,7 +1071,7 @@ def _pre_create_file_executions(
     is_api: bool = False,
     use_file_history: bool = True,
     workflow_logger: WorkerWorkflowLogger | None = None,
-) -> tuple[dict[str, Any], list[str]]:
+) -> tuple[dict[str, Any], list[str], list[str]]:
     """Pre-create WorkflowFileExecution records with PENDING status to prevent race conditions.
 
     This matches the backend's _pre_create_file_executions pattern for ALL workflow types
@@ -1059,12 +1091,14 @@ def _pre_create_file_executions(
         workflow_logger: Workflow logger for UI logging (optional)
 
     Returns:
-        Tuple of (pre_created_data dict, skipped_files list)
+        Tuple of (pre_created_data dict, skipped_already_completed list, skipped_active_duplicate list)
         - pre_created_data: Dict mapping file names to PreCreatedFileData
-        - skipped_files: List of file identifiers (uuid:path) that were skipped (already active)
+        - skipped_already_completed: Files already COMPLETED in this execution (not a failure)
+        - skipped_active_duplicate: Files ACTIVE in different execution (IS a failure - user error)
     """
     pre_created_data: dict[str, PreCreatedFileData] = {}
-    skipped_files: list[str] = []  # List of identifiers (uuid:path), not file names
+    skipped_already_completed: list[str] = []  # Already done in this execution
+    skipped_active_duplicate: list[str] = []  # Active in different execution (user error)
 
     # Use the file history flag passed from execution parameters
     logger.info(
@@ -1120,6 +1154,24 @@ def _pre_create_file_executions(
                 force_create=not use_file_history,  # Force create when file history is disabled
             )
 
+            # EARLY EXIT: Skip if file already in terminal state (COMPLETED/ERROR) in this execution
+            # This catches race conditions where Worker 1 completes/fails before Worker 2's pre-create runs
+            # Only checks current execution_id (respects file_history cleanup for different executions)
+            if hasattr(
+                workflow_file_execution, "status"
+            ) and workflow_file_execution.status in [
+                ExecutionStatus.COMPLETED.value,
+                ExecutionStatus.ERROR.value,
+            ]:
+                logger.info(
+                    f"File '{file_name}' already in terminal state: {workflow_file_execution.status} "
+                    f"in execution {execution_id} (file_execution_id: {workflow_file_execution.id}). "
+                    f"Skipping duplicate task creation."
+                )
+                file_identifier = f"{file_hash.provider_file_uuid}:{file_hash.file_path}"
+                skipped_already_completed.append(file_identifier)
+                continue  # Skip to next file
+
             # Handle duplicate files vs normal files differently
             if is_duplicate:
                 # DUPLICATE DETECTED: Mark as ERROR with explanation for audit trail
@@ -1156,7 +1208,7 @@ def _pre_create_file_executions(
                     file_identifier = (
                         f"{file_hash.provider_file_uuid}:{file_hash.file_path}"
                     )
-                    skipped_files.append(file_identifier)
+                    skipped_active_duplicate.append(file_identifier)
 
                 except Exception as status_error:
                     logger.error(
@@ -1170,16 +1222,65 @@ def _pre_create_file_executions(
 
             else:
                 # NORMAL FILE: Set initial status to PENDING for processing
-                try:
-                    api_client.file_client.update_file_execution_status(
-                        file_execution_id=workflow_file_execution.id,
-                        status=ExecutionStatus.PENDING.value,
+                # But preserve EXECUTING status for crash recovery (don't overwrite active processing)
+
+                # RACE CONDITION FIX: Check FileExecutionStatusTracker (Redis, real-time) before updating
+                # This prevents late-arriving workers from overwriting COMPLETED/ERROR status with PENDING
+                from unstract.core.file_execution_tracker import (
+                    FileExecutionStage,
+                    FileExecutionStatusTracker,
+                )
+
+                tracker = FileExecutionStatusTracker()
+                current_tracker_data = tracker.get_data(
+                    execution_id, workflow_file_execution.id
+                )
+
+                # Primary check: FileExecutionStatusTracker (real-time, Redis-based)
+                if current_tracker_data and current_tracker_data.stage_status.stage in [
+                    FileExecutionStage.FINALIZATION,
+                    FileExecutionStage.COMPLETED,
+                ]:
+                    logger.info(
+                        f"File '{file_name}' already at {current_tracker_data.stage_status.stage} "
+                        f"stage by another worker - skipping PENDING update "
+                        f"(file_execution_id: {workflow_file_execution.id})"
                     )
-                except Exception as status_error:
-                    logger.warning(
-                        f"Failed to set initial PENDING status for file {file_name}: {status_error}"
+                    # Skip to next file without updating status or adding to pre_created_data
+                    continue
+
+                # Fallback check: DB status (in case Redis down or tracker expired)
+                current_status = getattr(workflow_file_execution, "status", None)
+                if current_status in [
+                    ExecutionStatus.COMPLETED.value,
+                    ExecutionStatus.ERROR.value,
+                ]:
+                    logger.info(
+                        f"File '{file_name}' already in terminal state {current_status} "
+                        f"(DB status) - skipping PENDING update "
+                        f"(file_execution_id: {workflow_file_execution.id})"
                     )
-                    # Don't fail the entire creation if status update fails
+                    # Skip to next file
+                    continue
+
+                # Preserve EXECUTING for crash recovery (don't reset to PENDING)
+                if current_status != ExecutionStatus.EXECUTING.value:
+                    try:
+                        api_client.file_client.update_file_execution_status(
+                            file_execution_id=workflow_file_execution.id,
+                            status=ExecutionStatus.PENDING.value,
+                        )
+                        logger.info(f"Set initial PENDING status for file {file_name}")
+                    except Exception as status_error:
+                        logger.warning(
+                            f"Failed to set initial PENDING status for file {file_name}: {status_error}"
+                        )
+                        # Don't fail the entire creation if status update fails
+                else:
+                    logger.info(
+                        f"File '{file_name}' already EXECUTING - preserving status for crash recovery/resume "
+                        f"(file_execution_id: {workflow_file_execution.id})"
+                    )
 
                 # Add to pre_created_data for processing
                 pre_created_data[file_name] = PreCreatedFileData(
@@ -1204,24 +1305,38 @@ def _pre_create_file_executions(
     # File history deduplication now handled during individual file processing
 
     # Log summary if files were skipped
-    if skipped_files:
+    total_skipped = len(skipped_already_completed) + len(skipped_active_duplicate)
+    if total_skipped > 0:
         logger.warning(
-            f"Skipped {len(skipped_files)} duplicate file(s) already being processed: {skipped_files}"
+            f"Skipped {total_skipped} duplicate file(s): "
+            f"{len(skipped_already_completed)} already completed, "
+            f"{len(skipped_active_duplicate)} active in other executions"
         )
-        if workflow_logger:
+
+        # Server-side log for already completed (internal detail, not shown to user)
+        if skipped_already_completed:
+            logger.info(
+                f"{len(skipped_already_completed)} file(s) already completed in this execution "
+                f"(internal duplicate prevention - not shown to user)"
+            )
+
+        # UI log for active duplicates (user error, SHOULD be shown to user)
+        if workflow_logger and skipped_active_duplicate:
             from shared.infrastructure.logging.helpers import log_file_info
 
             log_file_info(
                 workflow_logger,
                 None,
-                f"⏭️  Total {len(skipped_files)} duplicate file(s) skipped (already active in other executions)",
+                f"⏭️  {len(skipped_active_duplicate)} duplicate file(s) active in other executions (marked as ERROR)",
             )
 
     logger.info(
-        f"Pre-created {len(pre_created_data)} file execution(s), skipped {len(skipped_files)} duplicate(s)"
+        f"Pre-created {len(pre_created_data)} file execution(s), "
+        f"skipped {len(skipped_already_completed)} already completed, "
+        f"{len(skipped_active_duplicate)} active duplicates"
     )
 
-    return pre_created_data, skipped_files
+    return pre_created_data, skipped_already_completed, skipped_active_duplicate
 
 
 def _create_file_hash_from_dict(
@@ -1337,6 +1452,15 @@ def _create_file_hash_from_dict(
         file_hash.is_manualreview_required = True  # Override manual review flag for HITL
         logger.info(
             f"Applied HITL queue name '{file_data.hitl_queue_name}' to file {file_name}"
+        )
+
+    if file_data and file_data.hitl_packet_id:
+        file_hash.hitl_packet_id = file_data.hitl_packet_id
+        file_hash.is_manualreview_required = (
+            True  # Override manual review flag for packet processing
+        )
+        logger.info(
+            f"Applied HITL packet ID '{file_data.hitl_packet_id}' to file {file_name}"
         )
 
     return file_hash
@@ -1568,6 +1692,32 @@ def _process_single_file_api(
     file_name = file_data.get("file_name", "unknown")
 
     logger.info(f"Processing file: {file_name} (execution: {file_execution_id})")
+
+    # RACE CONDITION PROTECTION: Check if already completed before updating to EXECUTING
+    try:
+        workflow_file_execution = api_client.get_workflow_file_execution(
+            file_execution_id
+        )
+        if workflow_file_execution.status == ExecutionStatus.COMPLETED.value:
+            logger.info(
+                f"API path: File '{file_name}' already COMPLETED by another worker. "
+                f"Skipping processing for execution_id: {execution_id}, "
+                f"file_execution_id: {file_execution_id}"
+            )
+            return {
+                "file_execution_id": file_execution_id,
+                "file_name": file_name,
+                "status": "completed",
+                "processing_time": 0.0,
+                "result_data": getattr(workflow_file_execution, "result", None),
+                "metadata": getattr(workflow_file_execution, "metadata", None) or {},
+                "skipped": "already_completed",
+            }
+    except Exception as e:
+        logger.exception(
+            f"API path: Failed to validate completion status for {file_execution_id}: {e}. "
+            "Proceeding with processing."
+        )
 
     # Update file execution status to EXECUTING when processing starts (using common method)
     api_client.update_file_status_to_executing(file_execution_id, file_name)

@@ -181,21 +181,35 @@ class WorkflowFileExecutionHandler:
             f"Using pre-created workflow file execution: {context.workflow_file_execution_id}"
         )
 
-        # workflow_file_execution_object is guaranteed to be truthy (validated above)
-        workflow_file_execution = context.workflow_file_execution_object
+        # RACE CONDITION FIX: Fetch fresh status from DB instead of using cached object
+        # This prevents late-arriving workers from checking stale data and overwriting terminal status
+        workflow_file_execution = context.api_client.get_workflow_file_execution(
+            context.workflow_file_execution_id
+        )
 
-        # Check if file execution is already completed
-        if workflow_file_execution.status == ExecutionStatus.COMPLETED.value:
+        # Check if file execution is already in terminal state (COMPLETED or ERROR)
+        if workflow_file_execution.status in [
+            ExecutionStatus.COMPLETED.value,
+            ExecutionStatus.ERROR.value,
+        ]:
             logger.info(
-                f"File already completed. Skipping execution for execution_id: {context.execution_id}, "
+                f"File already in terminal state: {workflow_file_execution.status}. "
+                f"Skipping execution for execution_id: {context.execution_id}, "
                 f"file_execution_id: {workflow_file_execution.id}"
             )
 
+            # Return appropriate result based on terminal status
             return FileProcessingResult(
                 file_name=context.file_name,
                 file_execution_id=workflow_file_execution.id,
-                success=True,
-                error=None,
+                success=(
+                    workflow_file_execution.status == ExecutionStatus.COMPLETED.value
+                ),
+                error=(
+                    getattr(workflow_file_execution, "execution_error", None)
+                    if workflow_file_execution.status == ExecutionStatus.ERROR.value
+                    else None
+                ),
                 result=getattr(workflow_file_execution, "result", None),
                 metadata=getattr(workflow_file_execution, "metadata", None) or {},
             )
@@ -501,7 +515,29 @@ class FileProcessor:
             f"🚀 Starting processing for file '{context.file_name}' ({current_file_idx + 1}/{total_files})",
         )
 
+        # RACE CONDITION FIX: Validate file execution status BEFORE updating to EXECUTING
+        # This prevents late-arriving workers from overwriting COMPLETED status
+        log_file_info(
+            workflow_logger,
+            workflow_file_execution_id,
+            f"✅ Validating execution status for '{context.file_name}'",
+        )
+
+        completed_result = WorkflowFileExecutionHandler.validate_workflow_file_execution(
+            context
+        )
+        if completed_result:
+            logger.info(f"File already completed: {context.file_name}")
+            log_file_processing_success(
+                workflow_logger, workflow_file_execution_id, context.file_name
+            )
+            # Return early with duplicate skip flag to signal no further processing needed
+            completed_result.is_duplicate_skip = True
+            return completed_result
+
         # Update file execution status to EXECUTING when processing starts (using common method)
+        # This only happens if validation passed (file not already completed)
+        # Note: Redis-based race condition checks happen at TOOL_EXECUTION and DESTINATION_PROCESSING stages
         context.api_client.update_file_status_to_executing(
             context.workflow_file_execution_id, context.file_name
         )
@@ -553,31 +589,15 @@ class FileProcessor:
 
                 return cached_result
 
-            # Step 2: Validate workflow file execution
-            log_file_info(
-                workflow_logger,
-                workflow_file_execution_id,
-                f"✅ Validating execution status for '{context.file_name}'",
-            )
-
-            completed_result = (
-                WorkflowFileExecutionHandler.validate_workflow_file_execution(context)
-            )
-            if completed_result:
-                logger.info(f"File already completed: {context.file_name}")
-                log_file_processing_success(
-                    workflow_logger, workflow_file_execution_id, context.file_name
-                )
-                return completed_result
-
-            # Step 3: Check file history (if enabled)
+            # Step 2: Check file history (if enabled)
+            # Note: Validation already done before status update to prevent race conditions
             log_file_info(
                 workflow_logger,
                 workflow_file_execution_id,
                 f"📜 Checking processing history for '{context.file_name}'",
             )
 
-            # Step 4: Execute workflow processing (always run tools first)
+            # Step 3: Execute workflow processing (always run tools first)
             log_file_info(
                 workflow_logger,
                 workflow_file_execution_id,

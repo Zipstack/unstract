@@ -442,7 +442,7 @@ def _process_file_batches_general(
         )
 
         logger.info(
-            f"Created file batch {batch_response.get('batch_id')} with {batch_response.get('total_files')} files"
+            f"Created file batch {batch_response.batch_id} with {batch_response.total_files} files"
         )
 
         return [batch_response]
@@ -816,6 +816,7 @@ def _orchestrate_file_processing_general(
         )
 
         hitl_queue_name = kwargs.get("hitl_queue_name")
+        hitl_packet_id = kwargs.get("hitl_packet_id")
         llm_profile_id = kwargs.get("llm_profile_id")
         custom_data = kwargs.get("custom_data")
 
@@ -831,6 +832,7 @@ def _orchestrate_file_processing_general(
             q_file_no_list=[],
             manual_review_config={},
             hitl_queue_name=hitl_queue_name,
+            hitl_packet_id=hitl_packet_id,
             llm_profile_id=llm_profile_id,
             custom_data=custom_data,
         )

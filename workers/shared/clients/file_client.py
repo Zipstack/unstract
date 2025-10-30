@@ -16,7 +16,6 @@ import uuid
 from typing import Any
 from uuid import UUID
 
-from ..constants.api_endpoints import build_internal_endpoint
 from ..data.models import (
     APIResponse,
     BatchOperationRequest,
@@ -48,6 +47,10 @@ except ImportError:
         @classmethod
         def from_dict(cls, data):
             return cls(**data)
+
+        def has_hash(self):
+            # Mock implementation - check if file_hash attribute exists and is non-empty
+            return bool(getattr(self, "file_hash", None))
 
         def ensure_hash(self):
             # Mock implementation - no hash computation needed for testing
@@ -89,10 +92,10 @@ class FileAPIClient(BaseAPIClient):
             WorkflowFileExecutionData instance
         """
         # Build URL for file execution detail endpoint
-        url = build_internal_endpoint(f"file-execution/{file_execution_id}/").lstrip("/")
+        url = self._build_url("file_execution", f"{file_execution_id}/")
 
         # Get the file execution record
-        response_data = self.client.get(url, organization_id=organization_id)
+        response_data = self.get(url, organization_id=organization_id)
 
         # Convert to WorkflowFileExecutionData
         return WorkflowFileExecutionData.from_dict(response_data)

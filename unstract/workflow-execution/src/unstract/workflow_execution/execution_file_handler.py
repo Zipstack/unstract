@@ -128,6 +128,28 @@ class ExecutionFileHandler:
         metadata_path = self.metadata_file
         if not metadata_path:
             raise FileMetadataJsonNotFound()
+
+        # Check if metadata file already exists - skip to avoid overwriting tool data
+        # This prevents Worker 2 from destroying tool_metadata written by Worker 1's tool container
+        try:
+            self.get_workflow_metadata()
+            logger.info(
+                f"Metadata file already exists for file_execution_id {file_execution_id}. "
+                f"Skipping creation to preserve tool data and avoid race conditions."
+            )
+            return  # Exit early - don't touch existing file
+        except (FileMetadataJsonNotFound, FileNotFoundError):
+            # Normal case - metadata file doesn't exist yet, proceed with creation
+            logger.info(
+                f"Creating new metadata file for file_execution_id {file_execution_id}"
+            )
+        except Exception:
+            # Unexpected errors only (e.g., permission issues, S3 connection errors)
+            logger.exception(
+                f"Error checking metadata existence for file_execution_id {file_execution_id}. "
+                f"Proceeding with creation."
+            )
+
         filename = os.path.basename(input_file_path)
         content = {
             MetaDataKey.SOURCE_NAME: filename,
