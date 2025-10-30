@@ -643,6 +643,9 @@ backend/plugins/configuration/**
 # Verticals Usage Plugin
 backend/plugins/verticals_usage/**
 
+# Subscription Usage Plugin
+backend/plugins/subscription_usage/**
+
 # BE pluggable-apps
 backend/pluggable_apps/*
 
