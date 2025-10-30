@@ -5,9 +5,8 @@ using LLM-based agents, similar to the new_document_type_generator.py reference.
 """
 
 import logging
-import re
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import yaml
 
@@ -20,7 +19,7 @@ logger = logging.getLogger(__name__)
 class VibeExtractorGenerator:
     """Generator for document extraction components using LLM."""
 
-    def __init__(self, llm_config: Dict[str, Any]):
+    def __init__(self, llm_config: dict[str, Any]):
         """Initialize the generator with LLM configuration.
 
         Args:
@@ -65,7 +64,7 @@ class VibeExtractorGenerator:
 
     async def generate_metadata(
         self, doc_type: str, reference_template: str
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate metadata for a document type using LLM.
 
         Args:
@@ -86,9 +85,7 @@ class VibeExtractorGenerator:
         )
 
         try:
-            response = await generate_with_llm(
-                self.llm_client, prompt, max_tokens=1000
-            )
+            response = await generate_with_llm(self.llm_client, prompt, max_tokens=1000)
 
             # Clean and parse YAML response
             yaml_content = self._clean_llm_response(response)
@@ -103,7 +100,7 @@ class VibeExtractorGenerator:
             raise Exception(error_msg) from e
 
     async def generate_extraction_fields(
-        self, doc_type: str, metadata: Dict[str, Any]
+        self, doc_type: str, metadata: dict[str, Any]
     ) -> str:
         """Generate extraction.yaml structure using LLM.
 
@@ -126,9 +123,7 @@ class VibeExtractorGenerator:
         )
 
         try:
-            response = await generate_with_llm(
-                self.llm_client, prompt, max_tokens=2000
-            )
+            response = await generate_with_llm(self.llm_client, prompt, max_tokens=2000)
 
             # Clean YAML response
             yaml_content = self._clean_llm_response(response)
@@ -142,7 +137,7 @@ class VibeExtractorGenerator:
             raise Exception(error_msg) from e
 
     async def generate_page_extraction_system_prompt(
-        self, doc_type: str, metadata: Dict[str, Any]
+        self, doc_type: str, metadata: dict[str, Any]
     ) -> str:
         """Generate page extraction system prompt using LLM.
 
@@ -167,9 +162,7 @@ class VibeExtractorGenerator:
         )
 
         try:
-            response = await generate_with_llm(
-                self.llm_client, prompt, max_tokens=1500
-            )
+            response = await generate_with_llm(self.llm_client, prompt, max_tokens=1500)
 
             cleaned_response = self._clean_llm_response(response)
             logger.info(
@@ -183,7 +176,7 @@ class VibeExtractorGenerator:
             raise Exception(error_msg) from e
 
     async def generate_page_extraction_user_prompt(
-        self, doc_type: str, metadata: Dict[str, Any]
+        self, doc_type: str, metadata: dict[str, Any]
     ) -> str:
         """Generate page extraction user prompt using LLM.
 
@@ -208,9 +201,7 @@ class VibeExtractorGenerator:
         )
 
         try:
-            response = await generate_with_llm(
-                self.llm_client, prompt, max_tokens=500
-            )
+            response = await generate_with_llm(self.llm_client, prompt, max_tokens=500)
 
             cleaned_response = self._clean_llm_response(response)
             logger.info(
@@ -224,7 +215,7 @@ class VibeExtractorGenerator:
             raise Exception(error_msg) from e
 
     async def generate_scalar_extraction_system_prompt(
-        self, doc_type: str, metadata: Dict[str, Any], extraction_yaml: str
+        self, doc_type: str, metadata: dict[str, Any], extraction_yaml: str
     ) -> str:
         """Generate scalar extraction system prompt using LLM.
 
@@ -264,9 +255,7 @@ class VibeExtractorGenerator:
         )
 
         try:
-            response = await generate_with_llm(
-                self.llm_client, prompt, max_tokens=1500
-            )
+            response = await generate_with_llm(self.llm_client, prompt, max_tokens=1500)
 
             cleaned_response = self._clean_llm_response(response)
             logger.info(
@@ -280,7 +269,7 @@ class VibeExtractorGenerator:
             raise Exception(error_msg) from e
 
     async def generate_scalar_extraction_user_prompt(
-        self, doc_type: str, metadata: Dict[str, Any]
+        self, doc_type: str, metadata: dict[str, Any]
     ) -> str:
         """Generate scalar extraction user prompt using LLM.
 
@@ -304,9 +293,7 @@ class VibeExtractorGenerator:
         )
 
         try:
-            response = await generate_with_llm(
-                self.llm_client, prompt, max_tokens=500
-            )
+            response = await generate_with_llm(self.llm_client, prompt, max_tokens=500)
 
             cleaned_response = self._clean_llm_response(response)
             logger.info(
@@ -320,7 +307,7 @@ class VibeExtractorGenerator:
             raise Exception(error_msg) from e
 
     async def generate_table_extraction_system_prompt(
-        self, doc_type: str, metadata: Dict[str, Any], extraction_yaml: str
+        self, doc_type: str, metadata: dict[str, Any], extraction_yaml: str
     ) -> str:
         """Generate table extraction system prompt using LLM.
 
@@ -346,9 +333,7 @@ class VibeExtractorGenerator:
         )
 
         try:
-            response = await generate_with_llm(
-                self.llm_client, prompt, max_tokens=2000
-            )
+            response = await generate_with_llm(self.llm_client, prompt, max_tokens=2000)
 
             cleaned_response = self._clean_llm_response(response)
             logger.info(
@@ -362,7 +347,7 @@ class VibeExtractorGenerator:
             raise Exception(error_msg) from e
 
     async def generate_table_extraction_user_prompt(
-        self, doc_type: str, metadata: Dict[str, Any]
+        self, doc_type: str, metadata: dict[str, Any]
     ) -> str:
         """Generate table extraction user prompt using LLM.
 
@@ -386,9 +371,7 @@ class VibeExtractorGenerator:
         )
 
         try:
-            response = await generate_with_llm(
-                self.llm_client, prompt, max_tokens=500
-            )
+            response = await generate_with_llm(self.llm_client, prompt, max_tokens=500)
 
             cleaned_response = self._clean_llm_response(response)
             logger.info(
@@ -401,9 +384,7 @@ class VibeExtractorGenerator:
             logger.error(error_msg)
             raise Exception(error_msg) from e
 
-    def save_metadata_yaml(
-        self, output_path: Path, metadata: Dict[str, Any]
-    ) -> Path:
+    def save_metadata_yaml(self, output_path: Path, metadata: dict[str, Any]) -> Path:
         """Save metadata as YAML file.
 
         Args:
@@ -438,9 +419,7 @@ class VibeExtractorGenerator:
         logger.info(f"Saved metadata to {metadata_file}")
         return metadata_file
 
-    def save_extraction_yaml(
-        self, output_path: Path, extraction_content: str
-    ) -> Path:
+    def save_extraction_yaml(self, output_path: Path, extraction_content: str) -> Path:
         """Save extraction fields as YAML file.
 
         Args:
@@ -460,9 +439,7 @@ class VibeExtractorGenerator:
         logger.info(f"Saved extraction fields to {extraction_file}")
         return extraction_file
 
-    def save_prompt_file(
-        self, output_path: Path, filename: str, content: str
-    ) -> Path:
+    def save_prompt_file(self, output_path: Path, filename: str, content: str) -> Path:
         """Save prompt content to markdown file.
 
         Args:

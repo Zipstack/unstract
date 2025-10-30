@@ -1,14 +1,12 @@
 """Helper functions for Vibe Extractor operations."""
 
-import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import yaml
 from django.conf import settings
 
 from prompt_studio.prompt_studio_vibe_extractor_v2.constants import (
-    GenerationSteps,
     VibeExtractorFileNames,
     VibeExtractorPaths,
 )
@@ -47,9 +45,7 @@ class VibeExtractorHelper:
         normalized = "".join(c for c in normalized if c.isalnum() or c == "-")
 
         if not normalized:
-            raise InvalidDocumentTypeError(
-                f"Invalid document type: {doc_type}"
-            )
+            raise InvalidDocumentTypeError(f"Invalid document type: {doc_type}")
 
         return normalized
 
@@ -97,9 +93,7 @@ class VibeExtractorHelper:
         return output_path
 
     @staticmethod
-    def read_generated_file(
-        project: VibeExtractorProject, file_type: str
-    ) -> str:
+    def read_generated_file(project: VibeExtractorProject, file_type: str) -> str:
         """Read a generated file for a project.
 
         Args:
@@ -142,24 +136,20 @@ class VibeExtractorHelper:
             raise FileReadError(f"Unknown file type: {file_type}")
 
         if not file_path.exists():
-            raise FileReadError(
-                f"File not found: {file_path}. Generate the files first."
-            )
+            raise FileReadError(f"File not found: {file_path}. Generate the files first.")
 
         try:
-            with open(file_path, "r") as f:
+            with open(file_path) as f:
                 return f.read()
         except Exception as e:
-            raise FileReadError(
-                f"Error reading file {file_path}: {str(e)}"
-            ) from e
+            raise FileReadError(f"Error reading file {file_path}: {str(e)}") from e
 
     @staticmethod
     def update_generation_progress(
         project: VibeExtractorProject,
         step: str,
         status: str,
-        message: Optional[str] = None,
+        message: str | None = None,
     ) -> None:
         """Update generation progress for a project.
 
@@ -199,12 +189,10 @@ class VibeExtractorHelper:
         template_path = Path(reference_dir) / template_name
 
         if not template_path.exists():
-            raise FileReadError(
-                f"Reference template not found: {template_path}"
-            )
+            raise FileReadError(f"Reference template not found: {template_path}")
 
         try:
-            with open(template_path, "r") as f:
+            with open(template_path) as f:
                 return f.read()
         except Exception as e:
             raise FileReadError(
@@ -212,9 +200,7 @@ class VibeExtractorHelper:
             ) from e
 
     @staticmethod
-    def save_yaml_file(
-        output_path: Path, filename: str, content: Dict[str, Any]
-    ) -> None:
+    def save_yaml_file(output_path: Path, filename: str, content: dict[str, Any]) -> None:
         """Save content as YAML file.
 
         Args:
@@ -227,9 +213,7 @@ class VibeExtractorHelper:
             yaml.dump(content, f, default_flow_style=False, sort_keys=False)
 
     @staticmethod
-    def save_markdown_file(
-        output_path: Path, filename: str, content: str
-    ) -> None:
+    def save_markdown_file(output_path: Path, filename: str, content: str) -> None:
         """Save content as markdown file.
 
         Args:

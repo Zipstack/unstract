@@ -4,7 +4,7 @@ This module converts platform AdapterInstance to autogen-compatible LLM configur
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
 from adapter_processor_v2.models import AdapterInstance
 
@@ -49,13 +49,11 @@ class AdapterHelper:
                 return value
 
         # Default to openai if not found
-        logger.warning(
-            f"Unknown adapter_id: {adapter_id}. Defaulting to 'openai'"
-        )
+        logger.warning(f"Unknown adapter_id: {adapter_id}. Defaulting to 'openai'")
         return "openai"
 
     @staticmethod
-    def convert_to_llm_config(adapter: AdapterInstance) -> Dict[str, Any]:
+    def convert_to_llm_config(adapter: AdapterInstance) -> dict[str, Any]:
         """Convert AdapterInstance to autogen LLM configuration.
 
         Args:
@@ -69,17 +67,13 @@ class AdapterHelper:
         """
         # Validate adapter type
         if adapter.adapter_type != "LLM":
-            raise ValueError(
-                f"Adapter must be of type LLM, got: {adapter.adapter_type}"
-            )
+            raise ValueError(f"Adapter must be of type LLM, got: {adapter.adapter_type}")
 
         # Get decrypted metadata
         metadata = adapter.metadata
 
         # Get autogen adapter ID
-        autogen_adapter_id = AdapterHelper.get_autogen_adapter_id(
-            adapter.adapter_id
-        )
+        autogen_adapter_id = AdapterHelper.get_autogen_adapter_id(adapter.adapter_id)
 
         # Base configuration
         llm_config = {
@@ -176,9 +170,7 @@ class AdapterHelper:
                 ["aws_access_key_id", "aws_secret_access_key", "region_name"]
             )
 
-        missing_fields = [
-            field for field in required_fields if not metadata.get(field)
-        ]
+        missing_fields = [field for field in required_fields if not metadata.get(field)]
         if missing_fields:
             return (
                 False,

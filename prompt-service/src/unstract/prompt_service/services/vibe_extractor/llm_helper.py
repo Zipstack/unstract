@@ -5,7 +5,7 @@ using autogen-ext, making it easy to swap between different LLM providers.
 """
 
 import logging
-from typing import Any, Dict, Union
+from typing import Any
 
 from autogen_core.models import ModelInfo
 from autogen_ext.models.anthropic import (
@@ -27,13 +27,13 @@ logger = logging.getLogger(__name__)
 
 
 def get_llm_client(
-    llm_config: Dict[str, Any]
-) -> Union[
-    OpenAIChatCompletionClient,
-    AzureOpenAIChatCompletionClient,
-    AnthropicChatCompletionClient,
-    AnthropicBedrockChatCompletionClient,
-]:
+    llm_config: dict[str, Any],
+) -> (
+    OpenAIChatCompletionClient
+    | AzureOpenAIChatCompletionClient
+    | AnthropicChatCompletionClient
+    | AnthropicBedrockChatCompletionClient
+):
     """Initialize and return an LLM client based on configuration.
 
     Args:
@@ -139,9 +139,7 @@ def get_llm_client(
         raise Exception(error_msg) from e
 
 
-async def generate_with_llm(
-    llm_client: Any, prompt: str, max_tokens: int = 2000
-) -> str:
+async def generate_with_llm(llm_client: Any, prompt: str, max_tokens: int = 2000) -> str:
     """Generate a response from the LLM client.
 
     Args:

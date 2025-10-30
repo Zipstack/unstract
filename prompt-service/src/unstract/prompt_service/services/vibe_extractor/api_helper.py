@@ -4,8 +4,7 @@ This module provides helper functions for backend API integration.
 """
 
 import logging
-from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .service import VibeExtractorService
 
@@ -15,10 +14,10 @@ logger = logging.getLogger(__name__)
 async def generate_document_extraction_components(
     doc_type: str,
     output_dir: str,
-    llm_config: Dict[str, Any],
-    reference_template: Optional[str] = None,
-    progress_callback: Optional[callable] = None,
-) -> Dict[str, Any]:
+    llm_config: dict[str, Any],
+    reference_template: str | None = None,
+    progress_callback: callable | None = None,
+) -> dict[str, Any]:
     """Generate all document extraction components.
 
     This is the main entry point for backend API to trigger generation.
@@ -51,13 +50,11 @@ async def generate_document_extraction_components(
             "model": "claude-3-5-sonnet-20241022",
             "api_key": "sk-ant-...",
             "temperature": 0.7,
-            "max_tokens": 4096
+            "max_tokens": 4096,
         }
 
         result = await generate_document_extraction_components(
-            doc_type="invoice",
-            output_dir="/path/to/output",
-            llm_config=llm_config
+            doc_type="invoice", output_dir="/path/to/output", llm_config=llm_config
         )
 
         if result["status"] == "success":
@@ -90,9 +87,9 @@ async def generate_document_extraction_components(
 
 async def generate_metadata_only(
     doc_type: str,
-    llm_config: Dict[str, Any],
-    reference_template: Optional[str] = None,
-) -> Dict[str, Any]:
+    llm_config: dict[str, Any],
+    reference_template: str | None = None,
+) -> dict[str, Any]:
     """Generate only metadata for a document type.
 
     Args:
@@ -121,9 +118,9 @@ async def generate_metadata_only(
 
 async def generate_extraction_fields_only(
     doc_type: str,
-    metadata: Dict[str, Any],
-    llm_config: Dict[str, Any],
-) -> Dict[str, Any]:
+    metadata: dict[str, Any],
+    llm_config: dict[str, Any],
+) -> dict[str, Any]:
     """Generate only extraction fields for a document type.
 
     Args:
@@ -181,7 +178,7 @@ extraction_features:  # Extraction features
 """
 
 
-def validate_llm_config(llm_config: Dict[str, Any]) -> tuple[bool, Optional[str]]:
+def validate_llm_config(llm_config: dict[str, Any]) -> tuple[bool, str | None]:
     """Validate LLM configuration.
 
     Args:

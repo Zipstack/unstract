@@ -7,9 +7,8 @@ generation flow.
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
-from .constants import VibeExtractorBootstrapPrompts
 from .generator import VibeExtractorGenerator
 
 logger = logging.getLogger(__name__)
@@ -18,7 +17,7 @@ logger = logging.getLogger(__name__)
 class VibeExtractorService:
     """Service for generating document extraction components."""
 
-    def __init__(self, llm_config: Dict[str, Any], output_dir: str):
+    def __init__(self, llm_config: dict[str, Any], output_dir: str):
         """Initialize the service.
 
         Args:
@@ -33,8 +32,8 @@ class VibeExtractorService:
         self,
         doc_type: str,
         reference_template: str,
-        progress_callback: Optional[callable] = None,
-    ) -> Dict[str, Any]:
+        progress_callback: callable | None = None,
+    ) -> dict[str, Any]:
         """Generate all components for a document type.
 
         Args:
@@ -74,9 +73,7 @@ class VibeExtractorService:
             metadata = await self.generator.generate_metadata(
                 doc_type, reference_template
             )
-            metadata_file = self.generator.save_metadata_yaml(
-                doc_output_dir, metadata
-            )
+            metadata_file = self.generator.save_metadata_yaml(doc_output_dir, metadata)
             result["files"]["metadata"] = str(metadata_file)
 
             if progress_callback:
@@ -113,10 +110,8 @@ class VibeExtractorService:
             )
             result["files"]["page_extraction_system"] = str(page_system_file)
 
-            page_user_prompt = (
-                await self.generator.generate_page_extraction_user_prompt(
-                    doc_type, metadata
-                )
+            page_user_prompt = await self.generator.generate_page_extraction_user_prompt(
+                doc_type, metadata
             )
             page_user_file = self.generator.save_prompt_file(
                 prompts_dir, "page-extraction-user.md", page_user_prompt
@@ -198,7 +193,7 @@ class VibeExtractorService:
 
     async def generate_metadata_only(
         self, doc_type: str, reference_template: str
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate only metadata for a document type.
 
         Args:
@@ -220,8 +215,8 @@ class VibeExtractorService:
             return {"status": "error", "error": error_msg}
 
     async def generate_extraction_fields_only(
-        self, doc_type: str, metadata: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, doc_type: str, metadata: dict[str, Any]
+    ) -> dict[str, Any]:
         """Generate only extraction fields for a document type.
 
         Args:
