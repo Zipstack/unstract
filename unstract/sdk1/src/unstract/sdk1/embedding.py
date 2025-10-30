@@ -107,7 +107,6 @@ class Embedding:
         """Return embedding vectors for list of query strings."""
         kwargs = self.kwargs.copy()
         model = kwargs.pop("model")
-        del kwargs["temperature"]
 
         resp = litellm.embedding(model=model, input=texts, **kwargs)
 
@@ -117,7 +116,6 @@ class Embedding:
         """Return async embedding vector for query string."""
         kwargs = self.kwargs.copy()
         model = kwargs.pop("model")
-        del kwargs["temperature"]
 
         resp = await litellm.aembedding(model=model, input=[text], **kwargs)
 
@@ -127,7 +125,6 @@ class Embedding:
         """Return async embedding vectors for list of query strings."""
         kwargs = self.kwargs.copy()
         model = kwargs.pop("model")
-        del kwargs["temperature"]
 
         resp = await litellm.aembedding(model=model, input=texts, **kwargs)
 
