@@ -58,12 +58,6 @@ class BaseAPIClient:
     - Circuit breaker pattern
     - Connection pooling
     - Request batching support
-    - Fork-safe session management (prevents SIGSEGV in Celery workers)
-
-    Fork Safety:
-    The HTTP session is automatically recreated after Celery worker fork to prevent
-    SIGSEGV crashes from corrupted urllib3 connection pools. This ensures safe operation
-    with prefork, threads, and gevent worker pools.
     """
 
     # Internal API URL patterns - can be overridden via environment variables
@@ -109,17 +103,9 @@ class BaseAPIClient:
         # It comes from task context, not from configuration
         self.organization_id = None
 
-        # Fork-safe session initialization
-        # Track PID to detect fork and recreate session in child process
-        self._pid = os.getpid()
-        self._session: requests.Session | None = None
-        self._fork_count = 0  # Track number of forks for monitoring
-
-        # Register fork handler for automatic cleanup (Python 3.7+)
-        # This is cleaner than PID-checking and guarantees immediate cleanup
-        if hasattr(os, "register_at_fork"):
-            os.register_at_fork(after_in_child=self._reset_session_after_fork)
-            logger.debug("Registered os.register_at_fork() handler for session cleanup")
+        # Initialize requests session with retry strategy
+        self.session = requests.Session()
+        self._setup_session()
 
         # Always log initialization
         logger.info(f"Initialized BaseAPIClient for {self.base_url}")
@@ -131,105 +117,6 @@ class BaseAPIClient:
     def get_endpoint_config(self) -> dict[str, str]:
         """Get current API endpoint configuration for debugging."""
         return dict(self.API_ENDPOINTS)
-
-    @property
-    def session(self) -> requests.Session:
-        """Get requests session with fork-safety.
-
-        This property ensures that the HTTP session is recreated after a Celery
-        worker fork to prevent SIGSEGV crashes from corrupted urllib3 connection pools.
-
-        When a worker process forks, the child process inherits the parent's
-        connection pool with file descriptors and thread locks. These become
-        corrupted in the child process, causing segmentation faults when used.
-
-        This implementation detects fork by comparing current PID with stored PID,
-        and automatically recreates the session in the child process.
-
-        Returns:
-            requests.Session: Fork-safe HTTP session instance
-        """
-        current_pid = os.getpid()
-
-        # Check if session needs (re)creation
-        if self._session is None or self._pid != current_pid:
-            # Fork detected or first access
-            if self._session is not None:
-                # Fork detected via PID change (fallback detection)
-                # This shouldn't happen if os.register_at_fork() worked
-                self._fork_count += 1
-                logger.warning(
-                    f"Fork detected via PID fallback (old PID: {self._pid}, "
-                    f"new PID: {current_pid}, fork #{self._fork_count}). "
-                    "This means os.register_at_fork() didn't fire - investigating why."
-                )
-
-                # Clean up old session to prevent resource leaks
-                try:
-                    self._session.close()
-                    logger.debug("Closed stale session after fork detection")
-                except Exception as e:
-                    logger.warning(f"Error closing stale session: {e}")
-
-            # Create new session in current process
-            self._session = requests.Session()
-            self._setup_session()
-            self._pid = current_pid
-
-            if self._fork_count == 0:
-                # First initialization (not a fork)
-                logger.debug(f"Created initial HTTP session for PID {current_pid}")
-            else:
-                # Fork detected and session recreated
-                logger.info(
-                    f"Created new HTTP session after fork (PID: {current_pid}, "
-                    f"fork #{self._fork_count})"
-                )
-
-        return self._session
-
-    @session.setter
-    def session(self, value):
-        """Prevent direct session assignment that breaks fork-safety.
-
-        Direct assignment like `client.session = shared_session` bypasses the
-        fork-detection logic in the property getter. This was causing SIGSEGV
-        crashes when InternalAPIClient used session sharing optimization.
-
-        Raises:
-            AttributeError: Always, to prevent direct assignment
-        """
-        raise AttributeError(
-            "Direct session assignment breaks fork-safety. "
-            "The session property is managed automatically and recreates "
-            "itself after fork to prevent SIGSEGV crashes. "
-            "If you need to customize session behavior, use _setup_session() instead."
-        )
-
-    def _reset_session_after_fork(self):
-        """Reset session after fork (called automatically by Python via os.register_at_fork).
-
-        This callback is invoked immediately after fork() in the child process,
-        BEFORE any threads are started. This guarantees clean session state.
-
-        We don't try to close the old session because:
-        1. The parent process owns that session's resources
-        2. File descriptors are already duplicated (not shared)
-        3. Attempting to close could interfere with parent
-
-        The PID-based fallback in the session property handles cases where:
-        - Python version doesn't support os.register_at_fork()
-        - Fork happened in a different way (e.g., via C extension)
-        """
-        # Don't close parent's session - just clear reference
-        self._session = None
-        self._pid = os.getpid()
-        self._fork_count += 1
-
-        logger.info(
-            f"Session reset after fork (child PID: {self._pid}, "
-            f"fork #{self._fork_count})"
-        )
 
     def _build_url(self, endpoint_key: str, path: str = "") -> str:
         """Build consistent API URL using endpoint patterns.
@@ -248,12 +135,7 @@ class BaseAPIClient:
         return base_path
 
     def _setup_session(self):
-        """Configure session with retry strategy, timeouts, and connection pooling.
-
-        IMPORTANT: This method is called by the session property after creating
-        a new requests.Session() instance. It configures the session but does NOT
-        access self.session to avoid infinite recursion in the property getter.
-        """
+        """Configure session with retry strategy, timeouts, and connection pooling."""
         # Enhanced retry strategy with enum-based status codes
         retry_status_codes = [429, 500, 502, 503, 504]
         allowed_http_methods = [method.value for method in HTTPMethod]
@@ -273,11 +155,11 @@ class BaseAPIClient:
             pool_maxsize=20,  # Maximum number of connections per pool
             pool_block=False,  # Don't block when pool is full
         )
-        self._session.mount("http://", adapter)
-        self._session.mount("https://", adapter)
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
 
         # Default headers
-        self._session.headers.update(
+        self.session.headers.update(
             {
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": APPLICATION_JSON,

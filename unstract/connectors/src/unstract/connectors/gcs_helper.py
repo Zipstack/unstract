@@ -79,7 +79,7 @@ class GCSHelper:
         Thread-safe: Uses global lock to prevent gRPC deadlock when multiple
         threads create Secret Manager clients simultaneously.
         """
-        # Use global lock to serialize Secret Manager client creation
+        # Use global lock to serialize Secret Manager client creation ONLY
         # This prevents deadlock when multiple threads hit this simultaneously
         with _GOOGLE_API_INIT_LOCK:
             from google.cloud import secretmanager
@@ -88,12 +88,15 @@ class GCSHelper:
             google_secrets_client = secretmanager.SecretManagerServiceClient(
                 credentials=credentials
             )
-            s = google_secrets_client.access_secret_version(
-                request={
-                    "name": f"projects/{self.google_project_id}/secrets/{secret_name}/versions/latest"  # noqa: E501
-                }
-            )
-            return s.payload.data.decode("UTF-8")
+
+        # Network I/O happens OUTSIDE the lock for better concurrency
+        s = google_secrets_client.access_secret_version(
+            request={
+                "name": f"projects/{self.google_project_id}/secrets/{secret_name}/versions/latest"
+            },
+            timeout=30.0,  # Add reasonable timeout to prevent indefinite hangs
+        )
+        return s.payload.data.decode("UTF-8")
 
     def _get_storage_client(self) -> Any:
         """Lazily create GCS client (fork-safe and thread-safe)."""
