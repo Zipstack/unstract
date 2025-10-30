@@ -1327,8 +1327,9 @@ class WorkerWorkflowExecutionService:
 
             source_connection_type = workflow.source_config.connection_type
 
-            # Add HITL queue name from file_data if present (for API deployments)
+            # Add HITL queue name and packet ID from file_data if present (for API deployments)
             hitl_queue_name = file_data.hitl_queue_name
+            hitl_packet_id = file_data.hitl_packet_id
             destination_config["use_file_history"] = use_file_history
             destination_config["file_execution_id"] = workflow_file_execution_id
             if hitl_queue_name:
@@ -1336,9 +1337,14 @@ class WorkerWorkflowExecutionService:
                 logger.info(
                     f"Added HITL queue name to destination config: {hitl_queue_name}"
                 )
-            else:
+            if hitl_packet_id:
+                destination_config["hitl_packet_id"] = hitl_packet_id
                 logger.info(
-                    "No hitl_queue_name found in file_data, proceeding with normal processing"
+                    f"Added HITL packet ID to destination config: {hitl_packet_id}"
+                )
+            if not hitl_queue_name and not hitl_packet_id:
+                logger.info(
+                    "No hitl_queue_name or hitl_packet_id found in file_data, proceeding with normal processing"
                 )
 
             # Import destination connector
