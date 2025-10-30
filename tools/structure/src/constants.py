@@ -10,7 +10,6 @@ class SettingsKeys:
     ACTIVE = "active"
     PROMPT = "prompt"
     CHUNK_SIZE = "chunk-size"
-    PROMPTX = "promptx"
     VECTOR_DB = "vector-db"
     EMBEDDING = "embedding"
     X2TEXT_ADAPTER = "x2text_adapter"

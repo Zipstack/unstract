@@ -16,7 +16,6 @@ import uuid
 from typing import Any
 from uuid import UUID
 
-from ..constants.api_endpoints import build_internal_endpoint
 from ..data.models import (
     APIResponse,
     BatchOperationRequest,
@@ -48,6 +47,10 @@ except ImportError:
         @classmethod
         def from_dict(cls, data):
             return cls(**data)
+
+        def has_hash(self):
+            # Mock implementation - check if file_hash attribute exists and is non-empty
+            return bool(getattr(self, "file_hash", None))
 
         def ensure_hash(self):
             # Mock implementation - no hash computation needed for testing
@@ -89,10 +92,10 @@ class FileAPIClient(BaseAPIClient):
             WorkflowFileExecutionData instance
         """
         # Build URL for file execution detail endpoint
-        url = build_internal_endpoint(f"file-execution/{file_execution_id}/").lstrip("/")
+        url = self._build_url("file_execution", f"{file_execution_id}/")
 
         # Get the file execution record
-        response_data = self.client.get(url, organization_id=organization_id)
+        response_data = self.get(url, organization_id=organization_id)
 
         # Convert to WorkflowFileExecutionData
         return WorkflowFileExecutionData.from_dict(response_data)
@@ -127,7 +130,8 @@ class FileAPIClient(BaseAPIClient):
         logger.info(
             f"FileHashData debug: file_name='{file_hash_data.file_name}', "
             f"has_hash={file_hash_data.has_hash()}, "
-            f"source_connection_type='{getattr(file_hash_data, 'source_connection_type', None)}'"
+            f"source_connection_type='{getattr(file_hash_data, 'source_connection_type', None)}', "
+            f"execution_id='{execution_id}'"
         )
 
         # CRITICAL FIX: For API files with pre-calculated hash, skip hash computation
@@ -219,11 +223,12 @@ class FileAPIClient(BaseAPIClient):
         data = create_request.to_dict()
 
         logger.info(
-            f"Creating workflow file execution with file_hash: {file_hash_data.file_name}"
+            f"Creating workflow file execution: '{execution_id}' with file_name: {file_hash_data.file_name}"
         )
         logger.info(
             f"FileHashData key identifiers: provider_file_uuid='{file_hash_data.provider_file_uuid}', "
-            f"file_path='{file_hash_data.file_path}', file_hash='{file_hash_data.file_hash}'"
+            f"file_path='{file_hash_data.file_path}', file_hash='{file_hash_data.file_hash}', "
+            f"execution='{execution_id}'."
         )
         logger.debug(f"FileHashData: {file_hash_data.to_dict()}")
 

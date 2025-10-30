@@ -43,12 +43,18 @@ class CacheService:
         cache.delete_pattern(key_pattern)
 
     @staticmethod
-    def clear_cache_optimized(key_pattern: str) -> Any:
+    def clear_cache_optimized(key_pattern: str, db: int | None = None) -> Any:
         """Delete keys in bulk using optimized SCAN approach for large datasets.
 
         Uses Redis SCAN instead of KEYS to avoid blocking Redis during deletion.
         Safe for production with large key sets. Use this for heavy operations
         like workflow history clearing.
+
+        Args:
+            key_pattern: Pattern to match keys for deletion (e.g., "file_active:*")
+            db: Optional Redis database number. If provided, clears from that specific DB.
+                If None, uses the default Django cache connection (typically DB 0).
+                Use db=1 for worker cache entries (file_active:*, etc.)
         """
         TIMEOUT_SECONDS = 90  # Generous but bounded timeout
         BATCH_SIZE = 1000
@@ -57,6 +63,20 @@ class CacheService:
         deleted_count = 0
         cursor = 0
         completed_naturally = False
+
+        # Use specified DB or default connection
+        if db is not None:
+            import redis
+
+            redis_connection = redis.Redis(
+                host=settings.REDIS_HOST,
+                port=settings.REDIS_PORT,
+                db=db,
+                username=getattr(settings, "REDIS_USER", None),
+                password=getattr(settings, "REDIS_PASSWORD", None),
+            )
+        else:
+            redis_connection = redis_cache
 
         try:
             while True:
@@ -69,13 +89,13 @@ class CacheService:
                     break
 
                 # SCAN returns (next_cursor, keys_list)
-                cursor, keys = redis_cache.scan(
+                cursor, keys = redis_connection.scan(
                     cursor=cursor, match=key_pattern, count=BATCH_SIZE
                 )
 
                 if keys:
                     # Delete keys in pipeline for efficiency
-                    pipe = redis_cache.pipeline()
+                    pipe = redis_connection.pipeline()
                     for key in keys:
                         pipe.delete(key)
                     pipe.execute()

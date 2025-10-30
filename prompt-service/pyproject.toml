@@ -15,15 +15,11 @@ dependencies = [
     "python-dotenv==1.0.1",
     "json-repair~=0.42.0",
     "requests>=2.28,<3.0",
-    # TODO: Temporarily removing the extra dependencies of aws and gcs from unstract-sdk
-    # to resolve lock file. Will have to be re-looked into
-    "unstract-sdk[azure]~=0.77.3",
-    "gcsfs==2024.10.0",
-    "s3fs==2024.10.0",
+    "unstract-sdk[aws,gcs,azure]~=0.78.0",
     "redis>=5.0.3,<5.3",
     "unstract-core",
     "unstract-flags",
-    "unstract-sdk1"
+    "unstract-sdk1[aws,gcs,azure]"
 ]
 
 [tool.uv.sources]

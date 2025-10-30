@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,11 @@ from unstract.connectors.gcs_helper import GCSHelper
 logging.getLogger("gdrive").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
+# Module-level cache for client secrets to avoid repeated Secret Manager calls
+# Secret Manager uses gRPC which is not fork-safe, so we cache the result
+_client_secrets_cache = None
+_client_secrets_lock = threading.Lock()
+
 
 class GoogleDriveFS(UnstractFileSystem):
     # Settings dict should contain the following:
@@ -28,16 +34,32 @@ class GoogleDriveFS(UnstractFileSystem):
     # }
     def __init__(self, settings: dict[str, Any]):
         super().__init__("GoogleDrive")
-        try:
-            self.client_secrets = json.loads(
-                GCSHelper().get_secret("google_drive_client_secret")
-            )
-        except GoogleApiException.PermissionDenied as e:
-            user_message = "Permission denied. Please check your credentials. "
-            raise FSAccessDeniedError(
-                user_message,
-                treat_as_user_message=True,
-            ) from e
+
+        # Use module-level cache to avoid repeated Secret Manager calls
+        # Secret Manager uses gRPC which is not fork-safe
+        global _client_secrets_cache
+        if _client_secrets_cache is None:
+            with _client_secrets_lock:
+                # Double-check pattern
+                if _client_secrets_cache is None:
+                    logger.info(
+                        "Loading Google Drive client secrets from Secret Manager "
+                        "(one-time per process)"
+                    )
+                    try:
+                        _client_secrets_cache = json.loads(
+                            GCSHelper().get_secret("google_drive_client_secret")
+                        )
+                    except GoogleApiException.PermissionDenied as e:
+                        user_message = (
+                            "Permission denied. Please check your credentials. "
+                        )
+                        raise FSAccessDeniedError(
+                            user_message,
+                            treat_as_user_message=True,
+                        ) from e
+
+        self.client_secrets = _client_secrets_cache
         self.oauth2_credentials = {
             "client_id": self.client_secrets["web"]["client_id"],
             "client_secret": self.client_secrets["web"]["client_secret"],
@@ -48,14 +70,13 @@ class GoogleDriveFS(UnstractFileSystem):
             "refresh_token": settings["refresh_token"],
             GDriveConstants.TOKEN_EXPIRY: settings[GDriveConstants.TOKEN_EXPIRY],
         }
-        gauth = GoogleAuth(
-            settings_file=f"{os.path.dirname(__file__)}/static/settings.yaml",
-            settings={"client_config": self.client_secrets["web"]},
-        )
-        gauth.credentials = OAuth2Credentials.from_json(
-            json_data=json.dumps(self.oauth2_credentials)
-        )
-        self.drive = GDriveFileSystem(path="root", google_auth=gauth)
+        # Store settings file path for lazy initialization
+        self._settings_file = f"{os.path.dirname(__file__)}/static/settings.yaml"
+
+        # Lazy initialization - create client only when needed (after fork)
+        # This prevents SIGSEGV crashes in Celery ForkPoolWorker processes
+        self._drive = None
+        self._drive_lock = threading.Lock()
 
     @staticmethod
     def get_id() -> str:
@@ -97,7 +118,34 @@ class GoogleDriveFS(UnstractFileSystem):
         return True
 
     def get_fsspec_fs(self) -> GDriveFileSystem:
-        return self.drive
+        """Get GDrive filesystem with lazy initialization (fork-safe).
+
+        This method creates the Google Drive API client on first access,
+        ensuring it's created AFTER Celery fork to avoid SIGSEGV crashes.
+
+        The lazy initialization pattern ensures that gRPC-based Google API
+        clients are created in the child process after fork(), not in the
+        parent process before fork.
+
+        Returns:
+            GDriveFileSystem: The initialized Google Drive filesystem client
+        """
+        if self._drive is None:
+            with self._drive_lock:
+                # Double-check pattern for thread safety
+                if self._drive is None:
+                    logger.info("Initializing Google Drive client (lazy init after fork)")
+                    gauth = GoogleAuth(
+                        settings_file=self._settings_file,
+                        settings={"client_config": self.client_secrets["web"]},
+                    )
+                    gauth.credentials = OAuth2Credentials.from_json(
+                        json_data=json.dumps(self.oauth2_credentials)
+                    )
+                    self._drive = GDriveFileSystem(path="root", google_auth=gauth)
+                    logger.info("Google Drive client initialized successfully")
+
+        return self._drive
 
     def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> str | None:
         """Extracts a unique file hash from metadata.

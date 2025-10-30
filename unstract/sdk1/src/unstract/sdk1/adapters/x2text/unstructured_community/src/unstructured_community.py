@@ -11,7 +11,13 @@ logger = logging.getLogger(__name__)
 
 
 class UnstructuredCommunity(X2TextAdapter):
-    def __init__(self, settings: dict[str, Any]):
+    def __init__(self, settings: dict[str, Any]) -> None:
+        """Initialize the UnstructuredCommunity text extraction adapter.
+
+        Args:
+            settings: Configuration dictionary containing Unstructured.io Community
+                     API settings and other parameters.
+        """
         super().__init__("UnstructuredIOCommunity")
         self.config = settings
 
@@ -37,9 +43,11 @@ class UnstructuredCommunity(X2TextAdapter):
         self,
         input_file_path: str,
         output_file_path: str | None = None,
-        fs: FileStorage = FileStorage(provider=FileStorageProvider.LOCAL),
+        fs: FileStorage | None = None,
         **kwargs: dict[Any, Any],
     ) -> TextExtractionResult:
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
         extracted_text: str = UnstructuredHelper.process_document(
             self.config, input_file_path, output_file_path, fs
         )

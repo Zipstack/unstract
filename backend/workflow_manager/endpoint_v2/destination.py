@@ -70,6 +70,7 @@ class DestinationConnector(BaseConnector):
         use_file_history: bool,
         file_execution_id: str | None = None,
         hitl_queue_name: str | None = None,
+        packet_id: str | None = None,
     ) -> None:
         """Initialize a DestinationConnector object.
 
@@ -88,6 +89,7 @@ class DestinationConnector(BaseConnector):
         self.workflow_log = workflow_log
         self.use_file_history = use_file_history
         self.hitl_queue_name = hitl_queue_name
+        self.packet_id = packet_id
         self.workflow = workflow
 
     def _get_endpoint_for_workflow(
@@ -166,6 +168,19 @@ class DestinationConnector(BaseConnector):
         file_execution_id: str,
     ) -> bool:
         """Determines if HITL processing should be performed, returning True if data was pushed to the queue."""
+        # Check packet_id first - it takes precedence over hitl_queue_name
+        if self.packet_id:
+            logger.info(
+                f"API packet override: pushing to packet queue for file {file_name}"
+            )
+            self._push_data_to_queue(
+                file_name=file_name,
+                workflow=workflow,
+                input_file_path=input_file_path,
+                file_execution_id=file_execution_id,
+            )
+            return True
+
         # Check if API deployment requested HITL override
         if self.hitl_queue_name:
             logger.info(f"API HITL override: pushing to queue for file {file_name}")
@@ -175,7 +190,6 @@ class DestinationConnector(BaseConnector):
                 input_file_path=input_file_path,
                 file_execution_id=file_execution_id,
             )
-            logger.info(f"Successfully pushed {file_name} to HITL queue")
             return True
 
         # Skip HITL validation if we're using file_history and no execution result is available
@@ -752,6 +766,7 @@ class DestinationConnector(BaseConnector):
             execution_id=self.execution_id,
             use_file_history=self.use_file_history,
             hitl_queue_name=self.hitl_queue_name,
+            packet_id=self.packet_id,
         )
 
     @classmethod
@@ -780,6 +795,7 @@ class DestinationConnector(BaseConnector):
             use_file_history=config.use_file_history,
             file_execution_id=config.file_execution_id,
             hitl_queue_name=config.hitl_queue_name,
+            packet_id=config.packet_id,
         )
 
         return destination
@@ -838,118 +854,209 @@ class DestinationConnector(BaseConnector):
         Returns:
             None
         """
+        # Handle missing result for packet processing
         if not result:
-            return
-        connector: ConnectorInstance = self.source_endpoint.connector_instance
-        # For API deployments, use workflow execution storage instead of connector
+            if not self.packet_id:
+                return
+            result = json.dumps({"status": "pending", "message": "Awaiting processing"})
+
+        # Delegate to appropriate handler based on deployment type
         if self.is_api:
-            logger.debug(
-                f"API deployment detected for {file_name}, using workflow execution file system"
+            self._push_to_queue_for_api_deployment(
+                file_name, result, input_file_path, file_execution_id, meta_data
             )
-            # For API deployments, read file content from workflow execution storage
-            file_content_base64 = self._read_file_content_for_queue(
-                input_file_path, file_name
+        else:
+            self._push_to_queue_for_connector(
+                file_name,
+                workflow,
+                result,
+                input_file_path,
+                file_execution_id,
+                meta_data,
             )
 
-            # Use common queue naming method
-            q_name = self._get_review_queue_name()
-            whisper_hash = meta_data.get("whisper-hash") if meta_data else None
+    def _enqueue_to_packet_or_regular_queue(
+        self,
+        file_name: str,
+        queue_result: dict[str, Any],
+        queue_result_json: str,
+        q_name: str,
+        ttl_seconds: int | None = None,
+    ) -> None:
+        """Route to packet queue or regular queue based on packet_id.
 
-            # Get extracted text from metadata (added by structure tool)
-            extracted_text = meta_data.get("extracted_text") if meta_data else None
+        Args:
+            file_name: Name of the file being queued
+            queue_result: Queue result dictionary
+            queue_result_json: JSON string of queue result
+            q_name: Queue name for regular queue
+            ttl_seconds: TTL in seconds (optional, for regular queue)
+        """
+        # Get organization_id for proper HITL queue filtering
+        organization_id = UserContext.get_organization_identifier()
 
-            queue_result = QueueResult(
-                file=file_name,
-                status=QueueResultStatus.SUCCESS,
-                result=result,
-                workflow_id=str(self.workflow_id),
-                file_content=file_content_base64,
-                whisper_hash=whisper_hash,
-                file_execution_id=file_execution_id,
-                extracted_text=extracted_text,
-            ).to_dict()
+        # Get HITL backend queue instance with organization context
+        conn = QueueUtils.get_queue_inst(
+            {"use_hitl_backend": True, "organization_id": organization_id}
+        )
 
-            queue_result_json = json.dumps(queue_result)
-            # Get organization_id for proper HITL queue filtering
-            organization_id = UserContext.get_organization_identifier()
-            conn = QueueUtils.get_queue_inst(
-                {"use_hitl_backend": True, "organization_id": organization_id}
+        # Check if this is packet processing
+        if self.packet_id:
+            # Route to packet queue (Enterprise feature)
+            logger.info(f"Routing {file_name} to packet queue {self.packet_id}")
+            success = conn.enqueue_to_packet(
+                packet_id=self.packet_id,
+                queue_result=queue_result,
+                organization_id=organization_id,
             )
-            # API deployments don't have TTL, use system actor
-            conn.enqueue_with_ttl(
-                queue_name=q_name,
-                message=queue_result_json,
-                ttl_seconds=None,  # No TTL for API deployments
-                actor_id=None,  # System-initiated enqueue
-            )
+            if not success:
+                error_msg = f"Failed to push {file_name} to packet {self.packet_id}"
+                logger.error(error_msg)
+                raise RuntimeError(error_msg)
             logger.info(
-                f"Pushed {file_name} to queue {q_name} with organization_id {organization_id}"
+                f"Pushed {file_name} to packet {self.packet_id} with organization_id {organization_id}"
             )
             return
-        connector_settings: dict[str, Any] = connector.connector_metadata
 
-        source_fs = self.get_fsspec(
-            settings=connector_settings, connector_id=connector.connector_id
-        )
-        with source_fs.open(input_file_path, "rb") as remote_file:
-            whisper_hash = None
-            file_content = remote_file.read()
-            # Convert file content to a base64 encoded string
-            file_content_base64 = base64.b64encode(file_content).decode("utf-8")
-
-            # Use common queue naming method
-            q_name = self._get_review_queue_name()
-            if meta_data:
-                whisper_hash = meta_data.get("whisper-hash")
-                extracted_text = meta_data.get("extracted_text")
-            else:
-                whisper_hash = None
-                extracted_text = None
-
-            # Get TTL from workflow settings
-            ttl_seconds = WorkflowUtil.get_hitl_ttl_seconds(workflow)
-
-            # Create QueueResult with TTL metadata
-            queue_result_obj = QueueResult(
-                file=file_name,
-                status=QueueResultStatus.SUCCESS,
-                result=result,
-                workflow_id=str(self.workflow_id),
-                file_content=file_content_base64,
-                whisper_hash=whisper_hash,
-                file_execution_id=file_execution_id,
-                extracted_text=extracted_text,
-                ttl_seconds=ttl_seconds,
-            )
-            # Add TTL metadata based on HITLSettings
-            queue_result_obj.ttl_seconds = WorkflowUtil.get_hitl_ttl_seconds(workflow)
-
-            queue_result = queue_result_obj.to_dict()
-            queue_result_json = json.dumps(queue_result)
-
-            # Validate the JSON is not empty before enqueuing
-            if not queue_result_json or queue_result_json.strip() == "":
-                logger.error(
-                    f"Attempted to enqueue empty JSON with TTL for file {file_name}"
-                )
-                raise ValueError("Cannot enqueue empty JSON message")
-
-            # Get organization_id for proper HITL queue filtering
-            organization_id = UserContext.get_organization_identifier()
-            conn = QueueUtils.get_queue_inst(
-                {"use_hitl_backend": True, "organization_id": organization_id}
-            )
-            # Use TTL from workflow settings, system actor for workflow enqueue
-            ttl_seconds = queue_result_obj.ttl_seconds
+        # Route to regular queue
+        if ttl_seconds:
             conn.enqueue_with_ttl(
-                queue_name=q_name,
-                message=queue_result_json,
-                ttl_seconds=ttl_seconds,
-                actor_id=None,  # System-initiated enqueue
+                queue_name=q_name, message=queue_result_json, ttl_seconds=ttl_seconds
             )
             logger.info(
                 f"Pushed {file_name} to queue {q_name} with organization_id {organization_id} and TTL {ttl_seconds}"
             )
+        else:
+            conn.enqueue(queue_name=q_name, message=queue_result_json)
+            logger.info(
+                f"Pushed {file_name} to queue {q_name} with organization_id {organization_id}"
+            )
+
+    def _create_queue_result(
+        self,
+        file_name: str,
+        result: str,
+        file_content_base64: str,
+        file_execution_id: str,
+        meta_data: dict[str, Any] | None = None,
+        ttl_seconds: int | None = None,
+    ) -> dict[str, Any]:
+        """Create QueueResult dictionary.
+
+        Args:
+            file_name: Name of the file
+            result: Processing result
+            file_content_base64: Base64 encoded file content
+            file_execution_id: File execution ID
+            meta_data: Optional metadata
+            ttl_seconds: Optional TTL in seconds
+
+        Returns:
+            QueueResult as dictionary
+        """
+        whisper_hash = meta_data.get("whisper-hash") if meta_data else None
+        extracted_text = meta_data.get("extracted_text") if meta_data else None
+
+        queue_result_obj = QueueResult(
+            file=file_name,
+            status=QueueResultStatus.SUCCESS,
+            result=result,
+            workflow_id=str(self.workflow_id),
+            file_content=file_content_base64,
+            whisper_hash=whisper_hash,
+            file_execution_id=file_execution_id,
+            extracted_text=extracted_text,
+            ttl_seconds=ttl_seconds,
+        )
+        return queue_result_obj.to_dict()
+
+    def _push_to_queue_for_api_deployment(
+        self,
+        file_name: str,
+        result: str,
+        input_file_path: str,
+        file_execution_id: str,
+        meta_data: dict[str, Any] | None = None,
+    ) -> None:
+        """Handle queue push for API deployments.
+
+        Args:
+            file_name: Name of the file
+            result: Processing result
+            input_file_path: Path to input file
+            file_execution_id: File execution ID
+            meta_data: Optional metadata
+        """
+        file_content_base64 = self._read_file_content_for_queue(
+            input_file_path, file_name
+        )
+        q_name = self._get_review_queue_name()
+
+        queue_result = self._create_queue_result(
+            file_name=file_name,
+            result=result,
+            file_content_base64=file_content_base64,
+            file_execution_id=file_execution_id,
+            meta_data=meta_data,
+        )
+
+        queue_result_json = json.dumps(queue_result)
+        self._enqueue_to_packet_or_regular_queue(
+            file_name, queue_result, queue_result_json, q_name
+        )
+
+    def _push_to_queue_for_connector(
+        self,
+        file_name: str,
+        workflow: Workflow,
+        result: str,
+        input_file_path: str,
+        file_execution_id: str,
+        meta_data: dict[str, Any] | None = None,
+    ) -> None:
+        """Handle queue push for connector-based deployments.
+
+        Args:
+            file_name: Name of the file
+            workflow: Workflow object
+            result: Processing result
+            input_file_path: Path to input file
+            file_execution_id: File execution ID
+            meta_data: Optional metadata
+        """
+        connector = self.source_endpoint.connector_instance
+        connector_settings = connector.connector_metadata
+
+        source_fs = self.get_fsspec(
+            settings=connector_settings, connector_id=connector.connector_id
+        )
+
+        with source_fs.open(input_file_path, "rb") as remote_file:
+            file_content = remote_file.read()
+            file_content_base64 = base64.b64encode(file_content).decode("utf-8")
+
+        q_name = self._get_review_queue_name()
+        ttl_seconds = WorkflowUtil.get_hitl_ttl_seconds(workflow)
+
+        queue_result = self._create_queue_result(
+            file_name=file_name,
+            result=result,
+            file_content_base64=file_content_base64,
+            file_execution_id=file_execution_id,
+            meta_data=meta_data,
+            ttl_seconds=ttl_seconds,
+        )
+
+        queue_result_json = json.dumps(queue_result)
+
+        # Validate JSON is not empty
+        if not queue_result_json or queue_result_json.strip() == "":
+            logger.error(f"Attempted to enqueue empty JSON with TTL for file {file_name}")
+            raise ValueError("Cannot enqueue empty JSON message")
+
+        self._enqueue_to_packet_or_regular_queue(
+            file_name, queue_result, queue_result_json, q_name, ttl_seconds
+        )
 
     def _read_file_content_for_queue(self, input_file_path: str, file_name: str) -> str:
         """Read and encode file content for queue message.
