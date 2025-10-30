@@ -279,166 +279,146 @@ class StructureTool(BaseTool):
             usage_kwargs[UsageKwargs.RUN_ID] = self.file_execution_id
             usage_kwargs[UsageKwargs.FILE_NAME] = self.source_file_name
             usage_kwargs[UsageKwargs.EXECUTION_ID] = self.execution_id
+            extracted_text = STHelper.dynamic_extraction(
+                file_path=input_file,
+                enable_highlight=is_highlight_enabled,
+                usage_kwargs=usage_kwargs,
+                run_id=self.file_execution_id,
+                tool_settings=tool_settings,
+                extract_file_path=tool_data_dir / SettingsKeys.EXTRACT,
+                tool=self,
+                execution_run_data_folder=str(execution_run_data_folder),
+            )
 
-        import random
-        import time
-        randome_number = random.randint(1, 100)
-        sleep_time = random.randint(180, 480)
-        if randome_number < 15:
-            time.sleep(60)
-            self.stream_error_and_exit(f"Random number is less than 15: {randome_number}")
-        time.sleep(sleep_time) # sleep for 7 minutes
-        structured_output = {
-            SettingsKeys.METADATA: {
-                SettingsKeys.FILE_NAME: self.source_file_name,
-            },
-            SettingsKeys.METRICS: {},
-            SettingsKeys.OUTPUTS: {
-                "result": {"value": randome_number},
-                "file_name": self.source_file_name,
-            },
-        }
+        index_metrics = {}
+        if is_summarization_enabled:
+            summarize_file_path, summarize_file_hash = self._summarize(
+                tool_settings=tool_settings,
+                tool_data_dir=tool_data_dir,
+                responder=responder,
+                outputs=outputs,
+                usage_kwargs=usage_kwargs,
+            )
+            payload[SettingsKeys.FILE_HASH] = summarize_file_hash
+            payload[SettingsKeys.FILE_PATH] = summarize_file_path
+        elif skip_extraction_and_indexing:
+            # Use source file directly for Excel with valid JSON
+            payload[SettingsKeys.FILE_PATH] = input_file
+            pass
+        elif not is_single_pass_enabled:
+            # Track seen parameter combinations to avoid duplicate indexing
+            seen_params = set()
 
-        #     extracted_text = STHelper.dynamic_extraction(
-        #         file_path=input_file,
-        #         enable_highlight=is_highlight_enabled,
-        #         usage_kwargs=usage_kwargs,
-        #         run_id=self.file_execution_id,
-        #         tool_settings=tool_settings,
-        #         extract_file_path=tool_data_dir / SettingsKeys.EXTRACT,
-        #         tool=self,
-        #         execution_run_data_folder=str(execution_run_data_folder),
-        #     )
+            for output in outputs:
+                # Get current parameter combination
+                chunk_size = output[SettingsKeys.CHUNK_SIZE]
+                chunk_overlap = output[SettingsKeys.CHUNK_OVERLAP]
+                vector_db = tool_settings[SettingsKeys.VECTOR_DB]
+                embedding = tool_settings[SettingsKeys.EMBEDDING]
+                x2text = tool_settings[SettingsKeys.X2TEXT_ADAPTER]
 
-        # index_metrics = {}
-        # if is_summarization_enabled:
-        #     summarize_file_path, summarize_file_hash = self._summarize(
-        #         tool_settings=tool_settings,
-        #         tool_data_dir=tool_data_dir,
-        #         responder=responder,
-        #         outputs=outputs,
-        #         usage_kwargs=usage_kwargs,
-        #     )
-        #     payload[SettingsKeys.FILE_HASH] = summarize_file_hash
-        #     payload[SettingsKeys.FILE_PATH] = summarize_file_path
-        # elif skip_extraction_and_indexing:
-        #     # Use source file directly for Excel with valid JSON
-        #     payload[SettingsKeys.FILE_PATH] = input_file
-        #     pass
-        # elif not is_single_pass_enabled:
-        #     # Track seen parameter combinations to avoid duplicate indexing
-        #     seen_params = set()
+                # Create a unique key for this parameter combination
+                param_key = (
+                    f"chunk_size={chunk_size}_"
+                    f"chunk_overlap={chunk_overlap}_"
+                    f"vector_db={vector_db}_"
+                    f"embedding={embedding}_"
+                    f"x2text={x2text}"
+                )
 
-        #     for output in outputs:
-        #         # Get current parameter combination
-        #         chunk_size = output[SettingsKeys.CHUNK_SIZE]
-        #         chunk_overlap = output[SettingsKeys.CHUNK_OVERLAP]
-        #         vector_db = tool_settings[SettingsKeys.VECTOR_DB]
-        #         embedding = tool_settings[SettingsKeys.EMBEDDING]
-        #         x2text = tool_settings[SettingsKeys.X2TEXT_ADAPTER]
+                # Only process if we haven't seen this combination yet and chunk_size is not zero
+                if chunk_size != 0 and param_key not in seen_params:
+                    seen_params.add(param_key)
 
-        #         # Create a unique key for this parameter combination
-        #         param_key = (
-        #             f"chunk_size={chunk_size}_"
-        #             f"chunk_overlap={chunk_overlap}_"
-        #             f"vector_db={vector_db}_"
-        #             f"embedding={embedding}_"
-        #             f"x2text={x2text}"
-        #         )
+                    indexing_start_time = datetime.datetime.now()
+                    self.stream_log(
+                        f"Indexing document with: chunk_size={chunk_size}, "
+                        f"chunk_overlap={chunk_overlap}, vector_db={vector_db}, "
+                        f"embedding={embedding}, x2text={x2text}"
+                    )
 
-        #         # Only process if we haven't seen this combination yet and chunk_size is not zero
-        #         if chunk_size != 0 and param_key not in seen_params:
-        #             seen_params.add(param_key)
+                    STHelper.dynamic_indexing(
+                        tool_settings=tool_settings,
+                        run_id=self.file_execution_id,
+                        file_path=tool_data_dir / SettingsKeys.EXTRACT,
+                        tool=self,
+                        execution_run_data_folder=str(execution_run_data_folder),
+                        chunk_overlap=chunk_overlap,
+                        reindex=True,
+                        usage_kwargs=usage_kwargs,
+                        enable_highlight=is_highlight_enabled,
+                        chunk_size=chunk_size,
+                        tool_id=tool_metadata[SettingsKeys.TOOL_ID],
+                        file_hash=file_hash,
+                        extracted_text=extracted_text,
+                    )
 
-        #             indexing_start_time = datetime.datetime.now()
-        #             self.stream_log(
-        #                 f"Indexing document with: chunk_size={chunk_size}, "
-        #                 f"chunk_overlap={chunk_overlap}, vector_db={vector_db}, "
-        #                 f"embedding={embedding}, x2text={x2text}"
-        #             )
+                    index_metrics[output[SettingsKeys.NAME]] = {
+                        SettingsKeys.INDEXING: {
+                            "time_taken(s)": STHelper.elapsed_time(
+                                start_time=indexing_start_time
+                            )
+                        }
+                    }
 
-        #             STHelper.dynamic_indexing(
-        #                 tool_settings=tool_settings,
-        #                 run_id=self.file_execution_id,
-        #                 file_path=tool_data_dir / SettingsKeys.EXTRACT,
-        #                 tool=self,
-        #                 execution_run_data_folder=str(execution_run_data_folder),
-        #                 chunk_overlap=chunk_overlap,
-        #                 reindex=True,
-        #                 usage_kwargs=usage_kwargs,
-        #                 enable_highlight=is_highlight_enabled,
-        #                 chunk_size=chunk_size,
-        #                 tool_id=tool_metadata[SettingsKeys.TOOL_ID],
-        #                 file_hash=file_hash,
-        #                 extracted_text=extracted_text,
-        #             )
+        if is_single_pass_enabled:
+            self.stream_log("Fetching response for single pass extraction...")
+            structured_output = responder.single_pass_extraction(
+                payload=payload,
+            )
+        else:
+            for output in outputs:
+                if SettingsKeys.TABLE_SETTINGS in output:
+                    table_settings = output[SettingsKeys.TABLE_SETTINGS]
+                    is_directory_mode: bool = table_settings.get(
+                        SettingsKeys.IS_DIRECTORY_MODE, False
+                    )
+                    # Use source file directly for Excel with valid JSON, otherwise use extracted file
+                    if skip_extraction_and_indexing:
+                        table_settings[SettingsKeys.INPUT_FILE] = input_file
+                        payload[SettingsKeys.FILE_PATH] = input_file
+                    else:
+                        table_settings[SettingsKeys.INPUT_FILE] = extracted_input_file
+                    table_settings[SettingsKeys.IS_DIRECTORY_MODE] = is_directory_mode
+                    self.stream_log(f"Performing table extraction with: {table_settings}")
+                    output.update({SettingsKeys.TABLE_SETTINGS: table_settings})
 
-        #             index_metrics[output[SettingsKeys.NAME]] = {
-        #                 SettingsKeys.INDEXING: {
-        #                     "time_taken(s)": STHelper.elapsed_time(
-        #                         start_time=indexing_start_time
-        #                     )
-        #                 }
-        #             }
+            self.stream_log(f"Fetching responses for '{len(outputs)}' prompt(s)...")
+            structured_output = responder.answer_prompt(
+                payload=payload,
+            )
 
-        # if is_single_pass_enabled:
-        #     self.stream_log("Fetching response for single pass extraction...")
-        #     structured_output = responder.single_pass_extraction(
-        #         payload=payload,
-        #     )
-        # else:
-        #     for output in outputs:
-        #         if SettingsKeys.TABLE_SETTINGS in output:
-        #             table_settings = output[SettingsKeys.TABLE_SETTINGS]
-        #             is_directory_mode: bool = table_settings.get(
-        #                 SettingsKeys.IS_DIRECTORY_MODE, False
-        #             )
-        #             # Use source file directly for Excel with valid JSON, otherwise use extracted file
-        #             if skip_extraction_and_indexing:
-        #                 table_settings[SettingsKeys.INPUT_FILE] = input_file
-        #                 payload[SettingsKeys.FILE_PATH] = input_file
-        #             else:
-        #                 table_settings[SettingsKeys.INPUT_FILE] = extracted_input_file
-        #             table_settings[SettingsKeys.IS_DIRECTORY_MODE] = is_directory_mode
-        #             self.stream_log(f"Performing table extraction with: {table_settings}")
-        #             output.update({SettingsKeys.TABLE_SETTINGS: table_settings})
+        # HACK: Replacing actual file's name instead of INFILE
+        # Ensure metadata section exists
+        if SettingsKeys.METADATA not in structured_output:
+            structured_output[SettingsKeys.METADATA] = {}
+            self.stream_log("Created metadata section in structured_output")
 
-        #     self.stream_log(f"Fetching responses for '{len(outputs)}' prompt(s)...")
-        #     structured_output = responder.answer_prompt(
-        #         payload=payload,
-        #     )
+        structured_output[SettingsKeys.METADATA][SettingsKeys.FILE_NAME] = (
+            self.source_file_name
+        )
 
-        # # HACK: Replacing actual file's name instead of INFILE
-        # # Ensure metadata section exists
-        # if SettingsKeys.METADATA not in structured_output:
-        #     structured_output[SettingsKeys.METADATA] = {}
-        #     self.stream_log("Created metadata section in structured_output")
-
-        # structured_output[SettingsKeys.METADATA][SettingsKeys.FILE_NAME] = (
-        #     self.source_file_name
-        # )
-
-        # # Add extracted text for HITL raw view
-        # if extracted_text:
-        #     structured_output[SettingsKeys.METADATA]["extracted_text"] = extracted_text
-        #     self.stream_log(
-        #         f"Added text extracted from the document to metadata (length: {len(extracted_text)} characters)"
-        #     )
-        # else:
-        #     self.stream_log(
-        #         "No text is extracted from the document to add to the metadata"
-        #     )
-        # if merged_metrics := self._merge_metrics(
-        #     structured_output.get(SettingsKeys.METRICS, {}), index_metrics
-        # ):
-        #     structured_output[SettingsKeys.METRICS] = merged_metrics
-        # # Update GUI
-        # output_log = (
-        #     f"## Result\n**NOTE:** In case of a deployed pipeline, the result would "
-        #     "be a JSON. This has been rendered for readability here\n"
-        #     f"{json_to_markdown(structured_output)}\n"
-        # )
-        # self.stream_update(output_log, state=LogState.OUTPUT_UPDATE)
+        # Add extracted text for HITL raw view
+        if extracted_text:
+            structured_output[SettingsKeys.METADATA]["extracted_text"] = extracted_text
+            self.stream_log(
+                f"Added text extracted from the document to metadata (length: {len(extracted_text)} characters)"
+            )
+        else:
+            self.stream_log(
+                "No text is extracted from the document to add to the metadata"
+            )
+        if merged_metrics := self._merge_metrics(
+            structured_output.get(SettingsKeys.METRICS, {}), index_metrics
+        ):
+            structured_output[SettingsKeys.METRICS] = merged_metrics
+        # Update GUI
+        output_log = (
+            f"## Result\n**NOTE:** In case of a deployed pipeline, the result would "
+            "be a JSON. This has been rendered for readability here\n"
+            f"{json_to_markdown(structured_output)}\n"
+        )
+        self.stream_update(output_log, state=LogState.OUTPUT_UPDATE)
 
         try:
             self.stream_log(
