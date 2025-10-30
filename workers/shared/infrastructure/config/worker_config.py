@@ -242,8 +242,12 @@ class WorkerConfig:
     )
 
     # API Client Performance Optimization
+    # CRITICAL: Session sharing is DISABLED by default for fork-safety
+    # The session sharing optimization bypasses BaseAPIClient's fork-safe session property
+    # by directly assigning shared_session to client.session, which breaks fork detection.
+    # Only enable if you understand the fork-safety implications and are not using prefork pool.
     enable_api_client_singleton: bool = field(
-        default_factory=lambda: os.getenv("ENABLE_API_CLIENT_SINGLETON", "true").lower()
+        default_factory=lambda: os.getenv("ENABLE_API_CLIENT_SINGLETON", "false").lower()
         == "true"
     )
     enable_organization_context_cache: bool = field(
