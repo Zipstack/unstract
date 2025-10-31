@@ -207,11 +207,12 @@ const SideNavBar = ({ collapsed }) => {
           title: "Platform",
           description: "Settings for the platform",
           image: PlatformSettingsIcon,
-          path: `/${orgName}/settings`,
+          path: `/${orgName}/settings/platform`,
           active:
             window.location.pathname === `/${orgName}/settings` ||
             window.location.pathname === `/${orgName}/settings/platform` ||
             window.location.pathname === `/${orgName}/settings/triad` ||
+            window.location.pathname === `/${orgName}/settings/review` ||
             window.location.pathname === `/${orgName}/users`,
         },
       ],
