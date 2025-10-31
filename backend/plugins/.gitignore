@@ -8,5 +8,4 @@
 
 # TODO: Make these as proper plugins
 !authentication/auth_sample
-!api/dto/__init__.py
 !workflow_manager

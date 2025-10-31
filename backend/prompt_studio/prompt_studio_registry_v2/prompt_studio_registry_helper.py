@@ -5,9 +5,8 @@ from account_v2.models import User
 from adapter_processor_v2.models import AdapterInstance
 from django.conf import settings
 from django.db import IntegrityError
+from plugins import get_plugin
 
-from prompt_studio.modifier_loader import ModifierConfig
-from prompt_studio.modifier_loader import load_plugins as load_modifier_plugins
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
 from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import PromptStudioHelper
@@ -28,7 +27,6 @@ from .models import PromptStudioRegistry
 from .serializers import PromptStudioRegistrySerializer
 
 logger = logging.getLogger(__name__)
-modifier_plugins = load_modifier_plugins()
 
 
 class PromptStudioRegistryHelper:
@@ -354,11 +352,10 @@ class PromptStudioRegistryHelper:
                 or prompt.enforce_type == PromptStudioRegistryKeys.RECORD
                 or prompt.enforce_type == PromptStudioRegistryKeys.LINE_ITEM
             ):
-                for modifier_plugin in modifier_plugins:
-                    cls = modifier_plugin[ModifierConfig.METADATA][
-                        ModifierConfig.METADATA_SERVICE_CLASS
-                    ]
-                    output = cls.update(
+                payload_modifier_plugin = get_plugin("payload_modifier")
+                if payload_modifier_plugin:
+                    modifier_service = payload_modifier_plugin["service_class"]()
+                    output = modifier_service.update(
                         output=output,
                         tool_id=tool.tool_id,
                         prompt_id=prompt.prompt_id,
