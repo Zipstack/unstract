@@ -174,10 +174,11 @@ class InternalAPIClient(CachedAPIClientMixin):
         """Initialize clients the traditional way (for backward compatibility)."""
         if self.config.debug_api_client_init:
             logger.info(
-                "Using traditional API client initialization (6 separate instances)"
+                "Using traditional API client initialization (8 separate instances)"
             )
         self.base_client = BaseAPIClient(self.config)
         self.execution_client = ExecutionAPIClient(self.config)
+        self.workflow_client = WorkflowAPIClient()
         self.file_client = FileAPIClient(self.config)
         self.webhook_client = WebhookAPIClient(self.config)
         self.organization_client = OrganizationAPIClient(self.config)
