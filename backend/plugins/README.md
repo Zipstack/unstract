@@ -1,5 +1,3 @@
 # Plugins
 
-## Authentication
-
-Enhance the authentication capabilities of the `account/authentication_controller.py` module by incorporating additional modules.
+Read [unstract-core's README](../../unstract/core/src/unstract/core/plugins/README.md) for more details on adding and using plugins.

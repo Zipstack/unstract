@@ -252,6 +252,7 @@ class RedisClient:
             REDIS_HOST: Redis host (default: localhost)
             REDIS_PORT: Redis port (default: 6379)
             REDIS_USER: Redis username (optional)
+            REDIS_USERNAME: Redis username (optional, alternative to REDIS_USER)
             REDIS_PASSWORD: Redis password (optional)
             REDIS_DB: Redis database number (default: 0)
 
@@ -263,7 +264,7 @@ class RedisClient:
         return cls(
             host=os.getenv("REDIS_HOST", "localhost"),
             port=int(os.getenv("REDIS_PORT", "6379")),
-            username=os.getenv("REDIS_USER"),
+            username=os.getenv("REDIS_USER") or os.getenv("REDIS_USERNAME"),
             password=os.getenv("REDIS_PASSWORD"),
             db=int(os.getenv("REDIS_DB", "0")),
         )
