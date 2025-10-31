@@ -7,7 +7,6 @@ consistent behavior.
 
 import importlib
 import logging
-import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -71,12 +70,100 @@ class PluginManager:
             # Create new instance if singleton is disabled
             return super().__new__(cls)
 
+    def _find_plugin_modules(
+        self, base_path: Path, max_depth: int = 2
+    ) -> list[tuple[Path, str]]:
+        """Recursively find plugin directories containing valid metadata.
+
+        Scans the plugin directory tree up to max_depth levels to find directories
+        with __init__.py that contain plugin metadata. This supports both flat
+        plugin structures (plugins/plugin_name/) and nested structures
+        (plugins/category/plugin_name/).
+
+        Args:
+            base_path: Root directory to start searching from
+            max_depth: Maximum directory depth to search (default: 2)
+                      depth=0: only base_path
+                      depth=1: base_path + immediate subdirs
+                      depth=2: base_path + subdirs + their subdirs
+
+        Returns:
+            List of tuples (plugin_path, module_name) where:
+                - plugin_path: Path to the plugin directory
+                - module_name: Dot-separated module path relative to plugins_pkg
+                  (e.g., 'base_plugin.nested_plugin' or 'base_plugin')
+
+        """
+        plugins = []
+
+        def _scan_directory(path: Path, depth: int = 0, rel_parts: tuple[str, ...] = ()):
+            """Recursively scan directories for plugins.
+
+            Args:
+                path: Current directory being scanned
+                depth: Current recursion depth
+                rel_parts: Tuple of path components relative to base_path
+            """
+            if depth > max_depth:
+                return
+
+            try:
+                items = sorted(path.iterdir())
+            except (OSError, PermissionError) as e:
+                self.logger.warning(
+                    f"Cannot access directory {path} for plugin discovery: {e}"
+                )
+                return
+
+            for item in items:
+                # Skip special Python directories and build artifacts
+                if item.name.startswith("__") or item.name in (
+                    "build",
+                    "dist",
+                    "egg-info",
+                    ".pytest_cache",
+                    ".mypy_cache",
+                    "node_modules",
+                ):
+                    continue
+
+                # Handle .so files (compiled extensions) at any level
+                if item.name.endswith(".so"):
+                    pkg_name = item.name.split(".")[0]
+                    module_path = ".".join(rel_parts + (pkg_name,))
+                    plugins.append((item, module_path))
+                    continue
+
+                # Only process directories
+                if not item.is_dir():
+                    continue
+
+                # Build relative module path
+                new_rel_parts = rel_parts + (item.name,)
+
+                # Check if this directory has __init__.py
+                init_file = item / "__init__.py"
+                if init_file.exists():
+                    # This could be a plugin - add it to candidates
+                    module_path = ".".join(new_rel_parts)
+                    plugins.append((item, module_path))
+
+                # Continue scanning subdirectories if we haven't reached max depth
+                if depth < max_depth:
+                    _scan_directory(item, depth + 1, new_rel_parts)
+
+        _scan_directory(base_path)
+        return plugins
+
     def load_plugins(self) -> None:
         """Load plugins found in the plugins directory.
 
-        Scans the plugins directory for valid plugin packages, validates their
-        metadata, and optionally calls registration callback for framework-specific
-        integration (e.g., Flask blueprints, Django URL patterns).
+        Scans the plugins directory recursively for valid plugin packages,
+        validates their metadata, and optionally calls registration callback
+        for framework-specific integration (e.g., Flask blueprints, Django URL patterns).
+
+        Supports both flat plugin structures (plugins/plugin_name/) and nested
+        structures (plugins/category/plugin_name/) up to max_depth levels.
         """
         if not self.plugins_dir or not self.plugins_dir.exists():
             self.logger.warning(
@@ -86,43 +173,35 @@ class PluginManager:
 
         self.logger.info(f"Loading plugins from: {self.plugins_dir}")
 
-        for item in os.listdir(os.fspath(self.plugins_dir)):
-            # Skip __pycache__ and __init__.py
-            if item.startswith("__"):
-                continue
+        # Recursively discover all potential plugin directories
+        plugin_candidates = self._find_plugin_modules(self.plugins_dir, max_depth=2)
 
-            pkg_name = item
-
-            # Handle .so files (compiled Python extensions)
-            if item.endswith(".so"):
-                pkg_name = item.split(".")[0]
-            # Skip non-directories and non-.so files
-            elif not os.path.isdir(os.path.join(self.plugins_dir, item)):
-                continue
-
+        for plugin_path, module_name in plugin_candidates:
             # Build import path with optional submodule
             if self.plugin_submodule:
-                pkg_anchor = f"{self.plugins_pkg}.{pkg_name}.{self.plugin_submodule}"
+                pkg_anchor = f"{self.plugins_pkg}.{module_name}.{self.plugin_submodule}"
             else:
-                pkg_anchor = f"{self.plugins_pkg}.{pkg_name}"
+                pkg_anchor = f"{self.plugins_pkg}.{module_name}"
 
             # Try to import the plugin module
             try:
                 module = importlib.import_module(pkg_anchor)
             except ImportError as e:
-                self.logger.error(f"Failed to load plugin ({pkg_name}): {str(e)}")
+                self.logger.debug(
+                    f"Could not import {pkg_anchor} (might not be a plugin): {str(e)}"
+                )
                 continue
 
             # Validate plugin metadata
             metadata = getattr(module, "metadata", None)
             if not metadata:
-                self.logger.warning(f"Skipping plugin ({pkg_name}): No metadata found.")
+                # Not a plugin - just a regular directory with __init__.py
                 continue
 
             # Skip disabled plugins
             if metadata.get("disable", False) or not metadata.get("is_active", True):
                 self.logger.info(
-                    f"Skipping disabled plugin: {pkg_name} "
+                    f"Skipping disabled plugin: {module_name} "
                     f"v{metadata.get('version', 'unknown')}"
                 )
                 continue
@@ -150,10 +229,14 @@ class PluginManager:
                 if self.registration_callback:
                     self.registration_callback(plugin_data)
 
-                self.logger.info(f"✔ Loaded plugin: {pkg_name} v{plugin_data['version']}")
+                self.logger.info(
+                    f"✔ Loaded plugin: {module_name} v{plugin_data['version']}"
+                )
 
             except KeyError as e:
-                self.logger.error(f"Invalid metadata for plugin '{pkg_name}': {str(e)}")
+                self.logger.error(
+                    f"Invalid metadata for plugin '{module_name}': {str(e)}"
+                )
 
         # Log appropriate message based on whether plugins were loaded
         if not self.plugins:

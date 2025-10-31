@@ -77,7 +77,6 @@ class FlaskPluginManager:
             logger=self.app.logger,
             use_singleton=True,
             registration_callback=flask_registration_callback,
-            plugin_submodule="src",
         )
         self._initialized = True
 
