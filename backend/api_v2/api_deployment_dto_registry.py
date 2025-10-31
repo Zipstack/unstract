@@ -1,7 +1,7 @@
 import logging
 from typing import Any
 
-from plugins.api.dto import metadata
+from plugins import get_plugin
 
 from api_v2.postman_collection.dto import PostmanCollection
 
@@ -13,10 +13,16 @@ class ApiDeploymentDTORegistry:
 
     @classmethod
     def load_dto(cls) -> Any | None:
-        class_name = PostmanCollection.__name__
-        if metadata.get(class_name):
-            return metadata[class_name].class_name
-        return PostmanCollection  # Return as soon as we find a valid DTO
+        """Load DTO from plugin or return default PostmanCollection.
+
+        Checks if the api_dto plugin is available and gets the Postman DTO
+        via the service, otherwise returns the base PostmanCollection class.
+        """
+        plugin = get_plugin("api_dto")
+        if plugin:
+            service = plugin["service_class"]()
+            return service.get_postman_dto()
+        return PostmanCollection
 
     @classmethod
     def get_dto(cls) -> type | None:

@@ -6,12 +6,12 @@ from urllib.parse import urlparse
 
 from flask import current_app as app
 
+from unstract.core.flask import PluginManager
 from unstract.core.flask.exceptions import APIError
 from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.prompt_service.constants import ExecutionSource, FileStorageKeys, RunLevel
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.exceptions import RateLimitError
-from unstract.prompt_service.helpers.plugin import PluginManager
 from unstract.prompt_service.helpers.postprocessor import postprocess_data
 from unstract.prompt_service.utils.env_loader import get_env_or_die
 from unstract.prompt_service.utils.json_repair_helper import (
@@ -222,6 +222,12 @@ class AnswerPromptService:
                         storage_type=StorageType.SHARED_TEMPORARY,
                         env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
                     )
+                logger.info(
+                    f"Initializing highlight plugin with: "
+                    f"file_path={file_path}, "
+                    f"execution_source={execution_source}, "
+                    f"fs_instance={fs_instance}"
+                )
                 highlight_data = highlight_data_plugin["entrypoint_cls"](
                     file_path=file_path,
                     fs_instance=fs_instance,

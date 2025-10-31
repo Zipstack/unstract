@@ -6,6 +6,7 @@ from configuration.models import Configuration
 from django.db.models import QuerySet
 from django.http import HttpResponse
 from permissions.permission import IsOwner, IsOwnerOrSharedUser
+from plugins import get_plugin
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from rest_framework import serializers, status, views, viewsets
 from rest_framework.decorators import action
@@ -31,15 +32,12 @@ from api_v2.serializers import (
     SharedUserListSerializer,
 )
 
-try:
-    from plugins.notification.constants import ResourceType
-    from plugins.notification.sharing_notification import SharingNotificationService
+# Check if notification plugin is available
+notification_plugin = get_plugin("notification")
 
-    NOTIFICATION_PLUGIN_AVAILABLE = True
-    sharing_notification_service = SharingNotificationService()
-except ImportError:
-    NOTIFICATION_PLUGIN_AVAILABLE = False
-    sharing_notification_service = None
+# Import constants from notification plugin if available
+if notification_plugin:
+    from plugins.notification.constants import ResourceType
 
 logger = logging.getLogger(__name__)
 
@@ -289,7 +287,7 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
         if (
             response.status_code == 200
             and "shared_users" in request.data
-            and NOTIFICATION_PLUGIN_AVAILABLE
+            and notification_plugin
         ):
             try:
                 instance.refresh_from_db()
@@ -297,7 +295,9 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
                 newly_shared_users = new_shared_users - current_shared_users
 
                 if newly_shared_users:
-                    notification_service = SharingNotificationService()
+                    # Get notification service from plugin
+                    service_class = notification_plugin["service_class"]
+                    notification_service = service_class()
                     notification_service.send_sharing_notification(
                         resource_type=ResourceType.API_DEPLOYMENT.value,
                         resource_name=instance.display_name,

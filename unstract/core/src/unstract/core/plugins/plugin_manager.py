@@ -230,7 +230,7 @@ class PluginManager:
                     self.registration_callback(plugin_data)
 
                 self.logger.info(
-                    f"✔ Loaded plugin: {module_name} v{plugin_data['version']}"
+                    f"✔ Loaded plugin: {plugin_name} v{plugin_data['version']}"
                 )
 
             except KeyError as e:
