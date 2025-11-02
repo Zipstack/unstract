@@ -455,10 +455,8 @@ async def generate_table_extraction_prompts_async(
                 doc_type, metadata, extraction_yaml
             )
         )
-        table_user_prompt = (
-            await service.generator.generate_table_extraction_user_prompt(
-                doc_type, metadata
-            )
+        table_user_prompt = await service.generator.generate_table_extraction_user_prompt(
+            doc_type, metadata
         )
 
         return {
@@ -512,9 +510,7 @@ def guess_document_type_sync(
     Returns:
         Dictionary containing guessed document type or error
     """
-    return _run_async(
-        guess_document_type_async(file_content, llm_config)
-    )
+    return _run_async(guess_document_type_async(file_content, llm_config))
 
 
 async def guess_document_type_async(

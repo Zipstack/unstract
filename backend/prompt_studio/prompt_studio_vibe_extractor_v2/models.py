@@ -16,9 +16,7 @@ class VibeExtractorProject(BaseModel):
     will be stored as files in the repository.
     """
 
-    id = models.UUIDField(
-        primary_key=True, default=uuid.uuid4, editable=False
-    )
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     document_type = models.TextField(
         blank=False,
         db_comment="Document type name (e.g., invoice, receipt)",

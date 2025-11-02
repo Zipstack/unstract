@@ -1,7 +1,6 @@
 """Helper functions for Vibe Extractor operations."""
 
 import logging
-import os
 from pathlib import Path
 from typing import Any
 
@@ -261,14 +260,14 @@ class VibeExtractorHelper:
         """
         try:
             # Import here to avoid circular imports
+            from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
+            from prompt_studio.prompt_studio_core_v2.models import CustomTool
             from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import (
                 PromptStudioHelper,
             )
             from prompt_studio.prompt_studio_vibe_extractor_v2.services.generator_service import (
                 GeneratorService,
             )
-            from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
-            from prompt_studio.prompt_studio_core_v2.models import CustomTool
 
             # Get the tool instance to access profile manager
             tool = CustomTool.objects.get(pk=tool_id)
@@ -286,12 +285,15 @@ class VibeExtractorHelper:
             full_file_path = str(Path(file_path) / file_name)
 
             # Use dynamic_extractor to read and extract text from the file
-            from unstract.sdk1.file_storage.env_helper import EnvHelper
-            from unstract.sdk1.file_storage.constants import StorageType
             from utils.file_storage.constants import FileStorageKeys
-            from unstract.sdk1.utils.indexing import IndexingUtils
-            from prompt_studio.prompt_studio_core_v2.prompt_ide_base_tool import PromptIdeBaseTool
+
+            from prompt_studio.prompt_studio_core_v2.prompt_ide_base_tool import (
+                PromptIdeBaseTool,
+            )
             from unstract.sdk.constants import LogLevel
+            from unstract.sdk1.file_storage.constants import StorageType
+            from unstract.sdk1.file_storage.env_helper import EnvHelper
+            from unstract.sdk1.utils.indexing import IndexingUtils
 
             fs_instance = EnvHelper.get_storage(
                 storage_type=StorageType.PERMANENT,

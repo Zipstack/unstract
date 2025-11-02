@@ -23,7 +23,6 @@ from prompt_studio.prompt_studio_vibe_extractor_v2.serializers import (
     VibeExtractorGenerateMetadataSerializer,
     VibeExtractorGeneratePagePromptsSerializer,
     VibeExtractorGenerateScalarPromptsSerializer,
-    VibeExtractorGenerateSerializer,
     VibeExtractorGenerateTablePromptsSerializer,
     VibeExtractorGuessDocumentTypeSerializer,
     VibeExtractorProjectCreateSerializer,
@@ -173,9 +172,7 @@ class VibeExtractorProjectView(viewsets.ModelViewSet):
         Returns:
             Response with generated extraction fields
         """
-        serializer = VibeExtractorGenerateExtractionFieldsSerializer(
-            data=request.data
-        )
+        serializer = VibeExtractorGenerateExtractionFieldsSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         try:
@@ -188,9 +185,7 @@ class VibeExtractorProjectView(viewsets.ModelViewSet):
             def run_generation():
                 """Run extraction fields generation in background thread."""
                 try:
-                    GeneratorService.generate_extraction_fields_only(
-                        project, metadata
-                    )
+                    GeneratorService.generate_extraction_fields_only(project, metadata)
                 except Exception as e:
                     import logging
 
@@ -245,9 +240,7 @@ class VibeExtractorProjectView(viewsets.ModelViewSet):
             def run_generation():
                 """Run page prompts generation in background thread."""
                 try:
-                    GeneratorService.generate_page_extraction_prompts(
-                        project, metadata
-                    )
+                    GeneratorService.generate_page_extraction_prompts(project, metadata)
                 except Exception as e:
                     import logging
 

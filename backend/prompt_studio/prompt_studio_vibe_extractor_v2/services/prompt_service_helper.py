@@ -5,7 +5,7 @@ to communicate with the prompt-service, following Unstract's standards.
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
 from account_v2.constants import Common
 from django.conf import settings
@@ -17,11 +17,11 @@ from prompt_studio.prompt_studio_core_v2.prompt_ide_base_tool import (
 from unstract.flags.feature_flag import check_feature_flag_status
 
 if check_feature_flag_status("sdk1"):
-    from unstract.sdk1.prompt import PromptTool
     from unstract.sdk1.constants import LogLevel
+    from unstract.sdk1.prompt import PromptTool
 else:
-    from unstract.sdk.prompt import PromptTool
     from unstract.sdk.constants import LogLevel
+    from unstract.sdk.prompt import PromptTool
 
 logger = logging.getLogger(__name__)
 
@@ -59,9 +59,9 @@ class VibeExtractorPromptServiceHelper:
     @staticmethod
     def guess_document_type(
         file_content: str,
-        llm_config: Dict[str, Any],
+        llm_config: dict[str, Any],
         org_id: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Guess document type from file content.
 
         Args:
@@ -84,10 +84,10 @@ class VibeExtractorPromptServiceHelper:
     @staticmethod
     def generate_metadata(
         doc_type: str,
-        llm_config: Dict[str, Any],
+        llm_config: dict[str, Any],
         reference_template: str,
         org_id: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate metadata for a document type.
 
         Args:
@@ -113,9 +113,9 @@ class VibeExtractorPromptServiceHelper:
     def generate_extraction_fields(
         doc_type: str,
         metadata_description: str,
-        llm_config: Dict[str, Any],
+        llm_config: dict[str, Any],
         org_id: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate extraction fields YAML.
 
         Args:
@@ -141,9 +141,9 @@ class VibeExtractorPromptServiceHelper:
     def generate_page_prompts(
         doc_type: str,
         metadata_description: str,
-        llm_config: Dict[str, Any],
+        llm_config: dict[str, Any],
         org_id: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate page extraction prompts.
 
         Args:
@@ -171,9 +171,9 @@ class VibeExtractorPromptServiceHelper:
         metadata_description: str,
         extraction_yaml: str,
         scalar_fields: list,
-        llm_config: Dict[str, Any],
+        llm_config: dict[str, Any],
         org_id: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate scalar extraction prompts.
 
         Args:
@@ -205,9 +205,9 @@ class VibeExtractorPromptServiceHelper:
         metadata_description: str,
         extraction_yaml: str,
         list_fields: list,
-        llm_config: Dict[str, Any],
+        llm_config: dict[str, Any],
         org_id: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate table extraction prompts.
 
         Args:
