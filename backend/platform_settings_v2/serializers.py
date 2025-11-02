@@ -5,7 +5,6 @@ from rest_framework.exceptions import ValidationError
 
 from backend.serializers import AuditSerializer
 from platform_settings_v2.models import PlatformSettings
-
 from unstract.flags.feature_flag import check_feature_flag_status
 
 if check_feature_flag_status("sdk1"):
@@ -63,14 +62,10 @@ class PlatformSettingsSerializer(AuditSerializer):
         request = self.context.get("request")
         if request and hasattr(request, "user"):
             try:
-                adapter = AdapterInstance.objects.for_user(request.user).get(
-                    id=value.id
-                )
+                adapter = AdapterInstance.objects.for_user(request.user).get(id=value.id)
                 # Validate that the adapter type is LLM
                 if adapter.adapter_type != AdapterTypes.LLM.value:
-                    raise ValidationError(
-                        "Only LLM adapters are allowed for system LLM"
-                    )
+                    raise ValidationError("Only LLM adapters are allowed for system LLM")
 
                 # Validate that adapter is usable and active
                 if not adapter.is_usable:
@@ -80,8 +75,6 @@ class PlatformSettingsSerializer(AuditSerializer):
                     raise ValidationError("Selected LLM adapter is not active")
 
             except AdapterInstance.DoesNotExist:
-                raise ValidationError(
-                    "Selected LLM adapter not found or not accessible"
-                )
+                raise ValidationError("Selected LLM adapter not found or not accessible")
 
         return value

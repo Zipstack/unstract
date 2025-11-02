@@ -14,9 +14,7 @@ platform_settings_view = PlatformSettingsViewSet.as_view(
     {"get": "list", "put": "update", "patch": "update"}
 )
 
-platform_settings_system_llm = PlatformSettingsViewSet.as_view(
-    {"get": "system_llm"}
-)
+platform_settings_system_llm = PlatformSettingsViewSet.as_view({"get": "system_llm"})
 
 urlpatterns = format_suffix_patterns(
     [

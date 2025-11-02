@@ -146,19 +146,25 @@ class PlatformSettingsViewSet(viewsets.ModelViewSet):
         )
         return settings
 
-    def list(self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]) -> Response:
+    def list(
+        self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
+    ) -> Response:
         """List platform settings for the organization."""
         settings = self.get_object()
         serializer = self.get_serializer(settings)
         return Response(serializer.data)
 
-    def retrieve(self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]) -> Response:
+    def retrieve(
+        self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
+    ) -> Response:
         """Retrieve platform settings for the organization."""
         settings = self.get_object()
         serializer = self.get_serializer(settings)
         return Response(serializer.data)
 
-    def update(self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]) -> Response:
+    def update(
+        self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
+    ) -> Response:
         """Update platform settings."""
         settings = self.get_object()
         serializer = self.get_serializer(

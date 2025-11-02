@@ -6,10 +6,9 @@ document extraction components.
 
 import asyncio
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 from adapter_processor_v2.models import AdapterInstance
-from django.conf import settings
 from platform_settings_v2.models import PlatformSettings
 from utils.user_context import UserContext
 
@@ -60,14 +59,12 @@ class GeneratorService:
 
         except Exception as e:
             logger.error("Failed to get system LLM adapter: %s", str(e))
-            raise ValueError(
-                f"Failed to get system LLM adapter: {str(e)}"
-            ) from e
+            raise ValueError(f"Failed to get system LLM adapter: {str(e)}") from e
 
     @staticmethod
     def _get_llm_config(
         project: VibeExtractorProject = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get LLM configuration from platform system LLM or project.
 
         Args:
@@ -167,18 +164,14 @@ extraction_features:
                 if status == "failed":
                     project.status = VibeExtractorProject.Status.FAILED
                     project.error_message = message
-                    project.save(
-                        update_fields=["status", "error_message", "modified_at"]
-                    )
+                    project.save(update_fields=["status", "error_message", "modified_at"])
                 elif step == "generating_metadata":
                     project.status = VibeExtractorProject.Status.GENERATING_METADATA
                     project.save(update_fields=["status", "modified_at"])
                 elif step == "generating_extraction_fields":
                     project.status = VibeExtractorProject.Status.GENERATING_FIELDS
                     project.save(update_fields=["status", "modified_at"])
-                elif step == "generating_page_prompts" or step.startswith(
-                    "generating_"
-                ):
+                elif step == "generating_page_prompts" or step.startswith("generating_"):
                     project.status = VibeExtractorProject.Status.GENERATING_PROMPTS
                     project.save(update_fields=["status", "modified_at"])
 
@@ -190,7 +183,7 @@ extraction_features:
     @staticmethod
     async def generate_all_async(
         project: VibeExtractorProject,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate all components for a project asynchronously.
 
         Args:
@@ -248,9 +241,7 @@ extraction_features:
             else:
                 project.status = VibeExtractorProject.Status.FAILED
                 project.error_message = result.get("error", "Unknown error")
-                project.save(
-                    update_fields=["status", "error_message", "modified_at"]
-                )
+                project.save(update_fields=["status", "error_message", "modified_at"])
 
             return result
 
@@ -265,7 +256,7 @@ extraction_features:
             return {"status": "error", "error": error_msg}
 
     @staticmethod
-    def generate_all(project: VibeExtractorProject) -> Dict[str, Any]:
+    def generate_all(project: VibeExtractorProject) -> dict[str, Any]:
         """Generate all components for a project (sync wrapper).
 
         Args:
@@ -281,6 +272,4 @@ extraction_features:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
 
-        return loop.run_until_complete(
-            GeneratorService.generate_all_async(project)
-        )
+        return loop.run_until_complete(GeneratorService.generate_all_async(project))

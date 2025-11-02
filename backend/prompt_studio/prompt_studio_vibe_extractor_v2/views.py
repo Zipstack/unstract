@@ -12,9 +12,7 @@ from prompt_studio.prompt_studio_vibe_extractor_v2.constants import (
 )
 from prompt_studio.prompt_studio_vibe_extractor_v2.exceptions import (
     FileReadError,
-    GenerationError,
     InvalidDocumentTypeError,
-    ProjectNotFoundError,
 )
 from prompt_studio.prompt_studio_vibe_extractor_v2.models import (
     VibeExtractorProject,
@@ -100,14 +98,10 @@ class VibeExtractorProjectView(viewsets.ModelViewSet):
             project.save(update_fields=["generation_output_path"])
 
             response_serializer = VibeExtractorProjectSerializer(project)
-            return Response(
-                response_serializer.data, status=status.HTTP_201_CREATED
-            )
+            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
         except InvalidDocumentTypeError as e:
-            return Response(
-                {"error": str(e)}, status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             return Response(
                 {"error": f"Failed to create project: {str(e)}"},
@@ -418,19 +412,13 @@ class VibeExtractorProjectView(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        serializer = VibeExtractorFileReadSerializer(
-            data={"file_type": file_type}
-        )
+        serializer = VibeExtractorFileReadSerializer(data={"file_type": file_type})
         if not serializer.is_valid():
-            return Response(
-                serializer.errors, status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             project = self.get_object()
-            content = VibeExtractorHelper.read_generated_file(
-                project, file_type
-            )
+            content = VibeExtractorHelper.read_generated_file(project, file_type)
 
             return Response(
                 {
@@ -447,9 +435,7 @@ class VibeExtractorProjectView(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND,
             )
         except FileReadError as e:
-            return Response(
-                {"error": str(e)}, status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response(
                 {"error": f"Failed to read file: {str(e)}"},
@@ -486,13 +472,9 @@ class VibeExtractorProjectView(viewsets.ModelViewSet):
             for file_type in file_types:
                 try:
                     VibeExtractorHelper.read_generated_file(project, file_type)
-                    files.append(
-                        {"file_type": file_type, "exists": True}
-                    )
+                    files.append({"file_type": file_type, "exists": True})
                 except FileReadError:
-                    files.append(
-                        {"file_type": file_type, "exists": False}
-                    )
+                    files.append({"file_type": file_type, "exists": False})
 
             return Response(
                 {

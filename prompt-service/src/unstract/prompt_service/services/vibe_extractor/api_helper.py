@@ -5,8 +5,7 @@ This module provides helper functions for backend API integration.
 
 import asyncio
 import logging
-from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .service import VibeExtractorService
 
@@ -107,13 +106,11 @@ async def generate_document_extraction_components_async(
             "model": "claude-3-5-sonnet-20241022",
             "api_key": "sk-ant-...",
             "temperature": 0.7,
-            "max_tokens": 4096
+            "max_tokens": 4096,
         }
 
         result = await generate_document_extraction_components(
-            doc_type="invoice",
-            output_dir="/path/to/output",
-            llm_config=llm_config
+            doc_type="invoice", output_dir="/path/to/output", llm_config=llm_config
         )
 
         if result["status"] == "success":
