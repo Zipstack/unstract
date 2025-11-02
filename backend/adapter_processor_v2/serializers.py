@@ -11,8 +11,14 @@ from adapter_processor_v2.adapter_processor import AdapterProcessor
 from adapter_processor_v2.constants import AdapterKeys
 from backend.constants import FieldLengthConstants as FLC
 from backend.serializers import AuditSerializer
-from unstract.sdk.adapters.constants import Common as common
-from unstract.sdk.adapters.enums import AdapterTypes
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.constants import AdapterTypes
+    from unstract.sdk1.constants import Common as common
+else:
+    from unstract.sdk.adapters.constants import Common as common
+    from unstract.sdk.adapters.enums import AdapterTypes
 
 from .models import AdapterInstance, UserDefaultAdapter
 
@@ -153,6 +159,7 @@ class SharedUserListSerializer(BaseAdapterSerializer):
             "adapter_type",
             "created_by",
             "shared_users",
+            "shared_to_org",
         )  # type: ignore
 
 

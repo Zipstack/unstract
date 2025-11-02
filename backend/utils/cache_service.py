@@ -1,4 +1,6 @@
 import json
+import logging
+import time
 from typing import Any
 
 from django.conf import settings
@@ -6,6 +8,8 @@ from django.core.cache import cache
 from django_redis import get_redis_connection
 
 redis_cache = get_redis_connection("default")
+
+logger = logging.getLogger(__name__)
 
 
 class CacheService:
@@ -39,6 +43,92 @@ class CacheService:
         cache.delete_pattern(key_pattern)
 
     @staticmethod
+    def clear_cache_optimized(key_pattern: str, db: int | None = None) -> Any:
+        """Delete keys in bulk using optimized SCAN approach for large datasets.
+
+        Uses Redis SCAN instead of KEYS to avoid blocking Redis during deletion.
+        Safe for production with large key sets. Use this for heavy operations
+        like workflow history clearing.
+
+        Args:
+            key_pattern: Pattern to match keys for deletion (e.g., "file_active:*")
+            db: Optional Redis database number. If provided, clears from that specific DB.
+                If None, uses the default Django cache connection (typically DB 0).
+                Use db=1 for worker cache entries (file_active:*, etc.)
+        """
+        TIMEOUT_SECONDS = 90  # Generous but bounded timeout
+        BATCH_SIZE = 1000
+
+        start_time = time.time()
+        deleted_count = 0
+        cursor = 0
+        completed_naturally = False
+
+        # Use specified DB or default connection
+        if db is not None:
+            import redis
+
+            redis_connection = redis.Redis(
+                host=settings.REDIS_HOST,
+                port=settings.REDIS_PORT,
+                db=db,
+                username=getattr(settings, "REDIS_USER", None),
+                password=getattr(settings, "REDIS_PASSWORD", None),
+            )
+        else:
+            redis_connection = redis_cache
+
+        try:
+            while True:
+                # Check timeout first
+                if time.time() - start_time > TIMEOUT_SECONDS:
+                    logger.warning(
+                        f"Cache clearing timed out after {TIMEOUT_SECONDS}s, "
+                        f"deleted {deleted_count} keys matching '{key_pattern}'"
+                    )
+                    break
+
+                # SCAN returns (next_cursor, keys_list)
+                cursor, keys = redis_connection.scan(
+                    cursor=cursor, match=key_pattern, count=BATCH_SIZE
+                )
+
+                if keys:
+                    # Delete keys in pipeline for efficiency
+                    pipe = redis_connection.pipeline()
+                    for key in keys:
+                        pipe.delete(key)
+                    pipe.execute()
+                    deleted_count += len(keys)
+
+                # SCAN is complete when cursor returns to 0
+                if cursor == 0:
+                    completed_naturally = True
+                    break
+
+            # Log completion status
+            if completed_naturally:
+                logger.info(
+                    f"Cache clearing completed: deleted {deleted_count} keys matching '{key_pattern}'"
+                )
+            else:
+                logger.warning(
+                    f"Cache clearing incomplete: deleted {deleted_count} keys before timeout"
+                )
+
+        except (ConnectionError, TimeoutError, OSError) as e:
+            logger.error(f"Failed to clear cache pattern '{key_pattern}': {str(e)}")
+            # Fallback to old method for backward compatibility
+            try:
+                cache.delete_pattern(key_pattern)
+                logger.warning(f"Used fallback delete_pattern for '{key_pattern}'")
+            except (ConnectionError, TimeoutError, OSError) as fallback_error:
+                logger.error(
+                    f"Fallback cache clearing also failed: {str(fallback_error)}"
+                )
+                raise e
+
+    @staticmethod
     def check_a_key_exist(key: str, version: Any = None) -> bool:
         data: bool = cache.has_key(key, version)
         return data
@@ -69,6 +159,10 @@ class CacheService:
     @staticmethod
     def lpop(key: str) -> Any:
         return redis_cache.lpop(key)
+
+    @staticmethod
+    def llen(key: str) -> int:
+        return redis_cache.llen(key)
 
     @staticmethod
     def lrem(key: str, value: str) -> None:

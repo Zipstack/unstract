@@ -64,6 +64,8 @@ logger = logging.getLogger(__name__)
 EXECUTION_EXCLUDED_PARAMS = {
     "llm_profile_id",
     "hitl_queue_name",
+    "hitl_packet_id",
+    "custom_data",
 }
 
 
@@ -106,31 +108,28 @@ class WorkflowHelper:
         BATCH_SIZE = Configuration.get_value_by_organization(
             config_key=ConfigKey.MAX_PARALLEL_FILE_BATCHES, organization=organization
         )  # Max number of batches
+        BATCH_SIZE = (
+            int(BATCH_SIZE)
+            if isinstance(BATCH_SIZE, int) or str(BATCH_SIZE).isdigit()
+            else 1
+        )
         file_items = list(json_serializable_files.items())
 
         # Calculate distribution
         num_files = len(file_items)
         # Target number of batches (can't exceed number of files)
         num_batches = min(BATCH_SIZE, num_files)
+        # Guard against invalid batch sizes
+        if num_batches <= 0:
+            num_batches = 1
 
-        # Distribute files as evenly as possible
-        base_items_per_batch = num_files // num_batches
-        remainder = num_files % num_batches
-
-        # Create batches
-        batches = []
-        start_index = 0
-
-        for i in range(num_batches):
-            # First 'remainder' batches get one extra item
-            batch_size = base_items_per_batch + (1 if i < remainder else 0)
-
-            if start_index < len(file_items):
-                end_index = min(start_index + batch_size, len(file_items))
-                batch = file_items[start_index:end_index]
-                if batch:  # Only add non-empty batches
-                    batches.append(batch)
-                start_index = end_index
+        # Round-robin distribution for maintaining order in case its sorted
+        batches = [[] for _ in range(num_batches)]
+        for i, file_item in enumerate(file_items):
+            batch_index = i % num_batches
+            batches[batch_index].append(file_item)
+        # Remove empties when num_files < num_batches
+        batches = [b for b in batches if b]
 
         return batches
 
@@ -150,6 +149,7 @@ class WorkflowHelper:
         execution_mode: tuple[str, str],
         use_file_history: bool,
         llm_profile_id: str | None,
+        custom_data: dict[str, Any] | None = None,
     ) -> str | None:
         total_files = len(input_files)
         workflow_log.publish_initial_workflow_logs(total_files=total_files)
@@ -183,6 +183,7 @@ class WorkflowHelper:
             else str(execution_mode)
         )
         result = None
+
         logger.info(
             f"Execution {workflow_execution.id} processing {total_files} files in {len(batches)} batches"
         )
@@ -201,6 +202,7 @@ class WorkflowHelper:
                 use_file_history=use_file_history,
                 q_file_no_list=list(q_file_no_list) if q_file_no_list else [],
                 llm_profile_id=llm_profile_id,
+                custom_data=custom_data,
             )
             batch_data = FileBatchData(files=batch, file_data=file_data)
 
@@ -267,6 +269,8 @@ class WorkflowHelper:
         use_file_history: bool = True,
         llm_profile_id: str | None = None,
         hitl_queue_name: str | None = None,
+        packet_id: str | None = None,
+        custom_data: dict[str, Any] | None = None,
     ) -> ExecutionResponse:
         tool_instances: list[ToolInstance] = (
             ToolInstanceHelper.get_tool_instances_by_workflow(
@@ -295,6 +299,7 @@ class WorkflowHelper:
             workflow_log=workflow_log,
             use_file_history=use_file_history,
             hitl_queue_name=hitl_queue_name,
+            packet_id=packet_id,
         )
         try:
             # Validating endpoints
@@ -318,6 +323,7 @@ class WorkflowHelper:
                 use_file_history=use_file_history,
                 execution_mode=execution_mode,
                 llm_profile_id=llm_profile_id,
+                custom_data=custom_data,
             )
             api_results = []
             return ExecutionResponse(
@@ -436,6 +442,8 @@ class WorkflowHelper:
         use_file_history: bool = True,
         llm_profile_id: str | None = None,
         hitl_queue_name: str | None = None,
+        hitl_packet_id: str | None = None,
+        custom_data: dict[str, Any] | None = None,
     ) -> ExecutionResponse:
         """Adding a workflow to the queue for execution.
 
@@ -449,6 +457,7 @@ class WorkflowHelper:
                 processed files. Defaults to True
             hitl_queue_name (str | None): Name of the HITL queue to push files to
             llm_profile_id (str, optional): LLM profile ID for overriding tool settings
+            hitl_packet_id (str | None): Packet ID for packet-based HITL workflows
 
         Returns:
             ExecutionResponse: Existing status of execution
@@ -475,21 +484,18 @@ class WorkflowHelper:
                     "use_file_history": use_file_history,
                     "llm_profile_id": llm_profile_id,
                     "hitl_queue_name": hitl_queue_name,
+                    "hitl_packet_id": hitl_packet_id,
+                    "custom_data": custom_data,
                 },
                 queue=queue,
             )
-
-            # Log task_id for debugging
             logger.info(
-                f"[{org_schema}] AsyncResult created with task_id: '{async_execution.id}' "
-                f"(type: {type(async_execution.id).__name__})"
+                f"[{org_schema}] Job '{async_execution}' has been enqueued for "
+                f"execution_id '{execution_id}', '{len(hash_values_of_files)}' files"
             )
-
             workflow_execution: WorkflowExecution = WorkflowExecution.objects.get(
                 id=execution_id
             )
-
-            # Handle empty task_id gracefully using existing validation logic
             if not async_execution.id:
                 logger.warning(
                     f"[{org_schema}] Celery returned empty task_id for execution_id '{execution_id}'. "
@@ -504,6 +510,7 @@ class WorkflowHelper:
                     f"[{org_schema}] Job '{async_execution.id}' has been enqueued for "
                     f"execution_id '{execution_id}', '{len(hash_values_of_files)}' files"
                 )
+
             execution_status = workflow_execution.status
             if timeout > -1:
                 while not ExecutionStatus.is_completed(execution_status) and timeout > 0:
@@ -678,8 +685,9 @@ class WorkflowHelper:
             execution_id=execution_id, task_id=task_id
         )
         try:
+            hitl_packet_id_from_kwargs = kwargs.get("hitl_packet_id")
             logger.info(
-                f"Starting workflow execution: workflow_id={workflow_id}, execution_id={execution_id}, hitl_queue_name={kwargs.get('hitl_queue_name')}"
+                f"Starting workflow execution: workflow_id={workflow_id}, execution_id={execution_id}, hitl_queue_name={kwargs.get('hitl_queue_name')}, hitl_packet_id={hitl_packet_id_from_kwargs}"
             )
             execution_response = WorkflowHelper.run_workflow(
                 workflow=workflow,
@@ -692,6 +700,8 @@ class WorkflowHelper:
                 use_file_history=use_file_history,
                 llm_profile_id=kwargs.get("llm_profile_id"),
                 hitl_queue_name=kwargs.get("hitl_queue_name"),
+                packet_id=hitl_packet_id_from_kwargs,
+                custom_data=kwargs.get("custom_data"),
             )
         except Exception as error:
             error_message = traceback.format_exc()
@@ -773,17 +783,16 @@ class WorkflowHelper:
             # Normal Workflow page execution
             workflow_execution = WorkflowExecution.objects.get(pk=execution_id)
             if (
-                workflow_execution.status != ExecutionStatus.PENDING
+                workflow_execution.status != ExecutionStatus.PENDING.value
                 or workflow_execution.execution_type != WorkflowExecution.Type.COMPLETE
             ):
                 raise InvalidRequest(WorkflowErrors.INVALID_EXECUTION_ID)
-            organization_identifier = UserContext.get_organization_identifier()
-            result: ExecutionResponse = WorkflowHelper.run_workflow(
-                workflow=workflow,
-                workflow_execution=workflow_execution,
+            result: ExecutionResponse = WorkflowHelper.execute_workflow_async(
+                workflow_id=str(workflow.id) if workflow else None,
+                pipeline_id=str(pipeline_id) if pipeline_id else None,
+                execution_id=str(execution_id) if execution_id else None,
                 hash_values_of_files=hash_values_of_files,
                 use_file_history=use_file_history,
-                organization_id=organization_identifier,
             )
             result = WorkflowHelper.wait_for_execution(result, timeout=timeout)
             return result
@@ -807,7 +816,8 @@ class WorkflowHelper:
             ExecutionResponse: The execution response.
         """
         if (
-            result.execution_status in [ExecutionStatus.COMPLETED, ExecutionStatus.ERROR]
+            result.execution_status
+            in [ExecutionStatus.COMPLETED.value, ExecutionStatus.ERROR.value]
             or not timeout
         ):
             return result
@@ -873,7 +883,7 @@ class WorkflowHelper:
             except WorkflowExecution.DoesNotExist:
                 raise WorkflowExecutionNotExist(WorkflowErrors.INVALID_EXECUTION_ID)
             if (
-                workflow_execution.status != ExecutionStatus.PENDING
+                workflow_execution.status != ExecutionStatus.PENDING.value
                 or workflow_execution.execution_type != WorkflowExecution.Type.STEP
             ):
                 raise InvalidRequest(WorkflowErrors.INVALID_EXECUTION_ID)
