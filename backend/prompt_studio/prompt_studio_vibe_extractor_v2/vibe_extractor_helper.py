@@ -1,11 +1,15 @@
 """Helper functions for Vibe Extractor operations."""
 
+import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import yaml
 from django.conf import settings
+from utils.file_storage.helpers.prompt_studio_file_helper import (
+    PromptStudioFileHelper,
+)
 
 from prompt_studio.prompt_studio_vibe_extractor_v2.constants import (
     GenerationSteps,
@@ -19,6 +23,8 @@ from prompt_studio.prompt_studio_vibe_extractor_v2.exceptions import (
 from prompt_studio.prompt_studio_vibe_extractor_v2.models import (
     VibeExtractorProject,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class VibeExtractorHelper:
@@ -240,3 +246,123 @@ class VibeExtractorHelper:
         file_path = output_path / filename
         with open(file_path, "w") as f:
             f.write(content)
+
+    @staticmethod
+    def guess_document_type_from_file(
+        file_name: str,
+        tool_id: str,
+        org_id: str,
+        user_id: str,
+    ) -> Dict[str, Any]:
+        """Guess document type from file content.
+
+        This method:
+        1. Constructs the file path using permanent file storage
+        2. Reads the file content using dynamic_extractor
+        3. Calls prompt-service to guess the document type using LLM
+
+        Args:
+            file_name: Name of the file in permanent storage
+            tool_id: Tool ID to construct the file path
+            org_id: Organization ID
+            user_id: User ID
+
+        Returns:
+            Dictionary containing:
+                - status: "success" or "error"
+                - document_type: Guessed document type (if success)
+                - confidence: Confidence score (if applicable)
+                - error: Error message (if error)
+        """
+        try:
+            # Import here to avoid circular imports
+            from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import (
+                PromptStudioHelper,
+            )
+            from prompt_studio.prompt_studio_vibe_extractor_v2.services.generator_service import (
+                GeneratorService,
+            )
+            from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
+            from prompt_studio.prompt_studio_core_v2.models import CustomTool
+
+            # Get the tool instance to access profile manager
+            tool = CustomTool.objects.get(pk=tool_id)
+
+            # Get default profile for extraction
+            default_profile = ProfileManager.get_default_llm_profile(tool)
+
+            # Construct file path using PromptStudioFileHelper
+            file_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
+                org_id=org_id,
+                user_id=user_id,
+                tool_id=tool_id,
+                is_create=False,
+            )
+            full_file_path = str(Path(file_path) / file_name)
+
+            # Use dynamic_extractor to read and extract text from the file
+            from unstract.sdk1.file_storage.env_helper import EnvHelper
+            from unstract.sdk1.file_storage.constants import StorageType
+            from utils.file_storage.constants import FileStorageKeys
+            from unstract.sdk1.utils.indexing import IndexingUtils
+            from prompt_studio.prompt_studio_core_v2.prompt_ide_base_tool import PromptIdeBaseTool
+            from unstract.sdk.constants import LogLevel
+
+            fs_instance = EnvHelper.get_storage(
+                storage_type=StorageType.PERMANENT,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+            )
+            util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
+
+            # Generate doc_id for extraction
+            doc_id = IndexingUtils.generate_index_key(
+                vector_db=str(default_profile.vector_store.id),
+                embedding=str(default_profile.embedding_model.id),
+                x2text=str(default_profile.x2text.id),
+                chunk_size=str(default_profile.chunk_size),
+                chunk_overlap=str(default_profile.chunk_overlap),
+                file_path=full_file_path,
+                file_hash=None,
+                fs=fs_instance,
+                tool=util,
+            )
+
+            # Extract text from the file
+            extracted_text = PromptStudioHelper.dynamic_extractor(
+                profile_manager=default_profile,
+                file_path=full_file_path,
+                org_id=org_id,
+                document_id=None,  # Not needed for this operation
+                run_id=None,
+                enable_highlight=False,
+                doc_id=doc_id,
+            )
+
+            if not extracted_text or not extracted_text.strip():
+                return {
+                    "status": "error",
+                    "error": "Could not extract text from file",
+                }
+
+            # Get LLM configuration from system LLM
+            llm_config = GeneratorService._get_llm_config()
+
+            # Call prompt-service via SDK helper
+            from prompt_studio.prompt_studio_vibe_extractor_v2.services.prompt_service_helper import (
+                VibeExtractorPromptServiceHelper,
+            )
+
+            result = VibeExtractorPromptServiceHelper.guess_document_type(
+                file_content=extracted_text,
+                llm_config=llm_config,
+                org_id=org_id,
+            )
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Error guessing document type: {str(e)}", exc_info=True)
+            return {
+                "status": "error",
+                "error": str(e),
+            }

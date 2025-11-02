@@ -21,7 +21,13 @@ from prompt_studio.prompt_studio_vibe_extractor_v2.models import (
 )
 from prompt_studio.prompt_studio_vibe_extractor_v2.serializers import (
     VibeExtractorFileReadSerializer,
+    VibeExtractorGenerateExtractionFieldsSerializer,
+    VibeExtractorGenerateMetadataSerializer,
+    VibeExtractorGeneratePagePromptsSerializer,
+    VibeExtractorGenerateScalarPromptsSerializer,
     VibeExtractorGenerateSerializer,
+    VibeExtractorGenerateTablePromptsSerializer,
+    VibeExtractorGuessDocumentTypeSerializer,
     VibeExtractorProjectCreateSerializer,
     VibeExtractorProjectSerializer,
 )
@@ -109,48 +115,29 @@ class VibeExtractorProjectView(viewsets.ModelViewSet):
             )
 
     @action(detail=True, methods=["post"])
-    def generate(self, request: Request, pk=None) -> Response:
-        """Trigger generation for a project.
-
-        This endpoint will call the prompt service to generate
-        all the metadata, extraction fields, and prompts.
+    def generate_metadata(self, request: Request, pk=None) -> Response:
+        """Generate only metadata for a project.
 
         Args:
-            request: HTTP request with optional regenerate flag
+            request: HTTP request
             pk: Project ID
 
         Returns:
-            Response with generation status
+            Response with generated metadata
         """
-        serializer = VibeExtractorGenerateSerializer(data=request.data)
+        serializer = VibeExtractorGenerateMetadataSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         try:
             project = self.get_object()
 
-            # Check if already generating
-            if project.status in [
-                VibeExtractorProject.Status.GENERATING_METADATA,
-                VibeExtractorProject.Status.GENERATING_FIELDS,
-                VibeExtractorProject.Status.GENERATING_PROMPTS,
-            ]:
-                return Response(
-                    {"error": "Generation already in progress"},
-                    status=status.HTTP_409_CONFLICT,
-                )
-
-            # Update status to generating
-            project.status = VibeExtractorProject.Status.GENERATING_METADATA
-            project.save(update_fields=["status", "modified_at"])
-
             # Start generation in background
-            # Note: In production, consider using Celery or similar for background tasks
             import threading
 
             def run_generation():
-                """Run generation in background thread."""
+                """Run metadata generation in background thread."""
                 try:
-                    GeneratorService.generate_all(project)
+                    GeneratorService.generate_metadata_only(project)
                 except Exception as e:
                     import logging
 
@@ -163,7 +150,239 @@ class VibeExtractorProjectView(viewsets.ModelViewSet):
 
             return Response(
                 {
-                    "message": "Generation started",
+                    "message": "Metadata generation started",
+                    "project_id": str(project.project_id),
+                    "status": project.status,
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+
+        except VibeExtractorProject.DoesNotExist:
+            return Response(
+                {"error": "Project not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except Exception as e:
+            return Response(
+                {"error": f"Generation failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=True, methods=["post"])
+    def generate_extraction_fields(self, request: Request, pk=None) -> Response:
+        """Generate extraction fields for a project.
+
+        Args:
+            request: HTTP request with metadata
+            pk: Project ID
+
+        Returns:
+            Response with generated extraction fields
+        """
+        serializer = VibeExtractorGenerateExtractionFieldsSerializer(
+            data=request.data
+        )
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            project = self.get_object()
+            metadata = serializer.validated_data["metadata"]
+
+            # Start generation in background
+            import threading
+
+            def run_generation():
+                """Run extraction fields generation in background thread."""
+                try:
+                    GeneratorService.generate_extraction_fields_only(
+                        project, metadata
+                    )
+                except Exception as e:
+                    import logging
+
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"Background generation failed: {e}", exc_info=True)
+
+            thread = threading.Thread(target=run_generation)
+            thread.daemon = True
+            thread.start()
+
+            return Response(
+                {
+                    "message": "Extraction fields generation started",
+                    "project_id": str(project.project_id),
+                    "status": project.status,
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+
+        except VibeExtractorProject.DoesNotExist:
+            return Response(
+                {"error": "Project not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except Exception as e:
+            return Response(
+                {"error": f"Generation failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=True, methods=["post"])
+    def generate_page_prompts(self, request: Request, pk=None) -> Response:
+        """Generate page extraction prompts for a project.
+
+        Args:
+            request: HTTP request with metadata
+            pk: Project ID
+
+        Returns:
+            Response with generated prompts
+        """
+        serializer = VibeExtractorGeneratePagePromptsSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            project = self.get_object()
+            metadata = serializer.validated_data["metadata"]
+
+            # Start generation in background
+            import threading
+
+            def run_generation():
+                """Run page prompts generation in background thread."""
+                try:
+                    GeneratorService.generate_page_extraction_prompts(
+                        project, metadata
+                    )
+                except Exception as e:
+                    import logging
+
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"Background generation failed: {e}", exc_info=True)
+
+            thread = threading.Thread(target=run_generation)
+            thread.daemon = True
+            thread.start()
+
+            return Response(
+                {
+                    "message": "Page prompts generation started",
+                    "project_id": str(project.project_id),
+                    "status": project.status,
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+
+        except VibeExtractorProject.DoesNotExist:
+            return Response(
+                {"error": "Project not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except Exception as e:
+            return Response(
+                {"error": f"Generation failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=True, methods=["post"])
+    def generate_scalar_prompts(self, request: Request, pk=None) -> Response:
+        """Generate scalar extraction prompts for a project.
+
+        Args:
+            request: HTTP request with metadata and extraction_yaml
+            pk: Project ID
+
+        Returns:
+            Response with generated prompts
+        """
+        serializer = VibeExtractorGenerateScalarPromptsSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            project = self.get_object()
+            metadata = serializer.validated_data["metadata"]
+            extraction_yaml = serializer.validated_data["extraction_yaml"]
+
+            # Start generation in background
+            import threading
+
+            def run_generation():
+                """Run scalar prompts generation in background thread."""
+                try:
+                    GeneratorService.generate_scalar_extraction_prompts(
+                        project, metadata, extraction_yaml
+                    )
+                except Exception as e:
+                    import logging
+
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"Background generation failed: {e}", exc_info=True)
+
+            thread = threading.Thread(target=run_generation)
+            thread.daemon = True
+            thread.start()
+
+            return Response(
+                {
+                    "message": "Scalar prompts generation started",
+                    "project_id": str(project.project_id),
+                    "status": project.status,
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+
+        except VibeExtractorProject.DoesNotExist:
+            return Response(
+                {"error": "Project not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except Exception as e:
+            return Response(
+                {"error": f"Generation failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=True, methods=["post"])
+    def generate_table_prompts(self, request: Request, pk=None) -> Response:
+        """Generate table extraction prompts for a project.
+
+        Args:
+            request: HTTP request with metadata and extraction_yaml
+            pk: Project ID
+
+        Returns:
+            Response with generated prompts
+        """
+        serializer = VibeExtractorGenerateTablePromptsSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            project = self.get_object()
+            metadata = serializer.validated_data["metadata"]
+            extraction_yaml = serializer.validated_data["extraction_yaml"]
+
+            # Start generation in background
+            import threading
+
+            def run_generation():
+                """Run table prompts generation in background thread."""
+                try:
+                    GeneratorService.generate_table_extraction_prompts(
+                        project, metadata, extraction_yaml
+                    )
+                except Exception as e:
+                    import logging
+
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"Background generation failed: {e}", exc_info=True)
+
+            thread = threading.Thread(target=run_generation)
+            thread.daemon = True
+            thread.start()
+
+            return Response(
+                {
+                    "message": "Table prompts generation started",
                     "project_id": str(project.project_id),
                     "status": project.status,
                 },
@@ -291,5 +510,59 @@ class VibeExtractorProjectView(viewsets.ModelViewSet):
         except Exception as e:
             return Response(
                 {"error": f"Failed to list files: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=False, methods=["post"])
+    def guess_document_type(self, request: Request) -> Response:
+        """Guess document type from file content.
+
+        Args:
+            request: HTTP request with file_name and tool_id
+
+        Returns:
+            Response with guessed document type
+        """
+        serializer = VibeExtractorGuessDocumentTypeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            file_name = serializer.validated_data["file_name"]
+            tool_id = serializer.validated_data["tool_id"]
+
+            # Call the helper to guess document type
+            result = VibeExtractorHelper.guess_document_type_from_file(
+                file_name=file_name,
+                tool_id=str(tool_id),
+                org_id=request.user.organization_id,
+                user_id=request.user.user_id,
+            )
+
+            if result.get("status") == "error":
+                return Response(
+                    {
+                        "error": result.get("error"),
+                        "raw_response": result.get("raw_response"),
+                        "attempted_json": result.get("attempted_json"),
+                        "partial_response": result.get("partial_response"),
+                    },
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+            return Response(
+                {
+                    "document_type": result.get("document_type"),
+                    "confidence": result.get("confidence"),
+                    "primary_indicators": result.get("primary_indicators", []),
+                    "document_category": result.get("document_category"),
+                    "alternative_types": result.get("alternative_types", []),
+                    "reasoning": result.get("reasoning"),
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except Exception as e:
+            return Response(
+                {"error": f"Failed to guess document type: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )

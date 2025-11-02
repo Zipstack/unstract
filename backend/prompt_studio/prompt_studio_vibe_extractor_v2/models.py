@@ -16,40 +16,12 @@ class VibeExtractorProject(BaseModel):
     will be stored as files in the repository.
     """
 
-    class Status(models.TextChoices):
-        DRAFT = "draft", "Draft"
-        GENERATING_METADATA = "generating_metadata", "Generating Metadata"
-        GENERATING_FIELDS = "generating_fields", "Generating Fields"
-        GENERATING_PROMPTS = "generating_prompts", "Generating Prompts"
-        COMPLETED = "completed", "Completed"
-        FAILED = "failed", "Failed"
-
-    project_id = models.UUIDField(
-        primary_key=True,
-        default=uuid.uuid4,
-        editable=False,
+    id = models.UUIDField(
+        primary_key=True, default=uuid.uuid4, editable=False
     )
     document_type = models.TextField(
         blank=False,
         db_comment="Document type name (e.g., invoice, receipt)",
-    )
-    status = models.TextField(
-        choices=Status.choices,
-        default=Status.DRAFT,
-        db_comment="Current status of the generation process",
-    )
-    generation_output_path = models.TextField(
-        blank=True,
-        db_comment="Path where generated files are stored in the repository",
-    )
-    error_message = models.TextField(
-        blank=True,
-        db_comment="Error message if generation failed",
-    )
-    generation_progress = models.JSONField(
-        default=dict,
-        blank=True,
-        db_comment="Progress tracking for generation steps",
     )
     llm_adapter = models.ForeignKey(
         AdapterInstance,

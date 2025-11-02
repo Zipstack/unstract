@@ -3,6 +3,7 @@
 This module provides helper functions for backend API integration.
 """
 
+import asyncio
 import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -12,7 +13,62 @@ from .service import VibeExtractorService
 logger = logging.getLogger(__name__)
 
 
-async def generate_document_extraction_components(
+def _run_async(coro):
+    """Helper to run async coroutines in sync context.
+
+    Args:
+        coro: Coroutine to run
+
+    Returns:
+        Result of the coroutine
+    """
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # If loop is running, create a new one
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            result = loop.run_until_complete(coro)
+            return result
+        else:
+            return loop.run_until_complete(coro)
+    except RuntimeError:
+        # No event loop, create new one
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        result = loop.run_until_complete(coro)
+        return result
+
+
+def generate_document_extraction_components_sync(
+    doc_type: str,
+    output_dir: str,
+    llm_config: Dict[str, Any],
+    reference_template: Optional[str] = None,
+    progress_callback: Optional[callable] = None,
+) -> Dict[str, Any]:
+    """Generate all document extraction components (sync version).
+
+    This is the main entry point for backend API to trigger generation.
+
+    Args:
+        doc_type: Document type name (e.g., "invoice", "receipt")
+        output_dir: Base output directory for generated files
+        llm_config: LLM configuration dictionary
+        reference_template: Optional reference metadata.yaml template content
+        progress_callback: Optional callback function(step, status, message)
+
+    Returns:
+        Dictionary containing generation result
+    """
+    return _run_async(
+        generate_document_extraction_components_async(
+            doc_type, output_dir, llm_config, reference_template, progress_callback
+        )
+    )
+
+
+async def generate_document_extraction_components_async(
     doc_type: str,
     output_dir: str,
     llm_config: Dict[str, Any],
@@ -88,7 +144,27 @@ async def generate_document_extraction_components(
         return {"status": "error", "error": error_msg}
 
 
-async def generate_metadata_only(
+def generate_metadata_only_sync(
+    doc_type: str,
+    llm_config: Dict[str, Any],
+    reference_template: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Generate only metadata for a document type (sync version).
+
+    Args:
+        doc_type: Document type name
+        llm_config: LLM configuration dictionary
+        reference_template: Optional reference template
+
+    Returns:
+        Dictionary containing generated metadata or error
+    """
+    return _run_async(
+        generate_metadata_only_async(doc_type, llm_config, reference_template)
+    )
+
+
+async def generate_metadata_only_async(
     doc_type: str,
     llm_config: Dict[str, Any],
     reference_template: Optional[str] = None,
@@ -119,7 +195,27 @@ async def generate_metadata_only(
         return {"status": "error", "error": error_msg}
 
 
-async def generate_extraction_fields_only(
+def generate_extraction_fields_only_sync(
+    doc_type: str,
+    metadata: Dict[str, Any],
+    llm_config: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Generate only extraction fields for a document type (sync version).
+
+    Args:
+        doc_type: Document type name
+        metadata: Metadata dictionary
+        llm_config: LLM configuration dictionary
+
+    Returns:
+        Dictionary containing extraction YAML or error
+    """
+    return _run_async(
+        generate_extraction_fields_only_async(doc_type, metadata, llm_config)
+    )
+
+
+async def generate_extraction_fields_only_async(
     doc_type: str,
     metadata: Dict[str, Any],
     llm_config: Dict[str, Any],
@@ -181,6 +277,205 @@ extraction_features:  # Extraction features
 """
 
 
+def generate_page_extraction_prompts_sync(
+    doc_type: str,
+    metadata: Dict[str, Any],
+    llm_config: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Generate page extraction prompts (sync version).
+
+    Args:
+        doc_type: Document type name
+        metadata: Metadata dictionary
+        llm_config: LLM configuration dictionary
+
+    Returns:
+        Dictionary containing system and user prompts or error
+    """
+    return _run_async(
+        generate_page_extraction_prompts_async(doc_type, metadata, llm_config)
+    )
+
+
+async def generate_page_extraction_prompts_async(
+    doc_type: str,
+    metadata: Dict[str, Any],
+    llm_config: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Generate page extraction prompts (system and user).
+
+    Args:
+        doc_type: Document type name
+        metadata: Metadata dictionary
+        llm_config: LLM configuration dictionary
+
+    Returns:
+        Dictionary containing system and user prompts or error
+    """
+    try:
+        # Initialize service with temporary output dir
+        service = VibeExtractorService(llm_config, "/tmp/vibe_extractor")
+
+        # Generate both prompts
+        page_system_prompt = (
+            await service.generator.generate_page_extraction_system_prompt(
+                doc_type, metadata
+            )
+        )
+        page_user_prompt = await service.generator.generate_page_extraction_user_prompt(
+            doc_type, metadata
+        )
+
+        return {
+            "status": "success",
+            "system_prompt": page_system_prompt,
+            "user_prompt": page_user_prompt,
+        }
+
+    except Exception as e:
+        error_msg = f"Error generating page extraction prompts: {str(e)}"
+        logger.error(error_msg)
+        return {"status": "error", "error": error_msg}
+
+
+def generate_scalar_extraction_prompts_sync(
+    doc_type: str,
+    metadata: Dict[str, Any],
+    extraction_yaml: str,
+    llm_config: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Generate scalar extraction prompts (sync version).
+
+    Args:
+        doc_type: Document type name
+        metadata: Metadata dictionary
+        extraction_yaml: Extraction YAML content
+        llm_config: LLM configuration dictionary
+
+    Returns:
+        Dictionary containing system and user prompts or error
+    """
+    return _run_async(
+        generate_scalar_extraction_prompts_async(
+            doc_type, metadata, extraction_yaml, llm_config
+        )
+    )
+
+
+async def generate_scalar_extraction_prompts_async(
+    doc_type: str,
+    metadata: Dict[str, Any],
+    extraction_yaml: str,
+    llm_config: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Generate scalar extraction prompts (system and user).
+
+    Args:
+        doc_type: Document type name
+        metadata: Metadata dictionary
+        extraction_yaml: Extraction YAML content
+        llm_config: LLM configuration dictionary
+
+    Returns:
+        Dictionary containing system and user prompts or error
+    """
+    try:
+        # Initialize service with temporary output dir
+        service = VibeExtractorService(llm_config, "/tmp/vibe_extractor")
+
+        # Generate both prompts
+        scalar_system_prompt = (
+            await service.generator.generate_scalar_extraction_system_prompt(
+                doc_type, metadata, extraction_yaml
+            )
+        )
+        scalar_user_prompt = (
+            await service.generator.generate_scalar_extraction_user_prompt(
+                doc_type, metadata
+            )
+        )
+
+        return {
+            "status": "success",
+            "system_prompt": scalar_system_prompt,
+            "user_prompt": scalar_user_prompt,
+        }
+
+    except Exception as e:
+        error_msg = f"Error generating scalar extraction prompts: {str(e)}"
+        logger.error(error_msg)
+        return {"status": "error", "error": error_msg}
+
+
+def generate_table_extraction_prompts_sync(
+    doc_type: str,
+    metadata: Dict[str, Any],
+    extraction_yaml: str,
+    llm_config: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Generate table extraction prompts (sync version).
+
+    Args:
+        doc_type: Document type name
+        metadata: Metadata dictionary
+        extraction_yaml: Extraction YAML content
+        llm_config: LLM configuration dictionary
+
+    Returns:
+        Dictionary containing system and user prompts or error
+    """
+    return _run_async(
+        generate_table_extraction_prompts_async(
+            doc_type, metadata, extraction_yaml, llm_config
+        )
+    )
+
+
+async def generate_table_extraction_prompts_async(
+    doc_type: str,
+    metadata: Dict[str, Any],
+    extraction_yaml: str,
+    llm_config: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Generate table extraction prompts (system and user).
+
+    Args:
+        doc_type: Document type name
+        metadata: Metadata dictionary
+        extraction_yaml: Extraction YAML content
+        llm_config: LLM configuration dictionary
+
+    Returns:
+        Dictionary containing system and user prompts or error
+    """
+    try:
+        # Initialize service with temporary output dir
+        service = VibeExtractorService(llm_config, "/tmp/vibe_extractor")
+
+        # Generate both prompts
+        table_system_prompt = (
+            await service.generator.generate_table_extraction_system_prompt(
+                doc_type, metadata, extraction_yaml
+            )
+        )
+        table_user_prompt = (
+            await service.generator.generate_table_extraction_user_prompt(
+                doc_type, metadata
+            )
+        )
+
+        return {
+            "status": "success",
+            "system_prompt": table_system_prompt,
+            "user_prompt": table_user_prompt,
+        }
+
+    except Exception as e:
+        error_msg = f"Error generating table extraction prompts: {str(e)}"
+        logger.error(error_msg)
+        return {"status": "error", "error": error_msg}
+
+
 def validate_llm_config(llm_config: Dict[str, Any]) -> tuple[bool, Optional[str]]:
     """Validate LLM configuration.
 
@@ -205,3 +500,61 @@ def validate_llm_config(llm_config: Dict[str, Any]) -> tuple[bool, Optional[str]
         )
 
     return True, None
+
+
+def guess_document_type_sync(
+    file_content: str,
+    llm_config: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Guess document type from file content (sync version).
+
+    Args:
+        file_content: Extracted text content from the document
+        llm_config: LLM configuration dictionary
+
+    Returns:
+        Dictionary containing guessed document type or error
+    """
+    return _run_async(
+        guess_document_type_async(file_content, llm_config)
+    )
+
+
+async def guess_document_type_async(
+    file_content: str,
+    llm_config: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Guess document type from file content using LLM.
+
+    Args:
+        file_content: Extracted text content from the document
+        llm_config: LLM configuration dictionary
+
+    Returns:
+        Dictionary containing:
+            - status: "success" or "error"
+            - document_type: Guessed document type (if success)
+            - confidence: Confidence description (if applicable)
+            - error: Error message (if error)
+    """
+    try:
+        # Validate LLM config
+        is_valid, error_msg = validate_llm_config(llm_config)
+        if not is_valid:
+            return {"status": "error", "error": error_msg}
+
+        # Import LLM helper
+        from .llm_helper import guess_document_type_with_llm
+
+        # Call LLM helper to guess document type
+        result = await guess_document_type_with_llm(
+            file_content=file_content,
+            llm_config=llm_config,
+        )
+
+        return result
+
+    except Exception as e:
+        error_msg = f"Error guessing document type: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        return {"status": "error", "error": error_msg}

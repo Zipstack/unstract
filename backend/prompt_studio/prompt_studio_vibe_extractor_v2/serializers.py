@@ -11,12 +11,9 @@ class VibeExtractorProjectSerializer(serializers.ModelSerializer):
     class Meta:
         model = VibeExtractorProject
         fields = [
-            "project_id",
+            "id",
             "document_type",
-            "status",
-            "generation_output_path",
-            "error_message",
-            "generation_progress",
+            "llm_adapter",
             "tool_id",
             "created_by",
             "modified_by",
@@ -24,11 +21,7 @@ class VibeExtractorProjectSerializer(serializers.ModelSerializer):
             "modified_at",
         ]
         read_only_fields = [
-            "project_id",
-            "status",
-            "generation_output_path",
-            "error_message",
-            "generation_progress",
+            "id",
             "created_by",
             "modified_by",
             "created_at",
@@ -75,4 +68,70 @@ class VibeExtractorFileReadSerializer(serializers.Serializer):
         ],
         required=True,
         help_text="Type of file to read",
+    )
+
+
+class VibeExtractorGenerateMetadataSerializer(serializers.Serializer):
+    """Serializer for generating metadata only."""
+
+    regenerate = serializers.BooleanField(
+        default=False,
+        help_text="Whether to regenerate if metadata already exists",
+    )
+
+
+class VibeExtractorGenerateExtractionFieldsSerializer(serializers.Serializer):
+    """Serializer for generating extraction fields."""
+
+    metadata = serializers.JSONField(
+        required=True,
+        help_text="Metadata dictionary to use for generation",
+    )
+
+
+class VibeExtractorGeneratePagePromptsSerializer(serializers.Serializer):
+    """Serializer for generating page extraction prompts."""
+
+    metadata = serializers.JSONField(
+        required=True,
+        help_text="Metadata dictionary to use for generation",
+    )
+
+
+class VibeExtractorGenerateScalarPromptsSerializer(serializers.Serializer):
+    """Serializer for generating scalar extraction prompts."""
+
+    metadata = serializers.JSONField(
+        required=True,
+        help_text="Metadata dictionary to use for generation",
+    )
+    extraction_yaml = serializers.CharField(
+        required=True,
+        help_text="Extraction YAML content",
+    )
+
+
+class VibeExtractorGenerateTablePromptsSerializer(serializers.Serializer):
+    """Serializer for generating table extraction prompts."""
+
+    metadata = serializers.JSONField(
+        required=True,
+        help_text="Metadata dictionary to use for generation",
+    )
+    extraction_yaml = serializers.CharField(
+        required=True,
+        help_text="Extraction YAML content",
+    )
+
+
+class VibeExtractorGuessDocumentTypeSerializer(serializers.Serializer):
+    """Serializer for guessing document type from file."""
+
+    file_name = serializers.CharField(
+        required=True,
+        help_text="Name of the file in permanent storage",
+    )
+    tool_id = serializers.UUIDField(
+        required=True,
+        help_text="Tool ID to construct the file path",
     )

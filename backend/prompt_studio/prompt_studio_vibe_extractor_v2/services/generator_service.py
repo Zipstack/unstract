@@ -202,7 +202,7 @@ extraction_features:
         try:
             # Import here to avoid circular imports and ensure prompt service is available
             from unstract.prompt_service.services.vibe_extractor.api_helper import (
-                generate_document_extraction_components,
+                generate_document_extraction_components_sync,
             )
 
             # Get system LLM adapter if not already set on project
@@ -224,7 +224,7 @@ extraction_features:
             progress_callback = GeneratorService._create_progress_callback(project)
 
             # Generate all components
-            result = await generate_document_extraction_components(
+            result = generate_document_extraction_components_sync(
                 doc_type=project.document_type,
                 output_dir=str(output_dir.parent),
                 llm_config=llm_config,

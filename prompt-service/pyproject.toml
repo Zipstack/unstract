@@ -19,7 +19,11 @@ dependencies = [
     "redis>=5.0.3,<5.3",
     "unstract-core",
     "unstract-flags",
-    "unstract-sdk1[aws,gcs,azure]"
+    "unstract-sdk1[aws,gcs,azure]",
+    # Autogen packages for Vibe Extractor LLM generation
+    "autogen-core>=0.4.0",
+    "autogen-ext>=0.4.0",
+    "autogen-agentchat>=0.4.0",
 ]
 
 [tool.uv.sources]
