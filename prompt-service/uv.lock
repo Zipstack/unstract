@@ -239,6 +239,47 @@ wheels = [
 ]
 
 [[package]]
+name = "autogen-agentchat"
+version = "0.4.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "autogen-core" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ed/50/065e357b08e4594ec949343e8e5b74ecca557e480c3072d4555569f3b517/autogen_agentchat-0.4.4.tar.gz", hash = "sha256:bb4a636707a5fd91950685b68f28019bdc9f64a101cd87109715dd212d295106", size = 58173 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f9/fd/7fade5f943a8c5094130f9aefd72a18818d1862d85078ec0d9ac62b0b51a/autogen_agentchat-0.4.4-py3-none-any.whl", hash = "sha256:c10e6e5a867403b8cc37c9f733e6f8a9b4f32e399808bdb1720bc00274b5e516", size = 63016 },
+]
+
+[[package]]
+name = "autogen-core"
+version = "0.4.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jsonref" },
+    { name = "opentelemetry-api" },
+    { name = "pillow" },
+    { name = "protobuf" },
+    { name = "pydantic" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1a/f5/de81486709bf04d89e4824a4b755e66c53d6d572e802514731f23314f319/autogen_core-0.4.4.tar.gz", hash = "sha256:053a17bbf7fb345bbe1249f0f7181f6a6b15f2dfa47b8ce69910b8001ff96156", size = 2310980 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4e/2f/f8dcd48ccb99f92252987d20c86e51e58eaed6bcfb1cf727b9bdfa51b1bc/autogen_core-0.4.4-py3-none-any.whl", hash = "sha256:2e891b20817b90e847c0f580d9ccd1cb1f682bdb2830d3b7d9425bd6966f6d28", size = 78245 },
+]
+
+[[package]]
+name = "autogen-ext"
+version = "0.4.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "autogen-core" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/10/4a/9ff4b65c773cc086f2b81cbff44161ff7f976fa235a2ec63470869cd1526/autogen_ext-0.4.4.tar.gz", hash = "sha256:116ece3a75af48f194da3a482b7f546e252d398dfaa133c62145d24a88fb8ac0", size = 140011 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/07/b4/cda27ed34a8be22d9c082f1b1b41ca5f4695b6b6462419ffffe50b23f086/autogen_ext-0.4.4-py3-none-any.whl", hash = "sha256:f994006ee34473524cd3ff9017c558d55a6610013d1e5d3a8f7ac90e15fb12df", size = 143012 },
+]
+
+[[package]]
 name = "azure-core"
 version = "1.35.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1326,6 +1367,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f4/1e/aea70e484e271e3d841773d5d185bedf488cf8f881088d47faae31f19116/json_repair-0.42.0.tar.gz", hash = "sha256:1a901f706c5b6b4325f0f79b53b0d998c5b327070e98b530da71cc5a3eda8616", size = 31349 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/6a/c7/dd23f764de95771300a8a7ae17293c47ba0e48f826154229d18ecfe147cd/json_repair-0.42.0-py3-none-any.whl", hash = "sha256:7b6805162053dfe65722e961bc51b5eecec0582ec8a8e0fd218d33e8de757daf", size = 21612 },
+]
+
+[[package]]
+name = "jsonref"
+version = "1.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/aa/0d/c1f3277e90ccdb50d33ed5ba1ec5b3f0a242ed8c1b1a85d3afeb68464dca/jsonref-1.1.0.tar.gz", hash = "sha256:32fe8e1d85af0fdefbebce950af85590b22b60f9e95443176adbde4e1ecea552", size = 8814 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0c/ec/e1db9922bceb168197a558a2b8c03a7963f1afe93517ddd3cf99f202f996/jsonref-1.1.0-py3-none-any.whl", hash = "sha256:590dc7773df6c21cbf948b5dac07a72a251db28b0238ceecce0a2abfa8ec30a9", size = 9425 },
 ]
 
 [[package]]
@@ -3152,6 +3202,9 @@ name = "unstract-prompt-service"
 version = "0.0.1"
 source = { editable = "." }
 dependencies = [
+    { name = "autogen-agentchat" },
+    { name = "autogen-core" },
+    { name = "autogen-ext" },
     { name = "flask" },
     { name = "json-repair" },
     { name = "llama-index" },
@@ -3186,6 +3239,9 @@ test = [
 
 [package.metadata]
 requires-dist = [
+    { name = "autogen-agentchat", specifier = ">=0.4.0" },
+    { name = "autogen-core", specifier = ">=0.4.0" },
+    { name = "autogen-ext", specifier = ">=0.4.0" },
     { name = "flask", specifier = "~=3.0" },
     { name = "json-repair", specifier = "~=0.42.0" },
     { name = "llama-index", specifier = "==0.13.2" },
