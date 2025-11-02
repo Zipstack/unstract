@@ -898,6 +898,11 @@ class WorkerDestinationConnector:
                 database_entry=values,
             )
 
+            # Remove None values from INSERT to let database handle as NULL
+            # Table schema already created with all columns (including data column)
+            # Removing None values prevents "invalid JSON" errors when inserting error records
+            values = {k: v for k, v in values.items() if v is not None}
+
             logger.info(f"Preparing SQL query data for table {table_name}")
             sql_columns_and_values = WorkerDatabaseUtils.get_sql_query_data(
                 conn_cls=db_class,
