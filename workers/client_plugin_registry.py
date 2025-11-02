@@ -134,18 +134,35 @@ class ClientPluginRegistry:
 
         try:
             # For workers, use importlib with proper path handling
+            import glob
             import importlib
             import os
 
             # Convert plugin path to file path
             module_path, class_name = plugin_path.rsplit(".", 1)
-            relative_path = module_path.replace(".", os.sep) + ".py"
+            relative_path_base = module_path.replace(".", os.sep)
 
             # Get absolute path from workers directory
             workers_dir = os.path.dirname(__file__)
-            plugin_file_path = os.path.join(workers_dir, relative_path)
 
-            if os.path.exists(plugin_file_path):
+            # Search for both .py and .so files (supports Nuitka-compiled modules)
+            # Try .py first, then .so files
+            plugin_file_path = None
+
+            # Try .py file first
+            py_path = os.path.join(workers_dir, relative_path_base + ".py")
+            if os.path.exists(py_path):
+                plugin_file_path = py_path
+            else:
+                # Try .so files (Nuitka compiled modules: .cpython-312-*.so)
+                so_pattern = os.path.join(workers_dir, relative_path_base + ".*.so")
+                so_files = glob.glob(so_pattern)
+                if so_files:
+                    # Use the first .so file found
+                    plugin_file_path = so_files[0]
+                    logger.debug(f"Found compiled module: {plugin_file_path}")
+
+            if plugin_file_path:
                 # Use importlib.util for file-based import
                 import importlib.util
 
@@ -170,7 +187,10 @@ class ClientPluginRegistry:
                     f"Successfully loaded plugin class {class_name} from {plugin_file_path}"
                 )
             else:
-                logger.debug(f"Plugin file not found: {plugin_file_path}")
+                logger.debug(
+                    f"Plugin file not found for {module_path} "
+                    f"(searched for .py and .so files)"
+                )
 
         except Exception as e:
             logger.debug(f"Failed to load plugin {plugin_name} using worker loader: {e}")
