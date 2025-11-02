@@ -86,6 +86,7 @@ OPTIONS:
     -c, --concurrency N   Set worker concurrency (default: auto)
     -q, --queues QUEUES   Override default queues (comma-separated)
     -p, --health-port N   Override health check port
+    -P, --pool TYPE       Set Celery pool type (threads, prefork, gevent, solo, eventlet)
     -n, --hostname NAME   Set custom worker hostname/name
     -k, --kill            Kill running workers and exit
     -s, --status          Show status of running workers
@@ -110,6 +111,10 @@ EXAMPLES:
     # Run with custom worker name (useful for scaling)
     $0 -n api-01 api
     $0 -n api-02 api
+
+    # Run with specific pool type
+    $0 -P prefork file
+    $0 --pool threads general
 
     # Check worker status
     $0 -s
@@ -261,7 +266,8 @@ run_worker() {
     local concurrency=$4
     local custom_queues=$5
     local health_port=$6
-    local custom_hostname=$7
+    local pool_type=$7
+    local custom_hostname=$8
 
     local worker_dir="$WORKERS_DIR/$worker_type"
 
@@ -321,6 +327,11 @@ run_worker() {
         "--hostname=${worker_instance_name}@%h"
     )
 
+    # Add pool type if specified
+    if [[ -n "$pool_type" ]]; then
+        cmd_args+=("--pool=$pool_type")
+    fi
+
     # Add concurrency if specified
     if [[ -n "$concurrency" ]]; then
         cmd_args+=("--concurrency=$concurrency")
@@ -379,6 +390,7 @@ run_all_workers() {
     local detach=$1
     local log_level=$2
     local concurrency=$3
+    local pool_type=$4
 
     print_status $GREEN "Starting all workers..."
 
@@ -388,7 +400,7 @@ run_all_workers() {
 
         # Run each worker in background
         (
-            run_worker "$worker" "true" "$log_level" "$concurrency" "" ""
+            run_worker "$worker" "true" "$log_level" "$concurrency" "" "" "$pool_type" ""
         ) &
 
         sleep 2  # Give each worker time to start
@@ -414,6 +426,7 @@ LOG_LEVEL=""
 CONCURRENCY=""
 CUSTOM_QUEUES=""
 HEALTH_PORT=""
+POOL_TYPE=""
 CUSTOM_HOSTNAME=""
 KILL_WORKERS=false
 SHOW_STATUS=false
@@ -442,6 +455,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -p|--health-port)
             HEALTH_PORT="$2"
+            shift 2
+            ;;
+        -P|--pool)
+            POOL_TYPE="$2"
             shift 2
             ;;
         -n|--hostname)
@@ -507,8 +524,8 @@ export PYTHONPATH="$WORKERS_DIR:${PYTHONPATH:-}"
 
 # Run the requested worker(s)
 if [[ "$WORKER_TYPE" == "all" ]]; then
-    run_all_workers "$DETACH" "$LOG_LEVEL" "$CONCURRENCY"
+    run_all_workers "$DETACH" "$LOG_LEVEL" "$CONCURRENCY" "$POOL_TYPE"
 else
     WORKER_DIR_NAME="${WORKERS[$WORKER_TYPE]}"
-    run_worker "$WORKER_DIR_NAME" "$DETACH" "$LOG_LEVEL" "$CONCURRENCY" "$CUSTOM_QUEUES" "$HEALTH_PORT" "$CUSTOM_HOSTNAME"
+    run_worker "$WORKER_DIR_NAME" "$DETACH" "$LOG_LEVEL" "$CONCURRENCY" "$CUSTOM_QUEUES" "$HEALTH_PORT" "$POOL_TYPE" "$CUSTOM_HOSTNAME"
 fi
