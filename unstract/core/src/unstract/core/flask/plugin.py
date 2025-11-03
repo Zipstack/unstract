@@ -138,17 +138,30 @@ def plugin_loader(
 
     Args:
         app: Flask application instance
-        plugins_dir: Directory containing plugins (optional, defaults to auto-detection)
-        plugins_pkg: Python package path for plugins (optional)
+        plugins_dir: Directory containing plugins (required)
+        plugins_pkg: Python package path for plugins (required)
+
+    Raises:
+        ValueError: If plugins_dir or plugins_pkg is not provided
 
     Example:
-        # In your Flask app configuration:
+        from pathlib import Path
         from unstract.core.flask import plugin_loader
 
         def create_app():
             app = Flask(__name__)
-            plugin_loader(app)  # Auto-detects plugin location
+            plugins_dir = Path(__file__).parent / "plugins"
+            plugin_loader(app, plugins_dir, "unstract.myservice.plugins")
             return app
     """
+    if not plugins_dir or not plugins_pkg:
+        raise ValueError(
+            "Both 'plugins_dir' and 'plugins_pkg' are required for plugin_loader.\n\n"
+            "Example usage:\n"
+            "  from pathlib import Path\n"
+            "  plugins_dir = Path(__file__).parent / 'plugins'\n"
+            "  plugin_loader(app, plugins_dir, 'unstract.myservice.plugins')"
+        )
+
     manager = PluginManager(app, plugins_dir, plugins_pkg)
     manager.load_plugins()
