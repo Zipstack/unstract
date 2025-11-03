@@ -106,11 +106,11 @@ function ExecutionLogs() {
       return false;
     }
 
-    // Check if execution is stale (>1 hour from last modification)
-    const modifiedAt = new Date(item?.modified_at);
+    // Check if execution is stale (>1 hour from creation)
+    const createdAt = new Date(item?.createdAtRaw || item?.created_at);
     const now = new Date();
     const oneHourInMs = 60 * 60 * 1000;
-    const timeDifference = now - modifiedAt;
+    const timeDifference = now - createdAt;
 
     if (timeDifference > oneHourInMs) {
       // Stopping polling in case the execution is possibly stuck
@@ -130,9 +130,9 @@ function ExecutionLogs() {
 
   // Clear all polling timeouts and reset state
   const clearAllPolling = () => {
-    Object.keys(pollingTimeoutsRef.current).forEach((id) => {
+    for (const id of Object.keys(pollingTimeoutsRef.current)) {
       clearTimeout(pollingTimeoutsRef.current[id]);
-    });
+    }
     pollingTimeoutsRef.current = {};
     setPollingIds(new Set());
   };
@@ -159,6 +159,7 @@ function ExecutionLogs() {
             progress,
             processed,
             total,
+            createdAtRaw: item?.created_at,
             success: item?.status === "COMPLETED",
             isError: item?.status === "ERROR",
             workflowName: item?.workflow_name,
@@ -201,7 +202,7 @@ function ExecutionLogs() {
   };
 
   const startPollingForExecuting = (records) => {
-    records.forEach((record) => {
+    for (const record of records) {
       if (shouldPoll(record) && !pollingIds.has(record.key)) {
         setPollingIds((prev) => {
           const newSet = new Set(prev);
@@ -210,7 +211,7 @@ function ExecutionLogs() {
         });
         pollExecutingRecord(record.key);
       }
-    });
+    }
   };
 
   const fetchLogs = async (page) => {
@@ -239,6 +240,7 @@ function ExecutionLogs() {
         const progress = total > 0 ? Math.round((processed / total) * 100) : 0;
         return {
           key: item?.id,
+          createdAtRaw: item?.created_at,
           executedAt: formattedDateTime(item?.created_at),
           executedAtWithSeconds: formattedDateTimeWithSeconds(item?.created_at),
           executionId: item?.id,

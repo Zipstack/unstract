@@ -63,6 +63,8 @@ const DetailedLogs = () => {
   const [searchTimeout, setSearchTimeout] = useState(null);
   // Store interval ID for proper cleanup
   const pollingIntervalRef = useRef(null);
+  // Store latest execution details for polling re-checks
+  const executionDetailsRef = useRef(null);
 
   const filterOptions = ["COMPLETED", "PENDING", "ERROR", "EXECUTING"];
 
@@ -77,10 +79,7 @@ const DetailedLogs = () => {
     }
 
     // Check if execution is stale (>1 hour from creation)
-    // Use executedAtWithSeconds for more accurate timestamp
-    const createdAt = new Date(
-      executionDetails?.executedAtWithSeconds || executionDetails?.executedAt
-    );
+    const createdAt = new Date(executionDetails?.createdAtRaw);
     const now = new Date();
     const oneHourInMs = 60 * 60 * 1000;
     const timeDifference = now - createdAt;
@@ -111,6 +110,7 @@ const DetailedLogs = () => {
         (item?.successful_files || 0) + (item?.failed_files || 0);
       const progress = total > 0 ? Math.round((processed / total) * 100) : 0;
       const formattedData = {
+        createdAtRaw: item?.created_at,
         executedAt: formattedDateTime(item?.created_at),
         executionId: item?.id,
         progress,
@@ -165,17 +165,17 @@ const DetailedLogs = () => {
       const params = { ...defaultParams, ...customParams };
       const searchParams = new URLSearchParams();
 
-      Object.entries(params).forEach(([key, value]) => {
+      for (const [key, value] of Object.entries(params)) {
         if (value !== null && value !== undefined) {
           searchParams.append(key, value);
         }
-      });
+      }
 
       // Handle file status filter for MultipleChoiceFilter
       if (statusFilter && statusFilter.length > 0) {
-        statusFilter.forEach((status) => {
+        for (const status of statusFilter) {
           searchParams.append("status", status);
-        });
+        }
       }
 
       const response = await axiosPrivate.get(
@@ -326,6 +326,11 @@ const DetailedLogs = () => {
     fetchExecutionFiles(id, pagination.current);
   }, [pagination.current, ordering, statusFilter]);
 
+  // Keep ref updated with latest execution details
+  useEffect(() => {
+    executionDetailsRef.current = executionDetails;
+  }, [executionDetails]);
+
   // Polling logic for execution status updates
   useEffect(() => {
     // Clear any existing interval first
@@ -333,6 +338,13 @@ const DetailedLogs = () => {
 
     if (shouldPoll(executionDetails)) {
       pollingIntervalRef.current = setInterval(() => {
+        // Re-check staleness inside polling cycle
+        // Handles scenario where execution runs for >1 hour
+        if (!shouldPoll(executionDetailsRef.current)) {
+          clearPolling();
+          return;
+        }
+
         fetchExecutionDetails(id);
         fetchExecutionFiles(id, pagination.current);
       }, 5000);
