@@ -13,6 +13,18 @@ VectorDB adapters use LlamaIndex (not LiteLLM like LLM/Embedding).
 import os
 from typing import Any
 
+# Import all VectorDB adapter classes
+from unstract.sdk1.adapters.vectordb.milvus.src import Milvus
+from unstract.sdk1.adapters.vectordb.pinecone.src import Pinecone
+from unstract.sdk1.adapters.vectordb.postgres.src import Postgres
+from unstract.sdk1.adapters.vectordb.qdrant.src import Qdrant
+from unstract.sdk1.adapters.vectordb.weaviate.src import Weaviate
+
+# Supabase requires llama-index-vector-stores-supabase package
+try:
+    from unstract.sdk1.adapters.vectordb.supabase.src import Supabase
+except ImportError:
+    Supabase = None  # Will skip tests if not available
 
 class VectorDBProviderConfig:
     """Configuration for a VectorDB provider."""
@@ -23,6 +35,7 @@ class VectorDBProviderConfig:
         adapter_id: str,
         required_env_vars: list[str],
         metadata_builder: callable,
+        adapter_class: type,
         skip_reason: str | None = None,
     ):
         """Initialize VectorDB provider configuration.
@@ -32,10 +45,12 @@ class VectorDBProviderConfig:
             adapter_id: Exact adapter ID from source code (format: "provider|uuid")
             required_env_vars: List of environment variables required for this provider
             metadata_builder: Function that builds adapter metadata from env vars
+            adapter_class: The adapter class to instantiate
             skip_reason: Optional reason to skip this provider (e.g., "Requires local setup")
         """
         self.provider_name = provider_name
         self.adapter_id = adapter_id
+        self.adapter_class = adapter_class
         self.required_env_vars = required_env_vars
         self.metadata_builder = metadata_builder
         self.skip_reason = skip_reason
@@ -66,91 +81,94 @@ class VectorDBProviderConfig:
 
 
 def build_milvus_metadata() -> dict[str, Any]:
-    """Build Milvus adapter metadata from environment variables."""
+    """Build Milvus adapter metadata from environment variables.
+
+    Note: Only includes user-facing fields from JSON schema.
+    Fields like embedding_dimension and collection_name are set internally by the platform.
+    """
     return {
+        "adapter_name": "milvus-test",
         "uri": os.getenv("MILVUS_URI"),
         "token": os.getenv("MILVUS_TOKEN", ""),
-        "embedding_dimension": int(
-            os.getenv("MILVUS_EMBEDDING_DIMENSION", "1536")
-        ),
-        "vector_db_name": os.getenv("MILVUS_COLLECTION_NAME", "test_collection"),
     }
 
 
 def build_pinecone_metadata() -> dict[str, Any]:
-    """Build Pinecone adapter metadata from environment variables."""
+    """Build Pinecone adapter metadata from environment variables.
+
+    Note: Only includes user-facing fields from JSON schema.
+    Fields like embedding_dimension and index_name are set internally by the platform.
+    """
     spec = os.getenv("PINECONE_SPEC", "serverless")
     metadata = {
+        "adapter_name": "pinecone-test",
         "api_key": os.getenv("PINECONE_API_KEY"),
-        "environment": os.getenv("PINECONE_ENVIRONMENT"),
         "spec": spec,
-        "embedding_dimension": int(
-            os.getenv("PINECONE_EMBEDDING_DIMENSION", "1536")
-        ),
-        "vector_db_name": os.getenv("PINECONE_INDEX_NAME", "test-index"),
     }
 
     # Add spec-specific fields
     if spec == "serverless":
         metadata["cloud"] = os.getenv("PINECONE_CLOUD", "aws")
         metadata["region"] = os.getenv("PINECONE_REGION", "us-east-1")
+    else:  # pod spec
+        metadata["environment"] = os.getenv("PINECONE_ENVIRONMENT", "us-west1-gcp")
 
     return metadata
 
 
 def build_qdrant_metadata() -> dict[str, Any]:
-    """Build Qdrant adapter metadata from environment variables."""
+    """Build Qdrant adapter metadata from environment variables.
+
+    Note: Only includes user-facing fields from JSON schema.
+    """
     return {
+        "adapter_name": "qdrant-test",
         "url": os.getenv("QDRANT_URL"),
         "api_key": os.getenv("QDRANT_API_KEY", ""),
-        "embedding_dimension": int(
-            os.getenv("QDRANT_EMBEDDING_DIMENSION", "1536")
-        ),
-        "vector_db_name": os.getenv("QDRANT_COLLECTION_NAME", "test_collection"),
     }
 
 
 def build_weaviate_metadata() -> dict[str, Any]:
-    """Build Weaviate adapter metadata from environment variables."""
+    """Build Weaviate adapter metadata from environment variables.
+
+    Note: Only includes user-facing fields from JSON schema.
+    """
     return {
+        "adapter_name": "weaviate-test",
         "url": os.getenv("WEAVIATE_URL"),
-        "api_key": os.getenv("WEAVIATE_API_KEY"),
-        "embedding_dimension": int(
-            os.getenv("WEAVIATE_EMBEDDING_DIMENSION", "1536")
-        ),
-        "vector_db_name": os.getenv("WEAVIATE_COLLECTION_NAME", "test_collection"),
+        "api_key": os.getenv("WEAVIATE_API_KEY", ""),
     }
 
 
 def build_postgres_metadata() -> dict[str, Any]:
-    """Build Postgres adapter metadata from environment variables."""
+    """Build Postgres adapter metadata from environment variables.
+
+    Note: Only includes user-facing fields from JSON schema.
+    'schema' field is not in JSON schema - it's internal.
+    """
     return {
+        "adapter_name": "postgres-test",
         "host": os.getenv("POSTGRES_HOST"),
         "port": int(os.getenv("POSTGRES_PORT", "5432")),
         "database": os.getenv("POSTGRES_DATABASE"),
         "user": os.getenv("POSTGRES_USER"),
         "password": os.getenv("POSTGRES_PASSWORD"),
-        "schema": os.getenv("POSTGRES_SCHEMA", "public"),
         "enable_ssl": os.getenv("POSTGRES_ENABLE_SSL", "true").lower() == "true",
-        "embedding_dimension": int(
-            os.getenv("POSTGRES_EMBEDDING_DIMENSION", "1536")
-        ),
-        "vector_db_name": os.getenv("POSTGRES_TABLE_NAME", "test_table"),
     }
 
 
 def build_supabase_metadata() -> dict[str, Any]:
-    """Build Supabase adapter metadata from environment variables."""
+    """Build Supabase adapter metadata from environment variables.
+
+    Note: Only includes user-facing fields from JSON schema.
+    """
     return {
+        "adapter_name": "supabase-test",
         "host": os.getenv("SUPABASE_HOST"),
         "port": int(os.getenv("SUPABASE_PORT", "5432")),
         "database": os.getenv("SUPABASE_DATABASE"),
         "user": os.getenv("SUPABASE_USER"),
         "password": os.getenv("SUPABASE_PASSWORD"),
-        "embedding_dimension": int(
-            os.getenv("SUPABASE_EMBEDDING_DIMENSION", "1536")
-        ),
-        "vector_db_name": os.getenv("SUPABASE_COLLECTION_NAME", "test_collection"),
     }
 
 
@@ -163,24 +181,28 @@ PROVIDER_CONFIGS = {
         adapter_id="milvus|3f42f6f9-4b8e-4546-95f3-22ecc9aca442",
         required_env_vars=["MILVUS_URI"],
         metadata_builder=build_milvus_metadata,
+        adapter_class=Milvus,
     ),
     "pinecone": VectorDBProviderConfig(
         provider_name="Pinecone",
         adapter_id="pinecone|83881133-485d-4ecc-b1f7-0009f96dc74a",
-        required_env_vars=["PINECONE_API_KEY", "PINECONE_ENVIRONMENT"],
+        required_env_vars=["PINECONE_API_KEY"],  # Environment depends on spec type
         metadata_builder=build_pinecone_metadata,
+        adapter_class=Pinecone,
     ),
     "qdrant": VectorDBProviderConfig(
         provider_name="Qdrant",
         adapter_id="qdrant|41f64fda-2e4c-4365-89fd-9ce91bee74d0",
         required_env_vars=["QDRANT_URL"],
         metadata_builder=build_qdrant_metadata,
+        adapter_class=Qdrant,
     ),
     "weaviate": VectorDBProviderConfig(
         provider_name="Weaviate",
         adapter_id="weaviate|294e08df-4e4a-40f2-8f0d-9e4940180ccc",
         required_env_vars=["WEAVIATE_URL", "WEAVIATE_API_KEY"],
         metadata_builder=build_weaviate_metadata,
+        adapter_class=Weaviate,
     ),
     "postgres": VectorDBProviderConfig(
         provider_name="Postgres",
@@ -192,8 +214,13 @@ PROVIDER_CONFIGS = {
             "POSTGRES_PASSWORD",
         ],
         metadata_builder=build_postgres_metadata,
+        adapter_class=Postgres,
     ),
-    "supabase": VectorDBProviderConfig(
+}
+
+# Add Supabase only if the package is installed
+if Supabase is not None:
+    PROVIDER_CONFIGS["supabase"] = VectorDBProviderConfig(
         provider_name="Supabase",
         adapter_id="supabase|e6998e3c-3595-48c0-a190-188dbd803858",
         required_env_vars=[
@@ -203,8 +230,8 @@ PROVIDER_CONFIGS = {
             "SUPABASE_PASSWORD",
         ],
         metadata_builder=build_supabase_metadata,
-    ),
-}
+        adapter_class=Supabase,
+    )
 
 
 def get_available_providers() -> list[str]:

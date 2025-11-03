@@ -21,11 +21,60 @@ Example:
     pytest test_llm.py -v -k "connection"
 """
 
+import functools
+
 import pytest
 
 from unstract.sdk1.llm import LLM
 
 from .llm_test_config import PROVIDER_CONFIGS, get_available_providers
+
+
+def friendly_error_message(test_func):
+    """Decorator to provide concise, meaningful error messages for test failures.
+
+    Transforms verbose LiteLLM/provider errors into concise summaries in pytest output.
+    """
+    @functools.wraps(test_func)
+    def wrapper(self, provider_key: str, *args, **kwargs):
+        config = PROVIDER_CONFIGS.get(provider_key)
+        provider_name = config.provider_name if config else provider_key
+        test_name = test_func.__name__.replace("test_", "").replace("_", " ").title()
+
+        try:
+            return test_func(self, provider_key, *args, **kwargs)
+        except AssertionError:
+            # Re-raise assertion errors as-is (these are intentional test failures)
+            raise
+        except Exception as e:
+            # Extract meaningful error message
+            error_type = type(e).__name__
+            error_msg = str(e)
+
+            # Categorize and simplify common errors
+            if "ServiceUnavailableError" in error_type or "ServiceUnavailable" in error_msg:
+                summary = "Service unavailable (rate limit or regional restriction)"
+            elif "Timeout" in error_type or "timed out" in error_msg.lower():
+                summary = f"Request timed out after {getattr(e, 'timeout', 'unknown')}s"
+            elif "AuthenticationError" in error_type or "authentication" in error_msg.lower():
+                summary = "Authentication failed (check API key/credentials)"
+            elif "RateLimitError" in error_type or "rate limit" in error_msg.lower():
+                summary = "Rate limit exceeded (wait and retry)"
+            elif "InvalidRequestError" in error_type or "invalid" in error_msg.lower():
+                summary = "Invalid request (check model/parameters)"
+            elif "Connection" in error_type or "connection" in error_msg.lower():
+                summary = "Connection failed (check network/endpoint)"
+            else:
+                # For unknown errors, show first 100 chars of error message
+                summary = error_msg[:100] + "..." if len(error_msg) > 100 else error_msg
+
+            # Fail with concise message
+            pytest.fail(
+                f"[{provider_name}] {test_name}: {summary}",
+                pytrace=False  # Suppress Python traceback for cleaner output
+            )
+
+    return wrapper
 
 
 # Get list of available providers for parametrization
@@ -44,7 +93,7 @@ class TestLLMAdapters:
     SIMPLE_PROMPT = "What is the capital of France?"
     COMPLEX_PROMPT = "Explain the concept of machine learning in 3 sentences."
     JSON_PROMPT = (
-        'Return a JSON object with the capital of France. '
+        "Return a JSON object with the capital of France. "
         'Format: {"country": "France", "capital": "..."}'
     )
     REASONING_PROMPT = "What is 15 * 24? Show your reasoning step by step."
@@ -78,6 +127,7 @@ class TestLLMAdapters:
         return config
 
     @pytest.mark.parametrize("provider_key", AVAILABLE_PROVIDERS)
+    @friendly_error_message
     def test_connection(self, provider_key: str) -> None:
         """Test that the adapter can establish a connection.
 
@@ -87,19 +137,20 @@ class TestLLMAdapters:
         config = self._get_config_or_skip(provider_key)
 
         # Create LLM instance
-        llm = LLM(
-            adapter_id=config.adapter_id, adapter_metadata=config.build_metadata()
-        )
+        llm = LLM(adapter_id=config.adapter_id, adapter_metadata=config.build_metadata())
 
         # Test connection
         try:
             result = llm.test_connection()
             assert result is True
-            print(f"✅ {config.provider_name} adapter successfully established connection")
+            print(
+                f"✅ {config.provider_name} adapter successfully established connection"
+            )
         except Exception as e:
             pytest.fail(f"{config.provider_name} adapter failed to connect: {str(e)}")
 
     @pytest.mark.parametrize("provider_key", AVAILABLE_PROVIDERS)
+    @friendly_error_message
     def test_simple_completion(self, provider_key: str) -> None:
         """Test successful simple completion.
 
@@ -108,9 +159,7 @@ class TestLLMAdapters:
         """
         config = self._get_config_or_skip(provider_key)
 
-        llm = LLM(
-            adapter_id=config.adapter_id, adapter_metadata=config.build_metadata()
-        )
+        llm = LLM(adapter_id=config.adapter_id, adapter_metadata=config.build_metadata())
 
         # Execute completion
         result = llm.complete(self.SIMPLE_PROMPT)
@@ -125,6 +174,7 @@ class TestLLMAdapters:
         print(f"   Response: {result['response'].text[:100]}...")
 
     @pytest.mark.parametrize("provider_key", AVAILABLE_PROVIDERS)
+    @friendly_error_message
     def test_complex_completion(self, provider_key: str) -> None:
         """Test successful complex completion.
 
@@ -133,9 +183,7 @@ class TestLLMAdapters:
         """
         config = self._get_config_or_skip(provider_key)
 
-        llm = LLM(
-            adapter_id=config.adapter_id, adapter_metadata=config.build_metadata()
-        )
+        llm = LLM(adapter_id=config.adapter_id, adapter_metadata=config.build_metadata())
 
         # Execute completion
         result = llm.complete(self.COMPLEX_PROMPT)
@@ -153,6 +201,7 @@ class TestLLMAdapters:
         print(f"   Response length: {len(response_text)} characters")
 
     @pytest.mark.parametrize("provider_key", AVAILABLE_PROVIDERS)
+    @friendly_error_message
     def test_streaming_completion(self, provider_key: str) -> None:
         """Test streaming completion.
 
@@ -161,9 +210,7 @@ class TestLLMAdapters:
         """
         config = self._get_config_or_skip(provider_key)
 
-        llm = LLM(
-            adapter_id=config.adapter_id, adapter_metadata=config.build_metadata()
-        )
+        llm = LLM(adapter_id=config.adapter_id, adapter_metadata=config.build_metadata())
 
         # Collect streamed chunks
         chunks = []
@@ -181,6 +228,7 @@ class TestLLMAdapters:
         )
 
     @pytest.mark.parametrize("provider_key", AVAILABLE_PROVIDERS)
+    @friendly_error_message
     def test_json_extraction(self, provider_key: str) -> None:
         """Test JSON extraction from completion response.
 
@@ -189,9 +237,7 @@ class TestLLMAdapters:
         """
         config = self._get_config_or_skip(provider_key)
 
-        llm = LLM(
-            adapter_id=config.adapter_id, adapter_metadata=config.build_metadata()
-        )
+        llm = LLM(adapter_id=config.adapter_id, adapter_metadata=config.build_metadata())
 
         # Execute completion with JSON extraction
         result = llm.complete(self.JSON_PROMPT, extract_json=True)
@@ -207,6 +253,7 @@ class TestLLMAdapters:
         print(f"✅ {config.provider_name}: Successfully extracted JSON from response")
 
     @pytest.mark.parametrize("provider_key", AVAILABLE_PROVIDERS)
+    @friendly_error_message
     def test_custom_system_prompt(self, provider_key: str) -> None:
         """Test completion with custom system prompt.
 
@@ -215,7 +262,9 @@ class TestLLMAdapters:
         """
         config = self._get_config_or_skip(provider_key)
 
-        custom_system = "You are a helpful assistant that always responds in a friendly tone."
+        custom_system = (
+            "You are a helpful assistant that always responds in a friendly tone."
+        )
         llm = LLM(
             adapter_id=config.adapter_id,
             adapter_metadata=config.build_metadata(),
@@ -230,9 +279,12 @@ class TestLLMAdapters:
         assert "response" in result
         assert len(result["response"].text) > 0
 
-        print(f"✅ {config.provider_name}: Successfully completed with custom system prompt")
+        print(
+            f"✅ {config.provider_name}: Successfully completed with custom system prompt"
+        )
 
     @pytest.mark.parametrize("provider_key", AVAILABLE_PROVIDERS)
+    @friendly_error_message
     def test_temperature_parameter(self, provider_key: str) -> None:
         """Test completion with different temperature settings.
 
@@ -281,6 +333,7 @@ class TestLLMAdapters:
         print(f"✅ {config.provider_name}: Successfully limited response with max_tokens")
 
     @pytest.mark.parametrize("provider_key", AVAILABLE_PROVIDERS)
+    @friendly_error_message
     def test_get_model_name(self, provider_key: str) -> None:
         """Test retrieving the model name from LLM instance.
 
@@ -289,9 +342,7 @@ class TestLLMAdapters:
         """
         config = self._get_config_or_skip(provider_key)
 
-        llm = LLM(
-            adapter_id=config.adapter_id, adapter_metadata=config.build_metadata()
-        )
+        llm = LLM(adapter_id=config.adapter_id, adapter_metadata=config.build_metadata())
 
         model_name = llm.get_model_name()
 
@@ -300,9 +351,12 @@ class TestLLMAdapters:
         # Model name should have provider prefix (e.g., "openai/", "anthropic/")
         assert "/" in model_name or "_" in model_name
 
-        print(f"✅ {config.provider_name}: Successfully retrieved model name: {model_name}")
+        print(
+            f"✅ {config.provider_name}: Successfully retrieved model name: {model_name}"
+        )
 
     @pytest.mark.parametrize("provider_key", AVAILABLE_PROVIDERS)
+    @friendly_error_message
     def test_get_context_window_size(self, provider_key: str) -> None:
         """Test retrieving the context window size for the model.
 
@@ -326,6 +380,7 @@ class TestLLMAdapters:
         )
 
     @pytest.mark.parametrize("provider_key", AVAILABLE_PROVIDERS)
+    @friendly_error_message
     def test_multiple_completions_sequential(self, provider_key: str) -> None:
         """Test multiple sequential completions to verify connection stability.
 
@@ -334,9 +389,7 @@ class TestLLMAdapters:
         """
         config = self._get_config_or_skip(provider_key)
 
-        llm = LLM(
-            adapter_id=config.adapter_id, adapter_metadata=config.build_metadata()
-        )
+        llm = LLM(adapter_id=config.adapter_id, adapter_metadata=config.build_metadata())
 
         prompts = [
             "What is 2+2?",
@@ -359,6 +412,7 @@ class TestLLMAdapters:
         )
 
     @pytest.mark.parametrize("provider_key", AVAILABLE_PROVIDERS)
+    @friendly_error_message
     def test_reasoning_capability(self, provider_key: str) -> None:
         """Test model's reasoning capability with a math problem.
 
@@ -367,9 +421,7 @@ class TestLLMAdapters:
         """
         config = self._get_config_or_skip(provider_key)
 
-        llm = LLM(
-            adapter_id=config.adapter_id, adapter_metadata=config.build_metadata()
-        )
+        llm = LLM(adapter_id=config.adapter_id, adapter_metadata=config.build_metadata())
 
         # Execute completion
         result = llm.complete(self.REASONING_PROMPT)
@@ -384,6 +436,7 @@ class TestLLMAdapters:
         print(f"✅ {config.provider_name}: Successfully tested reasoning capability")
 
     @pytest.mark.parametrize("provider_key", AVAILABLE_PROVIDERS)
+    @friendly_error_message
     def test_retry_logic_with_timeout(self, provider_key: str) -> None:
         """Test that retry logic works with timeout settings.
 
@@ -408,6 +461,7 @@ class TestLLMAdapters:
         print(f"✅ {config.provider_name}: Successfully tested retry logic with timeout")
 
     @pytest.mark.parametrize("provider_key", AVAILABLE_PROVIDERS)
+    @friendly_error_message
     def test_comprehensive_metadata_validation(self, provider_key: str) -> None:
         """Test that metadata is properly validated and processed.
 
@@ -416,9 +470,7 @@ class TestLLMAdapters:
         """
         config = self._get_config_or_skip(provider_key)
 
-        llm = LLM(
-            adapter_id=config.adapter_id, adapter_metadata=config.build_metadata()
-        )
+        llm = LLM(adapter_id=config.adapter_id, adapter_metadata=config.build_metadata())
 
         # Verify internal configuration
         assert llm.kwargs is not None
@@ -428,6 +480,7 @@ class TestLLMAdapters:
         print(f"   Validated fields: {list(llm.kwargs.keys())}")
 
     @pytest.mark.parametrize("provider_key", AVAILABLE_PROVIDERS)
+    @friendly_error_message
     def test_response_format_consistency(self, provider_key: str) -> None:
         """Test that response format is consistent across multiple calls.
 
@@ -436,9 +489,7 @@ class TestLLMAdapters:
         """
         config = self._get_config_or_skip(provider_key)
 
-        llm = LLM(
-            adapter_id=config.adapter_id, adapter_metadata=config.build_metadata()
-        )
+        llm = LLM(adapter_id=config.adapter_id, adapter_metadata=config.build_metadata())
 
         # Execute multiple completions
         results = [llm.complete(self.SIMPLE_PROMPT) for _ in range(3)]
@@ -490,6 +541,7 @@ class TestLLMErrorHandling:
         return config
 
     @pytest.mark.parametrize("provider_key", AVAILABLE_PROVIDERS)
+    @friendly_error_message
     def test_invalid_credentials_error_handling(self, provider_key: str) -> None:
         """Test error handling with invalid credentials.
 
@@ -522,10 +574,20 @@ class TestLLMErrorHandling:
         error_message = str(exc_info.value).lower()
         assert any(
             keyword in error_message
-            for keyword in ["api", "auth", "credential", "401", "403", "connect", "connection"]
+            for keyword in [
+                "api",
+                "auth",
+                "credential",
+                "401",
+                "403",
+                "connect",
+                "connection",
+            ]
         )
 
-        print(f"✅ {config.provider_name}: Successfully handled invalid credentials error")
+        print(
+            f"✅ {config.provider_name}: Successfully handled invalid credentials error"
+        )
 
     @pytest.mark.parametrize("provider_key", AVAILABLE_PROVIDERS)
     def test_empty_prompt_handling(self, provider_key: str) -> None:

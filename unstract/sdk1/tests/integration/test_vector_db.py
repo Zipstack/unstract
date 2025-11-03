@@ -81,19 +81,9 @@ class TestVectorDBAdapters:
         """
         config = self._get_config_or_skip(provider_key)
 
-        # Create VectorDB instance using platform-style initialization
-        # Note: In production, VectorDB requires BaseTool, but we can test
-        # the adapter directly without platform dependencies
-        from unstract.sdk1.adapters.vectordb.register import VectorDBRegistry
-
-        # Get the adapter class
-        adapter_class = VectorDBRegistry.get_adapter_class_by_adapter_id(
-            config.adapter_id
-        )
-        assert adapter_class is not None, f"Adapter not found for {config.adapter_id}"
-
         # Initialize adapter with metadata
-        adapter = adapter_class(settings=config.build_metadata())
+        # VectorDB adapters expect settings dict in __init__
+        adapter = config.adapter_class(settings=config.build_metadata())
 
         # Test connection (this creates and deletes a test collection)
         result = adapter.test_connection()
@@ -111,12 +101,8 @@ class TestVectorDBAdapters:
         """
         config = self._get_config_or_skip(provider_key)
 
-        from unstract.sdk1.adapters.vectordb.register import VectorDBRegistry
-
-        adapter_class = VectorDBRegistry.get_adapter_class_by_adapter_id(
-            config.adapter_id
-        )
-        adapter = adapter_class(settings=config.build_metadata())
+        # Initialize adapter with metadata
+        adapter = config.adapter_class(settings=config.build_metadata())
 
         # Get vector store instance
         vector_store = adapter.get_vector_db_instance()
@@ -401,12 +387,8 @@ class TestVectorDBAdapters:
         """
         config = self._get_config_or_skip(provider_key)
 
-        from unstract.sdk1.adapters.vectordb.register import VectorDBRegistry
-
-        adapter_class = VectorDBRegistry.get_adapter_class_by_adapter_id(
-            config.adapter_id
-        )
-        adapter = adapter_class(settings=config.build_metadata())
+        # Initialize adapter with metadata
+        adapter = config.adapter_class(settings=config.build_metadata())
 
         # Get instance to ensure connection is established
         adapter.get_vector_db_instance()
