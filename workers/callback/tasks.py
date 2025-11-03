@@ -1571,6 +1571,9 @@ def process_batch_callback_api(
                 execution_status=execution_status,
             )
 
+            # Handle resource cleanup (matching ETL workflow behavior)
+            cleanup_result = _cleanup_execution_resources(context)
+
             # Handle pipeline updates (skip for API deployments)
             pipeline_result = _handle_pipeline_updates_unified(
                 context=context, final_status=execution_status, is_api_deployment=True
@@ -1604,6 +1607,7 @@ def process_batch_callback_api(
                 "execution_update": execution_update_result,
                 "pipeline_update": pipeline_result,
                 "notifications": notification_result,
+                "cleanup_result": cleanup_result,
                 "optimization": {
                     "method": "unified_callback_functions",
                     "eliminated_code_duplication": True,
