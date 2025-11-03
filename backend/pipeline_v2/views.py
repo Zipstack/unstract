@@ -9,7 +9,7 @@ from api_v2.postman_collection.dto import PostmanCollection
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpResponse
-from permissions.permission import IsOwner, IsOwnerOrSharedUser
+from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
@@ -52,7 +52,7 @@ class PipelineViewSet(viewsets.ModelViewSet):
     def get_permissions(self) -> list[Any]:
         if self.action in ["destroy", "partial_update", "update"]:
             return [IsOwner()]
-        return [IsOwnerOrSharedUser()]
+        return [IsOwnerOrSharedUserOrSharedToOrg()]
 
     serializer_class = PipelineSerializer
 
