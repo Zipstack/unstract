@@ -5,6 +5,7 @@ handling Flask-specific features like blueprint registration and app.logger
 integration.
 """
 
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,7 @@ class FlaskPluginManager:
     """
 
     _instance = None
+    _lock = threading.Lock()
 
     def __new__(
         cls,
@@ -38,24 +40,26 @@ class FlaskPluginManager:
         Returns:
             FlaskPluginManager singleton instance
         """
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
+        with cls._lock:
+            # Check inside lock to handle race condition
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
+                cls._instance._initialized = False
 
-        # Update app if provided
-        if app:
-            cls._instance.app = app
+            # Update app if provided
+            if app:
+                cls._instance.app = app
 
-        # Initialize or update plugin manager if parameters change
-        if plugins_dir and plugins_pkg and hasattr(cls._instance, "app"):
-            if (
-                not cls._instance._initialized
-                or cls._instance._plugins_dir != plugins_dir
-                or cls._instance._plugins_pkg != plugins_pkg
-            ):
-                cls._instance._plugins_dir = plugins_dir
-                cls._instance._plugins_pkg = plugins_pkg
-                cls._instance._init_manager()
+            # Initialize or update plugin manager if parameters change
+            if plugins_dir and plugins_pkg and hasattr(cls._instance, "app"):
+                if (
+                    not cls._instance._initialized
+                    or cls._instance._plugins_dir != plugins_dir
+                    or cls._instance._plugins_pkg != plugins_pkg
+                ):
+                    cls._instance._plugins_dir = plugins_dir
+                    cls._instance._plugins_pkg = plugins_pkg
+                    cls._instance._init_manager()
 
         return cls._instance
 
