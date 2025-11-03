@@ -427,7 +427,6 @@ class PromptStudioHelper:
             run_id=run_id,
             enable_highlight=tool.enable_highlight,
             doc_id=doc_id,
-            reindex=True,
         )
         if tool.summarize_context:
             summarize_file_path = PromptStudioHelper.summarize(
@@ -1332,7 +1331,6 @@ class PromptStudioHelper:
         profile_manager: ProfileManager,
         document_id: str,
         doc_id: str,
-        reindex: bool | None = False,
     ) -> str:
         x2text = str(profile_manager.x2text.id)
         is_extracted: bool = False
@@ -1350,7 +1348,7 @@ class PromptStudioHelper:
             profile_manager=profile_manager,
             doc_id=doc_id,
         )
-        if is_extracted and not reindex:
+        if is_extracted:
             fs_instance = EnvHelper.get_storage(
                 storage_type=StorageType.PERMANENT,
                 env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
