@@ -13,6 +13,7 @@ import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal.jsx";
 import "./PlatformSettings.css";
+import "../settings/Settings.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import { SettingsLayout } from "../settings-layout/SettingsLayout.jsx";
