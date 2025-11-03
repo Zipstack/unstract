@@ -43,9 +43,10 @@ function ExecutionLogs() {
   const [selectedDateRange, setSelectedDateRange] = useState([]);
   const [datePickerValue, setDatePickerValue] = useState(null);
   const [ordering, setOrdering] = useState(null);
-  const [pollingIds, setPollingIds] = useState(new Set());
   // Store timeouts in a ref for proper cleanup
   const pollingTimeoutsRef = useRef({});
+  // Store polling IDs in a ref to avoid stale closure issues
+  const pollingIdsRef = useRef(new Set());
   const currentPath = location.pathname !== `/${sessionDetails?.orgName}/logs`;
   const items = [
     {
@@ -135,7 +136,8 @@ function ExecutionLogs() {
       clearTimeout(pollingTimeoutsRef.current[id]);
     }
     pollingTimeoutsRef.current = {};
-    setPollingIds(new Set());
+    // Reset ref to keep it in sync
+    pollingIdsRef.current = new Set();
   };
 
   const pollExecutingRecord = async (id) => {
@@ -174,11 +176,8 @@ function ExecutionLogs() {
 
           // If status should no longer be polled, remove from polling
           if (!shouldPoll(item)) {
-            setPollingIds((prev) => {
-              const newSet = new Set(prev);
-              newSet.delete(id);
-              return newSet;
-            });
+            // Update ref to keep it in sync
+            pollingIdsRef.current.delete(id);
             clearPollingTimeout(id);
           }
         }
@@ -193,23 +192,17 @@ function ExecutionLogs() {
         );
       }
     } catch (err) {
-      setPollingIds((prev) => {
-        const newSet = new Set(prev);
-        newSet.delete(id);
-        return newSet;
-      });
+      // Update ref to keep it in sync
+      pollingIdsRef.current.delete(id);
       clearPollingTimeout(id);
     }
   };
 
   const startPollingForExecuting = (records) => {
     for (const record of records) {
-      if (shouldPoll(record) && !pollingIds.has(record.key)) {
-        setPollingIds((prev) => {
-          const newSet = new Set(prev);
-          newSet.add(record.key);
-          return newSet;
-        });
+      if (shouldPoll(record) && !pollingIdsRef.current.has(record.key)) {
+        // Update ref immediately to prevent stale closure issues
+        pollingIdsRef.current.add(record.key);
         pollExecutingRecord(record.key);
       }
     }
