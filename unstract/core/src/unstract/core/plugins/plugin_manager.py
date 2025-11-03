@@ -109,7 +109,7 @@ class PluginManager:
 
             try:
                 items = sorted(path.iterdir())
-            except (OSError, PermissionError) as e:
+            except OSError as e:
                 self.logger.warning(
                     f"Cannot access directory {path} for plugin discovery: {e}"
                 )

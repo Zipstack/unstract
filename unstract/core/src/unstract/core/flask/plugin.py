@@ -51,15 +51,19 @@ class FlaskPluginManager:
                 cls._instance.app = app
 
             # Initialize or update plugin manager if parameters change
-            if plugins_dir and plugins_pkg and hasattr(cls._instance, "app"):
-                if (
+            if (
+                plugins_dir
+                and plugins_pkg
+                and hasattr(cls._instance, "app")
+                and (
                     not cls._instance._initialized
                     or cls._instance._plugins_dir != plugins_dir
                     or cls._instance._plugins_pkg != plugins_pkg
-                ):
-                    cls._instance._plugins_dir = plugins_dir
-                    cls._instance._plugins_pkg = plugins_pkg
-                    cls._instance._init_manager()
+                )
+            ):
+                cls._instance._plugins_dir = plugins_dir
+                cls._instance._plugins_pkg = plugins_pkg
+                cls._instance._init_manager()
 
         return cls._instance
 
