@@ -129,7 +129,6 @@ class BaseChatCompletionParameters(BaseModel):
     # The number of chat completion choices to generate for each input message.
     n: int | None = 1
     timeout: float | int | None = 600
-    stream: bool | None = False
     max_tokens: int | None = None
     max_retries: int | None = None
 
