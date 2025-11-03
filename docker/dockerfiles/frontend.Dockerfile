@@ -23,7 +23,9 @@ CMD ["npm", "start"]
 ### FOR PRODUCTION ###
 # Builder stage for production build
 FROM base AS builder
+ARG REACT_APP_ENABLE_POSTHOG=true
 ENV REACT_APP_BACKEND_URL=""
+ENV REACT_APP_ENABLE_POSTHOG=${REACT_APP_ENABLE_POSTHOG}
 
 # Copy package files and install dependencies
 COPY ${BUILD_CONTEXT_PATH}/package.json ${BUILD_CONTEXT_PATH}/package-lock.json ./
