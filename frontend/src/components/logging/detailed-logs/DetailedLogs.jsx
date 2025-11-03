@@ -79,7 +79,9 @@ const DetailedLogs = () => {
     }
 
     // Check if execution is stale (>1 hour from creation)
+    if (!executionDetails?.createdAtRaw) return false;
     const createdAt = new Date(executionDetails?.createdAtRaw);
+    if (isNaN(createdAt.getTime())) return false;
     const now = new Date();
     const oneHourInMs = 60 * 60 * 1000;
     const timeDifference = now - createdAt;
