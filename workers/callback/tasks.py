@@ -1037,7 +1037,7 @@ def _get_execution_directories(context: CallbackContext) -> list[tuple[str, any,
 
     directories_to_clean = []
 
-    if is_api_execution and context.pipeline_id and context.workflow_id:
+    if is_api_execution and context.workflow_id:
         # API execution - clean BOTH API execution directory AND workflow execution directory
 
         # 1. API execution directory
@@ -1047,7 +1047,9 @@ def _get_execution_directories(context: CallbackContext) -> list[tuple[str, any,
                 execution_id=context.execution_id,
                 organization_id=context.organization_id,
             )
-            directories_to_clean.append((api_execution_dir, FileStorageType.API, "api"))
+            directories_to_clean.append(
+                (api_execution_dir, FileStorageType.API_EXECUTION, "api")
+            )
             logger.info(f"Added API execution directory for cleanup: {api_execution_dir}")
         except Exception as e:
             logger.warning(f"Could not get API execution directory: {e}")
@@ -1563,6 +1565,9 @@ def process_batch_callback_api(
             context.pipeline_name = pipeline_name
             context.pipeline_type = pipeline_type
             context.api_client = api_client
+            context.pipeline_data = {
+                "is_api": True
+            }  # Mark as API execution for cleanup logic
 
             # Add missing UI logs for cost and final workflow status (matching backend behavior)
             _publish_final_workflow_ui_logs_api(
