@@ -108,6 +108,7 @@ function ExecutionLogs() {
 
     // Check if execution is stale (>1 hour from creation)
     const createdAt = new Date(item?.createdAtRaw || item?.created_at);
+    if (!isFinite(createdAt.getTime())) return false;
     const now = new Date();
     const oneHourInMs = 60 * 60 * 1000;
     const timeDifference = now - createdAt;
