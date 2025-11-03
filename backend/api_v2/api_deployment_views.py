@@ -5,7 +5,7 @@ from typing import Any
 from configuration.models import Configuration
 from django.db.models import QuerySet
 from django.http import HttpResponse
-from permissions.permission import IsOwner, IsOwnerOrSharedUser
+from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from rest_framework import serializers, status, views, viewsets
 from rest_framework.decorators import action
@@ -168,7 +168,7 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
     def get_permissions(self) -> list[Any]:
         if self.action in ["destroy", "partial_update", "update"]:
             return [IsOwner()]
-        return [IsOwnerOrSharedUser()]
+        return [IsOwnerOrSharedUserOrSharedToOrg()]
 
     def get_queryset(self) -> QuerySet | None:
         queryset = APIDeployment.objects.for_user(self.request.user)

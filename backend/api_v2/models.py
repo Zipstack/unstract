@@ -24,12 +24,14 @@ class APIDeploymentModelManager(DefaultOrganizationManagerMixin, models.Manager)
         """Filter API deployments that the user can access:
         - API deployments created by the user
         - API deployments shared with the user
+        - API deployments shared with the entire organization
         """
         from django.db.models import Q
 
         return self.filter(
             Q(created_by=user)  # Owned by user
             | Q(shared_users=user)  # Shared with user
+            | Q(shared_to_org=True)  # Shared to entire organization
         ).distinct()
 
 
