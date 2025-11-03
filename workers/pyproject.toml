@@ -22,7 +22,8 @@ dependencies = [
     "prometheus-client>=0.17.0,<1.0.0", # Metrics collection
     "psutil>=5.9.0,<6.0.0", # System resource monitoring
     # Essential Unstract packages - with Azure support for connectors
-    "unstract-sdk[azure]~=0.78.0", # Core SDK with Azure connector support
+    "unstract-sdk[aws,gcs,azure]~=0.78.0", # Core SDK with Azure connector support
+    "unstract-sdk1[aws,gcs,azure]", # SDK v1 for feature flag support
     "unstract-connectors",
     "unstract-core",
     "unstract-flags",
@@ -193,3 +194,4 @@ unstract-tool-registry = { path = "../unstract/tool-registry", editable = true }
 unstract-flags = { path = "../unstract/flags", editable = true }
 unstract-connectors = { path = "../unstract/connectors", editable = true }
 unstract-core = { path = "../unstract/core", editable = true }
+unstract-sdk1 = { path = "../unstract/sdk1", editable = true }

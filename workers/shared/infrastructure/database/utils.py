@@ -349,10 +349,14 @@ class WorkerDatabaseUtils:
         v2_col_name = f"{single_column_name}_v2"
         has_v2_col = WorkerDatabaseUtils._has_table_column(table_info, v2_col_name)
 
-        # Safety check: Handle None data (from failed tool executions)
+        # Handle None data (from failed tool executions)
+        # IMPORTANT: Always add column to values dict to ensure it exists in table schema
+        # Without this, if first record is an error, table is created without data column
+        # and subsequent successful inserts fail
         if data is None:
-            # Don't add data columns - let database handle as NULL
-            # This prevents 'None' string from being passed to JSON columns
+            values[single_column_name] = None
+            if has_v2_col:
+                values[v2_col_name] = None
             return
 
         if isinstance(data, str):

@@ -21,6 +21,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Install system dependencies (minimal for workers)
 RUN apt-get update \
     && apt-get --no-install-recommends install -y \
+       build-essential \
        curl \
        gcc \
        libmagic-dev \

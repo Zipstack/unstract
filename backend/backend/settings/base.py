@@ -377,6 +377,7 @@ MIDDLEWARE = [
     "middleware.request_id.CustomRequestIDMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     TENANT_MIDDLEWARE,
+    "middleware.internal_api_auth.InternalAPIAuthMiddleware",  # Added to handle X-Organization-ID header from workers
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",

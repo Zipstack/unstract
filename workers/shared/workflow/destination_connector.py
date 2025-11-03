@@ -42,8 +42,15 @@ from unstract.core.file_execution_tracker import (
     FileExecutionStatusTracker,
 )
 from unstract.filesystem import FileStorageType, FileSystem
-from unstract.sdk.constants import ToolExecKey
-from unstract.sdk.tool.mime_types import EXT_MIME_MAP
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.constants import ToolExecKey
+    from unstract.sdk1.tool.mime_types import EXT_MIME_MAP
+else:
+    from unstract.sdk.constants import ToolExecKey
+    from unstract.sdk.tool.mime_types import EXT_MIME_MAP
+
 from unstract.workflow_execution.constants import (
     MetaDataKey,
     ToolMetadataKey,
@@ -897,6 +904,11 @@ class WorkerDestinationConnector:
                 table_name=table_name,
                 database_entry=values,
             )
+
+            # Remove None values from INSERT to let database handle as NULL
+            # Table schema already created with all columns (including data column)
+            # Removing None values prevents "invalid JSON" errors when inserting error records
+            values = {k: v for k, v in values.items() if v is not None}
 
             logger.info(f"Preparing SQL query data for table {table_name}")
             sql_columns_and_values = WorkerDatabaseUtils.get_sql_query_data(

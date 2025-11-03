@@ -53,6 +53,8 @@ Thumbs.db
 **/docs/
 **/*.md
 !README.md
+!unstract
+!unstract/**
 
 # Configuration that shouldn't be in containers
 **/.env*
