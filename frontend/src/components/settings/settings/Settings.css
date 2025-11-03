@@ -8,13 +8,13 @@
 
 .settings-sidebar {
     position: fixed;
-    left: 75px;
-    bottom: 60px;
-    width: 200px;
+    /* left is set dynamically via inline style based on sidebar collapsed state */
+    top: 620px;
+    width: 280px;
     background-color: #fff;
-    border-radius: 4px;
-    padding: 0;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    border-radius: 8px;
+    padding: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     z-index: 1000;
 }
 
@@ -24,25 +24,31 @@
     cursor: pointer;
     color: #000;
     transition: all 0.2s;
-    border-bottom: 1px solid #f0f0f0;
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+    display: block;
+    border-radius: 4px;
+    font-weight: 400;
 }
 
 .settings-menu-item:first-child {
-    border-radius: 4px 4px 0 0;
+    font-weight: 600;
+    margin-bottom: 4px;
 }
 
 .settings-menu-item:last-child {
-    border-bottom: none;
-    border-radius: 0 0 4px 4px;
+    margin-top: 4px;
 }
 
 .settings-menu-item:hover {
-    background-color: #f5f5f5;
+    background-color: #f3f4f6;
 }
 
 .settings-menu-item.active {
-    background-color: #e6f7ff;
-    color: #1890ff;
+    background-color: #dbeafe;
+    color: #2563eb;
     font-weight: 500;
 }
 
