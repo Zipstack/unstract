@@ -42,8 +42,15 @@ from unstract.core.file_execution_tracker import (
     FileExecutionStatusTracker,
 )
 from unstract.filesystem import FileStorageType, FileSystem
-from unstract.sdk.constants import ToolExecKey
-from unstract.sdk.tool.mime_types import EXT_MIME_MAP
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.constants import ToolExecKey
+    from unstract.sdk1.tool.mime_types import EXT_MIME_MAP
+else:
+    from unstract.sdk.constants import ToolExecKey
+    from unstract.sdk.tool.mime_types import EXT_MIME_MAP
+
 from unstract.workflow_execution.constants import (
     MetaDataKey,
     ToolMetadataKey,
@@ -121,6 +128,7 @@ class DestinationConfig:
     connector_name: str | None = None
     # Manual review / HITL support
     hitl_queue_name: str | None = None
+    hitl_packet_id: str | None = None
     # Source connector configuration for reading files
     source_connector_id: str | None = None
     source_connector_settings: dict[str, Any] = None
@@ -173,6 +181,7 @@ class DestinationConfig:
             connector_settings=connector_instance.get("connector_metadata", {}),
             connector_name=connector_instance.get("connector_name"),
             hitl_queue_name=data.get("hitl_queue_name"),
+            hitl_packet_id=data.get("hitl_packet_id"),
             source_connector_id=data.get("source_connector_id"),
             source_connector_settings=data.get("source_connector_settings", {}),
             file_execution_id=data.get("file_execution_id"),
@@ -207,6 +216,7 @@ class WorkerDestinationConnector:
 
         # Manual review / HITL support
         self.hitl_queue_name = config.hitl_queue_name
+        self.hitl_packet_id = config.hitl_packet_id
 
         # Workflow and execution context (will be set when handling output)
         self.organization_id = None
@@ -440,7 +450,10 @@ class WorkerDestinationConnector:
             return True  # Allow processing on infrastructure failure
 
     def _check_and_handle_hitl(
-        self, exec_ctx: ExecutionContext, file_ctx: FileContext, result: ProcessingResult
+        self,
+        exec_ctx: ExecutionContext,
+        file_ctx: FileContext,
+        result: ProcessingResult,
     ) -> bool:
         """Check HITL requirements and push to queue if needed."""
         has_hitl = self._should_handle_hitl(
@@ -464,7 +477,10 @@ class WorkerDestinationConnector:
         return has_hitl
 
     def _process_destination(
-        self, exec_ctx: ExecutionContext, file_ctx: FileContext, result: ProcessingResult
+        self,
+        exec_ctx: ExecutionContext,
+        file_ctx: FileContext,
+        result: ProcessingResult,
     ):
         """Route to appropriate destination handler."""
         handlers = {
@@ -481,7 +497,10 @@ class WorkerDestinationConnector:
             logger.warning(f"Unknown destination connection type: {self.connection_type}")
 
     def _handle_api_destination(
-        self, exec_ctx: ExecutionContext, file_ctx: FileContext, result: ProcessingResult
+        self,
+        exec_ctx: ExecutionContext,
+        file_ctx: FileContext,
+        result: ProcessingResult,
     ):
         """Handle API destination processing."""
         log_file_info(
@@ -503,7 +522,10 @@ class WorkerDestinationConnector:
         )
 
     def _handle_filesystem_destination(
-        self, exec_ctx: ExecutionContext, file_ctx: FileContext, result: ProcessingResult
+        self,
+        exec_ctx: ExecutionContext,
+        file_ctx: FileContext,
+        result: ProcessingResult,
     ):
         """Handle filesystem destination processing."""
         if not result.has_hitl:
@@ -513,7 +535,9 @@ class WorkerDestinationConnector:
                 f"📤 File '{file_ctx.file_name}' marked for FILESYSTEM processing - copying to destination",
             )
             self.copy_output_to_output_directory(
-                file_ctx.input_file_path, exec_ctx.file_execution_id, exec_ctx.api_client
+                file_ctx.input_file_path,
+                exec_ctx.file_execution_id,
+                exec_ctx.api_client,
             )
         else:
             logger.info(
@@ -521,7 +545,10 @@ class WorkerDestinationConnector:
             )
 
     def _handle_database_destination(
-        self, exec_ctx: ExecutionContext, file_ctx: FileContext, result: ProcessingResult
+        self,
+        exec_ctx: ExecutionContext,
+        file_ctx: FileContext,
+        result: ProcessingResult,
     ):
         """Handle database destination processing."""
         if not result.has_hitl:
@@ -549,7 +576,10 @@ class WorkerDestinationConnector:
             )
 
     def _handle_manual_review_destination(
-        self, exec_ctx: ExecutionContext, file_ctx: FileContext, result: ProcessingResult
+        self,
+        exec_ctx: ExecutionContext,
+        file_ctx: FileContext,
+        result: ProcessingResult,
     ):
         """Handle manual review destination processing."""
         log_file_info(
@@ -874,6 +904,11 @@ class WorkerDestinationConnector:
                 table_name=table_name,
                 database_entry=values,
             )
+
+            # Remove None values from INSERT to let database handle as NULL
+            # Table schema already created with all columns (including data column)
+            # Removing None values prevents "invalid JSON" errors when inserting error records
+            values = {k: v for k, v in values.items() if v is not None}
 
             logger.info(f"Preparing SQL query data for table {table_name}")
             sql_columns_and_values = WorkerDatabaseUtils.get_sql_query_data(
@@ -1365,6 +1400,13 @@ class WorkerDestinationConnector:
             )
             return False
 
+        # Check hitl_packet_id first - it takes precedence over everything else
+        if self.hitl_packet_id:
+            logger.info(
+                f"API packet override: pushing to packet queue for file {file_name}"
+            )
+            return True
+
         # Check if API deployment requested HITL override
         if self.hitl_queue_name:
             logger.info(f"{file_name}: Pushing to HITL queue")
@@ -1402,6 +1444,75 @@ class WorkerDestinationConnector:
         if is_to_hitl:
             return True
         return False
+
+    def _enqueue_to_packet_or_regular_queue(
+        self,
+        file_name: str,
+        queue_result: dict[str, Any],
+        queue_name: str,
+        workflow_util: Any,
+        ttl_seconds: int | None = None,
+    ) -> None:
+        """Route to packet queue or regular queue based on hitl_packet_id.
+
+        Args:
+            file_name: Name of the file being queued
+            queue_result: Queue result dictionary
+            queue_name: Queue name for regular queue
+            workflow_util: Workflow utility instance for queue operations
+            ttl_seconds: TTL in seconds (optional, for regular queue)
+        """
+        if self.hitl_packet_id:
+            # Route to packet queue via backend API (enterprise only)
+            logger.info(f"Routing {file_name} to packet queue {self.hitl_packet_id}")
+
+            # Access the manual review client from workflow_util
+            # Enterprise: workflow_util.client is ManualReviewAPIClient
+            # OSS: workflow_util is null implementation without client attribute
+            manual_review_client = getattr(workflow_util, "client", None)
+
+            # Check if client exists and has enqueue_to_packet method (enterprise only)
+            if not manual_review_client or not hasattr(
+                manual_review_client, "enqueue_to_packet"
+            ):
+                error_msg = (
+                    f"Packet queues are not available"
+                    f"Cannot enqueue file '{file_name}' to packet '{self.hitl_packet_id}'. "
+                    f"This is an Enterprise-only feature."
+                )
+                logger.error(error_msg)
+                raise NotImplementedError(error_msg)
+
+            # Call backend API to enqueue to packet queue
+            result = manual_review_client.enqueue_to_packet(
+                hitl_packet_id=self.hitl_packet_id,
+                queue_result=queue_result,
+                organization_id=self.organization_id,
+            )
+
+            if not result.get("success", False):
+                error_msg = (
+                    f"Failed to push {file_name} to packet {self.hitl_packet_id}: "
+                    f"{result.get('message', 'Unknown error')}"
+                )
+                logger.error(error_msg)
+                raise RuntimeError(error_msg)
+
+            logger.info(
+                f"✅ MANUAL REVIEW: File '{file_name}' sent to packet queue '{self.hitl_packet_id}' successfully"
+            )
+            return
+
+        # Route to regular queue
+        logger.info(f"Routing {file_name} to regular queue {queue_name}")
+        workflow_util.enqueue_manual_review(
+            queue_name=queue_name,
+            message=queue_result,
+            organization_id=self.organization_id,
+        )
+        logger.info(
+            f"✅ MANUAL REVIEW: File '{file_name}' sent to manual review queue '{queue_name}' successfully"
+        )
 
     def _push_data_to_queue(
         self,
@@ -1487,21 +1598,23 @@ class WorkerDestinationConnector:
             if file_content_base64 is not None:
                 queue_result.file_content = file_content_base64
 
-            workflow_util.enqueue_manual_review(
+            # Route to packet queue or regular queue based on hitl_packet_id
+            self._enqueue_to_packet_or_regular_queue(
+                file_name=file_name,
+                queue_result=queue_result.to_dict(),
                 queue_name=queue_name,
-                message=queue_result.to_dict(),
-                organization_id=self.organization_id,
+                workflow_util=workflow_util,
+                ttl_seconds=ttl_seconds,
             )
 
             # Log successful enqueue (common for both paths)
+            queue_display_name = (
+                self.hitl_packet_id if self.hitl_packet_id else queue_name
+            )
             log_file_info(
                 self.workflow_log,
                 file_execution_id,
-                f"✅ File '{file_name}' sent to manual review queue '{queue_name}'",
-            )
-
-            logger.info(
-                f"✅ MANUAL REVIEW: File '{file_name}' sent to manual review queue '{queue_name}' successfully"
+                f"✅ File '{file_name}' sent to manual review queue '{queue_display_name}'",
             )
 
         except Exception as e:
