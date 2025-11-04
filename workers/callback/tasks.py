@@ -1519,23 +1519,27 @@ def process_batch_callback_api(
 
             # Get pipeline name and type (simplified approach)
             if not pipeline_id:
-                error_msg = f"No pipeline_id provided for API callback. execution_id={execution_id}, workflow_id={workflow_id}"
-                logger.error(error_msg)
-                raise ValueError(error_msg)
-
-            # Use simplified pipeline data fetching
-            pipeline_name, pipeline_type = _fetch_pipeline_data_simplified(
-                pipeline_id, schema_name, api_client, is_api_deployment=True
-            )
-
-            if pipeline_name:
                 logger.info(
-                    f"✅ Found pipeline: name='{pipeline_name}', type='{pipeline_type}'"
+                    f"No pipeline_id provided for API callback (testing mode). "
+                    f"execution_id={execution_id}, workflow_id={workflow_id}. "
+                    f"APIDeployment-specific updates and notifications will be skipped."
                 )
+                pipeline_name = None
+                pipeline_type = None
             else:
-                logger.warning(f"Could not fetch pipeline data for {pipeline_id}")
-                pipeline_name = "Unknown API"
-                pipeline_type = PipelineType.API.value
+                # Use simplified pipeline data fetching
+                pipeline_name, pipeline_type = _fetch_pipeline_data_simplified(
+                    pipeline_id, schema_name, api_client, is_api_deployment=True
+                )
+
+                if pipeline_name:
+                    logger.info(
+                        f"✅ Found pipeline: name='{pipeline_name}', type='{pipeline_type}'"
+                    )
+                else:
+                    logger.warning(f"Could not fetch pipeline data for {pipeline_id}")
+                    pipeline_name = "Unknown API"
+                    pipeline_type = PipelineType.API.value
 
             # Use unified status determination with timeout detection
             aggregated_results, execution_status, expected_files = (
@@ -1579,10 +1583,20 @@ def process_batch_callback_api(
             # Handle resource cleanup (matching ETL workflow behavior)
             cleanup_result = _cleanup_execution_resources(context)
 
-            # Handle pipeline updates (skip for API deployments)
-            pipeline_result = _handle_pipeline_updates_unified(
-                context=context, final_status=execution_status, is_api_deployment=True
-            )
+            # Handle pipeline updates (only if pipeline_id exists)
+            if context.pipeline_id:
+                pipeline_result = _handle_pipeline_updates_unified(
+                    context=context, final_status=execution_status, is_api_deployment=True
+                )
+            else:
+                logger.info(
+                    f"Skipping pipeline status update for execution {execution_id} "
+                    f"since no APIDeployment record"
+                )
+                pipeline_result = {
+                    "skipped": True,
+                    "reason": "execute without APIDeployment record",
+                }
 
             # Handle notifications using unified function
             notification_result = _handle_notifications_unified(
