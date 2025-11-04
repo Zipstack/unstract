@@ -50,6 +50,9 @@ from prompt_studio.prompt_studio_core_v2.exceptions import (
     PermissionError,
     ToolNotValid,
 )
+from prompt_studio.prompt_studio_core_v2.extraction_path_helper import (
+    ExtractionPathHelper,
+)
 from prompt_studio.prompt_studio_core_v2.migration_utils import (
     SummarizeMigrationUtils,
 )
@@ -849,8 +852,8 @@ class PromptStudioHelper:
         util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
         file_path = doc_path
         directory, filename = os.path.split(doc_path)
-        doc_path = os.path.join(
-            directory, "extract", os.path.splitext(filename)[0] + ".txt"
+        doc_path = ExtractionPathHelper.get_extraction_path(
+            directory, filename, tool.enable_highlight
         )
         is_summary = tool.summarize_as_source
         logger.info(f"Summary status : {is_summary}")
@@ -1101,8 +1104,8 @@ class PromptStudioHelper:
         vector_db = str(profile_manager.vector_store.id)
         x2text_adapter = str(profile_manager.x2text.id)
         directory, filename = os.path.split(file_path)
-        file_path = os.path.join(
-            directory, "extract", os.path.splitext(filename)[0] + ".txt"
+        file_path = ExtractionPathHelper.get_extraction_path(
+            directory, filename, enable_highlight
         )
         try:
             usage_kwargs = {"run_id": run_id}
@@ -1233,8 +1236,8 @@ class PromptStudioHelper:
         )
         util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
         directory, filename = os.path.split(input_file_path)
-        file_path = os.path.join(
-            directory, "extract", os.path.splitext(filename)[0] + ".txt"
+        file_path = ExtractionPathHelper.get_extraction_path(
+            directory, filename, tool.enable_highlight
         )
         doc_id = IndexingUtils.generate_index_key(
             vector_db=str(default_profile.vector_store.id),
@@ -1337,8 +1340,8 @@ class PromptStudioHelper:
         extract_file_path: str | None = None
         extracted_text = ""
         directory, filename = os.path.split(file_path)
-        extract_file_path = os.path.join(
-            directory, "extract", os.path.splitext(filename)[0] + ".txt"
+        extract_file_path = ExtractionPathHelper.get_extraction_path(
+            directory, filename, enable_highlight
         )
         usage_kwargs = {"run_id": run_id}
         # Orginal file name with which file got uploaded in prompt studio
@@ -1354,16 +1357,22 @@ class PromptStudioHelper:
                 storage_type=StorageType.PERMANENT,
                 env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
             )
-            try:
-                extracted_text = fs_instance.read(path=extract_file_path, mode="r")
-                logger.info("Extracted text found. Reading from file..")
-                return extracted_text
-            except FileNotFoundError as e:
+            # Check if exact file exists (no fallback to opposite mode)
+            if fs_instance.exists(extract_file_path):
+                try:
+                    extracted_text = fs_instance.read(path=extract_file_path, mode="r")
+                    logger.info(f"Extracted text found at {extract_file_path}")
+                    return extracted_text
+                except FileNotFoundError as e:
+                    logger.warning(
+                        f"DB says extracted but file not accessible: {extract_file_path}. {e}. "
+                        "Re-extracting..."
+                    )
+            else:
                 logger.warning(
-                    f"File not found for extraction. {extract_file_path}. {e}"
-                    "Continuing extraction.."
+                    f"DB says extracted but file doesn't exist: {extract_file_path}. "
+                    "Re-extracting..."
                 )
-                extracted_text = None
         payload = {
             IKeys.X2TEXT_INSTANCE_ID: x2text,
             IKeys.FILE_PATH: file_path,

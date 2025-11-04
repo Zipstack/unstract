@@ -42,6 +42,9 @@ from prompt_studio.prompt_studio_core_v2.exceptions import (
     MaxProfilesReachedError,
     ToolDeleteError,
 )
+from prompt_studio.prompt_studio_core_v2.extraction_path_helper import (
+    ExtractionPathHelper,
+)
 from prompt_studio.prompt_studio_core_v2.migration_utils import SummarizeMigrationUtils
 from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import PromptStudioHelper
 from prompt_studio.prompt_studio_core_v2.retrieval_strategies import (
@@ -447,9 +450,14 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             allowed_content_types = file_converter.get_extented_file_information_key()
         filename_without_extension = file_name.rsplit(".", 1)[0]
         if view_type == FileViewTypes.EXTRACT:
-            file_name = (
-                f"{FileViewTypes.EXTRACT.lower()}/{filename_without_extension}.txt"
+            # Use ExtractionPathHelper to get correct path based on highlight setting
+            # Always use explicit suffix (_plain or _highlighted)
+            suffix = (
+                ExtractionPathHelper.HIGHLIGHT_SUFFIX
+                if custom_tool.enable_highlight
+                else ExtractionPathHelper.PLAIN_SUFFIX
             )
+            file_name = f"{FileViewTypes.EXTRACT.lower()}/{filename_without_extension}{suffix}.txt"
         if view_type == FileViewTypes.SUMMARIZE:
             file_name = (
                 f"{FileViewTypes.SUMMARIZE.lower()}/{filename_without_extension}.txt"
