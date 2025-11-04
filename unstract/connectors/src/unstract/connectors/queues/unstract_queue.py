@@ -93,3 +93,11 @@ class UnstractQueue(UnstractConnector, ABC):
     @abstractmethod
     def keys(self, pattern: str = "*") -> list[str]:
         pass
+
+    @abstractmethod
+    def lrange(self, queue_name: str, start: int, end: int) -> list[Any]:
+        pass
+
+    @abstractmethod
+    def dequeue_batch(self, queue_name: str, count: int) -> list[Any]:
+        pass

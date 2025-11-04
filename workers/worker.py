@@ -32,19 +32,14 @@ from shared.models.worker_models import get_celery_setting  # noqa: E402
 WORKER_TYPE = os.environ.get("WORKER_TYPE", "general")
 
 # Convert WORKER_TYPE string to WorkerType enum
-# Handle directory name mapping: directories use hyphens, enums use underscores
-worker_type_mapping = {
-    "api-deployment": WorkerType.API_DEPLOYMENT,
-    "api_deployment": WorkerType.API_DEPLOYMENT,
-    "file_processing": WorkerType.FILE_PROCESSING,
-    "file-processing": WorkerType.FILE_PROCESSING,
-    "log_consumer": WorkerType.LOG_CONSUMER,
-    "log-consumer": WorkerType.LOG_CONSUMER,
-    "general": WorkerType.GENERAL,
-    "callback": WorkerType.CALLBACK,
-    "notification": WorkerType.NOTIFICATION,
-    "scheduler": WorkerType.SCHEDULER,
-}
+# Build mapping dynamically from all available WorkerType enum values
+# This automatically includes pluggable workers without hardcoding them
+worker_type_mapping = {}
+for wt in WorkerType:
+    # Add both underscore and hyphen versions
+    worker_type_mapping[wt.value] = wt
+    worker_type_mapping[wt.value.replace("-", "_")] = wt
+    worker_type_mapping[wt.value.replace("_", "-")] = wt
 
 # Get the WorkerType enum
 worker_type = worker_type_mapping.get(WORKER_TYPE, WorkerType.GENERAL)
@@ -399,18 +394,14 @@ initialize_worker_infrastructure()
 logger.info("✅ Worker infrastructure initialized successfully")
 
 # Import tasks from the worker-specific directory
-# Handle directory name mapping for task imports
-worker_dir_mapping = {
-    WorkerType.API_DEPLOYMENT: "api-deployment",
-    WorkerType.FILE_PROCESSING: "file_processing",
-    WorkerType.LOG_CONSUMER: "log_consumer",
-    WorkerType.GENERAL: "general",
-    WorkerType.CALLBACK: "callback",
-    WorkerType.NOTIFICATION: "notification",
-    WorkerType.SCHEDULER: "scheduler",
-}
+# Determine worker path dynamically based on worker type
+if worker_type.is_pluggable():
+    # Pluggable workers are in pluggable_worker/{worker_name}
+    worker_directory = f"pluggable_worker/{worker_type.value}"
+else:
+    # Core workers use their value directly (with hyphens converted to underscores where needed)
+    worker_directory = worker_type.value.replace("-", "_")
 
-worker_directory = worker_dir_mapping.get(worker_type, WORKER_TYPE)
 worker_path = os.path.join(os.path.dirname(__file__), worker_directory)
 
 # Add worker directory to path for task imports

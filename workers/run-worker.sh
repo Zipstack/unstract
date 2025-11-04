@@ -40,6 +40,9 @@ declare -A WORKERS=(
     ["all"]="all"
 )
 
+# Pluggable workers will be auto-discovered at runtime
+declare -A PLUGGABLE_WORKERS=()
+
 # Worker queue mappings
 declare -A WORKER_QUEUES=(
     ["api-deployment"]="celery_api_deployments"
@@ -77,7 +80,9 @@ WORKER_TYPE:
     log, log-consumer     Run log consumer worker
     notification, notify  Run notification worker
     scheduler, schedule   Run scheduler worker (scheduled pipeline tasks)
-    all                   Run all workers (in separate processes)
+    all                   Run all workers (in separate processes, includes auto-discovered pluggable workers)
+
+Note: Pluggable workers in pluggable_worker/ directory are automatically discovered and can be run by name.
 
 OPTIONS:
     -e, --env-file FILE   Use specific environment file (default: .env)
@@ -142,6 +147,7 @@ HEALTH CHECKS:
     - Log Consumer: http://localhost:8084/health
     - Notification: http://localhost:8085/health
     - Scheduler: http://localhost:8087/health
+    - Pluggable workers: http://localhost:8090+/health (auto-assigned ports)
 
 EOF
 }
@@ -165,6 +171,68 @@ load_env() {
     else
         print_status $YELLOW "Warning: Environment file not found: $env_file"
         print_status $YELLOW "Make sure required environment variables are set"
+    fi
+}
+
+# Function to discover pluggable workers
+discover_pluggable_workers() {
+    local pluggable_dir="$WORKERS_DIR/pluggable_worker"
+
+    # Silently return if pluggable_worker directory doesn't exist
+    if [[ ! -d "$pluggable_dir" ]]; then
+        return
+    fi
+
+    local discovered_count=0
+
+    # Scan for directories with worker.py
+    for worker_path in "$pluggable_dir"/*; do
+        # Skip if not a directory
+        if [[ ! -d "$worker_path" ]]; then
+            continue
+        fi
+
+        local worker_name=$(basename "$worker_path")
+
+        # Skip special directories (starting with _ or .)
+        if [[ "$worker_name" == _* ]] || [[ "$worker_name" == .* ]]; then
+            continue
+        fi
+
+        # Check if worker.py exists
+        if [[ -f "$worker_path/worker.py" ]]; then
+            # Register the pluggable worker
+            PLUGGABLE_WORKERS["$worker_name"]="$worker_name"
+
+            # Add hyphenated alias for convenience (e.g., bulk-download -> bulk_download)
+            local hyphenated_name="${worker_name//_/-}"
+            if [[ "$hyphenated_name" != "$worker_name" ]]; then
+                PLUGGABLE_WORKERS["$hyphenated_name"]="$worker_name"
+            fi
+
+            # Add shorthand alias (e.g., bulk -> bulk_download)
+            local first_part="${worker_name%%_*}"
+            if [[ "$first_part" != "$worker_name" ]]; then
+                PLUGGABLE_WORKERS["$first_part"]="$worker_name"
+            fi
+
+            # Set default queue if not already defined
+            if [[ -z "${WORKER_QUEUES[$worker_name]:-}" ]]; then
+                WORKER_QUEUES["$worker_name"]="$worker_name"
+            fi
+
+            # Assign health port dynamically (starting from 8090)
+            if [[ -z "${WORKER_HEALTH_PORTS[$worker_name]:-}" ]]; then
+                WORKER_HEALTH_PORTS["$worker_name"]=$((8090 + discovered_count))
+            fi
+
+            print_status $GREEN "Discovered pluggable worker: $worker_name"
+            ((discovered_count++))
+        fi
+    done
+
+    if [[ $discovered_count -gt 0 ]]; then
+        print_status $BLUE "Total pluggable workers: $discovered_count"
     fi
 }
 
@@ -233,7 +301,14 @@ show_status() {
     print_status $BLUE "Worker Status:"
     echo "=============="
 
-    for worker in api-deployment general file_processing callback log_consumer notification scheduler; do
+    local workers_to_check="api-deployment general file_processing callback log_consumer notification scheduler"
+
+    # Add pluggable workers if in cloud deployment
+    if [[ "${CLOUD_DEPLOYMENT,,}" == "true" ]]; then
+        workers_to_check="$workers_to_check bulk_download"
+    fi
+
+    for worker in $workers_to_check; do
         local worker_dir="$WORKERS_DIR/$worker"
         local health_port="${WORKER_HEALTH_PORTS[$worker]}"
         local pids=$(get_worker_pids "$worker")
@@ -269,10 +344,32 @@ run_worker() {
     local pool_type=$7
     local custom_hostname=$8
 
-    local worker_dir="$WORKERS_DIR/$worker_type"
+    # Determine worker directory (handle pluggable workers)
+    local worker_dir
+    case "$worker_type" in
+        "bulk_download")
+            # Pluggable worker - use subdirectory
+            worker_dir="$WORKERS_DIR/pluggable_worker/$worker_type"
+            ;;
+        *)
+            # Core worker - use root directory
+            worker_dir="$WORKERS_DIR/$worker_type"
+            ;;
+    esac
 
     if [[ ! -d "$worker_dir" ]]; then
         print_status $RED "Error: Worker directory not found: $worker_dir"
+
+        # Provide helpful message for pluggable workers
+        if [[ "$worker_type" == "bulk_download" ]]; then
+            echo ""
+            echo -e "${YELLOW}This is a cloud-only pluggable worker.${NC}"
+            echo -e "Make sure:"
+            echo -e "  1. CLOUD_DEPLOYMENT=true is set in your environment"
+            echo -e "  2. The pluggable_worker/$worker_type folder exists"
+            echo ""
+        fi
+
         exit 1
     fi
 
@@ -280,6 +377,14 @@ run_worker() {
     export WORKER_NAME="${worker_type}-worker"
     export WORKER_TYPE="$(echo "$worker_type" | tr '-' '_')"  # Convert hyphens to underscores for Python module names
     export LOG_LEVEL="${log_level:-INFO}"
+
+    # Set CLOUD_DEPLOYMENT for pluggable workers
+    case "$worker_type" in
+        "bulk_download")
+            export CLOUD_DEPLOYMENT=true
+            print_status $BLUE "Cloud deployment enabled for pluggable worker"
+            ;;
+    esac
 
     # Set health port if specified
     if [[ -n "$health_port" ]]; then
@@ -305,6 +410,9 @@ run_worker() {
             "scheduler")
                 export SCHEDULER_HEALTH_PORT="$health_port"
                 ;;
+            "bulk_download")
+                export BULK_DOWNLOAD_HEALTH_PORT="$health_port"
+                ;;
         esac
     fi
 
@@ -319,9 +427,22 @@ run_worker() {
         worker_instance_name="${worker_type}-worker-${WORKER_INSTANCE_ID}"
     fi
 
+    # Determine celery app module path (handle pluggable workers)
+    local celery_app_module
+    case "$worker_type" in
+        "bulk_download")
+            # Pluggable worker - use full module path
+            celery_app_module="pluggable_worker.${worker_type}.worker"
+            ;;
+        *)
+            # Core worker - use worker module
+            celery_app_module="worker"
+            ;;
+    esac
+
     # Build celery command
     local cmd_args=(
-        "uv" "run" "celery" "-A" "worker" "worker"
+        "uv" "run" "celery" "-A" "$celery_app_module" "worker"
         "--loglevel=${log_level:-info}"
         "--queues=$queues"
         "--hostname=${worker_instance_name}@%h"
@@ -361,6 +482,9 @@ run_worker() {
             "scheduler")
                 cmd_args+=("--concurrency=2")
                 ;;
+            "bulk_download")
+                cmd_args+=("--concurrency=2")
+                ;;
         esac
     fi
 
@@ -371,7 +495,17 @@ run_worker() {
     print_status $BLUE "Health Port: ${WORKER_HEALTH_PORTS[$worker_type]}"
     print_status $BLUE "Command: ${cmd_args[*]}"
 
-    cd "$worker_dir"
+    # Change to appropriate directory
+    # For pluggable workers, stay at workers root to allow module imports
+    # For core workers, change to worker directory
+    case "$worker_type" in
+        "bulk_download")
+            cd "$WORKERS_DIR"
+            ;;
+        *)
+            cd "$worker_dir"
+            ;;
+    esac
 
     if [[ "$detach" == "true" ]]; then
         # Run in background
@@ -394,8 +528,28 @@ run_all_workers() {
 
     print_status $GREEN "Starting all workers..."
 
+    # Define core workers
+    local core_workers="api-deployment general file_processing callback log_consumer notification scheduler"
+
+    # Add discovered pluggable workers
+    if [[ ${#PLUGGABLE_WORKERS[@]} -gt 0 ]]; then
+        print_status $BLUE "Including pluggable workers in 'all' mode"
+
+        # Get unique pluggable worker names (skip aliases)
+        local pluggable_list=""
+        for key in "${!PLUGGABLE_WORKERS[@]}"; do
+            local value="${PLUGGABLE_WORKERS[$key]}"
+            # Only add if it's the canonical name (not an alias)
+            if [[ "$key" == "$value" ]]; then
+                pluggable_list="$pluggable_list $value"
+            fi
+        done
+
+        core_workers="$core_workers$pluggable_list"
+    fi
+
     # Always run all workers in background when using "all"
-    for worker in api-deployment general file_processing callback log_consumer notification scheduler; do
+    for worker in $core_workers; do
         print_status $BLUE "Starting $worker worker in background..."
 
         # Run each worker in background
@@ -507,14 +661,29 @@ if [[ -z "$WORKER_TYPE" ]]; then
     exit 1
 fi
 
-if [[ -z "${WORKERS[$WORKER_TYPE]}" ]]; then
-    print_status $RED "Error: Unknown worker type: $WORKER_TYPE"
-    print_status $BLUE "Available workers: ${!WORKERS[*]}"
-    exit 1
-fi
-
 # Load environment
 load_env "$ENV_FILE"
+
+# Discover pluggable workers
+discover_pluggable_workers
+
+# Validate worker type (check both core and pluggable workers)
+if [[ -z "${WORKERS[$WORKER_TYPE]}" ]] && [[ -z "${PLUGGABLE_WORKERS[$WORKER_TYPE]}" ]]; then
+    print_status $RED "Error: Unknown worker type: $WORKER_TYPE"
+    print_status $BLUE "Available core workers: ${!WORKERS[*]}"
+    if [[ ${#PLUGGABLE_WORKERS[@]} -gt 0 ]]; then
+        # Show unique pluggable worker names (not aliases)
+        local pluggable_names=""
+        for key in "${!PLUGGABLE_WORKERS[@]}"; do
+            local value="${PLUGGABLE_WORKERS[$key]}"
+            if [[ "$key" == "$value" ]]; then
+                pluggable_names="$pluggable_names $value"
+            fi
+        done
+        print_status $BLUE "Available pluggable workers:$pluggable_names"
+    fi
+    exit 1
+fi
 
 # Validate environment
 validate_env
@@ -526,6 +695,10 @@ export PYTHONPATH="$WORKERS_DIR:${PYTHONPATH:-}"
 if [[ "$WORKER_TYPE" == "all" ]]; then
     run_all_workers "$DETACH" "$LOG_LEVEL" "$CONCURRENCY" "$POOL_TYPE"
 else
+    # Resolve worker directory name from either WORKERS or PLUGGABLE_WORKERS
     WORKER_DIR_NAME="${WORKERS[$WORKER_TYPE]}"
-    run_worker "$WORKER_DIR_NAME" "$DETACH" "$LOG_LEVEL" "$CONCURRENCY" "$CUSTOM_QUEUES" "$HEALTH_PORT" "$POOL_TYPE" "$CUSTOM_HOSTNAME"
+    if [[ -z "$WORKER_DIR_NAME" ]]; then
+        WORKER_DIR_NAME="${PLUGGABLE_WORKERS[$WORKER_TYPE]}"
+    fi
+    run_worker "$WORKER_DIR_NAME" "$DETACH" "$LOG_LEVEL" "$CONCURRENCY" "$CUSTOM_QUEUES" "$HEALTH_PORT" "$CUSTOM_HOSTNAME"
 fi

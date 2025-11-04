@@ -22,7 +22,7 @@ WORKERS_DIR="/app"
 # Default environment file
 ENV_FILE="/app/.env"
 
-# Available workers
+# Available core workers (OSS)
 declare -A WORKERS=(
     ["api"]="api_deployment"
     ["api-deployment"]="api_deployment"
@@ -37,6 +37,10 @@ declare -A WORKERS=(
     ["schedule"]="scheduler"
     ["all"]="all"
 )
+
+# Pluggable workers will be auto-discovered at runtime
+# Note: All workers use the main 'worker' module which routes to correct tasks via WORKER_TYPE env var
+declare -A PLUGGABLE_WORKERS=()
 
 # Worker queue mappings
 declare -A WORKER_QUEUES=(
@@ -82,6 +86,82 @@ load_env() {
     fi
 }
 
+# Function to discover pluggable workers
+discover_pluggable_workers() {
+    local pluggable_dir="/app/pluggable_worker"
+
+    # Silently return if pluggable_worker directory doesn't exist
+    if [[ ! -d "$pluggable_dir" ]]; then
+        return
+    fi
+
+    local discovered_count=0
+
+    # Scan for directories with worker.py
+    for worker_path in "$pluggable_dir"/*; do
+        # Skip if not a directory
+        if [[ ! -d "$worker_path" ]]; then
+            continue
+        fi
+
+        local worker_name=$(basename "$worker_path")
+
+        # Skip special directories (starting with _ or .)
+        if [[ "$worker_name" == _* ]] || [[ "$worker_name" == .* ]]; then
+            continue
+        fi
+
+        # Check if worker.py exists
+        if [[ -f "$worker_path/worker.py" ]]; then
+            # Register the pluggable worker
+            PLUGGABLE_WORKERS["$worker_name"]="$worker_name"
+
+            # Add hyphenated alias for convenience (e.g., bulk-download -> bulk_download)
+            local hyphenated_name="${worker_name//_/-}"
+            if [[ "$hyphenated_name" != "$worker_name" ]]; then
+                PLUGGABLE_WORKERS["$hyphenated_name"]="$worker_name"
+            fi
+
+            # Set default queue if not already defined
+            if [[ -z "${WORKER_QUEUES[$worker_name]:-}" ]]; then
+                WORKER_QUEUES["$worker_name"]="$worker_name"
+            fi
+
+            # Assign health port dynamically (starting from 8090)
+            if [[ -z "${WORKER_HEALTH_PORTS[$worker_name]:-}" ]]; then
+                WORKER_HEALTH_PORTS["$worker_name"]=$((8090 + discovered_count))
+            fi
+
+            print_status $GREEN "Discovered pluggable worker: $worker_name"
+            ((discovered_count++))
+        fi
+    done
+
+    if [[ $discovered_count -gt 0 ]]; then
+        print_status $BLUE "Total pluggable workers: $discovered_count"
+    fi
+}
+
+
+# Function to resolve worker type (supports both core and pluggable workers)
+resolve_worker_type() {
+    local worker_type=$1
+
+    # Check core workers first
+    if [[ -n "${WORKERS[$worker_type]:-}" ]]; then
+        echo "${WORKERS[$worker_type]}"
+        return
+    fi
+
+    # Check pluggable workers
+    if [[ -n "${PLUGGABLE_WORKERS[$worker_type]:-}" ]]; then
+        echo "${PLUGGABLE_WORKERS[$worker_type]}"
+        return
+    fi
+
+    # Return as-is if not found (will be validated later)
+    echo "$worker_type"
+}
 
 # Function to detect worker type from command-line arguments
 detect_worker_type_from_args() {
@@ -214,6 +294,12 @@ run_worker() {
             export SCHEDULER_HEALTH_PORT="${health_port}"
             export SCHEDULER_METRICS_PORT="${health_port}"
             ;;
+        *)
+            # Default for pluggable workers
+            local worker_type_upper=$(echo "$worker_type" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+            export "${worker_type_upper}_HEALTH_PORT=${health_port}"
+            export "${worker_type_upper}_METRICS_PORT=${health_port}"
+            ;;
     esac
 
     # Determine concurrency settings
@@ -240,6 +326,12 @@ run_worker() {
         "scheduler")
             concurrency="${WORKER_SCHEDULER_CONCURRENCY:-2}"
             ;;
+        *)
+            # Default for pluggable workers or unknown types
+            local worker_type_upper=$(echo "$worker_type" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+            local worker_concurrency_var="WORKER_${worker_type_upper}_CONCURRENCY"
+            concurrency="${!worker_concurrency_var:-2}"
+            ;;
     esac
 
     print_status $GREEN "Starting $worker_type worker..."
@@ -250,6 +342,7 @@ run_worker() {
     print_status $BLUE "Concurrency: $concurrency"
 
     # Build Celery command with configurable options
+    # Use main worker module - it handles both core and pluggable workers via WORKER_TYPE
     local app_module="${CELERY_APP_MODULE:-worker}"
 
     # Initial command without specific args - they'll be resolved with priority system
@@ -377,6 +470,9 @@ run_worker() {
 # Load environment first for any needed variables
 load_env "$ENV_FILE"
 
+# Discover pluggable workers (cloud-only)
+discover_pluggable_workers
+
 # Add PYTHONPATH for imports - include both /app and /unstract for packages
 export PYTHONPATH="/app:/unstract/core/src:/unstract/connectors/src:/unstract/filesystem/src:/unstract/flags/src:/unstract/tool-registry/src:/unstract/tool-sandbox/src:/unstract/workflow-execution/src:${PYTHONPATH:-}"
 
@@ -438,6 +534,13 @@ if [[ "$1" == *"celery"* ]] || [[ "$1" == *".venv"* ]]; then
             export SCHEDULER_HEALTH_PORT="8087"
             export SCHEDULER_METRICS_PORT="8087"
             ;;
+        *)
+            # Default for pluggable workers - use dynamic port from WORKER_HEALTH_PORTS
+            local health_port="${WORKER_HEALTH_PORTS[$WORKER_TYPE]:-8090}"
+            local worker_type_upper=$(echo "$WORKER_TYPE" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+            export "${worker_type_upper}_HEALTH_PORT=$health_port"
+            export "${worker_type_upper}_METRICS_PORT=$health_port"
+            ;;
     esac
 
     print_status $GREEN "✅ Executing Celery command with highest priority..."
@@ -449,8 +552,15 @@ else
     # =============================================================================
     # PATH 2: Traditional Worker Type - Build from Environment
     # =============================================================================
-    WORKER_TYPE="${1:-general}"
-    print_status $BLUE "🔧 Traditional worker type detected: $WORKER_TYPE"
+    REQUESTED_WORKER_TYPE="${1:-general}"
+
+    # Resolve worker type (supports both core and pluggable workers)
+    WORKER_TYPE=$(resolve_worker_type "$REQUESTED_WORKER_TYPE")
+
+    print_status $BLUE "🔧 Traditional worker type detected: $REQUESTED_WORKER_TYPE"
+    if [[ "$WORKER_TYPE" != "$REQUESTED_WORKER_TYPE" ]]; then
+        print_status $BLUE "   Resolved to: $WORKER_TYPE"
+    fi
     print_status $BLUE "Building command from environment variables..."
 
     # Use existing run_worker function for environment-based building

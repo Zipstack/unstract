@@ -646,6 +646,9 @@ backend/plugins/verticals_usage/**
 # BE pluggable-apps
 backend/pluggable_apps/*
 
+# Workers pluggable workers (cloud-only) - entire directory ignored
+workers/pluggable_worker/
+
 # FE Plugins
 frontend/src/plugins/*
 frontend/public/llm-whisperer/
