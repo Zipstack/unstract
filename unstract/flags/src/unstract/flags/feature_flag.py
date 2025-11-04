@@ -33,9 +33,7 @@ def check_feature_flag_status(
     try:
         # Resolve namespace: use provided value, or env var, or fallback.
         if namespace_key is None:
-            namespace_key = os.environ.get(
-                "UNSTRACT_FEATURE_FLAG_NAMESPACE", "default"
-            )
+            namespace_key = os.environ.get("UNSTRACT_FEATURE_FLAG_NAMESPACE", "default")
 
         FLIPT_SERVICE_AVAILABLE = (
             os.environ.get("FLIPT_SERVICE_AVAILABLE", "false").lower() == "true"
