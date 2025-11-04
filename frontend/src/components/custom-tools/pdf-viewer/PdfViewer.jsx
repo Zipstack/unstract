@@ -24,9 +24,13 @@ function PdfViewer({ fileUrl, highlightData, currentHighlightIndex }) {
   function removeZerosAndDeleteIfAllZero(highlightData) {
     if (Array.isArray(highlightData))
       return highlightData?.filter((innerArray) => {
-        return (
-          Array.isArray(innerArray) && innerArray?.some((value) => value !== 0)
-        );
+        if (!Array.isArray(innerArray)) return false;
+        // Strip 5th element (confidence) if present, keep only first 4 elements
+        const coordsOnly = innerArray.length >= 5 ? innerArray.slice(0, 4) : innerArray;
+        return coordsOnly.some((value) => value !== 0);
+      }).map((innerArray) => {
+        // Return only the first 4 elements (strip confidence)
+        return innerArray.length >= 5 ? innerArray.slice(0, 4) : innerArray;
       });
   }
 

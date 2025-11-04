@@ -171,7 +171,9 @@ const PromptCard = memo(
 
     const addCoordsToFlattened = (coords, flattened) => {
       if (Array.isArray(coords)) {
-        flattened.push(coords);
+        // Strip 5th element (confidence) if present, keep only first 4 elements
+        const coordsOnly = coords.length >= 5 ? coords.slice(0, 4) : coords;
+        flattened.push(coordsOnly);
       }
     };
 
@@ -211,6 +213,43 @@ const PromptCard = memo(
       return flattened;
     };
 
+    const extractConfidenceFromHighlightData = (data) => {
+      if (!data) return null;
+
+      const confidenceValues = [];
+
+      const extractFromArray = (arr) => {
+        if (Array.isArray(arr)) {
+          arr.forEach((item) => {
+            if (Array.isArray(item)) {
+              // Check if this is a coordinate array with 5 elements
+              if (item.length >= 5 && typeof item[4] === 'number') {
+                confidenceValues.push(item[4]);
+              } else {
+                // Recursively check nested arrays
+                extractFromArray(item);
+              }
+            } else if (typeof item === 'object' && item !== null) {
+              // Recursively check objects
+              Object.values(item).forEach(val => extractFromArray(val));
+            }
+          });
+        } else if (typeof arr === 'object' && arr !== null) {
+          Object.values(arr).forEach(val => extractFromArray(val));
+        }
+      };
+
+      extractFromArray(data);
+
+      // Calculate average confidence if we found any values
+      if (confidenceValues.length > 0) {
+        const sum = confidenceValues.reduce((acc, val) => acc + val, 0);
+        return sum / confidenceValues.length;
+      }
+
+      return null;
+    };
+
     const handleSelectHighlight = (
       highlightData,
       highlightedPrompt,
@@ -224,12 +263,17 @@ const PromptCard = memo(
           !Array.isArray(highlightData)
             ? flattenHighlightData(highlightData)
             : highlightData;
+
+        // Try to extract confidence from 5th element first, fall back to API confidenceData
+        const extractedConfidence = extractConfidenceFromHighlightData(highlightData);
+        const finalConfidence = extractedConfidence ?? confidenceData;
+
         updateCustomTool({
           selectedHighlight: {
             highlight: processedHighlight,
             highlightedPrompt: highlightedPrompt,
             highlightedProfile: highlightedProfile,
-            confidence: confidenceData,
+            confidence: finalConfidence,
           },
         });
       }
