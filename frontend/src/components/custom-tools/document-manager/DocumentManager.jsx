@@ -377,7 +377,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
                   {(() => {
                     const { confidence } = selectedHighlight || {};
                     // Handle new format: confidence is a number (average)
-                    if (typeof confidence === 'number') {
+                    if (typeof confidence === "number") {
                       return confidence.toFixed(2);
                     }
                     // Handle old format: nested array structure
@@ -385,7 +385,10 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
                       return confidence[0][0].confidence;
                     }
                     // Handle old format: empty array means confidence = 1
-                    if (Array.isArray(confidence?.[0]) && confidence[0].length === 0) {
+                    if (
+                      Array.isArray(confidence?.[0]) &&
+                      confidence[0].length === 0
+                    ) {
                       return "1";
                     }
                     return "NA";

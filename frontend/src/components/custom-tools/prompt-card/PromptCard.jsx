@@ -223,19 +223,19 @@ const PromptCard = memo(
           arr.forEach((item) => {
             if (Array.isArray(item)) {
               // Check if this is a coordinate array with 5 elements
-              if (item.length >= 5 && typeof item[4] === 'number') {
+              if (item.length >= 5 && typeof item[4] === "number") {
                 confidenceValues.push(item[4]);
               } else {
                 // Recursively check nested arrays
                 extractFromArray(item);
               }
-            } else if (typeof item === 'object' && item !== null) {
+            } else if (typeof item === "object" && item !== null) {
               // Recursively check objects
-              Object.values(item).forEach(val => extractFromArray(val));
+              Object.values(item).forEach((val) => extractFromArray(val));
             }
           });
-        } else if (typeof arr === 'object' && arr !== null) {
-          Object.values(arr).forEach(val => extractFromArray(val));
+        } else if (typeof arr === "object" && arr !== null) {
+          Object.values(arr).forEach((val) => extractFromArray(val));
         }
       };
 
@@ -265,7 +265,8 @@ const PromptCard = memo(
             : highlightData;
 
         // Try to extract confidence from 5th element first, fall back to API confidenceData
-        const extractedConfidence = extractConfidenceFromHighlightData(highlightData);
+        const extractedConfidence =
+          extractConfidenceFromHighlightData(highlightData);
         const finalConfidence = extractedConfidence ?? confidenceData;
 
         updateCustomTool({
