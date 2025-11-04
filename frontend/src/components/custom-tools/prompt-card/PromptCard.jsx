@@ -220,7 +220,7 @@ const PromptCard = memo(
 
       const extractFromArray = (arr) => {
         if (Array.isArray(arr)) {
-          arr.forEach((item) => {
+          for (const item of arr) {
             if (Array.isArray(item)) {
               // Check if this is a coordinate array with 5 elements
               if (item.length >= 5 && typeof item[4] === "number") {
@@ -231,11 +231,15 @@ const PromptCard = memo(
               }
             } else if (typeof item === "object" && item !== null) {
               // Recursively check objects
-              Object.values(item).forEach((val) => extractFromArray(val));
+              for (const val of Object.values(item)) {
+                extractFromArray(val);
+              }
             }
-          });
+          }
         } else if (typeof arr === "object" && arr !== null) {
-          Object.values(arr).forEach((val) => extractFromArray(val));
+          for (const val of Object.values(arr)) {
+            extractFromArray(val);
+          }
         }
       };
 
