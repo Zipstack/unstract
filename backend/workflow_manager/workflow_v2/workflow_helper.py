@@ -64,6 +64,7 @@ logger = logging.getLogger(__name__)
 EXECUTION_EXCLUDED_PARAMS = {
     "llm_profile_id",
     "hitl_queue_name",
+    "hitl_packet_id",
     "custom_data",
 }
 
@@ -268,6 +269,7 @@ class WorkflowHelper:
         use_file_history: bool = True,
         llm_profile_id: str | None = None,
         hitl_queue_name: str | None = None,
+        packet_id: str | None = None,
         custom_data: dict[str, Any] | None = None,
     ) -> ExecutionResponse:
         tool_instances: list[ToolInstance] = (
@@ -297,6 +299,7 @@ class WorkflowHelper:
             workflow_log=workflow_log,
             use_file_history=use_file_history,
             hitl_queue_name=hitl_queue_name,
+            packet_id=packet_id,
         )
         try:
             # Validating endpoints
@@ -439,6 +442,7 @@ class WorkflowHelper:
         use_file_history: bool = True,
         llm_profile_id: str | None = None,
         hitl_queue_name: str | None = None,
+        hitl_packet_id: str | None = None,
         custom_data: dict[str, Any] | None = None,
     ) -> ExecutionResponse:
         """Adding a workflow to the queue for execution.
@@ -453,6 +457,7 @@ class WorkflowHelper:
                 processed files. Defaults to True
             hitl_queue_name (str | None): Name of the HITL queue to push files to
             llm_profile_id (str, optional): LLM profile ID for overriding tool settings
+            hitl_packet_id (str | None): Packet ID for packet-based HITL workflows
 
         Returns:
             ExecutionResponse: Existing status of execution
@@ -479,6 +484,7 @@ class WorkflowHelper:
                     "use_file_history": use_file_history,
                     "llm_profile_id": llm_profile_id,
                     "hitl_queue_name": hitl_queue_name,
+                    "hitl_packet_id": hitl_packet_id,
                     "custom_data": custom_data,
                 },
                 queue=queue,
@@ -679,8 +685,9 @@ class WorkflowHelper:
             execution_id=execution_id, task_id=task_id
         )
         try:
+            hitl_packet_id_from_kwargs = kwargs.get("hitl_packet_id")
             logger.info(
-                f"Starting workflow execution: workflow_id={workflow_id}, execution_id={execution_id}, hitl_queue_name={kwargs.get('hitl_queue_name')}"
+                f"Starting workflow execution: workflow_id={workflow_id}, execution_id={execution_id}, hitl_queue_name={kwargs.get('hitl_queue_name')}, hitl_packet_id={hitl_packet_id_from_kwargs}"
             )
             execution_response = WorkflowHelper.run_workflow(
                 workflow=workflow,
@@ -693,6 +700,7 @@ class WorkflowHelper:
                 use_file_history=use_file_history,
                 llm_profile_id=kwargs.get("llm_profile_id"),
                 hitl_queue_name=kwargs.get("hitl_queue_name"),
+                packet_id=hitl_packet_id_from_kwargs,
                 custom_data=kwargs.get("custom_data"),
             )
         except Exception as error:

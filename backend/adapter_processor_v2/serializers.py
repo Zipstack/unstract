@@ -159,6 +159,7 @@ class SharedUserListSerializer(BaseAdapterSerializer):
             "adapter_type",
             "created_by",
             "shared_users",
+            "shared_to_org",
         )  # type: ignore
 
 
