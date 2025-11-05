@@ -247,11 +247,12 @@ class LLM:
                 )
 
             text = chunk["choices"][0]["delta"].get("content", "")
-
-            if callback_manager and hasattr(callback_manager, "on_stream"):
-                callback_manager.on_stream(text)
-
-            yield text
+            
+            if text: 
+                if callback_manager and hasattr(callback_manager, "on_stream"):
+                    callback_manager.on_stream(text)
+    
+                yield text
 
     async def acomplete(self, prompt: str, **kwargs: object) -> dict[str, object]:
         """Asynchronous chat completion (wrapper around ``litellm.acompletion``)."""
