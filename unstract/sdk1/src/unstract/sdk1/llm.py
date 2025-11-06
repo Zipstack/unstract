@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 # litellm._turn_on_debug()
 
-os.environ['LITELLM_LOG'] = 'DEBUG'
+litellm._turn_on_debug()
 
 class LLM:
     """Unified LLM interface powered by LiteLLM.
