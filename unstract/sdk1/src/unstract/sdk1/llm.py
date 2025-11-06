@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 # litellm._turn_on_debug()
 
+os.environ['LITELLM_LOG'] = 'DEBUG'
 
 class LLM:
     """Unified LLM interface powered by LiteLLM.
@@ -187,6 +188,8 @@ class LLM:
         # if hasattr(self, "thinking_dict") and self.thinking_dict is not None:
         #     completion_kwargs["temperature"] = 1
 
+        logger.debug(f"{completion_kwargs}------------------------------------------------------------888888888888888")
+
         response: dict[str, object] = litellm.completion(
             messages=messages,
             **completion_kwargs,
@@ -251,7 +254,7 @@ class LLM:
             if text: 
                 if callback_manager and hasattr(callback_manager, "on_stream"):
                     callback_manager.on_stream(text)
-    
+
                 yield text
 
     async def acomplete(self, prompt: str, **kwargs: object) -> dict[str, object]:
