@@ -154,9 +154,29 @@ class LLM:
                 "the configuration."
             )
             raise LLMError(message=msg, status_code=400)
+        except LLMError:
+            # Already wrapped in LLMError from complete(), re-raise as is
+            raise
+        except SdkError:
+            # Already wrapped in SdkError, re-raise as is
+            raise
         except Exception as e:
+            # Catch any unexpected exceptions and wrap them
             logger.error("Failed to test connection for LLM: %s", e)
-            raise e
+            
+            # Extract status code if available
+            status_code = None
+            if hasattr(e, 'status_code'):
+                status_code = e.status_code
+            elif hasattr(e, 'http_status'):
+                status_code = e.http_status
+            
+            # Wrap in LLMError with context
+            raise LLMError(
+                message=f"Failed to test LLM connection: {str(e)}",
+                status_code=status_code,
+                actual_err=e
+            ) from e
 
     @capture_metrics
     def complete(self, prompt: str, **kwargs: object) -> dict[str, object]:
@@ -173,51 +193,76 @@ class LLM:
             dict[str, Any]  : A dictionary containing the result of the completion,
                 any processed output, and the captured metrics (if applicable).
         """
-        litellm.drop_params = True  # drop params that are not supported by the model
+        try:
+            litellm.drop_params = True  # drop params that are not supported by the model
 
-        messages: list[dict[str, str]] = [
-            {"role": "system", "content": self._system_prompt},
-            {"role": "user", "content": prompt},
-        ]
-        logger.debug(f"[sdk1][LLM]Invoking {self.adapter.get_provider()} completion API")
+            messages: list[dict[str, str]] = [
+                {"role": "system", "content": self._system_prompt},
+                {"role": "user", "content": prompt},
+            ]
+            logger.debug(f"[sdk1][LLM]Invoking {self.adapter.get_provider()} completion API")
 
-        completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
 
-        # if hasattr(self, "model") and self.model not in O1_MODELS:
-        #     completion_kwargs["temperature"] = 0.003
-        # if hasattr(self, "thinking_dict") and self.thinking_dict is not None:
-        #     completion_kwargs["temperature"] = 1
+            # if hasattr(self, "model") and self.model not in O1_MODELS:
+            #     completion_kwargs["temperature"] = 0.003
+            # if hasattr(self, "thinking_dict") and self.thinking_dict is not None:
+            #     completion_kwargs["temperature"] = 1
 
-        logger.debug(f"{completion_kwargs}------------------------------------------------------------888888888888888")
-
-        response: dict[str, object] = litellm.completion(
-            messages=messages,
-            **completion_kwargs,
-        )
-
-        response_text = response["choices"][0]["message"]["content"]
-
-        self._record_usage(
-            self.kwargs["model"], messages, response.get("usage"), "complete"
-        )
-
-        # NOTE:
-        # The typecasting was required to stop the type checker from complaining.
-        # Improvements in readability are definitely welcome.
-        extract_json: bool = cast("bool", kwargs.get("extract_json", False))
-        post_process_fn: Callable[[LLMResponseCompat, bool], dict[str, object]] | None = (
-            cast(
-                "Callable[[LLMResponseCompat, bool], dict[str, object]] | None",
-                kwargs.get("process_text", None),
+            response: dict[str, object] = litellm.completion(
+                messages=messages,
+                **completion_kwargs,
             )
-        )
 
-        response_text, post_processed_output = self._post_process_response(
-            response_text, extract_json, post_process_fn
-        )
+            response_text = response["choices"][0]["message"]["content"]
 
-        response_object = LLMResponseCompat(response_text)
-        return {"response": response_object, **post_processed_output}
+            self._record_usage(
+                self.kwargs["model"], messages, response.get("usage"), "complete"
+            )
+
+            # NOTE:
+            # The typecasting was required to stop the type checker from complaining.
+            # Improvements in readability are definitely welcome.
+            extract_json: bool = cast("bool", kwargs.get("extract_json", False))
+            post_process_fn: Callable[[LLMResponseCompat, bool], dict[str, object]] | None = (
+                cast(
+                    "Callable[[LLMResponseCompat, bool], dict[str, object]] | None",
+                    kwargs.get("process_text", None),
+                )
+            )
+
+            response_text, post_processed_output = self._post_process_response(
+                response_text, extract_json, post_process_fn
+            )
+
+            response_object = LLMResponseCompat(response_text)
+            return {"response": response_object, **post_processed_output}
+        
+        except LLMError:
+            # Already wrapped LLMError, re-raise as is
+            raise
+        except SdkError:
+            # Already wrapped SdkError, re-raise as is
+            raise
+        except Exception as e:
+            # Wrap all other exceptions in LLMError with provider context
+            logger.error(f"[sdk1][LLM] Error during completion: {e}")
+            
+            # Extract status code if available
+            status_code = None
+            if hasattr(e, 'status_code'):
+                status_code = e.status_code
+            elif hasattr(e, 'http_status'):
+                status_code = e.http_status
+            
+            # Create error message with provider context
+            error_msg = f"Error from LLM provider '{self.adapter.get_provider()}': {str(e)}"
+            
+            raise LLMError(
+                message=error_msg,
+                status_code=status_code,
+                actual_err=e
+            ) from e
 
     def stream_complete(
         self,
@@ -226,61 +271,115 @@ class LLM:
         **kwargs: object,
     ) -> Generator[str, None, None]:
         """Yield chunks of text as they arrive from the provider."""
-        messages = [
-            {"role": "system", "content": self._system_prompt},
-            {"role": "user", "content": prompt},
-        ]
-        logger.debug(
-            f"[sdk1][LLM]Invoking {self.adapter.get_provider()} stream completion API"
-        )
+        try:
+            messages = [
+                {"role": "system", "content": self._system_prompt},
+                {"role": "user", "content": prompt},
+            ]
+            logger.debug(
+                f"[sdk1][LLM]Invoking {self.adapter.get_provider()} stream completion API"
+            )
 
-        completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
 
-        for chunk in litellm.completion(
-            messages=messages,
-            stream=True,
-            stream_options={
-                "include_usage": True,
-            },
-            **completion_kwargs,
-        ):
-            if chunk.get("usage"):
-                self._record_usage(
-                    self.kwargs["model"], messages, chunk.get("usage"), "stream_complete"
-                )
+            for chunk in litellm.completion(
+                messages=messages,
+                stream=True,
+                stream_options={
+                    "include_usage": True,
+                },
+                **completion_kwargs,
+            ):
+                if chunk.get("usage"):
+                    self._record_usage(
+                        self.kwargs["model"], messages, chunk.get("usage"), "stream_complete"
+                    )
 
-            text = chunk["choices"][0]["delta"].get("content", "")
+                text = chunk["choices"][0]["delta"].get("content", "")
+                
+                if text: 
+                    if callback_manager and hasattr(callback_manager, "on_stream"):
+                        callback_manager.on_stream(text)
+
+                    yield text
+        
+        except LLMError:
+            # Already wrapped LLMError, re-raise as is
+            raise
+        except SdkError:
+            # Already wrapped SdkError, re-raise as is
+            raise
+        except Exception as e:
+            # Wrap all other exceptions in LLMError with provider context
+            logger.error(f"[sdk1][LLM] Error during stream completion: {e}")
             
-            if text: 
-                if callback_manager and hasattr(callback_manager, "on_stream"):
-                    callback_manager.on_stream(text)
-
-                yield text
+            # Extract status code if available
+            status_code = None
+            if hasattr(e, 'status_code'):
+                status_code = e.status_code
+            elif hasattr(e, 'http_status'):
+                status_code = e.http_status
+            
+            # Create error message with provider context
+            error_msg = f"Error from LLM provider '{self.adapter.get_provider()}': {str(e)}"
+            
+            raise LLMError(
+                message=error_msg,
+                status_code=status_code,
+                actual_err=e
+            ) from e
 
     async def acomplete(self, prompt: str, **kwargs: object) -> dict[str, object]:
         """Asynchronous chat completion (wrapper around ``litellm.acompletion``)."""
-        messages = [
-            {"role": "system", "content": self._system_prompt},
-            {"role": "user", "content": prompt},
-        ]
-        logger.debug(
-            f"[sdk1][LLM]Invoking {self.adapter.get_provider()} async completion API"
-        )
+        try:
+            messages = [
+                {"role": "system", "content": self._system_prompt},
+                {"role": "user", "content": prompt},
+            ]
+            logger.debug(
+                f"[sdk1][LLM]Invoking {self.adapter.get_provider()} async completion API"
+            )
 
-        completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
 
-        response = await litellm.acompletion(
-            messages=messages,
-            **completion_kwargs,
-        )
-        response_text = response["choices"][0]["message"]["content"]
+            response = await litellm.acompletion(
+                messages=messages,
+                **completion_kwargs,
+            )
+            response_text = response["choices"][0]["message"]["content"]
 
-        self._record_usage(
-            self.kwargs["model"], messages, response.get("usage"), "acomplete"
-        )
+            self._record_usage(
+                self.kwargs["model"], messages, response.get("usage"), "acomplete"
+            )
 
-        response_object = LLMResponseCompat(response_text)
-        return {"response": response_object}
+            response_object = LLMResponseCompat(response_text)
+            return {"response": response_object}
+        
+        except LLMError:
+            # Already wrapped LLMError, re-raise as is
+            raise
+        except SdkError:
+            # Already wrapped SdkError, re-raise as is
+            raise
+        except Exception as e:
+            # Wrap all other exceptions in LLMError with provider context
+            logger.error(f"[sdk1][LLM] Error during async completion: {e}")
+            
+            # Extract status code if available
+            status_code = None
+            if hasattr(e, 'status_code'):
+                status_code = e.status_code
+            elif hasattr(e, 'http_status'):
+                status_code = e.http_status
+            
+            # Create error message with provider context
+            error_msg = f"Error from LLM provider '{self.adapter.get_provider()}': {str(e)}"
+            
+            raise LLMError(
+                message=error_msg,
+                status_code=status_code,
+                actual_err=e
+            ) from e
 
     @classmethod
     def get_context_window_size(
