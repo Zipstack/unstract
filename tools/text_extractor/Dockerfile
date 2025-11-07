@@ -26,6 +26,7 @@ RUN pip install --no-cache-dir -r requirements.txt && \
     opentelemetry-distro \
     opentelemetry-exporter-otlp \
     platformdirs>=3.0.0 \
+    && uv pip install opentelemetry-instrumentation-openai \
     && opentelemetry-bootstrap -a install
 
 
