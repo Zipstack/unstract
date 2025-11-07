@@ -17,7 +17,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     # OpenTelemetry configuration (disabled by default, enable in docker-compose)
     OTEL_TRACES_EXPORTER=none \
     OTEL_LOGS_EXPORTER=none \
-    OTEL_SERVICE_NAME=unstract_backend
+    OTEL_SERVICE_NAME=unstract_backend \
+    OTEL_PYTHON_DISABLED_INSTRUMENTATIONS=openai
 
 # Install system dependencies
 RUN apt-get update \
