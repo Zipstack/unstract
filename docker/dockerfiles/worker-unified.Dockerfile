@@ -73,6 +73,8 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # No symlinks needed - PYTHONPATH handles the paths correctly
 RUN uv sync --group deploy --locked && \
     uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement - && \
+    uv pip uninstall opentelemetry-instrumentation-openai-v2 && \
+    uv pip install opentelemetry-instrumentation-openai && \
     { chmod +x ./run-worker.sh ./run-worker-docker.sh 2>/dev/null || true; } && \
     touch requirements.txt && \
     { chown -R worker:worker ./run-worker.sh ./run-worker-docker.sh 2>/dev/null || true; }

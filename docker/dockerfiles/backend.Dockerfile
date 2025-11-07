@@ -65,6 +65,8 @@ COPY ${BUILD_CONTEXT_PATH}/ ./
 # Install the application
 RUN uv sync --group deploy --locked && \
     uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement - && \
+    uv pip uninstall opentelemetry-instrumentation-openai-v2 && \
+    uv pip install opentelemetry-instrumentation-openai && \
     chmod +x ./entrypoint.sh
 
 EXPOSE 8000

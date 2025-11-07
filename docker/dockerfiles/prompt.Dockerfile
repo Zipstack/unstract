@@ -84,7 +84,9 @@ RUN for dir in "${TARGET_PLUGINS_PATH}"/*/; do \
     uv pip install "${TARGET_PLUGINS_PATH}/${dirname}"; \
     fi; \
     done && \
-    uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement -
+    uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement - && \
+    uv pip uninstall opentelemetry-instrumentation-openai-v2 && \
+    uv pip install opentelemetry-instrumentation-openai
 
 # Create required directories
 RUN mkdir -p prompt-studio-data
