@@ -296,6 +296,8 @@ class WorkflowExecution(BaseModel):
             error (Optional[str], optional): Error message if any. Defaults to None.
             increment_attempt (bool, optional): Whether to increment attempt counter. Defaults to False.
         """
+        should_release_rate_limit = False
+
         if status is not None:
             status = ExecutionStatus(status)
             self.status = status.value
@@ -305,6 +307,7 @@ class WorkflowExecution(BaseModel):
                 ExecutionStatus.STOPPED,
             ]:
                 self.execution_time = CommonUtils.time_since(self.created_at, 3)
+                should_release_rate_limit = True
 
         if error:
             self.error_message = error[:EXECUTION_ERROR_LENGTH]
@@ -312,6 +315,31 @@ class WorkflowExecution(BaseModel):
             self.attempts += 1
 
         self.save()
+
+        # Release rate limit slot for API deployment executions after save
+        if should_release_rate_limit and self.pipeline_id:
+            self._release_api_deployment_rate_limit()
+
+    def _release_api_deployment_rate_limit(self) -> None:
+        """Release rate limit slot for API deployment executions.
+
+        Checks if this execution is for an API deployment and releases
+        the rate limit slot if applicable.
+        """
+        try:
+            # Check if this is an API deployment execution
+            api_deployment = APIDeployment.objects.filter(id=self.pipeline_id).first()
+            if api_deployment and api_deployment.organization:
+                from api_v2.rate_limiter import APIDeploymentRateLimiter
+
+                APIDeploymentRateLimiter.release_slot(
+                    str(api_deployment.organization.organization_id), str(self.id)
+                )
+        except Exception as e:
+            # Log but don't fail the execution update for rate limit release errors
+            logger.error(
+                f"Failed to release rate limit slot for execution {self.id}: {e}"
+            )
 
     def update_execution_err(self, err_msg: str = "") -> None:
         """Update execution status to ERROR with an error message.

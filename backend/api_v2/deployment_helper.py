@@ -1,4 +1,5 @@
 import logging
+import uuid
 from io import BytesIO
 from typing import Any
 from urllib.parse import urlencode, urlparse
@@ -30,9 +31,11 @@ from api_v2.exceptions import (
     InactiveAPI,
     InvalidAPIRequest,
     PresignedURLFetchError,
+    RateLimitExceeded,
 )
 from api_v2.key_helper import KeyHelper
 from api_v2.models import APIDeployment, APIKey
+from api_v2.rate_limiter import APIDeploymentRateLimiter
 from api_v2.serializers import APIExecutionResponseSerializer
 from api_v2.utils import APIDeploymentUtils
 
@@ -175,7 +178,30 @@ class DeploymentHelper(BaseAPIKeyValidator):
 
         Returns:
             ReturnDict: execution status/ result
+
+        Raises:
+            RateLimitExceeded: If organization or global rate limit is exceeded
         """
+        # Generate execution ID upfront for atomic rate limit check and acquire
+        organization = api.organization
+        execution_id = uuid.uuid4()
+
+        # Atomically check rate limit and acquire slot
+        can_proceed, limit_info = APIDeploymentRateLimiter.check_and_acquire(
+            organization, str(execution_id)
+        )
+
+        if not can_proceed:
+            logger.warning(
+                f"Rate limit exceeded for org {organization.organization_id}: {limit_info}"
+            )
+            raise RateLimitExceeded(
+                current_usage=limit_info["current_usage"],
+                limit=limit_info["limit"],
+                retry_after_seconds=limit_info["retry_after_seconds"],
+                limit_type=limit_info["limit_type"],
+            )
+
         workflow_id = api.workflow.id
         pipeline_id = api.id
         if hitl_queue_name:
@@ -186,6 +212,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         workflow_execution = WorkflowExecutionServiceHelper.create_workflow_execution(
             workflow_id=workflow_id,
             pipeline_id=pipeline_id,
+            execution_id=execution_id,
             mode=WorkflowExecution.Mode.QUEUE,
             tags=tags,
             total_files=len(file_objs),
