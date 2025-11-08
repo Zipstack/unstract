@@ -4,6 +4,8 @@ from typing import Any
 
 from account_v2.models import User
 from django.db import models
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 from pipeline_v2.models import Pipeline
 from utils.models.base_model import BaseModel
 from utils.models.organization_mixin import (
@@ -263,10 +265,6 @@ class APIKey(BaseModel):
 
 
 # Signal handlers for OrganizationRateLimit
-from django.db.models.signals import post_delete
-from django.dispatch import receiver
-
-
 @receiver(post_delete, sender=OrganizationRateLimit)
 def clear_org_rate_limit_cache_on_delete(sender, instance, **kwargs):
     """Clear cache when rate limit record is deleted."""
