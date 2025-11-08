@@ -11,7 +11,7 @@ class Command(BaseCommand):
     help = "View organization rate limit information and current usage"
 
     def add_arguments(self, parser):
-        parser.add_argument("org_id", type=str, help="Organization ID (UUID) or name")
+        parser.add_argument("org_id", type=str, help="Organization ID or name")
         parser.add_argument(
             "--clear-cache",
             action="store_true",
@@ -22,13 +22,10 @@ class Command(BaseCommand):
         org_id = options["org_id"]
         clear_cache = options["clear_cache"]
 
-        # Get organization
+        # Get organization (try organization_id first, then name)
         try:
-            from uuid import UUID
-
-            UUID(org_id)
             organization = Organization.objects.get(organization_id=org_id)
-        except (ValueError, Organization.DoesNotExist):
+        except Organization.DoesNotExist:
             try:
                 organization = Organization.objects.get(name=org_id)
             except Organization.DoesNotExist:

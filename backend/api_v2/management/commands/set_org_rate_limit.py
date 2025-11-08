@@ -9,7 +9,7 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
-            "org_id", type=str, help="Organization ID (UUID) or organization name"
+            "org_id", type=str, help="Organization ID or organization name"
         )
         parser.add_argument(
             "limit", type=int, help="Concurrent request limit (positive integer)"
@@ -23,13 +23,10 @@ class Command(BaseCommand):
         if limit <= 0:
             raise CommandError("Limit must be a positive integer")
 
-        # Get organization (try UUID first, then name)
+        # Get organization (try organization_id first, then name)
         try:
-            from uuid import UUID
-
-            UUID(org_id)  # Validate UUID format
             organization = Organization.objects.get(organization_id=org_id)
-        except (ValueError, Organization.DoesNotExist):
+        except Organization.DoesNotExist:
             # Try by name
             try:
                 organization = Organization.objects.get(name=org_id)
