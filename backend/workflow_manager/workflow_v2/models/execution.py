@@ -337,7 +337,7 @@ class WorkflowExecution(BaseModel):
                 )
         except Exception as e:
             # Log but don't fail the execution update for rate limit release errors
-            logger.error(
+            logger.exception(
                 f"Failed to release rate limit slot for execution {self.id}: {e}"
             )
 
