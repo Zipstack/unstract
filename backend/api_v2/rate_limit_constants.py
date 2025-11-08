@@ -70,8 +70,8 @@ class RateLimitDefaults:
     """
 
     # Rate limits
-    DEFAULT_ORG_LIMIT = 5  # Concurrent requests per organization
-    DEFAULT_GLOBAL_LIMIT = 50  # Concurrent requests system-wide
+    DEFAULT_ORG_LIMIT = 20  # Concurrent requests per organization
+    DEFAULT_GLOBAL_LIMIT = 100  # Concurrent requests system-wide
 
     # TTL and timing
     DEFAULT_TTL_HOURS = 6  # Hours to keep execution in ZSET

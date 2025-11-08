@@ -110,17 +110,17 @@ API_DEPL_PRESIGNED_URL_MAX_FILE_SIZE_MB = int(
 
 # API Deployment Rate Limiting
 API_DEPLOYMENT_DEFAULT_RATE_LIMIT = int(
-    os.environ.get("API_DEPLOYMENT_DEFAULT_RATE_LIMIT", 5)
+    os.environ.get("API_DEPLOYMENT_DEFAULT_RATE_LIMIT", 20)
 )
 API_DEPLOYMENT_GLOBAL_RATE_LIMIT = int(
-    os.environ.get("API_DEPLOYMENT_GLOBAL_RATE_LIMIT", 50)
+    os.environ.get("API_DEPLOYMENT_GLOBAL_RATE_LIMIT", 100)
 )
 API_DEPLOYMENT_RATE_LIMIT_TTL_HOURS = int(
     os.environ.get("API_DEPLOYMENT_RATE_LIMIT_TTL_HOURS", 6)
 )
 # Cache TTL for organization rate limits (in seconds)
 API_DEPLOYMENT_RATE_LIMIT_CACHE_TTL = int(
-    os.environ.get("API_DEPLOYMENT_RATE_LIMIT_CACHE_TTL", 3600)
+    os.environ.get("API_DEPLOYMENT_RATE_LIMIT_CACHE_TTL", 600)
 )
 # Redis lock timeouts for rate limiting (in seconds)
 API_DEPLOYMENT_RATE_LIMIT_LOCK_TIMEOUT = int(
