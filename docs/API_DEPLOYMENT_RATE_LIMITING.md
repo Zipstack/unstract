@@ -197,7 +197,7 @@ Set or update a custom rate limit for a specific organization:
 
 ```bash
 # Using organization ID
-python manage.py set_org_rate_limit org_qijtoAkJNhznYhNt 50
+python manage.py set_org_rate_limit org_a1b2c3d4e5f6g7h8 50
 
 # Using organization name
 python manage.py set_org_rate_limit acme-corp 50
@@ -205,7 +205,7 @@ python manage.py set_org_rate_limit acme-corp 50
 
 **Output**:
 ```
-Created rate limit for organization "acme-corp" (org_qijtoAkJNhznYhNt): 50
+Created rate limit for organization "acme-corp" (org_a1b2c3d4e5f6g7h8): 50
 Current usage: 5/50 concurrent requests
 ✓ Cache automatically cleared
 ```
@@ -222,10 +222,10 @@ View rate limit information and current usage for an organization:
 
 ```bash
 # View rate limit info
-python manage.py get_org_rate_limit org_qijtoAkJNhznYhNt
+python manage.py get_org_rate_limit org_a1b2c3d4e5f6g7h8
 
 # Clear cache and force refresh from DB
-python manage.py get_org_rate_limit org_qijtoAkJNhznYhNt --clear-cache
+python manage.py get_org_rate_limit org_a1b2c3d4e5f6g7h8 --clear-cache
 ```
 
 **Output**:
@@ -256,7 +256,7 @@ python manage.py list_org_rate_limits --with-usage
 ```
 Found 3 custom rate limits:
 
-• acme-corp (org_qijtoAkJNhznYhNt)
+• acme-corp (org_a1b2c3d4e5f6g7h8)
   Limit: 50
   Usage: 5/50 (10.0%)
 
@@ -275,7 +275,7 @@ Remove a custom rate limit (organization reverts to system default):
 
 ```bash
 # With confirmation prompt
-python manage.py delete_org_rate_limit org_qijtoAkJNhznYhNt
+python manage.py delete_org_rate_limit org_a1b2c3d4e5f6g7h8
 
 # Skip confirmation
 python manage.py delete_org_rate_limit acme-corp --force
@@ -283,13 +283,13 @@ python manage.py delete_org_rate_limit acme-corp --force
 
 **Output**:
 ```
-Organization: acme-corp (org_qijtoAkJNhznYhNt)
+Organization: acme-corp (org_a1b2c3d4e5f6g7h8)
 Current custom limit: 50
 
 This will delete the custom rate limit and revert to the system default.
 Continue? [y/N]: y
 
-Deleted custom rate limit for organization "acme-corp" (org_qijtoAkJNhznYhNt)
+Deleted custom rate limit for organization "acme-corp" (org_a1b2c3d4e5f6g7h8)
 Will now use system default: 20
 Current usage: 5/20 concurrent requests
 ✓ Cache automatically cleared
@@ -301,7 +301,7 @@ Clear cached rate limits (useful after changing default limit via ENV):
 
 ```bash
 # Clear specific organization cache
-python manage.py clear_org_rate_limit_cache --org-id org_qijtoAkJNhznYhNt
+python manage.py clear_org_rate_limit_cache --org-id org_a1b2c3d4e5f6g7h8
 
 # Clear cache for all orgs with custom limits (default)
 python manage.py clear_org_rate_limit_cache
@@ -494,8 +494,8 @@ Example calculation:
 2. Check actual Redis data:
    ```bash
    redis-cli
-   > ZCARD api_deployment:rate_limit:org:org_qijtoAkJNhznYhNt
-   > ZRANGE api_deployment:rate_limit:org:org_qijtoAkJNhznYhNt 0 -1 WITHSCORES
+   > ZCARD api_deployment:rate_limit:org:org_a1b2c3d4e5f6g7h8
+   > ZRANGE api_deployment:rate_limit:org:org_a1b2c3d4e5f6g7h8 0 -1 WITHSCORES
    ```
 3. Look for stuck executions (never completed/failed)
 
