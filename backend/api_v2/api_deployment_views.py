@@ -128,7 +128,7 @@ class DeploymentExecution(views.APIView):
         except Exception as error:
             # Release slot on any failure during workflow setup/execution
             APIDeploymentRateLimiter.release_slot(organization, execution_id)
-            logger.error(f"Workflow execution failed: {error}")
+            logger.exception(f"Workflow execution failed: {error}")
             raise
 
         # Success - signal will handle slot release when workflow completes
