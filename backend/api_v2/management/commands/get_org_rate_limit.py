@@ -5,6 +5,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from api_v2.models import OrganizationRateLimit
 from api_v2.rate_limit_constants import RateLimitKeys
+from api_v2.rate_limiter import APIDeploymentRateLimiter
 
 
 class Command(BaseCommand):
@@ -59,8 +60,6 @@ class Command(BaseCommand):
             self.stdout.write("Cached Limit: Not cached (will be cached on next request)")
 
         # Get current usage
-        from api_v2.rate_limiter import APIDeploymentRateLimiter
-
         try:
             usage = APIDeploymentRateLimiter.get_current_usage(organization)
 

@@ -2,6 +2,7 @@ from account_v2.models import Organization
 from django.core.management.base import BaseCommand, CommandError
 
 from api_v2.models import OrganizationRateLimit
+from api_v2.rate_limiter import APIDeploymentRateLimiter
 
 
 class Command(BaseCommand):
@@ -51,8 +52,6 @@ class Command(BaseCommand):
 
         # Show current usage
         try:
-            from api_v2.rate_limiter import APIDeploymentRateLimiter
-
             usage = APIDeploymentRateLimiter.get_current_usage(organization)
             self.stdout.write(
                 self.style.WARNING(
@@ -60,7 +59,7 @@ class Command(BaseCommand):
                 )
             )
 
-            if usage["org_count"] > limit:
+            if usage["org_count"] >= limit:
                 self.stdout.write(
                     self.style.ERROR(
                         "WARNING: Current usage exceeds new limit! "

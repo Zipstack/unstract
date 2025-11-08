@@ -1,6 +1,7 @@
 from django.core.management.base import BaseCommand
 
 from api_v2.models import OrganizationRateLimit
+from api_v2.rate_limiter import APIDeploymentRateLimiter
 
 
 class Command(BaseCommand):
@@ -23,8 +24,6 @@ class Command(BaseCommand):
             return
 
         self.stdout.write(f"Found {org_limits.count()} custom rate limits:\n")
-
-        from api_v2.rate_limiter import APIDeploymentRateLimiter
 
         for org_limit in org_limits:
             org = org_limit.organization
