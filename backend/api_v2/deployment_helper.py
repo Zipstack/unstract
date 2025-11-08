@@ -31,7 +31,6 @@ from api_v2.exceptions import (
     InactiveAPI,
     InvalidAPIRequest,
     PresignedURLFetchError,
-    RateLimitExceeded,
 )
 from api_v2.key_helper import KeyHelper
 from api_v2.models import APIDeployment, APIKey
@@ -161,6 +160,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         hitl_packet_id: str | None = None,
         custom_data: dict[str, Any] | None = None,
         request_headers=None,
+        execution_id: str | None = None,
     ) -> ReturnDict:
         """Execute workflow by api.
 
@@ -175,31 +175,19 @@ class DeploymentHelper(BaseAPIKeyValidator):
             hitl_queue_name (str, optional): Custom queue name for manual review
             hitl_packet_id (str, optional): Packet ID for packet-based review
             custom_data (dict[str, Any], optional): JSON data for custom_data variable replacement in prompts
+            execution_id (str, optional): Pre-generated execution ID for rate limiting.
+                If None, a new UUID will be generated.
 
         Returns:
             ReturnDict: execution status/ result
 
-        Raises:
-            RateLimitExceeded: If organization or global rate limit is exceeded
+        Note:
+            Rate limiting is handled at the view layer. This method should be called
+            after rate limit checks have passed, with a pre-acquired execution_id.
         """
-        # Generate execution ID upfront for atomic rate limit check and acquire
-        organization = api.organization
-        execution_id = uuid.uuid4()
-
-        # Atomically check rate limit and acquire slot
-        can_proceed, limit_info = APIDeploymentRateLimiter.check_and_acquire(
-            organization, str(execution_id)
-        )
-
-        if not can_proceed:
-            logger.warning(
-                f"Rate limit exceeded for org {organization.organization_id}: {limit_info}"
-            )
-            raise RateLimitExceeded(
-                current_usage=limit_info["current_usage"],
-                limit=limit_info["limit"],
-                limit_type=limit_info["limit_type"],
-            )
+        # Use provided execution_id or generate one (for backward compatibility)
+        if execution_id is None:
+            execution_id = str(uuid.uuid4())
 
         workflow_id = api.workflow.id
         pipeline_id = api.id
@@ -290,6 +278,10 @@ class DeploymentHelper(BaseAPIKeyValidator):
             if not include_metrics:
                 result.remove_result_metrics()
         except Exception as error:
+            # Release rate limit slot (workflow setup/dispatch failed, async job not started)
+            APIDeploymentRateLimiter.release_slot(api.organization, str(execution_id))
+
+            # Clean up storage
             DestinationConnector.delete_api_storage_dir(
                 workflow_id=workflow_id, execution_id=execution_id
             )

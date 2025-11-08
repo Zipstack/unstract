@@ -25,12 +25,18 @@ Both limits are enforced, and requests are rejected if either limit is exceeded.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    API Request Flow                         │
+│                API Request Flow (View Layer)                │
 └─────────────────────────────────────────────────────────────┘
                             │
                             ▼
             ┌───────────────────────────────┐
-            │  1. Check Organization Limit   │
+            │  1. Validate Request           │
+            │     (Serializer, Files)        │
+            └───────────────────────────────┘
+                            │
+                            ▼
+            ┌───────────────────────────────┐
+            │  2. Check Organization Limit   │
             │     (Per-Org Redis Lock)       │
             └───────────────────────────────┘
                             │
@@ -40,7 +46,7 @@ Both limits are enforced, and requests are rejected if either limit is exceeded.
                     │               │
                     ▼               ▼
             ┌──────────────┐  ┌──────────────┐
-            │ 2. Check     │  │ Return 429   │
+            │ 3. Check     │  │ Raise 429    │
             │    Global    │  │ Rate Limit   │
             │    Limit     │  │ Exceeded     │
             └──────────────┘  └──────────────┘
@@ -51,25 +57,47 @@ Both limits are enforced, and requests are rejected if either limit is exceeded.
             │               │
             ▼               ▼
     ┌──────────────┐  ┌──────────────┐
-    │ 3. Acquire   │  │ Return 429   │
+    │ 4. Acquire   │  │ Raise 429    │
     │    Slot      │  │ Rate Limit   │
     │  (ZSET Add)  │  │ Exceeded     │
     └──────────────┘  └──────────────┘
             │
             ▼
-    ┌──────────────┐
-    │ 4. Execute   │
-    │   Workflow   │
-    └──────────────┘
+    ┌──────────────────────────────────┐
+    │ 5. Execute Workflow (try-catch)  │
+    │    - Setup (DB, files, queue)    │
+    │    - Dispatch async job          │
+    └──────────────────────────────────┘
             │
-            ▼
-    ┌──────────────┐
-    │ 5. Release   │
-    │    Slot      │
-    │  (Auto on    │
-    │  Completion) │
-    └──────────────┘
+        ┌───┴───┐
+        │       │
+    Success   Exception
+        │       │
+        ▼       ▼
+    ┌─────┐  ┌──────────────┐
+    │ 6a. │  │ 6b. Release  │
+    │Signal│  │     Slot     │
+    │Will │  │  (Manual in  │
+    │Auto │  │   Exception  │
+    │Release│  │   Handler)   │
+    └─────┘  └──────────────┘
+               │
+               ▼
+         ┌──────────────┐
+         │ Re-raise     │
+         │ Exception    │
+         └──────────────┘
 ```
+
+**Key Design Points:**
+
+- **View Layer Responsibility**: Rate limiting handled in `api_deployment_views.py`
+- **Dual Release Paths**:
+  - **View layer** releases on exceptions that propagate (early setup failures: DB, files)
+  - **Helper layer** releases on caught exceptions (async dispatch failures, config errors)
+  - **Signal** releases on successful async job completion
+- **No Orphaned Slots**: Guaranteed cleanup on all error paths
+- **No Double-Release**: Each failure path has exactly one release point
 
 ### Technical Implementation
 
@@ -610,7 +638,8 @@ Recommended monitoring:
 - **Rate limiter**: `backend/api_v2/rate_limiter.py`
 - **Constants**: `backend/api_v2/rate_limit_constants.py`
 - **Model**: `backend/api_v2/models.py` (`OrganizationRateLimit`)
-- **Entry point**: `backend/api_v2/deployment_helper.py` (`execute_workflow`)
+- **View layer (entry point)**: `backend/api_v2/api_deployment_views.py` (`DeploymentExecution.post`)
+- **Helper layer**: `backend/api_v2/deployment_helper.py` (`execute_workflow`)
 - **Auto-release**: `backend/workflow_manager/workflow_v2/models/execution.py`
 - **Management commands**: `backend/api_v2/management/commands/`
 
