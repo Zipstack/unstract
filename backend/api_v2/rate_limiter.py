@@ -233,16 +233,10 @@ class APIDeploymentRateLimiter:
                 logger.warning(
                     f"Organization {org_id} hit rate limit: {org_count}/{org_limit}"
                 )
-                retry_after = getattr(
-                    settings,
-                    "API_DEPLOYMENT_RATE_LIMIT_RETRY_AFTER",
-                    RateLimitDefaults.DEFAULT_RETRY_AFTER_SECONDS,
-                )
                 return False, {
                     "limit_type": "organization",
                     "current_usage": org_count,
                     "limit": org_limit,
-                    "retry_after_seconds": retry_after,
                 }
 
             # Check global limit (no lock - eventual consistency)
@@ -257,16 +251,10 @@ class APIDeploymentRateLimiter:
                 logger.warning(
                     f"Global rate limit exceeded: {global_count}/{global_limit}"
                 )
-                retry_after = getattr(
-                    settings,
-                    "API_DEPLOYMENT_RATE_LIMIT_RETRY_AFTER",
-                    RateLimitDefaults.DEFAULT_RETRY_AFTER_SECONDS,
-                )
                 return False, {
                     "limit_type": "global",
                     "current_usage": global_count,
                     "limit": global_limit,
-                    "retry_after_seconds": retry_after,
                 }
 
             # Both checks passed - add to both ZSETs atomically
@@ -323,7 +311,6 @@ class APIDeploymentRateLimiter:
                     "limit_type": "organization",
                     "current_usage": usage["org_count"],
                     "limit": usage["org_limit"],
-                    "retry_after_seconds": 300,  # Suggest retry after 5 minutes
                 }
 
             # Check global limit
@@ -335,7 +322,6 @@ class APIDeploymentRateLimiter:
                     "limit_type": "global",
                     "current_usage": usage["global_count"],
                     "limit": usage["global_limit"],
-                    "retry_after_seconds": 300,
                 }
 
             return True, None

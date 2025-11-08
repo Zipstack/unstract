@@ -39,12 +39,6 @@ def custom_exception_handler(exc, context) -> Response:  # type: ignore
     if response is not None:
         response.data["status_code"] = response.status_code
 
-        # Add Retry-After header for rate limit exceptions
-        from api_v2.exceptions import RateLimitExceeded
-
-        if isinstance(exc, RateLimitExceeded):
-            response["Retry-After"] = str(exc.retry_after_seconds)
-
     return response
 
 

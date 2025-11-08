@@ -129,10 +129,6 @@ API_DEPLOYMENT_RATE_LIMIT_LOCK_TIMEOUT = int(
 API_DEPLOYMENT_RATE_LIMIT_LOCK_BLOCKING_TIMEOUT = int(
     os.environ.get("API_DEPLOYMENT_RATE_LIMIT_LOCK_BLOCKING_TIMEOUT", 5)
 )
-# Retry-After header value for 429 responses (in seconds)
-API_DEPLOYMENT_RATE_LIMIT_RETRY_AFTER = int(
-    os.environ.get("API_DEPLOYMENT_RATE_LIMIT_RETRY_AFTER", 300)
-)
 
 DB_NAME = os.environ.get("DB_NAME", "unstract_db")
 DB_USER = os.environ.get("DB_USER", "unstract_dev")

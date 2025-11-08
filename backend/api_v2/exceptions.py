@@ -66,26 +66,24 @@ class RateLimitExceeded(APIException):
         self,
         current_usage: int = 0,
         limit: int = 0,
-        retry_after_seconds: int = 300,
         limit_type: str = "organization",
         detail: str | None = None,
         code: str | None = None,
     ):
+        from api_v2.rate_limit_constants import RateLimitMessages
+
         self.current_usage = current_usage
         self.limit = limit
-        self.retry_after_seconds = retry_after_seconds
         self.limit_type = limit_type
 
         if detail is None:
             if limit_type == "organization":
-                detail = (
-                    f"Organization has reached the maximum concurrent API requests limit "
-                    f"({current_usage}/{limit}). Please try again later."
+                detail = RateLimitMessages.get_org_limit_exceeded_message(
+                    current_usage=current_usage, limit=limit
                 )
             else:
-                detail = (
-                    f"System has reached the global maximum concurrent API requests limit "
-                    f"({current_usage}/{limit}). Please try again later."
+                detail = RateLimitMessages.get_global_limit_exceeded_message(
+                    current_usage=current_usage, limit=limit
                 )
 
         super().__init__(detail, code)

@@ -147,10 +147,6 @@ API_DEPLOYMENT_RATE_LIMIT_LOCK_TIMEOUT=2
 # Redis lock blocking timeout (in seconds, default: 5)
 # How long to wait to acquire lock before giving up
 API_DEPLOYMENT_RATE_LIMIT_LOCK_BLOCKING_TIMEOUT=5
-
-# Retry-After header value (in seconds, default: 300)
-# Sent in 429 responses to tell clients when to retry
-API_DEPLOYMENT_RATE_LIMIT_RETRY_AFTER=300
 ```
 
 ### Django Settings
@@ -380,31 +376,33 @@ Content-Type: application/json
 
 ### Rate Limit Exceeded (429 Too Many Requests)
 
-When rate limit is exceeded, API returns 429 with details:
+When rate limit is exceeded, API returns 429 with a standardized error response:
 
 ```http
 HTTP/1.1 429 Too Many Requests
 Content-Type: application/json
-Retry-After: 300
 
 {
-  "error": "Organization has reached the maximum concurrent API requests limit (20/20). Please try again later.",
-  "detail": {
-    "current_usage": 20,
-    "limit": 20,
-    "limit_type": "organization",
-    "retry_after_seconds": 300
-  }
+  "type": "client_error",
+  "errors": [
+    {
+      "code": "error",
+      "detail": "Organization has reached the maximum concurrent API requests limit (20/20). Please try again later.",
+      "attr": null
+    }
+  ]
 }
 ```
 
-**Fields**:
-- `error`: Human-readable error message
-- `current_usage`: Current number of active requests
-- `limit`: Maximum allowed concurrent requests
-- `limit_type`: `"organization"` or `"global"`
-- `retry_after_seconds`: Seconds to wait before retrying
-- `Retry-After` header: Same as `retry_after_seconds` (standard HTTP header)
+**Response Format**:
+The error response follows the `drf-standardized-errors` format used throughout the application:
+- `type`: Error type (always `"client_error"` for 429)
+- `errors`: Array of error objects
+  - `code`: Error code (always `"error"`)
+  - `detail`: Human-readable error message with current usage and limit
+  - `attr`: Field name (null for non-field errors)
+
+**Note**: Clients should implement their own retry logic with exponential backoff. The rate limit will be released once active requests complete.
 
 ## Best Practices
 

@@ -81,9 +81,6 @@ class RateLimitDefaults:
     DEFAULT_LOCK_TIMEOUT_SECONDS = 2  # Lock auto-expires
     DEFAULT_LOCK_BLOCKING_TIMEOUT_SECONDS = 5  # Wait time to acquire
 
-    # Retry configuration
-    DEFAULT_RETRY_AFTER_SECONDS = 300  # 5 minutes for 429 responses
-
 
 class RateLimitMessages:
     """User-facing messages for rate limiting.

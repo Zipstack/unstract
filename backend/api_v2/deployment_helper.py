@@ -198,7 +198,6 @@ class DeploymentHelper(BaseAPIKeyValidator):
             raise RateLimitExceeded(
                 current_usage=limit_info["current_usage"],
                 limit=limit_info["limit"],
-                retry_after_seconds=limit_info["retry_after_seconds"],
                 limit_type=limit_info["limit_type"],
             )
 
