@@ -1,6 +1,5 @@
 import logging
 import time
-from typing import Optional
 
 from account_v2.models import Organization
 from django.conf import settings
@@ -11,7 +10,6 @@ from api_v2.models import OrganizationRateLimit
 from api_v2.rate_limit_constants import (
     RateLimitDefaults,
     RateLimitKeys,
-    RateLimitMessages,
 )
 
 logger = logging.getLogger(__name__)
@@ -139,7 +137,9 @@ class APIDeploymentRateLimiter:
         }
 
     @classmethod
-    def check_and_acquire(cls, organization: Organization, execution_id: str) -> tuple[bool, Optional[dict]]:
+    def check_and_acquire(
+        cls, organization: Organization, execution_id: str
+    ) -> tuple[bool, dict | None]:
         """Atomically check rate limits and acquire slot using per-org Redis lock.
 
         This implementation uses per-organization locks to prevent race conditions
@@ -153,10 +153,11 @@ class APIDeploymentRateLimiter:
         ```python
         # After org limit check passes
         from redis.lock import Lock
+
         global_lock = Lock(
             redis_cache,
             RateLimitKeys.GLOBAL_LOCK_KEY,
-            timeout=settings.API_DEPLOYMENT_RATE_LIMIT_LOCK_TIMEOUT
+            timeout=settings.API_DEPLOYMENT_RATE_LIMIT_LOCK_TIMEOUT,
         )
         try:
             if not global_lock.acquire(blocking=True, blocking_timeout=...):
@@ -250,7 +251,9 @@ class APIDeploymentRateLimiter:
             )
 
             if global_count >= global_limit:
-                logger.warning(f"Global rate limit exceeded: {global_count}/{global_limit}")
+                logger.warning(
+                    f"Global rate limit exceeded: {global_count}/{global_limit}"
+                )
                 retry_after = getattr(
                     settings,
                     "API_DEPLOYMENT_RATE_LIMIT_RETRY_AFTER",
@@ -267,11 +270,15 @@ class APIDeploymentRateLimiter:
             pipe = redis_cache.pipeline()
             pipe.zadd(org_key, {execution_id: current_timestamp})
             pipe.expire(org_key, ttl_seconds)
-            pipe.zadd(RateLimitKeys.GLOBAL_EXECUTIONS_KEY, {execution_id: current_timestamp})
+            pipe.zadd(
+                RateLimitKeys.GLOBAL_EXECUTIONS_KEY, {execution_id: current_timestamp}
+            )
             pipe.expire(RateLimitKeys.GLOBAL_EXECUTIONS_KEY, ttl_seconds)
             pipe.execute()
 
-            logger.info(f"Rate limit slot acquired for org {org_id}, execution {execution_id}")
+            logger.info(
+                f"Rate limit slot acquired for org {org_id}, execution {execution_id}"
+            )
             return True, None
 
         except Exception as e:
@@ -287,7 +294,7 @@ class APIDeploymentRateLimiter:
                 logger.debug(f"Error releasing lock for org {org_id}: {e}")
 
     @classmethod
-    def check_rate_limit(cls, organization: Organization) -> tuple[bool, Optional[dict]]:
+    def check_rate_limit(cls, organization: Organization) -> tuple[bool, dict | None]:
         """Check if a new request can be accepted without exceeding rate limits.
 
         DEPRECATED: Use check_and_acquire() instead for atomic check-and-acquire.
@@ -364,7 +371,9 @@ class APIDeploymentRateLimiter:
             pipe.expire(org_key, ttl_seconds)
 
             # Add to global ZSET
-            pipe.zadd(RateLimitKeys.GLOBAL_EXECUTIONS_KEY, {execution_id: current_timestamp})
+            pipe.zadd(
+                RateLimitKeys.GLOBAL_EXECUTIONS_KEY, {execution_id: current_timestamp}
+            )
             pipe.expire(RateLimitKeys.GLOBAL_EXECUTIONS_KEY, ttl_seconds)
 
             pipe.execute()

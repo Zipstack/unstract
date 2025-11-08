@@ -1,5 +1,4 @@
-"""
-Constants and key generators for API deployment rate limiting.
+"""Constants and key generators for API deployment rate limiting.
 
 Centralizes all Redis key patterns, cache keys, and configuration constants
 to avoid duplication and make maintenance easier.

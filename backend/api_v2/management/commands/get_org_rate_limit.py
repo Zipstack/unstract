@@ -1,8 +1,8 @@
+from account_v2.models import Organization
 from django.conf import settings
 from django.core.cache import cache
 from django.core.management.base import BaseCommand, CommandError
 
-from account_v2.models import Organization
 from api_v2.models import OrganizationRateLimit
 from api_v2.rate_limit_constants import RateLimitKeys
 
@@ -11,11 +11,11 @@ class Command(BaseCommand):
     help = "View organization rate limit information and current usage"
 
     def add_arguments(self, parser):
+        parser.add_argument("org_id", type=str, help="Organization ID (UUID) or name")
         parser.add_argument(
-            "org_id", type=str, help="Organization ID (UUID) or name"
-        )
-        parser.add_argument(
-            "--clear-cache", action="store_true", help="Clear cache and force refresh from DB"
+            "--clear-cache",
+            action="store_true",
+            help="Clear cache and force refresh from DB",
         )
 
     def handle(self, *args, **options):
@@ -59,9 +59,7 @@ class Command(BaseCommand):
         if cached_limit is not None:
             self.stdout.write(f"Cached Limit: {cached_limit} ✓")
         else:
-            self.stdout.write(
-                "Cached Limit: Not cached (will be cached on next request)"
-            )
+            self.stdout.write("Cached Limit: Not cached (will be cached on next request)")
 
         # Get current usage
         from api_v2.rate_limiter import APIDeploymentRateLimiter
