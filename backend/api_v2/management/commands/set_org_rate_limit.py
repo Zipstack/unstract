@@ -1,6 +1,6 @@
+from account_v2.models import Organization
 from django.core.management.base import BaseCommand, CommandError
 
-from account_v2.models import Organization
 from api_v2.models import OrganizationRateLimit
 
 
@@ -8,7 +8,9 @@ class Command(BaseCommand):
     help = "Set or update organization rate limit for API deployments"
 
     def add_arguments(self, parser):
-        parser.add_argument("org_id", type=str, help="Organization ID (UUID) or organization name")
+        parser.add_argument(
+            "org_id", type=str, help="Organization ID (UUID) or organization name"
+        )
         parser.add_argument(
             "limit", type=int, help="Concurrent request limit (positive integer)"
         )
@@ -32,7 +34,9 @@ class Command(BaseCommand):
             try:
                 organization = Organization.objects.get(name=org_id)
             except Organization.DoesNotExist:
-                raise CommandError(f'Organization with ID or name "{org_id}" does not exist')
+                raise CommandError(
+                    f'Organization with ID or name "{org_id}" does not exist'
+                )
 
         # Create or update rate limit
         # Cache is automatically cleared via model.save()
@@ -62,8 +66,8 @@ class Command(BaseCommand):
             if usage["org_count"] > limit:
                 self.stdout.write(
                     self.style.ERROR(
-                        f"WARNING: Current usage exceeds new limit! "
-                        f"New requests will be rate limited until usage drops."
+                        "WARNING: Current usage exceeds new limit! "
+                        "New requests will be rate limited until usage drops."
                     )
                 )
         except Exception as e:
