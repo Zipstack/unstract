@@ -75,7 +75,7 @@ class RateLimitDefaults:
 
     # TTL and timing
     DEFAULT_TTL_HOURS = 6  # Hours to keep execution in ZSET
-    DEFAULT_CACHE_TTL_SECONDS = 3600  # 1 hour cache for org limits
+    DEFAULT_CACHE_TTL_SECONDS = 600  # 10 minutes cache for org limits
 
     # Lock timeouts
     DEFAULT_LOCK_TIMEOUT_SECONDS = 2  # Lock auto-expires

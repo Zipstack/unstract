@@ -52,6 +52,7 @@ class APIDeploymentRateLimiter:
 
         Uses Django cache framework to avoid DB queries on every request.
         Cache automatically cleared on OrganizationRateLimit save/delete.
+        TTL is refreshed on every read to keep frequently-used limits cached.
 
         Args:
             organization: Organization instance
@@ -61,10 +62,17 @@ class APIDeploymentRateLimiter:
         """
         org_id = str(organization.organization_id)
         cache_key = RateLimitKeys.get_org_limit_cache_key(org_id)
+        cache_ttl = getattr(
+            settings,
+            "API_DEPLOYMENT_RATE_LIMIT_CACHE_TTL",
+            RateLimitDefaults.DEFAULT_CACHE_TTL_SECONDS,
+        )
 
         # Try cache first
         cached_limit = cache.get(cache_key)
         if cached_limit is not None:
+            # Refresh TTL on cache hit (extends TTL for frequently-used orgs)
+            cache.set(cache_key, cached_limit, cache_ttl)
             return cached_limit
 
         # Cache miss - query DB and cache result
@@ -79,11 +87,6 @@ class APIDeploymentRateLimiter:
             )
 
         # Cache with TTL
-        cache_ttl = getattr(
-            settings,
-            "API_DEPLOYMENT_RATE_LIMIT_CACHE_TTL",
-            RateLimitDefaults.DEFAULT_CACHE_TTL_SECONDS,
-        )
         cache.set(cache_key, limit, cache_ttl)
 
         return limit
