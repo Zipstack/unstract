@@ -93,6 +93,25 @@ def process_log_history_from_cache(
     )
 
     for log_data in sorted_logs:
+        # Display log content for all levels in workflow-logging service
+        log_level = log_data.data.get("level", "INFO")
+        log_message = log_data.data.get("log") or log_data.data.get(
+            "message", "No message"
+        )
+        log_stage = log_data.data.get("stage", "UNKNOWN_STAGE")
+
+        # Display log with appropriate level
+        if log_level == "ERROR":
+            logger.error(f"Processing ERROR log [{log_stage}]: {log_message}")
+        elif log_level == "WARNING":
+            logger.warning(f"Processing WARNING log [{log_stage}]: {log_message}")
+        elif log_level == "INFO":
+            logger.info(f"Processing INFO log [{log_stage}]: {log_message}")
+        elif log_level == "DEBUG":
+            logger.debug(f"Processing DEBUG log [{log_stage}]: {log_message}")
+        else:
+            logger.info(f"Processing {log_level} log [{log_stage}]: {log_message}")
+
         execution = execution_map.get(log_data.execution_id)
         if not execution:
             error_msg = f"Execution not found for execution_id: {log_data.execution_id}, skipping log push"
@@ -127,7 +146,28 @@ def process_log_history_from_cache(
     # Bulk insert logs for each organization
     processed_count = 0
     for organization_id, logs in organization_logs.items():
-        logger.info(f"Storing {len(logs)} logs for org: {organization_id}")
+        # Count logs by level for better visibility
+        log_counts: dict[str, int] = {}
+        for log in logs:
+            level = log.data.get("level", "INFO")
+            log_counts[level] = log_counts.get(level, 0) + 1
+
+        # Display log count summary
+        if "ERROR" in log_counts:
+            count_summary = ", ".join(
+                [f"{count} {level}" for level, count in log_counts.items()]
+            )
+            logger.error(
+                f"Storing logs for org {organization_id}: {count_summary} (total: {len(logs)})"
+            )
+        else:
+            count_summary = ", ".join(
+                [f"{count} {level}" for level, count in log_counts.items()]
+            )
+            logger.info(
+                f"Storing logs for org {organization_id}: {count_summary} (total: {len(logs)})"
+            )
+
         ExecutionLog.objects.bulk_create(objs=logs, ignore_conflicts=True)
         processed_count += len(logs)
 
