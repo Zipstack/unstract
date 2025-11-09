@@ -131,17 +131,26 @@ class DestinationConnector(BaseConnector):
         return endpoint
 
     def validate(self) -> None:
+        self.workflow_log.log_info(logger, "Starting destination connector validation")
+
         connection_type = self.endpoint.connection_type
         connector: ConnectorInstance = self.endpoint.connector_instance
+
         if connection_type is None:
+            error_msg = "Missing destination connection type"
+            self.workflow_log.log_error(logger, error_msg)
             raise MissingDestinationConnectionType()
         if connection_type not in WorkflowEndpoint.ConnectionType.values:
+            error_msg = f"Invalid destination connection type: {connection_type}"
+            self.workflow_log.log_error(logger, error_msg)
             raise InvalidDestinationConnectionType()
         if (
             connection_type != WorkflowEndpoint.ConnectionType.API
             and connection_type != WorkflowEndpoint.ConnectionType.MANUALREVIEW
             and connector is None
         ):
+            error_msg = "Destination connector not configured"
+            self.workflow_log.log_error(logger, error_msg)
             raise DestinationConnectorNotConfigured()
 
         # Validate database connection if it's a database destination
@@ -153,11 +162,25 @@ class DestinationConnector(BaseConnector):
                     connector_settings=connector.connector_metadata,
                 )
                 engine = db_class.get_engine()
+                self.workflow_log.log_info(logger, "Database connection test successful")
                 if hasattr(engine, "close"):
                     engine.close()
-            except Exception as e:
-                logger.error(f"Database connection failed: {str(e)}")
+            except ConnectorError as e:
+                # Handle specific connector errors with detailed logging
+                error_msg = f"Database connector validation failed: {str(e)}"
+                self.workflow_log.log_error(logger, error_msg)
+                logger.error(error_msg)
                 raise
+            except Exception as e:
+                # Handle unexpected errors
+                error_msg = f"Unexpected error during database validation: {str(e)}"
+                self.workflow_log.log_error(logger, error_msg)
+                logger.error(error_msg)
+                raise
+
+        self.workflow_log.log_info(
+            logger, "Destination connector validation completed successfully"
+        )
 
     def _should_handle_hitl(
         self,

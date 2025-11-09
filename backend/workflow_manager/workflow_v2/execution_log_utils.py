@@ -63,6 +63,15 @@ def process_log_history_from_cache(
 
     logger.info(f"Processing {logs_count} logs from queue '{queue_name}'")
 
+    # Count error logs for priority reporting
+    error_logs_count = sum(
+        1 for log in logs_to_process if log.data.get("level") == "ERROR"
+    )
+    if error_logs_count > 0:
+        logger.error(
+            f"Found {error_logs_count} ERROR level logs in batch - will be processed with priority"
+        )
+
     # Preload required WorkflowExecution and WorkflowFileExecution objects
     execution_ids = {log.execution_id for log in logs_to_process}
     file_execution_ids = {
@@ -77,14 +86,21 @@ def process_log_history_from_cache(
         for obj in WorkflowFileExecution.objects.filter(id__in=file_execution_ids)
     }
 
-    # Process logs with preloaded data
-    for log_data in logs_to_process:
+    # Process logs with preloaded data, prioritizing error logs
+    # Sort to process ERROR level logs first
+    sorted_logs = sorted(
+        logs_to_process, key=lambda log: 0 if log.data.get("level") == "ERROR" else 1
+    )
+
+    for log_data in sorted_logs:
         execution = execution_map.get(log_data.execution_id)
         if not execution:
-            logger.warning(
-                f"Execution not found for execution_id: {log_data.execution_id}, "
-                "skipping log push"
-            )
+            error_msg = f"Execution not found for execution_id: {log_data.execution_id}, skipping log push"
+            # Use error level if the original log was an error
+            if log_data.data.get("level") == "ERROR":
+                logger.error(f"ERROR LOG SKIPPED: {error_msg}")
+            else:
+                logger.warning(error_msg)
             skipped_count += 1
             continue
 
