@@ -59,6 +59,7 @@ directories=(
     "unstract/core"
     "unstract/flags"
     "unstract/connectors"
+    "workers"
 )
 
 # If directories are passed as arguments, override the default
