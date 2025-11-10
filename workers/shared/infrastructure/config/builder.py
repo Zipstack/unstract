@@ -321,8 +321,10 @@ class WorkerBuilder:
             from pathlib import Path
 
             # Check if the worker.py file exists
+            # Path resolution: builder.py is at /app/workers/shared/infrastructure/config/
+            # We need to get to /app/pluggable_worker/, so go up 5 levels
             pluggable_worker_path = (
-                Path(__file__).parent.parent.parent.parent
+                Path(__file__).resolve().parents[4]
                 / "pluggable_worker"
                 / worker_type.value
                 / "worker.py"
@@ -336,15 +338,15 @@ class WorkerBuilder:
             module_path = f"pluggable_worker.{worker_type.value}.worker"
             importlib.import_module(module_path)
 
+        except ImportError:
+            logger.exception(f"Failed to import pluggable worker {worker_type.value}")
+            return False
+        except (OSError, AttributeError):
+            logger.exception(f"Error verifying pluggable worker {worker_type.value}")
+            return False
+        else:
             logger.debug(f"Verified pluggable worker module: {module_path}")
             return True
-
-        except ImportError as e:
-            logger.error(f"Failed to import pluggable worker {worker_type.value}: {e}")
-            return False
-        except Exception as e:
-            logger.error(f"Error verifying pluggable worker {worker_type.value}: {e}")
-            return False
 
 
 # LegacyWorkerAdapter removed - no more fallback logic

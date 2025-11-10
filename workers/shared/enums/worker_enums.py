@@ -11,7 +11,7 @@ from shared.enums.worker_enums_base import (
 )
 
 __all__ = [
-    "WorkerType",
     "QueueName",
     "WorkerStatus",
+    "WorkerType",
 ]

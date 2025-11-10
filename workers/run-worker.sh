@@ -303,9 +303,15 @@ show_status() {
 
     local workers_to_check="api-deployment general file_processing callback log_consumer notification scheduler"
 
-    # Add pluggable workers if in cloud deployment
-    if [[ "${CLOUD_DEPLOYMENT,,}" == "true" ]]; then
-        workers_to_check="$workers_to_check bulk_download"
+    # Add discovered pluggable workers
+    if [[ ${#PLUGGABLE_WORKERS[@]} -gt 0 ]]; then
+        for pluggable_name in "${!PLUGGABLE_WORKERS[@]}"; do
+            local canonical_name="${PLUGGABLE_WORKERS[$pluggable_name]}"
+            # Only add canonical names (skip aliases)
+            if [[ "$pluggable_name" == "$canonical_name" ]]; then
+                workers_to_check="$workers_to_check $canonical_name"
+            fi
+        done
     fi
 
     for worker in $workers_to_check; do
@@ -673,9 +679,9 @@ if [[ -z "${WORKERS[$WORKER_TYPE]}" ]] && [[ -z "${PLUGGABLE_WORKERS[$WORKER_TYP
     print_status $BLUE "Available core workers: ${!WORKERS[*]}"
     if [[ ${#PLUGGABLE_WORKERS[@]} -gt 0 ]]; then
         # Show unique pluggable worker names (not aliases)
-        local pluggable_names=""
+        pluggable_names=""
         for key in "${!PLUGGABLE_WORKERS[@]}"; do
-            local value="${PLUGGABLE_WORKERS[$key]}"
+            value="${PLUGGABLE_WORKERS[$key]}"
             if [[ "$key" == "$value" ]]; then
                 pluggable_names="$pluggable_names $value"
             fi
@@ -700,5 +706,5 @@ else
     if [[ -z "$WORKER_DIR_NAME" ]]; then
         WORKER_DIR_NAME="${PLUGGABLE_WORKERS[$WORKER_TYPE]}"
     fi
-    run_worker "$WORKER_DIR_NAME" "$DETACH" "$LOG_LEVEL" "$CONCURRENCY" "$CUSTOM_QUEUES" "$HEALTH_PORT" "$CUSTOM_HOSTNAME"
+    run_worker "$WORKER_DIR_NAME" "$DETACH" "$LOG_LEVEL" "$CONCURRENCY" "$CUSTOM_QUEUES" "$HEALTH_PORT" "$POOL_TYPE" "$CUSTOM_HOSTNAME"
 fi

@@ -10,6 +10,7 @@ worker configurations.
 
 import logging
 from collections.abc import Callable
+from typing import ClassVar
 
 from shared.enums.worker_enums import QueueName, WorkerType
 from shared.models.worker_models import (
@@ -66,7 +67,7 @@ class WorkerRegistry:
     }
 
     # Pluggable worker configurations loaded dynamically
-    _PLUGGABLE_QUEUE_CONFIGS: dict[WorkerType, WorkerQueueConfig] = {}
+    _PLUGGABLE_QUEUE_CONFIGS: ClassVar[dict[WorkerType, WorkerQueueConfig]] = {}
 
     # Task routing rules for each worker type
     _TASK_ROUTES: dict[WorkerType, WorkerTaskRouting] = {
@@ -136,7 +137,7 @@ class WorkerRegistry:
     }
 
     # Pluggable worker task routes loaded dynamically
-    _PLUGGABLE_TASK_ROUTES: dict[WorkerType, WorkerTaskRouting] = {}
+    _PLUGGABLE_TASK_ROUTES: ClassVar[dict[WorkerType, WorkerTaskRouting]] = {}
 
     # Health check functions registry
     _HEALTH_CHECKS: dict[WorkerType, list[tuple[str, Callable]]] = {}
@@ -173,7 +174,7 @@ class WorkerRegistry:
     }
 
     # Pluggable worker logging configs loaded dynamically
-    _PLUGGABLE_LOGGING_CONFIGS: dict[WorkerType, dict] = {}
+    _PLUGGABLE_LOGGING_CONFIGS: ClassVar[dict[WorkerType, dict]] = {}
 
     @classmethod
     def load_pluggable_worker(cls, worker_type: WorkerType) -> None:
@@ -248,17 +249,20 @@ class WorkerRegistry:
                         primary_queue=queue_name
                     )
 
-                # Default task routing
-                cls._PLUGGABLE_TASK_ROUTES[worker_type] = WorkerTaskRouting(
-                    worker_type=worker_type,
-                    routes=[
-                        TaskRoute(f"{worker_type.value}.*", queue_name),
-                    ],
-                )
+                    # Default task routing (only if queue_name is valid)
+                    cls._PLUGGABLE_TASK_ROUTES[worker_type] = WorkerTaskRouting(
+                        worker_type=worker_type,
+                        routes=[
+                            TaskRoute(f"{worker_type.value}.*", queue_name),
+                        ],
+                    )
+                else:
+                    logger.warning(
+                        f"No matching queue name for {worker_type}, skipping default config"
+                    )
 
-                # Default logging config
+                # Default logging config (always set)
                 cls._PLUGGABLE_LOGGING_CONFIGS[worker_type] = {
-                    "log_format": "django",
                     "log_level": "INFO",
                 }
 
