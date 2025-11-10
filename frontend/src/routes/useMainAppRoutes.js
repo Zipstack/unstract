@@ -119,7 +119,10 @@ function useMainAppRoutes() {
           </Route>
         )}
         <Route element={<RequireAdmin />}>
-          <Route path="administration" element={<UnstractAdministrationPage />} />
+          <Route
+            path="administration"
+            element={<UnstractAdministrationPage />}
+          />
         </Route>
         <Route path="profile" element={<ProfilePage />} />
         <Route
