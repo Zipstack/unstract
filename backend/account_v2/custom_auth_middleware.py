@@ -1,3 +1,5 @@
+from backend.constants import RequestHeader
+from backend.internal_api_constants import INTERNAL_API_PREFIX
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from utils.constants import Account
@@ -7,8 +9,6 @@ from utils.user_session import UserSessionUtils
 from account_v2.authentication_plugin_registry import AuthenticationPluginRegistry
 from account_v2.authentication_service import AuthenticationService
 from account_v2.constants import Common
-from backend.constants import RequestHeader
-from backend.internal_api_constants import INTERNAL_API_PREFIX
 
 
 class CustomAuthMiddleware:
