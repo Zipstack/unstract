@@ -2182,14 +2182,14 @@ wheels = [
 
 [[package]]
 name = "llmwhisperer-client"
-version = "2.4.2"
+version = "2.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/6c/9c/ebd684cfbcf5a76d42711a1ef314145a680cd5ae5c07168ede7fdac3bb72/llmwhisperer_client-2.4.2.tar.gz", hash = "sha256:085ed27108f9ae7cf042af58c5a3022ef51051db395774b5771ed4ed9b4be154", size = 3261138 }
+sdist = { url = "https://files.pythonhosted.org/packages/ac/2d/3657ff470c491c3778ae519e51756b2aee8b8ba25bf4d0fd0a77662146f5/llmwhisperer_client-2.5.0.tar.gz", hash = "sha256:8d08df695ca74513ca904ddb42620ecf70a1eb8b432872ba15fbf238529245ac", size = 3261186 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b6/21/7cab42f479f7dba81f53e77d2b6fdce5f707cb1b50d50fde707671be7211/llmwhisperer_client-2.4.2-py3-none-any.whl", hash = "sha256:15dba4dd86aec521b6a296460031b19281847876cd6378e24a980b3d5c681c50", size = 9663 },
+    { url = "https://files.pythonhosted.org/packages/0b/dc/f99fb0903d244066ef1207b7b465e3acfd68df575b129e45e397f05bc1f4/llmwhisperer_client-2.5.0-py3-none-any.whl", hash = "sha256:b637aa914875a25b76de60cb0e92be9237d554967380d2aeeab70ecadcff9bab", size = 9733 },
 ]
 
 [[package]]
@@ -3994,7 +3994,7 @@ hook-check-django-migrations = [
     { name = "unstract-core", editable = "unstract/core" },
     { name = "unstract-filesystem", editable = "unstract/filesystem" },
     { name = "unstract-flags", editable = "unstract/flags" },
-    { name = "unstract-sdk", specifier = "~=0.78.0" },
+    { name = "unstract-sdk", specifier = "~=0.79.0" },
     { name = "unstract-tool-registry", editable = "unstract/tool-registry" },
     { name = "unstract-tool-sandbox", editable = "unstract/tool-sandbox" },
     { name = "unstract-workflow-execution", editable = "unstract/workflow-execution" },
@@ -4078,7 +4078,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "unstract-sdk", specifier = "~=0.78.0" }]
+requires-dist = [{ name = "unstract-sdk", specifier = "~=0.79.0" }]
 
 [[package]]
 name = "unstract-flags"
@@ -4097,7 +4097,7 @@ requires-dist = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.78.0"
+version = "0.79.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filetype" },
@@ -4136,9 +4136,9 @@ dependencies = [
     { name = "tiktoken" },
     { name = "transformers" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7b/b9/ca49124e2548e7baa57c00dab2300d59a1dac13ccc6b0d08e5c81f3f7b94/unstract_sdk-0.78.0.tar.gz", hash = "sha256:35cf15acd946996be3871b35aec099b9fb03d30e96893dd5f34991a8aa2535a0", size = 2364734 }
+sdist = { url = "https://files.pythonhosted.org/packages/c8/a6/d52b44d566d5584a4471d9ab1f6eccd760865e90e50c84db6c22c72185d8/unstract_sdk-0.79.0.tar.gz", hash = "sha256:fbf093006702d9fbfdbf28fbd89d097faf1cc9c062c7e661626927179dcc5344", size = 2263108 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ac/23/2f0f9cf0f4e489a4be8133622e968f8a7dd639f0f582252625ca3a22a749/unstract_sdk-0.78.0-py3-none-any.whl", hash = "sha256:ecaf24386c1eaefa47e6c06d1f978ca26406cc8cfffcbe9d96197fa1b2fba826", size = 270348 },
+    { url = "https://files.pythonhosted.org/packages/82/46/f73ed184d2f1f0d1c9fdd76ccde59c2311728307ed1fc172e75354cb234f/unstract_sdk-0.79.0-py3-none-any.whl", hash = "sha256:d43a9ab000d70ff6b31fab6a148086013cc9f5c327e5d728a1bdae7f19b3bb78", size = 270417 },
 ]
 
 [package.optional-dependencies]
@@ -4254,7 +4254,7 @@ requires-dist = [
     { name = "jsonschema", specifier = ">=4.18.6,<5.0" },
     { name = "pyyaml", specifier = "~=6.0.1" },
     { name = "unstract-flags", editable = "unstract/flags" },
-    { name = "unstract-sdk", specifier = "~=0.78.0" },
+    { name = "unstract-sdk", specifier = "~=0.79.0" },
     { name = "unstract-tool-sandbox", editable = "unstract/tool-sandbox" },
 ]
 

@@ -2318,7 +2318,7 @@ wheels = [
 
 [[package]]
 name = "llmwhisperer-client"
-version = "2.4.2"
+version = "2.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "requests" },
@@ -4435,7 +4435,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "unstract-sdk", specifier = "~=0.78.0" }]
+requires-dist = [{ name = "unstract-sdk", specifier = "~=0.79.0" }]
 
 [[package]]
 name = "unstract-flags"
@@ -4454,7 +4454,7 @@ requires-dist = [
 
 [[package]]
 name = "unstract-sdk"
-version = "0.78.0"
+version = "0.79.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filetype" },
@@ -4611,7 +4611,7 @@ requires-dist = [
     { name = "jsonschema", specifier = ">=4.18.6,<5.0" },
     { name = "pyyaml", specifier = "~=6.0.1" },
     { name = "unstract-flags", editable = "../unstract/flags" },
-    { name = "unstract-sdk", specifier = "~=0.78.0" },
+    { name = "unstract-sdk", specifier = "~=0.79.0" },
     { name = "unstract-tool-sandbox", editable = "../unstract/tool-sandbox" },
 ]
 
@@ -4696,7 +4696,7 @@ requires-dist = [
     { name = "unstract-core", editable = "../unstract/core" },
     { name = "unstract-filesystem", editable = "../unstract/filesystem" },
     { name = "unstract-flags", editable = "../unstract/flags" },
-    { name = "unstract-sdk", extras = ["aws", "gcs", "azure"], specifier = "~=0.78.0" },
+    { name = "unstract-sdk", extras = ["aws", "gcs", "azure"], specifier = "~=0.79.0" },
     { name = "unstract-sdk1", extras = ["aws", "gcs", "azure"], editable = "../unstract/sdk1" },
     { name = "unstract-tool-registry", editable = "../unstract/tool-registry" },
     { name = "unstract-tool-sandbox", editable = "../unstract/tool-sandbox" },
