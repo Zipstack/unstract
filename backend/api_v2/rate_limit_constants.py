@@ -110,10 +110,9 @@ class RateLimitMessages:
         )
 
     @classmethod
-    def get_global_limit_exceeded_message(cls, current_usage: int, limit: int) -> str:
+    def get_global_limit_exceeded_message(cls) -> str:
         """Get generic global limit exceeded message.
 
-        Note: Does not expose current_usage or limit for security reasons.
-        Returns a generic message indicating system is overloaded.
+        Returns a user-friendly message without exposing system capacity.
         """
         return cls.GLOBAL_LIMIT_EXCEEDED_TEMPLATE
