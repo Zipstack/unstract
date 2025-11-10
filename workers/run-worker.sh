@@ -367,7 +367,7 @@ run_worker() {
         print_status $RED "Error: Worker directory not found: $worker_dir"
 
         # Provide helpful message for pluggable workers
-        if [[ "$worker_type" == "bulk_download" ]]; then
+        if [[ -n "${PLUGGABLE_WORKERS[$worker_type]:-}" ]]; then
             echo ""
             echo -e "${YELLOW}This is a cloud-only pluggable worker.${NC}"
             echo -e "Make sure:"
@@ -385,12 +385,10 @@ run_worker() {
     export LOG_LEVEL="${log_level:-INFO}"
 
     # Set CLOUD_DEPLOYMENT for pluggable workers
-    case "$worker_type" in
-        "bulk_download")
-            export CLOUD_DEPLOYMENT=true
-            print_status $BLUE "Cloud deployment enabled for pluggable worker"
-            ;;
-    esac
+    if [[ -n "${PLUGGABLE_WORKERS[$worker_type]:-}" ]]; then
+        export CLOUD_DEPLOYMENT=true
+        print_status $BLUE "Cloud deployment enabled for pluggable worker"
+    fi
 
     # Set health port if specified
     if [[ -n "$health_port" ]]; then
@@ -416,8 +414,12 @@ run_worker() {
             "scheduler")
                 export SCHEDULER_HEALTH_PORT="$health_port"
                 ;;
-            "bulk_download")
-                export BULK_DOWNLOAD_HEALTH_PORT="$health_port"
+            *)
+                # Handle pluggable workers dynamically
+                if [[ -n "${PLUGGABLE_WORKERS[$worker_type]:-}" ]]; then
+                    worker_type_upper=$(echo "$worker_type" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+                    export "${worker_type_upper}_HEALTH_PORT=$health_port"
+                fi
                 ;;
         esac
     fi

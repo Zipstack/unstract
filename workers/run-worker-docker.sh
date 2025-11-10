@@ -536,8 +536,8 @@ if [[ "$1" == *"celery"* ]] || [[ "$1" == *".venv"* ]]; then
             ;;
         *)
             # Default for pluggable workers - use dynamic port from WORKER_HEALTH_PORTS
-            local health_port="${WORKER_HEALTH_PORTS[$WORKER_TYPE]:-8090}"
-            local worker_type_upper=$(echo "$WORKER_TYPE" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+            health_port="${WORKER_HEALTH_PORTS[$WORKER_TYPE]:-8090}"
+            worker_type_upper=$(echo "$WORKER_TYPE" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
             export "${worker_type_upper}_HEALTH_PORT=$health_port"
             export "${worker_type_upper}_METRICS_PORT=$health_port"
             ;;

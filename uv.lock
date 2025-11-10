@@ -4315,7 +4315,7 @@ requires-dist = [
     { name = "unstract-core", editable = "unstract/core" },
     { name = "unstract-filesystem", editable = "unstract/filesystem" },
     { name = "unstract-flags", editable = "unstract/flags" },
-    { name = "unstract-sdk", extras = ["aws", "gcs", "azure"], specifier = "~=0.78.0" },
+    { name = "unstract-sdk", extras = ["aws", "gcs", "azure"], specifier = "~=0.79.0" },
     { name = "unstract-sdk1", extras = ["aws", "gcs", "azure"], editable = "unstract/sdk1" },
     { name = "unstract-tool-registry", editable = "unstract/tool-registry" },
     { name = "unstract-tool-sandbox", editable = "unstract/tool-sandbox" },
