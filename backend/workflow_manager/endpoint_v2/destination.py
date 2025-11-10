@@ -134,7 +134,7 @@ class DestinationConnector(BaseConnector):
         self.workflow_log.log_info(logger, "Starting destination connector validation")
 
         connection_type = self.endpoint.connection_type
-        connector: ConnectorInstance = self.endpoint.connector_instance
+        connector: ConnectorInstance | None = self.endpoint.connector_instance
 
         if connection_type is None:
             error_msg = "Missing destination connection type"
@@ -144,11 +144,12 @@ class DestinationConnector(BaseConnector):
             error_msg = f"Invalid destination connection type: {connection_type}"
             self.workflow_log.log_error(logger, error_msg)
             raise InvalidDestinationConnectionType()
-        if (
+        # Check if connector is required but missing
+        requires_connector = (
             connection_type != WorkflowEndpoint.ConnectionType.API
             and connection_type != WorkflowEndpoint.ConnectionType.MANUALREVIEW
-            and connector is None
-        ):
+        )
+        if requires_connector and connector is None:
             error_msg = "Destination connector not configured"
             self.workflow_log.log_error(logger, error_msg)
             raise DestinationConnectorNotConfigured()
