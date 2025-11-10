@@ -90,7 +90,7 @@ let LlmWhispererCustomCheckoutPage;
 try {
   LlmWhispererCustomCheckoutPage =
     require("../plugins/llm-whisperer/pages/LlmWhispererCustomCheckoutPage.jsx").LlmWhispererCustomCheckoutPage;
-} catch (err) {
+} catch (err) { // NOSONAR - Plugin loading pattern: Cloud-only feature gracefully handled
   // Do nothing, Not-found Page will be triggered.
 }
 
