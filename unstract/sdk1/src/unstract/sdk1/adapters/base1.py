@@ -320,15 +320,48 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
         if "project" in metadata_copy and not metadata_copy.get("vertex_project"):
             metadata_copy["vertex_project"] = metadata_copy["project"]
 
+        # Handle Vertex AI thinking configuration (for Gemini models)
+        enable_thinking = metadata_copy.get("enable_thinking", False)
+
+        # If enable_thinking is not explicitly provided but thinking config is present,
+        # assume thinking was enabled in a previous validation
+        has_thinking_config = (
+            "thinking" in metadata_copy and metadata_copy.get("thinking") is not None
+        )
+        if not enable_thinking and has_thinking_config:
+            enable_thinking = True
+
+        # Create a copy to avoid mutating the original metadata
+        result_metadata = metadata_copy.copy()
+
+        if enable_thinking:
+            if has_thinking_config:
+                # Preserve existing thinking config
+                result_metadata["thinking"] = metadata_copy["thinking"]
+            else:
+                # Create new thinking config for enabled state
+                thinking_config = {"type": "enabled"}
+                budget_tokens = metadata_copy.get("budget_tokens")
+                if budget_tokens is not None:
+                    thinking_config["budget_tokens"] = budget_tokens
+                result_metadata["thinking"] = thinking_config
+                result_metadata["temperature"] = 1
+        else:
+            # Vertex AI requires explicit disabled state with budget 0
+            result_metadata["thinking"] = {
+                "type": "disabled",
+                "budget_tokens": 0
+            }
+
         # Handle safety settings
-        ss_dict = metadata_copy.get("safety_settings", {})
+        ss_dict = result_metadata.get("safety_settings", {})
 
         # Handle case where safety_settings is already a list
         if isinstance(ss_dict, list):
-            metadata_copy["safety_settings"] = ss_dict
+            result_metadata["safety_settings"] = ss_dict
         else:
             # Convert dictionary format to list format
-            metadata_copy["safety_settings"] = [
+            result_metadata["safety_settings"] = [
                 {
                     "category": "HARM_CATEGORY_HARASSMENT",
                     "threshold": ss_dict.get("harassment", "BLOCK_ONLY_HIGH"),
@@ -361,13 +394,23 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
             "stream",
         ]
 
+        # Create validation metadata excluding control fields
+        validation_metadata = {
+            k: v
+            for k, v in result_metadata.items()
+            if k not in ("enable_thinking", "budget_tokens", "thinking")
+        }
+
         # First validate using pydantic
-        validated_data = VertexAILLMParameters(**metadata_copy).model_dump()
+        validated_data = VertexAILLMParameters(**validation_metadata).model_dump()
 
         # Preserve any important fields not in the model
         for field in fields_to_preserve:
-            if field in metadata_copy and field not in validated_data:
-                validated_data[field] = metadata_copy[field]
+            if field in result_metadata and field not in validated_data:
+                validated_data[field] = result_metadata[field]
+
+        # Always add thinking config to final result (either enabled or disabled)
+        validated_data["thinking"] = result_metadata["thinking"]
 
         return validated_data
 
