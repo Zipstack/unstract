@@ -11,6 +11,11 @@ function SettingsLayout({ children, activeKey }) {
   const sidebarRef = useRef(null);
   const { sessionDetails } = useSessionStore();
 
+  // Get sidebar collapsed state from localStorage (same as PageLayout)
+  const isMainSidebarCollapsed =
+    JSON.parse(localStorage.getItem("collapsed")) || false;
+  const sidebarLeft = isMainSidebarCollapsed ? 73 : 248; // collapsed: 65px + 8px gap, expanded: 240px + 8px gap
+
   // Show sidebar when route changes (navigating to a new settings page)
   // location.key changes even when navigating to the same path
   useEffect(() => {
@@ -30,11 +35,6 @@ function SettingsLayout({ children, activeKey }) {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
-
-  // Guard against missing orgName - check AFTER all hooks
-  if (!sessionDetails?.orgName) {
-    return null;
-  }
 
   const settingsMenuItems = [
     {
@@ -72,12 +72,24 @@ function SettingsLayout({ children, activeKey }) {
 
   const currentActiveKey = getActiveKey();
 
+  // Guard against missing orgName - check AFTER all hooks and state setup
+  if (!sessionDetails?.orgName) {
+    return (
+      <div className="settings-container">
+        <main className="settings-content" role="main">
+          {children}
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="settings-container">
       {isSidebarVisible && (
         <nav
           className="settings-sidebar"
           ref={sidebarRef}
+          style={{ left: `${sidebarLeft}px` }}
           aria-label="Settings navigation"
         >
           {settingsMenuItems.map((item) => (
