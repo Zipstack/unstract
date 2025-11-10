@@ -446,8 +446,6 @@ The error response follows the `drf-standardized-errors` format used throughout 
 - `errors`: Array of error objects
   - `code`: Error code (always `"error"`)
   - `detail`: Human-readable error message
-    - **Organization limit**: Shows current usage and limit (e.g., "20/20")
-    - **Global limit**: Generic message (does not expose system capacity)
   - `attr`: Field name (null for non-field errors)
 
 **Note**: Clients should implement their own retry logic with exponential backoff. The rate limit will be released once active requests complete.
