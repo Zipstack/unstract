@@ -58,6 +58,37 @@ class NoActiveAPIKeyError(APIException):
         super().__init__(detail, code)
 
 
+class RateLimitExceeded(APIException):
+    status_code = 429
+    default_detail = "Rate limit exceeded"
+
+    def __init__(
+        self,
+        current_usage: int = 0,
+        limit: int = 0,
+        limit_type: str = "organization",
+        detail: str | None = None,
+        code: str | None = None,
+    ):
+        from api_v2.rate_limit_constants import RateLimitMessages
+
+        self.current_usage = current_usage
+        self.limit = limit
+        self.limit_type = limit_type
+
+        if detail is None:
+            if limit_type == "organization":
+                detail = RateLimitMessages.get_org_limit_exceeded_message(
+                    current_usage=current_usage, limit=limit
+                )
+            else:
+                detail = RateLimitMessages.get_global_limit_exceeded_message(
+                    current_usage=current_usage, limit=limit
+                )
+
+        super().__init__(detail, code)
+
+
 class PresignedURLFetchError(APIException):
     default_detail = "Failed to fetch file from presigned URL"
 
