@@ -120,6 +120,13 @@ class APIDeploymentRateLimiter:
         org_key = cls._get_org_key(str(organization.organization_id))
 
         # Cleanup expired entries before counting
+        # NOTE: Manual cleanup is required even though ZSET keys have TTL because:
+        # 1. Redis TTL expires the entire ZSET key after inactivity, not individual entries
+        # 2. Individual ZSET entries remain until the whole key expires
+        # 3. Without cleanup, stale entries skew the count and cause incorrect rate limiting
+        # 4. ZREMRANGEBYSCORE removes entries older than 6 hours (keeps count accurate)
+        # 5. TTL (expire) garbage collects the entire key if org becomes inactive
+        # Both mechanisms work together: manual cleanup + key TTL
         cls._cleanup_expired_entries(org_key)
         cls._cleanup_expired_entries(RateLimitKeys.GLOBAL_EXECUTIONS_KEY)
 
@@ -332,49 +339,6 @@ class APIDeploymentRateLimiter:
                 "Allowing request to proceed."
             )
             return True, None
-
-    @classmethod
-    def acquire_slot(cls, organization: Organization, execution_id: str) -> bool:
-        """Reserve a rate limit slot for a new execution.
-
-        DEPRECATED: Use check_and_acquire() instead for atomic check-and-acquire.
-        This method is kept for backward compatibility.
-
-        Args:
-            organization: Organization instance
-            execution_id: Unique execution identifier
-
-        Returns:
-            bool: True if slot was successfully acquired
-        """
-        org_key = cls._get_org_key(str(organization.organization_id))
-        current_timestamp = time.time()
-        ttl_seconds = cls._get_ttl_seconds()
-
-        try:
-            # Use pipeline for atomic operations
-            pipe = redis_cache.pipeline()
-
-            # Add to org-specific ZSET
-            pipe.zadd(org_key, {execution_id: current_timestamp})
-            pipe.expire(org_key, ttl_seconds)
-
-            # Add to global ZSET
-            pipe.zadd(
-                RateLimitKeys.GLOBAL_EXECUTIONS_KEY, {execution_id: current_timestamp}
-            )
-            pipe.expire(RateLimitKeys.GLOBAL_EXECUTIONS_KEY, ttl_seconds)
-
-            pipe.execute()
-
-            logger.info(
-                f"Rate limit slot acquired for org {organization.organization_id}, "
-                f"execution {execution_id}"
-            )
-            return True
-        except Exception as e:
-            logger.error(f"Failed to acquire rate limit slot: {e}")
-            return False
 
     @classmethod
     def release_slot(cls, organization_id: str, execution_id: str) -> None:
