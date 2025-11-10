@@ -1,5 +1,8 @@
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any, Union
+
+if TYPE_CHECKING:
+    from django.core.files.uploadedfile import UploadedFile
 
 from account_v2.custom_exceptions import DuplicateData
 from connector_auth_v2.constants import ConnectorAuthKey
@@ -26,7 +29,7 @@ from .serializers import ConnectorInstanceSerializer
 logger = logging.getLogger(__name__)
 
 
-class ConnectorInstanceViewSet(viewsets.ModelViewSet):
+class ConnectorInstanceViewSet(viewsets.ModelViewSet):  # type: ignore[misc]
     versioning_class = URLPathVersioning
     serializer_class = ConnectorInstanceSerializer
 
@@ -68,33 +71,96 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
 
         return queryset
 
-    def _get_connector_metadata(self, connector_id: str) -> dict[str, str] | None:
-        """Gets connector metadata for the ConnectorInstance.
+    def _extract_metadata_from_form_data(self) -> dict[str, Union[str, "UploadedFile"]]:
+        """Extract metadata from FormData when files are uploaded.
 
+        Processes multipart/form-data requests containing both form fields
+        and file uploads, converting them into a metadata dictionary.
+
+        Returns:
+            dict[str, Union[str, UploadedFile]]: Connector metadata extracted from form data
+        """
+        import json
+
+        connector_metadata = {}
+        excluded_fields = {
+            "connector_id",
+            "connector_name",
+            "created_by",
+            "modified_by",
+        }
+
+        # Extract non-file form fields as metadata
+        for key, value in self.request.data.items():
+            if key not in excluded_fields:
+                try:
+                    # Try to parse as JSON for complex values
+                    connector_metadata[key] = json.loads(value)
+                except (json.JSONDecodeError, TypeError):
+                    # Store as string for simple values
+                    connector_metadata[key] = value
+
+        # Handle file uploads
+        for field_name, uploaded_file in self.request.FILES.items():
+            connector_metadata[field_name] = uploaded_file
+
+        return connector_metadata
+
+    def _get_connector_metadata(
+        self, connector_id: str
+    ) -> dict[str, Union[str, "UploadedFile"]] | None:
+        """Gets connector metadata for the ConnectorInstance.
 
         Raises:
             e: MissingParamException, CacheMissException
 
         Returns:
-            dict[str, str]: Connector creds dict to connect with
+            dict[str, Union[str, UploadedFile]] | None: Connector creds dict to connect with
         """
-        connector_metadata = None
         if ConnectorInstance.supportsOAuth(connector_id=connector_id):
-            logger.info(f"Fetching oauth data for {connector_id}")
-            oauth_key = self.request.query_params.get(ConnectorAuthKey.OAUTH_KEY)
-            if not oauth_key:
-                raise MissingParamException(
-                    "OAuth authentication required. Please sign in with Google first."
-                )
-            logger.info(f"Using OAuth cache key for {connector_id}")
-            connector_metadata = ConnectorAuthHelper.get_oauth_creds_from_cache(
-                cache_key=oauth_key,
-                delete_key=False,  # Don't delete yet - wait for successful operation
+            return self._get_oauth_metadata(connector_id)
+
+        # Try standard JSON metadata first
+        connector_metadata: dict[str, str | "UploadedFile"] | None = (
+            self.request.data.get(CIKey.CONNECTOR_METADATA)
+        )
+
+        # Fallback to FormData handling for file uploads
+        if not connector_metadata and hasattr(self.request, "FILES"):
+            connector_metadata = self._extract_metadata_from_form_data()
+
+        return connector_metadata
+
+    def _get_oauth_metadata(
+        self, connector_id: str
+    ) -> dict[str, Union[str, "UploadedFile"]]:
+        """Extract OAuth metadata from cache.
+
+        Args:
+            connector_id: The connector identifier
+
+        Returns:
+            dict[str, Union[str, UploadedFile]]: OAuth credentials from cache
+
+        Raises:
+            MissingParamException: If OAuth key is missing or invalid
+        """
+        logger.info(f"Fetching oauth data for {connector_id}")
+        oauth_key = self.request.query_params.get(ConnectorAuthKey.OAUTH_KEY)
+        if not oauth_key:
+            raise MissingParamException(
+                "OAuth authentication required. Please sign in with Google first."
             )
-            if connector_metadata is None:
-                raise MissingParamException(param=ConnectorAuthKey.OAUTH_KEY)
-        else:
-            connector_metadata = self.request.data.get(CIKey.CONNECTOR_METADATA)
+
+        logger.info(f"Using OAuth cache key for {connector_id}")
+        connector_metadata = ConnectorAuthHelper.get_oauth_creds_from_cache(
+            cache_key=oauth_key,
+            delete_key=False,  # Don't delete yet - wait for successful operation
+        )
+
+        if connector_metadata is None:
+            raise MissingParamException(param=ConnectorAuthKey.OAUTH_KEY)
+
         return connector_metadata
 
     def _cleanup_oauth_cache(self, connector_id: str) -> None:

@@ -76,12 +76,20 @@ function RjsfFormLayout({
     []
   );
 
-  const uiSchema = useMemo(
-    () => ({
+  const uiSchema = useMemo(() => {
+    const baseSchema = {
       "ui:classNames": "my-rjsf-form",
-    }),
-    [formData]
-  );
+    };
+
+    // Add widget specifications for specific fields
+    if (schema?.properties?.wallet_file) {
+      baseSchema.wallet_file = {
+        "ui:widget": "FileWidget",
+      };
+    }
+
+    return baseSchema;
+  }, [formData, schema]);
 
   const removeBlankDefault = useCallback((schema) => {
     if (schema?.properties && schema?.required) {
@@ -170,70 +178,78 @@ function RjsfFormLayout({
 
   const transformErrors = useCallback(
     (errors) => {
-      return errors.map((error) => {
-        const { name, params, property } = error;
+      return errors
+        .map((error) => {
+          const { name, params, property } = error;
 
-        // Try to resolve nested schema/title from property path like ".a.b[0].c"
-        const path = (property || "").replace(/^\./, "");
-        const getFieldSchema = (root, pathStr) => {
-          if (!root || !pathStr) return undefined;
-          const tokens = pathStr
-            .replace(/\[(\d+)\]/g, ".$1")
-            .split(".")
-            .filter(Boolean);
-          let cur = root;
-          for (const tok of tokens) {
-            if (cur?.type === "array" && cur?.items) {
-              cur = cur.items;
+          // Try to resolve nested schema/title from property path like ".a.b[0].c"
+          const path = (property || "").replace(/^\./, "");
+          const getFieldSchema = (root, pathStr) => {
+            if (!root || !pathStr) return undefined;
+            const tokens = pathStr
+              .replace(/\[(\d+)\]/g, ".$1")
+              .split(".")
+              .filter(Boolean);
+            let cur = root;
+            for (const tok of tokens) {
+              if (cur?.type === "array" && cur?.items) {
+                cur = cur.items;
+              }
+              if (cur?.properties?.[tok]) {
+                cur = cur.properties[tok];
+              }
             }
-            if (cur?.properties?.[tok]) {
-              cur = cur.properties[tok];
-            }
+            return cur;
+          };
+          const schemaProps = schema?.properties ?? {};
+          const fieldSchema = getFieldSchema(schema, path);
+          const fieldName = path;
+          const fieldTitle = fieldSchema?.title || fieldName || "This field";
+
+          // Handle file upload fields - skip type validation for File objects
+          if (name === "type" && fieldName === "wallet_file") {
+            // Allow File objects for wallet_file field - suppress type validation error
+            return null; // Returning null will filter out this error
           }
-          return cur;
-        };
-        const schemaProps = schema?.properties ?? {};
-        const fieldSchema = getFieldSchema(schema, path);
-        const fieldName = path;
-        const fieldTitle = fieldSchema?.title || fieldName || "This field";
 
-        // Handle required fields separately (special case)
-        if (name === "required") {
-          const missingField = params?.missingProperty;
-          const missingSchema = schemaProps[missingField];
-          const missingTitle =
-            missingSchema?.title || missingField || "This field";
+          // Handle required fields separately (special case)
+          if (name === "required") {
+            const missingField = params?.missingProperty;
+            const missingSchema = schemaProps[missingField];
+            const missingTitle =
+              missingSchema?.title || missingField || "This field";
+            return {
+              ...error,
+              message: `'${missingTitle}' is required`,
+            };
+          }
+
+          // Handle enum separately due to complexity
+          if (name === "enum") {
+            return {
+              ...error,
+              message: generateEnumMessage(fieldTitle, fieldSchema),
+            };
+          }
+
+          // Use lookup table for simple cases
+          const messageGenerator = validationMessageGenerators[name];
+          if (messageGenerator) {
+            return {
+              ...error,
+              message: messageGenerator(fieldTitle, params),
+            };
+          }
+
+          // Default fallback
           return {
             ...error,
-            message: `'${missingTitle}' is required`,
+            message: error.stack?.trim()
+              ? error.stack
+              : `'${fieldTitle}': ${error.message}`,
           };
-        }
-
-        // Handle enum separately due to complexity
-        if (name === "enum") {
-          return {
-            ...error,
-            message: generateEnumMessage(fieldTitle, fieldSchema),
-          };
-        }
-
-        // Use lookup table for simple cases
-        const messageGenerator = validationMessageGenerators[name];
-        if (messageGenerator) {
-          return {
-            ...error,
-            message: messageGenerator(fieldTitle, params),
-          };
-        }
-
-        // Default fallback
-        return {
-          ...error,
-          message: error.stack?.trim()
-            ? error.stack
-            : `'${fieldTitle}': ${error.message}`,
-        };
-      });
+        })
+        .filter(Boolean); // Filter out null values
     },
     [schema, generateEnumMessage, validationMessageGenerators]
   );
@@ -276,23 +292,36 @@ function RjsfFormLayout({
               type="info"
             />
           )}
-          <Form
-            ref={formRef}
-            schema={removeBlankDefault(formSchema)}
-            uiSchema={uiSchema}
-            validator={validator}
-            widgets={widgets}
-            fields={fields}
-            formData={formData}
-            transformErrors={transformErrors}
-            onError={() => {}}
-            onSubmit={(e) => validateAndSubmit?.(e.formData)}
-            showErrorList={false}
-            onChange={handleChange}
-            templates={templates}
+          <div
+            onSubmit={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              return false;
+            }}
           >
-            {children || <></>}
-          </Form>
+            <Form
+              ref={formRef}
+              schema={removeBlankDefault(formSchema)}
+              uiSchema={uiSchema}
+              validator={validator}
+              widgets={widgets}
+              fields={fields}
+              formData={formData}
+              transformErrors={transformErrors}
+              onError={() => {}}
+              onSubmit={(e) => {
+                e.preventDefault?.();
+                validateAndSubmit?.(e.formData);
+                return false;
+              }}
+              showErrorList={false}
+              onChange={handleChange}
+              templates={templates}
+              noHtml5Validate={true}
+            >
+              {children || <></>}
+            </Form>
+          </div>
         </Space>
       )}
     </>

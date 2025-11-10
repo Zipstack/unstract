@@ -1,3 +1,5 @@
+import logging
+
 from connector_v2.constants import ConnectorInstanceKey as CIKey
 from rest_framework import status
 from rest_framework.decorators import action
@@ -9,16 +11,47 @@ from rest_framework.viewsets import GenericViewSet
 
 from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
+from connector_processor.exceptions import InvalidConnectorID
 from connector_processor.serializers import (
     ConnectorSchemaQuerySerializer,
     SupportedConnectorsQuerySerializer,
     TestConnectorSerializer,
 )
 
+logger = logging.getLogger(__name__)
 
-class ConnectorViewSet(GenericViewSet):
+
+class ConnectorViewSet(GenericViewSet):  # type: ignore[misc]
     versioning_class = URLPathVersioning
     serializer_class = TestConnectorSerializer
+
+    def _extract_metadata_from_form_data(self, request: Request) -> dict[str, str]:
+        """Extract metadata from FormData, handling both regular fields and file uploads."""
+        import json
+
+        connector_metadata = {}
+        excluded_fields = {
+            "connector_id",
+            "connector_name",
+            "created_by",
+            "modified_by",
+        }
+
+        # Extract non-file form fields as metadata
+        for key, value in request.data.items():
+            if key not in excluded_fields:
+                try:
+                    # Try to parse as JSON for complex values
+                    connector_metadata[key] = json.loads(value)
+                except (json.JSONDecodeError, TypeError):
+                    # Store as string for simple values
+                    connector_metadata[key] = value
+
+        # Handle file uploads
+        for field_name, uploaded_file in request.FILES.items():
+            connector_metadata[field_name] = uploaded_file
+
+        return connector_metadata
 
     def get_serializer_class(self) -> Serializer:
         if self.action == "test":
@@ -31,13 +64,40 @@ class ConnectorViewSet(GenericViewSet):
 
     def test(self, request: Request) -> Response:
         """Tests the connector against the credentials passed."""
-        serializer: TestConnectorSerializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        connector_id = serializer.validated_data.get(CIKey.CONNECTOR_ID)
-        cred_string = serializer.validated_data.get(CIKey.CONNECTOR_METADATA)
-        test_result = ConnectorProcessor.test_connectors(
-            connector_id=connector_id, credentials=cred_string
+        # Handle FormData requests (with file uploads) similar to connector creation
+        if request.content_type and "multipart/form-data" in request.content_type:
+            connector_id = request.data.get(CIKey.CONNECTOR_ID)
+            if not connector_id:
+                return Response(
+                    {"error": "connector_id is required"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Extract metadata from FormData (similar to connector_v2/views.py)
+            cred_string = self._extract_metadata_from_form_data(request)
+        else:
+            # Handle JSON requests (original behavior)
+            serializer: TestConnectorSerializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            connector_id = serializer.validated_data.get(CIKey.CONNECTOR_ID)
+            cred_string = serializer.validated_data.get(CIKey.CONNECTOR_METADATA)
+
+        # Debug logging
+        logger.info(
+            f"Test connector request - ID: {connector_id}, credentials type: {type(cred_string)}"
         )
+        logger.info(f"Connector ID repr: {repr(connector_id)}")
+
+        try:
+            test_result = ConnectorProcessor.test_connectors(
+                connector_id=connector_id, credentials=cred_string
+            )
+        except (IndexError, InvalidConnectorID) as e:
+            logger.error(f"Failed to find connector with ID '{connector_id}': {e}")
+            return Response(
+                {"error": f"Invalid connector ID: {connector_id}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         return Response(
             {ConnectorKeys.IS_VALID: test_result},
             status=status.HTTP_200_OK,
