@@ -397,9 +397,9 @@ logger.info("✅ Worker infrastructure initialized successfully")
 # Determine worker path dynamically based on worker type
 base_dir = os.path.dirname(os.path.abspath(__file__))
 if worker_type.is_pluggable():
-    # Pluggable workers live alongside the workers package at /app/pluggable_worker/{worker_name}
+    # Pluggable workers live inside workers/pluggable_worker/{worker_name}
     worker_directory = os.path.join("pluggable_worker", worker_type.value)
-    worker_path = os.path.join(os.path.dirname(base_dir), worker_directory)
+    worker_path = os.path.join(base_dir, worker_directory)
 else:
     # Core workers use their value directly (with hyphens converted to underscores where needed)
     worker_directory = worker_type.value.replace("-", "_")

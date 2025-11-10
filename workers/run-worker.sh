@@ -352,16 +352,13 @@ run_worker() {
 
     # Determine worker directory (handle pluggable workers)
     local worker_dir
-    case "$worker_type" in
-        "bulk_download")
-            # Pluggable worker - use subdirectory
-            worker_dir="$WORKERS_DIR/pluggable_worker/$worker_type"
-            ;;
-        *)
-            # Core worker - use root directory
-            worker_dir="$WORKERS_DIR/$worker_type"
-            ;;
-    esac
+    if [[ -n "${PLUGGABLE_WORKERS[$worker_type]:-}" ]]; then
+        # Pluggable worker - use subdirectory
+        worker_dir="$WORKERS_DIR/pluggable_worker/$worker_type"
+    else
+        # Core worker - use root directory
+        worker_dir="$WORKERS_DIR/$worker_type"
+    fi
 
     if [[ ! -d "$worker_dir" ]]; then
         print_status $RED "Error: Worker directory not found: $worker_dir"
@@ -437,16 +434,13 @@ run_worker() {
 
     # Determine celery app module path (handle pluggable workers)
     local celery_app_module
-    case "$worker_type" in
-        "bulk_download")
-            # Pluggable worker - use full module path
-            celery_app_module="pluggable_worker.${worker_type}.worker"
-            ;;
-        *)
-            # Core worker - use worker module
-            celery_app_module="worker"
-            ;;
-    esac
+    if [[ -n "${PLUGGABLE_WORKERS[$worker_type]:-}" ]]; then
+        # Pluggable worker - use full module path
+        celery_app_module="pluggable_worker.${worker_type}.worker"
+    else
+        # Core worker - use worker module
+        celery_app_module="worker"
+    fi
 
     # Build celery command
     local cmd_args=(
@@ -490,8 +484,11 @@ run_worker() {
             "scheduler")
                 cmd_args+=("--concurrency=2")
                 ;;
-            "bulk_download")
-                cmd_args+=("--concurrency=2")
+            *)
+                # Default for pluggable and other workers
+                if [[ -n "${PLUGGABLE_WORKERS[$worker_type]:-}" ]]; then
+                    cmd_args+=("--concurrency=2")
+                fi
                 ;;
         esac
     fi
@@ -506,14 +503,11 @@ run_worker() {
     # Change to appropriate directory
     # For pluggable workers, stay at workers root to allow module imports
     # For core workers, change to worker directory
-    case "$worker_type" in
-        "bulk_download")
-            cd "$WORKERS_DIR"
-            ;;
-        *)
-            cd "$worker_dir"
-            ;;
-    esac
+    if [[ -n "${PLUGGABLE_WORKERS[$worker_type]:-}" ]]; then
+        cd "$WORKERS_DIR"
+    else
+        cd "$worker_dir"
+    fi
 
     if [[ "$detach" == "true" ]]; then
         # Run in background

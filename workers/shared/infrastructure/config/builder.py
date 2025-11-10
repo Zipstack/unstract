@@ -322,9 +322,9 @@ class WorkerBuilder:
 
             # Check if the worker.py file exists
             # Path resolution: builder.py is at /app/workers/shared/infrastructure/config/
-            # We need to get to /app/pluggable_worker/, so go up 5 levels
+            # We need to get to /app/workers/, so go up 3 levels
             pluggable_worker_path = (
-                Path(__file__).resolve().parents[4]
+                Path(__file__).resolve().parents[3]
                 / "pluggable_worker"
                 / worker_type.value
                 / "worker.py"
