@@ -567,7 +567,7 @@ function ApiDeployment() {
         loading={isLoadingShare}
         allUsers={allUsers}
         onApply={onShare}
-        isSharableToOrg={false}
+        isSharableToOrg={true}
       />
     </>
   );
