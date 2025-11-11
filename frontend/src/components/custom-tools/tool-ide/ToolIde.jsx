@@ -94,7 +94,7 @@ function ToolIde() {
     setIsCheckingUsage(true);
     try {
       const response = await axiosPrivate.get(
-        `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${details?.tool_id}/check_deployment_usage/`,
+        `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${details?.tool_id}/check_deployment_usage/`
       );
 
       const usageInfo = response.data;
@@ -220,7 +220,7 @@ function ToolIde() {
       })
       .catch((err) => {
         setAlertDetails(
-          handleException(err, `${doc?.document_name} - Failed to index`),
+          handleException(err, `${doc?.document_name} - Failed to index`)
         );
       })
       .finally(() => {

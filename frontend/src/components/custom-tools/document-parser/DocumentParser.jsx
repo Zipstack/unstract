@@ -83,7 +83,7 @@ function DocumentParser({
             return updatedPromptsCopy[itemPromptId];
           }
           return item;
-        },
+        }
       );
       modifiedDetails["prompts"] = modifiedPrompts;
       updateCustomTool({ details: modifiedDetails });
@@ -121,7 +121,7 @@ function DocumentParser({
     setHasUnsavedChanges(true);
 
     const index = promptsAndNotes.findIndex(
-      (item) => item?.prompt_id === promptId,
+      (item) => item?.prompt_id === promptId
     );
 
     if (index === -1) {
@@ -176,7 +176,7 @@ function DocumentParser({
       .then(() => {
         const modifiedDetails = { ...details };
         const modifiedPrompts = [...(modifiedDetails?.prompts || [])].filter(
-          (item) => item?.prompt_id !== promptId,
+          (item) => item?.prompt_id !== promptId
         );
         modifiedDetails["prompts"] = modifiedPrompts;
         updateCustomTool({ details: modifiedDetails });

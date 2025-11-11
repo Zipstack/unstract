@@ -70,7 +70,7 @@ function Header({
     selectedUsers,
     toolDetail,
     isSharedWithEveryone,
-    forcedExport = false,
+    forcedExport = false
   ) => {
     const body = {
       is_shared_with_org: isSharedWithEveryone,
@@ -173,7 +173,7 @@ function Header({
           users.map((user) => ({
             id: user?.id,
             email: user?.email,
-          })),
+          }))
         );
         return users;
       })
@@ -274,7 +274,7 @@ function Header({
       })
       .catch((err) => {
         setAlertDetails(
-          handleException(err, "Failed to check existing deployments"),
+          handleException(err, "Failed to check existing deployments")
         );
         // If check fails, still allow proceeding
         setOpenCreateApiDeploymentModal(true);
