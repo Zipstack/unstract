@@ -1,10 +1,15 @@
 import logging
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 from flask import Flask
 
-from unstract.core.flask import register_error_handlers, register_request_id_middleware
+from unstract.core.flask import (
+    PluginManager,
+    register_error_handlers,
+    register_request_id_middleware,
+)
 from unstract.core.flask.logging import setup_logging
 from unstract.platform_service.constants import LogLevel
 from unstract.platform_service.controller import api
@@ -40,5 +45,11 @@ def create_app() -> Flask:
         port=Env.PG_BE_PORT,
         options=f"-c application_name={Env.APPLICATION_NAME}",
     )
+
+    # Load plugins (cloud plugins will be overlaid during build)
+    plugins_dir = Path(__file__).parent / "plugins"
+    plugins_pkg = "unstract.platform_service.plugins"
+    manager = PluginManager(app, plugins_dir, plugins_pkg)
+    manager.load_plugins()
 
     return app

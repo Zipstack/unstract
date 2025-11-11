@@ -5,11 +5,8 @@ cloud-specific configuration keys from plugins when available.
 """
 
 import logging
-import os
 from importlib import import_module
 from typing import Any
-
-from django.apps import apps
 
 from configuration.constants import ConfigPluginConstants
 from configuration.enums import ConfigKey, ConfigSpec
@@ -26,52 +23,46 @@ def _load_cloud_config_specs() -> dict[str, ConfigSpec]:
     cloud_specs = {}
 
     try:
-        # Check if plugins app exists
-        auth_app = apps.get_app_config(ConfigPluginConstants.PLUGINS_APP)
-        config_dir = os.path.join(auth_app.path, ConfigPluginConstants.CONFIG_PLUGIN_DIR)
+        from plugins import get_plugin
 
-        # Check if configuration plugin directory exists
-        if not os.path.exists(config_dir):
-            logger.debug("Configuration plugin directory not found")
+        # Try to get the configuration plugin
+        plugin = get_plugin(ConfigPluginConstants.CONFIG_PLUGIN_DIR)
+
+        if not plugin:
+            logger.debug("Configuration plugin not found")
             return cloud_specs
 
-        # Try to import the configuration plugin package
-        config_package_path = (
-            f"{auth_app.module.__package__}.{ConfigPluginConstants.CONFIG_PLUGIN_DIR}"
+        # Check if plugin is active
+        metadata = plugin.get(ConfigPluginConstants.METADATA, {})
+        if not metadata.get(ConfigPluginConstants.METADATA_IS_ACTIVE, False):
+            logger.warning("Cloud configuration plugin is not active")
+            return cloud_specs
+
+        # Get the plugin module and import the config specs submodule
+        plugin_module = plugin.get("module")
+        if not plugin_module:
+            logger.warning("Configuration plugin module not found")
+            return cloud_specs
+
+        # Import the cloud_config submodule to get config specs
+        base_module = (
+            getattr(plugin_module, "__package__", None) or plugin_module.__name__
+        )
+        config_module_path = f"{base_module}.{ConfigPluginConstants.CONFIG_MODULE}"
+        config_module = import_module(config_module_path)
+        config_specs = getattr(config_module, ConfigPluginConstants.CONFIG_SPECS, {})
+
+        cloud_specs.update(config_specs)
+        logger.info(
+            "Loaded cloud configuration plugin: %s with %d config keys",
+            metadata.get(ConfigPluginConstants.METADATA_NAME, "Unknown"),
+            len(config_specs),
         )
 
-        try:
-            # Import the plugin package to get metadata from __init__.py
-            plugin_module = import_module(config_package_path)
-            metadata = getattr(plugin_module, ConfigPluginConstants.CONFIG_METADATA, {})
-
-            if metadata.get(ConfigPluginConstants.METADATA_IS_ACTIVE, False):
-                # Import the cloud_config module to get config specs
-                full_module_path = (
-                    f"{config_package_path}.{ConfigPluginConstants.CONFIG_MODULE}"
-                )
-                config_module = import_module(full_module_path)
-                config_specs = getattr(
-                    config_module, ConfigPluginConstants.CONFIG_SPECS, {}
-                )
-                cloud_specs.update(config_specs)
-                logger.info(
-                    "Loaded cloud configuration plugin: %s with %d config keys",
-                    metadata.get(ConfigPluginConstants.METADATA_NAME, "Unknown"),
-                    len(config_specs),
-                )
-            else:
-                logger.debug("Cloud configuration plugin not active")
-
-        except ModuleNotFoundError as e:
-            logger.debug("Cloud configuration module not found: %s", e)
-        except Exception as e:
-            logger.error("Error loading cloud configuration plugin: %s", e)
-
-    except LookupError:
-        logger.debug("Plugins app not configured")
+    except ImportError as e:
+        logger.debug("Could not import plugins module: %s", e)
     except Exception as e:
-        logger.error("Error accessing plugins app: %s", e)
+        logger.error("Error loading cloud configuration plugin: %s", e)
 
     return cloud_specs
 

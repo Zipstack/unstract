@@ -5,13 +5,13 @@ from typing import Any
 from flask import Blueprint, request
 from flask import current_app as app
 
+from unstract.core.flask import PluginManager
 from unstract.core.flask.exceptions import APIError
 from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.constants import RetrievalStrategy, RunLevel
 from unstract.prompt_service.exceptions import BadRequest
 from unstract.prompt_service.helpers.auth import AuthHelper
-from unstract.prompt_service.helpers.plugin import PluginManager
 from unstract.prompt_service.helpers.prompt_ide_base_tool import PromptServiceBaseTool
 from unstract.prompt_service.helpers.usage import UsageHelper
 from unstract.prompt_service.services.answer_prompt import AnswerPromptService
