@@ -6,8 +6,8 @@ from typing import Any
 from configuration.models import Configuration
 from django.db.models import QuerySet
 from django.http import HttpResponse
-from plugins import get_plugin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
+from plugins import get_plugin
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from rest_framework import serializers, status, views, viewsets
 from rest_framework.decorators import action
