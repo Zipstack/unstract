@@ -45,9 +45,10 @@ def _load_cloud_config_specs() -> dict[str, ConfigSpec]:
             return cloud_specs
 
         # Import the cloud_config submodule to get config specs
-        config_module_path = (
-            f"{plugin_module.__package__}.{ConfigPluginConstants.CONFIG_MODULE}"
+        base_module = (
+            getattr(plugin_module, "__package__", None) or plugin_module.__name__
         )
+        config_module_path = f"{base_module}.{ConfigPluginConstants.CONFIG_MODULE}"
         config_module = import_module(config_module_path)
         config_specs = getattr(config_module, ConfigPluginConstants.CONFIG_SPECS, {})
 
