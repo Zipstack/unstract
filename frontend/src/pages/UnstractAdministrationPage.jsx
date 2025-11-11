@@ -3,8 +3,8 @@ let UnstractAdministration;
 try {
   UnstractAdministration =
     require("../plugins/subscription-admin/components/UnstractAdministration.jsx").UnstractAdministration;
-} catch (err) { // NOSONAR
-  // Plugin loading pattern: Cloud-only feature gracefully handled
+} catch (err) {
+  // NOSONAR
   // Cloud-only feature, not available in OSS
 }
 
