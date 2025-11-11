@@ -108,6 +108,28 @@ API_DEPL_PRESIGNED_URL_MAX_FILE_SIZE_MB = int(
     os.environ.get("API_DEPL_PRESIGNED_URL_MAX_FILE_SIZE_MB", 20)
 )
 
+# API Deployment Rate Limiting
+API_DEPLOYMENT_DEFAULT_RATE_LIMIT = int(
+    os.environ.get("API_DEPLOYMENT_DEFAULT_RATE_LIMIT", 20)
+)
+API_DEPLOYMENT_GLOBAL_RATE_LIMIT = int(
+    os.environ.get("API_DEPLOYMENT_GLOBAL_RATE_LIMIT", 100)
+)
+API_DEPLOYMENT_RATE_LIMIT_TTL_HOURS = int(
+    os.environ.get("API_DEPLOYMENT_RATE_LIMIT_TTL_HOURS", 6)
+)
+# Cache TTL for organization rate limits (in seconds)
+API_DEPLOYMENT_RATE_LIMIT_CACHE_TTL = int(
+    os.environ.get("API_DEPLOYMENT_RATE_LIMIT_CACHE_TTL", 600)
+)
+# Redis lock timeouts for rate limiting (in seconds)
+API_DEPLOYMENT_RATE_LIMIT_LOCK_TIMEOUT = int(
+    os.environ.get("API_DEPLOYMENT_RATE_LIMIT_LOCK_TIMEOUT", 2)
+)
+API_DEPLOYMENT_RATE_LIMIT_LOCK_BLOCKING_TIMEOUT = int(
+    os.environ.get("API_DEPLOYMENT_RATE_LIMIT_LOCK_BLOCKING_TIMEOUT", 5)
+)
+
 DB_NAME = os.environ.get("DB_NAME", "unstract_db")
 DB_USER = os.environ.get("DB_USER", "unstract_dev")
 DB_HOST = os.environ.get("DB_HOST", "backend-db-1")

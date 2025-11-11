@@ -69,14 +69,18 @@ class PromptStudioIndexHelper:
 
     @staticmethod
     def mark_extraction_status(
-        document_id: str, profile_manager: ProfileManager, doc_id: str
+        document_id: str,
+        profile_manager: ProfileManager,
+        doc_id: str,
+        enable_highlight: bool = False,
     ) -> bool:
-        """Marks the extraction status for a given document.
+        """Marks the extraction status for a given document with highlight metadata.
 
         Args:
             document_id (str): ID of the document in DocumentManager.
             profile_manager (ProfileManager): ProfileManager instance for context.
             doc_id (str): Unique identifier for the document within extraction status.
+            enable_highlight (bool): Whether highlight metadata was used during extraction.
 
         Returns:
             bool: True if the status is successfully updated, False otherwise.
@@ -95,7 +99,10 @@ class PromptStudioIndexHelper:
 
                 index_manager.extraction_status = index_manager.extraction_status or {}
 
-                index_manager.extraction_status[doc_id] = True
+                index_manager.extraction_status[doc_id] = {
+                    "extracted": True,
+                    "enable_highlight": enable_highlight,
+                }
                 logger.info(
                     f"Index manager {index_manager} {index_manager.index_ids_history}"
                 )
@@ -104,12 +111,14 @@ class PromptStudioIndexHelper:
                 if created:
                     logger.info(
                         f"IndexManager entry created "
-                        f"for document: {document_id} with {doc_id}"
+                        f"for document: {document_id} with {doc_id} "
+                        f"(highlight={enable_highlight})"
                     )
                 else:
                     logger.info(
                         f"Updated extraction status "
-                        f"for document: {document_id} with {doc_id}"
+                        f"for document: {document_id} with {doc_id} "
+                        f"(highlight={enable_highlight})"
                     )
             return True
 
@@ -125,18 +134,23 @@ class PromptStudioIndexHelper:
 
     @staticmethod
     def check_extraction_status(
-        document_id: str, profile_manager: ProfileManager, doc_id: str
+        document_id: str,
+        profile_manager: ProfileManager,
+        doc_id: str,
+        enable_highlight: bool = False,
     ) -> bool:
         """Checks if the extraction status is already marked as complete
-        for the given document and doc_id.
+        for the given document and doc_id with matching highlight setting.
 
         Args:
             document_id (str): ID of the document in DocumentManager.
             profile_manager (ProfileManager): ProfileManager instance for context.
             doc_id (str): Unique identifier for the document within extraction status.
+            enable_highlight (bool): Whether highlight metadata is required.
 
         Returns:
-            bool: True if extraction is complete, False otherwise.
+            bool: True if extraction is complete with matching highlight setting,
+                  False otherwise.
         """
         try:
             index_manager = IndexManager.objects.filter(
@@ -148,20 +162,46 @@ class PromptStudioIndexHelper:
                 return False
 
             extraction_status = index_manager.extraction_status or {}
-            is_extracted = extraction_status.get(doc_id, False)
+            status_entry = extraction_status.get(doc_id)
 
-            if is_extracted:
+            if not status_entry:
                 logger.info(
-                    f"Extraction is already marked as complete "
+                    f"Extraction is NOT yet marked as complete "
                     f"for document: {document_id} with {doc_id}"
                 )
+                return False
+
+            # Backward compatibility: treat boolean True as non-highlighted
+            if isinstance(status_entry, bool):
+                is_extracted = status_entry
+                is_highlight_handled = False
+            else:
+                # New format: {"extracted": True, "enable_highlight": <bool>}
+                is_extracted = status_entry.get("extracted", False)
+                is_highlight_handled = status_entry.get("enable_highlight", False)
+
+            # Check if extraction exists AND highlight setting matches
+            if is_extracted and is_highlight_handled == enable_highlight:
+                logger.info(
+                    f"Extraction is already marked as complete "
+                    f"for document: {document_id} with {doc_id} "
+                    f"(highlight={enable_highlight})"
+                )
+                return True
+            elif is_extracted and is_highlight_handled != enable_highlight:
+                logger.info(
+                    f"Extraction exists but highlight mismatch "
+                    f"for document: {document_id} with {doc_id}. "
+                    f"Stored: {is_highlight_handled}, Requested: {enable_highlight}. "
+                    f"Re-extraction needed."
+                )
+                return False
             else:
                 logger.info(
                     f"Extraction is NOT yet marked as complete "
                     f"for document: {document_id} with {doc_id}"
                 )
-
-            return is_extracted
+                return False
 
         except Exception as e:
             logger.error(f"Unexpected error while checking extraction status: {e}")

@@ -1343,6 +1343,7 @@ class PromptStudioHelper:
             document_id=document_id,
             profile_manager=profile_manager,
             doc_id=doc_id,
+            enable_highlight=enable_highlight,
         )
         if is_extracted:
             fs_instance = EnvHelper.get_storage(
@@ -1384,6 +1385,7 @@ class PromptStudioHelper:
                 document_id=document_id,
                 profile_manager=profile_manager,
                 doc_id=doc_id,
+                enable_highlight=enable_highlight,
             )
         except SdkError as e:
             msg = str(e)
