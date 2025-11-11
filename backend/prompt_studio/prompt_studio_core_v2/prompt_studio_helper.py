@@ -12,15 +12,13 @@ from adapter_processor_v2.constants import AdapterKeys
 from adapter_processor_v2.models import AdapterInstance
 from django.conf import settings
 from django.db.models.manager import BaseManager
+from plugins import get_plugin
 from rest_framework.request import Request
 from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.local_context import StateStore
+from utils.subscription_usage_decorator import track_subscription_usage_if_available
 
-from prompt_studio.modifier_loader import ModifierConfig
-from prompt_studio.modifier_loader import load_plugins as load_modifier_plugins
-from prompt_studio.processor_loader import get_plugin_class_by_name
-from prompt_studio.processor_loader import load_plugins as load_processor_plugins
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_profile_manager_v2.profile_manager_helper import (
     ProfileManagerHelper,
@@ -91,13 +89,9 @@ ERROR_MSG = "User %s doesn't have access to adapter %s"
 
 logger = logging.getLogger(__name__)
 
-modifier_plugins = load_modifier_plugins()
-
 
 class PromptStudioHelper:
     """Helper class for Custom tool operations."""
-
-    processor_plugins = load_processor_plugins()
 
     @staticmethod
     def create_default_profile_manager(user: User, tool_id: uuid) -> None:
@@ -292,11 +286,11 @@ class PromptStudioHelper:
         choices = f.read()
         f.close()
         response: dict[str, Any] = json.loads(choices)
-        for modifier_plugin in modifier_plugins:
-            cls = modifier_plugin[ModifierConfig.METADATA][
-                ModifierConfig.METADATA_SERVICE_CLASS
-            ]
-            response = cls.update_select_choices(default_choices=response)
+        # Update select choices with payload modifier plugin if available
+        payload_modifier_plugin = get_plugin("payload_modifier")
+        if payload_modifier_plugin:
+            modifier_service = payload_modifier_plugin["service_class"]()
+            response = modifier_service.update_select_choices(default_choices=response)
         return response
 
     @staticmethod
@@ -328,6 +322,7 @@ class PromptStudioHelper:
         return prompt_instances
 
     @staticmethod
+    @track_subscription_usage_if_available(file_execution_id_param="run_id")
     def index_document(
         tool_id: str,
         file_name: str,
@@ -487,17 +482,15 @@ class PromptStudioHelper:
 
     @staticmethod
     def summarize(file_name, org_id, document_id, run_id, tool, doc_id) -> str:
-        cls = get_plugin_class_by_name(
-            name="summarizer",
-            plugins=PromptStudioHelper.processor_plugins,
-        )
+        summarizer_plugin = get_plugin("summarizer")
         usage_kwargs: dict[Any, Any] = dict()
         usage_kwargs[ToolStudioPromptKeys.RUN_ID] = run_id
         prompts: list[ToolStudioPrompt] = PromptStudioHelper.fetch_prompt_from_tool(
             tool.tool_id
         )
-        if cls:
-            summarize_file_path = cls.process(
+        if summarizer_plugin:
+            summarizer_service = summarizer_plugin["service_class"]()
+            summarize_file_path = summarizer_service.process(
                 tool_id=str(tool.tool_id),
                 file_name=file_name,
                 org_id=org_id,
@@ -523,6 +516,7 @@ class PromptStudioHelper:
             return summarize_file_path
 
     @staticmethod
+    @track_subscription_usage_if_available(file_execution_id_param="run_id")
     def prompt_responder(
         tool_id: str,
         org_id: str,
@@ -591,10 +585,12 @@ class PromptStudioHelper:
     ):
         prompt_instance = PromptStudioHelper._fetch_prompt_from_id(id)
 
+        # Check if payload modifier plugin is available for table/record operations
+        payload_modifier_plugin = get_plugin("payload_modifier")
         if (
             prompt_instance.enforce_type == TSPKeys.TABLE
             or prompt_instance.enforce_type == TSPKeys.RECORD
-        ) and not modifier_plugins:
+        ) and not payload_modifier_plugin:
             raise OperationNotSupported()
 
         prompt_name = prompt_instance.prompt_key
@@ -1038,11 +1034,11 @@ class PromptStudioHelper:
                     org_id, user_id, tool_id, doc_name, TSPKeys.EXTRACT
                 )
             )
-            for modifier_plugin in modifier_plugins:
-                cls = modifier_plugin[ModifierConfig.METADATA][
-                    ModifierConfig.METADATA_SERVICE_CLASS
-                ]
-                output = cls.update(
+            # Update output with payload modifier plugin if available
+            payload_modifier_plugin = get_plugin("payload_modifier")
+            if payload_modifier_plugin:
+                modifier_service = payload_modifier_plugin["service_class"]()
+                output = modifier_service.update(
                     output=output,
                     tool_id=tool_id,
                     prompt_id=str(prompt.prompt_id),

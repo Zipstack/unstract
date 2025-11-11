@@ -94,8 +94,8 @@ class RateLimitMessages:
     )
 
     GLOBAL_LIMIT_EXCEEDED_TEMPLATE = (
-        "System has reached the global maximum concurrent API requests limit "
-        "({current_usage}/{limit}). Please try again later."
+        "Our system is currently experiencing high load. "
+        "Please try again in a few moments."
     )
 
     LOCK_ACQUISITION_FAILED = "Failed to acquire rate limit lock. Please try again."
@@ -110,8 +110,9 @@ class RateLimitMessages:
         )
 
     @classmethod
-    def get_global_limit_exceeded_message(cls, current_usage: int, limit: int) -> str:
-        """Get formatted global limit exceeded message."""
-        return cls.GLOBAL_LIMIT_EXCEEDED_TEMPLATE.format(
-            current_usage=current_usage, limit=limit
-        )
+    def get_global_limit_exceeded_message(cls) -> str:
+        """Get generic global limit exceeded message.
+
+        Returns a user-friendly message without exposing system capacity.
+        """
+        return cls.GLOBAL_LIMIT_EXCEEDED_TEMPLATE
