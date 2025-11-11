@@ -192,3 +192,27 @@ class VectorDB:
                 Class name
         """
         return self._vector_db_instance.class_name()
+
+    def get_vector_db(
+        self, adapter_instance_id: str, embedding_dimension: int
+    ) -> BasePydanticVectorStore | VectorStore:
+        """Gets a vector database instance (deprecated method for backward compatibility).
+
+        This method is deprecated and maintained for backward compatibility.
+        Use VectorDB constructor with adapter_instance_id instead.
+
+        Args:
+            adapter_instance_id: The adapter instance identifier
+            embedding_dimension: The embedding dimension (unused in current implementation)
+
+        Returns:
+            BasePydanticVectorStore | VectorStore: The vector database instance
+        """
+        if not self._vector_db_instance:
+            self._adapter_instance_id = adapter_instance_id
+            self._initialise()
+        return self._vector_db_instance
+
+
+# Legacy alias for backward compatibility
+ToolVectorDB = VectorDB
