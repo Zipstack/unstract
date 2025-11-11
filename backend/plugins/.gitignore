@@ -1,1 +1,11 @@
-modifier
+# Ignore all plugin implementation directories
+# Keep only infrastructure files (__init__.py, plugin_manager.py, etc.)
+*/
+
+# But allow infrastructure files to be tracked
+!__init__.py
+!apps.py
+
+# TODO: Make these as proper plugins
+!authentication/auth_sample
+!workflow_manager
