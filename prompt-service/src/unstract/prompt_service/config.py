@@ -1,15 +1,19 @@
 import logging
 import warnings
 from os import environ as env
+from pathlib import Path
 
 from dotenv import load_dotenv
 from flask import Flask
 
-from unstract.core.flask import register_error_handlers, register_request_id_middleware
+from unstract.core.flask import (
+    PluginManager,
+    register_error_handlers,
+    register_request_id_middleware,
+)
 from unstract.core.flask.logging import setup_logging
 from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.prompt_service.controllers import api
-from unstract.prompt_service.helpers.plugin import plugin_loader
 
 if check_feature_flag_status("sdk1"):
     from unstract.sdk1.constants import LogLevel
@@ -42,7 +46,11 @@ def create_app() -> Flask:
     app.logger.info("Initializing Flask application...")
 
     # Load plugins
-    plugin_loader(app)
+    plugins_dir = Path(__file__).parent / "plugins"
+    plugins_pkg = "unstract.prompt_service.plugins"
+    manager = PluginManager(app, plugins_dir, plugins_pkg)
+    manager.load_plugins()
+
     register_request_id_middleware(app)
     register_error_handlers(app)
     app.register_blueprint(api)
