@@ -759,7 +759,7 @@ function Pipelines({ type }) {
           loading={isLoadingShare}
           allUsers={Array.isArray(allUsers) ? allUsers : []}
           onApply={onShare}
-          isSharableToOrg={false}
+          isSharableToOrg={true}
         />
       )}
     </div>
