@@ -53,7 +53,12 @@ const useCustomToolStore = create((setState, getState) => ({
   },
   setCustomTool: (entireState) => {
     // Reset unsaved changes when loading a new tool
-    setState({ ...entireState, hasUnsavedChanges: false });
+    setState({
+      ...entireState,
+      hasUnsavedChanges: false,
+      deploymentUsageInfo: entireState?.deploymentUsageInfo ?? null,
+      lastExportedAt: entireState?.lastExportedAt ?? null,
+    });
   },
   updateCustomTool: (entireState) => {
     setState((state) => ({ state, ...entireState }));

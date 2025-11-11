@@ -1,5 +1,5 @@
 import { Col, Row } from "antd";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -63,8 +63,8 @@ function ToolIde() {
   const [openShareModal, setOpenShareModal] = useState(false);
   const [openCloneModal, setOpenCloneModal] = useState(false);
   const [showExportReminder, setShowExportReminder] = useState(false);
-  const [isCheckingUsage, setIsCheckingUsage] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const isCheckingUsageRef = useRef(false);
 
   useEffect(() => {
     if (openShareModal) {
@@ -87,11 +87,11 @@ function ToolIde() {
 
   // Check deployment usage when there are unsaved changes
   const checkDeploymentUsage = useCallback(async () => {
-    if (!details?.tool_id || !hasUnsavedChanges || isCheckingUsage) {
+    if (!details?.tool_id || !hasUnsavedChanges || isCheckingUsageRef.current) {
       return;
     }
 
-    setIsCheckingUsage(true);
+    isCheckingUsageRef.current = true;
     try {
       const response = await axiosPrivate.get(
         `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${details?.tool_id}/check_deployment_usage/`
@@ -110,12 +110,11 @@ function ToolIde() {
       console.error("Error checking deployment usage:", error);
       setShowExportReminder(false);
     } finally {
-      setIsCheckingUsage(false);
+      isCheckingUsageRef.current = false;
     }
   }, [
     details?.tool_id,
     hasUnsavedChanges,
-    isCheckingUsage,
     axiosPrivate,
     sessionDetails?.orgId,
     setDeploymentUsageInfo,
@@ -123,7 +122,7 @@ function ToolIde() {
 
   useEffect(() => {
     checkDeploymentUsage();
-  }, [checkDeploymentUsage, hasUnsavedChanges, details?.tool_id]);
+  }, [checkDeploymentUsage]);
 
   // Handle export from reminder bar
   const handleExportFromReminder = useCallback(async () => {
