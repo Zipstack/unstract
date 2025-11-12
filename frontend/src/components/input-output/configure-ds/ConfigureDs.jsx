@@ -197,15 +197,27 @@ function ConfigureDs({
       };
     }
 
-    const requestOptions = {
-      method: "POST",
-      url,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-        "Content-Type": "application/json",
-      },
-      data: body,
-    };
+    // Check if updatedFormData contains any File objects that need to be uploaded
+    const hasFileUploads = Object.values(updatedFormData).some(
+      (value) => value instanceof File
+    );
+
+    let requestOptions;
+    if (hasFileUploads) {
+      // Use FormData for file uploads (same as connector creation)
+      requestOptions = buildFormDataRequest(body, "POST", url);
+    } else {
+      // Regular JSON request
+      requestOptions = {
+        method: "POST",
+        url,
+        headers: {
+          "X-CSRFToken": sessionDetails?.csrfToken,
+          "Content-Type": "application/json",
+        },
+        data: body,
+      };
+    }
 
     setIsTcLoading(true);
     axiosPrivate(requestOptions)
@@ -232,6 +244,42 @@ function ConfigureDs({
       .finally(() => {
         setIsTcLoading(false);
       });
+  };
+
+  const buildFormDataRequest = (body, method = "POST", requestUrl) => {
+    const formDataUpload = new FormData();
+
+    Object.keys(body).forEach((key) => {
+      if (key === "connector_metadata") {
+        // Handle metadata specially - each field becomes a separate form field
+        Object.keys(body[key]).forEach((metaKey) => {
+          const value = body[key][metaKey];
+          if (value instanceof File) {
+            formDataUpload.append(metaKey, value);
+          } else {
+            formDataUpload.append(metaKey, JSON.stringify(value));
+          }
+        });
+      } else {
+        // For simple string values like connector_id, don't JSON stringify
+        const value = body[key];
+        if (typeof value === "string") {
+          formDataUpload.append(key, value);
+        } else {
+          formDataUpload.append(key, JSON.stringify(value));
+        }
+      }
+    });
+
+    return {
+      method,
+      url: requestUrl,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+        // Don't set Content-Type for FormData, let browser set it with boundary
+      },
+      data: formDataUpload,
+    };
   };
 
   const handleSubmit = () => {
@@ -304,15 +352,26 @@ function ConfigureDs({
       url = url + `?oauth-key=${encodedCacheKey}`;
     }
 
-    const requestOptions = {
-      method,
-      url,
-      headers: {
-        "Content-Type": "application/json",
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
-      data: body,
-    };
+    // Check if formData contains any File objects that need to be uploaded
+    const hasFileUploads = Object.values(formData).some(
+      (value) => value instanceof File
+    );
+
+    let requestOptions;
+    if (hasFileUploads) {
+      requestOptions = buildFormDataRequest(body, method, url);
+    } else {
+      // Regular JSON request
+      requestOptions = {
+        method,
+        url,
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": sessionDetails?.csrfToken,
+        },
+        data: body,
+      };
+    }
 
     setIsSubmitApiLoading(true);
     axiosPrivate(requestOptions)
@@ -383,9 +442,14 @@ function ConfigureDs({
             <CustomButton
               block
               type="primary"
-              htmlType="submit"
+              htmlType="button"
               className="config-tc-btn"
               loading={isTcLoading}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleTestConnection(formData);
+              }}
             >
               Test Connection
             </CustomButton>
@@ -394,7 +458,12 @@ function ConfigureDs({
             <CustomButton
               block
               type="primary"
-              onClick={handleSubmit}
+              htmlType="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleSubmit();
+              }}
               disabled={!isTcSuccessful}
               loading={isSubmitApiLoading}
             >

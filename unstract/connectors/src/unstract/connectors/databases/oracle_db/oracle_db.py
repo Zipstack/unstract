@@ -1,10 +1,15 @@
 import datetime
 import logging
 import os
-from typing import Any
+import tempfile
+import zipfile
+from typing import TYPE_CHECKING, Any
 
 import oracledb
 from oracledb.connection import Connection
+
+if TYPE_CHECKING:
+    from django.core.files.uploadedfile import UploadedFile
 
 from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.unstract_db import UnstractDB
@@ -16,12 +21,25 @@ class OracleDB(UnstractDB):
     def __init__(self, settings: dict[str, Any]):
         super().__init__("OracleDB")
 
-        self.config_dir = settings.get("config_dir", "/opt/OracleCloud/MYDB")
         self.user = settings.get("user", "admin")
         self.password = settings.get("password", "")
         self.dsn = settings.get("dsn", "")
-        self.wallet_location = settings.get("wallet_location", "/opt/OracleCloud/MYDB")
         self.wallet_password = settings.get("wallet_password", "")
+        self._temp_wallet_dir: str | None = None
+
+        # Require wallet file upload
+        wallet_file = settings.get("wallet_file")
+        if not wallet_file:
+            raise ValueError(
+                "Oracle wallet file is required. Please upload a wallet ZIP file containing ewallet.pem, tnsnames.ora, and other Oracle configuration files."
+            )
+
+        # Extract wallet file and use same directory for both config and wallet
+        wallet_dir = self._extract_wallet_file(wallet_file)
+        self.config_dir = wallet_dir
+        self.wallet_location = wallet_dir
+        logger.info("Using uploaded wallet directory: %s", wallet_dir)
+
         if not (
             self.config_dir
             and self.user
@@ -31,6 +49,68 @@ class OracleDB(UnstractDB):
             and self.wallet_password
         ):
             raise ValueError("Ensure all connection parameters are provided.")
+
+    def _extract_wallet_file(self, wallet_file: "UploadedFile") -> str:
+        """Extract ZIP wallet file to a temporary directory.
+
+        The extracted directory contains all Oracle wallet files (ewallet.pem for SSL/TLS,
+        tnsnames.ora for connection names, sqlnet.ora for SQL*Net config, etc.) and serves
+        as the single source for all Oracle configuration.
+
+        Args:
+            wallet_file: Django UploadedFile object
+
+        Returns:
+            str: Path to the temporary directory containing all extracted wallet files
+
+        Raises:
+            ValueError: If the wallet file is invalid or cannot be extracted
+        """
+        # Create a temporary directory for wallet files
+        self._temp_wallet_dir = tempfile.mkdtemp(prefix="oracle_wallet_")
+
+        logger.info(
+            "Processing Django UploadedFile: %s", getattr(wallet_file, "name", "unknown")
+        )
+
+        # Save uploaded file to temporary ZIP file and extract
+        temp_fd, temp_wallet_path = tempfile.mkstemp(
+            suffix=".zip", prefix="oracle_wallet_"
+        )
+
+        try:
+            with os.fdopen(temp_fd, "wb") as temp_file:
+                for chunk in wallet_file.chunks():
+                    temp_file.write(chunk)
+
+            with zipfile.ZipFile(temp_wallet_path, "r") as zip_ref:
+                zip_ref.extractall(self._temp_wallet_dir)
+
+        except zipfile.BadZipFile:
+            raise ValueError("Invalid ZIP file provided for Oracle wallet.")
+        except Exception as e:
+            logger.error("Failed to extract Oracle wallet file: %s", str(e))
+            raise ValueError(f"Failed to extract Oracle wallet file: {str(e)}")
+        finally:
+            # Always clean up temporary file
+            if os.path.exists(temp_wallet_path):
+                os.unlink(temp_wallet_path)
+
+        logger.info("Oracle wallet ZIP file extracted to %s", self._temp_wallet_dir)
+        return self._temp_wallet_dir
+
+    def __del__(self) -> None:
+        """Cleanup temporary wallet directory when the object is destroyed."""
+        if hasattr(self, "_temp_wallet_dir") and self._temp_wallet_dir:
+            try:
+                import shutil
+
+                shutil.rmtree(self._temp_wallet_dir)
+                logger.info(
+                    "Cleaned up temporary wallet directory: %s", self._temp_wallet_dir
+                )
+            except Exception as e:
+                logger.warning("Failed to cleanup temporary wallet directory: %s", str(e))
 
     @staticmethod
     def get_id() -> str:
@@ -64,7 +144,7 @@ class OracleDB(UnstractDB):
         return True
 
     def get_engine(self) -> Connection:
-        con = oracledb.connect(
+        con: Connection = oracledb.connect(
             config_dir=self.config_dir,
             user=self.user,
             password=self.password,
@@ -121,7 +201,9 @@ class OracleDB(UnstractDB):
         )
         return sql_query
 
-    def prepare_multi_column_migration(self, table_name: str, column_name: str) -> list:
+    def prepare_multi_column_migration(
+        self, table_name: str, column_name: str
+    ) -> list[str]:
         """Prepare ALTER TABLE statements for adding new columns to an existing table.
 
         Args:

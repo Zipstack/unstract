@@ -4,11 +4,10 @@
   "type": "object",
   "required": [
     "connectorName",
-    "config_dir",
     "user",
     "password",
     "dsn",
-    "wallet_location",
+    "wallet_file",
     "wallet_password"
   ],
   "properties": {
@@ -16,12 +15,6 @@
       "type": "string",
       "title": "Name of the connector",
       "default": "Unstract's Oracle DB connector"
-    },
-    "config_dir": {
-      "type": "string",
-      "title": "Connector Directory",
-      "description": "Specifies the directory containing tnsnames.ora ",
-      "default": "/opt/OracleCloud/MYDB"
     },
     "user": {
       "type": "string",
@@ -42,11 +35,10 @@
       "description": "Specify the desired network or the TNS names",
       "default": ""
     },
-    "wallet_location": {
+    "wallet_file": {
       "type": "string",
-      "title": "Wallet Location",
-      "description": "Specifies the directory containing the PEM file (ewallet.pem)",
-      "default": "/opt/OracleCloud/MYDB"
+      "title": "Oracle Wallet File",
+      "description": "Upload a ZIP file containing your complete Oracle wallet. The wallet should include ewallet.pem, tnsnames.ora, sqlnet.ora, and any other Oracle configuration files."
     },
     "wallet_password": {
       "type": "string",
