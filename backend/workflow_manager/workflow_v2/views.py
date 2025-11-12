@@ -279,6 +279,9 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         hash_values_of_files: dict[str, FileHash] = {},
         use_file_history: bool = False,
     ) -> ExecutionResponse:
+        # Detect if this is an API execution by checking connector types
+        is_api_execution = WorkflowEndpointUtils.is_api_workflow(workflow)
+
         if execution_action is not None:
             # Step execution
             execution_response = WorkflowHelper.step_execution(
@@ -299,6 +302,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 execution_mode=WorkflowExecution.Mode.INSTANT,
                 hash_values_of_files=hash_values_of_files,
                 use_file_history=use_file_history,
+                is_api_execution=is_api_execution,
             )
         else:
             execution_response = WorkflowHelper.complete_execution(
@@ -308,6 +312,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 hash_values_of_files=hash_values_of_files,
                 use_file_history=use_file_history,
                 timeout=settings.INSTANT_WF_POLLING_TIMEOUT,
+                is_api_execution=is_api_execution,
             )
         return execution_response
 

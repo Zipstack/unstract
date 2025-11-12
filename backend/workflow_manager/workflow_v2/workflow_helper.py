@@ -20,7 +20,7 @@ from tool_instance_v2.constants import ToolInstanceKey
 from tool_instance_v2.models import ToolInstance
 from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
 from utils.cache_service import CacheService
-from utils.constants import Account
+from utils.constants import Account, CeleryQueue
 from utils.local_context import StateStore
 from utils.user_context import UserContext
 
@@ -739,6 +739,7 @@ class WorkflowHelper:
         hash_values_of_files: dict[str, FileHash] = {},
         use_file_history: bool = False,
         timeout: int | None = None,
+        is_api_execution: bool = False,
     ) -> ExecutionResponse:
         if pipeline_id:
             logger.info(f"Executing pipeline: {pipeline_id}")
@@ -756,12 +757,15 @@ class WorkflowHelper:
             org_schema = UserContext.get_organization_identifier()
             if execution_mode == WorkflowExecution.Mode.INSTANT:
                 # Instant request from UX (Sync now in ETL and Workflow page)
+                # Route to API deployment queue if this is an API execution
+                queue = CeleryQueue.CELERY_API_DEPLOYMENTS if is_api_execution else None
                 response: ExecutionResponse = WorkflowHelper.execute_workflow_async(
                     workflow_id=workflow.id,
                     pipeline_id=pipeline_id,
                     execution_id=execution_id,
                     hash_values_of_files=hash_values_of_files,
                     use_file_history=use_file_history,
+                    queue=queue,
                 )
                 return response
             else:
@@ -805,12 +809,15 @@ class WorkflowHelper:
                 or workflow_execution.execution_type != WorkflowExecution.Type.COMPLETE
             ):
                 raise InvalidRequest(WorkflowErrors.INVALID_EXECUTION_ID)
+            # Route to API deployment queue if this is an API execution
+            queue = CeleryQueue.CELERY_API_DEPLOYMENTS if is_api_execution else None
             result: ExecutionResponse = WorkflowHelper.execute_workflow_async(
                 workflow_id=str(workflow.id) if workflow else None,
                 pipeline_id=str(pipeline_id) if pipeline_id else None,
                 execution_id=str(execution_id) if execution_id else None,
                 hash_values_of_files=hash_values_of_files,
                 use_file_history=use_file_history,
+                queue=queue,
             )
             result = WorkflowHelper.wait_for_execution(result, timeout=timeout)
             return result
