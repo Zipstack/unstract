@@ -1,6 +1,7 @@
 import logging
 from collections.abc import Sequence
 
+from deprecated import deprecated
 from llama_index.core import StorageContext, VectorStoreIndex
 from llama_index.core.indices.base import IndexType
 from llama_index.core.node_parser import SentenceSplitter
@@ -193,6 +194,7 @@ class VectorDB:
         """
         return self._vector_db_instance.class_name()
 
+    @deprecated("Use VectorDB instead of ToolVectorDB")
     def get_vector_db(
         self, adapter_instance_id: str, embedding_dimension: int
     ) -> BasePydanticVectorStore | VectorStore:

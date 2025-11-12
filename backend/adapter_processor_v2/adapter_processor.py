@@ -24,6 +24,7 @@ if check_feature_flag_status("sdk1"):
     from unstract.sdk1.constants import AdapterTypes
     from unstract.sdk1.embedding import EmbeddingCompat
     from unstract.sdk1.exceptions import SdkError
+    from unstract.sdk1.adapters.x2text.constants import X2TextConstants
     from unstract.sdk1.llm import LLM
 else:
     from unstract.sdk.adapters.adapterkit import Adapterkit

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import TYPE_CHECKING
 
@@ -64,6 +65,18 @@ class Milvus(VectorDBAdapter):
                 self._config.get(VectorDbConstants.VECTOR_DB_NAME),
                 dimension,
             )
+
+            # Ensure event loop exists for async Milvus client
+            # This is needed when running in ThreadPoolExecutor
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_closed():
+                    raise RuntimeError("Event loop is closed")
+            except RuntimeError:
+                # No event loop in current thread, create one
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
             vector_db: VectorStore = MilvusVectorStore(
                 uri=self._config.get(Constants.URI, ""),
                 collection_name=self._collection_name,
