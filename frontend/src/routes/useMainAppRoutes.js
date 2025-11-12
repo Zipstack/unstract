@@ -120,7 +120,7 @@ function useMainAppRoutes() {
         )}
         <Route element={<RequireAdmin />}>
           <Route
-            path="administration"
+            path="admin/custom-plans"
             element={<UnstractAdministrationPage />}
           />
         </Route>
