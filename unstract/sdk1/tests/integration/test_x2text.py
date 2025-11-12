@@ -23,7 +23,6 @@ import tempfile
 import pytest
 from unstract.sdk1.adapters.exceptions import AdapterError
 from unstract.sdk1.adapters.x2text.dto import TextExtractionResult
-
 from x2text_test_config import AVAILABLE_PROVIDERS, PROVIDER_CONFIGS
 
 
@@ -165,7 +164,9 @@ startxref
 
         # Get adapter class from metadata
         adapter_class = adapter_info["metadata"]["adapter"]
-        assert adapter_class is not None, f"Adapter class not found for {config.adapter_id}"
+        assert (
+            adapter_class is not None
+        ), f"Adapter class not found for {config.adapter_id}"
 
         # Initialize adapter with metadata
         adapter = adapter_class(settings=config.build_metadata())

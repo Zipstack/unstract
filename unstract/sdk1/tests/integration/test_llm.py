@@ -24,7 +24,6 @@ Example:
 import functools
 
 import pytest
-
 from unstract.sdk1.llm import LLM
 
 from .llm_test_config import PROVIDER_CONFIGS, get_available_providers
@@ -35,6 +34,7 @@ def friendly_error_message(test_func):
 
     Transforms verbose LiteLLM/provider errors into concise summaries in pytest output.
     """
+
     @functools.wraps(test_func)
     def wrapper(self, provider_key: str, *args, **kwargs):
         config = PROVIDER_CONFIGS.get(provider_key)
@@ -52,11 +52,17 @@ def friendly_error_message(test_func):
             error_msg = str(e)
 
             # Categorize and simplify common errors
-            if "ServiceUnavailableError" in error_type or "ServiceUnavailable" in error_msg:
+            if (
+                "ServiceUnavailableError" in error_type
+                or "ServiceUnavailable" in error_msg
+            ):
                 summary = "Service unavailable (rate limit or regional restriction)"
             elif "Timeout" in error_type or "timed out" in error_msg.lower():
                 summary = f"Request timed out after {getattr(e, 'timeout', 'unknown')}s"
-            elif "AuthenticationError" in error_type or "authentication" in error_msg.lower():
+            elif (
+                "AuthenticationError" in error_type
+                or "authentication" in error_msg.lower()
+            ):
                 summary = "Authentication failed (check API key/credentials)"
             elif "RateLimitError" in error_type or "rate limit" in error_msg.lower():
                 summary = "Rate limit exceeded (wait and retry)"
@@ -71,7 +77,7 @@ def friendly_error_message(test_func):
             # Fail with concise message
             pytest.fail(
                 f"[{provider_name}] {test_name}: {summary}",
-                pytrace=False  # Suppress Python traceback for cleaner output
+                pytrace=False,  # Suppress Python traceback for cleaner output
             )
 
     return wrapper
@@ -598,9 +604,7 @@ class TestLLMErrorHandling:
         """
         config = self._get_config_or_skip(provider_key)
 
-        llm = LLM(
-            adapter_id=config.adapter_id, adapter_metadata=config.build_metadata()
-        )
+        llm = LLM(adapter_id=config.adapter_id, adapter_metadata=config.build_metadata())
 
         # Execute with empty prompt - should still return a response
         result = llm.complete("")

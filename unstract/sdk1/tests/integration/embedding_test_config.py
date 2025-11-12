@@ -77,7 +77,9 @@ def build_azure_openai_embedding_metadata() -> dict[str, Any]:
         "deployment_name": os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
         "api_key": os.getenv("AZURE_OPENAI_EMBEDDING_API_KEY"),
         "azure_endpoint": os.getenv("AZURE_OPENAI_EMBEDDING_ENDPOINT"),
-        "api_version": os.getenv("AZURE_OPENAI_EMBEDDING_API_VERSION", "2024-02-15-preview"),
+        "api_version": os.getenv(
+            "AZURE_OPENAI_EMBEDDING_API_VERSION", "2024-02-15-preview"
+        ),
         "temperature": 0.0,
     }
 

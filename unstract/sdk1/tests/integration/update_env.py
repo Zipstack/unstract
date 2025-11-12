@@ -13,7 +13,6 @@ Usage:
     # Or make executable: chmod +x update_env.py && ./update_env.py
 """
 
-import os
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -32,7 +31,7 @@ def parse_env_file(filepath: Path) -> dict[str, str]:
     if not filepath.exists():
         return env_vars
 
-    with open(filepath, "r", encoding="utf-8") as f:
+    with open(filepath, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             # Skip empty lines and comments
@@ -72,7 +71,7 @@ def merge_env_files(
 
     # Read sample file and process line by line
     merged_lines = []
-    with open(sample_file, "r", encoding="utf-8") as f:
+    with open(sample_file, encoding="utf-8") as f:
         for line in f:
             original_line = line.rstrip()
 
@@ -99,13 +98,19 @@ def merge_env_files(
                         if '"' in value_and_comment:
                             # Has quoted value
                             first_quote = value_and_comment.find('"')
-                            after_first_quote = value_and_comment[first_quote + 1:]
+                            after_first_quote = value_and_comment[first_quote + 1 :]
                             if '"' in after_first_quote:
                                 closing_quote_pos = after_first_quote.find('"')
-                                after_closing_quote = after_first_quote[closing_quote_pos + 1:]
+                                after_closing_quote = after_first_quote[
+                                    closing_quote_pos + 1 :
+                                ]
                                 if "#" in after_closing_quote:
-                                    comment_part = after_closing_quote.split("#", 1)[1].strip()
-                                    merged_line = f'{key}="{existing_value}"  # {comment_part}'
+                                    comment_part = after_closing_quote.split("#", 1)[
+                                        1
+                                    ].strip()
+                                    merged_line = (
+                                        f'{key}="{existing_value}"  # {comment_part}'
+                                    )
                                 else:
                                     merged_line = f'{key}="{existing_value}"'
                             else:
@@ -143,7 +148,9 @@ def main():
     script_dir = Path(__file__).parent
     sample_file = script_dir / ".env.test.sample"
     existing_file = script_dir / ".env.test"
-    backup_file = script_dir / f".env.test.backup.{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    backup_file = (
+        script_dir / f".env.test.backup.{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    )
 
     print("🔄 Smart .env.test Updater")
     print("=" * 60)
