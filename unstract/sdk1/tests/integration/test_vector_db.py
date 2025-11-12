@@ -20,8 +20,6 @@ import pytest
 from unstract.sdk1.adapters.exceptions import AdapterError
 from unstract.sdk1.adapters.vectordb.constants import VectorDbConstants
 from unstract.sdk1.exceptions import VectorDBError
-from unstract.sdk1.vector_db import VectorDB
-
 from vectordb_test_config import AVAILABLE_PROVIDERS, PROVIDER_CONFIGS
 
 
@@ -178,9 +176,7 @@ class TestVectorDBAdapters:
         assert adapter is not None, f"Failed to create {config.provider_name} adapter"
 
         # Verify collection name is set (note: actual name may have prefix/suffix)
-        assert (
-            adapter._collection_name
-        ), f"{config.provider_name} collection name not set"
+        assert adapter._collection_name, f"{config.provider_name} collection name not set"
 
         # Cleanup
         adapter.close()
@@ -324,7 +320,9 @@ class TestVectorDBAdapters:
         empty_metadata = {}
 
         # Attempt to create adapter with empty config
-        with pytest.raises((AdapterError, VectorDBError, ValueError, KeyError, Exception)):
+        with pytest.raises(
+            (AdapterError, VectorDBError, ValueError, KeyError, Exception)
+        ):
             adapter = adapter_class(settings=empty_metadata)
             # Some adapters may fail on get_vector_db_instance or test_connection
             adapter.get_vector_db_instance()

@@ -26,6 +26,7 @@ try:
 except ImportError:
     Supabase = None  # Will skip tests if not available
 
+
 class VectorDBProviderConfig:
     """Configuration for a VectorDB provider."""
 

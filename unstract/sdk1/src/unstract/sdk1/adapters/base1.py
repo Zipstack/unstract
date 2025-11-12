@@ -348,10 +348,7 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
                 result_metadata["temperature"] = 1
         else:
             # Vertex AI requires explicit disabled state with budget 0
-            result_metadata["thinking"] = {
-                "type": "disabled",
-                "budget_tokens": 0
-            }
+            result_metadata["thinking"] = {"type": "disabled", "budget_tokens": 0}
 
         # Handle safety settings
         ss_dict = result_metadata.get("safety_settings", {})

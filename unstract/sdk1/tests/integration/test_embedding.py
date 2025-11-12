@@ -24,11 +24,9 @@ Example:
 import asyncio
 
 import pytest
-
 from unstract.sdk1.embedding import Embedding
 
 from .embedding_test_config import PROVIDER_CONFIGS, get_available_providers
-
 
 # Get list of available providers for parametrization
 AVAILABLE_PROVIDERS = get_available_providers()
@@ -218,9 +216,7 @@ class TestEmbeddingAdapters:
         assert len(result) > 0
         assert all(isinstance(x, float) for x in result)
 
-        print(
-            f"✅ {config.provider_name}: Successfully generated async embedding vector"
-        )
+        print(f"✅ {config.provider_name}: Successfully generated async embedding vector")
         print(f"   Vector dimension: {len(result)}")
 
     @pytest.mark.parametrize("provider_key", AVAILABLE_PROVIDERS)
@@ -319,7 +315,7 @@ class TestEmbeddingAdapters:
         def cosine_similarity(vec1, vec2):
             import math
 
-            dot_product = sum(a * b for a, b in zip(vec1, vec2))
+            dot_product = sum(a * b for a, b in zip(vec1, vec2, strict=False))
             norm1 = math.sqrt(sum(x * x for x in vec1))
             norm2 = math.sqrt(sum(x * x for x in vec2))
             return dot_product / (norm1 * norm2)
@@ -330,9 +326,7 @@ class TestEmbeddingAdapters:
 
         assert similarity_12 > similarity_13
 
-        print(
-            f"✅ {config.provider_name}: Similar texts have higher similarity score"
-        )
+        print(f"✅ {config.provider_name}: Similar texts have higher similarity score")
         print(f"   Similar texts similarity: {similarity_12:.4f}")
         print(f"   Dissimilar texts similarity: {similarity_13:.4f}")
 
@@ -444,7 +438,7 @@ class TestEmbeddingAdapters:
         import math
 
         def cosine_similarity(vec1, vec2):
-            dot_product = sum(a * b for a, b in zip(vec1, vec2))
+            dot_product = sum(a * b for a, b in zip(vec1, vec2, strict=False))
             norm1 = math.sqrt(sum(x * x for x in vec1))
             norm2 = math.sqrt(sum(x * x for x in vec2))
             return dot_product / (norm1 * norm2)
@@ -454,9 +448,7 @@ class TestEmbeddingAdapters:
         # Allow for minor numerical differences
         assert similarity > 0.99
 
-        print(
-            f"✅ {config.provider_name}: Sync and async methods are consistent"
-        )
+        print(f"✅ {config.provider_name}: Sync and async methods are consistent")
         print(f"   Similarity: {similarity:.6f}")
 
     @pytest.mark.parametrize("provider_key", AVAILABLE_PROVIDERS)
@@ -476,9 +468,7 @@ class TestEmbeddingAdapters:
         assert embedding.kwargs is not None
         assert "model" in embedding.kwargs
 
-        print(
-            f"✅ {config.provider_name}: Successfully validated embedding metadata"
-        )
+        print(f"✅ {config.provider_name}: Successfully validated embedding metadata")
         print(f"   Model: {embedding.kwargs.get('model')}")
 
 

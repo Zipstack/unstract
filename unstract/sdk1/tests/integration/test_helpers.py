@@ -14,7 +14,9 @@ class TestHelpers:
     """Helper class for integration test utilities."""
 
     @staticmethod
-    def verify_response_schema(response: dict[str, Any], required_fields: list[str]) -> bool:
+    def verify_response_schema(
+        response: dict[str, Any], required_fields: list[str]
+    ) -> bool:
         """Verify that a response contains all required fields.
 
         Args:
