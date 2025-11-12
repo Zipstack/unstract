@@ -342,37 +342,40 @@ class AdapterInstanceViewSet(ModelViewSet):
         # Send email notifications to newly shared users
         if response.status_code == 200 and AdapterKeys.SHARED_USERS in request.data:
             try:
-                from plugins.notification.constants import ResourceType
-                from plugins.notification.sharing_notification import (
-                    SharingNotificationService,
-                )
+                from plugins import get_plugin
 
-                adapter.refresh_from_db()
-                new_shared_users = set(adapter.shared_users.all())
-                newly_shared_users = new_shared_users - current_shared_users
+                notification_plugin = get_plugin("notification")
+                if notification_plugin:
+                    from plugins.notification.constants import ResourceType
 
-                if newly_shared_users:
-                    # Map adapter type to specific resource type
-                    adapter_type_to_resource = {
-                        "LLM": ResourceType.LLM.value,
-                        "EMBEDDING": ResourceType.EMBEDDING.value,
-                        "VECTOR_DB": ResourceType.VECTOR_DB.value,
-                        "X2TEXT": ResourceType.X2TEXT.value,
-                    }
+                    adapter.refresh_from_db()
+                    new_shared_users = set(adapter.shared_users.all())
+                    newly_shared_users = new_shared_users - current_shared_users
 
-                    resource_type = adapter_type_to_resource.get(
-                        adapter.adapter_type, ResourceType.LLM.value
-                    )
+                    if newly_shared_users:
+                        # Map adapter type to specific resource type
+                        adapter_type_to_resource = {
+                            "LLM": ResourceType.LLM.value,
+                            "EMBEDDING": ResourceType.EMBEDDING.value,
+                            "VECTOR_DB": ResourceType.VECTOR_DB.value,
+                            "X2TEXT": ResourceType.X2TEXT.value,
+                        }
 
-                    notification_service = SharingNotificationService()
-                    notification_service.send_sharing_notification(
-                        resource_type=resource_type,
-                        resource_name=adapter.adapter_name,
-                        resource_id=str(adapter.id),
-                        shared_by=request.user,
-                        shared_to=list(newly_shared_users),
-                        resource_instance=adapter,
-                    )
+                        resource_type = adapter_type_to_resource.get(
+                            adapter.adapter_type, ResourceType.LLM.value
+                        )
+
+                        # Get notification service from plugin
+                        service_class = notification_plugin["service_class"]
+                        notification_service = service_class()
+                        notification_service.send_sharing_notification(
+                            resource_type=resource_type,
+                            resource_name=adapter.adapter_name,
+                            resource_id=str(adapter.id),
+                            shared_by=request.user,
+                            shared_to=list(newly_shared_users),
+                            resource_instance=adapter,
+                        )
             except Exception as e:
                 logger.exception(f"Failed to send sharing notification: {e}")
 

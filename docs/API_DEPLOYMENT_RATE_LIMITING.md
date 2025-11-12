@@ -406,6 +406,7 @@ Content-Type: application/json
 
 When rate limit is exceeded, API returns 429 with a standardized error response:
 
+#### Organization Limit Exceeded
 ```http
 HTTP/1.1 429 Too Many Requests
 Content-Type: application/json
@@ -422,12 +423,29 @@ Content-Type: application/json
 }
 ```
 
+#### Global Limit Exceeded (System Overload)
+```http
+HTTP/1.1 429 Too Many Requests
+Content-Type: application/json
+
+{
+  "type": "client_error",
+  "errors": [
+    {
+      "code": "error",
+      "detail": "Our system is currently experiencing high load. Please try again in a few moments.",
+      "attr": null
+    }
+  ]
+}
+```
+
 **Response Format**:
 The error response follows the `drf-standardized-errors` format used throughout the application:
 - `type`: Error type (always `"client_error"` for 429)
 - `errors`: Array of error objects
   - `code`: Error code (always `"error"`)
-  - `detail`: Human-readable error message with current usage and limit
+  - `detail`: Human-readable error message
   - `attr`: Field name (null for non-field errors)
 
 **Note**: Clients should implement their own retry logic with exponential backoff. The rate limit will be released once active requests complete.

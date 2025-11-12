@@ -236,6 +236,24 @@ class WorkflowHelper:
                 status=ExecutionStatus.ERROR,
                 error=f"Error while processing files: {str(e)}",
             )
+
+            # TODO: Remove related code when v1 workers are deprecated and removed
+            from plugins import get_plugin
+
+            organization_id = workflow_execution.workflow.organization.organization_id
+            subscription_usage_plugin = get_plugin("subscription_usage")
+            if subscription_usage_plugin:
+                try:
+                    service = subscription_usage_plugin["service_class"]()
+                    service.handle_workflow_execution_failure(
+                        organization_id=organization_id,
+                        execution_id=str(workflow_execution.id),
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Error in subscription usage plugin failure handler: {e}"
+                    )
+
             logger.error(
                 f"Execution {workflow_execution.id} failed: {str(e)}", exc_info=True
             )
