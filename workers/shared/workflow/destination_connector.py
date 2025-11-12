@@ -1414,16 +1414,16 @@ class WorkerDestinationConnector:
             return True
 
         # Skip HITL validation if we're using file_history and no execution result is available
-        if self.is_api:
+        # CRITICAL FIX: Only skip HITL validation for API deployments without file history
+        # ETL workflows should ALWAYS evaluate rules, regardless of file_history setting
+        if self.is_api and not self.use_file_history:
             logger.info(
-                f"{file_name}: Skipping HITL validation as it's an API deployment"
+                f"{file_name}: Skipping HITL validation for API deployment without file history"
             )
             return False
-        if not self.use_file_history:
-            logger.info(
-                f"{file_name}: Skipping HITL validation as we're not using file_history"
-            )
-            return False
+
+        # For API deployments WITH file history, continue to evaluate rules
+        # For ETL workflows, ALWAYS evaluate rules (regardless of file_history)
 
         # Use class-level manual review service
         manual_review_service = self._ensure_manual_review_service(api_client)
@@ -1441,24 +1441,33 @@ class WorkerDestinationConnector:
                 f"but checking if rules match..."
             )
 
-        # Wrap tool_execution_result in the expected structure for rule evaluation
+        # Prepare result for rule evaluation
         # validate_db_rule expects: {"output": {...}, "metadata": {...}}
+        # Note: tool_execution_result from JSON output already has correct structure
         wrapped_result = None
         if tool_execution_result:
             if isinstance(tool_execution_result, dict):
                 # Check if tool_execution_result already has the correct structure
                 if "output" in tool_execution_result:
-                    # Already in correct format, use as-is
+                    # Already in correct format with metadata - use directly
                     wrapped_result = tool_execution_result
-                    logger.debug(
-                        f"{file_name}: tool_execution_result already has 'output' key, using as-is"
-                    )
                 else:
-                    # Wrap it in the expected structure
-                    wrapped_result = {"output": tool_execution_result, "metadata": {}}
-                    logger.debug(
-                        f"{file_name}: Wrapped tool_execution_result in output/metadata structure"
-                    )
+                    # Legacy format: wrap in expected structure
+                    metadata = self.get_metadata()
+                    wrapped_result = {
+                        "output": tool_execution_result,
+                        "metadata": {
+                            "confidence_data": metadata.get("confidence_data", {})
+                            if metadata
+                            else {},
+                            "whisper-hash": metadata.get("whisper-hash")
+                            if metadata
+                            else None,
+                            "extracted_text": metadata.get("extracted_text")
+                            if metadata
+                            else None,
+                        },
+                    }
             else:
                 logger.warning(
                     f"{file_name}: tool_execution_result is not a dict: {type(tool_execution_result)}"
