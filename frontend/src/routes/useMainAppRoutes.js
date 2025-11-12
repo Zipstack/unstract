@@ -6,6 +6,7 @@ import { ToolsSettingsPage } from "../pages/ToolsSettingsPage.jsx";
 import { SettingsPage } from "../pages/SettingsPage.jsx";
 import { PlatformSettings } from "../components/settings/platform/PlatformSettings.jsx";
 import { RequireAdmin } from "../components/helpers/auth/RequireAdmin.js";
+import { RequireStaff } from "../components/helpers/auth/RequireStaff.js";
 import { UsersPage } from "../pages/UsersPage.jsx";
 import { InviteEditUserPage } from "../pages/InviteEditUserPage.jsx";
 import { DefaultTriad } from "../components/settings/default-triad/DefaultTriad.jsx";
@@ -118,7 +119,7 @@ function useMainAppRoutes() {
             <Route path="pricing" element={<UnstractSubscriptionPage />} />
           </Route>
         )}
-        <Route element={<RequireAdmin />}>
+        <Route element={<RequireStaff />}>
           <Route
             path="admin/custom-plans"
             element={<UnstractAdministrationPage />}
