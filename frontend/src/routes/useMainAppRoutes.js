@@ -125,11 +125,14 @@ function useMainAppRoutes() {
           const orgName = sessionDetails?.orgName;
           const isOpenSource = orgName === "mock_org";
 
-          return isStaff && !isOpenSource && (
-            <Route
-              path="admin/custom-plans"
-              element={<UnstractAdministrationPage />}
-            />
+          return (
+            isStaff &&
+            !isOpenSource && (
+              <Route
+                path="admin/custom-plans"
+                element={<UnstractAdministrationPage />}
+              />
+            )
           );
         })()}
         <Route path="profile" element={<ProfilePage />} />
