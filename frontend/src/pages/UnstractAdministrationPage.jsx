@@ -1,3 +1,5 @@
+import "./UnstractAdministrationPage.css";
+
 let UnstractAdministration;
 
 try {
@@ -11,7 +13,7 @@ try {
 function UnstractAdministrationPage() {
   if (!UnstractAdministration) {
     return (
-      <div style={{ padding: "24px", textAlign: "center" }}>
+      <div className="administration-fallback">
         <h2>Administration Panel</h2>
         <p>This feature is only available in Unstract Cloud.</p>
       </div>
