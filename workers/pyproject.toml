@@ -11,6 +11,8 @@ requires-python = ">=3.12"
 dependencies = [
     # Worker runtime
     "celery>=5.5.3", # Latest stable version - AMQP support built into core
+    # AWS/S3 client - pin to match backend for MinIO compatibility
+    "boto3~=1.34.0", # Pinned to 1.34.x - boto3 1.36+ breaks MinIO DeleteObjects
     # HTTP clients and utilities (merged from shared package)
     "requests>=2.31.0,<3.0.0", # HTTP client for internal API calls
     "urllib3>=1.26.0", # HTTP utilities and retry strategies
@@ -22,7 +24,7 @@ dependencies = [
     "prometheus-client>=0.17.0,<1.0.0", # Metrics collection
     "psutil>=5.9.0,<6.0.0", # System resource monitoring
     # Essential Unstract packages - with Azure support for connectors
-    "unstract-sdk[aws,gcs,azure]~=0.78.0", # Core SDK with Azure connector support
+    "unstract-sdk[aws,gcs,azure]~=0.79.0", # Core SDK with Azure connector support
     "unstract-sdk1[aws,gcs,azure]", # SDK v1 for feature flag support
     "unstract-connectors",
     "unstract-core",
@@ -47,7 +49,8 @@ dev = [
     "black>=23.7.0",
     "isort>=5.12.0",
     "flake8>=6.0.0",
-    "mypy>=1.5.0"
+    "mypy>=1.5.0",
+    "debugpy>=1.8.14",
 ]
 
 test = [

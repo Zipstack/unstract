@@ -1,0 +1,7 @@
+# Ignore all enterprise plugins (copied from cloud repo at build time)
+*
+
+# Keep core plugin infrastructure in OSS
+!__init__.py
+!plugin_manager.py
+!README.md

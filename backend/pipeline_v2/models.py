@@ -23,11 +23,12 @@ class PipelineModelManager(DefaultOrganizationManagerMixin, models.Manager):
         """Filter pipelines that the user can access:
         - Pipelines created by the user
         - Pipelines shared with the user
+        - Pipelines shared with the entire organization
         """
         return self.filter(
             Q(created_by=user)  # Owned by user
             | Q(shared_users=user)  # Shared with user
-            # Q(shared_to_org=True) # Org-wide sharing (optional)
+            | Q(shared_to_org=True)  # Shared to entire organization
         ).distinct()
 
 

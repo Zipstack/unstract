@@ -1,0 +1,25 @@
+import "./UnstractAdministrationPage.css";
+
+let UnstractAdministration;
+
+try {
+  UnstractAdministration =
+    require("../plugins/subscription-admin/components/UnstractAdministration.jsx").UnstractAdministration;
+} catch (err) {
+  // NOSONAR
+  // Cloud-only feature, not available in OSS
+}
+
+function UnstractAdministrationPage() {
+  if (!UnstractAdministration) {
+    return (
+      <div className="administration-fallback">
+        <h2>Administration Panel</h2>
+        <p>This feature is only available in Unstract Cloud.</p>
+      </div>
+    );
+  }
+  return <UnstractAdministration />;
+}
+
+export { UnstractAdministrationPage };

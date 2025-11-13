@@ -12,6 +12,7 @@ import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper.jsx";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import "./DefaultTriad.css";
+import "../settings/Settings.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import { SettingsLayout } from "../settings-layout/SettingsLayout.jsx";
 

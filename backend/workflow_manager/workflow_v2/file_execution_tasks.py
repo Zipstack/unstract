@@ -369,6 +369,25 @@ class FileExecutionTasks:
             successful_files=total_successful,
             failed_files=total_failed,
         )
+
+        # TODO: Remove related code when v1 workers are deprecated and removed
+        from plugins import get_plugin
+
+        subscription_usage_plugin = get_plugin("subscription_usage")
+        if subscription_usage_plugin:
+            try:
+                service = subscription_usage_plugin["service_class"]()
+                service.handle_workflow_execution_completion(
+                    organization_id=organization_id,
+                    execution_id=execution_id,
+                    final_status=final_status,
+                    total_successful=total_successful,
+                )
+            except Exception as e:
+                logger.error(
+                    f"Error in subscription usage plugin completion handler: {e}"
+                )
+
         logger.info(
             f"Execution completed for execution id: '{execution_id}' "
             f"with status: '{final_status}' "
