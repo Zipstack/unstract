@@ -51,7 +51,7 @@ class VectorDB:
 
     def _initialise(self, embedding: EmbeddingCompat | None = None) -> None:
         if embedding:
-            self._embedding_instance = embedding._embedding_instance
+            self._embedding_instance = embedding
             self._embedding_dimension = embedding._length
         if self._adapter_instance_id:
             self._vector_db_instance: BasePydanticVectorStore | VectorStore = (
