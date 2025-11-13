@@ -135,7 +135,10 @@ class LLM:
 
         # Metrics capture.
         self._run_id = self.platform_kwargs.get("run_id")
-        self._capture_metrics = self.platform_kwargs.get("capture_metrics")
+        # Only override capture_metrics if it's explicitly set in platform_kwargs
+        capture_metrics_from_platform = self.platform_kwargs.get("capture_metrics")
+        if capture_metrics_from_platform is not None:
+            self._capture_metrics = capture_metrics_from_platform
         self._metrics: dict[str, object] = {}
 
     def test_connection(self) -> bool:

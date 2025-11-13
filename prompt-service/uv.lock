@@ -3141,12 +3141,14 @@ source = { editable = "../unstract/flags" }
 dependencies = [
     { name = "grpcio" },
     { name = "grpcio-tools" },
+    { name = "protobuf" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "grpcio", specifier = "<=1.60.0" },
     { name = "grpcio-tools", specifier = "<=1.60.0" },
+    { name = "protobuf", specifier = ">=4.25.0" },
 ]
 
 [[package]]

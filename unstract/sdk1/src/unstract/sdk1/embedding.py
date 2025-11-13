@@ -110,7 +110,7 @@ class Embedding:
 
         resp = litellm.embedding(model=model, input=texts, **kwargs)
 
-        return [data.embedding for data in resp["data"]]
+        return [data["embedding"] for data in resp["data"]]
 
     async def get_aembedding(self, text: str) -> list[float]:
         """Return async embedding vector for query string."""
@@ -128,7 +128,7 @@ class Embedding:
 
         resp = await litellm.aembedding(model=model, input=texts, **kwargs)
 
-        return [data.embedding for data in resp["data"]]
+        return [data["embedding"] for data in resp["data"]]
 
     def test_connection(self) -> bool:
         """Test connection to the embedding provider."""
