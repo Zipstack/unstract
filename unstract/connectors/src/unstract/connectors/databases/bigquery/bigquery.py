@@ -6,10 +6,9 @@ import uuid
 from enum import Enum
 from typing import Any
 
-import google.api_core.exceptions
-from google.cloud import bigquery
-from google.cloud.bigquery import Client
-
+# DO NOT import Google API libraries at module level!
+# These imports initialize gRPC state before Celery fork, causing SIGSEGV.
+# Import them INSIDE methods where they're used (after fork).
 from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.exceptions import (
     BigQueryForbiddenException,
@@ -28,6 +27,9 @@ BIG_QUERY_TABLE_SIZE = 3
 class BigQuery(UnstractDB):
     def __init__(self, settings: dict[str, Any]):
         super().__init__("BigQuery")
+        from google.cloud import bigquery
+
+        self.bigquery = bigquery
         self.json_credentials = json.loads(settings.get("json_credentials", "{}"))
         self.big_query_table_size = BIG_QUERY_TABLE_SIZE
 
@@ -62,8 +64,53 @@ class BigQuery(UnstractDB):
     def can_read() -> bool:
         return True
 
-    def get_engine(self) -> Client:
-        return bigquery.Client.from_service_account_info(  # type: ignore
+    @staticmethod
+    def _sanitize_for_bigquery(data: Any) -> Any:
+        """BigQuery-specific float sanitization for PARSE_JSON compatibility.
+
+        BigQuery's PARSE_JSON() requires floats that can "round-trip" through
+        string representation. This method limits total significant figures to 15
+        (IEEE 754 double precision safe zone) to ensure clean binary representation.
+
+        Args:
+            data: The data structure to sanitize (dict, list, or primitive)
+
+        Returns:
+            Sanitized data compatible with BigQuery's PARSE_JSON
+
+        Example:
+            >>> BigQuery._sanitize_for_bigquery({"time": 1760509016.282637})
+            {'time': 1760509016.28264}  # Limited to 15 significant figures
+
+            >>> BigQuery._sanitize_for_bigquery({"cost": 0.001228})
+            {'cost': 0.001228}  # Unchanged (only 4 significant figures)
+        """
+        import math
+
+        if isinstance(data, float):
+            # Handle special values that BigQuery can't store in JSON
+            if math.isnan(data) or math.isinf(data):
+                return None
+            if data == 0:
+                return 0.0
+
+            # Limit total significant figures to 15 for IEEE 754 compatibility
+            # BigQuery PARSE_JSON requires values that round-trip cleanly
+            # For large numbers (like Unix timestamps), this reduces decimal precision
+            # For small numbers (like costs), full precision is preserved
+            magnitude = math.floor(math.log10(abs(data))) + 1
+            safe_decimals = max(0, 15 - magnitude)
+            return float(f"{data:.{safe_decimals}f}")
+
+        elif isinstance(data, dict):
+            return {k: BigQuery._sanitize_for_bigquery(v) for k, v in data.items()}
+        elif isinstance(data, list):
+            return [BigQuery._sanitize_for_bigquery(item) for item in data]
+        else:
+            return data
+
+    def get_engine(self) -> Any:
+        return self.bigquery.Client.from_service_account_info(  # type: ignore
             info=self.json_credentials
         )
 
@@ -183,6 +230,9 @@ class BigQuery(UnstractDB):
             BigQueryNotFoundException: raised due to unavailable resource
             ColumnMissingException: raised due to missing columns in table query
         """
+        # Import INSIDE method to avoid module-level gRPC initialization
+        import google.api_core.exceptions
+
         table_name = kwargs.get("table_name", None)
         if table_name is None:
             raise ValueError("Please enter a valid table_name to to create/insert table")
@@ -201,28 +251,42 @@ class BigQuery(UnstractDB):
 
                     if isinstance(value, (dict, list)) and column_type == "JSON":
                         # For JSON objects in JSON columns, convert to string and use PARSE_JSON
-                        json_str = json.dumps(value) if value else None
+                        # Sanitize floats before serialization to ensure clean JSON for PARSE_JSON
+                        sanitized_value = BigQuery._sanitize_for_bigquery(value)
+                        json_str = (
+                            json.dumps(sanitized_value)
+                            if sanitized_value is not None
+                            else None
+                        )
                         if json_str:
                             # Replace @`key` with PARSE_JSON(@`key`) in the SQL query
                             modified_sql = modified_sql.replace(
                                 f"@`{key}`", f"PARSE_JSON(@`{key}`)"
                             )
                         query_parameters.append(
-                            bigquery.ScalarQueryParameter(key, "STRING", json_str)
+                            self.bigquery.ScalarQueryParameter(key, "STRING", json_str)
                         )
                     elif isinstance(value, (dict, list)):
                         # For dict/list values in STRING columns, serialize to JSON string
-                        json_str = json.dumps(value) if value else None
+                        # Sanitize floats before serialization to ensure clean JSON
+                        sanitized_value = BigQuery._sanitize_for_bigquery(value)
+                        json_str = (
+                            json.dumps(sanitized_value)
+                            if sanitized_value is not None
+                            else None
+                        )
                         query_parameters.append(
-                            bigquery.ScalarQueryParameter(key, "STRING", json_str)
+                            self.bigquery.ScalarQueryParameter(key, "STRING", json_str)
                         )
                     else:
                         # For other values, use STRING as before
                         query_parameters.append(
-                            bigquery.ScalarQueryParameter(key, "STRING", value)
+                            self.bigquery.ScalarQueryParameter(key, "STRING", value)
                         )
 
-                query_params = bigquery.QueryJobConfig(query_parameters=query_parameters)
+                query_params = self.bigquery.QueryJobConfig(
+                    query_parameters=query_parameters
+                )
                 query_job = engine.query(modified_sql, job_config=query_params)
             else:
                 query_job = engine.query(sql_query)
@@ -311,7 +375,10 @@ class BigQuery(UnstractDB):
                 # Try to parse JSON strings back to objects for BigQuery
                 try:
                     parsed_value = json.loads(value)
-                    sql_values[column] = parsed_value
+                    # Sanitize floats after parsing to prevent precision issues
+                    # json.loads() creates new float objects that may have binary precision problems
+                    sanitized_value = BigQuery._sanitize_for_bigquery(parsed_value)
+                    sql_values[column] = sanitized_value
                 except (TypeError, ValueError, json.JSONDecodeError):
                     # Not a JSON string, keep as string
                     sql_values[column] = f"{value}"

@@ -12,15 +12,13 @@ from adapter_processor_v2.constants import AdapterKeys
 from adapter_processor_v2.models import AdapterInstance
 from django.conf import settings
 from django.db.models.manager import BaseManager
+from plugins import get_plugin
 from rest_framework.request import Request
 from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.local_context import StateStore
+from utils.subscription_usage_decorator import track_subscription_usage_if_available
 
-from prompt_studio.modifier_loader import ModifierConfig
-from prompt_studio.modifier_loader import load_plugins as load_modifier_plugins
-from prompt_studio.processor_loader import get_plugin_class_by_name
-from prompt_studio.processor_loader import load_plugins as load_processor_plugins
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_profile_manager_v2.profile_manager_helper import (
     ProfileManagerHelper,
@@ -67,12 +65,22 @@ from prompt_studio.prompt_studio_output_manager_v2.output_manager_helper import 
 )
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from unstract.core.pubsub_helper import LogPublisher
-from unstract.sdk.constants import LogLevel
-from unstract.sdk.exceptions import IndexingError, SdkError
-from unstract.sdk.file_storage.constants import StorageType
-from unstract.sdk.file_storage.env_helper import EnvHelper
-from unstract.sdk.prompt import PromptTool
-from unstract.sdk.utils.indexing_utils import IndexingUtils
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.constants import LogLevel
+    from unstract.sdk1.exceptions import IndexingError, SdkError
+    from unstract.sdk1.file_storage.constants import StorageType
+    from unstract.sdk1.file_storage.env_helper import EnvHelper
+    from unstract.sdk1.prompt import PromptTool
+    from unstract.sdk1.utils.indexing import IndexingUtils
+else:
+    from unstract.sdk.constants import LogLevel
+    from unstract.sdk.exceptions import IndexingError, SdkError
+    from unstract.sdk.file_storage.constants import StorageType
+    from unstract.sdk.file_storage.env_helper import EnvHelper
+    from unstract.sdk.prompt import PromptTool
+    from unstract.sdk.utils.indexing_utils import IndexingUtils
 
 logger = logging.getLogger(__name__)
 
@@ -81,13 +89,9 @@ ERROR_MSG = "User %s doesn't have access to adapter %s"
 
 logger = logging.getLogger(__name__)
 
-modifier_plugins = load_modifier_plugins()
-
 
 class PromptStudioHelper:
     """Helper class for Custom tool operations."""
-
-    processor_plugins = load_processor_plugins()
 
     @staticmethod
     def create_default_profile_manager(user: User, tool_id: uuid) -> None:
@@ -282,11 +286,11 @@ class PromptStudioHelper:
         choices = f.read()
         f.close()
         response: dict[str, Any] = json.loads(choices)
-        for modifier_plugin in modifier_plugins:
-            cls = modifier_plugin[ModifierConfig.METADATA][
-                ModifierConfig.METADATA_SERVICE_CLASS
-            ]
-            response = cls.update_select_choices(default_choices=response)
+        # Update select choices with payload modifier plugin if available
+        payload_modifier_plugin = get_plugin("payload_modifier")
+        if payload_modifier_plugin:
+            modifier_service = payload_modifier_plugin["service_class"]()
+            response = modifier_service.update_select_choices(default_choices=response)
         return response
 
     @staticmethod
@@ -318,6 +322,7 @@ class PromptStudioHelper:
         return prompt_instances
 
     @staticmethod
+    @track_subscription_usage_if_available(file_execution_id_param="run_id")
     def index_document(
         tool_id: str,
         file_name: str,
@@ -408,6 +413,7 @@ class PromptStudioHelper:
             fs=fs_instance,
             tool=util,
         )
+
         extracted_text = PromptStudioHelper.dynamic_extractor(
             profile_manager=default_profile,
             file_path=file_path,
@@ -416,7 +422,6 @@ class PromptStudioHelper:
             run_id=run_id,
             enable_highlight=tool.enable_highlight,
             doc_id=doc_id,
-            reindex=True,
         )
         if tool.summarize_context:
             summarize_file_path = PromptStudioHelper.summarize(
@@ -477,17 +482,15 @@ class PromptStudioHelper:
 
     @staticmethod
     def summarize(file_name, org_id, document_id, run_id, tool, doc_id) -> str:
-        cls = get_plugin_class_by_name(
-            name="summarizer",
-            plugins=PromptStudioHelper.processor_plugins,
-        )
+        summarizer_plugin = get_plugin("summarizer")
         usage_kwargs: dict[Any, Any] = dict()
         usage_kwargs[ToolStudioPromptKeys.RUN_ID] = run_id
         prompts: list[ToolStudioPrompt] = PromptStudioHelper.fetch_prompt_from_tool(
             tool.tool_id
         )
-        if cls:
-            summarize_file_path = cls.process(
+        if summarizer_plugin:
+            summarizer_service = summarizer_plugin["service_class"]()
+            summarize_file_path = summarizer_service.process(
                 tool_id=str(tool.tool_id),
                 file_name=file_name,
                 org_id=org_id,
@@ -513,6 +516,7 @@ class PromptStudioHelper:
             return summarize_file_path
 
     @staticmethod
+    @track_subscription_usage_if_available(file_execution_id_param="run_id")
     def prompt_responder(
         tool_id: str,
         org_id: str,
@@ -581,10 +585,12 @@ class PromptStudioHelper:
     ):
         prompt_instance = PromptStudioHelper._fetch_prompt_from_id(id)
 
+        # Check if payload modifier plugin is available for table/record operations
+        payload_modifier_plugin = get_plugin("payload_modifier")
         if (
             prompt_instance.enforce_type == TSPKeys.TABLE
             or prompt_instance.enforce_type == TSPKeys.RECORD
-        ) and not modifier_plugins:
+        ) and not payload_modifier_plugin:
             raise OperationNotSupported()
 
         prompt_name = prompt_instance.prompt_key
@@ -836,6 +842,7 @@ class PromptStudioHelper:
             storage_type=StorageType.PERMANENT,
             env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
         )
+        util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
         file_path = doc_path
         directory, filename = os.path.split(doc_path)
         doc_path = os.path.join(
@@ -843,7 +850,6 @@ class PromptStudioHelper:
         )
         is_summary = tool.summarize_as_source
         logger.info(f"Summary status : {is_summary}")
-        util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
         logger.info(
             f"Passing file_path for fetching answer "
             f"{file_path} : extraction path {doc_path}"
@@ -1028,11 +1034,11 @@ class PromptStudioHelper:
                     org_id, user_id, tool_id, doc_name, TSPKeys.EXTRACT
                 )
             )
-            for modifier_plugin in modifier_plugins:
-                cls = modifier_plugin[ModifierConfig.METADATA][
-                    ModifierConfig.METADATA_SERVICE_CLASS
-                ]
-                output = cls.update(
+            # Update output with payload modifier plugin if available
+            payload_modifier_plugin = get_plugin("payload_modifier")
+            if payload_modifier_plugin:
+                modifier_service = payload_modifier_plugin["service_class"]()
+                output = modifier_service.update(
                     output=output,
                     tool_id=tool_id,
                     prompt_id=str(prompt.prompt_id),
@@ -1210,7 +1216,6 @@ class PromptStudioHelper:
         # has access to adapters configured in profile manager
         PromptStudioHelper.validate_profile_manager_owner_access(default_profile)
         default_profile.chunk_size = 0  # To retrive full context
-        util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
         if prompt_grammar:
             for word, synonyms in prompt_grammar.items():
                 grammar.append({TSPKeys.WORD: word, TSPKeys.SYNONYMS: synonyms})
@@ -1222,6 +1227,7 @@ class PromptStudioHelper:
             storage_type=StorageType.PERMANENT,
             env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
         )
+        util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
         directory, filename = os.path.split(input_file_path)
         file_path = os.path.join(
             directory, "extract", os.path.splitext(filename)[0] + ".txt"
@@ -1321,7 +1327,6 @@ class PromptStudioHelper:
         profile_manager: ProfileManager,
         document_id: str,
         doc_id: str,
-        reindex: bool | None = False,
     ) -> str:
         x2text = str(profile_manager.x2text.id)
         is_extracted: bool = False
@@ -1338,8 +1343,9 @@ class PromptStudioHelper:
             document_id=document_id,
             profile_manager=profile_manager,
             doc_id=doc_id,
+            enable_highlight=enable_highlight,
         )
-        if is_extracted and not reindex:
+        if is_extracted:
             fs_instance = EnvHelper.get_storage(
                 storage_type=StorageType.PERMANENT,
                 env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
@@ -1379,6 +1385,7 @@ class PromptStudioHelper:
                 document_id=document_id,
                 profile_manager=profile_manager,
                 doc_id=doc_id,
+                enable_highlight=enable_highlight,
             )
         except SdkError as e:
             msg = str(e)

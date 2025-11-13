@@ -1,0 +1,52 @@
+{
+  "title": "Postgres Vector DB",
+  "type": "object",
+  "required": [
+    "adapter_name",
+    "database",
+    "host",
+    "port",
+    "user",
+    "password"
+  ],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this adapter instance. Example: pg-vdb-1"
+    },
+    "database": {
+      "type": "string",
+      "title": "Database",
+      "description": "Provide a name for the database"
+    },
+    "host": {
+      "type": "string",
+      "title": "Host",
+      "description": "Hostname"
+    },
+    "port": {
+      "type": "integer",
+      "default": 5432,
+      "title": "Port"
+    },
+    "user": {
+      "type": "string",
+      "title": "User",
+      "description": "Username"
+    },
+    "password": {
+      "type": "string",
+      "title": "Password",
+      "format": "password",
+      "default": ""
+    },
+    "enable_ssl": {
+      "type": "boolean",
+      "title": "Enable SSL",
+      "description": "On selecting the checkbox, data encryption using SSL is enabled",
+      "default": true
+    }
+  }
+}

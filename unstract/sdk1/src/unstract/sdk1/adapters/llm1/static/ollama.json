@@ -1,0 +1,45 @@
+{
+  "title": "Ollama AI LLM",
+  "type": "object",
+  "required": [
+    "adapter_name",
+    "base_url",
+    "model"
+  ],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this LLM adapter instance. Example: ollama-instance-1"
+    },
+    "model": {
+      "type": "string",
+      "title": "Model",
+      "default": "",
+      "description": "Provide the model name to be used. Example:llama2, llama3, mistral"
+    },
+    "base_url": {
+      "type": "string",
+      "title": "Base URL",
+      "default": "",
+      "description": "Provide the base URL where Ollama server is running. Example: http://docker.host.internal:11434 or http://localhost:11434"
+    },
+    "context_window": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Context window",
+      "default":3900,
+      "description": "The maximum number of context tokens for the model."
+    },
+    "request_timeout": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Request Timeout",
+      "default": 900,
+      "description": "Request timeout in seconds"
+    }
+  }
+}

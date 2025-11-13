@@ -1,0 +1,119 @@
+{
+  "title": "Azure OpenAI LLM",
+  "type": "object",
+  "required": [
+    "adapter_name",
+    "deployment_name",
+    "api_key",
+    "azure_endpoint"
+  ],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this adapter instance. Example: azure-group-1"
+    },
+    "model": {
+      "type": "string",
+      "title": "Model",
+      "default": "",
+      "description": "Provide the name of the model you defined in Azure console"
+    },
+    "deployment_name": {
+      "type": "string",
+      "title": "Deployment Name",
+      "default": "",
+      "description": "Provide the name of the deployment you defined in Azure console"
+    },
+    "api_key": {
+      "type": "string",
+      "title": "API Key",
+      "format": "password",
+      "description": "Provide the API key"
+    },
+    "api_version": {
+      "type": "string",
+      "title": "API Version",
+      "default": "2023-05-15",
+      "description": "Provide the API version. Refer to the documentation provided by Azure. Example: 2023-05-15"
+    },
+    "azure_endpoint": {
+      "type": "string",
+      "title": "Azure Endpoint",
+      "default": "",
+      "format": "uri",
+      "description": "Provide the Azure endpoint. Example: https://<your-deployment>.openai.azure.com/"
+    },
+    "max_tokens": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Maximum Output Tokens",
+      "description": "Maximum number of output tokens to limit LLM replies, leave it empty to use the maximum possible for the selected model."
+    },
+    "max_retries": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Max Retries",
+      "default": 5,
+      "description": "Maximum number of retries to attempt when a request fails."
+    },
+    "timeout": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Timeout",
+      "default": 900,
+      "description": "Timeout in seconds"
+    },
+    "enable_reasoning": {
+      "type": "boolean",
+      "title": "Enable Reasoning",
+      "default": false,
+      "description": "Allow the model to apply extra reasoning for complex tasks. May slightly increase latency and cost, typically within 20–50% depending on the level selected. Only applicable for [O series models](https://platform.openai.com/docs/models#reasoning)."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "enable_reasoning": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reasoning_effort": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "default": "medium",
+            "title": "Reasoning Effort",
+            "description": "Sets the Reasoning Strength when Reasoning Effort is enabled"
+          }
+        },
+        "required": [
+          "reasoning_effort"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "enable_reasoning": {
+            "const": false
+          }
+        }
+      },
+      "then": {
+        "properties": {}
+      }
+    }
+  ]
+}

@@ -3,6 +3,7 @@ import uuid
 from account_v2.models import User
 from django.conf import settings
 from django.db import models
+from django.db.models import Q
 from utils.models.base_model import BaseModel
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
@@ -18,7 +19,17 @@ PIPELINE_NAME_LENGTH = 32
 
 
 class PipelineModelManager(DefaultOrganizationManagerMixin, models.Manager):
-    pass
+    def for_user(self, user):
+        """Filter pipelines that the user can access:
+        - Pipelines created by the user
+        - Pipelines shared with the user
+        - Pipelines shared with the entire organization
+        """
+        return self.filter(
+            Q(created_by=user)  # Owned by user
+            | Q(shared_users=user)  # Shared with user
+            | Q(shared_to_org=True)  # Shared to entire organization
+        ).distinct()
 
 
 class Pipeline(DefaultOrganizationMixin, BaseModel):
@@ -90,6 +101,17 @@ class Pipeline(DefaultOrganizationMixin, BaseModel):
         related_name="pipelines_modified",
         null=True,
         blank=True,
+    )
+    # Sharing fields
+    shared_users = models.ManyToManyField(
+        User,
+        related_name="shared_pipelines",
+        blank=True,
+        db_comment="Users with whom this pipeline is shared",
+    )
+    shared_to_org = models.BooleanField(
+        default=False,
+        db_comment="Whether this pipeline is shared with the entire organization",
     )
 
     # Manager

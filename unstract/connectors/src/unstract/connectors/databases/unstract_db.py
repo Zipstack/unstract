@@ -6,11 +6,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any
 
-from workflow_manager.endpoint_v2.constants import TableColumns
-from workflow_manager.endpoint_v2.exceptions import UnstractDBException
-
 from unstract.connectors.base import UnstractConnector
-from unstract.connectors.databases.exceptions import UnstractDBConnectorException
 from unstract.connectors.enums import ConnectorMode
 from unstract.connectors.exceptions import ConnectorError
 
@@ -130,17 +126,24 @@ class UnstractDB(UnstractConnector, ABC):
             str: generates a create sql base query with the constant columns
         """
 
-    def create_table_query(self, table: str, database_entry: dict[str, Any]) -> Any:
+    def create_table_query(
+        self, table: str, database_entry: dict[str, Any], permanent_columns: list[str]
+    ) -> Any:
         """Function to create a create table sql query.
 
         Args:
             table (str): db-connector table name
             database_entry (dict[str, Any]): a dictionary of column name and types
+            permanent_columns (list[str]): list of permanent column names to exclude
+                from dynamic column creation. These columns are already defined in the
+                base table schema (e.g., 'id', 'created_by', 'created_at', 'metadata',
+                'status', 'error_message', etc.) and should not be added again during
+                table creation to avoid duplication.
 
         Returns:
             Any: generates a create sql query for all the columns
         """
-        PERMANENT_COLUMNS = TableColumns.PERMANENT_COLUMNS
+        PERMANENT_COLUMNS = permanent_columns
 
         sql_query = ""
         create_table_query = self.get_create_table_base_query(table=table)
@@ -251,8 +254,6 @@ class UnstractDB(UnstractConnector, ABC):
             column_name (str): _description_
             engine (Any): _description_
 
-        Raises:
-            UnstractDBException: _description_
 
         Returns:
             dict[str, str]: _description_
@@ -266,30 +267,27 @@ class UnstractDB(UnstractConnector, ABC):
             sql_query_or_list,
         )
 
-        try:
-            if isinstance(sql_query_or_list, list):
-                for sql_query in sql_query_or_list:
-                    self.execute_query(
-                        engine=engine,
-                        sql_query=sql_query,
-                        sql_values=None,
-                        table_name=table_name,
-                    )
-            else:
+        if isinstance(sql_query_or_list, list):
+            for sql_query in sql_query_or_list:
                 self.execute_query(
                     engine=engine,
-                    sql_query=sql_query_or_list,
+                    sql_query=sql_query,
                     sql_values=None,
                     table_name=table_name,
                 )
-                logger.info(
-                    "successfully migrated table %s with: %s query",
-                    table_name,
-                    sql_query_or_list,
-                )
-            return self.get_information_schema(table_name=table_name)
-        except UnstractDBConnectorException as e:
-            raise UnstractDBException(detail=e.detail) from e
+        else:
+            self.execute_query(
+                engine=engine,
+                sql_query=sql_query_or_list,
+                sql_values=None,
+                table_name=table_name,
+            )
+        logger.info(
+            "successfully migrated table %s with: %s query",
+            table_name,
+            sql_query_or_list,
+        )
+        return self.get_information_schema(table_name=table_name)
 
     def get_sql_values_for_query(
         self, values: dict[str, Any], column_types: dict[str, str]

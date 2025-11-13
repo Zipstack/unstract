@@ -369,6 +369,25 @@ class FileExecutionTasks:
             successful_files=total_successful,
             failed_files=total_failed,
         )
+
+        # TODO: Remove related code when v1 workers are deprecated and removed
+        from plugins import get_plugin
+
+        subscription_usage_plugin = get_plugin("subscription_usage")
+        if subscription_usage_plugin:
+            try:
+                service = subscription_usage_plugin["service_class"]()
+                service.handle_workflow_execution_completion(
+                    organization_id=organization_id,
+                    execution_id=execution_id,
+                    final_status=final_status,
+                    total_successful=total_successful,
+                )
+            except Exception as e:
+                logger.error(
+                    f"Error in subscription usage plugin completion handler: {e}"
+                )
+
         logger.info(
             f"Execution completed for execution id: '{execution_id}' "
             f"with status: '{final_status}' "
@@ -751,6 +770,7 @@ class FileExecutionTasks:
                 tags=workflow_execution.tag_names,
                 file_hash=file_hash,
                 llm_profile_id=file_data.llm_profile_id,
+                custom_data=file_data.custom_data,
             )
             file_hash.file_hash = content_hash
             workflow_file_exec.update(file_hash=content_hash)
@@ -883,6 +903,7 @@ class FileExecutionTasks:
                 file_data.workflow_id, ToolInstanceKey.STEP
             )
         )
+
         execution_service = cls._build_workflow_execution_service(
             organization_id=file_data.organization_id,
             workflow=workflow_execution.workflow,
@@ -918,7 +939,8 @@ class FileExecutionTasks:
                 )
                 # Log execution costs
                 execution_service.log_total_cost_per_file(
-                    run_id=str(workflow_file_execution.id), file_name=file_hash.file_name
+                    run_id=str(workflow_file_execution.id),
+                    file_name=file_hash.file_name,
                 )
             tool_execution_result = ToolExecutionResult(error=None, result=None)
             return tool_execution_result
@@ -993,7 +1015,9 @@ class FileExecutionTasks:
                 file_path = file_hash.file_path if not destination.is_api else None
                 # Collect metadata from file history if available
                 file_history = FileHistoryHelper.get_file_history(
-                    workflow=workflow, cache_key=file_hash.file_hash, file_path=file_path
+                    workflow=workflow,
+                    cache_key=file_hash.file_hash,
+                    file_path=file_path,
                 )
             else:
                 file_history = None

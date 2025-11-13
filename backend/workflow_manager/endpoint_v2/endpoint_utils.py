@@ -28,3 +28,57 @@ class WorkflowEndpointUtils:
             workflow=workflow
         )
         return endpoints
+
+    @staticmethod
+    def get_endpoint_for_workflow_by_type(
+        workflow_id: str, endpoint_type: WorkflowEndpoint.EndpointType
+    ) -> WorkflowEndpoint:
+        """Get endpoint for a given workflow by type.
+
+        Args:
+            workflow_id (str): The ID of the workflow.
+            endpoint_type (WorkflowEndpoint.EndpointType): The type of the endpoint.
+
+        Returns:
+            WorkflowEndpoint: The endpoint for the given workflow and type.
+        """
+        workflow = WorkflowHelper.get_workflow_by_id(workflow_id)
+        endpoint: WorkflowEndpoint = WorkflowEndpoint.objects.get(
+            workflow=workflow,
+            endpoint_type=endpoint_type,
+        )
+        if endpoint.connector_instance:
+            endpoint.connector_instance.connector_metadata = (
+                endpoint.connector_instance.metadata
+            )
+        return endpoint
+
+    @staticmethod
+    def is_api_workflow(workflow: Workflow) -> bool:
+        """Check if workflow uses API connectors for both source and destination.
+
+        Args:
+            workflow (Workflow): The workflow to check
+
+        Returns:
+            bool: True if both source and destination are API type, False otherwise
+        """
+        try:
+            source_endpoint = WorkflowEndpoint.objects.get(
+                workflow=workflow,
+                endpoint_type=WorkflowEndpoint.EndpointType.SOURCE,
+            )
+            destination_endpoint = WorkflowEndpoint.objects.get(
+                workflow=workflow,
+                endpoint_type=WorkflowEndpoint.EndpointType.DESTINATION,
+            )
+            source_is_api = (
+                source_endpoint.connection_type == WorkflowEndpoint.ConnectionType.API
+            )
+            destination_is_api = (
+                destination_endpoint.connection_type
+                == WorkflowEndpoint.ConnectionType.API
+            )
+            return source_is_api and destination_is_api
+        except WorkflowEndpoint.DoesNotExist:
+            return False

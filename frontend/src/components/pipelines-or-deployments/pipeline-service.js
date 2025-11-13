@@ -94,6 +94,32 @@ function pipelineService() {
       };
       return axiosPrivate(requestOptions);
     },
+    getSharedUsers: (pipelineId) => {
+      const requestOptions = {
+        method: "GET",
+        url: `${path}/pipeline/${pipelineId}/users/`,
+      };
+      return axiosPrivate(requestOptions);
+    },
+    updateSharing: (pipelineId, sharedUsers, shareWithEveryone = false) => {
+      const requestOptions = {
+        method: "PATCH",
+        url: `${path}/pipeline/${pipelineId}/`,
+        headers: requestHeaders,
+        data: {
+          shared_users: sharedUsers,
+          shared_to_org: shareWithEveryone,
+        },
+      };
+      return axiosPrivate(requestOptions);
+    },
+    getAllUsers: () => {
+      const requestOptions = {
+        method: "GET",
+        url: `${path}/users/`,
+      };
+      return axiosPrivate(requestOptions);
+    },
   };
 }
 

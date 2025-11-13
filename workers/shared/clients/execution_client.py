@@ -1,0 +1,745 @@
+"""Execution API Client for Workflow Operations
+
+This module provides specialized API client for workflow execution operations,
+extracted from the monolithic InternalAPIClient to improve maintainability.
+
+Handles:
+- Workflow execution management
+- Execution status updates
+- File batch operations
+- Pipeline operations
+- Execution finalization
+"""
+
+import logging
+import uuid
+from typing import Any
+from uuid import UUID
+
+from unstract.core.data_models import ExecutionStatus
+
+from ..data.models import (
+    BatchOperationRequest,
+    StatusUpdateRequest,
+)
+from ..data.response_models import (
+    APIResponse,
+    BatchOperationResponse,
+    ExecutionResponse,
+    convert_dict_response,
+)
+from ..enums import BatchOperationType, TaskStatus
+from ..enums.status_enums import PipelineStatus
+from ..models.pipeline_models import PipelineApiResponse
+from .base_client import BaseAPIClient
+
+# Import retry utilities directly to avoid patterns system circular imports
+# from ..patterns.retry.utils import CircuitBreakerOpenError, circuit_breaker
+
+
+# Temporary: Define minimal retry functionality directly here
+class CircuitBreakerOpenError(Exception):
+    """Circuit breaker is open - too many failures"""
+
+    pass
+
+
+def circuit_breaker(
+    max_failures=5, reset_timeout=60, failure_threshold=None, recovery_timeout=None
+):
+    """Simple circuit breaker decorator - temporary implementation"""
+    # Handle parameter mapping for compatibility
+    if failure_threshold is not None:
+        max_failures = failure_threshold
+    if recovery_timeout is not None:
+        reset_timeout = recovery_timeout
+
+    def decorator(func):
+        func._failures = 0
+        func._last_failure = 0
+
+        def wrapper(*args, **kwargs):
+            import time
+
+            current_time = time.time()
+
+            # Reset if timeout has passed
+            if current_time - func._last_failure > reset_timeout:
+                func._failures = 0
+
+            # Check if circuit is open
+            if func._failures >= max_failures:
+                raise CircuitBreakerOpenError(f"Circuit breaker open for {func.__name__}")
+
+            try:
+                result = func(*args, **kwargs)
+                func._failures = 0  # Reset on success
+                return result
+            except Exception:
+                func._failures += 1
+                func._last_failure = current_time
+                raise
+
+        return wrapper
+
+    return decorator
+
+
+logger = logging.getLogger(__name__)
+
+
+class ExecutionAPIClient(BaseAPIClient):
+    """Specialized API client for workflow execution operations.
+
+    This client handles all workflow execution related operations including:
+    - Getting workflow execution details
+    - Updating execution status
+    - Creating file batches
+    - Managing pipeline status
+    - Finalizing executions
+    """
+
+    def get_workflow_execution(
+        self,
+        execution_id: str | uuid.UUID,
+        organization_id: str | None = None,
+        include_cost: bool = False,
+        file_execution: bool = True,
+    ) -> ExecutionResponse:
+        """Get workflow execution with context.
+
+        Args:
+            execution_id: Workflow execution ID
+            organization_id: Optional organization ID override
+            include_cost: Whether to include aggregated usage cost (expensive operation)
+
+        Returns:
+            ExecutionResponse containing workflow execution data
+        """
+        try:
+            # Build URL with optional cost parameter
+            url = self._build_url("workflow_execution", f"{str(execution_id)}/")
+            if include_cost:
+                url += "?include_cost=true"
+            if file_execution:
+                url += "?file_execution=true"
+
+            response = self.get(
+                url,
+                organization_id=organization_id,
+            )
+            return ExecutionResponse.success_response(
+                execution_id=str(execution_id),
+                data=response,
+                message="Successfully retrieved workflow execution",
+            )
+        except Exception as e:
+            return ExecutionResponse.error_response(
+                error=str(e),
+                execution_id=str(execution_id),
+                message="Failed to retrieve workflow execution",
+            )
+
+    def get_workflow_definition(
+        self, workflow_id: str | uuid.UUID, organization_id: str | None = None
+    ) -> ExecutionResponse:
+        """Get workflow definition including workflow_type.
+
+        Args:
+            workflow_id: Workflow ID
+            organization_id: Optional organization ID override
+
+        Returns:
+            ExecutionResponse containing workflow definition data
+        """
+        try:
+            # Use the workflow management internal API to get workflow details
+            endpoint = f"v1/workflow-manager/workflow/{str(workflow_id)}/"
+            response = self.get(endpoint, organization_id=organization_id)
+            logger.info(
+                f"Retrieved workflow definition for {workflow_id}: {response.get('workflow_type', 'unknown')}"
+            )
+            return ExecutionResponse.success_response(
+                execution_id=str(workflow_id),
+                data=response,
+                message="Successfully retrieved workflow definition",
+            )
+        except Exception as e:
+            logger.error(f"Failed to get workflow definition for {workflow_id}: {str(e)}")
+            return ExecutionResponse.error_response(
+                error=str(e),
+                execution_id=str(workflow_id),
+                message="Failed to retrieve workflow definition",
+            )
+
+    def get_pipeline_type(
+        self, pipeline_id: str | uuid.UUID, organization_id: str | None = None
+    ) -> APIResponse:
+        """Get pipeline type by checking APIDeployment and Pipeline models.
+
+        Args:
+            pipeline_id: Pipeline ID
+            organization_id: Optional organization ID override
+
+        Returns:
+            APIResponse containing pipeline type information
+        """
+        try:
+            # Use the internal API endpoint for pipeline type resolution
+            endpoint = f"v1/workflow-manager/pipeline-type/{str(pipeline_id)}/"
+            response = self.get(endpoint, organization_id=organization_id)
+
+            pipeline_type = response.get("pipeline_type", "ETL")
+            source = response.get("source", "unknown")
+
+            logger.debug(
+                f"Retrieved pipeline type for {pipeline_id}: {pipeline_type} (from {source})"
+            )
+            return APIResponse.success_response(
+                data=response,
+                message=f"Successfully retrieved pipeline type: {pipeline_type}",
+            )
+        except Exception as e:
+            # This is expected for non-API deployments - pipeline endpoint doesn't exist
+            logger.debug(
+                f"Pipeline type API not available for {pipeline_id} (expected for ETL workflows): {str(e)}"
+            )
+            # Return default structure - this is normal behavior
+            return APIResponse.success_response(
+                data={
+                    "pipeline_id": str(pipeline_id),
+                    "pipeline_type": "ETL",  # Default to ETL for non-API workflows
+                    "source": "fallback",
+                    "note": "Pipeline type API not available - defaulted to ETL",
+                },
+                message="Pipeline type defaulted to ETL",
+            )
+
+    def get_api_deployment_data(
+        self, api_id: str | uuid.UUID, organization_id: str | None = None
+    ) -> APIResponse:
+        """Get APIDeployment data directly from v1 API deployment endpoint.
+
+        This method is optimized for callback workers that know they're dealing
+        with API deployments. It uses the v1/api-deployments/{api_id}/data/ endpoint
+        which directly queries the APIDeployment model without checking Pipeline model.
+
+        Args:
+            api_id: API deployment ID
+            organization_id: Optional organization ID override
+
+        Returns:
+            APIResponse containing APIDeployment data
+        """
+        try:
+            logger.debug(
+                f"Fetching APIDeployment data for {api_id} via v1 API deployment endpoint"
+            )
+
+            # Use the v1 API deployment endpoint for APIDeployment data
+            endpoint = self._build_url("api_deployments", f"{str(api_id)}/")
+            response = self.get(endpoint, organization_id=organization_id)
+
+            logger.info(
+                f"Retrieved APIDeployment data for {api_id}: name='{response.get('pipeline_name')}', type='{response.get('pipeline_type')}'"
+            )
+
+            return APIResponse.success_response(
+                data=response,
+                message=f"Successfully retrieved APIDeployment data: {response.get('pipeline_name')}",
+            )
+
+        except Exception as e:
+            logger.error(
+                f"Failed to fetch APIDeployment data for {api_id}: {str(e)}",
+                exc_info=True,
+            )
+            return APIResponse.error_response(
+                error=str(e),
+                message="Failed to retrieve APIDeployment data",
+            )
+
+    def update_workflow_execution_status(
+        self,
+        execution_id: str | uuid.UUID,
+        status: str | TaskStatus,
+        error_message: str | None = None,
+        total_files: int | None = None,
+        attempts: int | None = None,
+        execution_time: float | None = None,
+        organization_id: str | None = None,
+    ) -> APIResponse:
+        """Update workflow execution status.
+
+        Args:
+            execution_id: Execution ID
+            status: New status (TaskStatus enum or string)
+            error_message: Optional error message
+            total_files: Optional total files count
+            attempts: Optional attempts count
+            execution_time: Optional execution time
+            organization_id: Optional organization ID override
+
+        Returns:
+            APIResponse with update result
+        """
+        # Convert status to string if it's an enum
+        status_str = status.value if hasattr(status, "value") else status
+
+        data = {"status": status_str}
+
+        if error_message is not None:
+            data["error_message"] = error_message
+        if total_files is not None:
+            data["total_files"] = total_files
+        if attempts is not None:
+            data["attempts"] = attempts
+        if execution_time is not None:
+            data["execution_time"] = execution_time
+
+        # Validate execution_id before building URL
+        if not execution_id:
+            raise ValueError(f"execution_id is required but got: {execution_id}")
+
+        response = self.post(
+            self._build_url("workflow_execution", f"{str(execution_id)}/update_status/"),
+            data,
+            organization_id=organization_id,
+        )
+
+        # Convert dict response to consistent APIResponse
+        return convert_dict_response(response, APIResponse)
+
+    def batch_update_execution_status(
+        self,
+        updates: list[dict[str, Any] | StatusUpdateRequest],
+        organization_id: str | None = None,
+    ) -> BatchOperationResponse:
+        """Update multiple execution statuses in a single request.
+
+        Args:
+            updates: List of StatusUpdateRequest objects or dictionaries
+            organization_id: Optional organization ID override
+
+        Returns:
+            BatchOperationResponse with results
+        """
+        # Validate that we have updates to process
+        if not updates:
+            return BatchOperationResponse(
+                operation_id=str(uuid.uuid4()),
+                total_items=0,
+                successful_items=0,
+                failed_items=0,
+                status=TaskStatus.SUCCESS,
+                results=[],
+                error_message="No updates provided",
+            )
+
+        # Convert updates to dictionaries if they are dataclasses
+        update_dicts = []
+        for update in updates:
+            if isinstance(update, StatusUpdateRequest):
+                update_dicts.append(update.to_dict())
+            else:
+                update_dicts.append(update)
+
+        # Final check after conversion
+        if not update_dicts:
+            return BatchOperationResponse(
+                operation_id=str(uuid.uuid4()),
+                total_items=0,
+                successful_items=0,
+                failed_items=0,
+                status=TaskStatus.SUCCESS,
+                results=[],
+                error_message="No valid updates after conversion",
+            )
+
+        batch_request = BatchOperationRequest(
+            operation_type=BatchOperationType.STATUS_UPDATE,
+            items=update_dicts,
+            organization_id=organization_id,
+        )
+
+        response = self.post(
+            "v1/workflow-manager/batch-status-update/",
+            batch_request.to_dict(),
+            organization_id=organization_id,
+        )
+
+        # Parse backend response format
+        successful_updates = response.get("successful_updates", [])
+        failed_updates = response.get("failed_updates", [])
+        total_processed = response.get("total_processed", 0)
+
+        # Use new consistent response format
+        if failed_updates:
+            return BatchOperationResponse.error_response(
+                total_items=total_processed,
+                errors=failed_updates,
+                successful_items=len(successful_updates),
+                message="Batch update completed with some failures",
+            )
+        else:
+            return BatchOperationResponse.success_response(
+                successful_items=len(successful_updates),
+                total_items=total_processed,
+                message="Batch update completed successfully",
+            )
+
+    def create_file_batch(
+        self,
+        workflow_execution_id: str | uuid.UUID,
+        files: list,
+        is_api: bool = False,
+        organization_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Create file execution batch.
+
+        Args:
+            workflow_execution_id: Workflow execution ID
+            files: List of files to process
+            is_api: Whether this is an API execution
+            organization_id: Optional organization ID override
+
+        Returns:
+            File batch creation response
+        """
+        data = {
+            "workflow_execution_id": str(workflow_execution_id),
+            "files": files,
+            "is_api": is_api,
+        }
+        return self.post(
+            "v1/workflow-manager/file-batch/", data, organization_id=organization_id
+        )
+
+    @circuit_breaker(failure_threshold=3, recovery_timeout=60.0)
+    def update_pipeline_status(
+        self,
+        pipeline_id: str | UUID,
+        status: str | TaskStatus,
+        organization_id: str | None = None,
+        execution_id: str | UUID | None = None,  # Optional for backward compatibility
+        **kwargs,
+    ) -> APIResponse:
+        """Update pipeline status.
+
+        Args:
+            pipeline_id: Pipeline ID
+            status: New status
+            organization_id: Optional organization ID override
+            execution_id: Optional execution ID (for backward compatibility)
+
+        Returns:
+            Update response
+        """
+        # Convert status to string if it's an enum
+        status_str = status.value if hasattr(status, "value") else status
+
+        # Map execution status to pipeline status if needed
+        execution_to_pipeline_mapping = {
+            ExecutionStatus.COMPLETED.value: PipelineStatus.SUCCESS.value,
+            ExecutionStatus.ERROR.value: PipelineStatus.FAILURE.value,
+            ExecutionStatus.STOPPED.value: PipelineStatus.FAILURE.value,
+            ExecutionStatus.EXECUTING.value: PipelineStatus.INPROGRESS.value,
+            ExecutionStatus.PENDING.value: PipelineStatus.YET_TO_START.value,
+        }
+
+        # Map to pipeline status if it's an execution status, otherwise use as-is
+        pipeline_status = execution_to_pipeline_mapping.get(status_str, status_str)
+
+        # Use PipelineStatus to determine if this is a completion state
+        is_completion_state = PipelineStatus.is_completion_status(pipeline_status)
+
+        data = {
+            "status": pipeline_status,  # Use mapped pipeline status
+            "is_end": is_completion_state,  # Set is_end=True for completion states
+            **kwargs,  # Include any additional parameters like error_message
+        }
+
+        # DON'T include execution_id to avoid duplicate notifications
+        # Callback worker already handles notifications via handle_status_notifications()
+
+        try:
+            # Use the pipeline internal API endpoint
+            endpoint = f"v1/pipeline/{pipeline_id}/"
+
+            response = self._make_request(
+                method="PUT",  # Use PUT for update operation
+                endpoint=endpoint,
+                data=data,
+                timeout=self.config.api_timeout,
+                organization_id=organization_id,
+            )
+
+            logger.debug(
+                f"Updated pipeline {pipeline_id} status to {status_str} "
+                f"(is_end={is_completion_state})"
+            )
+            return APIResponse(
+                success=response.get("success", True),
+                data=response,
+                status_code=response.get("status_code"),
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to update pipeline {pipeline_id} status: {str(e)}")
+            return APIResponse(success=False, error=str(e))
+
+    # Workflow execution finalization handled by status updates
+
+    # Execution resource cleanup handled directly by workers
+
+    def increment_completed_files(
+        self, workflow_id: str, execution_id: str
+    ) -> dict[str, Any]:
+        """Increment completed files count for execution.
+
+        Args:
+            workflow_id: Workflow ID
+            execution_id: Execution ID
+
+        Returns:
+            Increment response
+        """
+        data = {
+            "workflow_id": workflow_id,
+            "execution_id": execution_id,
+            "increment_type": "completed",
+        }
+        try:
+            response = self.post("v1/workflow-manager/increment-files/", data)
+            logger.debug(f"Incremented completed files for execution {execution_id}")
+            return response
+        except Exception as e:
+            logger.error(f"Failed to increment completed files: {str(e)}")
+            return {"success": False, "error": str(e)}
+
+    def increment_failed_files(
+        self, workflow_id: str, execution_id: str
+    ) -> dict[str, Any]:
+        """Increment failed files count for execution.
+
+        Args:
+            workflow_id: Workflow ID
+            execution_id: Execution ID
+
+        Returns:
+            Increment response
+        """
+        data = {
+            "workflow_id": workflow_id,
+            "execution_id": execution_id,
+            "increment_type": "failed",
+        }
+        try:
+            response = self.post("v1/workflow-manager/increment-files/", data)
+            logger.debug(f"Incremented failed files for execution {execution_id}")
+            return response
+        except Exception as e:
+            logger.error(f"Failed to increment failed files: {str(e)}")
+            return {"success": False, "error": str(e)}
+
+    def get_workflow_destination_config(
+        self, workflow_id: str, execution_id: str
+    ) -> dict[str, Any]:
+        """Get destination configuration for workflow execution.
+
+        Args:
+            workflow_id: Workflow ID
+            execution_id: Execution ID
+
+        Returns:
+            Destination configuration
+        """
+        try:
+            # Use workflow execution endpoint to get destination config
+            response = self.get(f"v1/workflow-manager/{execution_id}/")
+            # Extract destination_config from the response
+            if isinstance(response, dict) and "destination_config" in response:
+                logger.debug(f"Retrieved destination config for workflow {workflow_id}")
+                return response["destination_config"]
+            # Fallback for backward compatibility
+            logger.debug(f"Retrieved full response for workflow {workflow_id}")
+            return response
+        except Exception as e:
+            logger.error(f"Failed to get destination config: {str(e)}")
+            return {"type": "none", "error": str(e)}
+
+    def check_file_history_batch(
+        self, workflow_id: str, file_hashes: list[str], organization_id: str
+    ) -> dict[str, Any]:
+        """Check file history for multiple files in batch.
+
+        Args:
+            workflow_id: Workflow ID
+            file_hashes: List of file hashes to check
+            organization_id: Organization ID
+
+        Returns:
+            Batch check response with processed_file_hashes list
+        """
+        try:
+            data = {
+                "workflow_id": workflow_id,
+                "file_hashes": file_hashes,
+                "organization_id": organization_id,
+            }
+            response = self.post("v1/workflow-manager/file-history/check-batch/", data)
+            logger.debug(f"Checked file history for {len(file_hashes)} files")
+            return response
+        except Exception as e:
+            error_str = str(e)
+            # Handle 404 specifically - this means either no file history or endpoint doesn't exist
+            if "404" in error_str or "Not Found" in error_str:
+                if "<!doctype html>" in error_str or "<html>" in error_str:
+                    # HTML 404 response means the API endpoint doesn't exist
+                    logger.info(
+                        "File history batch check endpoint not available (404). Assuming no files have been processed previously."
+                    )
+                else:
+                    # JSON 404 would mean no history data found
+                    logger.info(
+                        f"No file history found for workflow {workflow_id} - all files will be processed"
+                    )
+            else:
+                # Other errors should be logged as warnings
+                logger.warning(f"Failed to check file history batch: {error_str}")
+
+            # Return empty list so all files are processed (safe fallback)
+            return {"processed_file_hashes": []}
+
+    def create_workflow_execution(self, execution_data: dict[str, Any]) -> dict[str, Any]:
+        """Create workflow execution.
+
+        Args:
+            execution_data: Execution creation data
+
+        Returns:
+            Created execution data
+        """
+        return self.post(
+            "v1/workflow-manager/execution/create/",
+            execution_data,
+            organization_id=execution_data.get("organization_id"),
+        )
+
+    def get_tool_instances_by_workflow(
+        self, workflow_id: str, organization_id: str
+    ) -> dict[str, Any]:
+        """Get tool instances for a workflow.
+
+        Args:
+            workflow_id: Workflow ID
+            organization_id: Organization ID
+
+        Returns:
+            Tool instances data
+        """
+        return self.get(
+            f"v1/workflow-manager/workflow/{workflow_id}/tool-instances/",
+            organization_id=organization_id,
+        )
+
+    def compile_workflow(
+        self, workflow_id: str, execution_id: str, organization_id: str
+    ) -> dict[str, Any]:
+        """Compile workflow.
+
+        Args:
+            workflow_id: Workflow ID
+            execution_id: Execution ID
+            organization_id: Organization ID
+
+        Returns:
+            Compilation result
+        """
+        return self.post(
+            "v1/workflow-manager/workflow/compile/",
+            {
+                "workflow_id": workflow_id,
+                "execution_id": execution_id,
+            },
+            organization_id=organization_id,
+        )
+
+    def submit_file_batch_for_processing(
+        self, batch_data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Submit file batch for processing.
+
+        Args:
+            batch_data: File batch data
+
+        Returns:
+            Submission result
+        """
+        return self.post(
+            "v1/workflow-manager/file-batch/submit/",
+            batch_data,
+            organization_id=batch_data.get("organization_id"),
+        )
+
+    # Pipeline Management Methods for Scheduler Worker
+
+    def get_pipeline_data(
+        self,
+        pipeline_id: str,
+        check_active: bool = True,
+        organization_id: str | None = None,
+    ) -> APIResponse:
+        """Get pipeline data for scheduler execution.
+
+        Args:
+            pipeline_id: Pipeline ID
+            check_active: Whether to check if pipeline is active
+            organization_id: Optional organization ID override
+
+        Returns:
+            APIResponse with properly typed pipeline data
+        """
+        params = {}
+        if check_active:
+            params["check_active"] = "true"
+
+        try:
+            response = self.get(
+                f"v1/pipeline/{pipeline_id}/",
+                params=params,
+                organization_id=organization_id,
+            )
+
+            # Handle the actual backend API response format: {"status": "success", "pipeline": {...}}
+            if isinstance(response, dict):
+                status = response.get("status")
+                if status == "success":
+                    # Parse response with type safety
+                    pipeline_api_response = PipelineApiResponse.from_dict(response)
+
+                    logger.debug(
+                        f"Parsed pipeline data for {pipeline_id}: "
+                        f"name='{pipeline_api_response.pipeline.pipeline_name}', "
+                        f"workflow='{pipeline_api_response.pipeline.workflow_id}'"
+                    )
+
+                    return APIResponse.success_response(
+                        data=pipeline_api_response.to_dict(),
+                        message=f"Successfully retrieved pipeline data for {pipeline_id}",
+                    )
+                else:
+                    return APIResponse.error_response(
+                        error=response.get("error", "Unknown error"),
+                        message=f"Failed to retrieve pipeline data for {pipeline_id}",
+                    )
+            else:
+                # Fallback to legacy conversion
+                return convert_dict_response(response, APIResponse)
+
+        except Exception as e:
+            logger.error(f"Error parsing pipeline data for {pipeline_id}: {e}")
+            return APIResponse.error_response(
+                error=str(e),
+                message=f"Failed to parse pipeline data for {pipeline_id}",
+            )
