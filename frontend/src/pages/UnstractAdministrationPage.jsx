@@ -13,6 +13,12 @@ try {
 
 function UnstractAdministrationPage() {
   const { sessionDetails } = useSessionStore();
+
+  // Wait for session to load before making authorization decisions
+  if (!sessionDetails) {
+    return null;
+  }
+
   const isStaff = sessionDetails?.isStaff || sessionDetails?.is_staff;
   const orgName = sessionDetails?.orgName;
   const isOpenSource = orgName === "mock_org";
