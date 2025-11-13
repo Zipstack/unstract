@@ -6,7 +6,7 @@ import { ToolsSettingsPage } from "../pages/ToolsSettingsPage.jsx";
 import { SettingsPage } from "../pages/SettingsPage.jsx";
 import { PlatformSettings } from "../components/settings/platform/PlatformSettings.jsx";
 import { RequireAdmin } from "../components/helpers/auth/RequireAdmin.js";
-import { RequireStaff } from "../components/helpers/auth/RequireStaff.js";
+import { useSessionStore } from "../store/session-store";
 import { UsersPage } from "../pages/UsersPage.jsx";
 import { InviteEditUserPage } from "../pages/InviteEditUserPage.jsx";
 import { DefaultTriad } from "../components/settings/default-triad/DefaultTriad.jsx";
@@ -119,12 +119,19 @@ function useMainAppRoutes() {
             <Route path="pricing" element={<UnstractSubscriptionPage />} />
           </Route>
         )}
-        <Route element={<RequireStaff />}>
-          <Route
-            path="admin/custom-plans"
-            element={<UnstractAdministrationPage />}
-          />
-        </Route>
+        {(() => {
+          const { sessionDetails } = useSessionStore();
+          const isStaff = sessionDetails?.isStaff || sessionDetails?.is_staff;
+          const orgName = sessionDetails?.orgName;
+          const isOpenSource = orgName === "mock_org";
+
+          return isStaff && !isOpenSource && (
+            <Route
+              path="admin/custom-plans"
+              element={<UnstractAdministrationPage />}
+            />
+          );
+        })()}
         <Route path="profile" element={<ProfilePage />} />
         <Route
           path="api"
