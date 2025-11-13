@@ -53,7 +53,9 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # Install project dependencies separately from OpenTelemetry
 # This allows for better caching when only project dependencies change
 RUN uv pip install --system -r requirements.txt && \
-    opentelemetry-bootstrap -a requirements | uv pip install --system --requirement -
+    opentelemetry-bootstrap -a requirements | uv pip install --system --requirement - && \
+    pip uninstall -y opentelemetry-instrumentation-openai-v2 && \
+    pip install opentelemetry-instrumentation-openai
 
 # Copy the source code after installing all dependencies
 # This ensures that changes to the source code don't invalidate the dependency layers

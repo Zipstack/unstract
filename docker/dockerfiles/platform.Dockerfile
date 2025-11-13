@@ -72,7 +72,9 @@ USER ${APP_USER}
 
 # Install the application in non-editable mode to avoid permission issues
 RUN uv sync --group deploy --locked && \
-    uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement -
+    uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement - && \
+    uv pip uninstall opentelemetry-instrumentation-openai-v2 && \
+    uv pip install opentelemetry-instrumentation-openai
 
 EXPOSE 3001
 
