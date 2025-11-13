@@ -34,10 +34,7 @@ from api_v2.serializers import (
     SharedUserListSerializer,
 )
 
-# Check if notification plugin is available
 notification_plugin = get_plugin("notification")
-
-# Import constants from notification plugin if available
 if notification_plugin:
     from plugins.notification.constants import ResourceType
 
