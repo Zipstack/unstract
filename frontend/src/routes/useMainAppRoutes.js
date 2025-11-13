@@ -100,6 +100,11 @@ try {
 }
 
 function useMainAppRoutes() {
+  const { sessionDetails } = useSessionStore();
+  const isStaff = sessionDetails?.isStaff || sessionDetails?.is_staff;
+  const orgName = sessionDetails?.orgName;
+  const isOpenSource = orgName === "mock_org";
+
   const routes = (
     <>
       <Route path=":orgName" element={<FullPageLayout />}>
@@ -119,22 +124,12 @@ function useMainAppRoutes() {
             <Route path="pricing" element={<UnstractSubscriptionPage />} />
           </Route>
         )}
-        {(() => {
-          const { sessionDetails } = useSessionStore();
-          const isStaff = sessionDetails?.isStaff || sessionDetails?.is_staff;
-          const orgName = sessionDetails?.orgName;
-          const isOpenSource = orgName === "mock_org";
-
-          return (
-            isStaff &&
-            !isOpenSource && (
-              <Route
-                path="admin/custom-plans"
-                element={<UnstractAdministrationPage />}
-              />
-            )
-          );
-        })()}
+        {isStaff && !isOpenSource && (
+          <Route
+            path="admin/custom-plans"
+            element={<UnstractAdministrationPage />}
+          />
+        )}
         <Route path="profile" element={<ProfilePage />} />
         <Route
           path="api"
