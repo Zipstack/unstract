@@ -133,7 +133,7 @@ class LLM:
 
         # Metrics capture.
         self._run_id = self.platform_kwargs.get("run_id")
-        self._capture_metrics = self.platform_kwargs.get("capture_metrics")
+        # Note: _capture_metrics is set from parameter on line 75, don't overwrite it
         self._metrics: dict[str, object] = {}
 
     def test_connection(self) -> bool:
