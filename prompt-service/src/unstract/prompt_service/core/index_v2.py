@@ -24,7 +24,7 @@ if check_feature_flag_status("sdk1"):
         NoOpCustomVectorDB,
     )
     from unstract.sdk1.constants import LogLevel
-    from unstract.sdk1.embedding import Embedding
+    from unstract.sdk1.embedding import EmbeddingCompact as Embedding
     from unstract.sdk1.exceptions import IndexingError, SdkError
     from unstract.sdk1.file_storage.impl import FileStorage
     from unstract.sdk1.file_storage.provider import FileStorageProvider
