@@ -58,12 +58,8 @@ from workflow_manager.workflow_v2.workflow_helper import (
     WorkflowSchemaHelper,
 )
 
-# Check if notification plugin is available
 notification_plugin = get_plugin("notification")
-NOTIFICATION_PLUGIN_AVAILABLE = notification_plugin is not None
-
-# Import constants from notification plugin if available
-if NOTIFICATION_PLUGIN_AVAILABLE:
+if notification_plugin:
     from plugins.notification.constants import ResourceType
 
 logger = logging.getLogger(__name__)
@@ -156,7 +152,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         if (
             response.status_code == 200
             and "shared_users" in request.data
-            and NOTIFICATION_PLUGIN_AVAILABLE
+            and bool(notification_plugin)
         ):
             try:
                 # Get updated workflow to compare shared users
