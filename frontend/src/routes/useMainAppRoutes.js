@@ -6,6 +6,7 @@ import { ToolsSettingsPage } from "../pages/ToolsSettingsPage.jsx";
 import { SettingsPage } from "../pages/SettingsPage.jsx";
 import { PlatformSettings } from "../components/settings/platform/PlatformSettings.jsx";
 import { RequireAdmin } from "../components/helpers/auth/RequireAdmin.js";
+import { useSessionStore } from "../store/session-store";
 import { UsersPage } from "../pages/UsersPage.jsx";
 import { InviteEditUserPage } from "../pages/InviteEditUserPage.jsx";
 import { DefaultTriad } from "../components/settings/default-triad/DefaultTriad.jsx";
@@ -22,6 +23,7 @@ import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
 import { LogsPage } from "../pages/LogsPage.jsx";
 import { deploymentTypes } from "../helpers/GetStaticData.js";
 import ConnectorsPage from "../pages/ConnectorsPage.jsx";
+import { UnstractAdministrationPage } from "../pages/UnstractAdministrationPage.jsx";
 
 let RequirePlatformAdmin;
 let PlatformAdminPage;
@@ -98,6 +100,11 @@ try {
 }
 
 function useMainAppRoutes() {
+  const { sessionDetails } = useSessionStore();
+  const isStaff = sessionDetails?.isStaff || sessionDetails?.is_staff;
+  const orgName = sessionDetails?.orgName;
+  const isOpenSource = orgName === "mock_org";
+
   const routes = (
     <>
       <Route path=":orgName" element={<FullPageLayout />}>
@@ -116,6 +123,12 @@ function useMainAppRoutes() {
           <Route element={<RequireAdmin />}>
             <Route path="pricing" element={<UnstractSubscriptionPage />} />
           </Route>
+        )}
+        {isStaff && !isOpenSource && (
+          <Route
+            path="admin/custom-plans"
+            element={<UnstractAdministrationPage />}
+          />
         )}
         <Route path="profile" element={<ProfilePage />} />
         <Route
