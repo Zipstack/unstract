@@ -152,7 +152,14 @@ class LogPublisher:
                     compression=None,
                     retry=True,
                 )
-                logging.debug(f"Published '{channel_id}' <= {payload}")
+
+                # Enhanced logging for error messages
+                if payload.get("level") == "ERROR":
+                    logging.error(
+                        f"ERROR log published to '{channel_id}': {payload.get('log', payload.get('message', ''))}"
+                    )
+                else:
+                    logging.debug(f"Published '{channel_id}' <= {payload}")
 
                 # Persisting messages for unified notification
                 if payload.get("type") == "LOG":
