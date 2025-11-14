@@ -177,6 +177,15 @@ class IndexingConstants:
     RUN_ID = "run_id"
 
 
+class DeploymentType:
+    """Deployment types where Prompt Studio tools can be used."""
+
+    API_DEPLOYMENT = "API Deployment"
+    ETL_PIPELINE = "ETL Pipeline"
+    TASK_PIPELINE = "Task Pipeline"
+    HUMAN_QUALITY_REVIEW = "Human Quality Review"
+
+
 class DefaultValues:
     """Default values used throughout the prompt studio helper."""
 

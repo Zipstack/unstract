@@ -38,6 +38,7 @@ try {
 }
 function ToolIde() {
   const [openSettings, setOpenSettings] = useState(false);
+  const customToolStore = useCustomToolStore();
   const {
     details,
     updateCustomTool,
@@ -52,7 +53,7 @@ function ToolIde() {
     deploymentUsageInfo,
     setDeploymentUsageInfo,
     markChangesAsExported,
-  } = useCustomToolStore();
+  } = customToolStore;
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -100,8 +101,11 @@ function ToolIde() {
       const usageInfo = response.data;
       setDeploymentUsageInfo(usageInfo);
 
-      // Show reminder if the tool is being used in deployments
-      if (usageInfo?.is_used && usageInfo?.message) {
+      // Only show reminder if there are still unsaved changes
+      // Check current state from store to handle race condition where
+      // user might have exported while this check was in-flight
+      const currentHasUnsavedChanges = customToolStore.getState().hasUnsavedChanges;
+      if (currentHasUnsavedChanges && usageInfo?.is_used && usageInfo?.message) {
         setShowExportReminder(true);
       } else {
         setShowExportReminder(false);
@@ -118,6 +122,7 @@ function ToolIde() {
     axiosPrivate,
     sessionDetails?.orgId,
     setDeploymentUsageInfo,
+    customToolStore,
   ]);
 
   useEffect(() => {

@@ -19,6 +19,10 @@ from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from tool_instance_v2.models import ToolInstance
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
+
+from api_v2.models import APIDeployment
+from pipeline_v2.models import Pipeline
+from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
 
@@ -29,6 +33,7 @@ from prompt_studio.prompt_profile_manager_v2.constants import (
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_profile_manager_v2.serializers import ProfileManagerSerializer
 from prompt_studio.prompt_studio_core_v2.constants import (
+    DeploymentType,
     FileViewTypes,
     ToolStudioErrors,
     ToolStudioPromptKeys,
@@ -37,6 +42,7 @@ from prompt_studio.prompt_studio_core_v2.document_indexing_service import (
     DocumentIndexingService,
 )
 from prompt_studio.prompt_studio_core_v2.exceptions import (
+    DeploymentUsageCheckError,
     IndexingAPIError,
     MaxProfilesReachedError,
     ToolDeleteError,
@@ -124,7 +130,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         organization_id = UserSessionUtils.get_organization_id(self.request)
         instance.delete(organization_id)
 
-    def _check_tool_usage(self, instance: CustomTool) -> tuple[bool, set]:
+    def _check_tool_usage_in_workflows(self, instance: CustomTool) -> tuple[bool, set]:
         """Check if a tool is being used in any workflows.
 
         Args:
@@ -148,7 +154,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
     ) -> Response:
         instance: CustomTool = self.get_object()
         # Checks if tool is exported
-        is_used, dependent_wfs = self._check_tool_usage(instance)
+        is_used, dependent_wfs = self._check_tool_usage_in_workflows(instance)
         if is_used:
             logger.info(
                 f"Cannot destroy custom tool {instance.tool_id},"
@@ -706,23 +712,18 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         """
         try:
             instance: CustomTool = self.get_object()
-            is_used, workflow_ids = self._check_tool_usage(instance)
+            is_used, workflow_ids = self._check_tool_usage_in_workflows(instance)
 
             deployment_info = {"is_used": is_used, "deployment_types": [], "message": ""}
 
             if is_used and workflow_ids:
-                # Import necessary models
-                from api_v2.models import APIDeployment
-                from pipeline_v2.models import Pipeline
-                from workflow_manager.endpoint_v2.models import WorkflowEndpoint
-
                 deployment_types = set()
 
                 # Check API Deployments
                 if APIDeployment.objects.filter(
                     workflow_id__in=workflow_ids, is_active=True
                 ).exists():
-                    deployment_types.add("API Deployment")
+                    deployment_types.add(DeploymentType.API_DEPLOYMENT)
 
                 # Check Pipelines
                 pipelines = (
@@ -733,9 +734,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
                 for pipeline_type in pipelines:
                     if pipeline_type == "ETL":
-                        deployment_types.add("ETL Pipeline")
+                        deployment_types.add(DeploymentType.ETL_PIPELINE)
                     elif pipeline_type == "TASK":
-                        deployment_types.add("Task Pipeline")
+                        deployment_types.add(DeploymentType.TASK_PIPELINE)
 
                 # Check for Manual Review
                 workflows_with_manual_review = (
@@ -748,7 +749,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 )
 
                 if workflows_with_manual_review:
-                    deployment_types.add("Human Quality Review")
+                    deployment_types.add(DeploymentType.HUMAN_QUALITY_REVIEW)
 
                 deployment_info["deployment_types"] = list(deployment_types)
 
@@ -772,7 +773,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
         except Exception as e:
             logger.error(f"Error checking deployment usage for tool {pk}: {e}")
-            return Response(
-                {"error": "Failed to check deployment usage"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            raise DeploymentUsageCheckError(
+                detail=f"Failed to check deployment usage: {str(e)}"
             )
