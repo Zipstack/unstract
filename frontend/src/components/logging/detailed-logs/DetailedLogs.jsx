@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeftOutlined,
@@ -61,8 +61,46 @@ const DetailedLogs = () => {
   const [statusFilter, setStatusFilter] = useState(null);
   const [searchText, setSearchText] = useState("");
   const [searchTimeout, setSearchTimeout] = useState(null);
+  // Store interval ID for proper cleanup
+  const pollingIntervalRef = useRef(null);
+  // Store latest execution details for polling re-checks
+  const executionDetailsRef = useRef(null);
 
   const filterOptions = ["COMPLETED", "PENDING", "ERROR", "EXECUTING"];
+
+  // Check if execution should continue polling
+  const shouldPoll = (executionDetails) => {
+    if (!executionDetails) return false;
+
+    const status = executionDetails?.status?.toLowerCase();
+    // Only poll EXECUTING or PENDING status
+    if (status !== "executing" && status !== "pending") {
+      return false;
+    }
+
+    // Check if execution is stale (>1 hour from creation)
+    if (!executionDetails?.createdAtRaw) return false;
+    const createdAt = new Date(executionDetails?.createdAtRaw);
+    if (!isFinite(createdAt.getTime())) return false;
+    const now = new Date();
+    const oneHourInMs = 60 * 60 * 1000;
+    const timeDifference = now - createdAt;
+
+    if (timeDifference > oneHourInMs) {
+      // Stopping polling in case the execution is possibly stuck
+      return false;
+    }
+
+    return true;
+  };
+
+  // Clear polling interval
+  const clearPolling = () => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+  };
 
   const fetchExecutionDetails = async (id) => {
     try {
@@ -74,6 +112,7 @@ const DetailedLogs = () => {
         (item?.successful_files || 0) + (item?.failed_files || 0);
       const progress = total > 0 ? Math.round((processed / total) * 100) : 0;
       const formattedData = {
+        createdAtRaw: item?.created_at,
         executedAt: formattedDateTime(item?.created_at),
         executionId: item?.id,
         progress,
@@ -128,17 +167,17 @@ const DetailedLogs = () => {
       const params = { ...defaultParams, ...customParams };
       const searchParams = new URLSearchParams();
 
-      Object.entries(params).forEach(([key, value]) => {
+      for (const [key, value] of Object.entries(params)) {
         if (value !== null && value !== undefined) {
           searchParams.append(key, value);
         }
-      });
+      }
 
       // Handle file status filter for MultipleChoiceFilter
       if (statusFilter && statusFilter.length > 0) {
-        statusFilter.forEach((status) => {
+        for (const status of statusFilter) {
           searchParams.append("status", status);
-        });
+        }
       }
 
       const response = await axiosPrivate.get(
@@ -289,20 +328,38 @@ const DetailedLogs = () => {
     fetchExecutionFiles(id, pagination.current);
   }, [pagination.current, ordering, statusFilter]);
 
+  // Keep ref updated with latest execution details
   useEffect(() => {
-    let interval = null;
-    if (executionDetails?.status === "EXECUTING") {
-      interval = setInterval(() => {
+    executionDetailsRef.current = executionDetails;
+  }, [executionDetails]);
+
+  // Polling logic for execution status updates
+  useEffect(() => {
+    // Clear any existing interval first
+    clearPolling();
+
+    if (shouldPoll(executionDetails)) {
+      pollingIntervalRef.current = setInterval(() => {
+        // Re-check staleness inside polling cycle
+        // Handles scenario where execution runs for >1 hour
+        if (!shouldPoll(executionDetailsRef.current)) {
+          clearPolling();
+          return;
+        }
+
         fetchExecutionDetails(id);
         fetchExecutionFiles(id, pagination.current);
       }, 5000);
     }
-    return () => {
-      if (interval) {
-        clearInterval(interval);
-      }
-    };
+
+    // Cleanup when dependencies change
+    return clearPolling;
   }, [executionDetails?.status, id, pagination.current]);
+
+  // Clear polling when component unmounts
+  useEffect(() => {
+    return clearPolling;
+  }, []);
 
   useEffect(() => {
     const initialColumns = columnsDetailedTable.reduce((acc, col) => {
