@@ -22,6 +22,7 @@ import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
 import { LogsPage } from "../pages/LogsPage.jsx";
 import { deploymentTypes } from "../helpers/GetStaticData.js";
 import ConnectorsPage from "../pages/ConnectorsPage.jsx";
+import { UnstractAdministrationPage } from "../pages/UnstractAdministrationPage.jsx";
 
 let RequirePlatformAdmin;
 let PlatformAdminPage;
@@ -117,6 +118,10 @@ function useMainAppRoutes() {
             <Route path="pricing" element={<UnstractSubscriptionPage />} />
           </Route>
         )}
+        <Route
+          path="admin/custom-plans"
+          element={<UnstractAdministrationPage />}
+        />
         <Route path="profile" element={<ProfilePage />} />
         <Route
           path="api"

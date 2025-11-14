@@ -69,6 +69,8 @@ class IndexManager(BaseModel):
         null=False,
         blank=False,
     )
+    # TODO: Consider making this an enum instead
+    # A nested JSON of the form {doc_id: {"extracted": True, "enable_highlight": <bool>}}
     extraction_status = models.JSONField(
         db_comment="Extraction status for documents",
         null=False,

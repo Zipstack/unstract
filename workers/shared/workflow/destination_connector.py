@@ -42,8 +42,15 @@ from unstract.core.file_execution_tracker import (
     FileExecutionStatusTracker,
 )
 from unstract.filesystem import FileStorageType, FileSystem
-from unstract.sdk.constants import ToolExecKey
-from unstract.sdk.tool.mime_types import EXT_MIME_MAP
+from unstract.flags.feature_flag import check_feature_flag_status
+
+if check_feature_flag_status("sdk1"):
+    from unstract.sdk1.constants import ToolExecKey
+    from unstract.sdk1.tool.mime_types import EXT_MIME_MAP
+else:
+    from unstract.sdk.constants import ToolExecKey
+    from unstract.sdk.tool.mime_types import EXT_MIME_MAP
+
 from unstract.workflow_execution.constants import (
     MetaDataKey,
     ToolMetadataKey,
@@ -454,6 +461,7 @@ class WorkerDestinationConnector:
             file_hash=file_ctx.file_hash,
             workflow=file_ctx.workflow,
             api_client=exec_ctx.api_client,
+            tool_execution_result=result.tool_execution_result,
             error=file_ctx.execution_error,
         )
 
@@ -897,6 +905,11 @@ class WorkerDestinationConnector:
                 table_name=table_name,
                 database_entry=values,
             )
+
+            # Remove None values from INSERT to let database handle as NULL
+            # Table schema already created with all columns (including data column)
+            # Removing None values prevents "invalid JSON" errors when inserting error records
+            values = {k: v for k, v in values.items() if v is not None}
 
             logger.info(f"Preparing SQL query data for table {table_name}")
             sql_columns_and_values = WorkerDatabaseUtils.get_sql_query_data(
@@ -1401,19 +1414,16 @@ class WorkerDestinationConnector:
             return True
 
         # Skip HITL validation if we're using file_history and no execution result is available
-        if self.is_api:
+        # CRITICAL FIX: Only skip HITL validation for API deployments without file history
+        # ETL workflows should ALWAYS evaluate rules, regardless of file_history setting
+        if self.is_api and not self.use_file_history:
             logger.info(
-                f"{file_name}: Skipping HITL validation as it's an API deployment"
+                f"{file_name}: Skipping HITL validation for API deployment without file history"
             )
             return False
-        if not self.use_file_history:
-            logger.info(
-                f"{file_name}: Skipping HITL validation as we're not using file_history"
-            )
-            return False
-        if not file_hash.is_manualreview_required:
-            logger.info(f"{file_name}: File is not marked for manual review")
-            return False
+
+        # For API deployments WITH file history, continue to evaluate rules
+        # For ETL workflows, ALWAYS evaluate rules (regardless of file_history)
 
         # Use class-level manual review service
         manual_review_service = self._ensure_manual_review_service(api_client)
@@ -1422,8 +1432,49 @@ class WorkerDestinationConnector:
             return False
 
         workflow_util = manual_review_service.get_workflow_util()
+
+        # Don't skip rule evaluation just because file wasn't pre-selected by percentage
+        # validate_db_rule will check both percentage selection AND rules with OR/AND logic
+        if not file_hash.is_manualreview_required:
+            logger.info(
+                f"{file_name}: File not pre-selected by percentage, "
+                f"but checking if rules match..."
+            )
+
+        # Prepare result for rule evaluation
+        # validate_db_rule expects: {"output": {...}, "metadata": {...}}
+        # Note: tool_execution_result from JSON output already has correct structure
+        wrapped_result = None
+        if tool_execution_result:
+            if isinstance(tool_execution_result, dict):
+                # Check if tool_execution_result already has the correct structure
+                if "output" in tool_execution_result:
+                    # Already in correct format with metadata - use directly
+                    wrapped_result = tool_execution_result
+                else:
+                    # Legacy format: wrap in expected structure
+                    metadata = self.get_metadata()
+                    wrapped_result = {
+                        "output": tool_execution_result,
+                        "metadata": {
+                            "confidence_data": metadata.get("confidence_data", {})
+                            if metadata
+                            else {},
+                            "whisper-hash": metadata.get("whisper-hash")
+                            if metadata
+                            else None,
+                            "extracted_text": metadata.get("extracted_text")
+                            if metadata
+                            else None,
+                        },
+                    }
+            else:
+                logger.warning(
+                    f"{file_name}: tool_execution_result is not a dict: {type(tool_execution_result)}"
+                )
+
         is_to_hitl = workflow_util.validate_db_rule(
-            tool_execution_result,
+            wrapped_result,
             workflow,
             file_hash.file_destination,
             file_hash.is_manualreview_required,
