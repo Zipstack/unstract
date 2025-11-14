@@ -73,6 +73,7 @@ function WorkflowCard({
   message,
   customContent,
   connectorIcon,
+  isWorkflowOwner,
 }) {
   const isCompleted = isCompletedStatus(number);
   const isConnectorType = isConnectorTypeStatus(number);
@@ -100,6 +101,7 @@ function WorkflowCard({
                 connType={connType}
                 endpointDetails={endpointDetails}
                 message={message}
+                isWorkflowOwner={isWorkflowOwner}
               />
             )}
           </div>
@@ -118,6 +120,7 @@ WorkflowCard.propTypes = {
   message: PropTypes.string,
   customContent: PropTypes.node,
   connectorIcon: PropTypes.string,
+  isWorkflowOwner: PropTypes.bool,
 };
 
 export { WorkflowCard };
