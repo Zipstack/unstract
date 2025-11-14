@@ -93,3 +93,44 @@ class UnstractQueue(UnstractConnector, ABC):
     @abstractmethod
     def keys(self, pattern: str = "*") -> list[str]:
         pass
+
+    @abstractmethod
+    def lrange(self, queue_name: str, start: int, end: int) -> list[Any]:
+        """Retrieve a range of elements from a queue.
+
+        Args:
+            queue_name: Name of the queue to read from
+            start: Starting index (inclusive, 0-based)
+            end: Ending index (inclusive, -1 for last element)
+
+        Returns:
+            List of elements in the specified range. Returns empty list
+            for invalid ranges (e.g., start > end) or if queue is empty.
+
+        Note:
+            Supports Redis-style negative indexing where -1 represents
+            the last element, -2 the second to last, etc.
+        """
+        pass
+
+    @abstractmethod
+    def dequeue_batch(self, queue_name: str, count: int) -> list[Any]:
+        """Dequeue multiple items from a queue in a single operation.
+
+        Args:
+            queue_name: Name of the queue to dequeue from
+            count: Maximum number of items to dequeue (must be > 0)
+
+        Returns:
+            List of dequeued items in FIFO order (oldest first).
+            May contain fewer items than count if queue has fewer items.
+            Returns empty list if queue is empty or count <= 0.
+
+        Raises:
+            ValueError: If count is negative
+
+        Note:
+            This is a non-blocking operation with best-effort semantics.
+            Items are returned in the order they were enqueued (FIFO).
+        """
+        pass

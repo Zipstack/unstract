@@ -35,6 +35,8 @@ dependencies = [
     "unstract-filesystem",
     # Caching
     "redis>=4.5.0,<6.0.0", # Redis client for worker cache access
+    # Streaming utilities for bulk downloads (pluggable worker)
+    "zipstream-ng>=1.7.0", # Streaming zip creation for memory-efficient bulk downloads
     # Note: Using dataclasses instead of pydantic for lightweight typing
     # Custom implementations replace tenancy (retry), pybreaker (circuit breaker)
     # - python-dateutil: Standard datetime module sufficient
