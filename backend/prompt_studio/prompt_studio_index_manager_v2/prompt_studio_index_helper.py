@@ -149,7 +149,9 @@ class PromptStudioIndexHelper:
             return False
 
         except Exception as e:
-            logger.error(f"Failed to mark extraction status: {e}")
+            logger.exception(
+                f"Unexpected error marking extraction status for document {document_id}: {e}"
+            )
             return False
 
     @staticmethod

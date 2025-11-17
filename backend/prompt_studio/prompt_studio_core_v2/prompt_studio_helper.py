@@ -1315,9 +1315,9 @@ class PromptStudioHelper:
         profile_manager: ProfileManager,
         document_id: str,
     ) -> str:
-        x2text_config_hash = ToolUtils.hash_str(
-            json.dumps(profile_manager.x2text.metadata, sort_keys=True)
-        )
+        # Guard against None metadata (when adapter_metadata_b is None)
+        metadata = profile_manager.x2text.metadata or {}
+        x2text_config_hash = ToolUtils.hash_str(json.dumps(metadata, sort_keys=True))
 
         x2text = str(profile_manager.x2text.id)
         is_extracted: bool = False
@@ -1372,18 +1372,23 @@ class PromptStudioHelper:
                 request_id=StateStore.get(Common.REQUEST_ID),
             )
             extracted_text = responder.extract(payload=payload)
-            PromptStudioIndexHelper.mark_extraction_status(
+            success = PromptStudioIndexHelper.mark_extraction_status(
                 document_id=document_id,
                 profile_manager=profile_manager,
                 x2text_config_hash=x2text_config_hash,
                 enable_highlight=enable_highlight,
             )
+            if not success:
+                logger.warning(
+                    f"Failed to mark extraction success for document {document_id}. "
+                    f"Extraction completed but status not saved."
+                )
         except SdkError as e:
             msg = str(e)
             if e.actual_err and hasattr(e.actual_err, "response"):
                 msg = e.actual_err.response.json().get("error", str(e))
 
-            PromptStudioIndexHelper.mark_extraction_status(
+            success = PromptStudioIndexHelper.mark_extraction_status(
                 document_id=document_id,
                 profile_manager=profile_manager,
                 x2text_config_hash=x2text_config_hash,
@@ -1391,6 +1396,11 @@ class PromptStudioHelper:
                 extracted=False,
                 error_message=msg,
             )
+            if not success:
+                logger.warning(
+                    f"Failed to mark extraction failure for document {document_id}. "
+                    f"Extraction failed but status not saved."
+                )
 
             raise ExtractionAPIError(
                 f"Failed to extract '{filename}'. {msg}",
