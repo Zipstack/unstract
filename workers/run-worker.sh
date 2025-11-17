@@ -227,7 +227,7 @@ discover_pluggable_workers() {
             fi
 
             print_status $GREEN "Discovered pluggable worker: $worker_name"
-            ((discovered_count++))
+            ((discovered_count++)) || true
         fi
     done
 
@@ -368,8 +368,8 @@ run_worker() {
             echo ""
             echo -e "${YELLOW}This is a cloud-only pluggable worker.${NC}"
             echo -e "Make sure:"
-            echo -e "  1. CLOUD_DEPLOYMENT=true is set in your environment"
-            echo -e "  2. The pluggable_worker/$worker_type folder exists"
+            echo -e "  1. The pluggable_worker/$worker_type folder exists"
+            echo -e "  2. The worker module has a valid worker.py file"
             echo ""
         fi
 
@@ -380,12 +380,6 @@ run_worker() {
     export WORKER_NAME="${worker_type}-worker"
     export WORKER_TYPE="$(echo "$worker_type" | tr '-' '_')"  # Convert hyphens to underscores for Python module names
     export LOG_LEVEL="${log_level:-INFO}"
-
-    # Set CLOUD_DEPLOYMENT for pluggable workers
-    if [[ -n "${PLUGGABLE_WORKERS[$worker_type]:-}" ]]; then
-        export CLOUD_DEPLOYMENT=true
-        print_status $BLUE "Cloud deployment enabled for pluggable worker"
-    fi
 
     # Set health port if specified
     if [[ -n "$health_port" ]]; then
