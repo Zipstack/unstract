@@ -2,7 +2,6 @@ import os
 import warnings
 
 from flask import current_app
-
 from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.prompt_service.constants import PromptServiceConstants
 

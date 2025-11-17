@@ -3,9 +3,8 @@ import os
 from typing import Any
 
 from celery import shared_task
-from utils.log_events import handle_user_logs
-
 from unstract.core.constants import LogEventArgument, LogProcessingTask
+from utils.log_events import handle_user_logs
 
 logger = logging.getLogger(__name__)
 

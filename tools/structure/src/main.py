@@ -8,9 +8,8 @@ from typing import Any
 
 from constants import SettingsKeys  # type: ignore [attr-defined]
 from helpers import StructureToolHelper as STHelper
-from utils import json_to_markdown, repair_json_with_best_structure
-
 from unstract.flags.feature_flag import check_feature_flag_status
+from utils import json_to_markdown, repair_json_with_best_structure
 
 if check_feature_flag_status("sdk1"):
     from unstract.sdk1.constants import LogState, MetadataKey, ToolEnv, UsageKwargs
