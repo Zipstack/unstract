@@ -1,7 +1,6 @@
 from typing import Any
 
 from flask import current_app as app
-
 from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.constants import RunLevel, VariableType

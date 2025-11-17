@@ -5,7 +5,6 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from flask import Flask
-
 from unstract.core.flask import (
     PluginManager,
     register_error_handlers,
