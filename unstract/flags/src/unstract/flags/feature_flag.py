@@ -46,12 +46,7 @@ def check_feature_flag_status(
         flipt_url = os.environ.get("FLIPT_URL", "http://localhost:8080")
 
         # Initialize Flipt client
-        client = FliptClient(
-            opts=ClientOptions(
-                namespace=namespace_key,
-                url=flipt_url
-            )
-        )
+        client = FliptClient(opts=ClientOptions(namespace=namespace_key, url=flipt_url))
 
         # Evaluate boolean flag
         result = client.evaluate_boolean(
