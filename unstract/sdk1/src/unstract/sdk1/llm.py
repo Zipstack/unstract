@@ -9,6 +9,7 @@ import litellm
 # from litellm import get_supported_openai_params
 from litellm import get_max_tokens, token_counter
 from pydantic import ValidationError
+
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
 from unstract.sdk1.audit import Audit
@@ -279,7 +280,10 @@ class LLM:
         callback_manager: object | None = None,
         **kwargs: object,
     ) -> Generator[LLMResponseCompat, None, None]:
-        """Yield LLMResponseCompat objects with text chunks as they arrive from the provider."""
+        """Yield LLMResponseCompat objects with text chunks.
+
+        Chunks arrive as they stream from the provider.
+        """
         try:
             messages = [
                 {"role": "system", "content": self._system_prompt},
@@ -313,7 +317,8 @@ class LLM:
                     if callback_manager and hasattr(callback_manager, "on_stream"):
                         callback_manager.on_stream(text)
 
-                    # Yield LLMResponseCompat for backward compatibility with code expecting .delta
+                    # Yield LLMResponseCompat for backward compatibility
+                    # with code expecting .delta
                     stream_response = LLMResponseCompat(text)
                     stream_response.delta = text
                     yield stream_response
