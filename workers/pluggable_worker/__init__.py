@@ -5,12 +5,12 @@ Workers in this folder are excluded from OSS builds.
 
 Architecture:
 - OSS: This folder is gitignored and not included in OSS deployments
-- Cloud: Workers here are loaded when CLOUD_DEPLOYMENT=true
+- Cloud: Workers here are auto-discovered when the directory exists at runtime
 - Each pluggable worker is independent and follows the same pattern
+- Deployment type is determined by directory presence, not environment variables
 """
 
 import logging
-import os
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -47,10 +47,30 @@ def discover_pluggable_workers() -> list[str]:
 def is_cloud_deployment() -> bool:
     """Check if this is a cloud deployment with pluggable workers enabled.
 
+    This determines deployment type by checking if the pluggable_worker directory
+    exists and contains valid workers, rather than relying on environment variables.
+    In OSS builds, this folder is gitignored and won't exist.
+
     Returns:
-        bool: True if cloud deployment, False otherwise
+        bool: True if cloud deployment (pluggable workers directory exists), False otherwise
     """
-    return os.getenv("CLOUD_DEPLOYMENT", "false").lower() == "true"
+    try:
+        pluggable_dir = Path(__file__).parent
+        # Check if directory exists and is not empty (has at least one valid worker)
+        if not pluggable_dir.exists():
+            return False
+
+        # Check if there's at least one subdirectory with worker.py
+        for path in pluggable_dir.iterdir():
+            if path.name.startswith("_") or path.name.startswith("."):
+                continue
+            if path.is_dir() and (path / "worker.py").exists():
+                return True
+
+        return False
+    except Exception as e:
+        logger.error(f"Error checking deployment type: {e}")
+        return False
 
 
 def get_available_workers() -> list[str]:
