@@ -242,7 +242,9 @@ class LLM:
             )
 
             response_object = LLMResponseCompat(response_text)
-            response_object.raw = response  # Attach raw litellm response for metadata access
+            response_object.raw = (
+                response  # Attach raw litellm response for metadata access
+            )
             return {"response": response_object, **post_processed_output}
 
         except LLMError:
@@ -366,7 +368,9 @@ class LLM:
             )
 
             response_object = LLMResponseCompat(response_text)
-            response_object.raw = response  # Attach raw litellm response for metadata access
+            response_object.raw = (
+                response  # Attach raw litellm response for metadata access
+            )
             return {"response": response_object}
 
         except LLMError:

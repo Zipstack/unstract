@@ -128,20 +128,20 @@ class VectorDB:
         storage_context = self.get_storage_context()
 
         # Handle backward compatibility for callback_manager
-        callback_manager = getattr(self._embedding_instance, 'callback_manager', None)
+        callback_manager = getattr(self._embedding_instance, "callback_manager", None)
 
         parser_kwargs = {
-            'chunk_size': chunk_size,
-            'chunk_overlap': chunk_overlap,
+            "chunk_size": chunk_size,
+            "chunk_overlap": chunk_overlap,
         }
         if callback_manager is not None:
-            parser_kwargs['callback_manager'] = callback_manager
+            parser_kwargs["callback_manager"] = callback_manager
 
         parser = SentenceSplitter.from_defaults(**parser_kwargs)
 
         index_kwargs_with_callback = dict(index_kwargs)
         if callback_manager is not None:
-            index_kwargs_with_callback['callback_manager'] = callback_manager
+            index_kwargs_with_callback["callback_manager"] = callback_manager
 
         return VectorStoreIndex.from_documents(
             documents,
@@ -157,11 +157,11 @@ class VectorDB:
             raise VectorDBError(self.EMBEDDING_INSTANCE_ERROR)
 
         # Handle backward compatibility for callback_manager
-        callback_manager = getattr(self._embedding_instance, 'callback_manager', None)
+        callback_manager = getattr(self._embedding_instance, "callback_manager", None)
 
         index_kwargs = dict(kwargs) if kwargs else {}
         if callback_manager is not None:
-            index_kwargs['callback_manager'] = callback_manager
+            index_kwargs["callback_manager"] = callback_manager
 
         return VectorStoreIndex.from_vector_store(
             vector_store=self._vector_db_instance,

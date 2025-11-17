@@ -10,9 +10,8 @@ import logging
 import os
 
 import grpc
-# Import well-known protobuf types first to ensure they're registered
-from google.protobuf import empty_pb2, timestamp_pb2
 
+# Import well-known protobuf types first to ensure they're registered
 from ..generated import flipt_pb2, flipt_pb2_grpc
 from .base import BaseClient
 
