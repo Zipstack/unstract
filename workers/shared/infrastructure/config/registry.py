@@ -240,9 +240,6 @@ class WorkerRegistry:
                 # No config module, use defaults
                 logger.debug(f"No config module for {worker_type}, using defaults")
 
-                # Default queue config
-                from ..models.worker_models import WorkerQueueConfig
-
                 queue_name = getattr(QueueName, worker_type.value.upper(), None)
                 if queue_name:
                     cls._PLUGGABLE_QUEUE_CONFIGS[worker_type] = WorkerQueueConfig(

@@ -2,12 +2,9 @@
 
 This module provides centralized enums for worker types and queue names,
 ensuring type safety and preventing hardcoded string errors.
-
-Migration Note: This is part of the worker refactoring to reduce duplication
-and improve maintainability. All workers should use these enums instead of
-hardcoded strings.
 """
 
+import os
 from enum import Enum
 from typing import Optional
 
@@ -96,8 +93,6 @@ class WorkerType(str, Enum):
         Returns:
             Port number for health server
         """
-        import os
-
         # Check for environment variable first
         env_var = f"{self.name}_HEALTH_PORT"
         if env_port := os.getenv(env_var):
