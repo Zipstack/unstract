@@ -74,12 +74,14 @@ if check_feature_flag_status("sdk1"):
     from unstract.sdk1.file_storage.env_helper import EnvHelper
     from unstract.sdk1.prompt import PromptTool
     from unstract.sdk1.utils.indexing import IndexingUtils
+    from unstract.sdk1.utils.tool import ToolUtils
 else:
     from unstract.sdk.constants import LogLevel
     from unstract.sdk.exceptions import IndexingError, SdkError
     from unstract.sdk.file_storage.constants import StorageType
     from unstract.sdk.file_storage.env_helper import EnvHelper
     from unstract.sdk.prompt import PromptTool
+    from unstract.sdk.utils import ToolUtils
     from unstract.sdk.utils.indexing_utils import IndexingUtils
 
 logger = logging.getLogger(__name__)
@@ -421,11 +423,10 @@ class PromptStudioHelper:
             document_id=document_id,
             run_id=run_id,
             enable_highlight=tool.enable_highlight,
-            doc_id=doc_id,
         )
         if tool.summarize_context:
             summarize_file_path = PromptStudioHelper.summarize(
-                file_name, org_id, document_id, run_id, tool, doc_id
+                file_name, org_id, run_id, tool
             )
             summarize_doc_id = IndexingUtils.generate_index_key(
                 vector_db=str(summary_profile.vector_store.id),
@@ -481,7 +482,7 @@ class PromptStudioHelper:
         return doc_id
 
     @staticmethod
-    def summarize(file_name, org_id, document_id, run_id, tool, doc_id) -> str:
+    def summarize(file_name, org_id, run_id, tool) -> str:
         summarizer_plugin = get_plugin("summarizer")
         usage_kwargs: dict[Any, Any] = dict()
         usage_kwargs[ToolStudioPromptKeys.RUN_ID] = run_id
@@ -880,7 +881,6 @@ class PromptStudioHelper:
             document_id=document_id,
             run_id=run_id,
             enable_highlight=tool.enable_highlight,
-            doc_id=doc_id,
         )
         logger.info(f"Extracted text from {file_path} for {doc_id}")
         if is_summary:
@@ -1232,17 +1232,6 @@ class PromptStudioHelper:
         file_path = os.path.join(
             directory, "extract", os.path.splitext(filename)[0] + ".txt"
         )
-        doc_id = IndexingUtils.generate_index_key(
-            vector_db=str(default_profile.vector_store.id),
-            embedding=str(default_profile.embedding_model.id),
-            x2text=str(default_profile.x2text.id),
-            chunk_size=str(default_profile.chunk_size),
-            chunk_overlap=str(default_profile.chunk_overlap),
-            file_path=input_file_path,
-            file_hash=None,
-            fs=fs_instance,
-            tool=util,
-        )
         PromptStudioHelper.dynamic_extractor(
             profile_manager=default_profile,
             file_path=input_file_path,
@@ -1250,7 +1239,6 @@ class PromptStudioHelper:
             document_id=document_id,
             run_id=run_id,
             enable_highlight=tool.enable_highlight,
-            doc_id=doc_id,
         )
         # Indexing is not needed as Single pass is always non chunked.
         vector_db = str(default_profile.vector_store.id)
@@ -1326,8 +1314,11 @@ class PromptStudioHelper:
         org_id: str,
         profile_manager: ProfileManager,
         document_id: str,
-        doc_id: str,
     ) -> str:
+        x2text_config_hash = ToolUtils.hash_str(
+            json.dumps(profile_manager.x2text.metadata, sort_keys=True)
+        )
+
         x2text = str(profile_manager.x2text.id)
         is_extracted: bool = False
         extract_file_path: str | None = None
@@ -1342,7 +1333,7 @@ class PromptStudioHelper:
         is_extracted = PromptStudioIndexHelper.check_extraction_status(
             document_id=document_id,
             profile_manager=profile_manager,
-            doc_id=doc_id,
+            x2text_config_hash=x2text_config_hash,
             enable_highlight=enable_highlight,
         )
         if is_extracted:
@@ -1384,13 +1375,23 @@ class PromptStudioHelper:
             PromptStudioIndexHelper.mark_extraction_status(
                 document_id=document_id,
                 profile_manager=profile_manager,
-                doc_id=doc_id,
+                x2text_config_hash=x2text_config_hash,
                 enable_highlight=enable_highlight,
             )
         except SdkError as e:
             msg = str(e)
             if e.actual_err and hasattr(e.actual_err, "response"):
                 msg = e.actual_err.response.json().get("error", str(e))
+
+            PromptStudioIndexHelper.mark_extraction_status(
+                document_id=document_id,
+                profile_manager=profile_manager,
+                x2text_config_hash=x2text_config_hash,
+                enable_highlight=enable_highlight,
+                extracted=False,
+                error_message=msg,
+            )
+
             raise ExtractionAPIError(
                 f"Failed to extract '{filename}'. {msg}",
                 status_code=int(e.status_code or 500),
