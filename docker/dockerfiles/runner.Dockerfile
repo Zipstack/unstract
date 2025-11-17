@@ -19,9 +19,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     OTEL_LOGS_EXPORTER=none \
     OTEL_SERVICE_NAME=unstract_runner
 
-# Install system dependencies
+# Install system dependencies with cache mounts
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-RUN apt-get update \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update \
     && apt-get --no-install-recommends install -y \
     ca-certificates \
     curl \
@@ -31,9 +33,7 @@ RUN apt-get update \
     && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
     && apt-get update \
-    && apt-get --no-install-recommends install -y docker-ce-cli \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+    && apt-get --no-install-recommends install -y docker-ce-cli
 
 # Install uv package manager
 COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /uvx /bin/
@@ -53,8 +53,9 @@ COPY ${BUILD_CONTEXT_PATH}/pyproject.toml ${BUILD_CONTEXT_PATH}/uv.lock ${BUILD_
 COPY ${BUILD_PACKAGES_PATH}/core /unstract/core
 COPY ${BUILD_PACKAGES_PATH}/flags /unstract/flags
 
-# Install external dependencies from pyproject.toml
-RUN uv sync --group deploy --locked --no-install-project --no-dev
+# Install external dependencies from pyproject.toml with cache mount
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --group deploy --locked --no-install-project --no-dev
 
 # -----------------------------------------------
 # FINAL STAGE - Minimal image for production
@@ -67,11 +68,13 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # Copy application code (this layer changes most frequently)
 COPY ${BUILD_CONTEXT_PATH} ./
 
-# Install the application
-RUN uv sync --group deploy --no-dev --locked
+# Install the application with cache mount
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --group deploy --no-dev --locked
 
-# Install cloud requirements if they exist and setup OTEL
-RUN if [ -f cloud_requirements.txt ]; then \
+# Install cloud requirements if they exist and setup OTEL with cache mount
+RUN --mount=type=cache,target=/root/.cache/uv \
+    if [ -f cloud_requirements.txt ]; then \
     uv pip install -r cloud_requirements.txt; \
     else \
     echo "cloud_requirements.txt does not exist"; \

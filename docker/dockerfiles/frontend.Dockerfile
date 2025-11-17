@@ -11,7 +11,8 @@ FROM base AS development
 
 # Copy only package files for dependency caching
 COPY ${BUILD_CONTEXT_PATH}/package.json ${BUILD_CONTEXT_PATH}/package-lock.json ./
-RUN npm install --ignore-scripts
+RUN --mount=type=cache,target=/root/.npm \
+    npm install --ignore-scripts
 
 # Copy the rest of the application files
 COPY ${BUILD_CONTEXT_PATH}/ /app/
@@ -27,9 +28,10 @@ ARG REACT_APP_ENABLE_POSTHOG=true
 ENV REACT_APP_BACKEND_URL=""
 ENV REACT_APP_ENABLE_POSTHOG=${REACT_APP_ENABLE_POSTHOG}
 
-# Copy package files and install dependencies
+# Copy package files and install dependencies with cache mount
 COPY ${BUILD_CONTEXT_PATH}/package.json ${BUILD_CONTEXT_PATH}/package-lock.json ./
-RUN npm install --ignore-scripts
+RUN --mount=type=cache,target=/root/.npm \
+    npm install --ignore-scripts
 
 # Copy the rest of the application files
 COPY ${BUILD_CONTEXT_PATH}/ .

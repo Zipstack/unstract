@@ -19,14 +19,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     OTEL_LOGS_EXPORTER=none \
     OTEL_SERVICE_NAME=unstract_platform
 
-# Install system dependencies and create user in one layer
-RUN apt-get update \
+# Install system dependencies and create user in one layer with cache mounts
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update \
     && apt-get --no-install-recommends install -y \
     build-essential \
     libmagic-dev \
     git \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* \
     && adduser -u 5678 --disabled-password --gecos "" ${APP_USER} \
     && mkdir -p ${APP_HOME} \
     && chown -R ${APP_USER}:${APP_USER} ${APP_HOME}
@@ -53,8 +53,9 @@ COPY --chown=${APP_USER}:${APP_USER} ${BUILD_PACKAGES_PATH}/flags /unstract/flag
 # Switch to non-root user
 USER ${APP_USER}
 
-# Install external dependencies from pyproject.toml
-RUN uv sync --group deploy --locked --no-install-project --no-dev
+# Install external dependencies from pyproject.toml with cache mount
+RUN --mount=type=cache,target=/home/unstract/.cache/uv,uid=5678,gid=5678 \
+    uv sync --group deploy --locked --no-install-project --no-dev
 
 # -----------------------------------------------
 # FINAL STAGE - Minimal image for production
@@ -70,8 +71,9 @@ COPY --chown=${APP_USER}:${APP_USER} ${BUILD_CONTEXT_PATH} ./
 # Switch to non-root user
 USER ${APP_USER}
 
-# Install the application in non-editable mode to avoid permission issues
-RUN uv sync --group deploy --locked && \
+# Install the application in non-editable mode to avoid permission issues with cache mount
+RUN --mount=type=cache,target=/home/unstract/.cache/uv,uid=5678,gid=5678 \
+    uv sync --group deploy --locked && \
     uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement -
 
 EXPOSE 3001

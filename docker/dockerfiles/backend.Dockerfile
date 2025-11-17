@@ -19,8 +19,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     OTEL_LOGS_EXPORTER=none \
     OTEL_SERVICE_NAME=unstract_backend
 
-# Install system dependencies
-RUN apt-get update \
+# Install system dependencies with cache mounts for faster rebuilds
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update \
     && apt-get --no-install-recommends install -y \
     build-essential \
     freetds-dev \
@@ -28,9 +30,7 @@ RUN apt-get update \
     libkrb5-dev \
     libmagic-dev \
     libssl-dev \
-    pkg-config \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+    pkg-config
 # Install uv package manager
 COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /uvx /bin/
 
@@ -48,8 +48,9 @@ COPY ${BUILD_CONTEXT_PATH}/pyproject.toml ${BUILD_CONTEXT_PATH}/uv.lock ${BUILD_
 # Copy local package dependencies
 COPY ${BUILD_PACKAGES_PATH}/ /unstract/
 
-# Install external dependencies from pyproject.toml
-RUN uv sync --group deploy --locked --no-install-project --no-dev
+# Install external dependencies from pyproject.toml with cache mount
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --group deploy --locked --no-install-project --no-dev
 
 # -----------------------------------------------
 # FINAL STAGE - Minimal image for production
@@ -62,8 +63,9 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # Copy application code (this layer changes most frequently)
 COPY ${BUILD_CONTEXT_PATH}/ ./
 
-# Install the application
-RUN uv sync --group deploy --locked && \
+# Install the application with cache mount
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --group deploy --locked && \
     uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement - && \
     chmod +x ./entrypoint.sh
 

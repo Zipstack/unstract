@@ -20,15 +20,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     OTEL_LOGS_EXPORTER=none \
     OTEL_SERVICE_NAME=unstract_prompt
 
-# Install system dependencies, create user, and setup directories in one layer
-RUN apt-get update \
+# Install system dependencies, create user, and setup directories in one layer with cache mounts
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update \
     && apt-get --no-install-recommends install -y \
     build-essential \
     libmagic-dev \
     pkg-config \
     git \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* \
     && adduser -u 5678 --disabled-password --gecos "" ${APP_USER} \
     && mkdir -p ${APP_HOME} \
     && chown -R ${APP_USER}:${APP_USER} ${APP_HOME}
@@ -55,8 +55,9 @@ COPY --chown=${APP_USER}:${APP_USER} ${BUILD_PACKAGES_PATH}/flags /unstract/flag
 # Switch to non-root user
 USER ${APP_USER}
 
-# Install external dependencies from pyproject.toml
-RUN uv sync --group deploy --locked --no-install-project --no-dev
+# Install external dependencies from pyproject.toml with cache mount
+RUN --mount=type=cache,target=/home/unstract/.cache/uv,uid=5678,gid=5678 \
+    uv sync --group deploy --locked --no-install-project --no-dev
 
 # -----------------------------------------------
 # FINAL STAGE - Minimal image for production
@@ -72,11 +73,13 @@ COPY --chown=${APP_USER}:${APP_USER} ${BUILD_CONTEXT_PATH} ./
 # Switch to non-root user
 USER ${APP_USER}
 
-# Install just the application in editable mode
-RUN uv sync --group deploy --locked
+# Install just the application in editable mode with cache mount
+RUN --mount=type=cache,target=/home/unstract/.cache/uv,uid=5678,gid=5678 \
+    uv sync --group deploy --locked
 
-# Install plugins after copying source code
-RUN for dir in "${TARGET_PLUGINS_PATH}"/*/; do \
+# Install plugins after copying source code with cache mount
+RUN --mount=type=cache,target=/home/unstract/.cache/uv,uid=5678,gid=5678 \
+    for dir in "${TARGET_PLUGINS_PATH}"/*/; do \
     dirpath=${dir%*/}; \
     dirname=${dirpath##*/}; \
     if [ "${dirname}" != "*" ]; then \

@@ -18,17 +18,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     OTEL_LOGS_EXPORTER=none \
     OTEL_SERVICE_NAME=unstract_workers
 
-# Install system dependencies (minimal for workers)
-RUN apt-get update \
+# Install system dependencies (minimal for workers) with cache mounts
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update \
     && apt-get --no-install-recommends install -y \
        build-essential \
        curl \
        gcc \
        libmagic-dev \
        libssl-dev \
-       pkg-config \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+       pkg-config
 
 # Install uv package manager
 COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /uvx /bin/
@@ -54,9 +54,10 @@ RUN touch README.md
 # This provides the unstract packages for imports
 COPY ${BUILD_PACKAGES_PATH}/ /unstract/
 
-# Install external dependencies with --locked for FAST builds
+# Install external dependencies with --locked for FAST builds and cache mount
 # No symlinks needed - PYTHONPATH handles the paths
-RUN uv sync --group deploy --locked --no-install-project --no-dev
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --group deploy --locked --no-install-project --no-dev
 
 # -----------------------------------------------
 # FINAL STAGE - Minimal image for production
@@ -69,9 +70,10 @@ COPY ${BUILD_CONTEXT_PATH}/ ./
 # Set shell with pipefail for proper error handling in pipes
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Install project and OpenTelemetry instrumentation (as root to avoid permission issues)
+# Install project and OpenTelemetry instrumentation (as root to avoid permission issues) with cache mount
 # No symlinks needed - PYTHONPATH handles the paths correctly
-RUN uv sync --group deploy --locked && \
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --group deploy --locked && \
     uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement - && \
     { chmod +x ./run-worker.sh ./run-worker-docker.sh 2>/dev/null || true; } && \
     touch requirements.txt && \
