@@ -56,7 +56,7 @@ COPY ${BUILD_PACKAGES_PATH}/ /unstract/
 # No symlinks needed - PYTHONPATH handles the paths
 # This layer is cached when dependencies don't change
 RUN --mount=type=cache,target=/root/.cache/uv \
-    UV_LINK_MODE=copy uv sync --group deploy --locked --no-install-project --no-dev
+    uv sync --group deploy --locked --no-install-project --no-dev
 
 # Copy application code (this layer changes most frequently)
 COPY ${BUILD_CONTEXT_PATH}/ ./
@@ -64,7 +64,7 @@ COPY ${BUILD_CONTEXT_PATH}/ ./
 # Install project and OpenTelemetry instrumentation (as root to avoid permission issues) with cache mount
 # No symlinks needed - PYTHONPATH handles the paths correctly
 RUN --mount=type=cache,target=/root/.cache/uv \
-    UV_LINK_MODE=copy uv sync --group deploy --locked && \
+    uv sync --group deploy --locked && \
     uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement - && \
     { chmod +x ./run-worker.sh ./run-worker-docker.sh 2>/dev/null || true; } && \
     touch requirements.txt && \

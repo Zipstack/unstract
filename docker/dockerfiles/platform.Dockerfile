@@ -54,14 +54,14 @@ USER ${APP_USER}
 # Install external dependencies from pyproject.toml with cache mount
 # This layer is cached when dependencies don't change
 RUN --mount=type=cache,target=/home/unstract/.cache/uv,uid=5678,gid=5678 \
-    UV_LINK_MODE=copy uv sync --group deploy --locked --no-install-project --no-dev
+    uv sync --group deploy --locked --no-install-project --no-dev
 
 # Copy application code (this layer changes most frequently)
 COPY --chown=${APP_USER}:${APP_USER} ${BUILD_CONTEXT_PATH} ./
 
 # Install the application in non-editable mode to avoid permission issues with cache mount
 RUN --mount=type=cache,target=/home/unstract/.cache/uv,uid=5678,gid=5678 \
-    UV_LINK_MODE=copy uv sync --group deploy --locked && \
+    uv sync --group deploy --locked && \
     uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement -
 
 EXPOSE 3001

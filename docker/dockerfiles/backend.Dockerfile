@@ -50,14 +50,14 @@ COPY ${BUILD_PACKAGES_PATH}/ /unstract/
 # Install external dependencies from pyproject.toml with cache mount
 # This layer is cached when dependencies don't change
 RUN --mount=type=cache,target=/root/.cache/uv \
-    UV_LINK_MODE=copy uv sync --group deploy --locked --no-install-project --no-dev
+    uv sync --group deploy --locked --no-install-project --no-dev
 
 # Copy application code (this layer changes most frequently)
 COPY ${BUILD_CONTEXT_PATH}/ ./
 
 # Install the application with cache mount
 RUN --mount=type=cache,target=/root/.cache/uv \
-    UV_LINK_MODE=copy uv sync --group deploy --locked && \
+    uv sync --group deploy --locked && \
     uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement - && \
     chmod +x ./entrypoint.sh
 
