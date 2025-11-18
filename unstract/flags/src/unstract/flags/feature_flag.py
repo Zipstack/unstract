@@ -55,7 +55,7 @@ def check_feature_flag_status(
             context=context or {},
         )
 
-        #close client to save resources
+        # close client to save resources
         client.close()
 
         return bool(result.enabled)
