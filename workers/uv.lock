@@ -1056,6 +1056,19 @@ wheels = [
 ]
 
 [[package]]
+name = "flipt-client"
+version = "1.3.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "packaging" },
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8b/b2/ea0cfd90eb83059a6219f6865e2a9c99d65f0fd51718f33d8840f4df2b52/flipt_client-1.3.2.tar.gz", hash = "sha256:4b5128db4886e50a66586efbf64c0fcb54d076e6be641986096a01325336aba4", size = 23624252, upload-time = "2025-10-31T18:36:00.594Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/27/59/ea75a9af11748d7e05c6a9ce30c0b868410af94a5ea0636fd299ca20f9b6/flipt_client-1.3.2-py3-none-any.whl", hash = "sha256:b32f8fef09d43df6eefbb84d7b718e5510097866c6c889a8934de18a90e71390", size = 23760883, upload-time = "2025-10-31T18:35:57.995Z" },
+]
+
+[[package]]
 name = "frozenlist"
 version = "1.7.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1549,28 +1562,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/2a/38/0cd65d29f8fe0b5efaef60a0664885b5457a566b1a531d3e6b76a8bb0f21/grpcio-status-1.60.0.tar.gz", hash = "sha256:f10e0b6db3adc0fdc244b71962814ee982996ef06186446b5695b9fa635aa1ab", size = 13546, upload-time = "2023-12-07T19:00:28.884Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d9/bd/f46d6511088f314cfedc880721fd32d387b8513b22da01cf4771d7439a2b/grpcio_status-1.60.0-py3-none-any.whl", hash = "sha256:7d383fa36e59c1e61d380d91350badd4d12ac56e4de2c2b831b050362c3c572e", size = 14448, upload-time = "2023-12-07T18:56:58.47Z" },
-]
-
-[[package]]
-name = "grpcio-tools"
-version = "1.60.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "grpcio" },
-    { name = "protobuf" },
-    { name = "setuptools" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/3f/8f/1861529938e4a27f8d9b736a4ba58846ab1ccf63b6d7610a86a0329ffc46/grpcio-tools-1.60.0.tar.gz", hash = "sha256:ed30499340228d733ff69fcf4a66590ed7921f94eb5a2bf692258b1280b9dac7", size = 4611505, upload-time = "2023-12-07T19:00:32.95Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/50/09/16b77ffe4f0e3f03c98407a82485e8c9c15bc433334965fbd31a9dfa127b/grpcio_tools-1.60.0-cp312-cp312-linux_armv7l.whl", hash = "sha256:74025fdd6d1cb7ba4b5d087995339e9a09f0c16cf15dfe56368b23e41ffeaf7a", size = 63964335, upload-time = "2023-12-07T18:58:07.71Z" },
-    { url = "https://files.pythonhosted.org/packages/21/2f/3b4f50a810bc9892ac094b29c5c66e575a56813cb4e73fc9a4c7d2dccd3c/grpcio_tools-1.60.0-cp312-cp312-macosx_10_10_universal2.whl", hash = "sha256:5a907a4f1ffba86501b2cdb8682346249ea032b922fc69a92f082ba045cca548", size = 5147864, upload-time = "2023-12-07T18:58:13.289Z" },
-    { url = "https://files.pythonhosted.org/packages/7c/28/f3baa87c8e53b7694761ea69d5d9c3f635b54ff7c09761e3593ca59344b3/grpcio_tools-1.60.0-cp312-cp312-manylinux_2_17_aarch64.whl", hash = "sha256:1fbb9554466d560472f07d906bfc8dcaf52f365c2a407015185993e30372a886", size = 2709526, upload-time = "2023-12-07T18:58:15.723Z" },
-    { url = "https://files.pythonhosted.org/packages/9d/07/87e5c0c70dfa0aefc130a6e9116a54866d72449706b35902fbbf3f57f37e/grpcio_tools-1.60.0-cp312-cp312-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:f10ef47460ce3c6fd400f05fe757b90df63486c9b84d1ecad42dcc5f80c8ac14", size = 3061068, upload-time = "2023-12-07T18:58:19.318Z" },
-    { url = "https://files.pythonhosted.org/packages/b4/cb/e8ad1dd2caac2de9e3a0e6627024ffca3bf30c9911e691f88b7dca4e5097/grpcio_tools-1.60.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:321b18f42a70813545e416ddcb8bf20defa407a8114906711c9710a69596ceda", size = 2797033, upload-time = "2023-12-07T18:58:22.981Z" },
-    { url = "https://files.pythonhosted.org/packages/ba/1d/8c8048c00c194aa8d5648aba853df4076be6d70e9a00a1f25d4830b6dee8/grpcio_tools-1.60.0-cp312-cp312-musllinux_1_1_i686.whl", hash = "sha256:081336d8258f1a56542aa8a7a5dec99a2b38d902e19fbdd744594783301b0210", size = 3674987, upload-time = "2023-12-07T18:58:25.715Z" },
-    { url = "https://files.pythonhosted.org/packages/a4/48/dae5740b16b9fdd937fa3bf4f29b6c95b8e0d2dc06a5e82a59e2aa67f07b/grpcio_tools-1.60.0-cp312-cp312-musllinux_1_1_x86_64.whl", hash = "sha256:addc9b23d6ff729d9f83d4a2846292d4c84f5eb2ec38f08489a6a0d66ac2b91e", size = 3283144, upload-time = "2023-12-07T18:58:28.851Z" },
-    { url = "https://files.pythonhosted.org/packages/9b/b6/87d859bf481a2e5629c1ea14a741faa90d533b756af0c514cbff06b00c71/grpcio_tools-1.60.0-cp312-cp312-win32.whl", hash = "sha256:e87cabac7969bdde309575edc2456357667a1b28262b2c1f12580ef48315b19d", size = 922614, upload-time = "2023-12-07T18:58:31.449Z" },
-    { url = "https://files.pythonhosted.org/packages/a8/0a/d6fea138f949f307f2e6958fbf6a3cd94a2d6a51ba3a6333a36b02e24459/grpcio_tools-1.60.0-cp312-cp312-win_amd64.whl", hash = "sha256:e70d867c120d9849093b0ac24d861e378bc88af2552e743d83b9f642d2caa7c2", size = 1068418, upload-time = "2023-12-07T18:58:34.353Z" },
 ]
 
 [[package]]
@@ -4469,17 +4460,11 @@ name = "unstract-flags"
 version = "0.0.1"
 source = { editable = "../unstract/flags" }
 dependencies = [
-    { name = "grpcio" },
-    { name = "grpcio-tools" },
-    { name = "protobuf" },
+    { name = "flipt-client" },
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "grpcio", specifier = "<=1.60.0" },
-    { name = "grpcio-tools", specifier = "<=1.60.0" },
-    { name = "protobuf", specifier = ">=4.25.0" },
-]
+requires-dist = [{ name = "flipt-client", specifier = ">=0.1.0" }]
 
 [[package]]
 name = "unstract-sdk"
