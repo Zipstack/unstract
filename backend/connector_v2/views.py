@@ -20,6 +20,7 @@ from utils.filtering import FilterHelper
 from backend.constants import RequestKey
 from connector_v2.constants import ConnectorInstanceKey as CIKey
 from unstract.connectors.connectorkit import Connectorkit
+from unstract.connectors.databases.oracle_db.oracle_db import OracleDB
 from unstract.connectors.enums import ConnectorMode
 
 from .exceptions import DeleteConnectorInUseError
@@ -199,6 +200,14 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):  # type: ignore[misc]
         # is performed on other fields of ConnectorInstance
         if connector_metadata is None:
             connector_metadata = serializer.instance.connector_metadata
+
+        # Remove wallet_file from metadata for Oracle connector to prevent JSON serialization issues
+        if connector_id == OracleDB.get_id() and connector_metadata:
+            connector_metadata.pop("wallet_file", None)
+            logger.info(
+                "Removed wallet_file from Oracle connector metadata to prevent serialization issues"
+            )
+
         serializer.save(
             connector_id=connector_id,
             connector_metadata=connector_metadata,
@@ -217,6 +226,14 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):  # type: ignore[misc]
         except Exception as exc:
             logger.error(f"Error while obtaining ConnectorAuth: {exc}")
             raise OAuthTimeOut
+
+        # Remove wallet_file from metadata for Oracle connector to prevent JSON serialization issues
+        if connector_id == OracleDB.get_id() and connector_metadata:
+            connector_metadata.pop("wallet_file", None)
+            logger.info(
+                "Removed wallet_file from Oracle connector metadata to prevent serialization issues"
+            )
+
         serializer.save(
             connector_id=connector_id,
             connector_metadata=connector_metadata,

@@ -73,7 +73,14 @@ class UnstractDB(UnstractConnector, ABC):
         try:
             self.get_engine()
         except Exception as e:
-            raise ConnectorError(f"Error while connecting to DB: {str(e)}") from e
+            error_details = str(e)
+            default_details = (
+                "Error while connecting to DB. Please use correct credentials."
+            )
+            formatted_message = (
+                f"{default_details} Error details: ```\n{error_details}\n```"
+            )
+            raise ConnectorError(formatted_message) from e
         return True
 
     def execute(self, query: str) -> Any:

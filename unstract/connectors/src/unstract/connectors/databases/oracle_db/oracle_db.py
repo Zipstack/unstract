@@ -70,7 +70,8 @@ class OracleDB(UnstractDB):
         self._temp_wallet_dir = tempfile.mkdtemp(prefix="oracle_wallet_")
 
         logger.info(
-            "Processing Django UploadedFile: %s", getattr(wallet_file, "name", "unknown")
+            "Processing Django UploadedFile: %s",
+            getattr(wallet_file, "name", "unknown"),
         )
 
         # Save uploaded file to temporary ZIP file and extract
