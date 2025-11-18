@@ -18,7 +18,9 @@ ENV \
     OTEL_LOGS_EXPORTER=none \
     # Enable context propagation
     OTEL_PROPAGATORS="tracecontext" \
-    PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
+    PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python \
+    # Increase timeout for large packages (flipt-client is ~45MB)
+    UV_HTTP_TIMEOUT=120
 
 # Install system dependencies in one layer
 RUN apt-get update && \
