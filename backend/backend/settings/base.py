@@ -308,7 +308,7 @@ SHARED_APPS = (
     "drf_yasg",
     "docs",
     # Plugins
-    "plugins",
+    "plugins.apps.PluginsConfig",
     "feature_flag",
     "django_celery_beat",
     # For additional helper commands

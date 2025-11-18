@@ -10,6 +10,7 @@ from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpResponse
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
+from plugins import get_plugin
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
@@ -32,15 +33,9 @@ from pipeline_v2.serializers.execute import (
 )
 from pipeline_v2.serializers.sharing import SharedUserListSerializer
 
-try:
+notification_plugin = get_plugin("notification")
+if notification_plugin:
     from plugins.notification.constants import ResourceType
-    from plugins.notification.sharing_notification import SharingNotificationService
-
-    NOTIFICATION_PLUGIN_AVAILABLE = True
-    sharing_notification_service = SharingNotificationService()
-except ImportError:
-    NOTIFICATION_PLUGIN_AVAILABLE = False
-    sharing_notification_service = None
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +131,7 @@ class PipelineViewSet(viewsets.ModelViewSet):
         if (
             response.status_code == 200
             and "shared_users" in request.data
-            and NOTIFICATION_PLUGIN_AVAILABLE
+            and notification_plugin
         ):
             try:
                 instance.refresh_from_db()
@@ -149,8 +144,10 @@ class PipelineViewSet(viewsets.ModelViewSet):
                     resource_type = ResourceType.TASK.value
 
                 if newly_shared_users:
-                    # Only send notifications if there are newly shared users
-                    sharing_notification_service.send_sharing_notification(
+                    # Get notification service from plugin and send notification
+                    service_class = notification_plugin["service_class"]
+                    notification_service = service_class()
+                    notification_service.send_sharing_notification(
                         resource_type=resource_type,
                         resource_name=instance.pipeline_name,
                         resource_id=str(instance.id),

@@ -12,7 +12,9 @@ from connector_processor.exceptions import OAuthTimeOut
 from django.db import IntegrityError
 from django.db.models import ProtectedError, QuerySet
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
+from plugins import get_plugin
 from rest_framework import status, viewsets
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from utils.filtering import FilterHelper
@@ -25,6 +27,11 @@ from unstract.connectors.enums import ConnectorMode
 from .exceptions import DeleteConnectorInUseError
 from .models import ConnectorInstance
 from .serializers import ConnectorInstanceSerializer
+
+notification_plugin = get_plugin("notification")
+if notification_plugin:
+    from plugins.notification.constants import ResourceType
+    from plugins.notification.sharing_notification import SharingNotificationService
 
 logger = logging.getLogger(__name__)
 
@@ -258,3 +265,44 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):  # type: ignore[misc]
                 f" named {instance.connector_name}"
             )
             raise DeleteConnectorInUseError(connector_name=instance.connector_name)
+
+    def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        """Override to handle sharing notifications."""
+        instance = self.get_object()
+        current_shared_users = set(instance.shared_users.all())
+
+        response = super().partial_update(request, *args, **kwargs)
+
+        if (
+            response.status_code == 200
+            and "shared_users" in request.data
+            and bool(notification_plugin)
+        ):
+            try:
+                instance.refresh_from_db()
+                new_shared_users = set(instance.shared_users.all())
+                newly_shared_users = new_shared_users - current_shared_users
+
+                if newly_shared_users:
+                    # Only send notifications if there are newly shared users
+                    SharingNotificationService().send_sharing_notification(
+                        resource_type=ResourceType.CONNECTOR.value,
+                        resource_name=instance.connector_name,
+                        resource_id=str(instance.id),
+                        shared_by=request.user,
+                        shared_to=list(newly_shared_users),
+                        resource_instance=instance,
+                    )
+
+                    logger.info(
+                        f"Sent sharing notifications for connector "
+                        f"to {len(newly_shared_users)} users"
+                    )
+
+            except Exception as e:
+                # Log error but don't fail the update operation
+                logger.exception(
+                    f"Failed to send sharing notification, continuing update though: {str(e)}"
+                )
+
+        return response
