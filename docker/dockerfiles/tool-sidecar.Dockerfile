@@ -1,5 +1,5 @@
 # Use Python 3.12.9-slim for minimal size
-FROM python:3.12-slim-trixie  AS base
+FROM python:3.12-slim-trixie
 
 ARG VERSION=dev
 LABEL maintainer="Zipstack Inc." \
@@ -21,7 +21,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     OTEL_SERVICE_NAME=unstract_tool_sidecar \
     PATH="/app/.venv/bin:$PATH"
 
-# Install system dependencies in a single layer with cache mounts
+# Install system dependencies with cache mounts
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -45,11 +45,6 @@ COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /uvx /bin/
 
 WORKDIR ${APP_HOME}
 
-# -----------------------------------------------
-# EXTERNAL DEPENDENCIES STAGE
-# -----------------------------------------------
-FROM base AS ext-dependencies
-
 # Copy dependency-related files
 COPY --chown=${APP_USER}:${APP_USER} ${BUILD_CONTEXT_PATH}/pyproject.toml ${BUILD_CONTEXT_PATH}/uv.lock ${BUILD_CONTEXT_PATH}/README.md ./
 
@@ -61,25 +56,14 @@ USER ${APP_USER}
 
 # Install external dependencies from pyproject.toml with cache mount
 RUN --mount=type=cache,target=/home/unstract/.cache/uv,uid=5678,gid=5678 \
-    uv sync --group deploy --locked --no-install-project --no-dev
-
-# -----------------------------------------------
-# FINAL STAGE - Minimal image for production
-# -----------------------------------------------
-FROM ext-dependencies AS production
-
-# Set shell options for better error handling
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+    uv sync --group deploy --locked --no-install-project --no-dev --link-mode=copy
 
 # Copy application code (this layer changes most frequently)
 COPY --chown=${APP_USER}:${APP_USER} ${BUILD_CONTEXT_PATH} ./
 
-# Switch to non-root user
-USER ${APP_USER}
-
-# Install just the application with cache mount
+# Install the application with cache mount
 RUN --mount=type=cache,target=/home/unstract/.cache/uv,uid=5678,gid=5678 \
-    uv sync --group deploy --locked && \
+    uv sync --group deploy --locked --link-mode=copy && \
     uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement - && \
     chmod +x ./entrypoint.sh
 

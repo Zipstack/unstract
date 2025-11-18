@@ -1,5 +1,5 @@
 # Use a specific version of Python slim image
-FROM python:3.12-slim-trixie AS base
+FROM python:3.12-slim-trixie
 
 ARG VERSION=dev
 LABEL maintainer="Zipstack Inc." \
@@ -41,11 +41,6 @@ COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /uvx /bin/
 # Create working directory
 WORKDIR ${APP_HOME}
 
-# -----------------------------------------------
-# EXTERNAL DEPENDENCIES STAGE - This layer gets cached if external dependencies don't change
-# -----------------------------------------------
-FROM base AS ext-dependencies
-
 # Copy dependency-related files
 COPY ${BUILD_CONTEXT_PATH}/pyproject.toml ${BUILD_CONTEXT_PATH}/uv.lock ${BUILD_CONTEXT_PATH}/README.md ./
 
@@ -55,22 +50,14 @@ COPY ${BUILD_PACKAGES_PATH}/flags /unstract/flags
 
 # Install external dependencies from pyproject.toml with cache mount
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --group deploy --locked --no-install-project --no-dev
-
-# -----------------------------------------------
-# FINAL STAGE - Minimal image for production
-# -----------------------------------------------
-FROM ext-dependencies AS production
-
-# Set shell options for better error handling
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+    uv sync --group deploy --locked --no-install-project --no-dev --link-mode=copy
 
 # Copy application code (this layer changes most frequently)
 COPY ${BUILD_CONTEXT_PATH} ./
 
 # Install the application with cache mount
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --group deploy --no-dev --locked
+    uv sync --group deploy --no-dev --locked --link-mode=copy
 
 # Install cloud requirements if they exist and setup OTEL with cache mount
 RUN --mount=type=cache,target=/root/.cache/uv \

@@ -1,5 +1,5 @@
 # Use a specific version of Python slim image
-FROM python:3.12-slim-trixie AS base
+FROM python:3.12-slim-trixie
 
 ARG VERSION=dev
 LABEL maintainer="Zipstack Inc." \
@@ -20,7 +20,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     OTEL_LOGS_EXPORTER=none \
     OTEL_SERVICE_NAME=unstract_prompt
 
-# Install system dependencies, create user, and setup directories in one layer with cache mounts
+# Install system dependencies, create user, and setup directories with cache mounts
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update \
@@ -39,10 +39,8 @@ COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /uvx /bin/
 # Create working directory
 WORKDIR ${APP_HOME}
 
-# -----------------------------------------------
-# EXTERNAL DEPENDENCIES STAGE - This layer gets cached if external dependencies don't change
-# -----------------------------------------------
-FROM base AS ext-dependencies
+# Set shell options for better error handling
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Copy dependency-related files
 COPY --chown=${APP_USER}:${APP_USER} ${BUILD_CONTEXT_PATH}/pyproject.toml ${BUILD_CONTEXT_PATH}/uv.lock ${BUILD_CONTEXT_PATH}/README.md ./
@@ -57,25 +55,14 @@ USER ${APP_USER}
 
 # Install external dependencies from pyproject.toml with cache mount
 RUN --mount=type=cache,target=/home/unstract/.cache/uv,uid=5678,gid=5678 \
-    uv sync --group deploy --locked --no-install-project --no-dev
-
-# -----------------------------------------------
-# FINAL STAGE - Minimal image for production
-# -----------------------------------------------
-FROM ext-dependencies AS production
-
-# Set shell options for better error handling
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+    uv sync --group deploy --locked --no-install-project --no-dev --link-mode=copy
 
 # Copy application code (this layer changes most frequently)
 COPY --chown=${APP_USER}:${APP_USER} ${BUILD_CONTEXT_PATH} ./
 
-# Switch to non-root user
-USER ${APP_USER}
-
-# Install just the application in editable mode with cache mount
+# Install the application in editable mode with cache mount
 RUN --mount=type=cache,target=/home/unstract/.cache/uv,uid=5678,gid=5678 \
-    uv sync --group deploy --locked
+    uv sync --group deploy --locked --link-mode=copy
 
 # Install plugins after copying source code with cache mount
 RUN --mount=type=cache,target=/home/unstract/.cache/uv,uid=5678,gid=5678 \
