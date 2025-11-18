@@ -242,7 +242,9 @@ class LLM:
             )
 
             response_object = LLMResponseCompat(response_text)
-            response_object.raw = response  # Attach raw litellm response for metadata access
+            response_object.raw = (
+                response  # Attach raw litellm response for metadata access
+            )
             return {"response": response_object, **post_processed_output}
 
         except LLMError:
@@ -277,7 +279,10 @@ class LLM:
         callback_manager: object | None = None,
         **kwargs: object,
     ) -> Generator[LLMResponseCompat, None, None]:
-        """Yield LLMResponseCompat objects with text chunks as they arrive from the provider."""
+        """Yield LLMResponseCompat objects with text chunks.
+
+        Chunks arrive as they stream from the provider.
+        """
         try:
             messages = [
                 {"role": "system", "content": self._system_prompt},
@@ -311,7 +316,8 @@ class LLM:
                     if callback_manager and hasattr(callback_manager, "on_stream"):
                         callback_manager.on_stream(text)
 
-                    # Yield LLMResponseCompat for backward compatibility with code expecting .delta
+                    # Yield LLMResponseCompat for backward compatibility
+                    # with code expecting .delta
                     stream_response = LLMResponseCompat(text)
                     stream_response.delta = text
                     yield stream_response
@@ -366,7 +372,9 @@ class LLM:
             )
 
             response_object = LLMResponseCompat(response_text)
-            response_object.raw = response  # Attach raw litellm response for metadata access
+            response_object.raw = (
+                response  # Attach raw litellm response for metadata access
+            )
             return {"response": response_object}
 
         except LLMError:

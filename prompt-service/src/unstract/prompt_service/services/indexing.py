@@ -58,7 +58,6 @@ class IndexingService:
                 tool=util,
                 fs=fs_instance,
             )
-            logger.info(f"Chunk_size--{chunking_config.chunk_size}=================================================")
             if check_feature_flag_status("sdk1"):
                 embedding = EmbeddingCompat(
                     adapter_instance_id=instance_identifiers.embedding_instance_id,
@@ -67,7 +66,6 @@ class IndexingService:
                         **processing_options.usage_kwargs,
                     },
                 )
-                logger.info(f"sdk1Embedding--=================================================")
             else:
                 embedding = Embedding(
                     tool=util,
@@ -88,7 +86,6 @@ class IndexingService:
             )
 
             # Index and return doc_id
-            logger.info("performing Index -------------------------------------------------")
             index.perform_indexing(
                 vector_db=vector_db,
                 doc_id=doc_id,

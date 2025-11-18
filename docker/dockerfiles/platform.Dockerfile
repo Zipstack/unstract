@@ -50,6 +50,9 @@ COPY --chown=${APP_USER}:${APP_USER} ${BUILD_PACKAGES_PATH}/sdk1 /unstract/sdk1
 COPY --chown=${APP_USER}:${APP_USER} ${BUILD_PACKAGES_PATH}/core /unstract/core
 COPY --chown=${APP_USER}:${APP_USER} ${BUILD_PACKAGES_PATH}/flags /unstract/flags
 
+# Increase timeout for large packages (flipt-client is ~45MB)
+ENV UV_HTTP_TIMEOUT=120
+
 # Switch to non-root user
 USER ${APP_USER}
 

@@ -54,6 +54,9 @@ RUN touch README.md
 # This provides the unstract packages for imports
 COPY ${BUILD_PACKAGES_PATH}/ /unstract/
 
+# Increase timeout for large packages (flipt-client is ~45MB)
+ENV UV_HTTP_TIMEOUT=120
+
 # Install external dependencies with --locked for FAST builds
 # No symlinks needed - PYTHONPATH handles the paths
 RUN uv sync --group deploy --locked --no-install-project --no-dev
