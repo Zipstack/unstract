@@ -82,9 +82,7 @@ class RateLimitExceeded(APIException):
                     current_usage=current_usage, limit=limit
                 )
             else:
-                detail = RateLimitMessages.get_global_limit_exceeded_message(
-                    current_usage=current_usage, limit=limit
-                )
+                detail = RateLimitMessages.get_global_limit_exceeded_message()
 
         super().__init__(detail, code)
 
