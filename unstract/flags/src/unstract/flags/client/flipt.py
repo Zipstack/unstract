@@ -23,7 +23,7 @@ class FliptClient:
             logger.warning("Flipt service is not available")
 
         # Store configuration for creating clients
-        self.flipt_url = os.environ.get("FLIPT_URL", "http://localhost:8080")
+        self.flipt_url = os.environ.get("EVALUATION_SERVER_IP", "http://localhost:8080")
 
     def list_feature_flags(self, namespace_key: str) -> dict:
         """List all feature flags in a namespace.
