@@ -1,8 +1,8 @@
 import { SearchOutlined } from "@ant-design/icons";
 import { Input, List, Segmented } from "antd";
+import debounce from "lodash/debounce";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
-import debounce from "lodash/debounce";
 
 import { DataSourceCard } from "../data-source-card/DataSourceCard";
 import "./ListOfSources.css";
@@ -21,6 +21,13 @@ function ListOfSources({
   // Apply both search and mode filtering
   useEffect(() => {
     let filteredList = [...sourcesList];
+
+    // Filter out Oracle connector temporarily
+    if (isConnector) {
+      filteredList = filteredList.filter((source) => {
+        return !source?.name?.toUpperCase().includes("ORACLE");
+      });
+    }
 
     // Apply mode filter if selected
     if (localModeFilter && isConnector && !connectorMode) {
