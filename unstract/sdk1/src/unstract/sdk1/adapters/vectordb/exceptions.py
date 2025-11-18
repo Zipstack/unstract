@@ -5,16 +5,16 @@ from unstract.sdk1.exceptions import VectorDBError
 
 
 def parse_vector_db_err(e: Exception, vector_db: VectorDBAdapter) -> VectorDBError:
-    """Parses the exception from LLM provider.
+    """Parses the exception from vector DB provider.
 
-    Helps parse the LLM error and wraps it with our
+    Helps parse the vector DB error and wraps it with our
     custom exception object to contain a user friendly message.
 
     Args:
-        e (Exception): Error from LLM provider
+        e (Exception): Error from vector DB provider
 
     Returns:
-        LLMError: Unstract's LLMError object
+        VectorDBError: Unstract's VectorDBError object
     """
     # Avoid wrapping VectorDBError objects again
     if isinstance(e, VectorDBError):

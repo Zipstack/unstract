@@ -1,5 +1,5 @@
 # Use a specific version of Python slim image
-FROM python:3.12-slim-trixie AS base
+FROM python:3.12-slim-trixie
 
 ARG VERSION=dev
 LABEL maintainer="Zipstack Inc." \
@@ -20,15 +20,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     OTEL_LOGS_EXPORTER=none \
     OTEL_SERVICE_NAME=unstract_prompt
 
-# Install system dependencies, create user, and setup directories in one layer
-RUN apt-get update \
+# Install system dependencies, create user, and setup directories with cache mounts
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update \
     && apt-get --no-install-recommends install -y \
     build-essential \
     libmagic-dev \
     pkg-config \
     git \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* \
     && adduser -u 5678 --disabled-password --gecos "" ${APP_USER} \
     && mkdir -p ${APP_HOME} \
     && chown -R ${APP_USER}:${APP_USER} ${APP_HOME}
@@ -39,10 +39,8 @@ COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /uvx /bin/
 # Create working directory
 WORKDIR ${APP_HOME}
 
-# -----------------------------------------------
-# EXTERNAL DEPENDENCIES STAGE - This layer gets cached if external dependencies don't change
-# -----------------------------------------------
-FROM base AS ext-dependencies
+# Set shell options for better error handling
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Copy dependency-related files
 COPY --chown=${APP_USER}:${APP_USER} ${BUILD_CONTEXT_PATH}/pyproject.toml ${BUILD_CONTEXT_PATH}/uv.lock ${BUILD_CONTEXT_PATH}/README.md ./
@@ -55,28 +53,20 @@ COPY --chown=${APP_USER}:${APP_USER} ${BUILD_PACKAGES_PATH}/flags /unstract/flag
 # Switch to non-root user
 USER ${APP_USER}
 
-# Install external dependencies from pyproject.toml
-RUN uv sync --group deploy --locked --no-install-project --no-dev
-
-# -----------------------------------------------
-# FINAL STAGE - Minimal image for production
-# -----------------------------------------------
-FROM ext-dependencies AS production
-
-# Set shell options for better error handling
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+# Install external dependencies from pyproject.toml with cache mount
+RUN --mount=type=cache,target=/home/unstract/.cache/uv,uid=5678,gid=5678 \
+    uv sync --group deploy --locked --no-install-project --no-dev --link-mode=copy
 
 # Copy application code (this layer changes most frequently)
 COPY --chown=${APP_USER}:${APP_USER} ${BUILD_CONTEXT_PATH} ./
 
-# Switch to non-root user
-USER ${APP_USER}
+# Install the application in editable mode with cache mount
+RUN --mount=type=cache,target=/home/unstract/.cache/uv,uid=5678,gid=5678 \
+    uv sync --group deploy --locked --link-mode=copy
 
-# Install just the application in editable mode
-RUN uv sync --group deploy --locked
-
-# Install plugins after copying source code
-RUN for dir in "${TARGET_PLUGINS_PATH}"/*/; do \
+# Install plugins after copying source code with cache mount
+RUN --mount=type=cache,target=/home/unstract/.cache/uv,uid=5678,gid=5678 \
+    for dir in "${TARGET_PLUGINS_PATH}"/*/; do \
     dirpath=${dir%*/}; \
     dirname=${dirpath##*/}; \
     if [ "${dirname}" != "*" ]; then \
