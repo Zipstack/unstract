@@ -19,6 +19,7 @@ dependencies = [
 [tool.uv.sources]
 unstract-tool-sandbox = { path = "../tool-sandbox", editable = true }
 unstract-flags = { path = "../flags", editable = true }
+unstract-sdk1 = { path = "../sdk1", editable = true }
 
 # [build-system]
 # requires = ["hatchling"]
