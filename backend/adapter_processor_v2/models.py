@@ -16,7 +16,6 @@ from utils.models.organization_mixin import (
     DefaultOrganizationMixin,
 )
 
-
 from unstract.sdk1.constants import AdapterTypes
 from unstract.sdk1.exceptions import SdkError
 from unstract.sdk1.llm import LLM

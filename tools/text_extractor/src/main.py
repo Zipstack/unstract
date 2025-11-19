@@ -8,6 +8,7 @@ from unstract.sdk1.tool.base import BaseTool
 from unstract.sdk1.tool.entrypoint import ToolEntrypoint
 from unstract.sdk1.x2txt import TextExtractionResult, X2Text
 
+
 class TextExtractor(BaseTool):
     def validate(self, input_file: str, settings: dict[str, Any]) -> None:
         """Validate the input file and settings.

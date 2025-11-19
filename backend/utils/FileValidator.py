@@ -10,6 +10,7 @@ from django.utils.translation import gettext_lazy as _
 
 from unstract.sdk1.file_storage.constants import FileOperationParams
 
+
 class FileValidationParam(TypedDict):
     allowed_mimetypes: NotRequired[Iterable[str]]
     allowed_extensions: NotRequired[Iterable[str]]

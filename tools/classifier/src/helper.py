@@ -7,6 +7,7 @@ from unstract.sdk1.llm import LLM
 from unstract.sdk1.tool.base import BaseTool
 from unstract.sdk1.x2txt import TextExtractionResult, X2Text
 
+
 class ReservedBins:
     UNKNOWN = "unknown"
     FAILED = "__unstract_failed"

@@ -15,6 +15,7 @@ from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.prompt import PromptTool
 from unstract.sdk1.tool.base import BaseTool
 from unstract.sdk1.tool.entrypoint import ToolEntrypoint
+
 logger = logging.getLogger(__name__)
 
 PAID_FEATURE_MSG = (

@@ -1,9 +1,10 @@
 import logging
 import os
 
+from unstract.sdk1.file_storage import FileStorageProvider, StorageType
+
 from .exceptions import ProviderNotFound
 from .file_storage_types import FileStorageType  # Import the shared enum
-from unstract.sdk1.file_storage import FileStorageProvider, StorageType
 
 logger = logging.getLogger(__name__)
 

@@ -8,6 +8,7 @@ from constants import SettingsKeys  # type: ignore [attr-defined]
 
 from unstract.sdk1.prompt import PromptTool
 from unstract.sdk1.tool.base import BaseTool
+
 logger = logging.getLogger(__name__)
 
 
