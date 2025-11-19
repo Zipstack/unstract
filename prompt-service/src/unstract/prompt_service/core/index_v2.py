@@ -173,7 +173,6 @@ class Index:
         extracted_text: str,
         doc_id_found: bool,
     ):
-        logger.info("performing_index ===========================================")
         if isinstance(
             vector_db.get_vector_db(
                 adapter_instance_id=self.instance_identifiers.vector_db_instance_id,
@@ -199,7 +198,6 @@ class Index:
 
     def _trigger_indexing(self, vector_db, documents):
         self.tool.stream_log("Adding nodes to vector db...")
-        logger.info("trigger indexing ---------------------------")
         try:
             vector_db.index_document(
                 documents,
