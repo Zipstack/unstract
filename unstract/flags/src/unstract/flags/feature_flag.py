@@ -3,8 +3,7 @@
 import logging
 import os
 
-from flipt_client import FliptClient
-from flipt_client.models import ClientOptions
+from .client.flipt import FliptClient
 
 logger = logging.getLogger(__name__)
 
@@ -32,23 +31,10 @@ def check_feature_flag_status(
         True if the feature flag is enabled for the entity, False otherwise.
     """
     try:
-        # Resolve namespace: use provided value, or env var, or fallback.
-        if namespace_key is None:
-            namespace_key = os.environ.get("UNSTRACT_FEATURE_FLAG_NAMESPACE", "default")
-
-        FLIPT_SERVICE_AVAILABLE = (
-            os.environ.get("FLIPT_SERVICE_AVAILABLE", "false").lower() == "true"
-        )
-        if not FLIPT_SERVICE_AVAILABLE:
-            return False
-
-        # Get Flipt server URL from environment
-        flipt_url = os.environ.get("EVALUATION_SERVER_IP", "http://localhost:8080")
-
         # Initialize Flipt client
-        client = FliptClient(opts=ClientOptions(namespace=namespace_key, url=flipt_url))
+        client = FliptClient()
 
-        logger.info(f"Client has been Initialised {client.list_flags}")
+        logger.info(f"Client has been Initialised {client.list_feature_flags()}")
 
         # Evaluate boolean flag
         result = client.evaluate_boolean(
@@ -56,9 +42,6 @@ def check_feature_flag_status(
             entity_id=entity_id,
             context=context or {},
         )
-
-        # close client to save resources
-        client.close()
 
         return bool(result.enabled)
     except Exception:
