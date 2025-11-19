@@ -56,7 +56,7 @@ RUN mkdir -p /usr/share/nginx/html/config && \
 COPY ../frontend/generate-runtime-config.sh /docker-entrypoint.d/40-env.sh
 RUN chmod +x /docker-entrypoint.d/40-env.sh
 
-EXPOSE 80
+EXPOSE 8080
 
 USER nginx
 

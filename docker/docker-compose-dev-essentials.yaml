@@ -77,13 +77,15 @@ services:
       --providers.docker=true --providers.docker.network=unstract-network
       --providers.file.filename=/proxy_overrides.yaml --providers.file.watch=true
     ports:
-      # The HTTP port
-      - "80:80"
+      # The HTTP port (changed to 8081 for rootless Podman compatibility)
+      - "8081:80"
       # The Web UI (enabled by --api.insecure=true)
       - "8080:8080"
     volumes:
-      # So that Traefik can listen to the Docker events
-      - /var/run/docker.sock:/var/run/docker.sock
+      # Socket mount for container runtime (defaults to Docker)
+      # Docker: /var/run/docker.sock (default)
+      # Podman: Set DOCKER_SOCKET=${XDG_RUNTIME_DIR}/podman/podman.sock
+      - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
       # Proxy overrides for components run directly in Docker host
       - ./proxy_overrides.yaml:/proxy_overrides.yaml
     # Since any proxy overrides need to point to Docker host for relevant routes.
@@ -142,8 +144,8 @@ services:
     env_file:
       - ./essentials.env
     ports:
-      - "5672:5672"  # AMQP port
-      - "15672:15672"  # Management UI port
+      - "5672:5672" # AMQP port
+      - "15672:15672" # Management UI port
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
 
