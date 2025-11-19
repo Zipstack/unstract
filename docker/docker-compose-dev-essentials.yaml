@@ -60,6 +60,8 @@ services:
       "
     volumes:
       - prompt_studio_data:/app/prompt-studio-data
+    labels:
+      - traefik.enable=false
 
   reverse-proxy:
     # The official v2 Traefik docker image
