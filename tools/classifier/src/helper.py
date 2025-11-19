@@ -2,11 +2,11 @@ import re
 from pathlib import Path
 from typing import Any
 
+from unstract.sdk1.adapters.x2text.dto import TextExtractionResult
 from unstract.sdk1.constants import LogLevel, MetadataKey, UsageKwargs
 from unstract.sdk1.llm import LLM
 from unstract.sdk1.tool.base import BaseTool
 from unstract.sdk1.x2txt import X2Text
-from unstract.sdk1.adapters.x2text.dto import TextExtractionResult
 
 
 class ReservedBins:
