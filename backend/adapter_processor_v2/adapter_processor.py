@@ -124,7 +124,7 @@ class AdapterProcessor:
         except SdkError as e:
             raise TestAdapterError(
                 e, adapter_name=adapter_metadata[AdapterKeys.ADAPTER_NAME]
-            )
+            ) from e
 
     @staticmethod
     def update_adapter_metadata(adapter_metadata_b: Any, **kwargs) -> Any:
