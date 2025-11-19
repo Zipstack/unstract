@@ -24,10 +24,6 @@ from unstract.sdk1.utils.common import (
 
 logger = logging.getLogger(__name__)
 
-# litellm._turn_on_debug()
-
-litellm._turn_on_debug()
-
 
 class LLM:
     """Unified LLM interface powered by LiteLLM.
