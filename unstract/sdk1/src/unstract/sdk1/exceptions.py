@@ -1,4 +1,9 @@
+import logging
+import re
+
 import openai
+
+logger = logging.getLogger(__name__)
 
 
 class SdkError(Exception):
@@ -110,7 +115,7 @@ def strip_litellm_prefix(error_message: str) -> str:
     Returns:
         Clean error message without litellm prefix/suffix
     """
-    import re
+    logger.info(f"Stripping litellm prefix from error: {error_message}")
 
     # Strip "litellm.XxxError: " or "litellm.Xxx: "
     # prefix (handles both error classes and non-error classes like Timeout)
