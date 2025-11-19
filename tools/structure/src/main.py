@@ -10,21 +10,11 @@ from constants import SettingsKeys  # type: ignore [attr-defined]
 from helpers import StructureToolHelper as STHelper
 from utils import json_to_markdown, repair_json_with_best_structure
 
-from unstract.flags.feature_flag import check_feature_flag_status
-
-if check_feature_flag_status("sdk1"):
-    from unstract.sdk1.constants import LogState, MetadataKey, ToolEnv, UsageKwargs
-    from unstract.sdk1.platform import PlatformHelper
-    from unstract.sdk1.prompt import PromptTool
-    from unstract.sdk1.tool.base import BaseTool
-    from unstract.sdk1.tool.entrypoint import ToolEntrypoint
-else:
-    from unstract.sdk.constants import LogState, MetadataKey, ToolEnv, UsageKwargs
-    from unstract.sdk.platform import PlatformHelper
-    from unstract.sdk.prompt import PromptTool
-    from unstract.sdk.tool.base import BaseTool
-    from unstract.sdk.tool.entrypoint import ToolEntrypoint
-
+from unstract.sdk1.constants import LogState, MetadataKey, ToolEnv, UsageKwargs
+from unstract.sdk1.platform import PlatformHelper
+from unstract.sdk1.prompt import PromptTool
+from unstract.sdk1.tool.base import BaseTool
+from unstract.sdk1.tool.entrypoint import ToolEntrypoint
 logger = logging.getLogger(__name__)
 
 PAID_FEATURE_MSG = (

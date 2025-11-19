@@ -61,13 +61,7 @@ from prompt_studio.prompt_studio_registry_v2.serializers import (
 from prompt_studio.prompt_studio_v2.constants import ToolStudioPromptErrors
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_v2.serializers import ToolStudioPromptSerializer
-from unstract.flags.feature_flag import check_feature_flag_status
-
-if check_feature_flag_status("sdk1"):
-    from unstract.sdk1.utils.common import Utils as CommonUtils
-else:
-    from unstract.sdk.utils.common_utils import CommonUtils
-
+from unstract.sdk1.utils.common import Utils as CommonUtils
 from .models import CustomTool
 from .serializers import (
     CustomToolSerializer,

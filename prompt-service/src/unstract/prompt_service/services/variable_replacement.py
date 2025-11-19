@@ -2,18 +2,13 @@ from typing import Any
 
 from flask import current_app as app
 
-from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.constants import RunLevel, VariableType
 from unstract.prompt_service.helpers.variable_replacement import (
     VariableReplacementHelper,
 )
 from unstract.prompt_service.utils.log import publish_log
-
-if check_feature_flag_status("sdk1"):
-    from unstract.sdk1.constants import LogLevel
-else:
-    from unstract.sdk.constants import LogLevel
+from unstract.sdk1.constants import LogLevel
 
 
 class VariableReplacementService:

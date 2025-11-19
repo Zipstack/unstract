@@ -16,14 +16,8 @@ from tool_instance_v2.constants import JsonSchemaKey
 from tool_instance_v2.exceptions import ToolSettingValidationError
 from tool_instance_v2.models import ToolInstance
 from tool_instance_v2.tool_processor import ToolProcessor
-from unstract.flags.feature_flag import check_feature_flag_status
-
-if check_feature_flag_status("sdk1"):
-    from unstract.sdk1.constants import AdapterTypes
-    from unstract.sdk1.tool.validator import DefaultsGeneratingValidator
-else:
-    from unstract.sdk.adapters.enums import AdapterTypes
-    from unstract.sdk.tool.validator import DefaultsGeneratingValidator
+from unstract.sdk1.constants import AdapterTypes
+from unstract.sdk1.tool.validator import DefaultsGeneratingValidator
 
 from unstract.tool_registry.constants import AdapterPropertyKey
 from unstract.tool_registry.dto import Spec, Tool

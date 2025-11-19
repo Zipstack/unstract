@@ -10,12 +10,7 @@ from prompt_studio.prompt_studio_registry_v2.prompt_studio_registry_helper impor
 )
 
 from tool_instance_v2.exceptions import ToolDoesNotExist
-from unstract.flags.feature_flag import check_feature_flag_status
-
-if check_feature_flag_status("sdk1"):
-    from unstract.sdk1.constants import AdapterTypes
-else:
-    from unstract.sdk.adapters.enums import AdapterTypes
+from unstract.sdk1.constants import AdapterTypes
 
 from unstract.tool_registry.dto import Spec, Tool
 from unstract.tool_registry.tool_registry import ToolRegistry

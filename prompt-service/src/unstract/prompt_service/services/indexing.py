@@ -1,6 +1,5 @@
 import logging
 
-from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.prompt_service.core.index_v2 import Index
 from unstract.prompt_service.dto import (
     ChunkingConfig,
@@ -11,15 +10,9 @@ from unstract.prompt_service.dto import (
 from unstract.prompt_service.exceptions import APIError
 from unstract.prompt_service.helpers.prompt_ide_base_tool import PromptServiceBaseTool
 from unstract.prompt_service.utils.file_utils import FileUtils
-
-if check_feature_flag_status("sdk1"):
-    from unstract.sdk1.embedding import EmbeddingCompat
-    from unstract.sdk1.utils.indexing import IndexingUtils
-    from unstract.sdk1.vector_db import VectorDB
-else:
-    from unstract.sdk.embedding import Embedding
-    from unstract.sdk.utils.indexing_utils import IndexingUtils
-    from unstract.sdk.vector_db import VectorDB
+from unstract.sdk1.embedding import EmbeddingCompat
+from unstract.sdk1.utils.indexing import IndexingUtils
+from unstract.sdk1.vector_db import VectorDB
 
 logger = logging.getLogger(__name__)
 
@@ -58,20 +51,13 @@ class IndexingService:
                 tool=util,
                 fs=fs_instance,
             )
-            if check_feature_flag_status("sdk1"):
-                embedding = EmbeddingCompat(
-                    adapter_instance_id=instance_identifiers.embedding_instance_id,
-                    tool=util,
-                    kwargs={
-                        **processing_options.usage_kwargs,
-                    },
-                )
-            else:
-                embedding = Embedding(
-                    tool=util,
-                    adapter_instance_id=instance_identifiers.embedding_instance_id,
-                    usage_kwargs=processing_options.usage_kwargs,
-                )
+            embedding = EmbeddingCompat(
+                adapter_instance_id=instance_identifiers.embedding_instance_id,
+                tool=util,
+                kwargs={
+                    **processing_options.usage_kwargs,
+                },
+            )
 
             vector_db = VectorDB(
                 tool=util,
