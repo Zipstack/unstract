@@ -155,11 +155,11 @@ def prompt_processor() -> Any:
                 llm = LLM(
                     adapter_instance_id=output[PSKeys.LLM],
                     tool=util,
-                    kwargs={
+                    usage_kwargs={
                         **usage_kwargs,
                         PSKeys.LLM_USAGE_REASON: PSKeys.EXTRACTION,
-                        PSKeys.CAPTURE_METRICS: True,
                     },
+                    capture_metrics=True,
                 )
 
                 embedding = EmbeddingCompat(
@@ -583,11 +583,11 @@ def prompt_processor() -> Any:
                             challenge_llm = LLM(
                                 adapter_instance_id=tool_settings[PSKeys.CHALLENGE_LLM],
                                 tool=util,
-                                kwargs={
+                                usage_kwargs={
                                     **usage_kwargs,
                                     PSKeys.LLM_USAGE_REASON: PSKeys.CHALLENGE,
-                                    PSKeys.CAPTURE_METRICS: True,
                                 },
+                                capture_metrics=True,
                             )
                         else:
                             challenge_llm = LLM(

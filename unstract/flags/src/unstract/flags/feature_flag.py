@@ -1,9 +1,8 @@
 """Feature flag utils file."""
 
 import logging
-import os
 
-from .client.evaluation import EvaluationClient
+from .client.flipt import FliptClient
 
 logger = logging.getLogger(__name__)
 
@@ -31,23 +30,18 @@ def check_feature_flag_status(
         True if the feature flag is enabled for the entity, False otherwise.
     """
     try:
-        # Resolve namespace: use provided value, or env var, or fallback.
-        if namespace_key is None:
-            namespace_key = os.environ.get("UNSTRACT_FEATURE_FLAG_NAMESPACE", "default")
+        # Initialize Flipt client
+        client = FliptClient()
 
-        FLIPT_SERVICE_AVAILABLE = (
-            os.environ.get("FLIPT_SERVICE_AVAILABLE", "false").lower() == "true"
-        )
-        if not FLIPT_SERVICE_AVAILABLE:
-            return False
+        logger.info(f"Client has been Initialised {client.list_feature_flags()}")
 
-        evaluation_client = EvaluationClient()
-        response = evaluation_client.boolean_evaluate_feature_flag(
-            namespace_key=namespace_key,
+        # Evaluate boolean flag
+        result = client.evaluate_boolean(
             flag_key=flag_key,
             entity_id=entity_id,
-            context=context,
+            context=context or {},
         )
-        return bool(response)  # Wrap the response in a boolean check
+
+        return bool(result.enabled)
     except Exception:
         return False

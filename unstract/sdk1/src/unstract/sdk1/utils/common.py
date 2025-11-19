@@ -133,6 +133,10 @@ class LLMResponseCompat:
         self.logprobs = None
         self.delta = None
 
+    def __str__(self) -> str:
+        """Return text for string operations like join()."""
+        return self.text
+
 
 # Mapping from python log level to Unstract counterpart
 PY_TO_UNSTRACT_LOG_LEVEL = {

@@ -8,6 +8,7 @@ import logging
 import os
 import sys
 import time
+import warnings
 from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
@@ -132,6 +133,17 @@ class WorkerLogger:
         logging.getLogger("urllib3").setLevel(logging.WARNING)
         logging.getLogger("requests").setLevel(logging.WARNING)
         logging.getLogger("httpx").setLevel(logging.WARNING)
+
+        # Suppress OpenTelemetry EventLogger LogRecord deprecation warning
+        # This is a bug in OpenTelemetry SDK 1.37.0 where EventLogger.emit() still uses
+        # deprecated trace_id/span_id/trace_flags parameters instead of context parameter.
+        # See: https://github.com/open-telemetry/opentelemetry-python/issues/4328
+        # TODO: Remove this suppression once OpenTelemetry fixes EventLogger.emit()
+        warnings.filterwarnings(
+            "ignore",
+            message="LogRecord init with.*trace_id.*span_id.*trace_flags.*deprecated",
+            category=UserWarning,
+        )
 
         cls._configured = True
 

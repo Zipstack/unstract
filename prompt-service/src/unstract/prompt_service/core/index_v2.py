@@ -2,6 +2,7 @@ import json
 import logging
 from typing import Any
 
+import openai
 from llama_index.core import Document
 from llama_index.core.vector_stores import (
     FilterOperator,
@@ -25,7 +26,7 @@ if check_feature_flag_status("sdk1"):
     )
     from unstract.sdk1.constants import LogLevel
     from unstract.sdk1.embedding import Embedding
-    from unstract.sdk1.exceptions import IndexingError, SdkError
+    from unstract.sdk1.exceptions import SdkError, parse_litellm_err
     from unstract.sdk1.file_storage.impl import FileStorage
     from unstract.sdk1.file_storage.provider import FileStorageProvider
     from unstract.sdk1.platform import PlatformHelper as ToolAdapter
@@ -40,7 +41,7 @@ else:
     )
     from unstract.sdk.constants import LogLevel
     from unstract.sdk.embedding import Embedding
-    from unstract.sdk.exceptions import IndexingError, SdkError
+    from unstract.sdk.exceptions import SdkError
     from unstract.sdk.file_storage.impl import FileStorage
     from unstract.sdk.file_storage.provider import FileStorageProvider
     from unstract.sdk.tool.stream import StreamMixin
@@ -206,12 +207,17 @@ class Index:
                 show_progress=True,
             )
             self.tool.stream_log("File has been indexed successfully")
+        # Handle embedding errors from litellm
+        except openai.OpenAIError as e:
+            if check_feature_flag_status("sdk1"):
+                e = parse_litellm_err(e)
+            raise e
         except Exception as e:
             self.tool.stream_log(
                 f"Error adding nodes to vector db: {e}",
                 level=LogLevel.ERROR,
             )
-            raise IndexingError(str(e)) from e
+            raise e
 
     def delete_nodes(self, vector_db: VectorDB, doc_id: str):
         try:

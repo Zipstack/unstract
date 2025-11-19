@@ -18,7 +18,9 @@ ENV \
     OTEL_LOGS_EXPORTER=none \
     # Enable context propagation
     OTEL_PROPAGATORS="tracecontext" \
-    PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
+    PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python \
+    # Increase timeout for large packages (flipt-client is ~45MB)
+    UV_HTTP_TIMEOUT=120
 
 # Install system dependencies in one layer
 RUN apt-get update && \
@@ -53,7 +55,9 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # Install project dependencies separately from OpenTelemetry
 # This allows for better caching when only project dependencies change
 RUN uv pip install --system -r requirements.txt && \
-    opentelemetry-bootstrap -a requirements | uv pip install --system --requirement -
+    opentelemetry-bootstrap -a requirements | uv pip install --system --requirement - && \
+    pip uninstall -y opentelemetry-instrumentation-openai-v2 && \
+    pip install opentelemetry-instrumentation-openai
 
 # Copy the source code after installing all dependencies
 # This ensures that changes to the source code don't invalidate the dependency layers
