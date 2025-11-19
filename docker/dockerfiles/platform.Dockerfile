@@ -76,6 +76,7 @@ USER ${APP_USER}
 # Install the application in non-editable mode to avoid permission issues
 RUN uv sync --group deploy --locked && \
     uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement - && \
+    # Use OpenTelemetry v1 - v2 breaks LiteLLM with instrumentation enabled
     uv pip uninstall opentelemetry-instrumentation-openai-v2 && \
     uv pip install opentelemetry-instrumentation-openai
 

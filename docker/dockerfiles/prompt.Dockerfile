@@ -88,6 +88,7 @@ RUN for dir in "${TARGET_PLUGINS_PATH}"/*/; do \
     fi; \
     done && \
     uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement - && \
+    # Use OpenTelemetry v1 - v2 breaks LiteLLM with instrumentation enabled
     uv pip uninstall opentelemetry-instrumentation-openai-v2 && \
     uv pip install opentelemetry-instrumentation-openai
 
