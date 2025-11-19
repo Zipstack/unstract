@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.embedding1 import adapters
 from unstract.sdk1.constants import ToolEnv
-from unstract.sdk1.exceptions import SdkError
+from unstract.sdk1.exceptions import SdkError, parse_litellm_err
 from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.utils.callback_manager import CallbackManager
 
@@ -90,45 +90,66 @@ class Embedding:
         except ValidationError as e:
             raise SdkError("Invalid embedding adapter metadata: " + str(e)) from e
 
-        self._length = len(self.get_embedding(self._TEST_SNIPPET))
+        # Test connection - wrap in error handling
+        try:
+            self._length = len(self.get_embedding(self._TEST_SNIPPET))
+        except Exception as e:
+            provider_name = f"{self.adapter.get_name()}"
+            raise parse_litellm_err(e, provider_name) from e
 
     def get_embedding(self, text: str) -> list[float]:
         """Return embedding vector for query string."""
-        kwargs = self.kwargs.copy()
-        model = kwargs.pop("model")
+        try:
+            kwargs = self.kwargs.copy()
+            model = kwargs.pop("model")
 
-        litellm.drop_params = True
+            litellm.drop_params = True
 
-        resp = litellm.embedding(model=model, input=[text], **kwargs)
+            resp = litellm.embedding(model=model, input=[text], **kwargs)
 
-        return resp["data"][0]["embedding"]
+            return resp["data"][0]["embedding"]
+        except Exception as e:
+            provider_name = f"{self.adapter.get_name()}"
+            raise parse_litellm_err(e, provider_name) from e
 
     def get_embeddings(self, texts: list[str]) -> list[list[float]]:
         """Return embedding vectors for list of query strings."""
-        kwargs = self.kwargs.copy()
-        model = kwargs.pop("model")
+        try:
+            kwargs = self.kwargs.copy()
+            model = kwargs.pop("model")
 
-        resp = litellm.embedding(model=model, input=texts, **kwargs)
+            resp = litellm.embedding(model=model, input=texts, **kwargs)
 
-        return [data["embedding"] for data in resp["data"]]
+            return [data["embedding"] for data in resp["data"]]
+        except Exception as e:
+            provider_name = f"{self.adapter.get_name()}"
+            raise parse_litellm_err(e, provider_name) from e
 
     async def get_aembedding(self, text: str) -> list[float]:
         """Return async embedding vector for query string."""
-        kwargs = self.kwargs.copy()
-        model = kwargs.pop("model")
+        try:
+            kwargs = self.kwargs.copy()
+            model = kwargs.pop("model")
 
-        resp = await litellm.aembedding(model=model, input=[text], **kwargs)
+            resp = await litellm.aembedding(model=model, input=[text], **kwargs)
 
-        return resp["data"][0]["embedding"]
+            return resp["data"][0]["embedding"]
+        except Exception as e:
+            provider_name = f"{self.adapter.get_name()}"
+            raise parse_litellm_err(e, provider_name) from e
 
     async def get_aembeddings(self, texts: list[str]) -> list[list[float]]:
         """Return async embedding vectors for list of query strings."""
-        kwargs = self.kwargs.copy()
-        model = kwargs.pop("model")
+        try:
+            kwargs = self.kwargs.copy()
+            model = kwargs.pop("model")
 
-        resp = await litellm.aembedding(model=model, input=texts, **kwargs)
+            resp = await litellm.aembedding(model=model, input=texts, **kwargs)
 
-        return [data["embedding"] for data in resp["data"]]
+            return [data["embedding"] for data in resp["data"]]
+        except Exception as e:
+            provider_name = f"{self.adapter.get_name()}"
+            raise parse_litellm_err(e, provider_name) from e
 
     def test_connection(self) -> bool:
         """Test connection to the embedding provider."""

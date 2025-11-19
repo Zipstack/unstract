@@ -13,7 +13,7 @@ from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
 from unstract.sdk1.audit import Audit
 from unstract.sdk1.constants import ToolEnv
-from unstract.sdk1.exceptions import LLMError, SdkError
+from unstract.sdk1.exceptions import LLMError, SdkError, strip_litellm_prefix
 from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.tool.base import BaseTool
 from unstract.sdk1.utils.common import (
@@ -260,9 +260,9 @@ class LLM:
             elif hasattr(e, "http_status"):
                 status_code = e.http_status
 
-            # Create error message with provider context
             error_msg = (
-                f"Error from LLM provider '{self.adapter.get_provider()}': {str(e)}"
+                f"Error from LLM provider '{self.adapter.get_provider()}': "
+                f"{strip_litellm_prefix(str(e))}"
             )
 
             raise LLMError(
@@ -335,9 +335,9 @@ class LLM:
             elif hasattr(e, "http_status"):
                 status_code = e.http_status
 
-            # Create error message with provider context
             error_msg = (
-                f"Error from LLM provider '{self.adapter.get_provider()}': {str(e)}"
+                f"Error from LLM provider '{self.adapter.get_provider()}': "
+                f"{strip_litellm_prefix(str(e))}"
             )
 
             raise LLMError(
@@ -390,9 +390,9 @@ class LLM:
             elif hasattr(e, "http_status"):
                 status_code = e.http_status
 
-            # Create error message with provider context
             error_msg = (
-                f"Error from LLM provider '{self.adapter.get_provider()}': {str(e)}"
+                f"Error from LLM provider '{self.adapter.get_provider()}': "
+                f"{strip_litellm_prefix(str(e))}"
             )
 
             raise LLMError(

@@ -94,7 +94,8 @@ class IndexingService:
             )
             return doc_id
         except Exception as e:
-            raise APIError(f"Error while indexing : {str(e)}") from e
+            status_code = getattr(e, "status_code", 500)
+            raise APIError(f"Error while indexing: {str(e)}", code=status_code) from e
         finally:
             if "vector_db" in locals():
                 vector_db.close()
