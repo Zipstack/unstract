@@ -4,8 +4,6 @@ import logging
 import os
 import warnings
 
-from deprecated import deprecated
-
 from ..flipt_grpc.client import FliptGrpcClient, GrpcClientOptions
 
 logger = logging.getLogger(__name__)
@@ -33,7 +31,6 @@ class FliptClient:
             address=self.flipt_url, namespace_key=self.namespace_key
         )
 
-    @deprecated("namespace_key is no longer used")
     def evaluate_boolean(
         self,
         flag_key: str,
@@ -84,7 +81,6 @@ class FliptClient:
                 except Exception as e:
                     logger.error(f"Error closing Flipt client: {e}")
 
-    @deprecated("namespace_key is no longer used")
     def list_feature_flags(self, namespace_key: str | None = None) -> dict:
         """List all feature flags in a namespace.
 
@@ -129,7 +125,7 @@ class FliptClient:
             return {"flags": parsed_flags, "total_count": total_count}
 
         except Exception as e:
-            logger.error(f"Error listing flags for namespace {namespace_key}: {e}")
+            logger.error(f"Error listing flags for namespace {self.namespace_key}: {e}")
             return {"flags": {}, "total_count": 0}
         finally:
             # Always close the client to free resources
