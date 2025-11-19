@@ -59,8 +59,6 @@ def check_feature_flag_status(
             context=context or {},
         )
 
-        logger.info(f"Result fetched {result.enabled}===========================")
-
         # close client to save resources
         client.close()
 
