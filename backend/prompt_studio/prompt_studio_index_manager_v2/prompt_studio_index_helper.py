@@ -71,16 +71,23 @@ class PromptStudioIndexHelper:
     def mark_extraction_status(
         document_id: str,
         profile_manager: ProfileManager,
-        doc_id: str,
-        enable_highlight: bool = False,
+        x2text_config_hash: str,
+        enable_highlight: bool,
+        extracted: bool = True,
+        error_message: str | None = None,
     ) -> bool:
-        """Marks the extraction status for a given document with highlight metadata.
+        """Marks the extraction status for a given document.
+
+        Uses x2text_config_hash (hash of X2Text config metadata) as the key.
+        Handles both successful and failed extractions.
 
         Args:
             document_id (str): ID of the document in DocumentManager.
             profile_manager (ProfileManager): ProfileManager instance for context.
-            doc_id (str): Unique identifier for the document within extraction status.
-            enable_highlight (bool): Whether highlight metadata was used during extraction.
+            x2text_config_hash (str): Hash of X2Text config metadata.
+            enable_highlight (bool): Whether highlight metadata was used/attempted.
+            extracted (bool): True for success, False for failure. Defaults to True.
+            error_message (str | None): Error message if extraction failed.
 
         Returns:
             bool: True if the status is successfully updated, False otherwise.
@@ -95,62 +102,78 @@ class PromptStudioIndexHelper:
                     "profile_manager": profile_manager,
                 }
 
-                index_manager, created = IndexManager.objects.get_or_create(**args)
-
-                index_manager.extraction_status = index_manager.extraction_status or {}
-
-                index_manager.extraction_status[doc_id] = {
-                    "extracted": True,
+                # Build extraction status data
+                status_data = {
+                    "extracted": extracted,
                     "enable_highlight": enable_highlight,
                 }
+
+                # Add error message if extraction failed
+                if not extracted and error_message:
+                    status_data["error"] = error_message
+
+                defaults = {"extraction_status": {x2text_config_hash: status_data}}
+
+                index_manager, created = IndexManager.objects.update_or_create(
+                    **args,
+                    defaults=defaults,
+                )
+
                 logger.info(
                     f"Index manager {index_manager} {index_manager.index_ids_history}"
                 )
-                index_manager.save(update_fields=["extraction_status"])
 
-                if created:
-                    logger.info(
-                        f"IndexManager entry created "
-                        f"for document: {document_id} with {doc_id} "
-                        f"(highlight={enable_highlight})"
-                    )
+                if extracted:
+                    if created:
+                        logger.info(
+                            f"IndexManager entry created with SUCCESS "
+                            f"for document: {document_id} "
+                            f"with x2text_config_hash: {x2text_config_hash}"
+                        )
+                    else:
+                        logger.info(
+                            f"Extraction SUCCESS for document: {document_id} "
+                            f"with x2text_config_hash: {x2text_config_hash}"
+                        )
                 else:
-                    logger.info(
-                        f"Updated extraction status "
-                        f"for document: {document_id} with {doc_id} "
-                        f"(highlight={enable_highlight})"
+                    logger.error(
+                        f"Extraction FAILED for document: {document_id} "
+                        f"with x2text_config_hash: {x2text_config_hash}. "
+                        f"Error: {error_message}"
                     )
+
             return True
 
         except DocumentManager.DoesNotExist:
             logger.error(f"Document with ID {document_id} does not exist.")
-            raise IndexingAPIError(
-                "Error occured while extracting. Please contact admin."
-            )
+            return False
 
         except Exception as e:
-            logger.error(f"Unexpected error updating extraction status: {e}")
-            raise IndexingAPIError(f"Error updating indexing status {str(e)}") from e
+            logger.exception(
+                f"Unexpected error marking extraction status for document {document_id}: {e}"
+            )
+            return False
 
     @staticmethod
     def check_extraction_status(
         document_id: str,
         profile_manager: ProfileManager,
-        doc_id: str,
-        enable_highlight: bool = False,
+        x2text_config_hash: str,
+        enable_highlight: bool,
     ) -> bool:
-        """Checks if the extraction status is already marked as complete
-        for the given document and doc_id with matching highlight setting.
+        """Checks if the extraction status is already marked as complete.
+
+        Uses x2text_config_hash (hash of X2Text config metadata) as the key.
+        Also validates that enable_highlight setting matches.
 
         Args:
             document_id (str): ID of the document in DocumentManager.
             profile_manager (ProfileManager): ProfileManager instance for context.
-            doc_id (str): Unique identifier for the document within extraction status.
+            x2text_config_hash (str): Hash of X2Text config metadata.
             enable_highlight (bool): Whether highlight metadata is required.
 
         Returns:
-            bool: True if extraction is complete with matching highlight setting,
-                  False otherwise.
+            bool: True if extraction is complete with matching settings, False otherwise.
         """
         try:
             index_manager = IndexManager.objects.filter(
@@ -162,45 +185,44 @@ class PromptStudioIndexHelper:
                 return False
 
             extraction_status = index_manager.extraction_status or {}
-            status_entry = extraction_status.get(doc_id)
+            status_entry = extraction_status.get(x2text_config_hash)
 
             if not status_entry:
                 logger.info(
-                    f"Extraction is NOT yet marked as complete "
-                    f"for document: {document_id} with {doc_id}"
+                    f"Extraction NOT complete for document: {document_id} "
+                    f"with x2text_config_hash: {x2text_config_hash}"
                 )
                 return False
 
-            # Backward compatibility: treat boolean True as non-highlighted
-            if isinstance(status_entry, bool):
-                is_extracted = status_entry
-                is_highlight_handled = False
-            else:
-                # New format: {"extracted": True, "enable_highlight": <bool>}
-                is_extracted = status_entry.get("extracted", False)
-                is_highlight_handled = status_entry.get("enable_highlight", False)
+            # {"extracted": True/False, "enable_highlight": bool, "error": str (optional)}
+            is_extracted = status_entry.get("extracted", False)
+            stored_highlight = status_entry.get("enable_highlight", False)
 
-            # Check if extraction exists AND highlight setting matches
-            if is_extracted and is_highlight_handled == enable_highlight:
+            # Check if previous extraction failed
+            if not is_extracted:
+                error_msg = status_entry.get("error", "Unknown error")
                 logger.info(
-                    f"Extraction is already marked as complete "
-                    f"for document: {document_id} with {doc_id} "
+                    f"Previous extraction FAILED for {x2text_config_hash}. "
+                    f"Error: {error_msg}. Will retry extraction."
+                )
+                return False  # Allow retry
+
+            if is_extracted and stored_highlight == enable_highlight:
+                logger.info(
+                    f"Extraction already complete for document: {document_id} "
+                    f"with x2text_config_hash: {x2text_config_hash} "
                     f"(highlight={enable_highlight})"
                 )
                 return True
-            elif is_extracted and is_highlight_handled != enable_highlight:
+            elif is_extracted and stored_highlight != enable_highlight:
                 logger.info(
-                    f"Extraction exists but highlight mismatch "
-                    f"for document: {document_id} with {doc_id}. "
-                    f"Stored: {is_highlight_handled}, Requested: {enable_highlight}. "
+                    f"Extraction exists but highlight mismatch for {x2text_config_hash}. "
+                    f"Stored: {stored_highlight}, Requested: {enable_highlight}. "
                     f"Re-extraction needed."
                 )
                 return False
             else:
-                logger.info(
-                    f"Extraction is NOT yet marked as complete "
-                    f"for document: {document_id} with {doc_id}"
-                )
+                logger.info(f"Extraction NOT complete for document: {document_id}")
                 return False
 
         except Exception as e:
