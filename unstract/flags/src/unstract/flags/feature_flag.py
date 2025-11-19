@@ -1,7 +1,6 @@
 """Feature flag utils file."""
 
 import logging
-import os
 
 from .client.flipt import FliptClient
 

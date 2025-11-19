@@ -3,9 +3,8 @@
 import logging
 import os
 import warnings
-from deprecated import deprecated
 
-from typing import Optional
+from deprecated import deprecated
 
 from ..flipt_grpc.client import FliptGrpcClient, GrpcClientOptions
 
@@ -31,17 +30,16 @@ class FliptClient:
         self.flipt_url = f"{self.eval_ip}:{self.eval_port}"
         self.namespace_key = os.environ.get("UNSTRACT_FEATURE_FLAG_NAMESPACE", "default")
         self.grpc_opts = GrpcClientOptions(
-            address=self.flipt_url,
-            namespace_key=self.namespace_key
+            address=self.flipt_url, namespace_key=self.namespace_key
         )
 
     @deprecated("namespace_key is no longer used")
     def evaluate_boolean(
         self,
         flag_key: str,
-        entity_id: Optional[str] = "unstract",
-        context: Optional[dict] = None,
-        namespace_key: Optional[str] = None
+        entity_id: str | None = "unstract",
+        context: dict | None = None,
+        namespace_key: str | None = None,
     ) -> bool:
         """Evaluate a boolean feature flag for a given entity.
 
@@ -57,7 +55,7 @@ class FliptClient:
             warnings.warn(
                 "namespace_key parameter is deprecated and will be ignored",
                 DeprecationWarning,
-                stacklevel=2
+                stacklevel=2,
             )
         if not self.service_available:
             logger.warning("Flipt service not available, returning False for all flags")
@@ -66,15 +64,11 @@ class FliptClient:
         client = None
         try:
             # Create a FliptClient instance for this specific namespace
-            client = FliptGrpcClient(
-                opts=self.grpc_opts
-            )
+            client = FliptGrpcClient(opts=self.grpc_opts)
 
             # Evaluate the boolean flag from the Flipt server
             result = client.evaluate_boolean(
-                flag_key=flag_key,
-                entity_id=entity_id,
-                context=context or {}
+                flag_key=flag_key, entity_id=entity_id, context=context or {}
             )
 
             return result.value if hasattr(result, "value") else False
@@ -91,7 +85,7 @@ class FliptClient:
                     logger.error(f"Error closing Flipt client: {e}")
 
     @deprecated("namespace_key is no longer used")
-    def list_feature_flags(self, namespace_key: Optional[str] = None) -> dict:
+    def list_feature_flags(self, namespace_key: str | None = None) -> dict:
         """List all feature flags in a namespace.
 
         Args:
@@ -105,7 +99,7 @@ class FliptClient:
             warnings.warn(
                 "namespace_key parameter is deprecated and will be ignored",
                 DeprecationWarning,
-                stacklevel=2
+                stacklevel=2,
             )
         if not self.service_available:
             logger.warning("Flipt service not available, returning empty flags")
@@ -114,9 +108,7 @@ class FliptClient:
         client = None
         try:
             # Create a FliptClient instance for this specific namespace
-            client = FliptGrpcClient(
-                opts=self.grpc_opts
-            )
+            client = FliptGrpcClient(opts=self.grpc_opts)
 
             # List flags from the Flipt server
             response = client.list_flags()

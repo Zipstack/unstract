@@ -1,13 +1,11 @@
 """High-level Flipt gRPC client for server-side evaluation."""
 
-import grpc
-from typing import Optional, Dict, List
 from dataclasses import dataclass
 
-from .flipt.evaluation import evaluation_simple_pb2
-from .flipt.evaluation import evaluation_simple_pb2_grpc
-from .flipt import flipt_simple_pb2
-from .flipt import flipt_simple_pb2_grpc
+import grpc
+
+from .flipt import flipt_simple_pb2, flipt_simple_pb2_grpc
+from .flipt.evaluation import evaluation_simple_pb2, evaluation_simple_pb2_grpc
 
 
 @dataclass
@@ -22,12 +20,13 @@ class GrpcClientOptions:
         client_token: Optional client token for authentication
         ssl_cert_path: Optional path to SSL certificate for secure connections
     """
+
     address: str = "localhost:9000"
     namespace_key: str = "default"
     environment_key: str = "default"
     secure: bool = False
-    client_token: Optional[str] = None
-    ssl_cert_path: Optional[str] = None
+    client_token: str | None = None
+    ssl_cert_path: str | None = None
 
 
 class FliptGrpcClient:
@@ -43,16 +42,11 @@ class FliptGrpcClient:
         from flipt_client.grpc import FliptGrpcClient, GrpcClientOptions
 
         client = FliptGrpcClient(
-            opts=GrpcClientOptions(
-                address="localhost:9000",
-                namespace_key="production"
-            )
+            opts=GrpcClientOptions(address="localhost:9000", namespace_key="production")
         )
 
         result = client.evaluate_boolean(
-            flag_key="my-flag",
-            entity_id="user-123",
-            context={"region": "us-west"}
+            flag_key="my-flag", entity_id="user-123", context={"region": "us-west"}
         )
 
         print(f"Flag enabled: {result.enabled}")
@@ -61,7 +55,7 @@ class FliptGrpcClient:
         ```
     """
 
-    def __init__(self, opts: Optional[GrpcClientOptions] = None):
+    def __init__(self, opts: GrpcClientOptions | None = None):
         """Initialize the Flipt gRPC client.
 
         Args:
@@ -72,7 +66,7 @@ class FliptGrpcClient:
         # Create the gRPC channel
         if self.opts.secure:
             if self.opts.ssl_cert_path:
-                with open(self.opts.ssl_cert_path, 'rb') as f:
+                with open(self.opts.ssl_cert_path, "rb") as f:
                     credentials = grpc.ssl_channel_credentials(f.read())
             else:
                 credentials = grpc.ssl_channel_credentials()
@@ -95,10 +89,10 @@ class FliptGrpcClient:
         self,
         flag_key: str,
         entity_id: str,
-        context: Optional[Dict[str, str]] = None,
-        namespace_key: Optional[str] = None,
-        environment_key: Optional[str] = None,
-        request_id: Optional[str] = None
+        context: dict[str, str] | None = None,
+        namespace_key: str | None = None,
+        environment_key: str | None = None,
+        request_id: str | None = None,
     ) -> evaluation_simple_pb2.BooleanEvaluationResponse:
         """Evaluate a boolean flag.
 
@@ -122,7 +116,7 @@ class FliptGrpcClient:
             namespace_key=namespace_key or self.opts.namespace_key,
             environment_key=environment_key or self.opts.environment_key,
             context=context or {},
-            request_id=request_id or ""
+            request_id=request_id or "",
         )
 
         return self.stub.Boolean(request, metadata=self.metadata)
@@ -131,10 +125,10 @@ class FliptGrpcClient:
         self,
         flag_key: str,
         entity_id: str,
-        context: Optional[Dict[str, str]] = None,
-        namespace_key: Optional[str] = None,
-        environment_key: Optional[str] = None,
-        request_id: Optional[str] = None
+        context: dict[str, str] | None = None,
+        namespace_key: str | None = None,
+        environment_key: str | None = None,
+        request_id: str | None = None,
     ) -> evaluation_simple_pb2.VariantEvaluationResponse:
         """Evaluate a variant flag.
 
@@ -158,15 +152,13 @@ class FliptGrpcClient:
             namespace_key=namespace_key or self.opts.namespace_key,
             environment_key=environment_key or self.opts.environment_key,
             context=context or {},
-            request_id=request_id or ""
+            request_id=request_id or "",
         )
 
         return self.stub.Variant(request, metadata=self.metadata)
 
     def evaluate_batch(
-        self,
-        requests: List[Dict],
-        request_id: Optional[str] = None
+        self, requests: list[dict], request_id: str | None = None
     ) -> evaluation_simple_pb2.BatchEvaluationResponse:
         """Evaluate multiple flags in a single request.
 
@@ -195,23 +187,22 @@ class FliptGrpcClient:
                     namespace_key=req.get("namespace_key", self.opts.namespace_key),
                     environment_key=req.get("environment_key", self.opts.environment_key),
                     context=req.get("context", {}),
-                    request_id=req.get("request_id", "")
+                    request_id=req.get("request_id", ""),
                 )
             )
 
         batch_request = evaluation_simple_pb2.BatchEvaluationRequest(
-            requests=evaluation_requests,
-            request_id=request_id or ""
+            requests=evaluation_requests, request_id=request_id or ""
         )
 
         return self.stub.Batch(batch_request, metadata=self.metadata)
 
     def list_flags(
         self,
-        namespace_key: Optional[str] = None,
-        environment_key: Optional[str] = None,
+        namespace_key: str | None = None,
+        environment_key: str | None = None,
         limit: int = 100,
-        page_token: Optional[str] = None
+        page_token: str | None = None,
     ) -> flipt_simple_pb2.FlagList:
         """List all flags in the namespace.
 
@@ -236,14 +227,14 @@ class FliptGrpcClient:
             namespace_key=namespace_key or self.opts.namespace_key,
             environment_key=environment_key or self.opts.environment_key,
             limit=limit,
-            page_token=page_token or ""
+            page_token=page_token or "",
         )
 
         return self.flipt_stub.ListFlags(request, metadata=self.metadata)
 
     def close(self):
         """Close the gRPC channel and release resources."""
-        if hasattr(self, 'channel') and self.channel is not None:
+        if hasattr(self, "channel") and self.channel is not None:
             self.channel.close()
             self.channel = None
 
