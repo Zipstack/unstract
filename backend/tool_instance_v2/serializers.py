@@ -16,7 +16,7 @@ from tool_instance_v2.exceptions import ToolDoesNotExist
 from tool_instance_v2.models import ToolInstance
 from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
 from tool_instance_v2.tool_processor import ToolProcessor
-from unstract.sdk.adapters.enums import AdapterTypes
+from unstract.sdk1.adapters.enums import AdapterTypes
 from unstract.tool_registry.dto import Tool
 from unstract.tool_registry.tool_utils import ToolUtils
 
