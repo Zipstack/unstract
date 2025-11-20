@@ -10,6 +10,7 @@ worker configurations.
 
 import logging
 from collections.abc import Callable
+from typing import ClassVar
 
 from shared.enums.worker_enums import QueueName, WorkerType
 from shared.models.worker_models import (
@@ -64,6 +65,9 @@ class WorkerRegistry:
             primary_queue=QueueName.SCHEDULER, additional_queues=[QueueName.GENERAL]
         ),
     }
+
+    # Pluggable worker configurations loaded dynamically
+    _PLUGGABLE_QUEUE_CONFIGS: ClassVar[dict[WorkerType, WorkerQueueConfig]] = {}
 
     # Task routing rules for each worker type
     _TASK_ROUTES: dict[WorkerType, WorkerTaskRouting] = {
@@ -132,6 +136,9 @@ class WorkerRegistry:
         ),
     }
 
+    # Pluggable worker task routes loaded dynamically
+    _PLUGGABLE_TASK_ROUTES: ClassVar[dict[WorkerType, WorkerTaskRouting]] = {}
+
     # Health check functions registry
     _HEALTH_CHECKS: dict[WorkerType, list[tuple[str, Callable]]] = {}
 
@@ -166,6 +173,101 @@ class WorkerRegistry:
         },
     }
 
+    # Pluggable worker logging configs loaded dynamically
+    _PLUGGABLE_LOGGING_CONFIGS: ClassVar[dict[WorkerType, dict]] = {}
+
+    @classmethod
+    def load_pluggable_worker(cls, worker_type: WorkerType) -> None:
+        """Dynamically load configuration for a pluggable worker.
+
+        This method loads the worker configuration from the pluggable_worker directory
+        if it exists. Similar to how Django loads pluggable_apps.
+
+        Args:
+            worker_type: Type of pluggable worker to load
+        """
+        if not worker_type.is_pluggable():
+            logger.warning(f"{worker_type} is not a pluggable worker")
+            return
+
+        # Check if already loaded
+        if worker_type in cls._PLUGGABLE_QUEUE_CONFIGS:
+            return
+
+        try:
+            # Import the worker's config module if it exists
+            import importlib
+            from pathlib import Path
+
+            # Check if worker directory exists
+            workers_root = Path(__file__).parent.parent.parent.parent
+            worker_path = workers_root / "pluggable_worker" / worker_type.value
+
+            if not worker_path.exists():
+                logger.debug(f"Pluggable worker directory not found: {worker_path}")
+                return
+
+            # Try to import worker's config module
+            try:
+                config_module = importlib.import_module(
+                    f"pluggable_worker.{worker_type.value}.config"
+                )
+
+                # Load queue config
+                if hasattr(config_module, "QUEUE_CONFIG"):
+                    cls._PLUGGABLE_QUEUE_CONFIGS[worker_type] = config_module.QUEUE_CONFIG
+                    logger.info(
+                        f"Loaded queue config for pluggable worker: {worker_type}"
+                    )
+
+                # Load task routing
+                if hasattr(config_module, "TASK_ROUTING"):
+                    cls._PLUGGABLE_TASK_ROUTES[worker_type] = config_module.TASK_ROUTING
+                    logger.info(
+                        f"Loaded task routing for pluggable worker: {worker_type}"
+                    )
+
+                # Load logging config
+                if hasattr(config_module, "LOGGING_CONFIG"):
+                    cls._PLUGGABLE_LOGGING_CONFIGS[worker_type] = (
+                        config_module.LOGGING_CONFIG
+                    )
+                    logger.info(
+                        f"Loaded logging config for pluggable worker: {worker_type}"
+                    )
+
+            except ImportError:
+                # No config module, use defaults
+                logger.debug(f"No config module for {worker_type}, using defaults")
+
+                queue_name = getattr(QueueName, worker_type.value.upper(), None)
+                if queue_name:
+                    cls._PLUGGABLE_QUEUE_CONFIGS[worker_type] = WorkerQueueConfig(
+                        primary_queue=queue_name
+                    )
+
+                    # Default task routing (only if queue_name is valid)
+                    cls._PLUGGABLE_TASK_ROUTES[worker_type] = WorkerTaskRouting(
+                        worker_type=worker_type,
+                        routes=[
+                            TaskRoute(f"{worker_type.value}.*", queue_name),
+                        ],
+                    )
+                else:
+                    logger.warning(
+                        f"No matching queue name for {worker_type}, skipping default config"
+                    )
+
+                # Default logging config (always set)
+                cls._PLUGGABLE_LOGGING_CONFIGS[worker_type] = {
+                    "log_level": "INFO",
+                }
+
+        except Exception as e:
+            logger.error(
+                f"Error loading pluggable worker {worker_type}: {e}", exc_info=True
+            )
+
     @classmethod
     def get_queue_config(cls, worker_type: WorkerType) -> WorkerQueueConfig:
         """Get queue configuration for a worker type.
@@ -179,9 +281,19 @@ class WorkerRegistry:
         Raises:
             KeyError: If worker type not registered
         """
-        if worker_type not in cls._QUEUE_CONFIGS:
-            raise KeyError(f"No queue config registered for {worker_type}")
-        return cls._QUEUE_CONFIGS[worker_type]
+        # Check regular configs first
+        if worker_type in cls._QUEUE_CONFIGS:
+            return cls._QUEUE_CONFIGS[worker_type]
+
+        # Try to load pluggable worker if not already loaded
+        if worker_type.is_pluggable():
+            cls.load_pluggable_worker(worker_type)
+
+        # Check pluggable configs
+        if worker_type in cls._PLUGGABLE_QUEUE_CONFIGS:
+            return cls._PLUGGABLE_QUEUE_CONFIGS[worker_type]
+
+        raise KeyError(f"No queue config registered for {worker_type}")
 
     @classmethod
     def get_task_routing(cls, worker_type: WorkerType) -> WorkerTaskRouting:
@@ -196,9 +308,19 @@ class WorkerRegistry:
         Raises:
             KeyError: If worker type not registered
         """
-        if worker_type not in cls._TASK_ROUTES:
-            raise KeyError(f"No task routing registered for {worker_type}")
-        return cls._TASK_ROUTES[worker_type]
+        # Check regular configs first
+        if worker_type in cls._TASK_ROUTES:
+            return cls._TASK_ROUTES[worker_type]
+
+        # Try to load pluggable worker if not already loaded
+        if worker_type.is_pluggable():
+            cls.load_pluggable_worker(worker_type)
+
+        # Check pluggable configs
+        if worker_type in cls._PLUGGABLE_TASK_ROUTES:
+            return cls._PLUGGABLE_TASK_ROUTES[worker_type]
+
+        raise KeyError(f"No task routing registered for {worker_type}")
 
     @classmethod
     def register_health_check(
@@ -254,12 +376,23 @@ class WorkerRegistry:
             Logging configuration dict with log_level
             Note: log_format is no longer configurable - hardcoded in logger.py
         """
-        return cls._LOGGING_CONFIGS.get(
-            worker_type,
-            {
-                "log_level": "INFO",
-            },
-        )
+        # Check regular configs first
+        if worker_type in cls._LOGGING_CONFIGS:
+            return cls._LOGGING_CONFIGS[worker_type]
+
+        # Try to load pluggable worker if not already loaded
+        if worker_type.is_pluggable():
+            cls.load_pluggable_worker(worker_type)
+
+        # Check pluggable configs
+        if worker_type in cls._PLUGGABLE_LOGGING_CONFIGS:
+            return cls._PLUGGABLE_LOGGING_CONFIGS[worker_type]
+
+        # Default config
+        return {
+            "log_format": "django",
+            "log_level": "INFO",
+        }
 
     @classmethod
     def get_complete_config(cls, worker_type: WorkerType) -> WorkerCeleryConfig:
