@@ -1,0 +1,192 @@
+/* FieldComparisonModal Styles */
+
+.accuracy-summary {
+  background: #f5f5f5;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.accuracy-stat {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.accuracy-stat .label {
+  font-size: 14px;
+  color: #666;
+}
+
+.accuracy-stat .value {
+  font-size: 28px;
+  font-weight: bold;
+}
+
+.accuracy-detail {
+  font-size: 14px;
+  color: #666;
+}
+
+.tuning-panel {
+  background: #f0f5ff;
+  border: 1px solid #adc6ff;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.tuning-header {
+  margin-bottom: 12px;
+}
+
+.tuning-header h4 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1890ff;
+}
+
+.tuning-field-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.tuning-field-info .label {
+  color: #666;
+}
+
+.tuning-field-info code {
+  background: #fff;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: monospace;
+  color: #1890ff;
+}
+
+.tuning-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.tuning-progress {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.tuning-progress.completed {
+  border: 1px solid #52c41a;
+  background: #f6ffed;
+}
+
+.tuning-progress.failed {
+  border: 1px solid #ff4d4f;
+  background: #fff1f0;
+}
+
+.tuning-message {
+  margin: 8px 0 0 0;
+  font-size: 12px;
+  color: #666;
+}
+
+.tuning-error {
+  margin: 4px 0 0 0;
+  font-size: 12px;
+  color: #ff4d4f;
+}
+
+.filter-controls {
+  display: flex;
+  gap: 24px;
+  padding: 12px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.field-comparison-content {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.fields-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.field-item {
+  border-radius: 8px;
+  padding: 16px;
+  transition: all 0.2s;
+}
+
+.field-item.match {
+  background: #f6ffed;
+  border: 1px solid #b7eb8f;
+}
+
+.field-item.mismatch {
+  background: #fff1f0;
+  border: 1px solid #ffccc7;
+}
+
+.field-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.field-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.field-path {
+  font-weight: 500;
+  font-family: monospace;
+  font-size: 13px;
+  color: #262626;
+}
+
+.field-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.field-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #666;
+  margin-bottom: 6px;
+}
+
+.field-value {
+  background: #fff;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  padding: 12px;
+  font-family: monospace;
+  font-size: 12px;
+  color: #262626;
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-height: 60px;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #999;
+  font-size: 14px;
+}

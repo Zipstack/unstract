@@ -1,0 +1,40 @@
+/* PdfViewer Styles */
+
+.pdf-viewer-container {
+  height: 100%;
+  width: 100%;
+}
+
+.pdf-viewer-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  background-color: #f5f5f5;
+  color: #999;
+  font-size: 14px;
+}
+
+.pdf-highlight {
+  transition: all 0.2s ease;
+}
+
+.pdf-highlight:hover {
+  opacity: 0.8;
+  transform: scale(1.02);
+}
+
+.pdf-highlight.active {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}

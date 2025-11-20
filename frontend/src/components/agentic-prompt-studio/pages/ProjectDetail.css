@@ -1,0 +1,22 @@
+/* ProjectDetail Page Styles */
+
+.project-detail-container {
+  height: 100vh;
+  overflow: hidden;
+}
+
+.project-detail-container .ant-layout {
+  background: #fff;
+}
+
+.project-detail-container .ant-tabs {
+  height: 100%;
+}
+
+.project-detail-container .ant-tabs-content {
+  height: calc(100% - 46px);
+}
+
+.project-detail-container .ant-tabs-tabpane {
+  height: 100%;
+}

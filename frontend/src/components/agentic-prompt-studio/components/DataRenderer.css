@@ -1,0 +1,75 @@
+/* DataRenderer Styles */
+
+.data-renderer-row {
+  display: flex;
+  border-bottom: 1px dashed #d9d9d9;
+  padding: 8px 16px;
+  transition: background-color 0.2s;
+}
+
+.data-renderer-label {
+  flex: 1;
+  font-weight: 500;
+  color: #595959;
+}
+
+.data-renderer-value {
+  flex: 1;
+  color: #262626;
+}
+
+.data-renderer-section {
+  margin-bottom: 16px;
+}
+
+.data-renderer-section-header {
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #262626;
+  margin-bottom: 8px;
+  padding: 0 16px;
+  transition: background-color 0.2s;
+}
+
+.data-renderer-section-header-bordered {
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #262626;
+  margin-bottom: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px dashed #d9d9d9;
+  transition: background-color 0.2s;
+}
+
+.data-renderer-array-item {
+  border-bottom: 1px dashed #d9d9d9;
+  padding: 8px;
+  transition: background-color 0.2s;
+}
+
+.data-renderer-clickable {
+  cursor: pointer;
+}
+
+.data-renderer-clickable:hover {
+  background-color: #e6f7ff;
+}
+
+.data-renderer-selected {
+  background-color: #bae7ff;
+}
+
+.data-renderer-cell-clickable {
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.data-renderer-cell-clickable:hover {
+  background-color: #e6f7ff;
+}
+
+.data-renderer-cell-selected {
+  background-color: #bae7ff;
+}

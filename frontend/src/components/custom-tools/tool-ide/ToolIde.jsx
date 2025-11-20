@@ -14,6 +14,15 @@ import "./ToolIde.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import { PageTitle } from "../../widgets/page-title/PageTitle.jsx";
 
+// ============================================
+// AGENTIC PROMPT STUDIO FEATURE FLAG
+// Change to false to revert to current PS
+// ============================================
+const USE_AGENTIC_PROMPT_STUDIO = false;
+
+// Import Agentic Prompt Studio
+import { ProjectDetail as AgenticPS } from "../../agentic-prompt-studio";
+
 let PromptShareModal;
 let PromptShareLink;
 let CloneTitle;
@@ -48,6 +57,11 @@ function ToolIde() {
     shareId,
     isPublicSource,
   } = useCustomToolStore();
+
+  // Toggle to Agentic Prompt Studio if flag is enabled
+  if (USE_AGENTIC_PROMPT_STUDIO) {
+    return <AgenticPS projectId={details?.tool_id} />;
+  }
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
