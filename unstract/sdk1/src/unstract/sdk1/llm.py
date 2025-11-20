@@ -497,7 +497,9 @@ class LLM:
         if post_process_fn:
             try:
                 response_compat = LLMResponseCompat(response_text)
-                post_processed_output = post_process_fn(response_compat, extract_json, original_text)
+                post_processed_output = post_process_fn(
+                    response_compat, extract_json, original_text
+                )
                 # Needed as the text is modified in place.
                 response_text = response_compat.text
             except Exception as e:

@@ -4,15 +4,17 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('prompt_studio_core_v2', '0004_add_shared_to_org_to_custom_tool'),
+        ("prompt_studio_core_v2", "0004_add_shared_to_org_to_custom_tool"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='customtool',
-            name='enable_word_confidence',
-            field=models.BooleanField(db_comment='Flag to enable or disable word-level confidence (depends on enable_highlight)', default=False),
+            model_name="customtool",
+            name="enable_word_confidence",
+            field=models.BooleanField(
+                db_comment="Flag to enable or disable word-level confidence (depends on enable_highlight)",
+                default=False,
+            ),
         ),
     ]

@@ -115,7 +115,9 @@ class AnswerPromptService:
         execution_source: str | None = ExecutionSource.IDE.value,
     ) -> str:
         platform_postamble = tool_settings.get(PSKeys.PLATFORM_POSTAMBLE, "")
-        word_confidence_postamble = tool_settings.get(PSKeys.WORD_CONFIDENCE_POSTAMBLE, "")
+        word_confidence_postamble = tool_settings.get(
+            PSKeys.WORD_CONFIDENCE_POSTAMBLE, ""
+        )
         summarize_as_source = tool_settings.get(PSKeys.SUMMARIZE_AS_SOURCE)
         enable_highlight = tool_settings.get(PSKeys.ENABLE_HIGHLIGHT, False)
         enable_word_confidence = tool_settings.get(PSKeys.ENABLE_WORD_CONFIDENCE, False)
