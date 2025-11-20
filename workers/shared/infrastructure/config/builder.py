@@ -51,8 +51,17 @@ class WorkerBuilder:
 
         Raises:
             ValueError: If worker type is not properly configured
+            ImportError: If pluggable worker is not available in OSS deployment
         """
         logger.info(f"Building Celery app for {worker_type}")
+
+        # Verify pluggable workers exist before building
+        if worker_type.is_pluggable():
+            if not WorkerBuilder._verify_pluggable_worker_exists(worker_type):
+                raise ImportError(
+                    f"Pluggable worker '{worker_type.value}' not found. "
+                    f"Expected module: pluggable_worker.{worker_type.value}.worker"
+                )
 
         # Get configuration from environment
         config = WorkerConfig.from_env(worker_type.name)
@@ -293,6 +302,51 @@ class WorkerBuilder:
         """
         worker_config = WorkerRegistry.get_complete_config(worker_type)
         return worker_config.to_cli_args()
+
+    @staticmethod
+    def _verify_pluggable_worker_exists(worker_type: WorkerType) -> bool:
+        """Verify that a pluggable worker module exists.
+
+        Args:
+            worker_type: Worker type to check
+
+        Returns:
+            bool: True if worker module exists, False otherwise
+        """
+        if not worker_type.is_pluggable():
+            return True  # Not a pluggable worker, no need to check
+
+        try:
+            import importlib
+            from pathlib import Path
+
+            # Check if the worker.py file exists
+            # Path resolution: builder.py is at /app/workers/shared/infrastructure/config/
+            # We need to get to /app/workers/, so go up 3 levels
+            pluggable_worker_path = (
+                Path(__file__).resolve().parents[3]
+                / "pluggable_worker"
+                / worker_type.value
+                / "worker.py"
+            )
+
+            if not pluggable_worker_path.exists():
+                logger.error(f"Pluggable worker file not found: {pluggable_worker_path}")
+                return False
+
+            # Try to import the module to verify it's valid
+            module_path = f"pluggable_worker.{worker_type.value}.worker"
+            importlib.import_module(module_path)
+
+        except ImportError:
+            logger.exception(f"Failed to import pluggable worker {worker_type.value}")
+            return False
+        except (OSError, AttributeError):
+            logger.exception(f"Error verifying pluggable worker {worker_type.value}")
+            return False
+        else:
+            logger.debug(f"Verified pluggable worker module: {module_path}")
+            return True
 
 
 # LegacyWorkerAdapter removed - no more fallback logic
