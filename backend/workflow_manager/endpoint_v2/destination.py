@@ -125,8 +125,6 @@ class DestinationConnector(BaseConnector):
         return endpoint
 
     def validate(self) -> None:
-        self.workflow_log.log_info(logger, "Starting destination connector validation")
-
         connection_type = self.endpoint.connection_type
         connector: ConnectorInstance | None = self.endpoint.connector_instance
 
@@ -161,21 +159,15 @@ class DestinationConnector(BaseConnector):
                 if hasattr(engine, "close"):
                     engine.close()
             except ConnectorError as e:
-                # Handle specific connector errors with detailed logging
-                error_msg = f"Database connector validation failed: {str(e)}"
+                error_msg = f"Database connector validation failed: {e}"
                 self.workflow_log.log_error(logger, error_msg)
-                logger.error(error_msg)
+                logger.exception(error_msg)
                 raise
             except Exception as e:
-                # Handle unexpected errors
-                error_msg = f"Unexpected error during database validation: {str(e)}"
+                error_msg = f"Unexpected error during database validation: {e}"
                 self.workflow_log.log_error(logger, error_msg)
-                logger.error(error_msg)
+                logger.exception(error_msg)
                 raise
-
-        self.workflow_log.log_info(
-            logger, "Destination connector validation completed successfully"
-        )
 
     def _should_handle_hitl(
         self,

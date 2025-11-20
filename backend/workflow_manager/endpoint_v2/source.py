@@ -122,8 +122,6 @@ class SourceConnector(BaseConnector):
         return endpoint
 
     def validate(self) -> None:
-        self.workflow_log.log_info(logger, "Starting source connector validation")
-
         connection_type = self.endpoint.connection_type
         connector: ConnectorInstance = self.endpoint.connector_instance
 
@@ -141,11 +139,6 @@ class SourceConnector(BaseConnector):
             error_msg = "Source connector not configured"
             self.workflow_log.log_error(logger, error_msg)
             raise SourceConnectorNotConfigured()
-
-        # If we reach here, validation passed
-        self.workflow_log.log_info(
-            logger, "Source connector validation completed successfully"
-        )
 
     def valid_file_patterns(self, required_patterns: list[Any]) -> list[str]:
         patterns = {

@@ -63,15 +63,6 @@ def process_log_history_from_cache(
 
     logger.info(f"Processing {logs_count} logs from queue '{queue_name}'")
 
-    # Count error logs for priority reporting
-    error_logs_count = sum(
-        1 for log in logs_to_process if log.data.get("level") == "ERROR"
-    )
-    if error_logs_count > 0:
-        logger.error(
-            f"Found {error_logs_count} ERROR level logs in batch - will be processed with priority"
-        )
-
     # Preload required WorkflowExecution and WorkflowFileExecution objects
     execution_ids = {log.execution_id for log in logs_to_process}
     file_execution_ids = {
@@ -86,40 +77,14 @@ def process_log_history_from_cache(
         for obj in WorkflowFileExecution.objects.filter(id__in=file_execution_ids)
     }
 
-    # Process logs with preloaded data, prioritizing error logs
-    # Sort to process ERROR level logs first
-    sorted_logs = sorted(
-        logs_to_process, key=lambda log: 0 if log.data.get("level") == "ERROR" else 1
-    )
-
-    for log_data in sorted_logs:
-        # Display log content for all levels in workflow-logging service
-        log_level = log_data.data.get("level", "INFO")
-        log_message = log_data.data.get("log") or log_data.data.get(
-            "message", "No message"
-        )
-        log_stage = log_data.data.get("stage", "UNKNOWN_STAGE")
-
-        # Display log with appropriate level
-        if log_level == "ERROR":
-            logger.error(f"Processing ERROR log [{log_stage}]: {log_message}")
-        elif log_level == "WARNING":
-            logger.warning(f"Processing WARNING log [{log_stage}]: {log_message}")
-        elif log_level == "INFO":
-            logger.info(f"Processing INFO log [{log_stage}]: {log_message}")
-        elif log_level == "DEBUG":
-            logger.debug(f"Processing DEBUG log [{log_stage}]: {log_message}")
-        else:
-            logger.info(f"Processing {log_level} log [{log_stage}]: {log_message}")
-
+    # Process logs with preloaded data
+    for log_data in logs_to_process:
         execution = execution_map.get(log_data.execution_id)
         if not execution:
-            error_msg = f"Execution not found for execution_id: {log_data.execution_id}, skipping log push"
-            # Use error level if the original log was an error
-            if log_data.data.get("level") == "ERROR":
-                logger.error(f"ERROR LOG SKIPPED: {error_msg}")
-            else:
-                logger.warning(error_msg)
+            logger.warning(
+                f"Execution not found for execution_id: {log_data.execution_id}, "
+                "skipping log push"
+            )
             skipped_count += 1
             continue
 
@@ -146,28 +111,7 @@ def process_log_history_from_cache(
     # Bulk insert logs for each organization
     processed_count = 0
     for organization_id, logs in organization_logs.items():
-        # Count logs by level for better visibility
-        log_counts: dict[str, int] = {}
-        for log in logs:
-            level = log.data.get("level", "INFO")
-            log_counts[level] = log_counts.get(level, 0) + 1
-
-        # Display log count summary
-        if "ERROR" in log_counts:
-            count_summary = ", ".join(
-                [f"{count} {level}" for level, count in log_counts.items()]
-            )
-            logger.error(
-                f"Storing logs for org {organization_id}: {count_summary} (total: {len(logs)})"
-            )
-        else:
-            count_summary = ", ".join(
-                [f"{count} {level}" for level, count in log_counts.items()]
-            )
-            logger.info(
-                f"Storing logs for org {organization_id}: {count_summary} (total: {len(logs)})"
-            )
-
+        logger.info(f"Storing {len(logs)} logs for org: {organization_id}")
         ExecutionLog.objects.bulk_create(objs=logs, ignore_conflicts=True)
         processed_count += len(logs)
 
