@@ -6,35 +6,24 @@ from urllib.parse import urlparse
 
 from flask import current_app as app
 
+from unstract.core.flask import PluginManager
 from unstract.core.flask.exceptions import APIError
-from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.prompt_service.constants import ExecutionSource, FileStorageKeys, RunLevel
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.exceptions import RateLimitError
-from unstract.prompt_service.helpers.plugin import PluginManager
 from unstract.prompt_service.helpers.postprocessor import postprocess_data
 from unstract.prompt_service.utils.env_loader import get_env_or_die
 from unstract.prompt_service.utils.json_repair_helper import (
     repair_json_with_best_structure,
 )
 from unstract.prompt_service.utils.log import publish_log
-
-if check_feature_flag_status("sdk1"):
-    from unstract.sdk1.constants import LogLevel
-    from unstract.sdk1.exceptions import RateLimitError as SdkRateLimitError
-    from unstract.sdk1.exceptions import SdkError
-    from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
-    from unstract.sdk1.file_storage.constants import StorageType
-    from unstract.sdk1.file_storage.env_helper import EnvHelper
-    from unstract.sdk1.llm import LLM
-else:
-    from unstract.sdk.constants import LogLevel
-    from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError
-    from unstract.sdk.exceptions import SdkError
-    from unstract.sdk.file_storage import FileStorage, FileStorageProvider
-    from unstract.sdk.file_storage.constants import StorageType
-    from unstract.sdk.file_storage.env_helper import EnvHelper
-    from unstract.sdk.llm import LLM
+from unstract.sdk1.constants import LogLevel
+from unstract.sdk1.exceptions import RateLimitError as SdkRateLimitError
+from unstract.sdk1.exceptions import SdkError
+from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
+from unstract.sdk1.file_storage.constants import StorageType
+from unstract.sdk1.file_storage.env_helper import EnvHelper
+from unstract.sdk1.llm import LLM
 
 
 def _is_safe_public_url(url: str) -> bool:
@@ -222,6 +211,12 @@ class AnswerPromptService:
                         storage_type=StorageType.SHARED_TEMPORARY,
                         env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
                     )
+                logger.info(
+                    f"Initializing highlight plugin with: "
+                    f"file_path={file_path}, "
+                    f"execution_source={execution_source}, "
+                    f"fs_instance={fs_instance}"
+                )
                 highlight_data = highlight_data_plugin["entrypoint_cls"](
                     file_path=file_path,
                     fs_instance=fs_instance,

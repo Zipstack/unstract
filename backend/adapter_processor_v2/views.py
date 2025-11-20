@@ -12,6 +12,7 @@ from permissions.permission import (
     IsOwner,
     IsOwnerOrSharedUserOrSharedToOrg,
 )
+from plugins import get_plugin
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.request import Request
@@ -43,6 +44,10 @@ from adapter_processor_v2.serializers import (
 
 from .constants import AdapterKeys as constant
 from .models import AdapterInstance, UserDefaultAdapter
+
+notification_plugin = get_plugin("notification")
+if notification_plugin:
+    from plugins.notification.constants import ResourceType
 
 logger = logging.getLogger(__name__)
 
@@ -342,11 +347,6 @@ class AdapterInstanceViewSet(ModelViewSet):
         # Send email notifications to newly shared users
         if response.status_code == 200 and AdapterKeys.SHARED_USERS in request.data:
             try:
-                from plugins.notification.constants import ResourceType
-                from plugins.notification.sharing_notification import (
-                    SharingNotificationService,
-                )
-
                 adapter.refresh_from_db()
                 new_shared_users = set(adapter.shared_users.all())
                 newly_shared_users = new_shared_users - current_shared_users
@@ -364,7 +364,9 @@ class AdapterInstanceViewSet(ModelViewSet):
                         adapter.adapter_type, ResourceType.LLM.value
                     )
 
-                    notification_service = SharingNotificationService()
+                    # Get notification service from plugin
+                    service_class = notification_plugin["service_class"]
+                    notification_service = service_class()
                     notification_service.send_sharing_notification(
                         resource_type=resource_type,
                         resource_name=adapter.adapter_name,

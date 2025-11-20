@@ -1,11 +1,13 @@
 import json
 import logging
+import uuid
 from typing import Any
 
 from configuration.models import Configuration
 from django.db.models import QuerySet
 from django.http import HttpResponse
-from permissions.permission import IsOwner, IsOwnerOrSharedUser
+from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
+from plugins import get_plugin
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from rest_framework import serializers, status, views, viewsets
 from rest_framework.decorators import action
@@ -20,8 +22,9 @@ from api_v2.api_deployment_dto_registry import ApiDeploymentDTORegistry
 from api_v2.constants import ApiExecution
 from api_v2.deployment_helper import DeploymentHelper
 from api_v2.dto import DeploymentExecutionDTO
-from api_v2.exceptions import NoActiveAPIKeyError
+from api_v2.exceptions import NoActiveAPIKeyError, RateLimitExceeded
 from api_v2.models import APIDeployment
+from api_v2.rate_limiter import APIDeploymentRateLimiter
 from api_v2.serializers import (
     APIDeploymentListSerializer,
     APIDeploymentSerializer,
@@ -31,15 +34,9 @@ from api_v2.serializers import (
     SharedUserListSerializer,
 )
 
-try:
+notification_plugin = get_plugin("notification")
+if notification_plugin:
     from plugins.notification.constants import ResourceType
-    from plugins.notification.sharing_notification import SharingNotificationService
-
-    NOTIFICATION_PLUGIN_AVAILABLE = True
-    sharing_notification_service = SharingNotificationService()
-except ImportError:
-    NOTIFICATION_PLUGIN_AVAILABLE = False
-    sharing_notification_service = None
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +64,7 @@ class DeploymentExecution(views.APIView):
     ) -> Response:
         api: APIDeployment = deployment_execution_dto.api
         api_key: str = deployment_execution_dto.api_key
+        organization = api.organization
 
         serializer = ExecutionRequestSerializer(
             data=request.data, context={"api": api, "api_key": api_key}
@@ -87,21 +85,48 @@ class DeploymentExecution(views.APIView):
         if presigned_urls:
             DeploymentHelper.load_presigned_files(presigned_urls, file_objs)
 
-        response = DeploymentHelper.execute_workflow(
-            organization_name=org_name,
-            api=api,
-            file_objs=file_objs,
-            timeout=timeout,
-            include_metadata=include_metadata,
-            include_metrics=include_metrics,
-            use_file_history=use_file_history,
-            tag_names=tag_names,
-            llm_profile_id=llm_profile_id,
-            hitl_queue_name=hitl_queue_name,
-            hitl_packet_id=hitl_packet_id,
-            custom_data=custom_data,
-            request_headers=dict(request.headers),
+        # Generate execution ID for rate limiting
+        execution_id = str(uuid.uuid4())
+
+        # Check and acquire rate limit slot
+        can_proceed, limit_info = APIDeploymentRateLimiter.check_and_acquire(
+            organization, execution_id
         )
+        if not can_proceed:
+            logger.warning(
+                f"Rate limit exceeded for org {organization.organization_id}: {limit_info}"
+            )
+            raise RateLimitExceeded(
+                current_usage=limit_info["current_usage"],
+                limit=limit_info["limit"],
+                limit_type=limit_info["limit_type"],
+            )
+
+        # Execute workflow with blanket exception handling
+        try:
+            response = DeploymentHelper.execute_workflow(
+                organization_name=org_name,
+                api=api,
+                file_objs=file_objs,
+                timeout=timeout,
+                include_metadata=include_metadata,
+                include_metrics=include_metrics,
+                use_file_history=use_file_history,
+                tag_names=tag_names,
+                llm_profile_id=llm_profile_id,
+                hitl_queue_name=hitl_queue_name,
+                hitl_packet_id=hitl_packet_id,
+                custom_data=custom_data,
+                request_headers=dict(request.headers),
+                execution_id=execution_id,
+            )
+        except Exception as error:
+            # Release slot on any failure during workflow setup/execution
+            APIDeploymentRateLimiter.release_slot(organization, execution_id)
+            logger.exception(f"Workflow execution failed: {error}")
+            raise
+
+        # Success - signal will handle slot release when workflow completes
         if "error" in response and response["error"]:
             logger.error("API deployment execution failed")
             return Response(
@@ -168,7 +193,7 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
     def get_permissions(self) -> list[Any]:
         if self.action in ["destroy", "partial_update", "update"]:
             return [IsOwner()]
-        return [IsOwnerOrSharedUser()]
+        return [IsOwnerOrSharedUserOrSharedToOrg()]
 
     def get_queryset(self) -> QuerySet | None:
         queryset = APIDeployment.objects.for_user(self.request.user)
@@ -289,7 +314,7 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
         if (
             response.status_code == 200
             and "shared_users" in request.data
-            and NOTIFICATION_PLUGIN_AVAILABLE
+            and notification_plugin
         ):
             try:
                 instance.refresh_from_db()
@@ -297,7 +322,9 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
                 newly_shared_users = new_shared_users - current_shared_users
 
                 if newly_shared_users:
-                    notification_service = SharingNotificationService()
+                    # Get notification service from plugin
+                    service_class = notification_plugin["service_class"]
+                    notification_service = service_class()
                     notification_service.send_sharing_notification(
                         resource_type=ResourceType.API_DEPLOYMENT.value,
                         resource_name=instance.display_name,

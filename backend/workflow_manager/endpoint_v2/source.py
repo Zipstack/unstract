@@ -46,13 +46,8 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 from unstract.filesystem import FileStorageType, FileSystem
-from unstract.flags.feature_flag import check_feature_flag_status
+from unstract.sdk1.file_storage import FileStorage
 from unstract.workflow_execution.enums import LogLevel, LogStage, LogState
-
-if check_feature_flag_status("sdk1"):
-    from unstract.sdk1.file_storage import FileStorage
-else:
-    from unstract.sdk.file_storage import FileStorage
 
 logger = logging.getLogger(__name__)
 
