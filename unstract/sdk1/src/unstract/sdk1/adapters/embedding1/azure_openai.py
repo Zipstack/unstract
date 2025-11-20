@@ -21,7 +21,7 @@ class AzureOpenAIEmbeddingAdapter(AzureOpenAIEmbeddingParameters, BaseAdapter):
 
     @staticmethod
     def get_name() -> str:
-        return "AzureOpenAI"
+        return "AzureOpenAIEmbedding"
 
     @staticmethod
     def get_description() -> str:

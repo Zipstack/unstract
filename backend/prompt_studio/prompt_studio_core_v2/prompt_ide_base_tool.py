@@ -4,18 +4,10 @@ from platform_settings_v2.platform_auth_service import PlatformAuthenticationSer
 from utils.file_storage.constants import FileStorageKeys
 
 from prompt_studio.prompt_studio_core_v2.constants import ToolStudioKeys
-from unstract.flags.feature_flag import check_feature_flag_status
-
-if check_feature_flag_status("sdk1"):
-    from unstract.sdk1.constants import LogLevel
-    from unstract.sdk1.file_storage.constants import StorageType
-    from unstract.sdk1.file_storage.env_helper import EnvHelper
-    from unstract.sdk1.tool.stream import StreamMixin
-else:
-    from unstract.sdk.constants import LogLevel
-    from unstract.sdk.file_storage.constants import StorageType
-    from unstract.sdk.file_storage.env_helper import EnvHelper
-    from unstract.sdk.tool.stream import StreamMixin
+from unstract.sdk1.constants import LogLevel
+from unstract.sdk1.file_storage.constants import StorageType
+from unstract.sdk1.file_storage.env_helper import EnvHelper
+from unstract.sdk1.tool.stream import StreamMixin
 
 
 class PromptIdeBaseTool(StreamMixin):
