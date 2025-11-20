@@ -5,16 +5,10 @@ from typing import Any
 import requests
 from flask import current_app as app
 
-from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.platform_service.env import Env
 from unstract.platform_service.utils import format_float_positional
-
-if check_feature_flag_status("sdk1"):
-    from unstract.sdk1.exceptions import FileStorageError
-    from unstract.sdk1.file_storage import EnvHelper, StorageType
-else:
-    from unstract.sdk.exceptions import FileStorageError
-    from unstract.sdk.file_storage import EnvHelper, StorageType
+from unstract.sdk1.exceptions import FileStorageError
+from unstract.sdk1.file_storage import EnvHelper, StorageType
 
 
 class CostCalculationHelper:

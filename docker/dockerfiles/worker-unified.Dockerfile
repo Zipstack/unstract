@@ -54,6 +54,9 @@ RUN touch README.md
 # This provides the unstract packages for imports
 COPY ${BUILD_PACKAGES_PATH}/ /unstract/
 
+# Increase timeout for large packages (flipt-client is ~45MB)
+ENV UV_HTTP_TIMEOUT=120
+
 # Install external dependencies with --locked for FAST builds
 # No symlinks needed - PYTHONPATH handles the paths
 RUN uv sync --group deploy --locked --no-install-project --no-dev
@@ -73,6 +76,9 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # No symlinks needed - PYTHONPATH handles the paths correctly
 RUN uv sync --group deploy --locked && \
     uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement - && \
+    # Use OpenTelemetry v1 - v2 breaks LiteLLM with instrumentation enabled
+    uv pip uninstall opentelemetry-instrumentation-openai-v2 && \
+    uv pip install opentelemetry-instrumentation-openai && \
     { chmod +x ./run-worker.sh ./run-worker-docker.sh 2>/dev/null || true; } && \
     touch requirements.txt && \
     { chown -R worker:worker ./run-worker.sh ./run-worker-docker.sh 2>/dev/null || true; }
