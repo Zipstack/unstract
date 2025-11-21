@@ -38,6 +38,7 @@ def import_optional_connector(module_path: str, class_name: str):
 
 # Import optional connectors
 RedisQueue = import_optional_connector("unstract.connectors.queues.redis", "RedisQueue")
+# TODO(UN-2261): Oracle temporarily excluded due to missing wallet support
 OracleDB = import_optional_connector(
     "unstract.connectors.databases.oracle_db", "OracleDB"
 )
