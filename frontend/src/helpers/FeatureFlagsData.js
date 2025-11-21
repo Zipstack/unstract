@@ -24,8 +24,8 @@ export async function evaluateFeatureFlag(orgId, csrfToken, featureFlag) {
   return response?.flag_status ?? false;
 }
 
-export async function listFlags(orgId, csrfToken, namespace = "default") {
-  const url = `/api/v1/unstract/${orgId}/flags/?namespace=${namespace}`;
+export async function listFlags(orgId, csrfToken) {
+  const url = `/api/v1/unstract/${orgId}/flags/`;
 
   const response = await makeApiCall("GET", url, null, csrfToken);
   return response.feature_flags.flags ?? {};

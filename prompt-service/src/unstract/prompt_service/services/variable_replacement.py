@@ -2,18 +2,13 @@ from typing import Any
 
 from flask import current_app as app
 
-from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.constants import RunLevel, VariableType
 from unstract.prompt_service.helpers.variable_replacement import (
     VariableReplacementHelper,
 )
 from unstract.prompt_service.utils.log import publish_log
-
-if check_feature_flag_status("sdk1"):
-    from unstract.sdk1.constants import LogLevel
-else:
-    from unstract.sdk.constants import LogLevel
+from unstract.sdk1.constants import LogLevel
 
 
 class VariableReplacementService:
@@ -85,9 +80,6 @@ class VariableReplacementService:
                 custom_data=custom_data,
             )
         finally:
-            app.logger.info(
-                f"[{tool_id}] Prompt after variable replacement: {prompt_text}"
-            )
             publish_log(
                 log_events_id,
                 {
@@ -97,7 +89,7 @@ class VariableReplacementService:
                 },
                 LogLevel.DEBUG,
                 RunLevel.RUN,
-                f"Prompt after variable replacement:{prompt_text} ",
+                f"Variables replaced in prompt with key :{prompt_name}",
             )
         return prompt_text
 

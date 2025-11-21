@@ -1,6 +1,7 @@
 import logging
 from collections.abc import Sequence
 
+from deprecated import deprecated
 from llama_index.core import StorageContext, VectorStoreIndex
 from llama_index.core.indices.base import IndexType
 from llama_index.core.node_parser import SentenceSplitter
@@ -51,7 +52,7 @@ class VectorDB:
 
     def _initialise(self, embedding: EmbeddingCompat | None = None) -> None:
         if embedding:
-            self._embedding_instance = embedding._embedding_instance
+            self._embedding_instance = embedding
             self._embedding_dimension = embedding._length
         if self._adapter_instance_id:
             self._vector_db_instance: BasePydanticVectorStore | VectorStore = (
@@ -125,28 +126,47 @@ class VectorDB:
         if not self._embedding_instance:
             raise VectorDBError(self.EMBEDDING_INSTANCE_ERROR)
         storage_context = self.get_storage_context()
-        parser = SentenceSplitter.from_defaults(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-            callback_manager=self._embedding_instance.callback_manager,
-        )
+
+        # Handle backward compatibility for callback_manager
+        callback_manager = getattr(self._embedding_instance, "callback_manager", None)
+
+        parser_kwargs = {
+            "chunk_size": chunk_size,
+            "chunk_overlap": chunk_overlap,
+        }
+        if callback_manager is not None:
+            parser_kwargs["callback_manager"] = callback_manager
+
+        parser = SentenceSplitter.from_defaults(**parser_kwargs)
+
+        index_kwargs_with_callback = dict(index_kwargs)
+        if callback_manager is not None:
+            index_kwargs_with_callback["callback_manager"] = callback_manager
+
         return VectorStoreIndex.from_documents(
             documents,
             storage_context=storage_context,
             show_progress=show_progress,
             embed_model=self._embedding_instance,
             transformations=[parser],
-            callback_manager=self._embedding_instance.callback_manager,
-            **index_kwargs,
+            **index_kwargs_with_callback,
         )
 
     def get_vector_store_index(self, **kwargs: object) -> VectorStoreIndex:
         if not self._embedding_instance:
             raise VectorDBError(self.EMBEDDING_INSTANCE_ERROR)
+
+        # Handle backward compatibility for callback_manager
+        callback_manager = getattr(self._embedding_instance, "callback_manager", None)
+
+        index_kwargs = dict(kwargs) if kwargs else {}
+        if callback_manager is not None:
+            index_kwargs["callback_manager"] = callback_manager
+
         return VectorStoreIndex.from_vector_store(
             vector_store=self._vector_db_instance,
             embed_model=self._embedding_instance,
-            callback_manager=self._embedding_instance.callback_manager,
+            **index_kwargs,
         )
 
     def get_storage_context(self) -> StorageContext:
@@ -192,3 +212,29 @@ class VectorDB:
                 Class name
         """
         return self._vector_db_instance.class_name()
+
+    @deprecated("Use VectorDB instead of ToolVectorDB")
+    def get_vector_db(
+        self, adapter_instance_id: str, embedding_dimension: int
+    ) -> BasePydanticVectorStore | VectorStore:
+        """Gets a vector database instance (deprecated method for backward compatibility).
+
+        This method is deprecated and maintained for backward compatibility.
+        Use VectorDB constructor with adapter_instance_id instead.
+
+        Args:
+            adapter_instance_id: The adapter instance identifier
+            embedding_dimension: The embedding dimension
+                (unused in current implementation)
+
+        Returns:
+            BasePydanticVectorStore | VectorStore: The vector database instance
+        """
+        if not self._vector_db_instance:
+            self._adapter_instance_id = adapter_instance_id
+            self._initialise()
+        return self._vector_db_instance
+
+
+# Legacy alias for backward compatibility
+ToolVectorDB = VectorDB
