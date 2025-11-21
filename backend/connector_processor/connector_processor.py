@@ -29,10 +29,10 @@ def import_optional_connector(module_path: str, class_name: str):
     try:
         module = __import__(module_path, fromlist=[class_name])
         connector_class = getattr(module, class_name)
-        logger.info(f"Successfully imported {class_name}")
+        logger.debug(f"Successfully imported {class_name}")
         return connector_class
     except ImportError as e:
-        logger.warning(f"Failed to import {class_name}: {e}")
+        logger.debug(f"Failed to import {class_name}: {e}")
         return None
 
 
