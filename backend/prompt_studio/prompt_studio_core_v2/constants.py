@@ -93,11 +93,13 @@ class ToolStudioPromptKeys:
     TXT_EXTENTION = ".txt"
     TABLE = "table"
     PLATFORM_POSTAMBLE = "platform_postamble"
+    WORD_CONFIDENCE_POSTAMBLE = "word_confidence_postamble"
     SUMMARIZE_AS_SOURCE = "summarize_as_source"
     VARIABLE_MAP = "variable_map"
     RECORD = "record"
     FILE_PATH = "file_path"
     ENABLE_HIGHLIGHT = "enable_highlight"
+    ENABLE_WORD_CONFIDENCE = "enable_word_confidence"
     REQUIRED = "required"
     EXECUTION_SOURCE = "execution_source"
     LINE_ITEM = "line-item"
@@ -166,6 +168,7 @@ class IndexingConstants:
     FILE_HASH = "file_hash"
     OUTPUT_FILE_PATH = "output_file_path"
     ENABLE_HIGHLIGHT = "enable_highlight"
+    ENABLE_WORD_CONFIDENCE = "enable_word_confidence"
     USAGE_KWARGS = "usage_kwargs"
     PROCESS_TEXT = "process_text"
     EXTRACTED_TEXT = "extracted_text"
@@ -190,6 +193,7 @@ class DefaultValues:
     DEFAULT_EXCLUDE_FAILED = True
     DEFAULT_ENABLE_CHALLENGE = False
     DEFAULT_ENABLE_HIGHLIGHT = False
+    DEFAULT_ENABLE_WORD_CONFIDENCE = False
     DEFAULT_SUMMARIZE_AS_SOURCE = False
     DEFAULT_SUMMARIZE_CONTEXT = False
     DEFAULT_SINGLE_PASS_EXTRACTION_MODE = False

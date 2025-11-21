@@ -78,6 +78,12 @@ class PromptStudioRegistryHelper:
                 "default": False,
                 "description": "Enables highlight",
             },
+            "enable_word_confidence": {
+                "type": "boolean",
+                "title": "Enable word confidence",
+                "default": False,
+                "description": "Enables word-level confidence (depends on enable_highlight)",
+            },
         }
 
         spec = Spec(
@@ -283,6 +289,7 @@ class PromptStudioRegistryHelper:
             tool.single_pass_extraction_mode
         )
         tool_settings[JsonSchemaKey.ENABLE_HIGHLIGHT] = tool.enable_highlight
+        tool_settings[JsonSchemaKey.ENABLE_WORD_CONFIDENCE] = tool.enable_word_confidence
         tool_settings[JsonSchemaKey.PLATFORM_POSTAMBLE] = getattr(
             settings, JsonSchemaKey.PLATFORM_POSTAMBLE.upper(), ""
         )

@@ -98,6 +98,7 @@ class JsonSchemaKey:
     SUMMARIZE_PROMPT = "summarize_prompt"
     SUMMARIZE_AS_SOURCE = "summarize_as_source"
     ENABLE_HIGHLIGHT = "enable_highlight"
+    ENABLE_WORD_CONFIDENCE = "enable_word_confidence"
     PLATFORM_POSTAMBLE = "platform_postamble"
     REQUIRED = "required"
     # Webhook postprocessing settings

@@ -138,6 +138,10 @@ class CustomTool(DefaultOrganizationMixin, BaseModel):
     enable_highlight = models.BooleanField(
         db_comment="Flag to enable or disable document highlighting", default=False
     )
+    enable_word_confidence = models.BooleanField(
+        db_comment="Flag to enable or disable word-level confidence (depends on enable_highlight)",
+        default=False,
+    )
 
     # Introduced field to establish M2M relation between users and custom_tool.
     # This will introduce intermediary table which relates both the models.

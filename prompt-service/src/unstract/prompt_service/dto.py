@@ -35,4 +35,5 @@ class ChunkingConfig:
 class ProcessingOptions:
     reindex: bool = False
     enable_highlight: bool = False
+    enable_word_confidence: bool = False
     usage_kwargs: dict[Any, Any] = field(default_factory=dict)

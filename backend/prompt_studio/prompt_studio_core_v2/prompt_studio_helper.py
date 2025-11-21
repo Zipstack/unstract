@@ -412,6 +412,8 @@ class PromptStudioHelper:
             document_id=document_id,
             run_id=run_id,
             enable_highlight=tool.enable_highlight,
+            enable_word_confidence=tool.enable_word_confidence,
+            doc_id=doc_id,
         )
         if tool.summarize_context:
             summarize_file_path = PromptStudioHelper.summarize(
@@ -870,6 +872,8 @@ class PromptStudioHelper:
             document_id=document_id,
             run_id=run_id,
             enable_highlight=tool.enable_highlight,
+            enable_word_confidence=tool.enable_word_confidence,
+            doc_id=doc_id,
         )
         logger.info(f"Extracted text from {file_path} for {doc_id}")
         if is_summary:
@@ -972,8 +976,12 @@ class PromptStudioHelper:
         tool_settings[TSPKeys.POSTAMBLE] = tool.postamble
         tool_settings[TSPKeys.GRAMMAR] = grammar_list
         tool_settings[TSPKeys.ENABLE_HIGHLIGHT] = tool.enable_highlight
+        tool_settings[TSPKeys.ENABLE_WORD_CONFIDENCE] = tool.enable_word_confidence
         tool_settings[TSPKeys.PLATFORM_POSTAMBLE] = getattr(
             settings, TSPKeys.PLATFORM_POSTAMBLE.upper(), ""
+        )
+        tool_settings[TSPKeys.WORD_CONFIDENCE_POSTAMBLE] = getattr(
+            settings, TSPKeys.WORD_CONFIDENCE_POSTAMBLE.upper(), ""
         )
         file_hash = fs_instance.get_hash_from_file(path=doc_path)
 
@@ -1228,6 +1236,8 @@ class PromptStudioHelper:
             document_id=document_id,
             run_id=run_id,
             enable_highlight=tool.enable_highlight,
+            enable_word_confidence=tool.enable_word_confidence,
+            doc_id=doc_id,
         )
         # Indexing is not needed as Single pass is always non chunked.
         vector_db = str(default_profile.vector_store.id)
@@ -1246,9 +1256,13 @@ class PromptStudioHelper:
         tool_settings[TSPKeys.CHUNK_OVERLAP] = default_profile.chunk_overlap
         tool_settings[TSPKeys.ENABLE_CHALLENGE] = tool.enable_challenge
         tool_settings[TSPKeys.ENABLE_HIGHLIGHT] = tool.enable_highlight
+        tool_settings[TSPKeys.ENABLE_WORD_CONFIDENCE] = tool.enable_word_confidence
         tool_settings[TSPKeys.CHALLENGE_LLM] = challenge_llm
         tool_settings[TSPKeys.PLATFORM_POSTAMBLE] = getattr(
             settings, TSPKeys.PLATFORM_POSTAMBLE.upper(), ""
+        )
+        tool_settings[TSPKeys.WORD_CONFIDENCE_POSTAMBLE] = getattr(
+            settings, TSPKeys.WORD_CONFIDENCE_POSTAMBLE.upper(), ""
         )
         tool_settings[TSPKeys.SUMMARIZE_AS_SOURCE] = tool.summarize_as_source
         for prompt in prompts:
@@ -1299,6 +1313,7 @@ class PromptStudioHelper:
     def dynamic_extractor(
         file_path: str,
         enable_highlight: bool,
+        enable_word_confidence: bool,
         run_id: str,
         org_id: str,
         profile_manager: ProfileManager,
@@ -1344,6 +1359,7 @@ class PromptStudioHelper:
             IKeys.X2TEXT_INSTANCE_ID: x2text,
             IKeys.FILE_PATH: file_path,
             IKeys.ENABLE_HIGHLIGHT: enable_highlight,
+            IKeys.ENABLE_WORD_CONFIDENCE: enable_word_confidence,
             IKeys.USAGE_KWARGS: usage_kwargs.copy(),
             IKeys.RUN_ID: run_id,
             Common.LOG_EVENTS_ID: StateStore.get(Common.LOG_EVENTS_ID),
