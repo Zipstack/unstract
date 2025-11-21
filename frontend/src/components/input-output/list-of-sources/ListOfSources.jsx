@@ -22,13 +22,6 @@ function ListOfSources({
   useEffect(() => {
     let filteredList = [...sourcesList];
 
-    // Filter out Oracle connector temporarily
-    if (isConnector) {
-      filteredList = filteredList.filter((source) => {
-        return !source?.name?.toUpperCase().includes("ORACLE");
-      });
-    }
-
     // Apply mode filter if selected
     if (localModeFilter && isConnector && !connectorMode) {
       filteredList = filteredList.filter((source) => {

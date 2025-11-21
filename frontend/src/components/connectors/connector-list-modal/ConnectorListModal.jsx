@@ -24,11 +24,6 @@ function ConnectorListModal({
   const filterConnectors = debounce((searchText, mode) => {
     let filtered = [...connectors];
 
-    // Filter out Oracle connector temporarily
-    filtered = filtered.filter((connector) => {
-      return !connector?.name?.toUpperCase().includes("ORACLE");
-    });
-
     // Filter by search text
     if (searchText?.trim()) {
       const searchUpper = searchText.toUpperCase().trim();
