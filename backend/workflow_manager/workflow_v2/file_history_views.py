@@ -1,6 +1,5 @@
 import logging
 
-from django.conf import settings
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -86,9 +85,6 @@ class FileHistoryViewSet(viewsets.ReadOnlyModelViewSet):
         file_history = self.get_object()
         file_history_id = file_history.id
 
-        # Clear Redis cache for this file before deletion
-        self._clear_cache_for_file(workflow_id, file_history)
-
         file_history.delete()
 
         logger.info(f"Deleted file history {file_history_id} for workflow {workflow_id}")
@@ -124,9 +120,6 @@ class FileHistoryViewSet(viewsets.ReadOnlyModelViewSet):
 
         deleted_count, _ = queryset.delete()
 
-        # Clear Redis cache pattern for workflow
-        self._clear_workflow_cache(workflow_id)
-
         logger.info(
             f"Cleared {deleted_count} file history records for workflow {workflow_id}"
         )
@@ -137,33 +130,3 @@ class FileHistoryViewSet(viewsets.ReadOnlyModelViewSet):
                 "message": f"{deleted_count} file history records deleted",
             }
         )
-
-    def _clear_cache_for_file(self, workflow_id, file_history):
-        """Clear Redis cache for specific file."""
-        try:
-            from workflow_manager.workflow_v2.execution.active_file_manager import (
-                ActiveFileManager,
-            )
-
-            cache_key = ActiveFileManager._create_cache_key(
-                workflow_id, file_history.provider_file_uuid, file_history.file_path
-            )
-            DB = settings.FILE_ACTIVE_CACHE_REDIS_DB
-            from utils.cache import CacheService
-
-            CacheService.delete_key(cache_key, db=DB)
-            logger.debug(f"Cleared cache for file: {cache_key}")
-        except Exception as e:
-            logger.warning(f"Failed to clear cache for file: {e}")
-
-    def _clear_workflow_cache(self, workflow_id):
-        """Clear all Redis cache for workflow."""
-        try:
-            pattern = f"file_active:{workflow_id}:*"
-            DB = settings.FILE_ACTIVE_CACHE_REDIS_DB
-            from utils.cache import CacheService
-
-            CacheService.clear_cache_optimized(pattern, db=DB)
-            logger.debug(f"Cleared cache pattern: {pattern}")
-        except Exception as e:
-            logger.warning(f"Failed to clear workflow cache: {e}")
