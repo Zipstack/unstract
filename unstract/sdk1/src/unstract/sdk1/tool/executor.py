@@ -5,7 +5,6 @@ from json import loads
 from pathlib import Path
 from typing import Any
 
-from unstract.sdk import get_sdk_version
 from unstract.sdk1.constants import Command
 from unstract.sdk1.tool.base import BaseTool
 from unstract.sdk1.tool.validator import ToolValidator
@@ -60,8 +59,7 @@ class ToolExecutor:
         self.tool.stream_log(
             f"Running tool '{tool_name}:{tool_version}' with "
             f"Workflow ID: {self.tool.workflow_id}, "
-            f"Execution ID: {self.tool.execution_id}, "
-            f"SDK Version: {get_sdk_version()}"
+            f"Execution ID: {self.tool.execution_id}"
         )
         validator = ToolValidator(self.tool)
         settings = validator.validate_pre_execution(settings=settings)
