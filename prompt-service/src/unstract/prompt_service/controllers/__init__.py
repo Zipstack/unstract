@@ -1,5 +1,6 @@
 from flask import Blueprint
 
+from .agentic import agentic_bp
 from .answer_prompt import answer_prompt_bp
 from .extraction import extraction_bp
 from .health import health_bp
@@ -12,3 +13,4 @@ api.register_blueprint(health_bp)
 api.register_blueprint(answer_prompt_bp)
 api.register_blueprint(indexing_bp)
 api.register_blueprint(extraction_bp)
+api.register_blueprint(agentic_bp)

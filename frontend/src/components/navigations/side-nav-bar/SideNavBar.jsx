@@ -107,6 +107,16 @@ const SideNavBar = ({ collapsed }) => {
           path: `/${orgName}/workflows`,
           active: window.location.pathname.startsWith(`/${orgName}/workflows`),
         },
+        {
+          id: 1.3,
+          title: "Agentic Studio",
+          description: "AI-powered prompt generation and data extraction",
+          icon: BranchesOutlined,
+          path: `/${orgName}/agentic-studio`,
+          active: window.location.pathname.startsWith(
+            `/${orgName}/agentic-studio`
+          ),
+        },
       ],
     },
     {

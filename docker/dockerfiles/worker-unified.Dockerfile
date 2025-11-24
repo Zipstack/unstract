@@ -77,6 +77,9 @@ RUN uv sync --group deploy --locked && \
     touch requirements.txt && \
     { chown -R worker:worker ./run-worker.sh ./run-worker-docker.sh 2>/dev/null || true; }
 
+# Pre-download tiktoken encodings to avoid runtime network calls
+RUN uv run python -c "import tiktoken; tiktoken.encoding_for_model('gpt-3.5-turbo'); tiktoken.encoding_for_model('gpt-4')"
+
 # Switch to worker user
 USER worker
 

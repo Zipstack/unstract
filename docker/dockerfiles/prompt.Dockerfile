@@ -86,6 +86,9 @@ RUN for dir in "${TARGET_PLUGINS_PATH}"/*/; do \
     done && \
     uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement -
 
+# Pre-download tiktoken encodings to avoid runtime network calls
+RUN uv run python -c "import tiktoken; tiktoken.encoding_for_model('gpt-3.5-turbo'); tiktoken.encoding_for_model('gpt-4')"
+
 # Create required directories
 RUN mkdir -p prompt-studio-data
 

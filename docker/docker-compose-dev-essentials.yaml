@@ -54,7 +54,7 @@ services:
       /bin/sh -c "
       sleep 5;
       mc alias set minio http://unstract-minio:9000 minio minio123;
-      mc mb minio/unstract;
+      mc mb minio/unstract --ignore-existing;
       mc mirror /app/prompt-studio-data minio/unstract/prompt-studio-data;
       exit 0;
       "

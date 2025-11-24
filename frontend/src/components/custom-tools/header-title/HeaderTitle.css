@@ -1,12 +1,12 @@
 .custom-tools-name {
-    padding: 0px 8px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    margin-left:auto;
+  padding: 0px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-left: auto;
 }
 .custom-tools-header {
-    display: flex;
-    justify-content: space-between;
-    margin-right: auto;
+  display: flex;
+  justify-content: space-between;
+  margin-right: auto;
 }

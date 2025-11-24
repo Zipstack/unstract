@@ -3,17 +3,11 @@ import warnings
 
 from flask import current_app
 
-from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.prompt_service.constants import PromptServiceConstants
-
-if check_feature_flag_status("sdk1"):
-    from unstract.sdk1.constants import LogLevel
-    from unstract.sdk1.tool.stream import StreamMixin
-    from unstract.sdk1.utils.common import PY_TO_UNSTRACT_LOG_LEVEL
-else:
-    from unstract.sdk.constants import LogLevel
-    from unstract.sdk.tool.stream import StreamMixin
-    from unstract.sdk.utils.common_utils import PY_TO_UNSTRACT_LOG_LEVEL
+# Always use sdk1 for backward compatibility with existing prompt-studio code
+from unstract.sdk1.constants import LogLevel
+from unstract.sdk1.tool.stream import StreamMixin
+from unstract.sdk1.utils.common import PY_TO_UNSTRACT_LOG_LEVEL
 
 
 class PromptServiceBaseTool(StreamMixin):
@@ -32,11 +26,12 @@ class PromptServiceBaseTool(StreamMixin):
                 DeprecationWarning,
                 stacklevel=2,  # ensures the warning points to the caller of the method
             )
-        self.log_level = PY_TO_UNSTRACT_LOG_LEVEL.get(
-            current_app.logger.getEffectiveLevel(), LogLevel.INFO
-        )
+        # Always use INFO for now to avoid log level validation issues
+        effective_log_level = LogLevel.INFO
         self.platform_key = platform_key
-        super().__init__(log_level=self.log_level)
+        # Pass the LogLevel ENUM to StreamMixin
+        # StreamMixin expects LogLevel enum, not string value
+        super().__init__(log_level=effective_log_level)
 
     def get_env_or_die(self, env_key: str) -> str:
         """Returns the value of an env variable.

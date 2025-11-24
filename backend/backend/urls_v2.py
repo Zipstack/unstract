@@ -60,6 +60,12 @@ urlpatterns = [
         UrlPathConstants.PROMPT_STUDIO,
         include("prompt_studio.prompt_studio_index_manager_v2.urls"),
     ),
+    path(
+        UrlPathConstants.PROMPT_STUDIO + "agentic-studio/",
+        include("prompt_studio.agentic_studio_v2.urls"),
+    ),
+    # Agentic Studio V2 - Direct API path for frontend compatibility
+    path("agentic/", include("prompt_studio.agentic_studio_v2.urls")),
     path("tags/", include("tags.urls")),
     path("execution/", include("workflow_manager.execution.urls")),
     path("execution/", include("workflow_manager.file_execution.urls")),

@@ -83,15 +83,20 @@
 }
 
 /* Form textarea styles for Display Name and API Name */
-.create-api-deployment-from-prompt-studio-modal .ant-form-item-control-input textarea[maxlength="30"],
-.create-api-deployment-from-prompt-studio-modal .ant-form-item-control-input textarea[maxlength="100"] {
+.create-api-deployment-from-prompt-studio-modal
+  .ant-form-item-control-input
+  textarea[maxlength="30"],
+.create-api-deployment-from-prompt-studio-modal
+  .ant-form-item-control-input
+  textarea[maxlength="100"] {
   font-family: monospace;
   word-break: break-all;
   line-height: 1.5;
 }
 
 /* Character counter styles for textareas with showCount */
-.create-api-deployment-from-prompt-studio-modal .ant-input-textarea-show-count::after {
+.create-api-deployment-from-prompt-studio-modal
+  .ant-input-textarea-show-count::after {
   position: static;
   display: block;
   text-align: right;

@@ -94,14 +94,17 @@ class StreamMixin:
         Returns:
             None
         """
-        levels = [
-            LogLevel.DEBUG,
-            LogLevel.INFO,
-            LogLevel.WARN,
-            LogLevel.ERROR,
-            LogLevel.FATAL,
-        ]
-        if levels.index(level) < levels.index(self.log_level):
+        # Use string values for comparison to avoid enum instance mismatch issues
+        level_order = ["DEBUG", "INFO", "WARN", "ERROR", "FATAL"]
+
+        # Convert level and self.log_level to strings for comparison
+        level_value = level.value if hasattr(level, 'value') else str(level)
+        self_log_level_value = self.log_level.value if hasattr(self.log_level, 'value') else str(self.log_level)
+
+        if level_value not in level_order or self_log_level_value not in level_order:
+            # If invalid level, default to logging it
+            pass
+        elif level_order.index(level_value) < level_order.index(self_log_level_value):
             return
 
         record = {

@@ -23,6 +23,8 @@ import { LogsPage } from "../pages/LogsPage.jsx";
 import { deploymentTypes } from "../helpers/GetStaticData.js";
 import ConnectorsPage from "../pages/ConnectorsPage.jsx";
 import { UnstractAdministrationPage } from "../pages/UnstractAdministrationPage.jsx";
+import AgenticStudioProjects from "../pages/AgenticStudio/AgenticStudioProjects.jsx";
+import AgenticStudioProjectDetail from "../pages/AgenticStudio/AgenticStudioProjectDetail.jsx";
 
 let RequirePlatformAdmin;
 let PlatformAdminPage;
@@ -109,6 +111,12 @@ function useMainAppRoutes() {
           <Route path="app/:id" element={<ChatAppPage />} />
         </Route>
       )}
+      <Route path=":orgName">
+        <Route
+          path="agentic-studio/projects/:id"
+          element={<AgenticStudioProjectDetail />}
+        />
+      </Route>
       <Route path=":orgName" element={<PageLayout />}>
         {UnstractUsagePage && (
           <Route path="dashboard" element={<UnstractUsagePage />} />
@@ -142,6 +150,7 @@ function useMainAppRoutes() {
         <Route path="workflows/:id" element={<ProjectHelper />}>
           <Route path="" element={<AgencyPage />} />
         </Route>
+        <Route path="agentic-studio" element={<AgenticStudioProjects />} />
         <Route path="tools" element={<CustomTools />} />
         <Route path="" element={<CustomToolsHelper />}>
           <Route path="tools/:id" element={<ToolIdePage />} />

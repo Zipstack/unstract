@@ -72,6 +72,7 @@ WEB_APP_ORIGIN_URL = os.environ.get("WEB_APP_ORIGIN_URL", "http://localhost:3000
 parsed_url = urlparse(WEB_APP_ORIGIN_URL)
 WEB_APP_ORIGIN_URL_WITH_WILD_CARD = f"{parsed_url.scheme}://*.{parsed_url.netloc}"
 CORS_ALLOWED_ORIGINS = [WEB_APP_ORIGIN_URL]
+CORS_ALLOW_CREDENTIALS = True  # Required for cookies/sessions to work with CORS
 
 DJANGO_APP_BACKEND_URL = os.environ.get("DJANGO_APP_BACKEND_URL", "http://localhost:8000")
 INTERNAL_SERVICE_API_KEY = os.environ.get("INTERNAL_SERVICE_API_KEY")
@@ -225,6 +226,9 @@ DEBUG = True
 
 ALLOWED_HOSTS = ["*"]
 CSRF_TRUSTED_ORIGINS = [WEB_APP_ORIGIN_URL, WEB_APP_ORIGIN_URL_WITH_WILD_CARD]
+# CSRF cookie settings for cross-origin requests
+CSRF_COOKIE_SAMESITE = "Lax"  # Allow cookies in cross-origin requests from same site
+CSRF_COOKIE_HTTPONLY = False  # JavaScript needs to read the CSRF token
 CORS_ALLOW_ALL_ORIGINS = False
 
 # Request ID middleware settings
@@ -301,6 +305,8 @@ SHARED_APPS = (
     "django_filters",
     # Third party apps should go below this line,
     "rest_framework",
+    # Django Channels for WebSocket support
+    "channels",
     # Connector OAuth
     # "connector_auth",
     "social_django",
@@ -338,6 +344,8 @@ SHARED_APPS = (
     "prompt_studio.prompt_studio_output_manager_v2",
     "prompt_studio.prompt_studio_document_manager_v2",
     "prompt_studio.prompt_studio_index_manager_v2",
+    # "prompt_studio.prompt_studio_vibe_extractor_v2",  # Module doesn't exist
+    "prompt_studio.agentic_studio_v2",
     "tags",
     "configuration",
 )
@@ -588,6 +596,20 @@ SOCIAL_AUTH_GOOGLE_OAUTH2_AUTH_EXTRA_ARGUMENTS = {
     "prompt": "consent",
 }
 SOCIAL_AUTH_GOOGLE_OAUTH2_USE_UNIQUE_USER_ID = True
+
+# Django Channels Configuration
+ASGI_APPLICATION = "backend.asgi.application"
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [(REDIS_HOST, int(REDIS_PORT))],
+            "capacity": 1500,
+            "expiry": 10,
+        },
+    },
+}
 
 # Always keep this line at the bottom of the file.
 if missing_settings:

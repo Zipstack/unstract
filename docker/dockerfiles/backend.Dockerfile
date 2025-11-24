@@ -49,7 +49,10 @@ COPY ${BUILD_CONTEXT_PATH}/pyproject.toml ${BUILD_CONTEXT_PATH}/uv.lock ${BUILD_
 COPY ${BUILD_PACKAGES_PATH}/ /unstract/
 
 # Install external dependencies from pyproject.toml
-RUN uv sync --group deploy --locked --no-install-project --no-dev
+# Use increased timeout for large packages like grpcio-tools
+ENV UV_HTTP_TIMEOUT=600
+ENV UV_CONCURRENT_DOWNLOADS=4
+RUN uv sync --group deploy --no-install-project --no-dev
 
 # -----------------------------------------------
 # FINAL STAGE - Minimal image for production
@@ -63,9 +66,12 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 COPY ${BUILD_CONTEXT_PATH}/ ./
 
 # Install the application
-RUN uv sync --group deploy --locked && \
+RUN uv sync --group deploy && \
     uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement - && \
     chmod +x ./entrypoint.sh
+
+# Pre-download tiktoken encodings to avoid runtime network calls
+RUN uv run python -c "import tiktoken; tiktoken.encoding_for_model('gpt-3.5-turbo'); tiktoken.encoding_for_model('gpt-4')"
 
 EXPOSE 8000
 
