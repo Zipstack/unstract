@@ -376,12 +376,28 @@ class PipelineService:
             )
 
         # Prepare summaries data
+        # summary_text contains JSON with field candidates from SummarizerAgent
+        import json
         summaries_data = []
         for summary in summaries:
+            # Parse summary_text to extract fields
+            fields = []
+            try:
+                # summary_text is the JSON array of fields from SummarizerAgent
+                parsed = json.loads(summary.summary_text)
+                if isinstance(parsed, list):
+                    fields = parsed
+                elif isinstance(parsed, dict) and "fields" in parsed:
+                    fields = parsed["fields"]
+            except (json.JSONDecodeError, TypeError):
+                logger.warning(f"Could not parse summary_text as JSON for document {summary.document.id}")
+                # If it's plain text, we still pass it but Uniformer may not work well
+                fields = []
+
             summaries_data.append(
                 {
                     "document_id": str(summary.document.id),
-                    "summary_text": summary.summary_text,
+                    "fields": fields,
                 }
             )
 

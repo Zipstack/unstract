@@ -993,23 +993,28 @@ class AgenticProjectViewSet(viewsets.ModelViewSet):
         """
         project = self.get_object()
 
-        # Get active prompt version
+        # Get active prompt version, or fallback to latest
         active_prompt = project.prompt_versions.filter(is_active=True).first()
+        if not active_prompt:
+            active_prompt = project.prompt_versions.order_by('-version').first()
 
         if not active_prompt:
             return Response({
                 "matrix": [],
                 "documents": [],
                 "fields": [],
-                "message": "No active prompt version found",
+                "message": "No prompt version found",
             })
 
         # Get all documents with comparison results
+        # Include results with matching prompt_version OR no prompt_version set
+        from django.db.models import Q
+        comparison_filter = Q(project=project) & (
+            Q(prompt_version=active_prompt) | Q(prompt_version__isnull=True)
+        )
+
         document_ids = (
-            AgenticComparisonResult.objects.filter(
-                project=project,
-                prompt_version=active_prompt
-            )
+            AgenticComparisonResult.objects.filter(comparison_filter)
             .values_list('document_id', flat=True)
             .distinct()
         )
@@ -1018,10 +1023,7 @@ class AgenticProjectViewSet(viewsets.ModelViewSet):
 
         # Get all unique field paths
         field_paths = (
-            AgenticComparisonResult.objects.filter(
-                project=project,
-                prompt_version=active_prompt
-            )
+            AgenticComparisonResult.objects.filter(comparison_filter)
             .values_list('field_path', flat=True)
             .distinct()
             .order_by('field_path')
@@ -1034,8 +1036,7 @@ class AgenticProjectViewSet(viewsets.ModelViewSet):
             for field_path in field_paths:
                 # Get comparison result for this doc + field
                 comparison = AgenticComparisonResult.objects.filter(
-                    project=project,
-                    prompt_version=active_prompt,
+                    comparison_filter,
                     document=doc,
                     field_path=field_path
                 ).first()
@@ -1065,8 +1066,7 @@ class AgenticProjectViewSet(viewsets.ModelViewSet):
         field_info = []
         for field_path in field_paths:
             field_comparisons = AgenticComparisonResult.objects.filter(
-                project=project,
-                prompt_version=active_prompt,
+                comparison_filter,
                 field_path=field_path
             )
             total = field_comparisons.count()
@@ -1157,9 +1157,23 @@ class AgenticProjectViewSet(viewsets.ModelViewSet):
                 )
                 comparisons_created += 1
 
+        # Calculate overall accuracy from the created comparisons
+        total_comparisons = AgenticComparisonResult.objects.filter(
+            project=project,
+            prompt_version=active_prompt
+        ).count()
+        matched_comparisons = AgenticComparisonResult.objects.filter(
+            project=project,
+            prompt_version=active_prompt,
+            match=True
+        ).count()
+        overall_accuracy = (matched_comparisons / total_comparisons * 100) if total_comparisons > 0 else 0
+
         return Response({
             "message": "Analytics populated successfully",
             "comparisons_created": comparisons_created,
+            "documents_processed": documents.count(),
+            "overall_accuracy": round(overall_accuracy, 2),
         })
 
     @action(detail=True, methods=["get"], url_path="documents")
@@ -2336,7 +2350,9 @@ class AgenticPromptVersionViewSet(viewsets.ModelViewSet):
 
     queryset = AgenticPromptVersion.objects.all()
     serializer_class = AgenticPromptVersionSerializer
-    versioning_class = URLPathVersioning
+    # Don't use URLPathVersioning here as it conflicts with the version parameter in URLs
+    # like /projects/{project_id}/prompts/{version}/
+    versioning_class = None
     permission_classes = [IsOrganizationMember]
 
     def get_queryset(self):
@@ -2407,6 +2423,51 @@ class AgenticPromptVersionViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(prompts, many=True)
         return Response(serializer.data)
+
+    def create_for_project(self, request: Request, project_pk=None) -> Response:
+        """Create a new prompt version for a specific project.
+
+        This endpoint is called by the frontend as:
+        POST /projects/{project_id}/prompts/
+
+        Creates a new prompt version with incremented version number.
+        """
+        organization = UserContext.get_organization()
+        if not organization:
+            return Response(
+                {"error": "Organization not found"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # Validate project exists and user has access
+        try:
+            project = AgenticProject.objects.get(
+                id=project_pk, organization=organization
+            )
+        except AgenticProject.DoesNotExist:
+            return Response(
+                {"error": "Project not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Get the latest version number
+        latest = AgenticPromptVersion.objects.filter(
+            project=project, organization=organization
+        ).order_by("-version").first()
+
+        next_version = (latest.version + 1) if latest else 1
+
+        # Create new prompt version
+        prompt_data = request.data.copy()
+        prompt_data["project"] = project.id
+        prompt_data["version"] = next_version
+        prompt_data["organization"] = organization.id
+
+        serializer = self.get_serializer(data=prompt_data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     def get_latest(self, request: Request, project_pk=None) -> Response:
         """Get the latest prompt version for a project.

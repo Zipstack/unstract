@@ -219,10 +219,12 @@ function VerifiedDataTab({
             style={{
               display: "flex",
               justifyContent: "space-between",
-              alignItems: "center",
+              alignItems: "flex-start",
+              flexWrap: "wrap",
+              gap: "16px",
             }}
           >
-            <div style={{ flex: 1 }}>
+            <div style={{ minWidth: "200px" }}>
               <Title level={4} style={{ margin: 0, marginBottom: "8px" }}>
                 Verified Data
               </Title>
@@ -230,7 +232,7 @@ function VerifiedDataTab({
                 Ground truth data for training and comparison
               </Text>
             </div>
-            <Space size="large">
+            <Space size="middle" wrap>
               <div>
                 <Text strong style={{ marginRight: "8px" }}>
                   Document:
@@ -238,7 +240,7 @@ function VerifiedDataTab({
                 <Select
                   value={selectedDocId}
                   onChange={onSelectDocument}
-                  style={{ width: 300 }}
+                  style={{ width: 200 }}
                   placeholder="Select a document"
                   options={documents.map((doc) => ({
                     label: doc.original_filename,
@@ -246,7 +248,7 @@ function VerifiedDataTab({
                   }))}
                 />
               </div>
-              <Space>
+              <Space wrap>
                 <Button
                   icon={<TableOutlined />}
                   onClick={loadAllVerifiedData}
@@ -254,21 +256,22 @@ function VerifiedDataTab({
                 >
                   View All
                 </Button>
+                {selectedDocId && (
+                  <Button
+                    icon={<ReloadOutlined />}
+                    onClick={loadVerifiedData}
+                    loading={loading}
+                  >
+                    Refresh
+                  </Button>
+                )}
                 {verifiedData && !isEditing && (
-                  <>
-                    <Button
-                      icon={<EditOutlined />}
-                      onClick={() => setIsEditing(true)}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      icon={<ReloadOutlined />}
-                      onClick={loadVerifiedData}
-                    >
-                      Refresh
-                    </Button>
-                  </>
+                  <Button
+                    icon={<EditOutlined />}
+                    onClick={() => setIsEditing(true)}
+                  >
+                    Edit
+                  </Button>
                 )}
                 {isEditing && (
                   <>

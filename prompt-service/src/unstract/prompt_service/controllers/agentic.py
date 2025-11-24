@@ -473,14 +473,27 @@ Test the prompt and suggest minimal, high-impact revisions if needed.
             final_prompt = critique.get("final_prompt_text", draft_prompt)
             test_passed = critique.get("test_passed", False)
         except json.JSONDecodeError:
-            # If not valid JSON, extract JSON block
+            # If not valid JSON, try to extract JSON block
             import re
-            json_match = re.search(r'```json\s*(\{.*?\})\s*```', critique_text, re.DOTALL)
+            # Try multiple patterns to find JSON
+            json_match = re.search(r'```json\s*(\{[\s\S]*?\})\s*```', critique_text, re.DOTALL)
+            if not json_match:
+                # Try without markdown code block
+                json_match = re.search(r'(\{[\s\S]*"final_prompt_text"[\s\S]*?\})', critique_text, re.DOTALL)
+
             if json_match:
-                critique = json.loads(json_match.group(1))
-                final_prompt = critique.get("final_prompt_text", draft_prompt)
-                test_passed = critique.get("test_passed", False)
+                try:
+                    critique = json.loads(json_match.group(1))
+                    final_prompt = critique.get("final_prompt_text", draft_prompt)
+                    test_passed = critique.get("test_passed", False)
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Could not parse extracted JSON: {e}")
+                    critique = {"raw_response": critique_text, "parse_error": str(e)}
+                    final_prompt = draft_prompt
+                    test_passed = False
             else:
+                # No JSON found, use draft prompt as fallback
+                logger.warning("No JSON found in critique response, using draft prompt")
                 critique = {"raw_response": critique_text}
                 final_prompt = draft_prompt
                 test_passed = False

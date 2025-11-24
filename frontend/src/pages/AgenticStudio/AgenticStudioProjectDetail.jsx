@@ -229,7 +229,7 @@ function AgenticStudioProjectDetail() {
           <Button
             type="text"
             icon={<ArrowLeftOutlined />}
-            onClick={() => navigate(-1)}
+            onClick={() => navigate("/agentic-studio")}
             size="large"
           >
             Back

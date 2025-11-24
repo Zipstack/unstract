@@ -27,31 +27,31 @@ class SummarizerAgent:
 
     SYSTEM_PROMPT = """You are a document analysis expert. Your task is to analyze a document and identify all fields that could be extracted.
 
-For each field, provide:
-1. Field name (snake_case)
-2. Description (what this field represents)
+IMPORTANT: Analyze the ACTUAL content of the document provided. Do NOT assume the document is an invoice or any specific type. Extract fields based solely on what you find in the document text.
+
+For each field you identify in the document, provide:
+1. Field name (snake_case) - based on what the field actually represents in the document
+2. Description (what this field represents in the context of this specific document)
 3. Data type (string, number, date, boolean, array, object)
-4. Example values from the document
+4. Example values - actual values found in the document
 
 Return ONLY a JSON array of field objects, no other text.
 
-Example output format:
+Output format:
 [
     {
-        "name": "invoice_number",
-        "description": "Unique invoice identifier",
+        "name": "actual_field_name_from_document",
+        "description": "Description based on what this field represents in the document",
         "type": "string",
-        "examples": ["INV-001", "INV-002"]
-    },
-    {
-        "name": "total_amount",
-        "description": "Total invoice amount",
-        "type": "number",
-        "examples": [1500.00, 2300.50]
+        "examples": ["actual_value_1", "actual_value_2"]
     }
 ]
 
-Be thorough - extract all fields you can identify, including nested objects."""
+CRITICAL:
+- Only extract fields that actually exist in the provided document
+- Do NOT invent fields like invoice_number, total_amount, customer_name unless they actually appear in the document
+- Base all field names, descriptions, and examples on the actual document content
+- Be thorough - extract all fields you can identify, including nested objects"""
 
     def __init__(self, model_client: ChatCompletionClient):
         """Initialize the SummarizerAgent.
