@@ -122,6 +122,16 @@ function ToolSettings({ type }) {
   };
 
   const handleShare = (_event, adapter, isEdit) => {
+    // Check if adapter is deprecated
+    if (adapter?.is_deprecated) {
+      setAlertDetails({
+        type: "error",
+        content:
+          "This adapter has been deprecated and cannot be shared. Please remove it or use an alternative adapter.",
+      });
+      return;
+    }
+
     const requestOptions = {
       method: "GET",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/users/${adapter.id}/`,
@@ -231,7 +241,18 @@ function ToolSettings({ type }) {
               isLoading={isLoading}
               handleDelete={handleDelete}
               setOpenAddTool={setOpenAddSourcesModal}
-              handleEdit={(_event, item) => setEditItemId(item?.id)}
+              handleEdit={(_event, item) => {
+                // Check if adapter is deprecated
+                if (item?.is_deprecated) {
+                  setAlertDetails({
+                    type: "error",
+                    content:
+                      "This adapter has been deprecated and cannot be edited. Please remove it or use an alternative adapter.",
+                  });
+                  return;
+                }
+                setEditItemId(item?.id);
+              }}
               idProp="id"
               titleProp="adapter_name"
               descriptionProp="description"
