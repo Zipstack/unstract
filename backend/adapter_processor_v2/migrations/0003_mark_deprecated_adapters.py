@@ -75,9 +75,7 @@ def mark_deprecated_adapters(apps, schema_editor):
                 )
 
         except Exception as e:
-            logger.error(
-                f"Error processing adapter {adapter_key}: {e}"
-            )
+            logger.error(f"Error processing adapter {adapter_key}: {e}")
 
     logger.info(
         f"Deprecation migration completed. "
@@ -96,10 +94,7 @@ def reverse_deprecation(apps, schema_editor):
     # Reset is_available and clear deprecation_metadata
     updated = AdapterInstance.objects.filter(
         adapter_id__in=deprecated_adapter_ids
-    ).update(
-        is_available=True,
-        deprecation_metadata=None
-    )
+    ).update(is_available=True, deprecation_metadata=None)
 
     logger.info(f"Reversed deprecation for {updated} adapters")
 

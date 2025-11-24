@@ -92,6 +92,7 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
             except Exception as e:
                 # Log error but don't fail serialization
                 import logging
+
                 logger = logging.getLogger(__name__)
                 logger.warning(
                     f"Failed to retrieve icon for adapter {instance.adapter_id}: {e}"
@@ -160,6 +161,7 @@ class AdapterListSerializer(BaseAdapterSerializer):
             except Exception as e:
                 # Log error but don't fail serialization
                 import logging
+
                 logger = logging.getLogger(__name__)
                 logger.warning(
                     f"Failed to retrieve icon for adapter {instance.adapter_id}: {e}"

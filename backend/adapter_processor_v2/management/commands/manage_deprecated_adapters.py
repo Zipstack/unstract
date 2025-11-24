@@ -1,5 +1,4 @@
-"""
-Django management command for managing deprecated adapters.
+"""Django management command for managing deprecated adapters.
 
 Usage:
     python manage.py manage_deprecated_adapters --list
@@ -83,7 +82,9 @@ class Command(BaseCommand):
             return
 
         self.stdout.write(
-            self.style.WARNING(f"\nFound {deprecated_adapters.count()} deprecated adapters:\n")
+            self.style.WARNING(
+                f"\nFound {deprecated_adapters.count()} deprecated adapters:\n"
+            )
         )
 
         for adapter in deprecated_adapters:
@@ -113,7 +114,9 @@ class Command(BaseCommand):
     ) -> None:
         """Mark an adapter as deprecated."""
         if not reason:
-            raise CommandError("--reason is required when marking an adapter as deprecated")
+            raise CommandError(
+                "--reason is required when marking an adapter as deprecated"
+            )
 
         try:
             adapter = AdapterInstance.objects.get(id=adapter_uuid)
@@ -122,7 +125,9 @@ class Command(BaseCommand):
 
         if not adapter.is_available:
             self.stdout.write(
-                self.style.WARNING(f"Adapter {adapter.adapter_name} is already deprecated")
+                self.style.WARNING(
+                    f"Adapter {adapter.adapter_name} is already deprecated"
+                )
             )
             return
 
@@ -241,9 +246,9 @@ class Command(BaseCommand):
 
     def _generate_report(self) -> None:
         """Generate comprehensive deprecation report."""
-        self.stdout.write(self.style.SUCCESS("\n" + "="*80))
+        self.stdout.write(self.style.SUCCESS("\n" + "=" * 80))
         self.stdout.write(self.style.SUCCESS("DEPRECATED ADAPTERS REPORT"))
-        self.stdout.write(self.style.SUCCESS("="*80 + "\n"))
+        self.stdout.write(self.style.SUCCESS("=" * 80 + "\n"))
 
         # Overall statistics
         total_adapters = AdapterInstance.objects.count()
@@ -293,10 +298,8 @@ class Command(BaseCommand):
         if with_replacements.exists():
             for adapter in with_replacements:
                 replacement = adapter.deprecation_metadata.get("replacement_adapter")
-                self.stdout.write(
-                    f"  {adapter.adapter_name} → {replacement}"
-                )
+                self.stdout.write(f"  {adapter.adapter_name} → {replacement}")
         else:
             self.stdout.write("  None")
 
-        self.stdout.write("\n" + "="*80 + "\n")
+        self.stdout.write("\n" + "=" * 80 + "\n")
