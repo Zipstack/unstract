@@ -3,7 +3,7 @@ from datetime import timedelta
 from typing import Any
 
 from django.conf import settings
-from django.db.models import Q
+from django.db.models import F, Q
 from django.db.utils import IntegrityError
 from django.utils import timezone
 from utils.cache_service import CacheService
@@ -248,7 +248,11 @@ class FileHistoryHelper:
         error: str | None = None,
         is_api: bool = False,
     ) -> FileHistory:
-        """Create a new file history record or return existing one.
+        """Create a new file history record or increment existing one's execution count.
+
+        This method implements execution count tracking:
+        - If file history exists: increments execution_count atomically
+        - If file history is new: creates with execution_count=1
 
         Args:
             file_hash (FileHash): The file hash for the file.
@@ -260,11 +264,38 @@ class FileHistoryHelper:
             is_api (bool): Whether this is for API workflow (affects file_path handling).
 
         Returns:
-            FileHistory: Either newly created or existing file history record.
+            FileHistory: Either newly created or updated file history record.
         """
         file_path = file_hash.file_path if not is_api else None
 
-        # Prepare data for creation
+        # Check if file history already exists
+        existing_history = FileHistoryHelper.get_file_history(
+            workflow=workflow,
+            cache_key=file_hash.file_hash,
+            provider_file_uuid=file_hash.provider_file_uuid,
+            file_path=file_path,
+        )
+
+        if existing_history:
+            # File history exists - increment execution count atomically
+            FileHistory.objects.filter(id=existing_history.id).update(
+                execution_count=F("execution_count") + 1,
+                status=status,
+                result=str(result),
+                metadata=str(metadata) if metadata else "",
+                error=str(error) if error else "",
+            )
+            # Refresh to get updated values
+            existing_history.refresh_from_db()
+            logger.info(
+                f"Updated FileHistory record (execution_count: {existing_history.execution_count}) - "
+                f"file_name='{file_hash.file_name}', file_path='{file_hash.file_path}', "
+                f"file_hash='{file_hash.file_hash[:16] if file_hash.file_hash else 'None'}', "
+                f"workflow={workflow}"
+            )
+            return existing_history
+
+        # File history doesn't exist - create new record with execution_count=1
         create_data = {
             "workflow": workflow,
             "cache_key": file_hash.file_hash,
@@ -274,13 +305,13 @@ class FileHistoryHelper:
             "metadata": str(metadata) if metadata else "",
             "error": str(error) if error else "",
             "file_path": file_path,
+            "execution_count": 1,
         }
 
         try:
-            # Try to create the file history record
             file_history = FileHistory.objects.create(**create_data)
             logger.info(
-                f"Created new FileHistory record - "
+                f"Created new FileHistory record (execution_count: 1) - "
                 f"file_name='{file_hash.file_name}', file_path='{file_hash.file_path}', "
                 f"file_hash='{file_hash.file_hash[:16] if file_hash.file_hash else 'None'}', "
                 f"workflow={workflow}"
@@ -288,16 +319,15 @@ class FileHistoryHelper:
             return file_history
 
         except IntegrityError as e:
-            # Race condition detected - another worker created the record
-            # Try to retrieve the existing record
+            # Race condition: another worker created the record between our check and create
             logger.info(
-                f"FileHistory constraint violation (expected in concurrent environment) - "
+                f"FileHistory constraint violation (race condition) - "
                 f"file_name='{file_hash.file_name}', file_path='{file_hash.file_path}', "
                 f"file_hash='{file_hash.file_hash[:16] if file_hash.file_hash else 'None'}', "
                 f"workflow={workflow}. Error: {str(e)}"
             )
 
-            # Use the existing get_file_history method to retrieve the record
+            # Retrieve the record created by another worker and increment it
             existing_record = FileHistoryHelper.get_file_history(
                 workflow=workflow,
                 cache_key=file_hash.file_hash,
@@ -306,18 +336,27 @@ class FileHistoryHelper:
             )
 
             if existing_record:
+                # Increment the existing record
+                FileHistory.objects.filter(id=existing_record.id).update(
+                    execution_count=F("execution_count") + 1,
+                    status=status,
+                    result=str(result),
+                    metadata=str(metadata) if metadata else "",
+                    error=str(error) if error else "",
+                )
+                existing_record.refresh_from_db()
                 logger.info(
-                    f"Retrieved existing FileHistory record after constraint violation - "
+                    f"Retrieved and updated existing FileHistory record (execution_count: {existing_record.execution_count}) - "
                     f"ID: {existing_record.id}, workflow={workflow}"
                 )
                 return existing_record
             else:
-                # This should rarely happen, but if we can't find the existing record,
-                # log the issue and re-raise the original exception
+                # This should rarely happen
                 logger.error(
                     f"Failed to retrieve existing FileHistory record after constraint violation - "
                     f"file_name='{file_hash.file_name}', workflow={workflow}"
                 )
+                raise
 
     @staticmethod
     def clear_history_for_workflow(

@@ -1,6 +1,7 @@
 import uuid
 
 from account_v2.models import User
+from django.conf import settings
 from django.db import models
 from utils.models.base_model import BaseModel
 from utils.models.organization_mixin import (
@@ -67,6 +68,11 @@ class Workflow(DefaultOrganizationMixin, BaseModel):
     destination_settings = models.JSONField(
         null=True, db_comment="Settings for the Destination module"
     )
+    max_file_execution_count = models.IntegerField(
+        null=True,
+        blank=True,
+        db_comment="Maximum times a file can be executed. null=use org/global default. Only enforced for ETL/TASK workflows.",
+    )
 
     created_by = models.ForeignKey(
         User,
@@ -97,6 +103,27 @@ class Workflow(DefaultOrganizationMixin, BaseModel):
 
     def __str__(self) -> str:
         return f"{self.id}, name: {self.workflow_name}"
+
+    def get_max_execution_count(self) -> int:
+        """Get maximum execution count from configuration hierarchy.
+
+        Priority: workflow setting > organization setting > global Django setting
+
+        Returns:
+            int: Maximum execution count limit.
+        """
+        # Check workflow-level setting first
+        if self.max_file_execution_count is not None:
+            return self.max_file_execution_count
+
+        # TODO: Check organization-level setting when platform_settings integration is added
+        # if self.organization:
+        #     org_setting = get_organization_max_execution_count(self.organization)
+        #     if org_setting is not None:
+        #         return org_setting
+
+        # Fall back to global Django setting (from backend.settings.execution_config)
+        return settings.MAX_FILE_EXECUTION_COUNT
 
     class Meta:
         verbose_name = "Workflow"

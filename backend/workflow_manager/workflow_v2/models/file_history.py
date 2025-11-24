@@ -20,6 +20,29 @@ class FileHistory(BaseModel):
         """
         return self.status is not None and self.status == ExecutionStatus.COMPLETED.value
 
+    def __str__(self) -> str:
+        """String representation of FileHistory."""
+        return f"FileHistory({self.id}, CacheKey: {self.cache_key}, Status: {self.status}, Count: {self.execution_count})"
+
+    def has_exceeded_limit(self, workflow: "Workflow") -> bool:
+        """Check if this file has exceeded its maximum execution count.
+
+        For API workflows, this always returns False (no limit enforcement).
+        For ETL/TASK workflows, checks against configured limit.
+
+        Args:
+            workflow: The workflow being executed.
+
+        Returns:
+            bool: True if file has exceeded limit and should be skipped.
+        """
+        # API workflows don't enforce execution limits (track count but don't skip)
+        if workflow.deployment_type == Workflow.WorkflowType.API:
+            return False
+
+        max_count = workflow.get_max_execution_count()
+        return self.execution_count >= max_count
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     cache_key = models.CharField(
         max_length=HASH_LENGTH,
@@ -38,6 +61,10 @@ class FileHistory(BaseModel):
     status = models.TextField(
         choices=ExecutionStatus.choices,
         db_comment="Latest status of execution",
+    )
+    execution_count = models.IntegerField(
+        default=1,
+        db_comment="Number of times this file has been processed",
     )
     error = models.TextField(
         blank=True,

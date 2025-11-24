@@ -389,56 +389,52 @@ class FileHistoryFilter(FileFilter):
         if file_history:
             status = file_history.get("status", "UNKNOWN")
             history_path = file_history.get("file_path")
+            execution_count = file_history.get("execution_count", 0)
+            max_execution_count = file_history.get("max_execution_count", 3)
             logger.info(
                 f"FileHistoryFilter - {file_hash.file_name}: History details: "
-                f"status={status}, path={history_path}, current_path={file_path}"
+                f"status={status}, path={history_path}, current_path={file_path}, "
+                f"execution_count={execution_count}/{max_execution_count}"
             )
+
+            # Check if file has exceeded maximum execution count
+            # This check applies to all workflow types, but enforcement depends on workflow type
+            # (backend handles workflow type logic, we just respect the max_count provided)
+            if execution_count >= max_execution_count:
+                logger.warning(
+                    f"FileHistoryFilter - {file_hash.file_name}: SKIP "
+                    f"(max execution count reached: {execution_count}/{max_execution_count})"
+                )
+                return True  # Skip file - max execution count exceeded
         else:
             logger.warning(
                 f"FileHistoryFilter - {file_hash.file_name}: Found=True but no file_history data!"
             )
 
-        # Check using proper status-based logic instead of just is_completed
+        # Check using proper status-based logic
         status = (
             file_history.get("status", "UNKNOWN") if file_history else "NO_HISTORY_DATA"
         )
 
-        # Import ExecutionStatus for proper status checking
+        # If status allows reprocessing, accept immediately
+        if status not in [
+            ExecutionStatus.EXECUTING.value,
+            ExecutionStatus.PENDING.value,
+            ExecutionStatus.COMPLETED.value,
+        ]:
+            logger.info(
+                f"FileHistoryFilter - {file_hash.file_name}: ACCEPT "
+                f"(status={status} allows reprocessing)"
+            )
+            return False
 
-        # Check if file should be skipped based on status
-        try:
-            if status in [
-                ExecutionStatus.EXECUTING.value,
-                ExecutionStatus.PENDING.value,
-                ExecutionStatus.COMPLETED.value,
-            ]:
-                logger.info(
-                    f"FileHistoryFilter - {file_hash.file_name}: SKIP "
-                    f"(status={status} is in skip-processing list)"
-                )
-            else:
-                logger.info(
-                    f"FileHistoryFilter - {file_hash.file_name}: ACCEPT "
-                    f"(status={status} allows reprocessing)"
-                )
-                return False
-        except Exception as e:
-            logger.warning(f"FileHistoryFilter - Error checking status {status}: {e}")
-            # Fallback to original is_completed logic if status checking fails
-            if not is_completed:
-                logger.info(
-                    f"FileHistoryFilter - {file_hash.file_name}: ACCEPT "
-                    f"(fallback: history exists but not completed, status={status})"
-                )
-                return False
-
-        # Now check path matching - only skip if paths match
+        # Status requires skip check - only skip if path also matches
         history_path = file_history.get("file_path") if file_history else None
 
         if history_path == file_path:
             logger.info(
                 f"FileHistoryFilter - {file_hash.file_name}: SKIP "
-                f"(status={status} requires skip and same path: {file_path})"
+                f"(status={status} and same path: {file_path})"
             )
             return True
         else:

@@ -20,7 +20,7 @@ from shared.models.file_processing import FileProcessingContext
 
 # Import shared dataclasses for type safety and consistency
 from unstract.core.data_models import (
-    # DestinationConfig, # remove once verified
+    ExecutionStatus,
     FileHashData,
     FileOperationConstants,
     WorkflowDefinitionResponseData,
@@ -1445,7 +1445,15 @@ class WorkerWorkflowExecutionService:
                         logger.warning(f"Failed to serialize result: {e}")
                         result_json = str(output_result)
 
-                # Create file history via API
+                # Determine status and error based on processing outcome
+                if processing_error or self._last_execution_error:
+                    file_status = ExecutionStatus.ERROR.value
+                    error_message = str(processing_error or self._last_execution_error)
+                else:
+                    file_status = ExecutionStatus.COMPLETED.value
+                    error_message = ""
+
+                # Create file history via API (for both success and error)
                 file_history_response = self.api_client.create_file_history(
                     file_path=file_hash.file_path if not destination.is_api else None,
                     file_name=file_hash.file_name,
@@ -1456,7 +1464,8 @@ class WorkerWorkflowExecutionService:
                     mime_type=getattr(file_hash, "mime_type", ""),
                     result=result_json,
                     metadata=metadata,
-                    status="COMPLETED",
+                    status=file_status,
+                    error=error_message,
                     provider_file_uuid=getattr(file_hash, "provider_file_uuid", None),
                     is_api=destination.is_api,
                 )
@@ -1499,26 +1508,25 @@ class WorkerWorkflowExecutionService:
     ) -> bool:
         """Determine if file history should be created.
 
-        File history creation rules:
-        - API workflows: Create WITH results only when use_file_history=True
-        - ETL/TASK/MANUAL_REVIEW workflows: Always create WITHOUT results (for tracking)
+        File history creation rules (updated to track execution counts):
+        - Always create file_history for execution count tracking (both success and error)
+        - API workflows: Only create if use_file_history=True
+        - API workflows with success: Only create if there's output result
+        - API workflows with error: Always create for execution count tracking
+        - ETL/TASK workflows: Always create (for both success and error)
         """
-        # Don't create if there is a tool execution error
-        if self._last_execution_error:
-            return False
-
-        # Don't create if there's a processing error
-        if processing_error:
-            return False
-
         # For API workflows, only create if use_file_history is enabled
         if destination.is_api and not destination.use_file_history:
             return False
 
-        # For API workflows, only create if there's a valid output result
-        if destination.is_api and not output_result:
-            return False
+        # For API workflows with success, only create if there's a valid output result
+        # For API workflows with errors, always create for execution count tracking
+        if destination.is_api:
+            has_error = processing_error or self._last_execution_error
+            if not has_error and not output_result:
+                return False
 
+        # Create file_history for both COMPLETED and ERROR statuses
         return True
 
     def _get_destination_config(

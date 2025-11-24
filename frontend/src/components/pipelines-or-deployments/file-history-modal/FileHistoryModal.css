@@ -1,0 +1,90 @@
+.file-history-modal .file-history-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.file-history-modal .filters-section {
+  padding: 10px 12px;
+  background-color: #fafafa;
+  border: 1px solid #e8e8e8;
+  border-radius: 6px;
+  margin-bottom: 10px;
+}
+
+.file-history-modal .action-buttons {
+  display: flex;
+  justify-content: flex-start;
+  padding: 8px 0;
+}
+
+.file-history-modal .ant-table-wrapper {
+  margin-top: 8px;
+}
+
+/* Status tag colors */
+.file-history-modal .ant-tag {
+  font-weight: 500;
+}
+
+/* Mobile responsiveness - Small screens (< 576px) */
+@media (max-width: 575px) {
+  .file-history-modal .filters-section {
+    padding: 8px 10px;
+  }
+
+  .file-history-modal .filter-buttons {
+    margin-top: 4px !important;
+    width: 100%;
+  }
+
+  .file-history-modal .filter-buttons .ant-btn {
+    flex: 1;
+  }
+
+  .file-history-modal .ant-space-compact {
+    display: flex;
+    width: 100%;
+  }
+
+  .file-history-modal .action-buttons {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .file-history-modal .action-buttons .ant-space {
+    width: 100%;
+  }
+
+  .file-history-modal .action-buttons .ant-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Adjust modal padding on mobile */
+  .file-history-modal .ant-modal-body {
+    padding: 12px;
+  }
+
+  .file-history-modal .ant-modal-header {
+    padding: 12px 16px;
+  }
+}
+
+/* Tablet responsiveness - Medium screens (576px - 767px) */
+@media (min-width: 576px) and (max-width: 767px) {
+  .file-history-modal .filters-section {
+    padding: 10px 12px;
+  }
+
+  .file-history-modal .filter-buttons {
+    margin-top: 16px !important;
+  }
+}
+
+/* Desktop - Large screens (>= 768px) */
+@media (min-width: 768px) {
+  .file-history-modal .filter-buttons {
+    justify-content: flex-start;
+  }
+}
