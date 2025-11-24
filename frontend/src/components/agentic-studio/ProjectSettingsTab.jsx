@@ -79,7 +79,13 @@ function ProjectSettingsTab({ project, onUpdate }) {
   );
 
   return (
-    <div style={{ height: "calc(100vh - 200px)", overflow: "auto" }}>
+    <div
+      style={{
+        maxHeight: "calc(100vh - 250px)",
+        overflow: "auto",
+        paddingBottom: "24px",
+      }}
+    >
       <Space direction="vertical" size="large" style={{ width: "100%" }}>
         {/* Header */}
         <Card>

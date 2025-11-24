@@ -111,12 +111,6 @@ function useMainAppRoutes() {
           <Route path="app/:id" element={<ChatAppPage />} />
         </Route>
       )}
-      <Route path=":orgName">
-        <Route
-          path="agentic-studio/projects/:id"
-          element={<AgenticStudioProjectDetail />}
-        />
-      </Route>
       <Route path=":orgName" element={<PageLayout />}>
         {UnstractUsagePage && (
           <Route path="dashboard" element={<UnstractUsagePage />} />
@@ -151,6 +145,10 @@ function useMainAppRoutes() {
           <Route path="" element={<AgencyPage />} />
         </Route>
         <Route path="agentic-studio" element={<AgenticStudioProjects />} />
+        <Route
+          path="agentic-studio/projects/:id"
+          element={<AgenticStudioProjectDetail />}
+        />
         <Route path="tools" element={<CustomTools />} />
         <Route path="" element={<CustomToolsHelper />}>
           <Route path="tools/:id" element={<ToolIdePage />} />

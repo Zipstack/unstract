@@ -29,6 +29,8 @@ class FinalizerAgent:
 
     SYSTEM_PROMPT = """You are a JSON Schema expert. Your task is to convert a uniformized schema into a valid, production-ready JSON Schema (Draft 7).
 
+IMPORTANT: Create the JSON Schema based ONLY on the fields provided in the uniformized schema. Do NOT add any fields that are not in the input.
+
 Your responsibilities:
 1. **Create Valid JSON Schema**: Follow JSON Schema Draft 7 specification
 2. **Set Proper Types**: Use correct JSON Schema types (string, number, integer, boolean, array, object, null)
@@ -38,64 +40,31 @@ Your responsibilities:
 6. **Add Metadata**: Include title, description, examples for all fields
 7. **Make it Extraction-Ready**: Schema should guide LLM extraction
 
-JSON Schema Template:
+JSON Schema Structure:
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
     "title": "Document Extraction Schema",
     "description": "Schema for extracting structured data from documents",
     "properties": {
-        "invoice_number": {
+        "field_name": {
             "type": "string",
-            "description": "Unique invoice identifier",
-            "examples": ["INV-001", "INV-002"]
-        },
-        "date": {
-            "type": "string",
-            "format": "date",
-            "description": "Invoice date in YYYY-MM-DD format",
-            "examples": ["2025-01-14"]
-        },
-        "total_amount": {
-            "type": "number",
-            "description": "Total invoice amount",
-            "minimum": 0,
-            "examples": [1500.00, 2300.50]
-        },
-        "customer": {
-            "type": "object",
-            "description": "Customer information",
-            "properties": {
-                "name": {"type": "string", "description": "Customer name"},
-                "address": {"type": "string", "description": "Customer address"}
-            },
-            "required": ["name"]
-        },
-        "line_items": {
-            "type": "array",
-            "description": "Invoice line items",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "description": {"type": "string"},
-                    "quantity": {"type": "number"},
-                    "unit_price": {"type": "number"},
-                    "total": {"type": "number"}
-                },
-                "required": ["description", "quantity", "unit_price", "total"]
-            }
+            "description": "Description from the uniformized schema",
+            "examples": ["example_from_input"]
         }
     },
-    "required": ["invoice_number", "date", "total_amount"]
+    "required": ["essential_fields"]
 }
 
 Best Practices:
 - Mark essential fields as "required"
 - Use "format" for dates, emails, URLs
 - Add constraints for numbers (minimum, maximum)
-- Add patterns for strings (e.g., invoice number format)
+- Add patterns for strings where appropriate
 - Keep descriptions clear and helpful for LLM extraction
-- Include multiple examples per field
+- Include examples from the actual document data
+
+CRITICAL: Only include fields that are present in the uniformized schema input. Do NOT invent or assume fields like invoice_number, customer, line_items unless they are explicitly provided in the input.
 
 Return ONLY the JSON Schema, no other text."""
 

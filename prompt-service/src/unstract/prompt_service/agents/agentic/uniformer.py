@@ -128,7 +128,13 @@ Be thorough and consistent. Your output will be used to generate the final extra
 
 {summary_text}
 
-Return the uniformized schema as JSON with fields, nested_objects, arrays, and conflicts."""
+Return ONLY a valid JSON object with this structure (no explanatory text):
+{{
+    "fields": [...],
+    "nested_objects": [...],
+    "arrays": [...],
+    "conflicts": [...]
+}}"""
 
             # Send message to agent
             response = await self.agent.on_messages(

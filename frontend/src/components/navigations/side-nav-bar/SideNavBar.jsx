@@ -111,7 +111,7 @@ const SideNavBar = ({ collapsed }) => {
           id: 1.3,
           title: "Agentic Studio",
           description: "AI-powered prompt generation and data extraction",
-          icon: BranchesOutlined,
+          image: CustomTools,
           path: `/${orgName}/agentic-studio`,
           active: window.location.pathname.startsWith(
             `/${orgName}/agentic-studio`
