@@ -502,6 +502,9 @@ def prompt_processor() -> Any:
                     doc_name=doc_name,
                     llm=llm,
                     enable_highlight=tool_settings.get(PSKeys.ENABLE_HIGHLIGHT, False),
+                    enable_word_confidence=tool_settings.get(
+                        PSKeys.ENABLE_WORD_CONFIDENCE, False
+                    ),
                     execution_source=execution_source,
                     metadata=metadata,
                     file_path=file_path,

@@ -227,9 +227,9 @@ class LLM:
             # Improvements in readability are definitely welcome.
             extract_json: bool = cast("bool", kwargs.get("extract_json", False))
             post_process_fn: (
-                Callable[[LLMResponseCompat, bool], dict[str, object]] | None
+                Callable[[LLMResponseCompat, bool, str], dict[str, object]] | None
             ) = cast(
-                "Callable[[LLMResponseCompat, bool], dict[str, object]] | None",
+                "Callable[[LLMResponseCompat, bool, str], dict[str, object]] | None",
                 kwargs.get("process_text", None),
             )
 
@@ -478,6 +478,9 @@ class LLM:
     ) -> tuple[str, dict[str, object]]:
         post_processed_output: dict[str, object] = {}
 
+        # Save original text before any modifications
+        original_text = response_text
+
         if extract_json:
             start = response_text.find(LLM.JSON_CONTENT_MARKER)
             if start != -1:
@@ -494,7 +497,9 @@ class LLM:
         if post_process_fn:
             try:
                 response_compat = LLMResponseCompat(response_text)
-                post_processed_output = post_process_fn(response_compat, extract_json)
+                post_processed_output = post_process_fn(
+                    response_compat, extract_json, original_text
+                )
                 # Needed as the text is modified in place.
                 response_text = response_compat.text
             except Exception as e:
