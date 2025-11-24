@@ -29,7 +29,6 @@ def extract() -> Any:
     file_path: str = payload.get(IKeys.FILE_PATH, "")
     output_file_path: str | None = payload.get(IKeys.OUTPUT_FILE_PATH, "")
     enable_highlight: bool = payload.get(IKeys.ENABLE_HIGHLIGHT, False)
-    enable_word_confidence: bool = payload.get(IKeys.ENABLE_WORD_CONFIDENCE, False)
     usage_kwargs: dict[Any, Any] = payload.get(IKeys.USAGE_KWARGS, {})
     run_id: str = payload.get(PSKeys.RUN_ID, "")
     execution_source = payload.get(IKeys.EXECUTION_SOURCE, None)
@@ -42,7 +41,6 @@ def extract() -> Any:
         x2text_instance_id=x2text_instance_id,
         output_file_path=output_file_path,
         enable_highlight=enable_highlight,
-        enable_word_confidence=enable_word_confidence,
         usage_kwargs=usage_kwargs,
         run_id=run_id,
         execution_source=execution_source,
