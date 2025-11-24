@@ -5,18 +5,18 @@ http:
       rule: Host(`frontend.unstract.localhost`)
     backend:
       service: backend
-      rule: Host(`frontend.unstract.localhost`) && PathPrefix(`/api/v1`, `/deployment`)
+      rule: Host(`frontend.unstract.localhost`) && (PathPrefix(`/api/v1`) || PathPrefix(`/deployment`))
 
   services:
     frontend:
       loadBalancer:
         servers:
-        # Point to service running on docker host.
-        - url: http://host.docker.internal:3000/
+          # Point to service running on docker host.
+          - url: http://host.docker.internal:3000/
         passHostHeader: true
     backend:
       loadBalancer:
         servers:
-        # Point to service running on docker host.
-        - url: http://host.docker.internal:8000/
+          # Point to service running on docker host.
+          - url: http://host.docker.internal:8000/
         passHostHeader: true

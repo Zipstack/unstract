@@ -80,9 +80,6 @@ class VariableReplacementService:
                 custom_data=custom_data,
             )
         finally:
-            app.logger.info(
-                f"[{tool_id}] Prompt after variable replacement: {prompt_text}"
-            )
             publish_log(
                 log_events_id,
                 {
@@ -92,7 +89,7 @@ class VariableReplacementService:
                 },
                 LogLevel.DEBUG,
                 RunLevel.RUN,
-                f"Prompt after variable replacement:{prompt_text} ",
+                f"Variables replaced in prompt with key :{prompt_name}",
             )
         return prompt_text
 
