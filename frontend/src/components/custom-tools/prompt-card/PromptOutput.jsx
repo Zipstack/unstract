@@ -19,6 +19,7 @@ import {
 } from "antd";
 import { motion, AnimatePresence } from "framer-motion";
 import CheckableTag from "antd/es/tag/CheckableTag";
+import { useState } from "react";
 
 import {
   displayPromptResult,
@@ -37,7 +38,6 @@ import { DisplayPromptResult } from "./DisplayPromptResult";
 import usePromptOutput from "../../../hooks/usePromptOutput";
 import { PromptRunTimer } from "./PromptRunTimer";
 import { PromptRunCost } from "./PromptRunCost";
-import { useState } from "react";
 
 let TableOutput;
 try {
@@ -119,6 +119,7 @@ function PromptOutput({
             handleSelectHighlight={handleSelectHighlight}
             highlightData={promptOutputData?.highlightData}
             confidenceData={promptOutputData?.confidenceData}
+            wordConfidenceData={promptOutputData?.wordConfidenceData}
             promptDetails={promptDetails}
             isTable={true}
             setOpenExpandModal={setOpenExpandModal}
@@ -210,6 +211,9 @@ function PromptOutput({
             handleSelectHighlight={handleSelectHighlight}
             confidenceData={
               promptOutputData?.confidenceData?.[promptDetails.prompt_key]
+            }
+            wordConfidenceData={
+              promptOutputData?.wordConfidenceData?.[promptDetails.prompt_key]
             }
           />
           <div className="prompt-profile-run">
@@ -467,6 +471,9 @@ function PromptOutput({
                           handleSelectHighlight={handleSelectHighlight}
                           highlightData={promptOutputData?.highlightData}
                           confidenceData={promptOutputData?.confidenceData}
+                          wordConfidenceData={
+                            promptOutputData?.wordConfidenceData
+                          }
                           promptDetails={promptDetails}
                         />
                         <div className="prompt-profile-run">

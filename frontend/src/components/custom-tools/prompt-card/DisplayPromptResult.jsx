@@ -22,6 +22,7 @@ function DisplayPromptResult({
   highlightData,
   promptDetails,
   confidenceData,
+  wordConfidenceData,
   isTable = false,
   setOpenExpandModal = () => {},
 }) {
@@ -79,13 +80,21 @@ function DisplayPromptResult({
     );
   }
 
-  const handleClick = (highlightData, confidenceData, key, keyPath) => {
+  const handleClick = (
+    highlightData,
+    confidenceData,
+    wordConfidenceData,
+    key,
+    keyPath
+  ) => {
     if (highlightData?.[key]) {
+      // Use word confidence if available, otherwise fallback to line confidence
+      const confidence = wordConfidenceData?.[key] || confidenceData?.[key];
       handleSelectHighlight(
         highlightData[key],
         promptDetails?.prompt_id,
         profileId,
-        confidenceData?.[key]
+        confidence
       );
       setSelectedKey(keyPath);
     }
@@ -98,6 +107,7 @@ function DisplayPromptResult({
     data,
     highlightData,
     confidenceData,
+    wordConfidenceData,
     indent = 0,
     path = "",
     isTable = false
@@ -146,6 +156,7 @@ function DisplayPromptResult({
                   item,
                   highlightData?.[index],
                   confidenceData?.[index],
+                  wordConfidenceData?.[index],
                   indent + 1,
                   `${path}[${index}]`,
                   isTable
@@ -183,6 +194,7 @@ function DisplayPromptResult({
                         handleClick(
                           highlightData,
                           confidenceData,
+                          wordConfidenceData,
                           key,
                           newPath
                         );
@@ -193,6 +205,7 @@ function DisplayPromptResult({
                       value,
                       highlightData?.[key],
                       confidenceData?.[key],
+                      wordConfidenceData?.[key],
                       indent + 1,
                       newPath,
                       isTable
@@ -214,7 +227,15 @@ function DisplayPromptResult({
   return (
     <Typography.Paragraph className="prompt-card-display-output font-size-12">
       {parsedOutput && typeof parsedOutput === "object" ? (
-        renderJson(parsedOutput, highlightData, confidenceData, 0, "", isTable)
+        renderJson(
+          parsedOutput,
+          highlightData,
+          confidenceData,
+          wordConfidenceData,
+          0,
+          "",
+          isTable
+        )
       ) : (
         <TextResult
           enableHighlight={details?.enable_highlight}
@@ -222,6 +243,7 @@ function DisplayPromptResult({
           promptId={promptDetails?.prompt_id}
           profileId={profileId}
           confidenceData={confidenceData}
+          wordConfidenceData={wordConfidenceData}
           selectedHighlight={selectedHighlight}
           parsedOutput={parsedOutput}
           onSelectHighlight={handleSelectHighlight}
@@ -237,15 +259,19 @@ const TextResult = ({
   promptId,
   profileId,
   confidenceData,
+  wordConfidenceData,
   selectedHighlight,
   parsedOutput,
   onSelectHighlight,
 }) => {
+  // Use word confidence if available, otherwise fallback to line confidence
+  const confidence = wordConfidenceData || confidenceData;
+
   return enableHighlight ? (
     <Typography.Text
       wrap
       onClick={() =>
-        onSelectHighlight(highlightData, promptId, profileId, confidenceData)
+        onSelectHighlight(highlightData, promptId, profileId, confidence)
       }
       className={`prompt-output-result json-value ${
         highlightData ? "clickable" : ""
@@ -264,6 +290,7 @@ TextResult.propTypes = {
   promptId: PropTypes.string,
   profileId: PropTypes.string,
   confidenceData: PropTypes.any,
+  wordConfidenceData: PropTypes.any,
   selectedHighlight: PropTypes.object,
   parsedOutput: PropTypes.any,
   onSelectHighlight: PropTypes.func.isRequired,
@@ -277,6 +304,7 @@ DisplayPromptResult.propTypes = {
   highlightData: PropTypes.object,
   promptDetails: PropTypes.object,
   confidenceData: PropTypes.object,
+  wordConfidenceData: PropTypes.object,
   isTable: PropTypes.bool,
   setOpenExpandModal: PropTypes.func,
 };
