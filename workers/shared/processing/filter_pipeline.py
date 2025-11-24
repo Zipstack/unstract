@@ -391,16 +391,30 @@ class FileHistoryFilter(FileFilter):
             history_path = file_history.get("file_path")
             execution_count = file_history.get("execution_count", 0)
             max_execution_count = file_history.get("max_execution_count", 3)
+            has_exceeded_limit = file_history.get("has_exceeded_limit")
             logger.info(
                 f"FileHistoryFilter - {file_hash.file_name}: History details: "
                 f"status={status}, path={history_path}, current_path={file_path}, "
-                f"execution_count={execution_count}/{max_execution_count}"
+                f"execution_count={execution_count}/{max_execution_count}, "
+                f"has_exceeded_limit={has_exceeded_limit}"
             )
 
-            # Check if file has exceeded maximum execution count
-            # This check applies to all workflow types, but enforcement depends on workflow type
-            # (backend handles workflow type logic, we just respect the max_count provided)
-            if execution_count >= max_execution_count:
+            # Check execution limit using backend's has_exceeded_limit flag
+            # Backend determines if limit applies based on workflow type (e.g., API workflows are exempt)
+            # Prefer backend's flag; only fall back to raw count if flag is not provided
+            if has_exceeded_limit is True:
+                logger.warning(
+                    f"FileHistoryFilter - {file_hash.file_name}: SKIP "
+                    f"(backend reports has_exceeded_limit=True)"
+                )
+                return True  # Skip file - backend determined limit exceeded
+            elif (
+                has_exceeded_limit is None
+                and max_execution_count is not None
+                and execution_count >= max_execution_count
+            ):
+                # Backward compatibility: if backend doesn't provide has_exceeded_limit flag,
+                # fall back to raw count comparison
                 logger.warning(
                     f"FileHistoryFilter - {file_hash.file_name}: SKIP "
                     f"(max execution count reached: {execution_count}/{max_execution_count})"

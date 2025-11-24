@@ -2,6 +2,7 @@ import uuid
 
 from account_v2.models import User
 from django.conf import settings
+from django.core.validators import MinValueValidator
 from django.db import models
 from utils.models.base_model import BaseModel
 from utils.models.organization_mixin import (
@@ -71,6 +72,7 @@ class Workflow(DefaultOrganizationMixin, BaseModel):
     max_file_execution_count = models.IntegerField(
         null=True,
         blank=True,
+        validators=[MinValueValidator(1)],
         db_comment="Maximum times a file can be executed. null=use org/global default. Only enforced for ETL/TASK workflows.",
     )
 
@@ -115,12 +117,6 @@ class Workflow(DefaultOrganizationMixin, BaseModel):
         # Check workflow-level setting first
         if self.max_file_execution_count is not None:
             return self.max_file_execution_count
-
-        # TODO: Check organization-level setting when platform_settings integration is added
-        # if self.organization:
-        #     org_setting = get_organization_max_execution_count(self.organization)
-        #     if org_setting is not None:
-        #         return org_setting
 
         # Fall back to global Django setting (from backend.settings.execution_config)
         return settings.MAX_FILE_EXECUTION_COUNT

@@ -4,6 +4,7 @@ from django.conf import settings
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from utils.pagination import CustomPagination
@@ -23,6 +24,27 @@ class FileHistoryViewSet(viewsets.ReadOnlyModelViewSet):
     lookup_field = "id"
     permission_classes = [IsAuthenticated, IsWorkflowOwnerOrShared]
     pagination_class = CustomPagination
+
+    def _validate_execution_count(self, value, param_name):
+        """Validate execution count parameter is a non-negative integer.
+
+        Args:
+            value: The value to validate
+            param_name: Name of the parameter for error messages
+
+        Returns:
+            int: The validated integer value
+
+        Raises:
+            ValidationError: If value is invalid
+        """
+        try:
+            int_value = int(value)
+            if int_value < 0:
+                raise ValidationError({param_name: "Must be a non-negative integer"})
+            return int_value
+        except (ValueError, TypeError):
+            raise ValidationError({param_name: "Must be a valid integer"})
 
     def get_queryset(self):
         """Get file histories for workflow with filters."""
@@ -44,11 +66,18 @@ class FileHistoryViewSet(viewsets.ReadOnlyModelViewSet):
 
         exec_min = self.request.query_params.get("execution_count_min")
         if exec_min:
-            queryset = queryset.filter(execution_count__gte=int(exec_min))
+            exec_min_val = self._validate_execution_count(exec_min, "execution_count_min")
+            queryset = queryset.filter(execution_count__gte=exec_min_val)
 
         exec_max = self.request.query_params.get("execution_count_max")
         if exec_max:
-            queryset = queryset.filter(execution_count__lte=int(exec_max))
+            exec_max_val = self._validate_execution_count(exec_max, "execution_count_max")
+            queryset = queryset.filter(execution_count__lte=exec_max_val)
+
+        file_path_param = self.request.query_params.get("file_path")
+        if file_path_param:
+            # Support partial matching (case-insensitive)
+            queryset = queryset.filter(file_path__icontains=file_path_param)
 
         return queryset.order_by("-created_at")
 
@@ -80,14 +109,19 @@ class FileHistoryViewSet(viewsets.ReadOnlyModelViewSet):
             queryset = queryset.filter(status__in=status_list)
 
         exec_min = request.data.get("execution_count_min")
-        if exec_min:
-            queryset = queryset.filter(execution_count__gte=exec_min)
+        if exec_min is not None:
+            exec_min_val = self._validate_execution_count(exec_min, "execution_count_min")
+            queryset = queryset.filter(execution_count__gte=exec_min_val)
 
         exec_max = request.data.get("execution_count_max")
-        if exec_max:
-            queryset = queryset.filter(execution_count__lte=exec_max)
+        if exec_max is not None:
+            exec_max_val = self._validate_execution_count(exec_max, "execution_count_max")
+            queryset = queryset.filter(execution_count__lte=exec_max_val)
 
-        # Delete directly (no dry run complexity)
+        file_path_param = request.data.get("file_path")
+        if file_path_param:
+            queryset = queryset.filter(file_path__icontains=file_path_param)
+
         deleted_count, _ = queryset.delete()
 
         # Clear Redis cache pattern for workflow

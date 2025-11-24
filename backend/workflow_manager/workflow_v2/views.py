@@ -1067,12 +1067,13 @@ def file_history_batch_lookup_internal(request):
                     f"cache_key={fh.cache_key}, provider_file_uuid={fh.provider_file_uuid}, file_path={fh.file_path}"
                 )
 
+            # Serialize once for all matches (optimization)
+            is_completed_result = fh.is_completed()
+            serializer = FileHistorySerializer(fh)
+            file_history_data = serializer.data
+
             # Update response data for all matches
             for result_identifier in matched_identifiers:
-                is_completed_result = fh.is_completed()
-                serializer = FileHistorySerializer(fh)
-                file_history_data = serializer.data
-
                 logger.info(
                     f"DEBUG: FileHistoryBatch - Found record for UUID: {fh.provider_file_uuid}, "
                     f"Path: {fh.file_path}, Status: {fh.status}, is_completed(): {is_completed_result}, "

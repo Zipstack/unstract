@@ -239,6 +239,61 @@ class FileHistoryHelper:
             return None
 
     @staticmethod
+    def _safe_str(value: Any) -> str:
+        """Convert value to string, return empty string if None.
+
+        Args:
+            value: Value to convert
+
+        Returns:
+            str: String representation or empty string
+        """
+        return str(value) if value else ""
+
+    @staticmethod
+    def _truncate_hash(file_hash: str | None) -> str:
+        """Truncate hash for logging purposes.
+
+        Args:
+            file_hash: Hash string to truncate
+
+        Returns:
+            str: Truncated hash (first 16 chars) or 'None' if missing
+        """
+        return file_hash[:16] if file_hash else "None"
+
+    @staticmethod
+    def _increment_file_history(
+        file_history: FileHistory,
+        status: ExecutionStatus,
+        result: Any,
+        metadata: str | None,
+        error: str | None,
+    ) -> FileHistory:
+        """Update existing file history with incremented execution count.
+
+        Args:
+            file_history: FileHistory instance to update
+            status: New execution status
+            result: Execution result
+            metadata: Execution metadata
+            error: Error message if any
+
+        Returns:
+            FileHistory: Updated file history instance
+        """
+        FileHistory.objects.filter(id=file_history.id).update(
+            execution_count=F("execution_count") + 1,
+            status=status,
+            result=str(result),
+            metadata=FileHistoryHelper._safe_str(metadata),
+            error=FileHistoryHelper._safe_str(error),
+        )
+        # Refresh from DB to get updated values
+        file_history.refresh_from_db()
+        return file_history
+
+    @staticmethod
     def create_file_history(
         file_hash: FileHash,
         workflow: Workflow,
@@ -278,22 +333,16 @@ class FileHistoryHelper:
 
         if existing_history:
             # File history exists - increment execution count atomically
-            FileHistory.objects.filter(id=existing_history.id).update(
-                execution_count=F("execution_count") + 1,
-                status=status,
-                result=str(result),
-                metadata=str(metadata) if metadata else "",
-                error=str(error) if error else "",
+            updated_history = FileHistoryHelper._increment_file_history(
+                existing_history, status, result, metadata, error
             )
-            # Refresh to get updated values
-            existing_history.refresh_from_db()
             logger.info(
-                f"Updated FileHistory record (execution_count: {existing_history.execution_count}) - "
+                f"Updated FileHistory record (execution_count: {updated_history.execution_count}) - "
                 f"file_name='{file_hash.file_name}', file_path='{file_hash.file_path}', "
-                f"file_hash='{file_hash.file_hash[:16] if file_hash.file_hash else 'None'}', "
+                f"file_hash='{FileHistoryHelper._truncate_hash(file_hash.file_hash)}', "
                 f"workflow={workflow}"
             )
-            return existing_history
+            return updated_history
 
         # File history doesn't exist - create new record with execution_count=1
         create_data = {
@@ -302,8 +351,8 @@ class FileHistoryHelper:
             "provider_file_uuid": file_hash.provider_file_uuid,
             "status": status,
             "result": str(result),
-            "metadata": str(metadata) if metadata else "",
-            "error": str(error) if error else "",
+            "metadata": FileHistoryHelper._safe_str(metadata),
+            "error": FileHistoryHelper._safe_str(error),
             "file_path": file_path,
             "execution_count": 1,
         }
@@ -313,7 +362,7 @@ class FileHistoryHelper:
             logger.info(
                 f"Created new FileHistory record (execution_count: 1) - "
                 f"file_name='{file_hash.file_name}', file_path='{file_hash.file_path}', "
-                f"file_hash='{file_hash.file_hash[:16] if file_hash.file_hash else 'None'}', "
+                f"file_hash='{FileHistoryHelper._truncate_hash(file_hash.file_hash)}', "
                 f"workflow={workflow}"
             )
             return file_history
@@ -323,8 +372,8 @@ class FileHistoryHelper:
             logger.info(
                 f"FileHistory constraint violation (race condition) - "
                 f"file_name='{file_hash.file_name}', file_path='{file_hash.file_path}', "
-                f"file_hash='{file_hash.file_hash[:16] if file_hash.file_hash else 'None'}', "
-                f"workflow={workflow}. Error: {str(e)}"
+                f"file_hash='{FileHistoryHelper._truncate_hash(file_hash.file_hash)}', "
+                f"workflow={workflow}. Error: {e!s}"
             )
 
             # Retrieve the record created by another worker and increment it
@@ -337,26 +386,21 @@ class FileHistoryHelper:
 
             if existing_record:
                 # Increment the existing record
-                FileHistory.objects.filter(id=existing_record.id).update(
-                    execution_count=F("execution_count") + 1,
-                    status=status,
-                    result=str(result),
-                    metadata=str(metadata) if metadata else "",
-                    error=str(error) if error else "",
+                updated_record = FileHistoryHelper._increment_file_history(
+                    existing_record, status, result, metadata, error
                 )
-                existing_record.refresh_from_db()
                 logger.info(
-                    f"Retrieved and updated existing FileHistory record (execution_count: {existing_record.execution_count}) - "
-                    f"ID: {existing_record.id}, workflow={workflow}"
+                    f"Retrieved and updated existing FileHistory record (execution_count: {updated_record.execution_count}) - "
+                    f"ID: {updated_record.id}, workflow={workflow}"
                 )
-                return existing_record
-            else:
-                # This should rarely happen
-                logger.error(
-                    f"Failed to retrieve existing FileHistory record after constraint violation - "
-                    f"file_name='{file_hash.file_name}', workflow={workflow}"
-                )
-                raise
+                return updated_record
+
+            # This should rarely happen - existing record not found after IntegrityError
+            logger.exception(
+                f"Failed to retrieve existing FileHistory record after constraint violation - "
+                f"file_name='{file_hash.file_name}', workflow={workflow}"
+            )
+            raise
 
     @staticmethod
     def clear_history_for_workflow(

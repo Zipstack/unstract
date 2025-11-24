@@ -25,6 +25,7 @@ from shared.workflow.execution.tool_validation import validate_workflow_tool_ins
 from worker import app
 
 from unstract.core.data_models import ExecutionStatus, FileHashData, WorkerFileData
+from unstract.core.worker_models import ApiDeploymentResultStatus
 
 logger = WorkerLogger.get_logger(__name__)
 
@@ -523,15 +524,27 @@ def _run_workflow_api(
                                         )
                                         # Keep as string if all parsing fails
 
+                            # Map ExecutionStatus to ApiDeploymentResultStatus
+                            cached_status = cached_result.get("status")
+                            if cached_status == ExecutionStatus.COMPLETED.value:
+                                api_status = ApiDeploymentResultStatus.SUCCESS.value
+                            else:
+                                # Defensive: shouldn't happen (we only cache COMPLETED)
+                                api_status = ApiDeploymentResultStatus.FAILED.value
+                                logger.warning(
+                                    f"Unexpected status {cached_status} in cached result for {hash_data.file_name}"
+                                )
+
                             api_result = {
                                 "file": hash_data.file_name,
                                 "file_execution_id": hash_data.provider_file_uuid or "",
-                                "status": "Success",  # Cached results are always successful
+                                "status": api_status,
                                 "result": cached_result_data,
-                                "error": None,
+                                "error": cached_result.get("error"),
                                 "metadata": {
                                     "processing_time": 0.0,  # Cached files take no time
                                     "source": "file_history_cache",
+                                    "cached_status": cached_status,
                                 },
                             }
 
@@ -1152,19 +1165,34 @@ def _check_file_history_api(
                 else:
                     file_name = file_key
 
-                # Store cached result details
+                # Check status before caching - only cache COMPLETED results
                 if file_hash_str in file_history_details:
-                    cached_results[file_hash_str] = {
-                        "file_name": file_name,
-                        "file_key": file_key,
-                        "file_hash_data": file_hash_data,
-                        **file_history_details[file_hash_str],  # result, metadata, etc.
-                    }
+                    file_history = file_history_details[file_hash_str]
+                    status = file_history.get("status")
 
-                skipped_files.append(file_name)
-                logger.info(
-                    f"Using cached result for file: {file_name} (hash: {file_hash_str[:16]}...)"
-                )
+                    # Only cache COMPLETED results, execute fresh for ERROR/STOPPED/etc.
+                    if status == ExecutionStatus.COMPLETED.value:
+                        cached_results[file_hash_str] = {
+                            "file_name": file_name,
+                            "file_key": file_key,
+                            "file_hash_data": file_hash_data,
+                            **file_history,
+                        }
+                        skipped_files.append(file_name)
+                        logger.info(
+                            f"Using cached COMPLETED result for file: {file_name} "
+                            f"(hash: {file_hash_str[:16]}...)"
+                        )
+                    else:
+                        # Non-COMPLETED status (ERROR, STOPPED, etc.) - execute fresh
+                        files_to_process[file_key] = file_hash_data
+                        logger.info(
+                            f"Skipping cached result with status={status} for file: {file_name}, "
+                            f"will execute fresh (hash: {file_hash_str[:16]}...)"
+                        )
+                else:
+                    # Hash in processed_hashes but no file_history_details (shouldn't happen)
+                    files_to_process[file_key] = file_hash_data
             else:
                 files_to_process[file_key] = file_hash_data
 

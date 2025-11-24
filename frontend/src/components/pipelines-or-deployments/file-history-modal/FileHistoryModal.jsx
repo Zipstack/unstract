@@ -4,6 +4,7 @@ import {
   Button,
   Select,
   InputNumber,
+  Input,
   Space,
   Typography,
   Popconfirm,
@@ -41,6 +42,12 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
   const [statusFilter, setStatusFilter] = useState([]);
   const [executionCountMin, setExecutionCountMin] = useState(null);
   const [executionCountMax, setExecutionCountMax] = useState(null);
+  const [filePathFilter, setFilePathFilter] = useState("");
+
+  // Bulk delete confirmation states
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [bulkDeleteCount, setBulkDeleteCount] = useState(0);
+  const [fetchingCount, setFetchingCount] = useState(false);
 
   // Pagination states
   const [pagination, setPagination] = useState({
@@ -76,7 +83,12 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
       workflowId,
       page,
       pageSize,
-      filters: { statusFilter, executionCountMin, executionCountMax },
+      filters: {
+        statusFilter,
+        executionCountMin,
+        executionCountMax,
+        filePathFilter,
+      },
     });
 
     setLoading(true);
@@ -94,6 +106,9 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
       }
       if (executionCountMax !== null && executionCountMax !== undefined) {
         params.execution_count_max = executionCountMax;
+      }
+      if (filePathFilter) {
+        params.file_path = filePathFilter;
       }
 
       const response = await workflowApiService.getFileHistories(
@@ -155,6 +170,7 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
     setStatusFilter([]);
     setExecutionCountMin(null);
     setExecutionCountMax(null);
+    setFilePathFilter("");
     // Reset will trigger effect to fetch unfiltered data
     setTimeout(() => {
       fetchFileHistories(1, pagination.pageSize);
@@ -210,8 +226,46 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
     }
   };
 
-  // Bulk clear with filters
-  const handleBulkClear = async () => {
+  // Prepare bulk clear - fetch count for confirmation
+  const handlePrepareBulkClear = async () => {
+    setFetchingCount(true);
+    try {
+      const params = {
+        page: 1,
+        page_size: 1, // We only need count, not actual data
+      };
+
+      if (statusFilter?.length > 0) {
+        params.status = statusFilter.join(",");
+      }
+      if (executionCountMin !== null && executionCountMin !== undefined) {
+        params.execution_count_min = executionCountMin;
+      }
+      if (executionCountMax !== null && executionCountMax !== undefined) {
+        params.execution_count_max = executionCountMax;
+      }
+      if (filePathFilter) {
+        params.file_path = filePathFilter;
+      }
+
+      const response = await workflowApiService.getFileHistories(
+        workflowId,
+        params
+      );
+
+      const count = response?.data?.count || 0;
+      setBulkDeleteCount(count);
+      setShowBulkDeleteConfirm(true);
+    } catch (err) {
+      setAlertDetails(handleException(err));
+    } finally {
+      setFetchingCount(false);
+    }
+  };
+
+  // Perform bulk clear after user confirms
+  const performBulkClear = async () => {
+    setShowBulkDeleteConfirm(false);
     setLoading(true);
     try {
       const filters = {};
@@ -224,6 +278,9 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
       }
       if (executionCountMax !== null && executionCountMax !== undefined) {
         filters.execution_count_max = executionCountMax;
+      }
+      if (filePathFilter) {
+        filters.file_path = filePathFilter;
       }
 
       const response = await workflowApiService.bulkClearFileHistories(
@@ -394,19 +451,37 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
       <div className="file-history-content">
         {/* Filters Section */}
         <div className="filters-section">
-          <Row gutter={[12, 12]} align="middle">
-            <Col xs={24} sm={12} md={8}>
+          <Row gutter={[12, 12]} align="bottom">
+            <Col xs={24} sm={12} md={10}>
               <Space
                 direction="vertical"
                 size="small"
                 style={{ width: "100%" }}
               >
-                <Text strong style={{ fontSize: "14px" }}>
+                <Text strong style={{ fontSize: "13px" }}>
+                  File Path:
+                </Text>
+                <Input
+                  placeholder="Search by file path..."
+                  value={filePathFilter}
+                  onChange={(e) => setFilePathFilter(e.target.value)}
+                  allowClear
+                  onPressEnter={handleApplyFilters}
+                />
+              </Space>
+            </Col>
+            <Col xs={12} sm={8} md={4}>
+              <Space
+                direction="vertical"
+                size="small"
+                style={{ width: "100%" }}
+              >
+                <Text strong style={{ fontSize: "13px" }}>
                   Status:
                 </Text>
                 <Select
                   mode="multiple"
-                  placeholder="Filter by status"
+                  placeholder="Select status"
                   value={statusFilter}
                   onChange={setStatusFilter}
                   options={statusOptions}
@@ -415,17 +490,17 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
                 />
               </Space>
             </Col>
-            <Col xs={12} sm={12} md={6}>
+            <Col xs={6} sm={4} md={3}>
               <Space
                 direction="vertical"
                 size="small"
                 style={{ width: "100%" }}
               >
-                <Text strong style={{ fontSize: "14px" }}>
-                  Min Execution Count:
+                <Text strong style={{ fontSize: "13px" }}>
+                  Min Count:
                 </Text>
                 <InputNumber
-                  placeholder="Min"
+                  placeholder="0"
                   value={executionCountMin}
                   onChange={setExecutionCountMin}
                   min={0}
@@ -433,17 +508,17 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
                 />
               </Space>
             </Col>
-            <Col xs={12} sm={12} md={6}>
+            <Col xs={6} sm={4} md={3}>
               <Space
                 direction="vertical"
                 size="small"
                 style={{ width: "100%" }}
               >
-                <Text strong style={{ fontSize: "14px" }}>
-                  Max Execution Count:
+                <Text strong style={{ fontSize: "13px" }}>
+                  Max Count:
                 </Text>
                 <InputNumber
-                  placeholder="Max"
+                  placeholder="∞"
                   value={executionCountMax}
                   onChange={setExecutionCountMax}
                   min={executionCountMin || 0}
@@ -451,22 +526,24 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
                 />
               </Space>
             </Col>
-            <Col xs={24} sm={24} md={4}>
-              <Space.Compact
-                style={{ marginTop: 20 }}
-                className="filter-buttons"
-              >
+            <Col xs={24} sm={12} md={4}>
+              <Space size="small" style={{ width: "100%" }}>
                 <Button
                   type="primary"
                   icon={<FilterOutlined />}
                   onClick={handleApplyFilters}
+                  style={{ flex: 1 }}
                 >
                   Apply
                 </Button>
-                <Button icon={<ReloadOutlined />} onClick={handleResetFilters}>
+                <Button
+                  icon={<ReloadOutlined />}
+                  onClick={handleResetFilters}
+                  style={{ flex: 1 }}
+                >
                   Reset
                 </Button>
-              </Space.Compact>
+              </Space>
             </Col>
           </Row>
         </div>
@@ -492,13 +569,24 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
             </Popconfirm>
 
             <Popconfirm
-              title="Clear all file histories matching current filters?"
-              description="This will delete all records matching the active filters. This action cannot be undone."
-              onConfirm={handleBulkClear}
-              okText="Yes"
-              cancelText="No"
+              open={showBulkDeleteConfirm}
+              title={`Delete ${bulkDeleteCount} file ${
+                bulkDeleteCount === 1 ? "history" : "histories"
+              } matching current filters?`}
+              description="This action cannot be undone. Are you sure?"
+              onConfirm={performBulkClear}
+              onCancel={() => setShowBulkDeleteConfirm(false)}
+              okText="Yes, Delete"
+              cancelText="Cancel"
+              okButtonProps={{ danger: true }}
             >
-              <Button icon={<ClearOutlined />}>Clear with Filters</Button>
+              <Button
+                icon={<ClearOutlined />}
+                onClick={handlePrepareBulkClear}
+                loading={fetchingCount}
+              >
+                Clear with Filters
+              </Button>
             </Popconfirm>
 
             <Button
