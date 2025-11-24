@@ -114,6 +114,20 @@ class AdapterInstance(DefaultOrganizationMixin, BaseModel):
         db_comment="Is the Adpater Usable",
     )
 
+    # Indicates if the adapter is available in SDK (not deprecated/removed)
+    is_available = models.BooleanField(
+        default=True,
+        db_comment="Is the adapter available in SDK (not deprecated)",
+    )
+
+    # Stores metadata about deprecated adapters (reason, deprecation date, replacement info)
+    deprecation_metadata = models.JSONField(
+        null=True,
+        blank=True,
+        default=None,
+        db_comment="Metadata about adapter deprecation (reason, date, replacement)",
+    )
+
     # Introduced field to establish M2M relation between users and adapters.
     # This will introduce intermediary table which relates both the models.
     shared_users = models.ManyToManyField(User, related_name="shared_adapters_instance")

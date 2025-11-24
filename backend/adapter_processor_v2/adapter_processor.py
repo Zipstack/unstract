@@ -81,12 +81,30 @@ class AdapterProcessor:
 
     @staticmethod
     def get_adapter_data_with_key(adapter_id: str, key_value: str) -> Any:
-        """Generic Function to get adapter data with provided key."""
+        """Generic Function to get adapter data with provided key.
+
+        Args:
+            adapter_id: The SDK identifier for the adapter
+            key_value: The key to retrieve from adapter data
+
+        Returns:
+            The value associated with the key
+
+        Raises:
+            InValidAdapterId: If adapter is not found in SDK
+
+        Note:
+            For deprecated adapters (not in SDK), this will raise InValidAdapterId.
+            Callers should handle this gracefully by checking is_available field first.
+        """
         updated_adapters = AdapterProcessor.__fetch_adapters_by_key_value(
             "id", adapter_id
         )
         if len(updated_adapters) == 0:
-            logger.error(f"Invalid adapter ID {adapter_id} while invoking utility")
+            logger.warning(
+                f"Adapter ID {adapter_id} not found in SDK. "
+                "This may be a deprecated adapter that was removed from SDK."
+            )
             raise InValidAdapterId()
         return updated_adapters[0].get(key_value)
 
