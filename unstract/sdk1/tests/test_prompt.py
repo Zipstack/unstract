@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 from pytest import MonkeyPatch
 from requests.exceptions import ConnectionError, Timeout
+
 from unstract.sdk1.prompt import PromptTool
 
 
