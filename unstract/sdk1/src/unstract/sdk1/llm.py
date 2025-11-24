@@ -227,9 +227,9 @@ class LLM:
             # Improvements in readability are definitely welcome.
             extract_json: bool = cast("bool", kwargs.get("extract_json", False))
             post_process_fn: (
-                Callable[[LLMResponseCompat, bool], dict[str, object]] | None
+                Callable[[LLMResponseCompat, bool, str], dict[str, object]] | None
             ) = cast(
-                "Callable[[LLMResponseCompat, bool], dict[str, object]] | None",
+                "Callable[[LLMResponseCompat, bool, str], dict[str, object]] | None",
                 kwargs.get("process_text", None),
             )
 
