@@ -293,6 +293,9 @@ class PromptStudioRegistryHelper:
         tool_settings[JsonSchemaKey.PLATFORM_POSTAMBLE] = getattr(
             settings, JsonSchemaKey.PLATFORM_POSTAMBLE.upper(), ""
         )
+        tool_settings[JsonSchemaKey.WORD_CONFIDENCE_POSTAMBLE] = getattr(
+            settings, JsonSchemaKey.WORD_CONFIDENCE_POSTAMBLE.upper(), ""
+        )
 
         for prompt in prompts:
             if prompt.prompt_type == JsonSchemaKey.NOTES or not prompt.active:
