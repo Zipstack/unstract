@@ -63,6 +63,7 @@ class OutputManagerHelper:
             challenge_data: dict[str, Any] | None,
             highlight_data: dict[str, Any] | None,
             confidence_data: dict[str, Any] | None,
+            word_confidence_data: dict[str, Any] | None,
         ) -> PromptStudioOutputManager:
             """Handles creating or updating a single prompt output and returns
             the instance.
@@ -81,6 +82,7 @@ class OutputManagerHelper:
                         "challenge_data": challenge_data,
                         "highlight_data": highlight_data,
                         "confidence_data": confidence_data,
+                        "word_confidence_data": word_confidence_data,
                     },
                 )
 
@@ -103,6 +105,7 @@ class OutputManagerHelper:
                     "challenge_data": challenge_data,
                     "highlight_data": highlight_data,
                     "confidence_data": confidence_data,
+                    "word_confidence_data": word_confidence_data,
                 }
                 PromptStudioOutputManager.objects.filter(
                     document_manager=document_manager,
@@ -126,6 +129,7 @@ class OutputManagerHelper:
         challenge_data = metadata.get("challenge_data")
         highlight_data = metadata.get("highlight_data")
         confidence_data = metadata.get("confidence_data")
+        word_confidence_data = metadata.get("word_confidence_data")
 
         if not prompts:
             return serialized_data
@@ -147,6 +151,8 @@ class OutputManagerHelper:
                     highlight_data = highlight_data.get(prompt.prompt_key)
                 if confidence_data:
                     confidence_data = confidence_data.get(prompt.prompt_key)
+                if word_confidence_data:
+                    word_confidence_data = word_confidence_data.get(prompt.prompt_key)
                 if challenge_data:
                     challenge_data = challenge_data.get(prompt.prompt_key)
 
@@ -171,6 +177,7 @@ class OutputManagerHelper:
                 challenge_data=challenge_data,
                 highlight_data=highlight_data,
                 confidence_data=confidence_data,
+                word_confidence_data=word_confidence_data,
             )
 
             # Serialize the instance

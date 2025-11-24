@@ -872,8 +872,6 @@ class PromptStudioHelper:
             document_id=document_id,
             run_id=run_id,
             enable_highlight=tool.enable_highlight,
-            enable_word_confidence=tool.enable_word_confidence,
-            doc_id=doc_id,
         )
         logger.info(f"Extracted text from {file_path} for {doc_id}")
         if is_summary:
@@ -1236,8 +1234,6 @@ class PromptStudioHelper:
             document_id=document_id,
             run_id=run_id,
             enable_highlight=tool.enable_highlight,
-            enable_word_confidence=tool.enable_word_confidence,
-            doc_id=doc_id,
         )
         # Indexing is not needed as Single pass is always non chunked.
         vector_db = str(default_profile.vector_store.id)
@@ -1313,7 +1309,6 @@ class PromptStudioHelper:
     def dynamic_extractor(
         file_path: str,
         enable_highlight: bool,
-        enable_word_confidence: bool,
         run_id: str,
         org_id: str,
         profile_manager: ProfileManager,
@@ -1359,7 +1354,6 @@ class PromptStudioHelper:
             IKeys.X2TEXT_INSTANCE_ID: x2text,
             IKeys.FILE_PATH: file_path,
             IKeys.ENABLE_HIGHLIGHT: enable_highlight,
-            IKeys.ENABLE_WORD_CONFIDENCE: enable_word_confidence,
             IKeys.USAGE_KWARGS: usage_kwargs.copy(),
             IKeys.RUN_ID: run_id,
             Common.LOG_EVENTS_ID: StateStore.get(Common.LOG_EVENTS_ID),
