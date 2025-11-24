@@ -5,7 +5,6 @@ from typing import Any
 from urllib.parse import urlparse
 
 from flask import current_app as app
-
 from unstract.core.flask import PluginManager
 from unstract.core.flask.exceptions import APIError
 from unstract.prompt_service.constants import ExecutionSource, FileStorageKeys, RunLevel
