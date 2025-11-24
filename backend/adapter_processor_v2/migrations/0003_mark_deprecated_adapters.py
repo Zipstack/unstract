@@ -75,7 +75,8 @@ def mark_deprecated_adapters(apps, schema_editor):
                 )
 
         except Exception as e:
-            logger.error(f"Error processing adapter {adapter_key}: {e}")
+            logger.exception(f"Error processing adapter {adapter_key}: {e}")
+            raise
 
     logger.info(
         f"Deprecation migration completed. "
