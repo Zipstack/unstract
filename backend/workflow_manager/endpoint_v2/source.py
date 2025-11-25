@@ -124,11 +124,20 @@ class SourceConnector(BaseConnector):
     def validate(self) -> None:
         connection_type = self.endpoint.connection_type
         connector: ConnectorInstance = self.endpoint.connector_instance
+
         if connection_type is None:
+            error_msg = "Missing source connection type"
+            self.workflow_log.log_error(logger, error_msg)
             raise MissingSourceConnectionType()
+
         if connection_type not in WorkflowEndpoint.ConnectionType.values:
+            error_msg = f"Invalid source connection type: {connection_type}"
+            self.workflow_log.log_error(logger, error_msg)
             raise InvalidSourceConnectionType()
+
         if connection_type != WorkflowEndpoint.ConnectionType.API and connector is None:
+            error_msg = "Source connector not configured"
+            self.workflow_log.log_error(logger, error_msg)
             raise SourceConnectorNotConfigured()
 
     def valid_file_patterns(self, required_patterns: list[Any]) -> list[str]:
