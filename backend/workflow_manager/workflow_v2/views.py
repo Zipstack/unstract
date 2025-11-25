@@ -1067,25 +1067,31 @@ def file_history_batch_lookup_internal(request):
                     f"cache_key={fh.cache_key}, provider_file_uuid={fh.provider_file_uuid}, file_path={fh.file_path}"
                 )
 
+            # Serialize once for all matches (optimization)
+            is_completed_result = fh.is_completed()
+            serializer = FileHistorySerializer(fh)
+            file_history_data = serializer.data
+
             # Update response data for all matches
             for result_identifier in matched_identifiers:
-                is_completed_result = fh.is_completed()
                 logger.info(
                     f"DEBUG: FileHistoryBatch - Found record for UUID: {fh.provider_file_uuid}, "
                     f"Path: {fh.file_path}, Status: {fh.status}, is_completed(): {is_completed_result}, "
+                    f"has_exceeded_limit: {file_history_data.get('has_exceeded_limit')}, "
                     f"result_identifier: {result_identifier}"
                 )
 
-                serializer = FileHistorySerializer(fh)
                 response_data[result_identifier] = {
                     "found": True,
                     "is_completed": is_completed_result,
-                    "file_history": serializer.data,
+                    "file_history": file_history_data,
                 }
 
                 logger.info(
                     f"DEBUG: FileHistoryBatch - Response updated for {result_identifier}: "
-                    f"found=True, is_completed={is_completed_result}, status={fh.status}"
+                    f"found=True, is_completed={is_completed_result}, status={fh.status}, "
+                    f"max_execution_count={file_history_data.get('max_execution_count')}, "
+                    f"has_exceeded_limit={file_history_data.get('has_exceeded_limit')}"
                 )
 
         logger.info(

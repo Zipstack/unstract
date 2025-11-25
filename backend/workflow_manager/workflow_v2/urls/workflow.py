@@ -3,6 +3,7 @@ from rest_framework.urlpatterns import format_suffix_patterns
 
 from workflow_manager.workflow_v2.execution_log_view import WorkflowExecutionLogViewSet
 from workflow_manager.workflow_v2.execution_view import WorkflowExecutionViewSet
+from workflow_manager.workflow_v2.file_history_views import FileHistoryViewSet
 from workflow_manager.workflow_v2.views import WorkflowViewSet
 
 workflow_list = WorkflowViewSet.as_view(
@@ -24,6 +25,12 @@ workflow_clear_file_marker = WorkflowViewSet.as_view({"get": "clear_file_marker"
 workflow_schema = WorkflowViewSet.as_view({"get": "get_schema"})
 can_update = WorkflowViewSet.as_view({"get": "can_update"})
 list_shared_users = WorkflowViewSet.as_view({"get": "list_of_shared_users"})
+
+# File History views
+file_history_list = FileHistoryViewSet.as_view({"get": "list"})
+file_history_detail = FileHistoryViewSet.as_view({"get": "retrieve", "delete": "destroy"})
+file_history_clear = FileHistoryViewSet.as_view({"post": "clear"})
+
 urlpatterns = format_suffix_patterns(
     [
         path("", workflow_list, name="workflow-list"),
@@ -68,6 +75,22 @@ urlpatterns = format_suffix_patterns(
             "schema/",
             workflow_schema,
             name="workflow-schema",
+        ),
+        # File History nested routes
+        path(
+            "<uuid:workflow_id>/file-histories/",
+            file_history_list,
+            name="workflow-file-history-list",
+        ),
+        path(
+            "<uuid:workflow_id>/file-histories/<uuid:id>/",
+            file_history_detail,
+            name="workflow-file-history-detail",
+        ),
+        path(
+            "<uuid:workflow_id>/file-histories/clear/",
+            file_history_clear,
+            name="workflow-file-history-clear",
         ),
     ]
 )
