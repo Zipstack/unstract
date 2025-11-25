@@ -213,47 +213,6 @@ const PromptCard = memo(
       return flattened;
     };
 
-    const extractConfidenceFromHighlightData = (data) => {
-      if (!data) return null;
-
-      const confidenceValues = [];
-
-      const extractFromArray = (arr) => {
-        if (Array.isArray(arr)) {
-          for (const item of arr) {
-            if (Array.isArray(item)) {
-              // Check if this is a coordinate array with 5 elements
-              if (item.length >= 5 && typeof item[4] === "number") {
-                confidenceValues.push(item[4]);
-              } else {
-                // Recursively check nested arrays
-                extractFromArray(item);
-              }
-            } else if (typeof item === "object" && item !== null) {
-              // Recursively check objects
-              for (const val of Object.values(item)) {
-                extractFromArray(val);
-              }
-            }
-          }
-        } else if (typeof arr === "object" && arr !== null) {
-          for (const val of Object.values(arr)) {
-            extractFromArray(val);
-          }
-        }
-      };
-
-      extractFromArray(data);
-
-      // Calculate average confidence if we found any values
-      if (confidenceValues.length > 0) {
-        const sum = confidenceValues.reduce((acc, val) => acc + val, 0);
-        return sum / confidenceValues.length;
-      }
-
-      return null;
-    };
-
     const handleSelectHighlight = (
       highlightData,
       highlightedPrompt,
@@ -268,17 +227,12 @@ const PromptCard = memo(
             ? flattenHighlightData(highlightData)
             : highlightData;
 
-        // Try to extract confidence from 5th element first, fall back to API confidenceData
-        const extractedConfidence =
-          extractConfidenceFromHighlightData(highlightData);
-        const finalConfidence = extractedConfidence ?? confidenceData;
-
         updateCustomTool({
           selectedHighlight: {
             highlight: processedHighlight,
             highlightedPrompt: highlightedPrompt,
             highlightedProfile: highlightedProfile,
-            confidence: finalConfidence,
+            confidence: confidenceData,
           },
         });
       }
