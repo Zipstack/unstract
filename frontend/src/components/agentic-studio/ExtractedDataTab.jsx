@@ -87,6 +87,7 @@ function ExtractedDataTab({
   const [loading, setLoading] = useState(false);
   const [viewMode, setViewMode] = useState("data"); // 'data' or 'json'
   const [hideEmpty, setHideEmpty] = useState(false);
+  const [showMismatchOnly, setShowMismatchOnly] = useState(false);
   const [comparisonData, setComparisonData] = useState([]);
 
   useEffect(() => {
@@ -101,7 +102,7 @@ function ExtractedDataTab({
       performComparison();
     }
     // eslint-disable-next-line
-  }, [extractedData, verifiedData, hideEmpty]);
+  }, [extractedData, verifiedData, hideEmpty, showMismatchOnly]);
 
   const loadData = async () => {
     try {
@@ -182,6 +183,11 @@ function ExtractedDataTab({
       }
 
       const status = compareValues(extractedValue, verifiedValue);
+
+      // Skip if showMismatchOnly is true and status is match
+      if (showMismatchOnly && status === "match") {
+        return;
+      }
 
       comparisonResults.push({
         fieldPath,
@@ -451,14 +457,20 @@ function ExtractedDataTab({
             />
           )}
 
-          {extractedData && verifiedData && comparison && (
-            <Alert
-              type="success"
-              showIcon
-              message={`Accuracy: ${Math.round(comparison.accuracy)}%`}
-              description={`${comparison.matches} out of ${comparison.total_fields} fields match the verified data.`}
-            />
-          )}
+          {extractedData &&
+            verifiedData &&
+            comparison &&
+            comparison.accuracy !== null &&
+            comparison.accuracy !== undefined && (
+              <Alert
+                type="success"
+                showIcon
+                message={`Accuracy: ${Math.round(comparison.accuracy)}%`}
+                description={`${comparison.matches || 0} out of ${
+                  comparison.total_fields || 0
+                } fields match the verified data.`}
+              />
+            )}
 
           {/* View Controls */}
           {extractedData && (
@@ -487,6 +499,13 @@ function ExtractedDataTab({
                     Hide Empty:
                   </Text>
                   <Switch checked={hideEmpty} onChange={setHideEmpty} />
+                  <Text strong style={{ marginLeft: "16px" }}>
+                    Show Mismatch Only:
+                  </Text>
+                  <Switch
+                    checked={showMismatchOnly}
+                    onChange={setShowMismatchOnly}
+                  />
                 </>
               )}
             </Space>

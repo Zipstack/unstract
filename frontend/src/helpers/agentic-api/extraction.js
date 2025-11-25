@@ -9,7 +9,7 @@ export const extractionApi = {
    */
   runProvisional: async (projectId, documentId) => {
     const response = await agenticApiClient.post(
-      `/projects/${projectId}/extract/provisional/${documentId}`
+      `/projects/${projectId}/extract/provisional/${documentId}/`
     );
     return response.data;
   },
@@ -23,7 +23,7 @@ export const extractionApi = {
    */
   saveVerifiedData: async (projectId, documentId, data) => {
     const response = await agenticApiClient.put(
-      `/projects/${projectId}/extract/verified/${documentId}`,
+      `/projects/${projectId}/extract/verified/${documentId}/`,
       { data }
     );
     return response.data;
@@ -36,7 +36,7 @@ export const extractionApi = {
    */
   getAllVerifiedData: async (projectId) => {
     const response = await agenticApiClient.get(
-      `/projects/${projectId}/extract/verified`
+      `/projects/${projectId}/extract/verified/`
     );
     return response.data;
   },
@@ -49,7 +49,7 @@ export const extractionApi = {
    */
   getVerifiedData: async (projectId, documentId) => {
     const response = await agenticApiClient.get(
-      `/projects/${projectId}/extract/verified/${documentId}`
+      `/projects/${projectId}/extract/verified/${documentId}/`
     );
     return response.data;
   },
@@ -62,7 +62,7 @@ export const extractionApi = {
    */
   generateVerifiedData: async (projectId, documentId) => {
     const response = await agenticApiClient.post(
-      `/projects/${projectId}/extract/verified/${documentId}/generate`
+      `/projects/${projectId}/extract/verified/${documentId}/generate/`
     );
     return response.data;
   },
@@ -76,7 +76,7 @@ export const extractionApi = {
   getExtractedData: async (projectId, documentId) => {
     try {
       const response = await agenticApiClient.get(
-        `/projects/${projectId}/processing/documents/${documentId}/extracted-data`
+        `/projects/${projectId}/processing/documents/${documentId}/extracted-data/`
       );
       return response.data;
     } catch (error) {
@@ -107,7 +107,7 @@ export const extractionApi = {
    */
   getReportSummary: async (projectId) => {
     const response = await agenticApiClient.get(
-      `/projects/${projectId}/report/summary`
+      `/projects/${projectId}/report/summary/`
     );
     return response.data;
   },
@@ -120,7 +120,7 @@ export const extractionApi = {
    */
   getFieldReport: async (projectId, fieldPath) => {
     const response = await agenticApiClient.get(
-      `/projects/${projectId}/report/field/${encodeURIComponent(fieldPath)}`
+      `/projects/${projectId}/report/field/${encodeURIComponent(fieldPath)}/`
     );
     return response.data;
   },
@@ -132,7 +132,7 @@ export const extractionApi = {
    */
   getProjectAccuracy: async (projectId) => {
     const response = await agenticApiClient.get(
-      `/projects/${projectId}/accuracy/overview`
+      `/projects/${projectId}/accuracy/overview/`
     );
     return response.data;
   },
@@ -145,7 +145,7 @@ export const extractionApi = {
    */
   getDocumentComparison: async (projectId, documentId) => {
     const response = await agenticApiClient.get(
-      `/projects/${projectId}/documents/${documentId}/comparison`
+      `/projects/${projectId}/documents/${documentId}/comparison/`
     );
     return response.data;
   },
@@ -157,7 +157,7 @@ export const extractionApi = {
    */
   getPromptHistory: async (projectId) => {
     const response = await agenticApiClient.get(
-      `/projects/${projectId}/prompts`
+      `/projects/${projectId}/prompts/`
     );
     return response.data;
   },
@@ -170,7 +170,7 @@ export const extractionApi = {
    */
   tunePrompt: async (projectId, fieldPath) => {
     const response = await agenticApiClient.post(
-      `/projects/${projectId}/prompts/tune`,
+      `/projects/${projectId}/prompts/tune/`,
       {
         field_path: fieldPath,
       }

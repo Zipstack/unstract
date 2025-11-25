@@ -57,31 +57,53 @@ const usePostHogEvents = () => {
   };
 
   const setPostHogIdentity = () => {
-    const distinctId = `${sessionDetails?.orgId}:${sessionDetails?.orgName}`;
-    const orgName = sessionDetails?.orgName;
-    const isOpenSource = orgName === "mock_org";
+    try {
+      const distinctId = `${sessionDetails?.orgId}:${sessionDetails?.orgName}`;
+      const orgName = sessionDetails?.orgName;
+      const isOpenSource = orgName === "mock_org";
 
-    const name = `${sessionDetails?.name} ${sessionDetails?.family_name || ""}`;
-    const optionalParams = {
-      name,
-      org: orgName,
-      software: isOpenSource ? "OSS" : "SAAS",
-    };
+      const name = `${sessionDetails?.name} ${
+        sessionDetails?.family_name || ""
+      }`;
+      const optionalParams = {
+        name,
+        org: orgName,
+        software: isOpenSource ? "OSS" : "SAAS",
+      };
 
-    const email = sessionDetails?.email;
-    const userId = sessionDetails?.id;
+      const email = sessionDetails?.email;
+      const userId = sessionDetails?.id;
 
-    if (email) {
-      optionalParams["email"] = email;
-    } else {
-      optionalParams["userId"] = userId;
+      if (email) {
+        optionalParams["email"] = email;
+      } else {
+        optionalParams["userId"] = userId;
+      }
+
+      // Use setTimeout to make this non-blocking
+      setTimeout(() => {
+        if (posthog) {
+          posthog.identify(distinctId, optionalParams);
+        }
+      }, 0);
+    } catch (error) {
+      // Silently fail - don't block app functionality
+      console.debug("PostHog identify failed:", error);
     }
-
-    posthog.identify(distinctId, optionalParams);
   };
 
   const setPostHogCustomEvent = (distinctId, optionalParams) => {
-    posthog.capture(distinctId, optionalParams);
+    try {
+      // Use setTimeout to make this non-blocking
+      setTimeout(() => {
+        if (posthog) {
+          posthog.capture(distinctId, optionalParams);
+        }
+      }, 0);
+    } catch (error) {
+      // Silently fail - don't block app functionality
+      console.debug("PostHog event capture failed:", error);
+    }
   };
 
   return {

@@ -835,6 +835,7 @@ class AgenticProjectViewSet(viewsets.ModelViewSet):
 
         return Response({
             "total_documents": total_documents,
+            "total_docs": total_documents,  # Frontend expects this field name
             "documents_processed": documents_processed,
             "documents_with_verified_data": verified_count,
             "overall_accuracy": round(overall_accuracy, 2),
@@ -1198,7 +1199,7 @@ class AgenticProjectViewSet(viewsets.ModelViewSet):
             accuracy_total_fields = 0
 
             verified_data = doc.verified_data.first()
-            extracted_data = doc.extracted_data.first()
+            extracted_data = doc.extracted_data.order_by('-created_at').first()
 
             if verified_data and extracted_data and verified_data.data and extracted_data.data:
                 # Compare fields between verified and extracted data
@@ -1438,6 +1439,41 @@ class AgenticProjectViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+    @action(detail=False, methods=["put", "post"], url_path="extract/verified/(?P<document_id>[^/.]+)")
+    def save_verified_data(self, request: Request, project_pk=None, document_id=None) -> Response:
+        """Save or update verified data for a document."""
+        from prompt_studio.agentic_studio_v2.models import AgenticVerifiedData, AgenticDocument
+
+        try:
+            document = AgenticDocument.objects.get(id=document_id)
+            data = request.data.get("data")
+
+            if data is None:
+                return Response(
+                    {"error": "Data field is required"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Create or update verified data
+            verified, created = AgenticVerifiedData.objects.update_or_create(
+                document=document,
+                defaults={
+                    "data": data,
+                    "organization": document.organization,
+                }
+            )
+
+            return Response({
+                "message": "Verified data saved successfully",
+                "created": created,
+                "data": verified.data,
+            })
+        except AgenticDocument.DoesNotExist:
+            return Response(
+                {"error": "Document not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
     @action(detail=False, methods=["post"], url_path="extract/verified/(?P<document_id>[^/.]+)/promote")
     def promote_to_verified(self, request: Request, project_pk=None, document_id=None) -> Response:
         """Promote extracted data to verified data."""
@@ -1484,7 +1520,13 @@ class AgenticProjectViewSet(viewsets.ModelViewSet):
             comparisons = AgenticComparisonResult.objects.filter(document=document)
 
             results = []
+            total_fields = comparisons.count()
+            matches = 0
+
             for comp in comparisons:
+                if comp.match:
+                    matches += 1
+
                 results.append({
                     "field_path": comp.field_path,
                     "extracted_value": comp.normalized_extracted,
@@ -1493,7 +1535,15 @@ class AgenticProjectViewSet(viewsets.ModelViewSet):
                     "error_type": comp.error_type if hasattr(comp, 'error_type') else None,
                 })
 
-            return Response({"comparisons": results})
+            # Calculate accuracy
+            accuracy = (matches / total_fields * 100) if total_fields > 0 else 0
+
+            return Response({
+                "field_comparisons": results,
+                "total_fields": total_fields,
+                "matches": matches,
+                "accuracy": accuracy,
+            })
         except AgenticDocument.DoesNotExist:
             return Response(
                 {"error": "Document not found"},
@@ -2553,6 +2603,246 @@ class AgenticPromptVersionViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(prompt)
         return Response(serializer.data)
 
+    def tune_prompt(self, request: Request, project_pk=None) -> Response:
+        """Tune the prompt for the entire project.
+
+        This endpoint is called by the frontend as:
+        POST /projects/{project_id}/prompts/tune/
+
+        Triggers automated prompt tuning based on mismatches.
+        """
+        import requests
+        from django.conf import settings
+
+        organization = UserContext.get_organization()
+        if not organization:
+            return Response(
+                {"error": "Organization not found"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # Validate project exists and user has access
+        try:
+            project = AgenticProject.objects.get(
+                id=project_pk, organization=organization
+            )
+        except AgenticProject.DoesNotExist:
+            return Response(
+                {"error": "Project not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Get Agent LLM adapter (used for prompt tuning agents)
+        adapter_id = None
+        if project.agent_llm_id:
+            adapter_id = str(project.agent_llm_id)
+
+        if not adapter_id:
+            return Response(
+                {
+                    "error": (
+                        "No Agent LLM configured for this project. "
+                        "Please configure Agent LLM in Settings."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Get active prompt version
+        active_prompt = project.prompt_versions.filter(is_active=True).first()
+        if not active_prompt:
+            return Response(
+                {"error": "No active prompt version found for this project"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Get schema
+        schema = AgenticSchema.objects.filter(project=project).first()
+        if not schema:
+            return Response(
+                {
+                    "error": (
+                        "No schema found for this project. "
+                        "Please generate schema first."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            # Get comparison results to find failures
+            from .models import AgenticComparisonResult
+            comparison_results = AgenticComparisonResult.objects.filter(
+                project=project,
+                match=False,
+            )
+
+            # Group failures by field_path
+            failures_by_field = {}
+            for result in comparison_results[:50]:  # Limit to 50 examples
+                field_path = result.field_path
+                if field_path not in failures_by_field:
+                    failures_by_field[field_path] = []
+
+                failures_by_field[field_path].append({
+                    "document_id": str(result.document.id) if result.document else None,
+                    "extracted_value": result.normalized_extracted,
+                    "expected_value": result.normalized_verified,
+                })
+
+            if not failures_by_field:
+                return Response(
+                    {
+                        "error": (
+                            "No mismatches found. "
+                            "Run extraction and comparison first."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Call prompt-service to tune the entire prompt
+            prompt_host = getattr(
+                settings, 'PROMPT_HOST', 'http://unstract-prompt-service'
+            )
+            prompt_port = getattr(settings, 'PROMPT_PORT', 3003)
+            prompt_service_url = f"{prompt_host}:{prompt_port}"
+
+            payload = {
+                "project_id": str(project_pk),
+                "current_prompt": active_prompt.prompt_text,
+                "schema": schema.json_schema,
+                "failures_by_field": failures_by_field,
+                "organization_id": str(organization.organization_id),
+                "adapter_instance_id": adapter_id,
+            }
+
+            response = requests.post(
+                f"{prompt_service_url}/agentic/tune-prompt",
+                json=payload,
+                timeout=600,  # Tuning can take longer
+            )
+
+            if response.status_code != 200:
+                return Response(
+                    {"error": f"Prompt tuning failed: {response.text}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+            tuning_result = response.json()
+
+            # Create new prompt version if tuning was successful
+            if tuning_result.get("success"):
+                new_version = AgenticPromptVersion.objects.create(
+                    project=project,
+                    prompt_text=tuning_result.get("tuned_prompt"),
+                    version=active_prompt.version + 1,
+                    is_active=False,  # Don't auto-activate, let user review
+                    organization=organization,
+                )
+
+                return Response(
+                    {
+                        "message": "Prompt tuning completed successfully",
+                        "project_id": str(project_pk),
+                        "new_prompt_version_id": str(new_version.id),
+                        "explanation": tuning_result.get("explanation"),
+                        "iterations": tuning_result.get("iterations", 0),
+                    },
+                    status=status.HTTP_200_OK,
+                )
+            else:
+                return Response(
+                    {
+                        "message": "Prompt tuning failed",
+                        "project_id": str(project_pk),
+                        "explanation": tuning_result.get("explanation"),
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+        except requests.exceptions.RequestException as e:
+            logger.error("Error calling prompt-service: %s", e)
+            return Response(
+                {
+                    "error": (
+                        f"Failed to communicate with prompt service: {str(e)}"
+                    )
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        except Exception as e:
+            logger.error("Error during prompt tuning: %s", e)
+            return Response(
+                {"error": f"Prompt tuning failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    def get_tune_status(self, request: Request, project_pk=None) -> Response:
+        """Get the status of prompt tuning for a project.
+
+        This endpoint is called by the frontend as:
+        GET /projects/{project_id}/prompts/tune-status/
+
+        Returns information about tuning progress and recent tuned versions.
+        """
+        organization = UserContext.get_organization()
+        if not organization:
+            return Response(
+                {"error": "Organization not found"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # Validate project exists and user has access
+        try:
+            project = AgenticProject.objects.get(
+                id=project_pk, organization=organization
+            )
+        except AgenticProject.DoesNotExist:
+            return Response(
+                {"error": "Project not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Get recent prompt versions
+        recent_versions = AgenticPromptVersion.objects.filter(
+            project=project, organization=organization
+        ).order_by("-version")[:5]
+
+        # Get comparison statistics
+        from .models import AgenticComparisonResult
+        total_comparisons = AgenticComparisonResult.objects.filter(
+            project=project
+        ).count()
+        mismatches = AgenticComparisonResult.objects.filter(
+            project=project, match=False
+        ).count()
+
+        accuracy = 0
+        if total_comparisons > 0:
+            matches = total_comparisons - mismatches
+            accuracy = (matches / total_comparisons) * 100
+
+        return Response(
+            {
+                "project_id": str(project_pk),
+                "total_comparisons": total_comparisons,
+                "mismatches": mismatches,
+                "accuracy": round(accuracy, 2),
+                "recent_versions": [
+                    {
+                        "id": str(v.id),
+                        "version": v.version,
+                        "is_active": v.is_active,
+                        "created_at": (
+                            v.created_at.isoformat() if v.created_at else None
+                        ),
+                    }
+                    for v in recent_versions
+                ],
+            }
+        )
+
 
 class AgenticExtractionViewSet(viewsets.ViewSet):
     """ViewSet for extraction operations (not a model ViewSet)."""
@@ -2801,7 +3091,12 @@ class AgenticTuningViewSet(viewsets.ViewSet):
 
         if not adapter_id:
             return Response(
-                {"error": "No Agent LLM configured for this project. Please configure Agent LLM in Settings."},
+                {
+                    "error": (
+                        "No Agent LLM configured for this project. "
+                        "Please configure Agent LLM in Settings."
+                    )
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -2817,7 +3112,12 @@ class AgenticTuningViewSet(viewsets.ViewSet):
         schema = AgenticSchema.objects.filter(project=project).first()
         if not schema:
             return Response(
-                {"error": "No schema found for this project. Please generate schema first."},
+                {
+                    "error": (
+                        "No schema found for this project. "
+                        "Please generate schema first."
+                    )
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

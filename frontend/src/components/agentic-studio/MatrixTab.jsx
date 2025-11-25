@@ -89,7 +89,7 @@ function MatrixTab({ projectId, documents }) {
       loadMatrixData();
     }
     // eslint-disable-next-line
-  }, [projectId]);
+  }, [projectId, documents]);
 
   useEffect(() => {
     if (matrixData) {
@@ -214,28 +214,79 @@ function MatrixTab({ projectId, documents }) {
     "fields:",
     fields,
     "matrixData:",
-    matrixData
+    matrixData,
+    "documents prop:",
+    documents
   );
 
   if (loading) {
     return (
       <div style={{ textAlign: "center", padding: "60px 0" }}>
         <Spin size="large" />
+        <div style={{ marginTop: "16px" }}>
+          <Text type="secondary">Loading matrix data...</Text>
+        </div>
       </div>
     );
   }
 
-  if (!matrixData || docs.length === 0) {
+  if (!matrixData || docs.length === 0 || fields.length === 0) {
+    // Determine what's missing
+    const hasDocuments = documents && documents.length > 0;
+
+    let message = "No matrix data available";
+    let steps = [];
+
+    if (!hasDocuments) {
+      message = "No documents found";
+      steps = [
+        "Upload at least 2 documents to your project",
+        "Define your schema in the Schema tab",
+        "Run extractions on your documents",
+        "Create verified data for comparison",
+      ];
+    } else if (docs.length === 0 || fields.length === 0) {
+      message = "Matrix data not generated yet";
+      steps = [
+        "Ensure you have defined a schema",
+        "Run extractions on your documents (Extracted Data tab)",
+        "Create verified data for comparison (Verified Data tab)",
+        "The matrix will automatically populate after both are available",
+      ];
+    } else {
+      message = "Matrix is empty";
+      steps = [
+        "Check that extractions have completed successfully",
+        "Ensure verified data has been created for at least one document",
+      ];
+    }
+
     return (
       <Card>
         <Empty
           description={
             <Space direction="vertical" size="large">
-              <Text>No matrix data available</Text>
-              <Text type="secondary">
-                Run extractions and create verified data to generate the
-                mismatch matrix
-              </Text>
+              <Text strong>{message}</Text>
+              <Text type="secondary">To generate the mismatch matrix:</Text>
+              <ol
+                style={{
+                  textAlign: "left",
+                  margin: "0 auto",
+                  maxWidth: "500px",
+                }}
+              >
+                {steps.map((step, index) => (
+                  <li key={index}>{step}</li>
+                ))}
+              </ol>
+              <Button
+                type="primary"
+                icon={<ReloadOutlined />}
+                onClick={loadMatrixData}
+                loading={loading}
+              >
+                Refresh Matrix
+              </Button>
             </Space>
           }
         />
@@ -436,7 +487,15 @@ function MatrixTab({ projectId, documents }) {
 
         {/* Matrix Heat Map */}
         <Card title="Heat Map">
-          <div style={{ overflowX: "auto" }}>
+          <div
+            style={{
+              overflowX: "auto",
+              overflowY: "auto",
+              maxHeight: "calc(100vh - 550px)",
+              minHeight: "400px",
+              position: "relative",
+            }}
+          >
             <table
               style={{
                 borderCollapse: "collapse",
@@ -454,7 +513,8 @@ function MatrixTab({ projectId, documents }) {
                       fontWeight: "bold",
                       position: "sticky",
                       left: 0,
-                      zIndex: 2,
+                      top: 0,
+                      zIndex: 3,
                     }}
                   >
                     Document / Field
@@ -469,6 +529,9 @@ function MatrixTab({ projectId, documents }) {
                         fontWeight: "bold",
                         minWidth: "120px",
                         maxWidth: "200px",
+                        position: "sticky",
+                        top: 0,
+                        zIndex: 2,
                       }}
                     >
                       <Tooltip title={field}>

@@ -86,14 +86,29 @@ function AgenticStudioProjectDetail() {
   const loadDocuments = async () => {
     try {
       const documentsData = await documentsApi.list(id);
-      setDocuments(documentsData);
+      console.log("Documents API response:", documentsData);
+
+      // Handle different response formats
+      // Backend returns either array directly or wrapped in {results: [...]}
+      const documentsList = Array.isArray(documentsData)
+        ? documentsData
+        : Array.isArray(documentsData?.results)
+        ? documentsData.results
+        : Array.isArray(documentsData?.data)
+        ? documentsData.data
+        : [];
+
+      console.log("Processed documents list:", documentsList);
+      setDocuments(documentsList);
 
       // Select first document by default if available
-      if (documentsData.length > 0 && !selectedDocId) {
-        setSelectedDocId(documentsData[0].id);
+      if (documentsList.length > 0 && !selectedDocId) {
+        setSelectedDocId(documentsList[0].id);
       }
     } catch (error) {
+      console.error("Failed to load documents:", error);
       showApiError(error, "Failed to load documents");
+      setDocuments([]); // Set empty array on error
     }
   };
 

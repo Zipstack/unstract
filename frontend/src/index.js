@@ -20,6 +20,19 @@ if (enablePosthog !== "false") {
     api_host: API_HOST,
     capture_pageview: false,
     autocapture: false,
+    // Performance optimizations to prevent blocking
+    loaded: (posthog) => {
+      if (process.env.NODE_ENV === "development") posthog.debug(false);
+    },
+    // Batch events to reduce network calls
+    batch_size: 10,
+    batch_interval_ms: 5000,
+    // Don't block page load
+    persistence: "localStorage",
+    // Disable session recording if not needed
+    disable_session_recording: true,
+    // Set request timeout
+    request_timeout_ms: 3000,
   });
 }
 
