@@ -133,7 +133,7 @@ discover_pluggable_workers() {
             fi
 
             print_status $GREEN "Discovered pluggable worker: $worker_name"
-            ((discovered_count++))
+            ((discovered_count+=1))
         fi
     done
 

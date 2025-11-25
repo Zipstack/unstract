@@ -72,6 +72,7 @@ class WhispererConfig:
     WAIT_FOR_COMPLETION = "wait_for_completion"
     LOGGING_LEVEL = "logging_level"
     ADD_LINE_NOS = "add_line_nos"
+    INCLUDE_LINE_CONFIDENCE = "include_line_confidence"
     EXTRACT_ALL_LINES = "extract_all_lines"
     LINES = "lines"
 

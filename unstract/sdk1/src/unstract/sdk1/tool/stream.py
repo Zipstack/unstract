@@ -4,6 +4,7 @@ import logging
 import os
 from typing import Any
 
+from deprecated import deprecated
 from unstract.sdk1.constants import Command, LogLevel, LogStage, ToolEnv
 from unstract.sdk1.exceptions import SdkError
 from unstract.sdk1.utils.common import Utils
@@ -230,6 +231,27 @@ class StreamMixin:
             "type": "UPDATE",
             "state": state,
             "message": message,
+            "emitted_at": datetime.datetime.now().isoformat(),
+            **kwargs,
+        }
+        print(json.dumps(record))
+
+    @staticmethod
+    @deprecated(version="0.4.4", reason="Use `BaseTool.write_to_result()` instead")
+    def stream_result(result: dict[Any, Any], **kwargs: dict[str, Any]) -> None:
+        """Streams tool result (review if required).
+
+        Args:
+            result (dict): The result of the tool. Refer to the
+                Unstract protocol for the format of the result.
+            **kwargs: Additional keyword arguments to include in the record.
+
+        Returns:
+            None
+        """
+        record = {
+            "type": "RESULT",
+            "result": result,
             "emitted_at": datetime.datetime.now().isoformat(),
             **kwargs,
         }
