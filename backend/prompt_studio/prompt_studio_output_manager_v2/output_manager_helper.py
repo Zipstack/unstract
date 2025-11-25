@@ -144,20 +144,29 @@ class OutputManagerHelper:
             if prompt.prompt_type == PSOMKeys.NOTES:
                 continue
 
-            if not is_single_pass_extract:
-                if context:
-                    context = context.get(prompt.prompt_key)
-                if highlight_data:
-                    highlight_data = highlight_data.get(prompt.prompt_key)
-                if confidence_data:
-                    confidence_data = confidence_data.get(prompt.prompt_key)
-                if word_confidence_data:
-                    word_confidence_data = word_confidence_data.get(prompt.prompt_key)
-                if challenge_data:
-                    challenge_data = challenge_data.get(prompt.prompt_key)
+            # Use loop-scoped variables to avoid mutation
+            prompt_context = context
+            prompt_highlight_data = highlight_data
+            prompt_confidence_data = confidence_data
+            prompt_word_confidence_data = word_confidence_data
+            prompt_challenge_data = challenge_data
 
-            if challenge_data:
-                challenge_data["file_name"] = metadata.get("file_name")
+            if not is_single_pass_extract:
+                if prompt_context:
+                    prompt_context = prompt_context.get(prompt.prompt_key)
+                if prompt_highlight_data:
+                    prompt_highlight_data = prompt_highlight_data.get(prompt.prompt_key)
+                if prompt_confidence_data:
+                    prompt_confidence_data = prompt_confidence_data.get(prompt.prompt_key)
+                if prompt_word_confidence_data:
+                    prompt_word_confidence_data = prompt_word_confidence_data.get(
+                        prompt.prompt_key
+                    )
+                if prompt_challenge_data:
+                    prompt_challenge_data = prompt_challenge_data.get(prompt.prompt_key)
+
+            if prompt_challenge_data:
+                prompt_challenge_data["file_name"] = metadata.get("file_name")
 
             # TODO: use enums here
             output = outputs.get(prompt.prompt_key)
@@ -173,11 +182,11 @@ class OutputManagerHelper:
                 output=output,
                 eval_metrics=eval_metrics,
                 tool=tool,
-                context=json.dumps(context),
-                challenge_data=challenge_data,
-                highlight_data=highlight_data,
-                confidence_data=confidence_data,
-                word_confidence_data=word_confidence_data,
+                context=json.dumps(prompt_context),
+                challenge_data=prompt_challenge_data,
+                highlight_data=prompt_highlight_data,
+                confidence_data=prompt_confidence_data,
+                word_confidence_data=prompt_word_confidence_data,
             )
 
             # Serialize the instance
