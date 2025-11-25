@@ -51,6 +51,15 @@ class IndexingService:
                 tool=util,
                 fs=fs_instance,
             )
+
+            # Skip embedding creation and indexing when chunk_size is 0
+            # When chunk_size is 0, we don't need vector operations
+            if chunking_config.chunk_size == 0:
+                logger.info(
+                    f"Skipping indexing for chunk_size=0. Doc ID: {doc_id}"
+                )
+                return doc_id
+
             embedding = EmbeddingCompat(
                 adapter_instance_id=instance_identifiers.embedding_instance_id,
                 tool=util,
