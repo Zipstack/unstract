@@ -116,6 +116,10 @@ function DocumentParser({
       }
     }
 
+    // Mark that changes have been made when any prompt field is modified
+    const { setHasUnsavedChanges } = useCustomToolStore.getState();
+    setHasUnsavedChanges(true);
+
     const index = promptsAndNotes.findIndex(
       (item) => item?.prompt_id === promptId
     );
