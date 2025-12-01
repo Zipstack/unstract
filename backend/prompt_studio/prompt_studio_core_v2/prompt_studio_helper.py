@@ -412,8 +412,6 @@ class PromptStudioHelper:
             document_id=document_id,
             run_id=run_id,
             enable_highlight=tool.enable_highlight,
-            enable_word_confidence=tool.enable_word_confidence,
-            doc_id=doc_id,
         )
         if tool.summarize_context:
             summarize_file_path = PromptStudioHelper.summarize(

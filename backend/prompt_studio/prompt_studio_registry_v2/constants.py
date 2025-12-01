@@ -104,6 +104,7 @@ class JsonSchemaKey:
     # Webhook postprocessing settings
     ENABLE_POSTPROCESSING_WEBHOOK = "enable_postprocessing_webhook"
     POSTPROCESSING_WEBHOOK_URL = "postprocessing_webhook_url"
+    WORD_CONFIDENCE_POSTAMBLE = "word_confidence_postamble"
 
 
 class SpecKey:

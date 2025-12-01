@@ -474,7 +474,8 @@ class LLM:
         self,
         response_text: str,
         extract_json: bool,
-        post_process_fn: Callable[[LLMResponseCompat, bool], dict[str, object]] | None,
+        post_process_fn: Callable[[LLMResponseCompat, bool, str], dict[str, object]]
+        | None,
     ) -> tuple[str, dict[str, object]]:
         post_processed_output: dict[str, object] = {}
 
