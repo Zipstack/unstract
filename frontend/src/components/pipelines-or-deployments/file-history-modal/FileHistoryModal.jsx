@@ -30,6 +30,8 @@ import "./FileHistoryModal.css";
 
 const { Text } = Typography;
 
+const MAX_BULK_DELETE = 100;
+
 const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
   const [fileHistories, setFileHistories] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -198,22 +200,30 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
     }
   };
 
-  // Delete selected file histories
+  // Delete selected file histories (bulk delete by IDs)
   const handleDeleteSelected = async () => {
     if (selectedRowKeys.length === 0) return;
 
+    if (selectedRowKeys.length > MAX_BULK_DELETE) {
+      setAlertDetails({
+        type: "error",
+        content: `Cannot delete more than ${MAX_BULK_DELETE} items at once. Please select fewer items.`,
+      });
+      return;
+    }
+
     setLoading(true);
     try {
-      // Delete each selected file history
-      await Promise.all(
-        selectedRowKeys.map((id) =>
-          workflowApiService.deleteFileHistory(workflowId, id)
-        )
+      const response = await workflowApiService.bulkDeleteFileHistoriesByIds(
+        workflowId,
+        selectedRowKeys
       );
 
       setAlertDetails({
         type: "success",
-        message: `${selectedRowKeys.length} file histories deleted successfully`,
+        message:
+          response?.data?.message ||
+          `${selectedRowKeys.length} file histories deleted successfully`,
       });
 
       // Refresh data

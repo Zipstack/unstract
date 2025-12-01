@@ -98,6 +98,18 @@ function workflowService() {
       };
       return axiosPrivate(options);
     },
+    bulkDeleteFileHistoriesByIds: (workflowId, ids) => {
+      options = {
+        url: `${path}/workflow/${workflowId}/file-histories/clear/`,
+        method: "POST",
+        headers: {
+          "X-CSRFToken": csrfToken,
+          "Content-Type": "application/json",
+        },
+        data: { ids },
+      };
+      return axiosPrivate(options);
+    },
     canUpdate: (id) => {
       options = {
         url: `${path}/workflow/${id}/can-update`,

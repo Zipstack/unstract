@@ -15,6 +15,8 @@ from workflow_manager.workflow_v2.serializers import FileHistorySerializer
 
 logger = logging.getLogger(__name__)
 
+MAX_BULK_DELETE_LIMIT = 100
+
 
 class FileHistoryViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet for file history operations with filtering support."""
@@ -95,28 +97,50 @@ class FileHistoryViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=["post"])
     def clear(self, request, workflow_id=None):
-        """Clear file histories with filters (direct delete)."""
+        """Clear file histories with filters or by specific IDs.
+
+        Supports two modes:
+        1. ID-based deletion: Pass {"ids": [...]} to delete specific records (max 100)
+        2. Filter-based deletion: Pass filters like status, execution_count_min, etc.
+        """
         workflow = get_object_or_404(Workflow, id=workflow_id)
         queryset = FileHistory.objects.filter(workflow=workflow)
 
-        # Apply filters from request body
-        status_list = request.data.get("status", [])
-        if status_list:
-            queryset = queryset.filter(status__in=status_list)
+        # Check for ID-based deletion
+        ids = request.data.get("ids", [])
+        if ids:
+            if len(ids) > MAX_BULK_DELETE_LIMIT:
+                return Response(
+                    {
+                        "error": f"Cannot delete more than {MAX_BULK_DELETE_LIMIT} "
+                        f"items at once. Received {len(ids)} IDs."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            queryset = queryset.filter(id__in=ids)
+        else:
+            # Apply filters from request body (filter-based deletion)
+            status_list = request.data.get("status", [])
+            if status_list:
+                queryset = queryset.filter(status__in=status_list)
 
-        exec_min = request.data.get("execution_count_min")
-        if exec_min is not None:
-            exec_min_val = self._validate_execution_count(exec_min, "execution_count_min")
-            queryset = queryset.filter(execution_count__gte=exec_min_val)
+            exec_min = request.data.get("execution_count_min")
+            if exec_min is not None:
+                exec_min_val = self._validate_execution_count(
+                    exec_min, "execution_count_min"
+                )
+                queryset = queryset.filter(execution_count__gte=exec_min_val)
 
-        exec_max = request.data.get("execution_count_max")
-        if exec_max is not None:
-            exec_max_val = self._validate_execution_count(exec_max, "execution_count_max")
-            queryset = queryset.filter(execution_count__lte=exec_max_val)
+            exec_max = request.data.get("execution_count_max")
+            if exec_max is not None:
+                exec_max_val = self._validate_execution_count(
+                    exec_max, "execution_count_max"
+                )
+                queryset = queryset.filter(execution_count__lte=exec_max_val)
 
-        file_path_param = request.data.get("file_path")
-        if file_path_param:
-            queryset = queryset.filter(file_path__icontains=file_path_param)
+            file_path_param = request.data.get("file_path")
+            if file_path_param:
+                queryset = queryset.filter(file_path__icontains=file_path_param)
 
         deleted_count, _ = queryset.delete()
 

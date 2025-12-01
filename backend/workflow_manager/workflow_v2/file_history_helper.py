@@ -248,7 +248,7 @@ class FileHistoryHelper:
         Returns:
             str: String representation or empty string
         """
-        return str(value) if value else ""
+        return "" if value is None else str(value)
 
     @staticmethod
     def _truncate_hash(file_hash: str | None) -> str:
